@@ -15,7 +15,7 @@ import {
   Title,
   Progress,
 } from '@/components/ui'
-import { CheckCircleOutlined, BookOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import { CircleCheck, Book, ArrowLeft } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { OnboardingSlot } from './types/OnboardingSlot'
 import type { OnboardingStepProps } from './types/onboarding'
@@ -118,13 +118,13 @@ export default function OnboardingPage() {
       {/* Left pane: guide list */}
       <div className="w-64 flex-shrink-0 border-r overflow-y-auto p-4 flex flex-col gap-2 border-border bg-card">
         <div className="flex items-center gap-2 mb-2">
-          <BookOutlined className="text-lg" />
+          <Book className="text-lg" />
           <Text strong>Onboarding</Text>
         </div>
         <Button
           variant="ghost"
           size="sm"
-          icon={<ArrowLeftOutlined />}
+          icon={<ArrowLeft />}
           onClick={() => navigate('/chat')}
           className="!px-0 mb-3"
         >
@@ -144,7 +144,7 @@ export default function OnboardingPage() {
                   {g.title}
                 </Text>
                 {isCompleted && (
-                  <CheckCircleOutlined className="text-green-500" />
+                  <CircleCheck className="text-green-500" />
                 )}
               </div>
               <Text type="secondary" className="text-xs block mt-1">

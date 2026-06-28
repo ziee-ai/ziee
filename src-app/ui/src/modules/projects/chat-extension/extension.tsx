@@ -1,12 +1,7 @@
+import { X, FolderOpen, CircleMinus, CirclePlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, Confirm, Spin, Tag, Tooltip, message, dialog } from '@/components/ui'
 import type { MenuProps } from 'antd'
-import {
-  CloseOutlined,
-  FolderOpenOutlined,
-  MinusCircleOutlined,
-  PlusCircleOutlined,
-} from '@ant-design/icons'
 import type { Conversation } from '@/api-client/types'
 import { useNavigate } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
@@ -323,7 +318,7 @@ function ProjectTagWithRemove({
         >
           <Tag
             tone="info"
-            icon={<FolderOpenOutlined />}
+            icon={<FolderOpen />}
             className="!mr-0"
           >
             {project.name ? `In project: ${project.name}` : 'In project'}
@@ -338,7 +333,7 @@ function ProjectTagWithRemove({
                 setRemoveOpen(true)
               }}
             >
-              <CloseOutlined className="h-3 w-3" />
+              <X className="h-3 w-3" />
             </button>
           </Tooltip>
         </span>
@@ -459,7 +454,7 @@ function ProjectMembershipTrailing({
           <Button
             variant="ghost"
             size="sm"
-            icon={<PlusCircleOutlined />}
+            icon={<CirclePlus />}
             aria-label="Add to project"
             onClick={(e: React.MouseEvent) => {
               e.stopPropagation()
@@ -585,7 +580,7 @@ function useProjectMenuContribution(conversation: Conversation): {
     ? [
         {
           key: 'project-open',
-          icon: <FolderOpenOutlined />,
+          icon: <FolderOpen />,
           label: project.name
             ? `Open: ${project.name}`
             : 'Open project',
@@ -593,7 +588,7 @@ function useProjectMenuContribution(conversation: Conversation): {
         },
         {
           key: 'project-remove',
-          icon: <MinusCircleOutlined />,
+          icon: <CircleMinus />,
           label: 'Remove from project',
           onClick: confirmRemove,
         },
@@ -602,7 +597,7 @@ function useProjectMenuContribution(conversation: Conversation): {
       ? [
           {
             key: 'project-add',
-            icon: <PlusCircleOutlined />,
+            icon: <CirclePlus />,
             label: 'Add to project',
             onClick: () => setAddOpen(true),
           },

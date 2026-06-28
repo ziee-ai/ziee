@@ -1,5 +1,22 @@
+import type { Resolver } from 'react-hook-form'
 import { useEffect, useState } from 'react'
-import { Button, Card, Divider, Flex, Form, Input, Spin, Typography, message } from 'antd'
+import {
+  Button,
+  Card,
+  Separator,
+  Flex,
+  Form,
+  FormField,
+  useForm,
+  zodResolver,
+  Input,
+  PasswordInput,
+  Spin,
+  Text,
+  Paragraph,
+  message,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type ProviderCatalogEntry } from '@/api-client/types'
@@ -10,24 +27,24 @@ import { Permissions, type ProviderCatalogEntry } from '@/api-client/types'
  * input. Adding a backend provider surfaces its fields here with no change.
  *
  * Layout mirrors the code-sandbox / memory settings rhythm: one full-size
- * `<Card>` with each provider as a `<Divider titlePlacement="start">` section
- * (no nested `size="small"` sub-cards, no status Tag in a card title).
+ * `<Card>` with each provider as a `<Separator titlePlacement="left">` section
+ * (no nested `size="sm"` sub-cards, no status Tag in a card title).
  */
 export function WebSearchProvidersSection() {
   const { providers, loading } = Stores.WebSearchAdmin
   if (loading && providers.length === 0) {
     return (
       <Card title="Search providers">
-        <Spin />
+        <Spin label="Loading" />
       </Card>
     )
   }
   return (
     <Card title="Search providers">
-      <Typography.Paragraph type="secondary" className="text-xs">
+      <Paragraph type="secondary" className="text-xs">
         Configure each engine you want available. Keys are stored encrypted and
         never shown again.
-      </Typography.Paragraph>
+      </Paragraph>
       {providers.map(p => (
         <ProviderConfigForm key={p.key} entry={p} />
       ))}
@@ -41,8 +58,39 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
   const canManage = usePermission(Permissions.WebSearchAdminManage)
   const { savingProvider } = Stores.WebSearchAdmin
   const isSaving = savingProvider === entry.key
-  const [form] = Form.useForm<ProviderFormValues>()
   const [dirty, setDirty] = useState(false)
+
+  const buildInit = (): ProviderFormValues => {
+    const init: ProviderFormValues = { api_key: '' }
+    for (const f of entry.config_fields) {
+      init[f.key] = (entry.config?.[f.key] as string) ?? ''
+    }
+    return init
+  }
+
+  const schemaShape: Record<string, z.ZodTypeAny> = {
+    api_key: z.string().optional(),
+  }
+  for (const f of entry.config_fields) {
+    schemaShape[f.key] = f.required
+      ? z.string().min(1, `${f.label} is required`)
+      : z.string().optional()
+  }
+  const schema = z.object(schemaShape)
+
+  const form = useForm<ProviderFormValues>({
+    resolver: zodResolver(schema) as Resolver<ProviderFormValues>,
+    defaultValues: buildInit(),
+  })
+
+  // Track user-driven edits (legacy `onValuesChange`): only a real `change`
+  // marks the form dirty, NOT a programmatic reset/seed.
+  useEffect(() => {
+    const sub = form.watch((_, { type }) => {
+      if (type === 'change') setDirty(true)
+    })
+    return () => sub.unsubscribe()
+  }, [form])
 
   // Seed config fields from stored config; api_key stays blank (write-only).
   // Depend on this provider's OWN identity + stored state — NOT the whole
@@ -56,11 +104,7 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
     // (e.g. clearKey flipping this provider's api_key_set) can't wipe in-progress
     // config-field edits.
     if (!dirty) {
-      const init: ProviderFormValues = { api_key: '' }
-      for (const f of entry.config_fields) {
-        init[f.key] = (entry.config?.[f.key] as string) ?? ''
-      }
-      form.setFieldsValue(init)
+      form.reset(buildInit())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.key, entry.api_key_set, configKey, form, dirty])
@@ -80,7 +124,7 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
     try {
       await Stores.WebSearchAdmin.updateProvider(entry.key, body)
       message.success(`${entry.display_name} saved`)
-      form.setFieldValue('api_key', '')
+      form.setValue('api_key', '')
       setDirty(false)
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to save provider')
@@ -98,68 +142,56 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
 
   return (
     <>
-      <Divider titlePlacement="start" styles={{ content: { margin: 0 } }}>
-        <Typography.Text className="text-sm">{entry.display_name}</Typography.Text>
-      </Divider>
-      <Typography.Paragraph
+      <Separator titlePlacement="left">
+        <Text className="text-sm">{entry.display_name}</Text>
+      </Separator>
+      <Paragraph
         type={entry.configured ? 'success' : 'secondary'}
         className="text-xs !mb-2"
       >
         {entry.configured ? 'Configured' : 'Not configured'}
-      </Typography.Paragraph>
+      </Paragraph>
 
       <Form
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 8 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 16 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={onSubmit}
-        onValuesChange={() => setDirty(true)}
+        labelWidth="33%"
+        onSubmit={onSubmit}
         disabled={!canManage}
       >
         {entry.config_fields.map(f => (
-          <Form.Item
-            key={f.key}
-            name={f.key}
-            label={f.label}
-            rules={
-              f.required
-                ? [{ required: true, message: `${f.label} is required` }]
-                : []
-            }
-          >
+          <FormField key={f.key} name={f.key} label={f.label} required={f.required}>
             <Input placeholder={f.placeholder} />
-          </Form.Item>
+          </FormField>
         ))}
 
         {entry.needs_api_key && (
-          <Form.Item
+          <FormField
             name="api_key"
             label="API key"
-            extra={
+            description={
               entry.api_key_set
                 ? 'A key is stored. Leave blank to keep it, or type a new one to replace.'
                 : 'No key stored yet.'
             }
           >
-            <Input.Password
+            <PasswordInput
+              showLabel="Show API key"
+              hideLabel="Hide API key"
               autoComplete="new-password"
               placeholder={entry.api_key_set ? '•••••••• (stored)' : 'Enter API key'}
             />
-          </Form.Item>
+          </FormField>
         )}
 
         <Flex justify="end" gap="small">
           {entry.needs_api_key && entry.api_key_set && (
-            <Button danger onClick={clearKey} disabled={!canManage || isSaving}>
+            <Button variant="destructive" onClick={clearKey} disabled={!canManage || isSaving}>
               Clear key
             </Button>
           )}
           <Button
-            type="primary"
-            htmlType="submit"
+            type="submit"
             loading={isSaving}
             disabled={!canManage || !dirty}
           >

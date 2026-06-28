@@ -1,4 +1,4 @@
-import { ToolOutlined } from '@ant-design/icons'
+import { Wrench } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
@@ -30,7 +30,7 @@ export function McpMenuItem() {
         style={{ minWidth: 180 }}
         onClick={() => { mcpStore.openConfigModal(); close() }}
       >
-        <ToolOutlined style={{ fontSize: 16 }} />
+        <Wrench style={{ fontSize: 16 }} />
         <span className="text-sm">MCP tools & servers</span>
       </div>
 

@@ -1,7 +1,7 @@
+import { Eraser, Search } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { MultiSelect, Select, Text, Button, Input } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { ClearOutlined, SearchOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
@@ -95,7 +95,7 @@ export function ModelsHubTab() {
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Search models..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             allowClear
@@ -145,7 +145,7 @@ export function ModelsHubTab() {
             <Button
               size="sm"
               variant="ghost"
-              icon={<ClearOutlined />}
+              icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
             >

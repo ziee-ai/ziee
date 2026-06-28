@@ -1,5 +1,5 @@
+import { Paperclip } from 'lucide-react'
 import { App, Button, Tooltip, Upload } from 'antd'
-import { PaperClipOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -59,7 +59,7 @@ export function FileUploadButton() {
       <Tooltip title="Attach files">
         <Button
           type="text"
-          icon={<PaperClipOutlined />}
+          icon={<Paperclip />}
           aria-label="Attach files"
           data-testid="file-upload-button"
         />

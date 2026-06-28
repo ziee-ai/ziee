@@ -1,4 +1,4 @@
-import { ImportOutlined, NodeIndexOutlined } from '@ant-design/icons'
+import { Import as ImportIcon, Workflow as WorkflowIcon } from 'lucide-react'
 import { Button, Card, Empty, Flex, Space, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
@@ -27,7 +27,7 @@ export function WorkflowsList() {
         <Flex justify="end">
           <Can permission={Permissions.WorkflowsInstall}>
             <Button
-              icon={<ImportOutlined />}
+              icon={<ImportIcon />}
               onClick={() => setImportOpen(true)}
             >
               Import
@@ -47,7 +47,7 @@ export function WorkflowsList() {
               data-workflow-id={workflow.id}
               title={
                 <Space size={8}>
-                  <NodeIndexOutlined />
+                  <WorkflowIcon />
                   <Text strong>{workflow.display_name || workflow.name}</Text>
                   <WorkflowScopeBadge
                     scope={workflow.scope}

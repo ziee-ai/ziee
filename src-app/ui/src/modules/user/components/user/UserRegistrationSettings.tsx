@@ -1,12 +1,11 @@
-import { App, Card, Form, Switch, Typography } from 'antd'
+import { Card, Form, FormField, useForm, Switch, Text, message } from '@/components/ui'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 
-const { Text } = Typography
-
 export function UserRegistrationSettings() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
+  const form = useForm<{ enabled: boolean }>({
+    defaultValues: { enabled: false },
+  })
 
   // Users store
   const { userRegistrationEnabled, loadingRegistrationSettings, error } =
@@ -18,36 +17,28 @@ export function UserRegistrationSettings() {
       message.error(error)
       Stores.Users.clearError()
     }
-  }, [error, message])
+  }, [error])
 
   // Update form when registration status changes
   useEffect(() => {
-    form.setFieldsValue({ enabled: userRegistrationEnabled })
+    form.setValue('enabled', userRegistrationEnabled)
   }, [userRegistrationEnabled]) // Removed form from dependencies to prevent infinite rerenders
 
-  const handleFormChange = async (changedValues: any) => {
-    if ('enabled' in changedValues) {
-      const newValue = changedValues.enabled
-
-      try {
-        await Stores.Users.updateUserRegistrationSettings(newValue)
-        message.success(
-          `User registration ${newValue ? 'enabled' : 'disabled'} successfully`,
-        )
-      } catch (error) {
-        console.error('Failed to update registration status:', error)
-        // Error is handled by the store
-      }
+  const handleToggle = async (newValue: boolean) => {
+    try {
+      await Stores.Users.updateUserRegistrationSettings(newValue)
+      message.success(
+        `User registration ${newValue ? 'enabled' : 'disabled'} successfully`,
+      )
+    } catch (error) {
+      console.error('Failed to update registration status:', error)
+      // Error is handled by the store
     }
   }
 
   return (
     <Card title="User Registration">
-      <Form
-        form={form}
-        onValuesChange={handleFormChange}
-        initialValues={{ enabled: userRegistrationEnabled }}
-      >
+      <Form form={form} onSubmit={() => {}}>
         <div className="flex justify-between items-center">
           <div>
             <Text strong>Enable User Registration</Text>
@@ -57,9 +48,12 @@ export function UserRegistrationSettings() {
               </Text>
             </div>
           </div>
-          <Form.Item name="enabled" valuePropName="checked" className="mb-0">
-            <Switch loading={loadingRegistrationSettings} size="default" />
-          </Form.Item>
+          <FormField name="enabled" valuePropName="checked" className="mb-0">
+            <Switch
+              loading={loadingRegistrationSettings}
+              onChange={handleToggle}
+            />
+          </FormField>
         </div>
       </Form>
     </Card>

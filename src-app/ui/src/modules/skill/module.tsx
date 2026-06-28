@@ -1,4 +1,4 @@
-import { ReadOutlined } from '@ant-design/icons'
+import { BookOpen } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
@@ -61,7 +61,7 @@ export default createModule({
     sidebarNavigation: [
       {
         id: 'skills',
-        icon: <ReadOutlined />,
+        icon: <BookOpen />,
         label: 'Skills',
         path: '/skills',
         order: 80,
@@ -71,7 +71,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'skills-admin',
-        icon: <ReadOutlined />,
+        icon: <BookOpen />,
         label: 'System Skills',
         path: 'skills-admin',
         order: 27,

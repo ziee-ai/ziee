@@ -1,10 +1,5 @@
+import { Code, Copy, Download, Eye } from 'lucide-react'
 import { Button, Space } from '@/components/ui'
-import {
-  CodeOutlined,
-  CopyOutlined,
-  DownloadOutlined,
-  EyeOutlined,
-} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { message } from '@/components/ui'
@@ -36,7 +31,7 @@ export function RawToggle({ file }: { file: FileEntity }) {
   return (
     <Space direction="horizontal">
       <Button
-        icon={<EyeOutlined />}
+        icon={<Eye />}
         variant={mode === 'compiled' ? 'default' : 'outline'}
         aria-label="Rendered view"
         onClick={() => Stores.File.setFileViewMode(file.id, 'compiled')}
@@ -44,7 +39,7 @@ export function RawToggle({ file }: { file: FileEntity }) {
         Rendered view
       </Button>
       <Button
-        icon={<CodeOutlined />}
+        icon={<Code />}
         variant={mode === 'raw' ? 'default' : 'outline'}
         aria-label="Raw view"
         onClick={() => Stores.File.setFileViewMode(file.id, 'raw')}
@@ -90,7 +85,7 @@ export function CopyButton({ file }: { file: FileEntity }) {
     }
   }
   return (
-    <Button icon={<CopyOutlined />} onClick={handleCopy}>
+    <Button icon={<Copy />} onClick={handleCopy}>
       Copy
     </Button>
   )
@@ -103,7 +98,7 @@ export function CopyButton({ file }: { file: FileEntity }) {
 export function DownloadButton({ file }: { file: FileEntity }) {
   return (
     <Button
-      icon={<DownloadOutlined />}
+      icon={<Download />}
       onClick={() => {
         Stores.File.downloadFile(file).catch(() =>
           message.error('Failed to download file'),

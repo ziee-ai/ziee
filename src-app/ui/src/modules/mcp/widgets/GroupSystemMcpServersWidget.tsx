@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Button, Card, Flex, Space, Tag, Text, Spin } from '@/components/ui'
-import { ApiOutlined, EditOutlined } from '@ant-design/icons'
+import { Plug, Pencil } from 'lucide-react'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -40,7 +40,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Space size="small">
-            <ApiOutlined className="text-blue-500" aria-hidden="true" />
+            <Plug className="text-blue-500" aria-hidden="true" />
             <Text strong>System MCP Servers</Text>
             {loading ? (
               <Spin size="sm" label="Loading" />
@@ -52,7 +52,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
             <Button
               size="sm"
               variant="link"
-              icon={<EditOutlined aria-hidden="true" />}
+              icon={<Pencil aria-hidden="true" />}
               onClick={handleEdit}
               aria-label={`Edit System MCP Servers for ${group.name}`}
             >

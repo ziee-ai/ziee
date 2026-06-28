@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ImportOutlined } from '@ant-design/icons'
+import { Import } from 'lucide-react'
 import { Button, Empty, message, Space, Spin, Text } from '@/components/ui'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
@@ -53,7 +53,7 @@ export function ProjectBibliographyManagePanel() {
         {canManage && (
           <Button
             variant="default"
-            icon={<ImportOutlined />}
+            icon={<Import />}
             onClick={() => setImportOpen(true)}
           >
             Import into project

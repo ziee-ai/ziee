@@ -1,4 +1,4 @@
-import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
+import { Plus, Users } from 'lucide-react'
 import { Button, Empty, List, Tooltip } from 'antd'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
@@ -101,7 +101,7 @@ export function UserGroupsDrawer() {
           <Tooltip title="Assign group">
             <Button
               variant="link"
-              icon={<PlusOutlined aria-hidden="true" />}
+              icon={<Plus aria-hidden="true" />}
               onClick={() => {
                 Stores.UserGroupsDrawer.closeUserGroupsDrawer()
                 if (user) {
@@ -153,7 +153,7 @@ export function UserGroupsDrawer() {
             return (
               <List.Item actions={actions}>
                 <List.Item.Meta
-                  avatar={<TeamOutlined />}
+                  avatar={<Users />}
                   title={
                     <div className="flex items-center gap-2">
                       {group.name}

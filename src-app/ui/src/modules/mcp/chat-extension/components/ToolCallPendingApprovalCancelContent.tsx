@@ -1,5 +1,5 @@
 import { Alert, Text } from '@/components/ui'
-import { StopOutlined } from '@ant-design/icons'
+import { Ban } from 'lucide-react'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
 
 interface ToolCallPendingApprovalCancelContentProps {
@@ -19,7 +19,7 @@ export function ToolCallPendingApprovalCancelContent({
     <div className="my-2">
       <Alert
         tone="error"
-        icon={<StopOutlined />}
+        icon={<Ban />}
         title={
           <div>
             <Text strong>Tool Call Cancelled: {toolCall.tool_name}</Text>

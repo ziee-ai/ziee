@@ -1,11 +1,4 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  LockOutlined,
-  PlusOutlined,
-  TeamOutlined,
-  UserOutlined,
-} from '@ant-design/icons'
+import { Trash2, Pencil, Lock, Plus, Users, User as UserIcon } from 'lucide-react'
 import {
   Badge,
   Button,
@@ -120,7 +113,7 @@ export function UsersSettings() {
         <Button
           key="edit"
           variant="ghost"
-          icon={<EditOutlined />}
+          icon={<Pencil />}
           onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
         >
           Edit
@@ -133,7 +126,7 @@ export function UsersSettings() {
         <Button
           key="password"
           variant="ghost"
-          icon={<LockOutlined />}
+          icon={<Lock />}
           onClick={() =>
             Stores.ResetPasswordDrawer.openResetPasswordDrawer(user)
           }
@@ -148,7 +141,7 @@ export function UsersSettings() {
         <Button
           key="groups"
           variant="ghost"
-          icon={<TeamOutlined />}
+          icon={<Users />}
           onClick={() => Stores.UserGroupsDrawer.openUserGroupsDrawer(user)}
         >
           Groups
@@ -167,7 +160,7 @@ export function UsersSettings() {
           >
             <Button
               variant="destructive"
-              icon={<DeleteOutlined aria-hidden="true" />}
+              icon={<Trash2 aria-hidden="true" />}
               aria-label={`Delete ${user.username}`}
             >
               Delete
@@ -207,7 +200,7 @@ export function UsersSettings() {
                 <Tooltip content="Create user">
                   <Button
                     variant="ghost"
-                    icon={<PlusOutlined aria-hidden="true" />}
+                    icon={<Plus aria-hidden="true" />}
                     onClick={() =>
                       Stores.CreateUserDrawer.openCreateUserDrawer()
                     }
@@ -233,7 +226,7 @@ export function UsersSettings() {
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <div className={'flex-1 min-w-48'}>
                             <Flex className="gap-2 items-center">
-                              <UserOutlined />
+                              <UserIcon />
                               <Text className="font-medium">
                                 {user.username}
                               </Text>

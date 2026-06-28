@@ -1,11 +1,6 @@
 import { useState } from 'react'
 import { Alert, App, Button, Card, Popconfirm, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
-import {
-  EditOutlined,
-  ToolOutlined,
-  DeleteOutlined,
-  ApiOutlined,
-} from '@ant-design/icons'
+import { Pencil, Wrench, Trash2, Plug } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import {
@@ -160,7 +155,7 @@ export function McpServerCard({
           <div className="mb-3 flex items-center gap-2 flex-wrap">
             <div className="flex-1 min-w-48">
               <Flex className="gap-2 items-center">
-                <ToolOutlined aria-hidden="true" className="text-base" />
+                <Wrench aria-hidden="true" className="text-base" />
                 <Text className="font-semibold text-base">{server.display_name}</Text>
                 {!isEditable && server.is_system && (
                   <Tag color="blue">System</Tag>
@@ -257,7 +252,7 @@ export function McpServerCard({
                   {canTest && (
                     <Tooltip title="Test the connection to this server">
                       <Button
-                        icon={<ApiOutlined />}
+                        icon={<Plug />}
                         loading={testing}
                         onClick={e => {
                           e.stopPropagation()
@@ -272,7 +267,7 @@ export function McpServerCard({
                   )}
                   {canEdit && (
                     <Button
-                      icon={<EditOutlined />}
+                      icon={<Pencil />}
                       onClick={e => {
                         e.stopPropagation()
                         handleEdit()
@@ -293,7 +288,7 @@ export function McpServerCard({
                       onConfirm={handleDelete}
                     >
                       <Button
-                        icon={<DeleteOutlined />}
+                        icon={<Trash2 />}
                         danger
                         onClick={e => {
                           e.stopPropagation()

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Tooltip, Dropdown } from '@/components/ui'
 import { message } from '@/components/ui'
-import { BulbOutlined, BulbFilled, EyeInvisibleOutlined } from '@ant-design/icons'
+import { EyeOff, Lightbulb } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 
@@ -79,13 +79,13 @@ export function MemoryStatusPill() {
     {
       key: 'inherit',
       label: 'Inherit (follow account setting)',
-      icon: <BulbOutlined />,
+      icon: <Lightbulb />,
     },
-    { key: 'on', label: 'Always retrieve memories', icon: <BulbFilled /> },
+    { key: 'on', label: 'Always retrieve memories', icon: <Lightbulb /> },
     {
       key: 'off',
       label: "Don't use memories here",
-      icon: <EyeInvisibleOutlined />,
+      icon: <EyeOff />,
     },
   ]
 
@@ -106,7 +106,7 @@ export function MemoryStatusPill() {
           className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium"
           style={{ cursor: 'pointer' }}
         >
-          {mode === 'off' ? <EyeInvisibleOutlined /> : <BulbOutlined />}
+          {mode === 'off' ? <EyeOff /> : <Lightbulb />}
           {labelByMode[mode]}
         </span>
       </Dropdown>

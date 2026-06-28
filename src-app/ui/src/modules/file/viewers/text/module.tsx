@@ -1,5 +1,5 @@
+import { FileText } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { FileTextOutlined } from '@ant-design/icons'
 import { TextBody } from './body'
 import { TextHeader } from './header'
 
@@ -24,7 +24,7 @@ export const viewers: FileViewerModule[] = [
       body: TextBody,
       headerActions: TextHeader,
       label: 'Document',
-      icon: <FileTextOutlined />,
+      icon: <FileText />,
       // Plain text / code via RawCodeView. Covers logs, JSON, source
       // files — anything we fall back to text rendering for.
       inline: true,

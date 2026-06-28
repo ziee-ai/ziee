@@ -1,10 +1,6 @@
 import { useState } from 'react'
 import { Alert, Button, Space, Text } from '@/components/ui'
-import {
-  ClockCircleOutlined,
-  CheckOutlined,
-  CloseOutlined,
-} from '@ant-design/icons'
+import { Clock, Check, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
 
@@ -147,7 +143,7 @@ export function ToolCallPendingApprovalContent({
     <div className="my-2" data-testid={`tool-approval-${toolCall.tool_use_id}`}>
       <Alert
         tone="warning"
-        icon={<ClockCircleOutlined />}
+        icon={<Clock />}
         title={
           <div>
             <Text strong>Tool Approval Required: {toolCall.tool_name}</Text>
@@ -176,7 +172,7 @@ export function ToolCallPendingApprovalContent({
             <div className="mt-3">
               <Space>
                 <Button
-                  icon={<CheckOutlined />}
+                  icon={<Check />}
                   onClick={handleApproveOnce}
                   loading={isSubmitting}
                   size="sm"
@@ -185,7 +181,7 @@ export function ToolCallPendingApprovalContent({
                   Approve once
                 </Button>
                 <Button
-                  icon={<CheckOutlined />}
+                  icon={<Check />}
                   onClick={handleApproveForConversation}
                   loading={isSubmitting}
                   size="sm"
@@ -195,7 +191,7 @@ export function ToolCallPendingApprovalContent({
                 </Button>
                 <Button
                   variant="destructive"
-                  icon={<CloseOutlined />}
+                  icon={<X />}
                   onClick={handleDeny}
                   loading={isSubmitting}
                   size="sm"

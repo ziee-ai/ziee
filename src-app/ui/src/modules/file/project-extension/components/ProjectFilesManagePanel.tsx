@@ -7,6 +7,7 @@
 // via the `ProjectExtensionSlot view="managePanel"` slot — the projects
 // module never imports this file directly.
 
+import { Trash2, Upload as UploadIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -22,10 +23,6 @@ import {
   theme,
 } from 'antd'
 import type { UploadProps } from 'antd'
-import {
-  DeleteOutlined,
-  UploadOutlined,
-} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -222,7 +219,7 @@ export function ProjectFilesManagePanel() {
       <Tooltip title={atCap ? `At ${PROJECT_FILE_CAP}-file cap` : 'Upload files'}>
         <Button
           type="primary"
-          icon={<UploadOutlined />}
+          icon={<UploadIcon />}
           disabled={atCap}
           aria-label="Upload files to project"
         >
@@ -260,7 +257,7 @@ export function ProjectFilesManagePanel() {
         <Button
           size="small"
           danger
-          icon={<DeleteOutlined />}
+          icon={<Trash2 />}
           onClick={handleBatchDelete}
         >
           Delete selected
@@ -335,7 +332,7 @@ export function ProjectFilesManagePanel() {
                       <Button
                         type="text"
                         danger
-                        icon={<DeleteOutlined />}
+                        icon={<Trash2 />}
                         aria-label={`Delete ${file.filename}`}
                       />
                     </Tooltip>
@@ -389,7 +386,7 @@ export function ProjectFilesManagePanel() {
               pointerEvents: 'none',
             }}
           >
-            <UploadOutlined style={{ fontSize: 36 }} />
+            <UploadIcon style={{ fontSize: 36 }} />
             <span>Drop files to attach to this project</span>
           </div>,
           drawerBody,

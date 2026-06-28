@@ -1,9 +1,5 @@
+import { X, Download, RotateCw } from 'lucide-react'
 import { App, Badge, Button, Flex, Popover, Tooltip, Typography } from 'antd'
-import {
-  CloseOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { useHubModelDownloadGate } from '@/modules/hub/modules/llm-models/hooks/useHubModelDownloadGate'
@@ -247,7 +243,7 @@ export function DownloadIndicatorWidget() {
                 <Tooltip title="Dismiss this failed download">
                   <Button
                     size="small"
-                    icon={<CloseOutlined />}
+                    icon={<X />}
                     onClick={() => handleClear(download)}
                   >
                     Clear
@@ -257,7 +253,7 @@ export function DownloadIndicatorWidget() {
                   <Button
                     size="small"
                     type="primary"
-                    icon={<ReloadOutlined />}
+                    icon={<RotateCw />}
                     onClick={() => handleRetry(download)}
                   >
                     Retry
@@ -288,7 +284,7 @@ export function DownloadIndicatorWidget() {
         }}
       >
         <Badge count={badgeCount} color={badgeColor} offset={[10, 0]}>
-          <DownloadOutlined style={{ fontSize: 20 }} />
+          <Download style={{ fontSize: 20 }} />
         </Badge>
       </div>
     </Popover>

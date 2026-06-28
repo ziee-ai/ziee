@@ -1,17 +1,24 @@
-import { useEffect, useState } from 'react'
+import type { Resolver } from 'react-hook-form'
+import { useEffect, useMemo } from 'react'
 import {
   Button,
   Card,
-  Divider,
   Flex,
   Form,
+  FormField,
   Input,
+  PasswordInput,
+  Paragraph,
+  Separator,
   Spin,
   Switch,
   Tag,
-  Typography,
+  Text,
   message,
-} from 'antd'
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Permissions, type ConnectorCatalogEntry } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
@@ -28,16 +35,16 @@ export function LitSearchConnectorsSection() {
   if (loading && connectors.length === 0) {
     return (
       <Card title="Sources">
-        <Spin />
+        <Spin label="Loading" />
       </Card>
     )
   }
   return (
     <Card title="Sources">
-      <Typography.Paragraph type="secondary" className="text-xs">
+      <Paragraph type="secondary" className="text-xs">
         Every default source works without a key. Optional keys only raise rate
         limits; CORE requires a free key. Keys are stored encrypted and never shown.
-      </Typography.Paragraph>
+      </Paragraph>
       {connectors.map(c => (
         <ConnectorConfigForm key={c.key} entry={c} />
       ))}
@@ -51,8 +58,6 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
   const canManage = usePermission(Permissions.LitSearchAdminManage)
   const { savingConnector, savingSettings, settings } = Stores.LitSearchAdmin
   const isSaving = savingConnector === entry.key
-  const [form] = Form.useForm<FormValues>()
-  const [dirty, setDirty] = useState(false)
 
   // Re-seed when the stored config changes too (e.g. after a sibling save), so a
   // value the server returns is reflected and round-trips on the next save.
@@ -61,20 +66,45 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
     keys: entry.config_fields.map(f => f.key).sort(),
     vals: storedConfig,
   })
+
+  // Pre-fill config fields from the STORED values (api_key stays blank — it's
+  // write-only). Submitting empty fields would otherwise WIPE the stored
+  // mailto/config on every save.
+  const buildInit = (): FormValues => {
+    const init: FormValues = { api_key: '' }
+    for (const f of entry.config_fields) {
+      const v = storedConfig[f.key]
+      init[f.key] = typeof v === 'string' ? v : ''
+    }
+    return init
+  }
+
+  const schema = useMemo(() => {
+    const shape: Record<string, z.ZodTypeAny> = { api_key: z.string().optional() }
+    for (const f of entry.config_fields) {
+      shape[f.key] = f.required
+        ? z.string().min(1, `${f.label} is required`)
+        : z.string().optional()
+    }
+    if (entry.key_field?.required && !entry.api_key_set) {
+      shape.api_key = z.string().min(1, `${entry.key_field.label} is required`)
+    }
+    return z.object(shape)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.key, entry.api_key_set, configKey])
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema) as Resolver<FormValues>,
+    defaultValues: buildInit(),
+  })
+  const dirty = form.formState.isDirty
+
   useEffect(() => {
-    if (!dirty) {
-      // Pre-fill config fields from the STORED values (api_key stays blank —
-      // it's write-only). Submitting empty fields would otherwise WIPE the
-      // stored mailto/config on every save.
-      const init: FormValues = { api_key: '' }
-      for (const f of entry.config_fields) {
-        const v = storedConfig[f.key]
-        init[f.key] = typeof v === 'string' ? v : ''
-      }
-      form.setFieldsValue(init)
+    if (!form.formState.isDirty) {
+      form.reset(buildInit())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.key, entry.api_key_set, configKey, form, dirty])
+  }, [entry.key, entry.api_key_set, configKey, form])
 
   const toggleEnabled = async (on: boolean) => {
     const current = settings?.enabled_connectors ?? []
@@ -98,8 +128,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
     try {
       await Stores.LitSearchAdmin.updateConnector(entry.key, body)
       message.success(`${entry.display_name} saved`)
-      form.setFieldValue('api_key', '')
-      setDirty(false)
+      form.reset({ ...v, api_key: '' })
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to save source')
     }
@@ -123,16 +152,16 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
 
   return (
     <>
-      <Divider titlePlacement="start" styles={{ content: { margin: 0 } }}>
-        <Typography.Text className="text-sm">{entry.display_name}</Typography.Text>
-      </Divider>
-      <Typography.Paragraph type="secondary" className="text-xs !mb-1">
-        {isEnabled && <Tag color="success">Active</Tag>}
-        {needsKey && <Tag color="warning">Needs key</Tag>}
-      </Typography.Paragraph>
-      <Typography.Paragraph type="secondary" className="text-xs !mb-2">
+      <Separator titlePlacement="left">
+        <Text className="text-sm">{entry.display_name}</Text>
+      </Separator>
+      <Paragraph type="secondary" className="text-xs !mb-1">
+        {isEnabled && <Tag tone="success">Active</Tag>}
+        {needsKey && <Tag tone="warning">Needs key</Tag>}
+      </Paragraph>
+      <Paragraph type="secondary" className="text-xs !mb-2">
         {entry.keyless_note}
-      </Typography.Paragraph>
+      </Paragraph>
 
       <Flex align="center" gap="small" className="mb-2">
         <Switch
@@ -143,9 +172,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
           // Disabled while a settings save is in flight → no double-toggle race.
           disabled={!canManage || !settings || savingSettings}
         />
-        <Typography.Text className="text-xs">
-          {isEnabled ? 'Enabled' : 'Disabled'}
-        </Typography.Text>
+        <Text className="text-xs">{isEnabled ? 'Enabled' : 'Disabled'}</Text>
       </Flex>
 
       {hasFields && (
@@ -153,31 +180,27 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
           form={form}
           name={`lit-connector-${entry.key}`}
           layout="horizontal"
-          labelCol={{ xs: { span: 24 }, md: { span: 8 } }}
-          wrapperCol={{ xs: { span: 24 }, md: { span: 16 } }}
-          labelAlign="left"
-          colon={false}
-          onFinish={onSubmit}
-          onValuesChange={() => setDirty(true)}
+          onSubmit={onSubmit}
           disabled={!canManage}
         >
           {entry.config_fields.map(f => (
-            <Form.Item
+            <FormField
               key={f.key}
               name={f.key}
               label={f.label}
-              extra={f.help ?? undefined}
-              rules={f.required ? [{ required: true, message: `${f.label} is required` }] : []}
+              description={f.help ?? undefined}
+              required={f.required}
             >
               <Input placeholder={f.placeholder} />
-            </Form.Item>
+            </FormField>
           ))}
 
           {entry.key_field && (
-            <Form.Item
+            <FormField
               name="api_key"
               label={entry.key_field.label}
-              extra={
+              required={entry.key_field.required && !entry.api_key_set}
+              description={
                 <>
                   {entry.api_key_set
                     ? 'A key is stored. Leave blank to keep it, or type a new one.'
@@ -192,28 +215,27 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
                   )}
                 </>
               }
-              rules={
-                entry.key_field.required && !entry.api_key_set
-                  ? [{ required: true, message: `${entry.key_field.label} is required` }]
-                  : []
-              }
             >
-              <Input.Password
-                autoComplete="new-password"
+              <PasswordInput
+                showLabel="Show key"
+                hideLabel="Hide key"
                 placeholder={entry.api_key_set ? '•••••••• (stored)' : 'Enter API key'}
               />
-            </Form.Item>
+            </FormField>
           )}
 
           <Flex justify="end" gap="small">
             {entry.key_field && entry.api_key_set && (
-              <Button danger onClick={clearKey} disabled={!canManage || isSaving}>
+              <Button
+                variant="destructive"
+                onClick={clearKey}
+                disabled={!canManage || isSaving}
+              >
                 Clear key
               </Button>
             )}
             <Button
-              type="primary"
-              htmlType="submit"
+              type="submit"
               loading={isSaving}
               disabled={!canManage || !dirty}
             >

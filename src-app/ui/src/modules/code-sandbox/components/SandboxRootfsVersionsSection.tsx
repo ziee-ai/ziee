@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Alert, Button, Flex, Spin, Tag, Text } from '@/components/ui'
-import { ReloadOutlined, StarOutlined } from '@ant-design/icons'
+import { RotateCw, Star } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { AvailableRootfsCard } from './AvailableRootfsCard'
@@ -190,7 +190,7 @@ export function SandboxRootfsVersionsSection() {
         <div>
           <Text strong>Currently default: </Text>
           {pinnedVersion ? (
-            <Tag tone="info" icon={<StarOutlined />} data-testid="default-chip">
+            <Tag tone="info" icon={<Star />} data-testid="default-chip">
               v{pinnedVersion}
             </Tag>
           ) : (
@@ -208,7 +208,7 @@ export function SandboxRootfsVersionsSection() {
           )}
         </div>
         <Button
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           onClick={() => Stores.SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
           data-testid="rootfs-refresh-button"
         >

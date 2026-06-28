@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { SettingOutlined } from '@ant-design/icons'
+import { Settings as SettingsIcon } from 'lucide-react'
 import { SettingsLayoutDef } from './SettingsLayout'
 
 // Bare /settings renders no content of its own — SettingsPage (provided by the
@@ -33,7 +33,7 @@ export default createModule({
     sidebarTools: [
       {
         id: 'settings',
-        icon: <SettingOutlined />,
+        icon: <SettingsIcon />,
         label: 'Settings',
         path: '/settings',
         order: 100,

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Title, Paragraph } from '@/components/ui'
-import { RocketOutlined } from '@ant-design/icons'
+import { Rocket } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 
@@ -15,7 +15,7 @@ export default function WelcomeStep({ registerBeforeNext }: OnboardingStepProps)
   return (
     <div className="max-w-lg">
       <div className="flex items-center gap-3 mb-4">
-        <RocketOutlined className="text-4xl text-blue-500" />
+        <Rocket className="text-4xl text-blue-500" />
         <Title level={3} className="!mb-0">
           Welcome{user?.display_name ? `, ${user.display_name}` : ''}!
         </Title>

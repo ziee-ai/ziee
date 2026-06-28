@@ -1,22 +1,40 @@
-import { Alert, Button, Card, Form, Input, Typography } from 'antd'
+import { z } from 'zod'
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  FormField,
+  Input,
+  PasswordInput,
+  Text,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { LoginRequest } from '@/api-client/types'
 import { ProviderButtons } from './ProviderButtons'
 
-const { Text } = Typography
-
 interface LoginFormProps {
   onSwitchToRegister?: () => void
 }
 
+const loginSchema = z.object({
+  username: z.string().min(1, 'Please input your username or email!'),
+  password: z.string().min(1, 'Please input your password!'),
+})
+
 export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
-  const [form] = Form.useForm()
+  const form = useForm<LoginRequest>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { username: '', password: '' },
+  })
   const { isLoading, error } = Stores.Auth
   const navigate = useNavigate()
 
-  const onFinish = async (values: LoginRequest) => {
+  const onSubmit = async (values: LoginRequest) => {
     try {
       Stores.Auth.clearAuthenticationError()
       await Stores.Auth.authenticateUser(values)
@@ -34,63 +52,41 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
         <div className="py-4">
           <Alert
             title={error}
-            type="error"
-            showIcon
-            closable={{ onClose: Stores.Auth.clearAuthenticationError }}
+            tone="error"
+            onClose={Stores.Auth.clearAuthenticationError}
+            closeLabel="Close"
           />
         </div>
       )}
 
-      <Form
-        form={form}
-        name="login"
-        onFinish={onFinish}
-        layout="vertical"
-        size="large"
-        autoComplete="off"
-      >
-        <Form.Item
-          label="Username or Email"
-          name="username"
-          rules={[
-            { required: true, message: 'Please input your username or email!' },
-          ]}
-        >
+      <Form form={form} name="login" onSubmit={onSubmit} layout="vertical" size="lg">
+        <FormField label="Username or Email" name="username">
           <Input
             prefix={<UserOutlined />}
             placeholder="Enter your username or email"
             autoComplete="username"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
-          label="Password"
-          name="password"
-          rules={[{ required: true, message: 'Please input your password!' }]}
-        >
-          <Input.Password
+        <FormField label="Password" name="password">
+          <PasswordInput
             prefix={<LockOutlined />}
             placeholder="Enter your password"
             autoComplete="current-password"
+            showLabel="Show password"
+            hideLabel="Hide password"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={isLoading}
-            className="w-full"
-          >
-            Sign In
-          </Button>
-        </Form.Item>
+        <Button type="submit" loading={isLoading} className="w-full">
+          Sign In
+        </Button>
 
         {onSwitchToRegister && (
           <div className="text-center">
             <Text type="secondary">
               Don't have an account?{' '}
-              <Button type="link" onClick={onSwitchToRegister} className="p-0">
+              <Button variant="link" onClick={onSwitchToRegister} className="p-0">
                 Sign Up
               </Button>
             </Text>

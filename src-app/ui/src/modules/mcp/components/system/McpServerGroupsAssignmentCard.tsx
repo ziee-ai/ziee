@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { EditOutlined } from '@ant-design/icons'
+import { Pencil } from 'lucide-react'
 import { Button, Accordion, Empty, Flex, Space, Spin, Tag, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -56,7 +56,7 @@ export function McpServerGroupsAssignmentCard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<EditOutlined aria-hidden="true" />}
+                      icon={<Pencil aria-hidden="true" />}
                       onClick={e => {
                         e.stopPropagation()
                         handleManageGroups()

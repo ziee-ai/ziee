@@ -8,11 +8,7 @@ import {
   Spin,
   theme,
 } from 'antd'
-import {
-  MessageOutlined,
-  DeleteOutlined,
-  MoreOutlined,
-} from '@ant-design/icons'
+import { MessageSquare, Trash2, MoreHorizontal } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
@@ -79,7 +75,7 @@ export function RecentConversationsWidget() {
         {headerOnly}
         <div className="px-2 py-4">
           <Empty
-            image={<MessageOutlined className="text-4xl text-gray-400" />}
+            image={<MessageSquare className="size-9 text-gray-400" />}
             description={
               <Text type="secondary" className="text-xs">
                 No conversations yet
@@ -193,7 +189,7 @@ function ConversationRowLabel({
     {
       key: 'delete',
       danger: true,
-      icon: <DeleteOutlined />,
+      icon: <Trash2 />,
       label: 'Delete',
       onClick: confirmDelete,
     },
@@ -236,7 +232,7 @@ function ConversationRowLabel({
           <Button
             type="text"
             size="small"
-            icon={<MoreOutlined />}
+            icon={<MoreHorizontal />}
             loading={deleting}
             style={{
               width: 22,

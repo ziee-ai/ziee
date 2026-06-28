@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { PlusOutlined, HistoryOutlined } from '@ant-design/icons'
+import { History, Plus } from 'lucide-react'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
@@ -64,7 +64,7 @@ export default createModule({
     sidebarPrimaryActions: [
       {
         id: 'new-chat',
-        icon: <PlusOutlined />,
+        icon: <Plus />,
         label: 'New Chat',
         to: '/chat',
         order: 10,
@@ -73,7 +73,7 @@ export default createModule({
     sidebarNavigation: [
       {
         id: 'chats',
-        icon: <HistoryOutlined />,
+        icon: <History />,
         label: 'Chats',
         path: '/chats',
         order: 10,

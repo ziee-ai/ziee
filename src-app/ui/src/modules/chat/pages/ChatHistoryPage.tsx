@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, Tooltip, Text, Title } from '@/components/ui'
-import {
-  MessageOutlined,
-  PlusOutlined,
-  SearchOutlined,
-} from '@ant-design/icons'
+import { MessageSquare, Plus, Search as SearchIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { ConversationList } from '@/modules/chat/components/ConversationList'
@@ -100,7 +96,7 @@ export default function ChatHistoryPage() {
             >
               <Button
                 variant={searchOpenInNarrow ? 'default' : 'ghost'}
-                icon={<SearchOutlined />}
+                icon={<SearchIcon />}
                 onClick={() => setSearchOpenInNarrow(v => !v)}
                 aria-label={
                   searchOpenInNarrow ? 'Hide search' : 'Open search'
@@ -136,7 +132,7 @@ export default function ChatHistoryPage() {
         {/* Empty State */}
         {!loading && conversations.length === 0 && (
           <div className="text-center py-12 m-auto">
-            <MessageOutlined className="text-6xl mb-4" />
+            <MessageSquare className="text-6xl mb-4" />
             <Title level={3}>
               No chat history yet
             </Title>
@@ -145,7 +141,7 @@ export default function ChatHistoryPage() {
             </Text>
             <Button
               variant="default"
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               onClick={() => navigate('/chat')}
             >
               Start New Chat

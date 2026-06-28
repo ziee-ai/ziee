@@ -1,9 +1,4 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-  RobotOutlined,
-} from '@ant-design/icons'
+import { Bot, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Button,
   Card,
@@ -73,7 +68,7 @@ export function AssistantsSettings() {
         <Button
           key="edit"
           variant="ghost"
-          icon={<EditOutlined />}
+          icon={<Pencil />}
           onClick={() => handleEdit(assistant)}
         >
           Edit
@@ -91,7 +86,7 @@ export function AssistantsSettings() {
           okText="Delete"
           cancelText="Cancel"
         >
-          <Button variant="destructive" icon={<DeleteOutlined />}>
+          <Button variant="destructive" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,
@@ -121,7 +116,7 @@ export function AssistantsSettings() {
               <Tooltip content="Create assistant">
                 <Button
                   variant="ghost"
-                  icon={<PlusOutlined aria-hidden="true" />}
+                  icon={<Plus aria-hidden="true" />}
                   onClick={handleCreate}
                   aria-label="Create assistant"
                 />
@@ -148,7 +143,7 @@ export function AssistantsSettings() {
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <div className="flex-1 min-w-48">
                           <div className="flex gap-2 items-center">
-                            <RobotOutlined />
+                            <Bot />
                             <Text className="font-medium">
                               {assistant.name}
                             </Text>

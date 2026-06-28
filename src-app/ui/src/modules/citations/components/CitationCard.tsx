@@ -1,4 +1,4 @@
-import { DeleteOutlined } from '@ant-design/icons'
+import { Trash2 } from 'lucide-react'
 import { Button, Card, Confirm, Space, Text, Paragraph, message } from '@/components/ui'
 import type { BibliographyEntry } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -68,7 +68,7 @@ export function CitationCard({
                 variant="destructive"
                 type="button"
                 aria-label={`Delete ${entry.citation_key}`}
-                icon={<DeleteOutlined />}
+                icon={<Trash2 />}
               />
             </Confirm>
           )}

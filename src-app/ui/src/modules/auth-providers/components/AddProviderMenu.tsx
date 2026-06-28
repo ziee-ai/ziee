@@ -1,5 +1,5 @@
 import { Button, Dropdown, Tooltip } from '@/components/ui'
-import { PlusOutlined } from '@ant-design/icons'
+import { Plus } from 'lucide-react'
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from '../types'
 
 interface Props {
@@ -41,7 +41,7 @@ export function AddProviderMenu({ onPick, existingNames, disabled }: Props) {
       <Tooltip content="Add authentication provider">
         <Button
           variant="ghost"
-          icon={<PlusOutlined />}
+          icon={<Plus />}
           disabled={isDisabled}
           aria-label="Add authentication provider"
         />

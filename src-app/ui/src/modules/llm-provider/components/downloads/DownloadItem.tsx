@@ -1,10 +1,5 @@
+import { X, CircleCheck, CircleAlert, Eye } from 'lucide-react'
 import { Button, Card, Flex, Space, Tag, Tooltip, Text } from '@/components/ui'
-import {
-  CloseOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  EyeOutlined,
-} from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { DownloadProgress } from '@/modules/llm-provider/components/downloads/DownloadProgress'
 import { formatBytes, formatSpeed, formatETA } from '@/utils/downloadUtils'
@@ -45,13 +40,13 @@ export function DownloadItem({
         return <Tag tone="info">Downloading...</Tag>
       case 'completed':
         return (
-          <Tag tone="success" icon={<CheckCircleOutlined />}>
+          <Tag tone="success" icon={<CircleCheck />}>
             Downloaded
           </Tag>
         )
       case 'failed':
         return (
-          <Tag tone="error" icon={<ExclamationCircleOutlined />}>
+          <Tag tone="error" icon={<CircleAlert />}>
             Failed
           </Tag>
         )
@@ -106,7 +101,7 @@ export function DownloadItem({
                 <Button
                   variant="link"
                   size="sm"
-                  icon={<EyeOutlined />}
+                  icon={<Eye />}
                   onClick={onViewDetails}
                 >
                   View Details
@@ -116,7 +111,7 @@ export function DownloadItem({
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<CloseOutlined />}
+                  icon={<X />}
                   onClick={onCancel}
                 >
                   Cancel
@@ -126,7 +121,7 @@ export function DownloadItem({
                 <Button
                   variant="link"
                   size="sm"
-                  icon={<CloseOutlined />}
+                  icon={<X />}
                   onClick={onClose}
                 >
                   Close
@@ -172,7 +167,7 @@ export function DownloadItem({
             <Button
               variant="ghost"
               size="sm"
-              icon={<CloseOutlined />}
+              icon={<X />}
               onClick={onCancel}
             >
               Cancel

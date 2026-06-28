@@ -8,7 +8,7 @@
 //! delegates every non-literature block back to the file view (MessageFilesView).
 //! See LiteratureToolResultCard.
 
-import { FileSearchOutlined } from '@ant-design/icons'
+import { FileSearch } from 'lucide-react'
 import { createExtension, type ChatExtension } from '@/modules/chat/core/extensions'
 import { LiteratureToolResultCard } from '../components/LiteratureToolResultCard'
 import '../types' // PanelRendererMap declaration merge for 'literature'
@@ -25,7 +25,7 @@ const literatureExtension: ChatExtension = createExtension({
     const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
     const { LiteratureScreeningPanel } = await import('../components/LiteratureScreeningPanel')
     registerPanelRenderer('literature', {
-      icon: <FileSearchOutlined />,
+      icon: <FileSearch />,
       component: LiteratureScreeningPanel,
     })
   },

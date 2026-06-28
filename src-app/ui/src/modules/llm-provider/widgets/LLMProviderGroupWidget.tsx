@@ -1,5 +1,5 @@
+import { Database, Pencil } from 'lucide-react'
 import { useEffect } from 'react'
-import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
 import { Button, Card, Flex, Space, Tag, Text, Spin } from '@/components/ui'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
@@ -35,7 +35,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Space size="small">
-            <DatabaseOutlined className="text-blue-500" aria-hidden="true" />
+            <Database className="text-blue-500" aria-hidden="true" />
             <Text strong>LLM Providers</Text>
             {loading ? (
               <Spin size="sm" label="Loading" />
@@ -46,7 +46,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
           <Button
             size="sm"
             variant="link"
-            icon={<EditOutlined aria-hidden="true" />}
+            icon={<Pencil aria-hidden="true" />}
             onClick={handleEdit}
             aria-label={`Edit LLM Providers for ${group.name}`}
           >

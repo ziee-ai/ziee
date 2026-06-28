@@ -14,7 +14,7 @@
 
 import { createModule, type AppModule } from '@ziee/ui-core'
 import { lazy } from 'react'
-import { GlobalOutlined } from '@ant-design/icons'
+import { Globe } from 'lucide-react'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/types'
 
@@ -53,7 +53,7 @@ const remoteAccessModule: AppModule = createModule({
     settingsAdminPages: [
       {
         id: 'remote-access',
-        icon: <GlobalOutlined />,
+        icon: <Globe />,
         label: 'Remote Access',
         path: 'remote-access',
         // After the existing admin entries (memory-admin = 60-ish)

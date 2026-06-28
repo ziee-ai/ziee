@@ -1,4 +1,4 @@
-import { ReadOutlined } from '@ant-design/icons'
+import { BookOpen } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { SkillConversationDrawer } from '@/modules/skill/components/SkillConversationDrawer'
@@ -31,7 +31,7 @@ export function SkillMenuItem() {
           e.currentTarget.style.backgroundColor = 'transparent'
         }}
       >
-        <ReadOutlined className="text-base" />
+        <BookOpen className="text-base" />
         <span className="text-sm">Skills in this chat</span>
       </div>
 

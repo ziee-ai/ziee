@@ -1,10 +1,5 @@
 import { Button, Flex, Confirm, Progress, Tag, Tooltip, Text } from '@/components/ui'
-import {
-  CheckCircleTwoTone,
-  CloudDownloadOutlined,
-  DeleteOutlined,
-  StarOutlined,
-} from '@ant-design/icons'
+import { CircleCheck, CloudDownload, Trash2, Star } from 'lucide-react'
 import {
   MANAGE_PERM,
   phasePercent,
@@ -80,7 +75,7 @@ export function RootfsVersionGroup({
           {/* A filled blue Tag (not the sibling module's muted "(Default)"
               text) to match THIS page's header "Currently default" chip. */}
           {group.isDefault && (
-            <Tag tone="info" icon={<StarOutlined />} data-testid="default-tag">
+            <Tag tone="info" icon={<Star />} data-testid="default-tag">
               Default
             </Tag>
           )}
@@ -96,7 +91,7 @@ export function RootfsVersionGroup({
             <RenderButton
               canManage={canManage}
               label={installing.length > 0 ? 'Installing…' : 'Download'}
-              icon={<CloudDownloadOutlined />}
+              icon={<CloudDownload />}
               loading={installing.length > 0}
               onClick={() => onDownloadAll?.(group)}
               data-testid={`rootfs-download-${group.version}`}
@@ -107,7 +102,7 @@ export function RootfsVersionGroup({
               <RenderButton
                 canManage={canManage}
                 label="Set as Default"
-                icon={<StarOutlined />}
+                icon={<Star />}
                 loading={setDefaultLoading}
                 onClick={() => onSetDefault?.(group.version)}
                 data-testid={`rootfs-set-default-${group.version}`}
@@ -171,7 +166,7 @@ function DeleteVersionButton({
     >
       <Button
         variant="ghost"
-        icon={<DeleteOutlined />}
+        icon={<Trash2 />}
         loading={loading}
         disabled={!canManage}
         data-testid={`rootfs-delete-${version}`}
@@ -201,7 +196,7 @@ function FlavorSubRow({
         <Tag>{f.arch}</Tag>
         {f.artifact ? (
           <Tag
-            icon={<CheckCircleTwoTone twoToneColor="#52c41a" />}
+            icon={<CircleCheck />}
             tone="success"
           >
             Downloaded

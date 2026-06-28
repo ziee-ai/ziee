@@ -1,4 +1,4 @@
-import { EditOutlined } from '@ant-design/icons'
+import { Pencil } from 'lucide-react'
 import {
   Button,
   Accordion,
@@ -129,7 +129,7 @@ export function AdminWorkflowGroupAssignment({
           <Button
             variant="ghost"
             size="sm"
-            icon={<EditOutlined aria-hidden="true" />}
+            icon={<Pencil aria-hidden="true" />}
             onClick={() => void startEdit()}
             aria-label="Manage user groups"
           >

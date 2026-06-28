@@ -1,3 +1,4 @@
+import { Download, RotateCw } from 'lucide-react'
 import { useEffect } from 'react'
 import {
   Button,
@@ -11,7 +12,6 @@ import {
   Text,
   message,
 } from '@/components/ui'
-import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -135,7 +135,7 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
       extra={
         <Can permission={Permissions.RuntimeVersionRead}>
           <Button
-            icon={<ReloadOutlined />}
+            icon={<RotateCw />}
             loading={isChecking}
             onClick={handleCheckForUpdates}
             aria-label={`Check for updates for ${engine}`}
@@ -283,7 +283,7 @@ function AvailableVersionRow({
           </Space>
           <Can permission={Permissions.RuntimeVersionCreate}>
             <Button
-              icon={<DownloadOutlined />}
+              icon={<Download />}
               loading={inProgress}
               disabled={v.installed || inProgress}
               onClick={onDownload}

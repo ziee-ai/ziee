@@ -1,14 +1,18 @@
 import {
-  App,
   Button,
+  Confirm,
   Flex,
   Form,
+  FormField,
   Input,
-  Popconfirm,
   Switch,
+  Title,
   Tooltip,
-  Typography,
-} from 'antd'
+  message,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import {
   CheckOutlined,
   CloseOutlined,
@@ -22,11 +26,18 @@ import { usePermission } from '@/core/permissions'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { Permissions, type LlmProvider } from '@/api-client/types'
 
+const nameSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+})
+type NameValues = z.infer<typeof nameSchema>
+
 export function ProviderHeader() {
   const [isEditingName, setIsEditingName] = useState(false)
-  const [form] = Form.useForm()
+  const form = useForm<NameValues>({
+    resolver: zodResolver(nameSchema),
+    defaultValues: { name: '' },
+  })
   const navigate = useNavigate()
-  const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
 
   const canEdit = usePermission(Permissions.LlmProvidersEdit)
@@ -43,7 +54,7 @@ export function ProviderHeader() {
 
   useEffect(() => {
     if (isEditingName && currentProvider) {
-      form.setFieldsValue({ name: currentProvider.name })
+      form.reset({ name: currentProvider.name })
     }
   }, [isEditingName, currentProvider, form])
 
@@ -91,6 +102,14 @@ export function ProviderHeader() {
     }
   }
 
+  const handleSaveName = async (values: NameValues) => {
+    if (!currentProvider) return
+    await Stores.LlmProvider.updateLlmProvider(currentProvider.id, {
+      name: values.name,
+    })
+    setIsEditingName(false)
+  }
+
   // Return early if no provider
   if (!currentProvider) {
     return null
@@ -100,45 +119,27 @@ export function ProviderHeader() {
     PROVIDER_ICONS[currentProvider.provider_type] || PROVIDER_ICONS.custom
 
   return (
-    <Flex justify="space-between" align="center">
+    <Flex justify="between" align="center">
       <Flex align="center" gap="middle">
         <IconComponent className="text-2xl" />
         <Form
           name="provider-header-name-form"
-          style={{
-            display: isEditingName ? 'block' : 'none',
-          }}
+          className={isEditingName ? 'block' : 'hidden'}
           form={form}
           layout="inline"
-          initialValues={{ name: currentProvider.name }}
+          onSubmit={handleSaveName}
         >
           <div className={'flex items-center gap-2 w-full flex-wrap'}>
-            <Form.Item
-              name="name"
-              style={{ margin: 0 }}
-              rules={[{ required: true, message: 'Name is required' }]}
-            >
+            <FormField name="name">
               <Input className={'!text-lg'} />
-            </Form.Item>
+            </FormField>
             <div className={'flex items-center gap-2'}>
-              <Button
-                type={'primary'}
-                onClick={() => {
-                  form.validateFields().then(async values => {
-                    await Stores.LlmProvider.updateLlmProvider(
-                      currentProvider.id,
-                      {
-                        name: values.name,
-                      },
-                    )
-                    setIsEditingName(false)
-                  })
-                }}
-                aria-label="Save provider name"
-              >
+              <Button type="submit" aria-label="Save provider name">
                 <CheckOutlined aria-hidden="true" />
               </Button>
               <Button
+                type="button"
+                variant="outline"
                 onClick={() => setIsEditingName(false)}
                 aria-label="Cancel editing provider name"
               >
@@ -148,22 +149,21 @@ export function ProviderHeader() {
           </div>
         </Form>
         <div
-          className={'flex items-center gap-2 overflow-x-hidden w-full'}
-          style={{
-            display: isEditingName ? 'none' : 'flex',
-          }}
+          className={
+            'flex items-center gap-2 overflow-x-hidden w-full ' +
+            (isEditingName ? 'hidden' : 'flex')
+          }
         >
-          <Typography.Title
+          <Title
             level={4}
-            ellipsis
             className={'!m-0 flex-1 overflow-x-hidden'}
           >
             {currentProvider.name}
-          </Typography.Title>
+          </Title>
           <div className={'flex items-center'}>
             {canEdit && (
               <Button
-                type={'text'}
+                variant="ghost"
                 onClick={() => {
                   setIsEditingName(!isEditingName)
                 }}
@@ -173,7 +173,7 @@ export function ProviderHeader() {
               </Button>
             )}
             {canDelete && !currentProvider.built_in && (
-              <Popconfirm
+              <Confirm
                 title="Delete Provider"
                 description={`Are you sure you want to delete "${currentProvider.name}"? This action cannot be undone.`}
                 okText="Delete"
@@ -182,13 +182,12 @@ export function ProviderHeader() {
                 onConfirm={handleDeleteProvider}
               >
                 <Button
-                  type={'text'}
-                  danger
+                  variant="ghost"
                   aria-label="Delete provider"
                 >
                   <DeleteOutlined aria-hidden="true" />
                 </Button>
-              </Popconfirm>
+              </Confirm>
             )}
           </div>
         </div>

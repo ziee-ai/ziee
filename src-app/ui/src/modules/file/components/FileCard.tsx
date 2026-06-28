@@ -1,12 +1,6 @@
+import { X, Trash2, FileText, Download, RotateCw } from 'lucide-react'
 import { Button, Checkbox, Progress, Spin, Tooltip, Text, message as kitMessage } from '@/components/ui'
 import { Confirm } from '@/components/ui'
-import {
-  CloseOutlined,
-  DeleteOutlined,
-  FileTextOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type File as FileEntity } from '@/api-client/types'
@@ -24,7 +18,7 @@ function formatFileSize(bytes: number): string {
 // file-text icon when no viewer is registered or the viewer omitted the field.
 function getFileIcon(file: FileEntity): React.ReactNode {
   return getViewer(file.filename, file.mime_type ?? undefined)?.icon
-    ?? <FileTextOutlined />
+    ?? <FileText />
 }
 
 export interface FileCardProps {
@@ -178,7 +172,7 @@ export function FileCard({
           <Tooltip content="Retry upload">
             <Button
               variant="ghost"
-              icon={<ReloadOutlined />}
+              icon={<RotateCw />}
               onClick={() => onRetry()}
               aria-label={`Retry upload ${uploadProgress.filename}`}
             />
@@ -188,7 +182,7 @@ export function FileCard({
             <Tooltip content="Dismiss">
               <Button
                 variant="ghost"
-                icon={<CloseOutlined />}
+                icon={<X />}
                 onClick={() => onRemove()}
                 aria-label={`Dismiss ${uploadProgress.filename}`}
               />
@@ -219,7 +213,7 @@ export function FileCard({
               <Button
                 variant="ghost"
                 size="sm"
-                icon={<CloseOutlined />}
+                icon={<X />}
                 onClick={() => onRemove()}
                 className="!absolute top-1 right-1"
                 aria-label="Cancel upload"
@@ -321,7 +315,7 @@ export function FileCard({
             <Tooltip content="Download">
               <Button
                 variant="ghost"
-                icon={<DownloadOutlined style={{ fontSize: 20 }} />}
+                icon={<Download style={{ fontSize: 20 }} />}
                 aria-label={`Download ${file.filename}`}
                 onClick={e => {
                   e.stopPropagation()
@@ -418,7 +412,7 @@ export function FileCard({
                 <Button
                   variant="destructive"
                   size="sm"
-                  icon={<DeleteOutlined />}
+                  icon={<Trash2 />}
                   aria-label="Remove file"
                   className="bg-transparent"
                 />

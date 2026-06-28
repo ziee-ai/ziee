@@ -40,7 +40,7 @@
  * onboarding loop it can't escape.
  */
 
-import { Layout, Spin, Typography } from 'antd'
+import { Layout, Spin, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { useBootstrapStore } from '@ziee/desktop/modules/desktop-base/Bootstrap.store'
 import { isTauriView } from '@ziee/desktop/core/platform'
@@ -75,12 +75,10 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     return (
       <Layout className="min-h-screen">
         <Content className="flex flex-col items-center justify-center gap-4">
-          <Spin size="large" />
-          <Typography.Text
-            type={bootstrapStatus === 'failed' ? 'danger' : 'secondary'}
-          >
+          <Spin size="lg" label="Loading" />
+          <Text type={bootstrapStatus === 'failed' ? 'danger' : 'secondary'}>
             {caption}
-          </Typography.Text>
+          </Text>
         </Content>
       </Layout>
     )

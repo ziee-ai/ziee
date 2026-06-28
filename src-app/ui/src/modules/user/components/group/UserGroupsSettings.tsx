@@ -1,14 +1,19 @@
 import { PlusOutlined } from '@ant-design/icons'
 import {
-  App,
   Button,
   Empty,
   Flex,
   Form,
+  FormField,
+  useForm,
+  zodResolver,
   Input,
+  Textarea,
   Pagination,
   Tooltip,
-} from 'antd'
+  message,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
@@ -21,11 +26,19 @@ import { GroupMembersDrawer } from '@/modules/user/components/group/GroupMembers
 import { GroupListItem } from '@/modules/user/components/group/GroupListItem.tsx'
 import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
 
-const { TextArea } = Input
+interface CreateGroupFormValues {
+  name: string
+  description?: string
+  permissions?: string[]
+}
+
+const schema = z.object({
+  name: z.string().min(1, 'Please enter group name'),
+  description: z.string().optional(),
+  permissions: z.array(z.string()).optional(),
+})
 
 export function UserGroupsSettings() {
-  const { message } = App.useApp()
-
   const {
     groups,
     total: totalGroups,
@@ -36,7 +49,10 @@ export function UserGroupsSettings() {
   } = Stores.UserGroups
 
   const [createModalVisible, setCreateModalVisible] = useState(false)
-  const [createForm] = Form.useForm()
+  const createForm = useForm<CreateGroupFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: '', description: '', permissions: [] },
+  })
   const canCreate = usePermission(Permissions.GroupsCreate)
 
   // Show errors
@@ -45,9 +61,9 @@ export function UserGroupsSettings() {
       message.error(error)
       Stores.UserGroups.clearError()
     }
-  }, [error, message])
+  }, [error])
 
-  const handleCreateGroup = async (values: any) => {
+  const handleCreateGroup = async (values: CreateGroupFormValues) => {
     try {
       const groupData: CreateGroupRequest = {
         name: values.name,
@@ -57,7 +73,7 @@ export function UserGroupsSettings() {
       await Stores.UserGroups.createUserGroup(groupData)
       message.success('User group created successfully')
       setCreateModalVisible(false)
-      createForm.resetFields()
+      createForm.reset()
     } catch (error) {
       console.error('Failed to create user group:', error)
       // Error is handled by the store
@@ -99,7 +115,7 @@ export function UserGroupsSettings() {
       <Can permission={Permissions.GroupsCreate}>
         <Tooltip title="Create group">
           <Button
-            type="text"
+            variant="ghost"
             icon={<PlusOutlined aria-hidden="true" />}
             onClick={() => setCreateModalVisible(true)}
             aria-label="Create group"
@@ -132,17 +148,23 @@ export function UserGroupsSettings() {
           ))}
           <div className="flex justify-end">
             <Pagination
+              aria-label="Groups pagination"
+              previousLabel="Previous page"
+              nextLabel="Next page"
+              pageLabel={(page) => `Page ${page}`}
               current={storePage}
               total={totalGroups}
               pageSize={storePageSize}
               showSizeChanger
+              pageSizeLabel="Page size"
+              onPageSizeChange={(size) => handlePageChange(1, size)}
               showQuickJumper
+              jumpLabel="Go to page"
               showTotal={(total, range) =>
                 `${range[0]}-${range[1]} of ${total} groups`
               }
-              onChange={handlePageChange}
-              onShowSizeChange={handlePageChange}
-              pageSizeOptions={['5', '10', '20', '50']}
+              onChange={(page) => handlePageChange(page)}
+              pageSizeOptions={[5, 10, 20, 50]}
             />
           </div>
         </>
@@ -154,7 +176,7 @@ export function UserGroupsSettings() {
         open={createModalVisible}
         onClose={() => {
           setCreateModalVisible(false)
-          createForm.resetFields()
+          createForm.reset()
         }}
         footer={null}
         size={600}
@@ -163,40 +185,35 @@ export function UserGroupsSettings() {
         <Form
           form={createForm}
           layout="vertical"
-          onFinish={handleCreateGroup}
+          onSubmit={handleCreateGroup}
           disabled={!canCreate}
         >
-          <Form.Item
-            name="name"
-            label="Group Name"
-            rules={[{ required: true, message: 'Please enter group name' }]}
-          >
+          <FormField name="name" label="Group Name" required>
             <Input placeholder="Enter group name" />
-          </Form.Item>
-          <Form.Item name="description" label="Description">
-            <TextArea rows={3} placeholder="Enter group description" />
-          </Form.Item>
-          <Form.Item name="permissions" label="Permissions">
+          </FormField>
+          <FormField name="description" label="Description">
+            <Textarea rows={3} placeholder="Enter group description" />
+          </FormField>
+          <FormField name="permissions" label="Permissions">
             <PermissionsField disabled={!canCreate} />
-          </Form.Item>
+          </FormField>
 
-          <Form.Item className="mb-0">
-            <Flex className="justify-end gap-2">
-              <Button
-                onClick={() => {
-                  setCreateModalVisible(false)
-                  createForm.resetFields()
-                }}
-              >
-                {canCreate ? 'Cancel' : 'Close'}
+          <Flex className="justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateModalVisible(false)
+                createForm.reset()
+              }}
+            >
+              {canCreate ? 'Cancel' : 'Close'}
+            </Button>
+            {canCreate && (
+              <Button type="submit">
+                Create
               </Button>
-              {canCreate && (
-                <Button type="primary" htmlType="submit">
-                  Create
-                </Button>
-              )}
-            </Flex>
-          </Form.Item>
+            )}
+          </Flex>
         </Form>
       </Drawer>
 

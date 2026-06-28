@@ -1,4 +1,4 @@
-import { FileSearchOutlined } from '@ant-design/icons'
+import { FileSearch } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -31,7 +31,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'file-rag-admin',
-        icon: <FileSearchOutlined />,
+        icon: <FileSearch />,
         label: 'Document RAG',
         // Single-segment path so SettingsPage's section regex highlights it.
         path: 'file-rag-admin',

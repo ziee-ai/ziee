@@ -1,5 +1,5 @@
 import { Button, Dropdown, message } from '@/components/ui'
-import { DownloadOutlined } from '@ant-design/icons'
+import { Download } from 'lucide-react'
 import {
   createExtension,
   type ChatExtension,
@@ -153,7 +153,7 @@ function ExportButton() {
 
   return (
     <Dropdown items={getExportMenuItems()} side="bottom" align="end">
-      <Button icon={<DownloadOutlined />}>
+      <Button icon={<Download />}>
         Export
       </Button>
     </Dropdown>

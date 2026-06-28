@@ -1,10 +1,5 @@
+import { Info, Bot, Eye, Copy } from 'lucide-react'
 import { Card, Tag, Button, Flex, Text, message } from '@/components/ui'
-import {
-  InfoCircleOutlined,
-  RobotOutlined,
-  EyeOutlined,
-  CopyOutlined,
-} from '@ant-design/icons'
 import { Permissions, type HubAssistant } from '@/api-client/types'
 import { useState } from 'react'
 import { AssistantDetailsDrawer } from '@/modules/hub/modules/assistants/components/AssistantDetailsDrawer'
@@ -128,7 +123,7 @@ for new users.`,
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
                 <Flex className="gap-2 items-center">
-                  <RobotOutlined />
+                  <Bot />
                   <Text className="font-medium cursor-pointer">
                     {assistant.display_name}
                   </Text>
@@ -152,7 +147,7 @@ for new users.`,
               </div>
               <div className="flex gap-1 items-center justify-end">
                 <Button
-                  icon={<InfoCircleOutlined />}
+                  icon={<Info />}
                   onClick={e => {
                     e.stopPropagation()
                     setShowDetails(true)
@@ -162,7 +157,7 @@ for new users.`,
                 </Button>
                 {isAlreadyCreated && (
                   <Button
-                    icon={<EyeOutlined />}
+                    icon={<Eye />}
                     onClick={e => {
                       e.stopPropagation()
                       navigate('/settings/assistants')
@@ -174,7 +169,7 @@ for new users.`,
                 {!isAlreadyCreated && canCreate && (
                   <Button
                     variant="outline"
-                    icon={<RobotOutlined />}
+                    icon={<Bot />}
                     onClick={e => {
                       e.stopPropagation()
                       handleUseAssistant()
@@ -193,7 +188,7 @@ for new users.`,
                     whether the per-user "Created" badge is set
                     (a personal install doesn't preclude also
                     installing as a template). Default-styled +
-                    distinct `CopyOutlined` icon so it's visually
+                    distinct `Copy` icon so it's visually
                     separable from the primary "Use Assistant"
                     action. Disabled when a template already
                     exists for this hub_id — the backend rejects
@@ -201,7 +196,7 @@ for new users.`,
                     the admin clear feedback without a round-trip. */}
                 {multiUserMode && canCreate && canCreateTemplate && (
                   <Button
-                    icon={<CopyOutlined />}
+                    icon={<Copy />}
                     onClick={e => {
                       e.stopPropagation()
                       handleUseAsTemplate()

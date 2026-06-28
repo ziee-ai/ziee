@@ -1,4 +1,4 @@
-import { ApiOutlined } from '@ant-design/icons'
+import { Plug } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
@@ -149,7 +149,7 @@ export default createModule({
     settingsUserPages: [
       {
         id: 'mcp-servers',
-        icon: <ApiOutlined />,
+        icon: <Plug />,
         label: 'MCP Servers',
         path: 'mcp-servers',
         order: 25,
@@ -158,7 +158,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'mcp-admin',
-        icon: <ApiOutlined />,
+        icon: <Plug />,
         label: 'System MCP Servers',
         path: 'mcp-admin',
         order: 25,

@@ -1,4 +1,4 @@
-import { PlusOutlined } from '@ant-design/icons'
+import { Plus } from 'lucide-react'
 import {
   Button,
   Dropdown,
@@ -83,7 +83,7 @@ export function LlmProviderSettings() {
       key: 'add-provider',
       label: (
         <Flex className={'flex-row gap-2 items-center h-full'}>
-          <PlusOutlined className={'text-lg'} />
+          <Plus className={'text-lg'} />
           <Text>Add Provider</Text>
         </Flex>
       ),
@@ -132,7 +132,7 @@ export function LlmProviderSettings() {
           >
             {item.key === 'add-provider' ? (
               <span className="text-base">
-                <PlusOutlined />
+                <Plus />
               </span>
             ) : (
               IconComponent && <IconComponent className="text-base" />
@@ -205,7 +205,7 @@ export function LlmProviderSettings() {
                         label: (
                           <Flex className="gap-2 items-center">
                             {item.key === 'add-provider' ? (
-                              <PlusOutlined />
+                              <Plus />
                             ) : (
                               (() => {
                                 const IconComponent =

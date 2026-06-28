@@ -1,4 +1,4 @@
-import { CloudDownloadOutlined } from '@ant-design/icons'
+import { CloudDownload } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -62,7 +62,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'code-sandbox',
-        icon: <CloudDownloadOutlined />,
+        icon: <CloudDownload />,
         label: 'Code Sandbox',
         path: 'sandbox',
         order: 26,

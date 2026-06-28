@@ -4,21 +4,24 @@ import {
   Button,
   Card,
   Descriptions,
-  Divider,
+  Separator,
   Flex,
   Form,
+  FormField,
+  useForm,
+  zodResolver,
   Input,
+  PasswordInput,
   Tag,
-  Typography,
+  Text,
   message,
-} from 'antd'
+} from '@/components/ui'
+import { z } from 'zod'
 import { UserOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-
-const { Text } = Typography
 
 interface ProfileFormValues {
   display_name: string
@@ -31,13 +34,46 @@ interface PasswordFormValues {
   confirm_password: string
 }
 
+const profileSchema = z.object({
+  display_name: z.string(),
+  username: z
+    .string()
+    .min(1, 'Username is required')
+    .refine((v) => v.trim().length > 0, 'Username cannot be blank'),
+})
+
+const passwordSchema = z
+  .object({
+    current_password: z.string().min(1, 'Enter your current password'),
+    new_password: z
+      .string()
+      .min(1, 'Enter a new password')
+      .min(8, 'Password must be at least 8 characters')
+      .max(72, 'Password must be at most 72 characters'),
+    confirm_password: z.string().min(1, 'Re-enter the new password'),
+  })
+  .refine((d) => d.new_password === d.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  })
+
 export function ProfileSettingsPage() {
   // Read ALL store fields at the top, before any early return (hooks rule).
   const { user, hasPassword } = Stores.Auth
   const { savingProfile, savingPassword } = Stores.Profile
   const canEdit = usePermission(Permissions.ProfileEdit)
-  const [profileForm] = Form.useForm<ProfileFormValues>()
-  const [passwordForm] = Form.useForm<PasswordFormValues>()
+  const profileForm = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: { display_name: '', username: '' },
+  })
+  const passwordForm = useForm<PasswordFormValues>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: {
+      current_password: '',
+      new_password: '',
+      confirm_password: '',
+    },
+  })
 
   // Refresh /me on mount so `hasPassword` + profile fields are accurate
   // even when the user arrived via an in-session login (authenticateUser
@@ -48,7 +84,7 @@ export function ProfileSettingsPage() {
 
   useEffect(() => {
     if (user) {
-      profileForm.setFieldsValue({
+      profileForm.reset({
         display_name: user.display_name ?? '',
         username: user.username,
       })
@@ -78,7 +114,7 @@ export function ProfileSettingsPage() {
         new_password: values.new_password,
       })
       message.success('Password changed.')
-      passwordForm.resetFields()
+      passwordForm.reset()
     } catch (error) {
       message.error(
         error instanceof Error ? error.message : 'Failed to change password.',
@@ -92,77 +128,72 @@ export function ProfileSettingsPage() {
         {/* Wrap the body in a flex column with explicit gap. Per-child
             mb-* wasn't taking effect — antd v6's Card body layout
             collapses sibling margins; flex gap is the reliable lever. */}
-        <Flex vertical gap={24}>
-        <Flex align="center" gap={16}>
-          <Avatar
-            size={64}
-            src={user.avatar_url || undefined}
-            icon={<UserOutlined />}
-          />
-          <Flex gap={8} wrap="wrap">
-            <Tag color={user.is_admin ? 'gold' : 'default'}>
+        <Flex vertical gap="lg">
+        <Flex align="center" gap="md">
+          {user.avatar_url ? (
+            <Avatar
+              className="size-16"
+              src={user.avatar_url}
+              alt={user.username}
+              fallback={<UserOutlined />}
+            />
+          ) : (
+            <Avatar className="size-16" fallback={<UserOutlined />} />
+          )}
+          <Flex gap="sm" wrap>
+            <Tag tone={user.is_admin ? 'warning' : undefined}>
               {user.is_admin ? 'Administrator' : 'User'}
             </Tag>
-            <Tag color={user.email_verified ? 'green' : 'orange'}>
+            <Tag tone={user.email_verified ? 'success' : 'warning'}>
               {user.email_verified ? 'Email verified' : 'Email unverified'}
             </Tag>
           </Flex>
         </Flex>
 
         <Descriptions
-          size="small"
-          column={{ xs: 1, sm: 2 }}
-          colon={false}
-        >
-          <Descriptions.Item label="Email">{user.email}</Descriptions.Item>
-          <Descriptions.Item label="Member since">
-            {new Date(user.created_at).toLocaleDateString()}
-          </Descriptions.Item>
-          <Descriptions.Item label="Last login">
-            {user.last_login_at
-              ? new Date(user.last_login_at).toLocaleDateString()
-              : 'Never'}
-          </Descriptions.Item>
-        </Descriptions>
+          size="sm"
+          column={2}
+          items={[
+            { key: 'email', label: 'Email', children: user.email },
+            {
+              key: 'member-since',
+              label: 'Member since',
+              children: new Date(user.created_at).toLocaleDateString(),
+            },
+            {
+              key: 'last-login',
+              label: 'Last login',
+              children: user.last_login_at
+                ? new Date(user.last_login_at).toLocaleDateString()
+                : 'Never',
+            },
+          ]}
+        />
 
         <Form
           name="profile-form"
           form={profileForm}
           layout="horizontal"
-          labelCol={{ flex: '160px' }}
-          wrapperCol={{ flex: 'auto' }}
-          labelAlign="left"
-          colon={false}
-          onFinish={handleProfileSubmit}
+          labelWidth={160}
+          onSubmit={handleProfileSubmit}
           disabled={!canEdit}
         >
-          <Form.Item
+          <FormField
             name="display_name"
             label="Display name"
-            extra="The name shown to others. Optional."
+            description="The name shown to others. Optional."
           >
             <Input maxLength={255} placeholder="Your display name" />
-          </Form.Item>
-          <Form.Item
-            name="username"
-            label="Username"
-            rules={[
-              { required: true, message: 'Username is required' },
-              { whitespace: true, message: 'Username cannot be blank' },
-            ]}
-          >
+          </FormField>
+          <FormField name="username" label="Username" required>
             <Input maxLength={255} placeholder="Your username" />
-          </Form.Item>
+          </FormField>
 
           {canEdit && (
             <>
-              <Divider className="!my-3" />
+              <Separator className="!my-3" />
               <Flex justify="end">
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={savingProfile}
-                >
+                <Button type="submit" loading={savingProfile}>
                   Save
                 </Button>
               </Flex>
@@ -179,71 +210,46 @@ export function ProfileSettingsPage() {
               name="password-form"
               form={passwordForm}
               layout="horizontal"
-              labelCol={{ flex: '160px' }}
-              wrapperCol={{ flex: 'auto' }}
-              labelAlign="left"
-              colon={false}
-              onFinish={handlePasswordSubmit}
+              labelWidth={160}
+              onSubmit={handlePasswordSubmit}
             >
-              <Form.Item
+              <FormField
                 name="current_password"
                 label="Current password"
-                rules={[
-                  { required: true, message: 'Enter your current password' },
-                ]}
+                required
               >
-                <Input.Password
+                <PasswordInput
+                  showLabel="Show password"
+                  hideLabel="Hide password"
                   autoComplete="current-password"
                   placeholder="Current password"
                 />
-              </Form.Item>
-              <Form.Item
-                name="new_password"
-                label="New password"
-                rules={[
-                  { required: true, message: 'Enter a new password' },
-                  { min: 8, message: 'Password must be at least 8 characters' },
-                  {
-                    max: 72,
-                    message: 'Password must be at most 72 characters',
-                  },
-                ]}
-              >
-                <Input.Password
+              </FormField>
+              <FormField name="new_password" label="New password" required>
+                <PasswordInput
+                  showLabel="Show password"
+                  hideLabel="Hide password"
                   autoComplete="new-password"
                   placeholder="New password"
                   maxLength={72}
                 />
-              </Form.Item>
-              <Form.Item
+              </FormField>
+              <FormField
                 name="confirm_password"
                 label="Confirm new password"
-                dependencies={['new_password']}
-                rules={[
-                  { required: true, message: 'Re-enter the new password' },
-                  ({ getFieldValue }) => ({
-                    validator(_, value) {
-                      if (!value || getFieldValue('new_password') === value) {
-                        return Promise.resolve()
-                      }
-                      return Promise.reject(new Error('Passwords do not match'))
-                    },
-                  }),
-                ]}
+                required
               >
-                <Input.Password
+                <PasswordInput
+                  showLabel="Show password"
+                  hideLabel="Hide password"
                   autoComplete="new-password"
                   placeholder="Confirm new password"
                 />
-              </Form.Item>
+              </FormField>
 
-              <Divider className="!my-3" />
+              <Separator className="!my-3" />
               <Flex justify="end">
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={savingPassword}
-                >
+                <Button type="submit" loading={savingPassword}>
                   Change password
                 </Button>
               </Flex>

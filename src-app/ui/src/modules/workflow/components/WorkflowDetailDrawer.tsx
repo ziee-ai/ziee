@@ -1,9 +1,4 @@
-import {
-  CalculatorOutlined,
-  DeleteOutlined,
-  ExperimentOutlined,
-  PlayCircleOutlined,
-} from '@ant-design/icons'
+import { Calculator, CirclePlay, FlaskConical, Trash2 } from 'lucide-react'
 import {
   Button,
   Descriptions,
@@ -106,7 +101,7 @@ export function WorkflowDetailDrawer() {
       footer={
         editable ? (
           <>
-            <Button onClick={() => setDeleteDialogOpen(true)} variant="destructive" size="sm" icon={<DeleteOutlined />}>
+            <Button onClick={() => setDeleteDialogOpen(true)} variant="destructive" size="sm" icon={<Trash2 />}>
               Delete
             </Button>
             <Dialog
@@ -148,7 +143,7 @@ export function WorkflowDetailDrawer() {
           {canExecute && (
             <Button
               variant="default"
-              icon={<PlayCircleOutlined />}
+              icon={<CirclePlay />}
               onClick={() => setRunDialogOpen(true)}
             >
               Run
@@ -156,7 +151,7 @@ export function WorkflowDetailDrawer() {
           )}
           <Button
             variant="outline"
-            icon={<CalculatorOutlined />}
+            icon={<Calculator />}
             onClick={() => setDryRunOpen(true)}
           >
             Dry-run preview
@@ -164,7 +159,7 @@ export function WorkflowDetailDrawer() {
           {workflow.is_dev && (
             <Button
               variant="outline"
-              icon={<ExperimentOutlined />}
+              icon={<FlaskConical />}
               onClick={() => setTestsOpen(true)}
             >
               Run tests

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Space, Tooltip, message } from '@/components/ui'
-import { EditOutlined, ReloadOutlined, CopyOutlined } from '@ant-design/icons'
+import { Copy as CopyIcon, Pencil, RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
 
@@ -86,7 +86,7 @@ export function MessageActions() {
         <Button
           variant="ghost"
           size="sm"
-          icon={<CopyOutlined />}
+          icon={<CopyIcon />}
           onClick={handleCopy}
         />
       </Tooltip>
@@ -96,7 +96,7 @@ export function MessageActions() {
           <Button
             variant="ghost"
             size="sm"
-            icon={<EditOutlined />}
+            icon={<Pencil />}
             disabled={isBusy}
             onClick={handleEdit}
             data-testid="edit-message-button"
@@ -109,7 +109,7 @@ export function MessageActions() {
           <Button
             variant="ghost"
             size="sm"
-            icon={<ReloadOutlined />}
+            icon={<RotateCw />}
             loading={isRegenerating}
             disabled={isBusy && !isRegenerating}
             onClick={handleRegenerate}

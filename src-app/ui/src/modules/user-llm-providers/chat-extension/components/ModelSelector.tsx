@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Select } from '@/components/ui'
-import { WarningOutlined } from '@ant-design/icons'
+import { TriangleAlert } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { ProviderWithModels } from '@/api-client/types'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
@@ -53,7 +53,7 @@ export function ModelSelector() {
         if (enabledModels.length > 0) {
           const label = providerNeedsApiKey(provider) ? (
             <span className="flex items-center gap-1">
-              <WarningOutlined className="text-yellow-500" />
+              <TriangleAlert className="text-yellow-500" />
               {provider.name}
             </span>
           ) : (

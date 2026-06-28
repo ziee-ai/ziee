@@ -1,6 +1,6 @@
+import { History, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { Select, Button, Tag } from '@/components/ui'
-import { HistoryOutlined, RollbackOutlined } from '@ant-design/icons'
 import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
@@ -66,7 +66,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
       className="flex items-center gap-2 px-3 py-1.5 flex-shrink-0 flex-wrap border-b border-border bg-muted/40"
       data-testid="file-version-bar"
     >
-      <HistoryOutlined className="text-muted-foreground" />
+      <History className="text-muted-foreground" />
       <Select
         size="sm"
         value={String(current)}
@@ -84,7 +84,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
           <Button
             size="sm"
             variant="outline"
-            icon={<RollbackOutlined />}
+            icon={<Undo2 />}
             loading={restoring}
             onClick={handleRestore}
             data-testid="file-version-restore"

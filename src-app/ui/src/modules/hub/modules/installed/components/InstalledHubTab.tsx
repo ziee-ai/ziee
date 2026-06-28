@@ -1,3 +1,4 @@
+import { LayoutGrid, Bot, Plug, RotateCw, Trash2 } from 'lucide-react'
 import { useState, useMemo, Fragment } from 'react'
 import {
   Button,
@@ -12,13 +13,6 @@ import {
   Text,
   message,
 } from '@/components/ui'
-import {
-  AppstoreOutlined,
-  RobotOutlined,
-  ApiOutlined,
-  ReloadOutlined,
-  DeleteOutlined,
-} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import { emitMcpServerDeleted } from '@/modules/mcp/events/emitters'
@@ -38,21 +32,21 @@ const CATEGORY_CARDS: Array<{
   {
     key: 'model',
     title: 'Models',
-    icon: <AppstoreOutlined />,
+    icon: <LayoutGrid />,
     emptyHint:
       'No models installed from the hub yet. Browse the Models tab to install one.',
   },
   {
     key: 'assistant',
     title: 'Assistants',
-    icon: <RobotOutlined />,
+    icon: <Bot />,
     emptyHint:
       'No assistants installed from the hub yet. Browse the Assistants tab to install one.',
   },
   {
     key: 'mcp_server',
     title: 'MCP Servers',
-    icon: <ApiOutlined />,
+    icon: <Plug />,
     emptyHint:
       'No MCP servers installed from the hub yet. Browse the MCP Servers tab to install one.',
   },
@@ -301,7 +295,7 @@ export function InstalledHubTab() {
                         <div className="flex gap-2 items-center justify-end">
                           {row.hub_category === 'model' ? (
                             <Tooltip content="Models re-install via the Models tab (pick a provider + quantization)">
-                              <Button icon={<ReloadOutlined />} disabled>
+                              <Button icon={<RotateCw />} disabled>
                                 Re-install
                               </Button>
                             </Tooltip>
@@ -314,7 +308,7 @@ export function InstalledHubTab() {
                               onConfirm={() => reinstall(row)}
                             >
                               <Button
-                                icon={<ReloadOutlined />}
+                                icon={<RotateCw />}
                                 loading={busyId === row.entity_id}
                               >
                                 Re-install
@@ -335,7 +329,7 @@ export function InstalledHubTab() {
                           >
                             <Button
                               variant="destructive"
-                              icon={<DeleteOutlined />}
+                              icon={<Trash2 />}
                               loading={busyId === row.entity_id}
                             >
                               Remove

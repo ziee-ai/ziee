@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { App, Button, Flex, Form, Input, Typography } from 'antd'
+import {
+  Button,
+  Flex,
+  Form,
+  FormField,
+  useForm,
+  zodResolver,
+  Input,
+  Textarea,
+  Text,
+  message,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -15,6 +27,15 @@ interface ProjectFormValues {
   instructions?: string
 }
 
+const schema = z.object({
+  name: z
+    .string()
+    .min(1, 'Name is required')
+    .max(255, 'Name must be at most 255 characters'),
+  description: z.string().max(4096, 'Description is too long').optional(),
+  instructions: z.string().max(65_536, 'Instructions are too long').optional(),
+})
+
 /// NOTE: `default_assistant_id` and `default_model_id` are NOT edited
 /// here. They live in the Advanced card on the ProjectDetailPage as
 /// inline auto-save selects (`ProjectDefaultsForm`) — keeping
@@ -22,9 +43,11 @@ interface ProjectFormValues {
 /// instructions" content drawer.
 
 export function ProjectFormDrawer() {
-  const { message } = App.useApp()
   const { open, editingProject, loading } = Stores.ProjectDrawer
-  const [form] = Form.useForm<ProjectFormValues>()
+  const form = useForm<ProjectFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: '', description: '', instructions: '' },
+  })
 
   // Permission gating (audit Q2). `canSave` is the permission required
   // for THIS drawer mode: ProjectsEdit when editing, ProjectsCreate
@@ -63,7 +86,7 @@ export function ProjectFormDrawer() {
     if (!open) {
       lastOpenedSubjectId.current = null
       setRemoteUpdatedWhileEditing(false)
-      form.resetFields()
+      form.reset({ name: '', description: '', instructions: '' })
       return
     }
     const subject = editingProject?.id ?? '__create__'
@@ -71,7 +94,7 @@ export function ProjectFormDrawer() {
       // Fresh subject — safe to reset.
       lastOpenedSubjectId.current = subject
       setRemoteUpdatedWhileEditing(false)
-      form.setFieldsValue({
+      form.reset({
         name: editingProject?.name ?? '',
         description: editingProject?.description ?? '',
         instructions: editingProject?.instructions ?? '',
@@ -80,11 +103,11 @@ export function ProjectFormDrawer() {
       // Same subject, but `editingProject` changed (likely from a
       // `project.updated` event). If the user has UNSAVED edits, show
       // a "remote changes available" banner instead of clobbering.
-      if (form.isFieldsTouched()) {
+      if (form.formState.isDirty) {
         setRemoteUpdatedWhileEditing(true)
       } else {
         // No user edits — silently take the remote values.
-        form.setFieldsValue({
+        form.reset({
           name: editingProject?.name ?? '',
           description: editingProject?.description ?? '',
           instructions: editingProject?.instructions ?? '',
@@ -95,7 +118,7 @@ export function ProjectFormDrawer() {
 
   const handleDiscardLocalEdits = () => {
     setRemoteUpdatedWhileEditing(false)
-    form.setFieldsValue({
+    form.reset({
       name: editingProject?.name ?? '',
       description: editingProject?.description ?? '',
       instructions: editingProject?.instructions ?? '',
@@ -153,14 +176,13 @@ export function ProjectFormDrawer() {
         // canSave; Submit is GATED (not just disabled) so it doesn't
         // appear at all in read-only mode.
         <Flex className="justify-end gap-2">
-          <Button onClick={handleClose} disabled={loading}>
+          <Button variant="outline" onClick={handleClose} disabled={loading}>
             {canSave ? 'Cancel' : 'Close'}
           </Button>
           {canSave && (
             <Button
-              type="primary"
-              htmlType="submit"
-              onClick={() => form.submit()}
+              type="submit"
+              onClick={form.handleSubmit(handleSubmit)}
               loading={loading}
             >
               {isEdit ? 'Save' : 'Create'}
@@ -169,21 +191,21 @@ export function ProjectFormDrawer() {
         </Flex>
       }
     >
-      <Form<ProjectFormValues>
+      <Form
         form={form}
         layout="vertical"
         disabled={!canSave}
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
       >
         {remoteUpdatedWhileEditing && (
           <div className="mb-3 p-2 rounded border border-orange-300 bg-orange-50">
-            <Typography.Text type="warning" className="text-sm">
+            <Text type="warning" className="text-sm">
               Remote changes detected while you were editing. Your local edits
               are preserved.{' '}
-            </Typography.Text>
+            </Text>
             <Button
-              type="link"
-              size="small"
+              variant="link"
+              size="sm"
               onClick={handleDiscardLocalEdits}
               className="!p-0"
             >
@@ -191,43 +213,33 @@ export function ProjectFormDrawer() {
             </Button>
           </div>
         )}
-        <Form.Item
-          name="name"
-          label="Name"
-          rules={[
-            { required: true, message: 'Name is required' },
-            { max: 255, message: 'Name must be at most 255 characters' },
-          ]}
-        >
+        <FormField name="name" label="Name" required>
           <Input placeholder="My project" autoFocus />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="description"
           label="Description"
-          extra="For your reference only — shown on the project card and detail page. NOT sent to the LLM. To shape the model's behavior in this project, use the Instructions field below instead."
-          rules={[{ max: 4096, message: 'Description is too long' }]}
+          description="For your reference only — shown on the project card and detail page. NOT sent to the LLM. To shape the model's behavior in this project, use the Instructions field below instead."
         >
-          <Input.TextArea
+          <Textarea
             rows={3}
             placeholder="Optional short description"
             maxLength={4096}
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="instructions"
           label="Instructions"
-          extra="System instructions injected into every conversation in this project. Capped at 64 KiB."
-          rules={[{ max: 65_536, message: 'Instructions are too long' }]}
+          description="System instructions injected into every conversation in this project. Capped at 64 KiB."
         >
-          <Input.TextArea
+          <Textarea
             rows={10}
             placeholder="e.g. 'You are helping me build a Rust sandbox. Focus on correctness over cleverness.'"
             maxLength={65_536}
-            showCount
           />
-        </Form.Item>
+        </FormField>
 
       </Form>
     </Drawer>

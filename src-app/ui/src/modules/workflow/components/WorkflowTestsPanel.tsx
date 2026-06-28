@@ -1,8 +1,4 @@
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  MinusCircleOutlined,
-} from '@ant-design/icons'
+import { CircleCheck, CircleMinus, CircleX } from 'lucide-react'
 import { Alert, List, Space, Spin, Tag, Text } from '@/components/ui'
 import { Dialog } from '@/components/ui'
 import { useEffect, useState } from 'react'
@@ -80,11 +76,11 @@ export function WorkflowTestsPanel({
                 <div className="flex items-start gap-3">
                   <div className="mt-1">
                     {r.skipped ? (
-                      <MinusCircleOutlined className="text-[#999] text-lg" />
+                      <CircleMinus className="text-[#999] text-lg" />
                     ) : r.passed ? (
-                      <CheckCircleOutlined className="text-[#52c41a] text-lg" />
+                      <CircleCheck className="text-[#52c41a] text-lg" />
                     ) : (
-                      <CloseCircleOutlined className="text-[#ff4d4f] text-lg" />
+                      <CircleX className="text-[#ff4d4f] text-lg" />
                     )}
                   </div>
                   <div className="flex-1">

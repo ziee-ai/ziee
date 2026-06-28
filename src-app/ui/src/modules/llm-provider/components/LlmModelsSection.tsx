@@ -1,9 +1,4 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-  UploadOutlined,
-} from '@ant-design/icons'
+import { Trash2, Pencil, Plus, Upload } from 'lucide-react'
 import {
   Button,
   Card,
@@ -168,7 +163,7 @@ export function LlmModelsSection() {
         <Button
           key="edit"
           variant="ghost"
-          icon={<EditOutlined aria-hidden="true" />}
+          icon={<Pencil aria-hidden="true" />}
           onClick={() => handleEditLlmModel(llmModel.id)}
           aria-label={`Edit ${llmModel.display_name} model`}
         >
@@ -182,7 +177,7 @@ export function LlmModelsSection() {
         <Button
           key="delete"
           variant="ghost"
-          icon={<DeleteOutlined aria-hidden="true" />}
+          icon={<Trash2 aria-hidden="true" />}
           onClick={() => handleDeleteLlmModel(llmModel.id)}
           aria-label={`Delete ${llmModel.display_name} model`}
         >
@@ -205,7 +200,7 @@ export function LlmModelsSection() {
             {
               key: 'upload',
               label: 'Upload from Files',
-              icon: <UploadOutlined />,
+              icon: <Upload />,
               onClick: () =>
                 Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
                   currentProvider.id,
@@ -214,7 +209,7 @@ export function LlmModelsSection() {
             {
               key: 'download',
               label: 'Download from Repository',
-              icon: <PlusOutlined />,
+              icon: <Plus />,
               onClick: () =>
                 Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
                   currentProvider.id,
@@ -225,7 +220,7 @@ export function LlmModelsSection() {
           <Tooltip content="Add model">
             <Button
               variant="ghost"
-              icon={<PlusOutlined aria-hidden="true" />}
+              icon={<Plus aria-hidden="true" />}
               aria-label="Add model"
             />
           </Tooltip>
@@ -237,7 +232,7 @@ export function LlmModelsSection() {
       <Tooltip content="Add model">
         <Button
           variant="ghost"
-          icon={<PlusOutlined aria-hidden="true" />}
+          icon={<Plus aria-hidden="true" />}
           onClick={handleAddLlmModel}
           aria-label="Add model"
         />

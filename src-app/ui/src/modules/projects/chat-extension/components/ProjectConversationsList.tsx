@@ -1,5 +1,5 @@
+import { CircleMinus } from 'lucide-react'
 import { Button, Empty, Tooltip, Text, message, Dialog } from '@/components/ui'
-import { MinusCircleOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -154,7 +154,7 @@ function RemoveFromProjectButton({
           }`}
           variant="ghost"
           size="sm"
-          icon={<MinusCircleOutlined />}
+          icon={<CircleMinus />}
           aria-label="Remove from project"
           onClick={(e: React.MouseEvent) => {
             e.stopPropagation()

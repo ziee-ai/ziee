@@ -1,10 +1,6 @@
 import { useEffect } from 'react'
 import { Button, Text, Title } from '@/components/ui'
-import {
-  FolderAddOutlined,
-  FolderOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
@@ -50,7 +46,7 @@ export function ProjectsListPage() {
           <Can permission={Permissions.ProjectsCreate}>
             <Button
               variant="ghost"
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               onClick={handleCreate}
               aria-label="Create project"
             />
@@ -82,7 +78,7 @@ export function ProjectsListPage() {
         ) : (
           !loading && (
             <div className="text-center py-12 m-auto">
-              <FolderOutlined className="text-6xl mb-4" />
+              <Folder className="text-6xl mb-4" />
               <Title level={3} className="text-muted-foreground">
                 No projects yet
               </Title>
@@ -93,7 +89,7 @@ export function ProjectsListPage() {
               <Can permission={Permissions.ProjectsCreate}>
                 <Button
                   variant="default"
-                  icon={<FolderAddOutlined />}
+                  icon={<FolderPlus />}
                   onClick={handleCreate}
                 >
                   Create Project

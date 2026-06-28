@@ -1,12 +1,6 @@
+import { ChevronRight, ChevronDown, FileOutput, File, PanelRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Tooltip, message } from '@/components/ui'
-import {
-  RightOutlined,
-  DownOutlined,
-  ExportOutlined,
-  FileOutlined,
-  PicRightOutlined,
-} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '@/modules/file/types/viewer'
@@ -96,7 +90,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
   // inline. Non-inline viewers (pdf / web / unknown) don't get header
   // chrome here — their existing headers would just return null otherwise.
   const HeaderActions = canInline ? viewer?.headerActions : undefined
-  const Icon = viewer?.icon ?? <FileOutlined />
+  const Icon = viewer?.icon ?? <File />
   const label = viewer?.label
 
   const showBody = canInline && !collapsed && Body !== undefined && inView
@@ -149,7 +143,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             size="sm"
             aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
             aria-expanded={!collapsed}
-            icon={collapsed ? <RightOutlined /> : <DownOutlined />}
+            icon={collapsed ? <ChevronRight /> : <ChevronDown />}
             onClick={() => setCollapsed(c => !c)}
             data-testid="inline-file-preview-chevron"
           />
@@ -179,7 +173,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             <Button
               variant="ghost"
               size="sm"
-              icon={<PicRightOutlined />}
+              icon={<PanelRight />}
               onClick={handleOpenInPanel}
               aria-label="Open file in side panel"
               data-testid="inline-file-preview-open-panel"
@@ -193,7 +187,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             <Button
               variant="ghost"
               size="sm"
-              icon={<ExportOutlined />}
+              icon={<FileOutput />}
               onClick={handleOpenInNewTab}
               aria-label="Open file in new tab"
               data-testid="inline-file-preview-open"
@@ -206,7 +200,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
               href={source.url}
               target="_blank"
               rel="noopener noreferrer"
-              icon={<ExportOutlined />}
+              icon={<FileOutput />}
               aria-label="Open file in new tab"
               data-testid="inline-file-preview-open"
             />

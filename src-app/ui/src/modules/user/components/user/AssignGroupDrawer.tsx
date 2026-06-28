@@ -1,26 +1,32 @@
-import { App, Button, Flex, Form, Select } from 'antd'
+import { Button, Flex, Form, FormField, useForm, zodResolver, Select, message } from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 
-const { Option } = Select
+const assignGroupSchema = z.object({
+  group_id: z.string().min(1, 'Please select a group'),
+})
+type AssignGroupValues = z.infer<typeof assignGroupSchema>
 
 export function AssignGroupDrawer() {
-  const { message } = App.useApp()
   const { isOpen, user } = Stores.AssignGroupDrawer
   const { groups } = Stores.UserGroups
-  const [assignGroupForm] = Form.useForm()
+  const assignGroupForm = useForm<AssignGroupValues>({
+    resolver: zodResolver(assignGroupSchema),
+    defaultValues: { group_id: '' },
+  })
   const canAssign = usePermission(Permissions.GroupsAssignUsers)
 
-  const handleAssignGroup = async (values: any) => {
+  const handleAssignGroup = async (values: AssignGroupValues) => {
     if (!user) return
 
     try {
       await Stores.UserGroups.assignUserToUserGroup(user.id, values.group_id)
       message.success('User assigned to group successfully')
       Stores.AssignGroupDrawer.closeAssignGroupDrawer()
-      assignGroupForm.resetFields()
+      assignGroupForm.reset()
     } catch (error) {
       console.error('Failed to assign user to group:', error)
       // Error is handled by the store
@@ -34,7 +40,7 @@ export function AssignGroupDrawer() {
       open={isOpen}
       onClose={() => {
         Stores.AssignGroupDrawer.closeAssignGroupDrawer()
-        assignGroupForm.resetFields()
+        assignGroupForm.reset()
       }}
       footer={null}
       mask={{ closable: false }}
@@ -42,44 +48,31 @@ export function AssignGroupDrawer() {
       <Form
         form={assignGroupForm}
         layout="vertical"
-        onFinish={handleAssignGroup}
+        onSubmit={handleAssignGroup}
         disabled={!canAssign}
       >
-        <Form.Item
-          name="group_id"
-          label="Select Group"
-          rules={[
-            {
-              required: true,
-              message: 'Please select a group',
-            },
-          ]}
-        >
-          <Select placeholder="Select group to assign">
-            {groups.map(group => (
-              <Option key={group.id} value={group.id}>
-                {group.name}
-              </Option>
-            ))}
-          </Select>
-        </Form.Item>
-        <Form.Item className="mb-0">
-          <Flex className="justify-end gap-2">
-            <Button
-              onClick={() => {
-                Stores.AssignGroupDrawer.closeAssignGroupDrawer()
-                assignGroupForm.resetFields()
-              }}
-            >
-              {canAssign ? 'Cancel' : 'Close'}
+        <FormField name="group_id" label="Select Group" required>
+          <Select
+            placeholder="Select group to assign"
+            options={groups.map(group => ({ value: group.id, label: group.name }))}
+          />
+        </FormField>
+        <Flex className="justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              Stores.AssignGroupDrawer.closeAssignGroupDrawer()
+              assignGroupForm.reset()
+            }}
+          >
+            {canAssign ? 'Cancel' : 'Close'}
+          </Button>
+          {canAssign && (
+            <Button type="submit">
+              Assign
             </Button>
-            {canAssign && (
-              <Button type="primary" htmlType="submit">
-                Assign
-              </Button>
-            )}
-          </Flex>
-        </Form.Item>
+          )}
+        </Flex>
       </Form>
     </Drawer>
   )

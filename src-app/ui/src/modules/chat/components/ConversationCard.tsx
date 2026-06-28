@@ -2,7 +2,7 @@ import { type ReactNode, useState } from 'react'
 import { App, Button, Card, Checkbox, Divider, Popconfirm, theme, Typography } from 'antd'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { DeleteOutlined } from '@ant-design/icons'
+import { Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -174,7 +174,7 @@ export function ConversationCard({
               type="text"
               size="small"
               danger
-              icon={<DeleteOutlined />}
+              icon={<Trash2 />}
               style={{ backgroundColor: token.colorBgContainer }}
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()

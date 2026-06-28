@@ -11,7 +11,7 @@
 
 import { createModule, type AppModule } from '@ziee/ui-core'
 import { lazy } from 'react'
-import { InfoCircleOutlined } from '@ant-design/icons'
+import { Info } from 'lucide-react'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 
 import { useUpdaterStore } from '@ziee/desktop/modules/updater/stores/Updater.store'
@@ -49,7 +49,7 @@ const updaterModule: AppModule = createModule({
     settingsUserPages: [
       {
         id: 'about',
-        icon: <InfoCircleOutlined />,
+        icon: <Info />,
         label: 'About',
         path: 'about',
         // Last user entry — sits after 'general' (10).

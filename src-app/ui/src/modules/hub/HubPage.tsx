@@ -11,7 +11,7 @@ import {
   Text,
   message,
 } from '@/components/ui'
-import { ReloadOutlined } from '@ant-design/icons'
+import { RotateCw } from 'lucide-react'
 import { IoIosArrowDown, IoIosArrowForward } from 'react-icons/io'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
@@ -205,7 +205,7 @@ export function HubPage() {
             )}
             {canRefresh && (
               <Button
-                icon={<ReloadOutlined />}
+                icon={<RotateCw />}
                 onClick={handleRefresh}
                 loading={refreshing}
                 variant="ghost"

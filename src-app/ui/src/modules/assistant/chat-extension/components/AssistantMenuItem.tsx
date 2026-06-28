@@ -1,5 +1,5 @@
 import { Popover } from '@/components/ui'
-import { RobotOutlined, RightOutlined } from '@ant-design/icons'
+import { Bot, ChevronRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
@@ -64,12 +64,12 @@ export function AssistantMenuItem() {
         }}
       >
         <div className="flex items-center gap-2">
-          <RobotOutlined style={{ fontSize: 16 }} />
+          <Bot style={{ fontSize: 16 }} />
           <span style={{ fontSize: 14 }}>
             {selectedAssistant ? selectedAssistant.name : 'Select assistant'}
           </span>
         </div>
-        <RightOutlined style={{ fontSize: 10, opacity: 0.45 }} />
+        <ChevronRight style={{ fontSize: 10, opacity: 0.45 }} />
       </div>
     </Popover>
   )

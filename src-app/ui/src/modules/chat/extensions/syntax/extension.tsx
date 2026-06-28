@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { App, Button } from 'antd'
-import { CopyOutlined, CheckOutlined } from '@ant-design/icons'
+import { Check, Copy as CopyIcon } from 'lucide-react'
 import {
   createExtension,
   
@@ -34,7 +34,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
         <Button
           size="small"
           type="text"
-          icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+          icon={copied ? <Check /> : <CopyIcon />}
           onClick={handleCopy}
           className=" opacity-0 group-hover:opacity-100 transition-opacity"
         >

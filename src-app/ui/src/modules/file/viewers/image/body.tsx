@@ -1,6 +1,6 @@
+import { FileImage } from 'lucide-react'
 import { useState } from 'react'
 import { Spin } from '@/components/ui'
-import { FileImageOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { getSource } from '../shared/source'
@@ -23,7 +23,7 @@ export function ImageBody(props: FileViewerSlotProps) {
           className="flex flex-col items-center justify-center gap-1 p-6 text-sm opacity-60"
           data-testid="inline-file-preview-image-error"
         >
-          <FileImageOutlined className="text-2xl" />
+          <FileImage className="text-2xl" />
           <span>Couldn't load image</span>
         </div>
       )

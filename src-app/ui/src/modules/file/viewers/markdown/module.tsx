@@ -1,5 +1,5 @@
+import { FileText } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { FileMarkdownOutlined } from '@ant-design/icons'
 import { MarkdownBody } from './body'
 import { MarkdownHeader } from './header'
 
@@ -14,7 +14,7 @@ export const viewers: FileViewerModule[] = [
       body: MarkdownBody,
       headerActions: MarkdownHeader,
       label: 'Markdown',
-      icon: <FileMarkdownOutlined />,
+      icon: <FileText />,
       // Markdown rendering reuses streamdown's defaults (GFM tables, fenced
       // code, mermaid). Same path as assistant message text rendering —
       // visually consistent across both contexts.

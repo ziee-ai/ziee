@@ -1,7 +1,7 @@
+import { Search, Eraser } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { Combobox, MultiSelect, Text, Button, Input } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
@@ -93,7 +93,7 @@ export function AssistantsHubTab() {
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Search assistants..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             allowClear
@@ -145,7 +145,7 @@ export function AssistantsHubTab() {
             <Button
               size="sm"
               variant="ghost"
-              icon={<ClearOutlined />}
+              icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
             >

@@ -1,4 +1,4 @@
-import { FileSearchOutlined } from '@ant-design/icons'
+import { FileSearch } from 'lucide-react'
 import { Button, Card, Text } from '@/components/ui'
 import type { MessageContentDataToolResult } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -51,7 +51,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
   return (
     <Card size="sm" className="my-2">
       <Text strong>
-        <FileSearchOutlined /> Literature search
+        <FileSearch /> Literature search
       </Text>
       <Text type="secondary" className="!mb-2 text-xs block">
         “{sc.query}” — {total} identified, {sc.after_dedup ?? sc.records.length} after dedup

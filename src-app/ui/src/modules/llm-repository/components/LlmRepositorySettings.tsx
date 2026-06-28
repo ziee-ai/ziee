@@ -1,9 +1,4 @@
-import {
-  CloudDownloadOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { CloudDownload, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Alert,
   Button,
@@ -159,7 +154,7 @@ export function LlmRepositorySettings() {
         <Button
           key="test"
           variant="outline"
-          icon={<CloudDownloadOutlined />}
+          icon={<CloudDownload />}
           loading={testing}
           onClick={() => testRepositoryConnection(repository)}
         >
@@ -173,7 +168,7 @@ export function LlmRepositorySettings() {
         <Button
           key="edit"
           variant="outline"
-          icon={<EditOutlined />}
+          icon={<Pencil />}
           onClick={() => handleEditRepository(repository)}
         >
           Edit
@@ -191,7 +186,7 @@ export function LlmRepositorySettings() {
           cancelText="Cancel"
           okButtonProps={{ danger: true }}
         >
-          <Button variant="destructive" icon={<DeleteOutlined />}>
+          <Button variant="destructive" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,
@@ -215,7 +210,7 @@ export function LlmRepositorySettings() {
               <Button
                 variant="outline"
                 size="icon"
-                icon={<PlusOutlined />}
+                icon={<Plus />}
                 onClick={handleAddRepository}
                 aria-label="Add repository"
                 tooltip="Add repository"

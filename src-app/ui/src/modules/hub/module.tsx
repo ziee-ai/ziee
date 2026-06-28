@@ -1,4 +1,4 @@
-import { AppstoreOutlined } from '@ant-design/icons'
+import { LayoutGrid } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
@@ -49,7 +49,7 @@ export default createModule({
     sidebarTools: [
       {
         id: 'hub',
-        icon: <AppstoreOutlined />,
+        icon: <LayoutGrid />,
         label: 'Hub',
         path: '/hub',
         order: 30,

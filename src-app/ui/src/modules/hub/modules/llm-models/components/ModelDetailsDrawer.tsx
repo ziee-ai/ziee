@@ -1,6 +1,6 @@
+import { Eye, Wrench, MessageSquare } from 'lucide-react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Flex, Tag, Title, Text, Card } from '@/components/ui'
-import { EyeOutlined, ToolOutlined, MessageOutlined } from '@ant-design/icons'
 import type { HubModel } from '@/api-client/types'
 
 interface ModelDetailsDrawerProps {
@@ -189,17 +189,17 @@ export function ModelDetailsDrawer({
             <Title level={5}>Capabilities</Title>
             <Flex wrap className="gap-2">
               {model.capabilities.vision && (
-                <Tag tone="info" icon={<EyeOutlined />}>
+                <Tag tone="info" icon={<Eye />}>
                   Vision
                 </Tag>
               )}
               {model.capabilities.tools && (
-                <Tag tone="info" icon={<ToolOutlined />}>
+                <Tag tone="info" icon={<Wrench />}>
                   Function Calling
                 </Tag>
               )}
               {model.capabilities.chat && (
-                <Tag tone="success" icon={<MessageOutlined />}>
+                <Tag tone="success" icon={<MessageSquare />}>
                   Chat
                 </Tag>
               )}
