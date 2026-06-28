@@ -756,3 +756,70 @@ async fn elicit_delivered_on_standalone_get_stream_completes() {
     assert_eq!(responses[0]["result"]["action"], "accept");
     assert_eq!(responses[0]["result"]["content"]["empirical"], true);
 }
+
+// ─── Sequential elicitations across SEPARATE tool calls (turns) ────────────
+
+/// Two SEPARATE tool calls on the same connected client (the conversation
+/// turn-by-turn shape) each trigger their own elicitation. Each must get a
+/// fresh per-elicitation id and complete independently — covering sequential
+/// multi-elicit ACROSS turns (distinct from two elicits within one tool call).
+#[tokio::test]
+async fn elicit_sequential_across_separate_tool_calls_get_unique_ids() {
+    let mock = MockElicitationServer::start_with_script(ElicitationScript {
+        message: "turn?".to_string(),
+        elicitation_response_timeout: Duration::from_secs(5),
+        ..ElicitationScript::default()
+    })
+    .await;
+    // One elicitation per tool call (the default), but we issue TWO tool calls.
+    mock.set_elicitations_per_tool_call(1);
+
+    let mut client = HttpMcpClient::new(server_config(mock.base_url())).unwrap();
+    client.connect().await.expect("connect");
+
+    // Helper: run ONE tool call, respond to its single elicitation, return the id.
+    async fn one_turn(
+        client: &mut HttpMcpClient,
+        tool: &str,
+        step: i32,
+    ) -> uuid::Uuid {
+        let (notify_tx, mut notify_rx) =
+            mpsc::unbounded_channel::<ElicitationStartedNotification>();
+        let (sse_tx, _sse_rx) = mpsc::unbounded_channel::<
+            Result<axum::response::sse::Event, std::convert::Infallible>,
+        >();
+        let tool = tool.to_string();
+        // call_tool needs &mut self, so we can't spawn it with a borrow; run the
+        // call and the respond concurrently via a local task over the registry.
+        let responder = tokio::spawn(async move {
+            let notif = tokio::time::timeout(Duration::from_secs(3), notify_rx.recv())
+                .await
+                .expect("elicitation notification")
+                .expect("notification present");
+            elicitation_registry::respond(
+                notif.elicitation_id,
+                ElicitationResponse {
+                    action: "accept".to_string(),
+                    content: Some(serde_json::json!({ "step": step })),
+                },
+            );
+            notif.elicitation_id
+        });
+        let result = client
+            .call_tool(&tool, serde_json::json!({}), None, Some(sse_tx), Some(notify_tx))
+            .await
+            .expect("tool call completes");
+        assert!(!result.is_error, "turn {step} tool call must succeed");
+        responder.await.expect("responder task")
+    }
+
+    let id1 = one_turn(&mut client, "turn_one", 1).await;
+    let id2 = one_turn(&mut client, "turn_two", 2).await;
+    assert_ne!(
+        id1, id2,
+        "elicitations from separate tool calls must get distinct ids"
+    );
+
+    let responses = mock.elicitation_responses();
+    assert_eq!(responses.len(), 2, "one elicitation response per turn");
+}
