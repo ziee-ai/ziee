@@ -186,6 +186,47 @@ test.describe('Onboarding wizard', () => {
     await expect(page.getByText(localName, { exact: true })).toHaveCount(0)
   })
 
+  test('entering an API key in the AI Providers step saves it', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    const adminToken = await getAdminToken(apiURL)
+    const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` }
+
+    const groupsRes = await fetch(`${apiURL}/api/groups?page=1&per_page=100`, { headers: auth })
+    const { groups } = await groupsRes.json()
+    const defaultGroup =
+      groups.find((g: any) => g.is_default) ?? groups.find((g: any) => g.name === 'Users')
+
+    // A remote provider with NO admin key → the user enters their own ("sk-..."
+    // placeholder), exercising the onboarding key-save path.
+    const remoteName = `KeySave ${Date.now().toString(36)}`
+    const created = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: remoteName, provider_type: 'openai', enabled: true }),
+    })
+    const provider = await created.json()
+    await fetch(`${apiURL}/api/llm-providers/${provider.id}/groups`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ group_id: defaultGroup.id }),
+    })
+
+    const { username } = await freshUser(apiURL, 'keysave')
+    await loginExpectingOnboarding(page, baseURL, username, 'password123')
+
+    // Welcome → AI Providers.
+    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    await expect(page.getByText(remoteName).first()).toBeVisible({ timeout: 15000 })
+
+    // Enter a key, advance → the step's onNext saves it (saveUserApiKey) and the
+    // store surfaces an "API key saved" success toast.
+    await page.getByPlaceholder('sk-...').fill('sk-onboarding-user-key-123')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByText('API key saved')).toBeVisible({ timeout: 15000 })
+  })
+
   // Negative coverage for OnboardingRedirect's `if (user.is_admin === true)
   // return` bypass (OnboardingRedirect.tsx:41): an admin is NEVER forced into
   // the wizard. Contrast the "fresh user is redirected into the wizard" test
