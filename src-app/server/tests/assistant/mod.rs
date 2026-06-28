@@ -1032,3 +1032,131 @@ async fn test_concurrent_set_default_assistant_leaves_exactly_one() {
     let defaults = arr.iter().filter(|a| a["is_default"] == json!(true)).count();
     assert_eq!(defaults, 1, "exactly one default after concurrent set-default; got {defaults}");
 }
+
+// audit id all-3163117848bc — the `enabled = true` filter in get_assistant /
+// list_assistants (repository.rs) was untested: a disabled (enabled=false)
+// assistant must be hidden from the per-id GET (404) and from the user's list,
+// even though the row still exists. We flip `enabled` directly in the DB (the
+// disabled state) and assert the read paths filter it out.
+#[tokio::test]
+async fn test_disabled_assistant_is_filtered_from_get_and_list() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "assist_disabled",
+        &["assistants::create", "assistants::read"],
+    )
+    .await;
+
+    let assistant = create_user_assistant(&server, &user.token, "Soon Disabled").await;
+    let assistant_id = assistant["id"].as_str().unwrap();
+    let aid = Uuid::parse_str(assistant_id).unwrap();
+
+    // Sanity: visible before disabling.
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/assistants/{}", assistant_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Flip enabled=false directly (the soft-disabled state the read paths filter).
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    sqlx::query("UPDATE assistants SET enabled = false WHERE id = $1")
+        .bind(aid)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // The row still exists (soft state, not a hard delete).
+    let still_there: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM assistants WHERE id = $1 AND enabled = false")
+            .bind(aid)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(still_there, 1, "row must persist with enabled=false (soft state)");
+
+    // GET by id now 404s (enabled=true filter).
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/assistants/{}", assistant_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND, "disabled assistant must not be readable by id");
+
+    // …and it's absent from the user's list.
+    let resp = reqwest::Client::new()
+        .get(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let arr = body.as_array().cloned().unwrap_or_else(|| {
+        body["assistants"].as_array().cloned().expect("assistants array")
+    });
+    assert!(
+        !arr.iter().any(|a| a["id"] == json!(assistant_id)),
+        "disabled assistant must be filtered out of the list"
+    );
+}
+
+// audit id all-730d5cc21886 — the template permission tests only covered CREATE
+// (403). The template-only EDIT and DELETE endpoints must ALSO 403 for a user
+// lacking the template manage/delete permissions (a user with only user-scope
+// assistant perms must not reach template management).
+#[tokio::test]
+async fn test_template_edit_and_delete_require_template_permissions() {
+    let server = crate::common::TestServer::start().await;
+
+    // A user with template-create perm creates a real template to target.
+    let creator = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tmpl_creator",
+        &["assistant_templates::create"],
+    )
+    .await;
+    let create = reqwest::Client::new()
+        .post(server.api_url("/assistant-templates"))
+        .header("Authorization", format!("Bearer {}", creator.token))
+        .json(&json!({ "name": "Protected Template" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let template_id = create.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // A user with ONLY user-scope assistant perms (no template perms).
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tmpl_denied",
+        &["assistants::create", "assistants::read", "assistants::edit", "assistants::delete"],
+    )
+    .await;
+
+    // Template EDIT → 403.
+    let resp = reqwest::Client::new()
+        .put(server.api_url(&format!("/assistant-templates/{}", template_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Hijacked" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "template edit must require template permission");
+
+    // Template DELETE → 403.
+    let resp = reqwest::Client::new()
+        .delete(server.api_url(&format!("/assistant-templates/{}", template_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "template delete must require template permission");
+}
