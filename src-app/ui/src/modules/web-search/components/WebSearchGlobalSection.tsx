@@ -3,19 +3,22 @@ import {
   Alert,
   Button,
   Card,
-  Divider,
   Flex,
   Form,
+  FormField,
   InputNumber,
   List,
+  Paragraph,
   Select,
+  Separator,
   Space,
   Spin,
   Switch,
+  Text,
   Tooltip,
-  Typography,
   message,
-} from 'antd'
+  useForm,
+} from '@/components/ui'
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -40,8 +43,7 @@ export function WebSearchGlobalSection() {
   const { settings, providers, loading, savingSettings } = Stores.WebSearchAdmin
   const canManage = usePermission(Permissions.WebSearchAdminManage)
 
-  const [form] = Form.useForm<FormValues>()
-  const [dirty, setDirty] = useState(false)
+  const form = useForm<FormValues>()
   // Local in-flight flag for chain edits, so they don't share the store's
   // `savingSettings` flag with the caps Save button (which would cross-trigger
   // the caps spinner on a chain edit and vice-versa).
@@ -49,11 +51,11 @@ export function WebSearchGlobalSection() {
 
   // Re-seed from the store ONLY when the form has no unsaved edits. The chain
   // editor saves imperatively (move/add/remove → updateSettings), which
-  // replaces `settings`; without the `!dirty` guard that re-seed would clobber
+  // replaces `settings`; without the `!isDirty` guard that re-seed would clobber
   // in-progress caps/enabled edits the admin hasn't saved yet.
   useEffect(() => {
-    if (settings && !dirty) {
-      form.setFieldsValue({
+    if (settings && !form.formState.isDirty) {
+      form.reset({
         enabled: settings.enabled,
         max_results: settings.max_results,
         fetch_max_mib: Math.round(settings.fetch_max_bytes / MIB),
@@ -61,7 +63,7 @@ export function WebSearchGlobalSection() {
         request_timeout_secs: settings.request_timeout_secs,
       })
     }
-  }, [settings, form, dirty])
+  }, [settings, form])
 
   const onSubmit = async (v: FormValues) => {
     try {
@@ -72,7 +74,7 @@ export function WebSearchGlobalSection() {
         fetch_max_chars: v.fetch_max_chars,
         request_timeout_secs: v.request_timeout_secs,
       })
-      setDirty(false) // saved → allow the next store update to re-seed
+      form.reset(v) // saved → allow the next store update to re-seed
       message.success('Web search settings saved')
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to save')
@@ -110,7 +112,7 @@ export function WebSearchGlobalSection() {
   if (loading && !settings) {
     return (
       <Card title="Web search">
-        <Spin />
+        <Spin label="Loading" />
       </Card>
     )
   }
@@ -119,8 +121,7 @@ export function WebSearchGlobalSection() {
     <Card title="Web search">
       {!canManage && (
         <Alert
-          type="info"
-          showIcon
+          tone="info"
           title="Read-only view"
           description="You can view web search settings but not change them."
           className="mb-3"
@@ -130,144 +131,133 @@ export function WebSearchGlobalSection() {
       <Form
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={onSubmit}
-        onValuesChange={() => setDirty(true)}
+        labelWidth="42%"
         disabled={!canManage}
+        onSubmit={onSubmit}
       >
-        <Form.Item
+        <FormField
           name="enabled"
           label="Enabled"
           valuePropName="checked"
-          extra="Master switch. Even when on, web tools only attach to a chat once a provider in the chain is configured."
+          description="Master switch. Even when on, web tools only attach to a chat once a provider in the chain is configured."
         >
           <Switch />
-        </Form.Item>
+        </FormField>
 
-        <Divider titlePlacement="start" styles={{ content: { margin: 0 } }}>
-          <Typography.Text type="secondary" className="text-xs">
+        <Separator titlePlacement="left">
+          <Text className="text-xs" type="secondary">
             Caps
-          </Typography.Text>
-        </Divider>
-        <Form.Item name="max_results" label="Max results per search">
-          <InputNumber min={1} max={20} style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item
+          </Text>
+        </Separator>
+        <FormField name="max_results" label="Max results per search">
+          <InputNumber min={1} max={20} className="w-full" />
+        </FormField>
+        <FormField
           name="fetch_max_mib"
           label="Page fetch size cap"
-          extra="Maximum bytes downloaded per fetch_url call."
+          description="Maximum bytes downloaded per fetch_url call."
         >
-          <InputNumber min={1} max={100} suffix="MiB" style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item
+          <InputNumber min={1} max={100} suffix="MiB" className="w-full" />
+        </FormField>
+        <FormField
           name="fetch_max_chars"
           label="Page fetch char cap"
-          extra="Extracted markdown is truncated to this many characters."
+          description="Extracted markdown is truncated to this many characters."
         >
-          <InputNumber min={1000} max={500000} step={1000} style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item name="request_timeout_secs" label="Request timeout">
-          <InputNumber min={1} max={120} suffix="s" style={{ width: '100%' }} />
-        </Form.Item>
+          <InputNumber min={1000} max={500000} step={1000} className="w-full" />
+        </FormField>
+        <FormField name="request_timeout_secs" label="Request timeout">
+          <InputNumber min={1} max={120} suffix="s" className="w-full" />
+        </FormField>
 
         <Flex justify="end" gap="small">
           <Button
-            type="primary"
-            htmlType="submit"
+            type="submit"
             loading={savingSettings}
-            disabled={!canManage || !dirty}
+            disabled={!canManage || !form.formState.isDirty}
           >
             Save
           </Button>
         </Flex>
       </Form>
 
-      <Divider titlePlacement="start" styles={{ content: { margin: 0 } }}>
-        <Typography.Text type="secondary" className="text-xs">
+      <Separator titlePlacement="left">
+        <Text className="text-xs" type="secondary">
           Provider chain
-        </Typography.Text>
-      </Divider>
-      <Typography.Paragraph type="secondary" className="text-xs">
+        </Text>
+      </Separator>
+      <Paragraph type="secondary" className="text-xs">
         Engines are tried top-to-bottom. The chain advances to the next engine
         only on failure (error / timeout / quota) — an engine returning no
         results is treated as a valid answer.
-      </Typography.Paragraph>
+      </Paragraph>
 
       {chain.length === 0 ? (
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="No providers in the chain"
           description="Add at least one provider below and configure it for web search to work."
           className="mb-3"
         />
       ) : (
         <List
-          size="small"
-          bordered
+          size="sm"
+          className="border rounded-md"
           dataSource={chain}
           renderItem={(key, i) => (
-            <List.Item
-              actions={
-                canManage
-                  ? [
-                      <Tooltip title="Move up" key="up">
-                        <Button
-                          type="text"
-                          size="small"
-                          aria-label={`Move ${nameOf(key)} up`}
-                          icon={<ArrowUpOutlined />}
-                          disabled={i === 0 || savingChain}
-                          onClick={() => move(i, -1)}
-                        />
-                      </Tooltip>,
-                      <Tooltip title="Move down" key="down">
-                        <Button
-                          type="text"
-                          size="small"
-                          aria-label={`Move ${nameOf(key)} down`}
-                          icon={<ArrowDownOutlined />}
-                          disabled={i === chain.length - 1 || savingChain}
-                          onClick={() => move(i, 1)}
-                        />
-                      </Tooltip>,
-                      <Tooltip title="Remove from chain" key="rm">
-                        <Button
-                          type="text"
-                          size="small"
-                          danger
-                          aria-label={`Remove ${nameOf(key)} from chain`}
-                          icon={<DeleteOutlined />}
-                          disabled={savingChain}
-                          onClick={() => remove(i)}
-                        />
-                      </Tooltip>,
-                    ]
-                  : []
-              }
-            >
+            <div className="flex items-center justify-between gap-2">
               <Space>
-                <Typography.Text>{`${i + 1}. ${nameOf(key)}`}</Typography.Text>
+                <Text>{`${i + 1}. ${nameOf(key)}`}</Text>
                 {!configuredOf(key) && (
-                  <Typography.Text type="warning" className="text-xs">
+                  <Text type="warning" className="text-xs">
                     (not configured)
-                  </Typography.Text>
+                  </Text>
                 )}
               </Space>
-            </List.Item>
+              {canManage && (
+                <Space>
+                  <Tooltip content="Move up">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Move ${nameOf(key)} up`}
+                      icon={<ArrowUpOutlined />}
+                      disabled={i === 0 || savingChain}
+                      onClick={() => move(i, -1)}
+                    />
+                  </Tooltip>
+                  <Tooltip content="Move down">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Move ${nameOf(key)} down`}
+                      icon={<ArrowDownOutlined />}
+                      disabled={i === chain.length - 1 || savingChain}
+                      onClick={() => move(i, 1)}
+                    />
+                  </Tooltip>
+                  <Tooltip content="Remove from chain">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      aria-label={`Remove ${nameOf(key)} from chain`}
+                      icon={<DeleteOutlined />}
+                      disabled={savingChain}
+                      onClick={() => remove(i)}
+                    />
+                  </Tooltip>
+                </Space>
+              )}
+            </div>
           )}
         />
       )}
 
       {canManage && notInChain.length > 0 && (
         <Select
-          className="mt-3"
-          style={{ width: '100%' }}
+          className="mt-3 w-full"
           placeholder="Add a provider to the chain…"
-          value={null}
+          value={undefined}
           disabled={savingChain}
           onChange={(key: string) => add(key)}
           options={notInChain.map(p => ({ value: p.key, label: p.display_name }))}
