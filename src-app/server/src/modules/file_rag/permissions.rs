@@ -25,3 +25,43 @@ impl PermissionCheck for FileRagAdminManage {
         "Update Document-RAG admin settings, trigger re-embed and backfill.";
     const MODULE: &'static str = "file_rag";
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The permission strings must stay stable — handlers gate on these exact
+    /// strings and the Administrators wildcard grant relies on them.
+    #[test]
+    fn permission_strings_are_stable() {
+        assert_eq!(FileRagAdminRead::PERMISSION, "file_rag::admin::read");
+        assert_eq!(FileRagAdminManage::PERMISSION, "file_rag::admin::manage");
+    }
+
+    #[test]
+    fn permission_modules_are_consistent() {
+        for module in [FileRagAdminRead::MODULE, FileRagAdminManage::MODULE] {
+            assert_eq!(module, "file_rag");
+        }
+    }
+
+    #[test]
+    fn permission_names_are_distinct() {
+        let names = [FileRagAdminRead::NAME, FileRagAdminManage::NAME];
+        let mut sorted = names.to_vec();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(
+            sorted.len(),
+            names.len(),
+            "permission NAME constants must be distinct"
+        );
+    }
+
+    #[test]
+    fn permission_descriptions_are_non_empty() {
+        for desc in [FileRagAdminRead::DESCRIPTION, FileRagAdminManage::DESCRIPTION] {
+            assert!(!desc.is_empty(), "permission DESCRIPTION must be non-empty");
+        }
+    }
+}
