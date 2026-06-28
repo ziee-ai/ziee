@@ -145,3 +145,74 @@ async fn run_with_mocks_on_published_workflow_is_rejected() {
         resp.text().await.unwrap_or_default()
     );
 }
+
+// audit id all-428538b56261 — concurrent multi-user workflow runs. The existing
+// workflow_mcp tests are single-user, and resources_test only covers cross-user
+// isolation on READ of an already-finished run. This runs TWO users' workflows
+// CONCURRENTLY (mocked, deterministic) and asserts each run completes and its
+// output carries only ITS OWN marker — no cross-run/user bleed under parallel
+// execution in the runner.
+#[tokio::test]
+async fn concurrent_multi_user_runs_are_isolated() {
+    let server = plain_server().await;
+    let user_a = workflow_user(&server, "wf_cc_a").await;
+    let user_b = workflow_user(&server, "wf_cc_b").await;
+
+    // Each user dev-imports the fixture workflow + gets a stub conversation.
+    let wf_a = import_dev_workflow(&server, &user_a.token, "cc-a", FIXTURE_WORKFLOW_YAML).await;
+    let wf_a_id = wf_a["id"].as_str().unwrap().to_string();
+    let (_stub_a, conv_a) = stub_conversation(&server, &user_a.user_id, &user_a.token).await;
+
+    let wf_b = import_dev_workflow(&server, &user_b.token, "cc-b", FIXTURE_WORKFLOW_YAML).await;
+    let wf_b_id = wf_b["id"].as_str().unwrap().to_string();
+    let (_stub_b, conv_b) = stub_conversation(&server, &user_b.user_id, &user_b.token).await;
+
+    let mocks = |marker: &str| {
+        json!({
+            "inputs": { "topic": "concurrency" },
+            "conversation_id": null,
+            "mocks": {
+                "research": [{"title": "T", "url": "https://example.com/t"}],
+                "summarize": ["s"],
+                "write": format!("MEMO_BODY_MARKER: {marker}")
+            }
+        })
+    };
+    let mut body_a = mocks("RUN_A_MARKER");
+    body_a["conversation_id"] = json!(conv_a.to_string());
+    let mut body_b = mocks("RUN_B_MARKER");
+    body_b["conversation_id"] = json!(conv_b.to_string());
+
+    // Dispatch BOTH runs concurrently (they execute in parallel in the runner).
+    let (run_a, run_b) = tokio::join!(
+        run_workflow(&server, &user_a.token, &wf_a_id, body_a),
+        run_workflow(&server, &user_b.token, &wf_b_id, body_b),
+    );
+    let run_a_id = Uuid::parse_str(run_a["run_id"].as_str().unwrap()).unwrap();
+    let run_b_id = Uuid::parse_str(run_b["run_id"].as_str().unwrap()).unwrap();
+
+    let final_a = poll_run(&server, &user_a.token, run_a_id).await;
+    let final_b = poll_run(&server, &user_b.token, run_b_id).await;
+    assert_eq!(final_a["status"], "completed", "run A: {final_a}");
+    assert_eq!(final_b["status"], "completed", "run B: {final_b}");
+
+    // Each run's write output carries ONLY its own marker — no cross-bleed.
+    let read_write = |token: String, run_id: Uuid| {
+        let url = server.api_url(&format!("/workflow-runs/{run_id}/output/write"));
+        async move {
+            reqwest::Client::new()
+                .get(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap()
+        }
+    };
+    let out_a = read_write(user_a.token.clone(), run_a_id).await;
+    let out_b = read_write(user_b.token.clone(), run_b_id).await;
+    assert!(out_a.contains("RUN_A_MARKER") && !out_a.contains("RUN_B_MARKER"), "run A output isolated: {out_a}");
+    assert!(out_b.contains("RUN_B_MARKER") && !out_b.contains("RUN_A_MARKER"), "run B output isolated: {out_b}");
+}
