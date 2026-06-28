@@ -255,6 +255,32 @@ mod tests {
             !SSE_CLIENTS.lock().unwrap().contains_key(&id),
             "remove_client must drop the client from the pool"
         );
+
+        // Cap enforcement (MAX_SSE_CLIENTS = 256): add_client must eventually
+        // refuse (return None) and the pool must never exceed the cap — the
+        // OOM guard for the unbounded per-client channel. Kept in THIS test (the
+        // only one mutating SSE_CLIENTS) so the pool-fill can't race the
+        // add/remove assertions above. Tolerant of any pre-existing clients.
+        let mut added = Vec::new();
+        let mut refused = false;
+        for _ in 0..(MAX_SSE_CLIENTS + 4) {
+            let cid = Uuid::new_v4();
+            match add_client(cid) {
+                Some(_) => added.push(cid),
+                None => {
+                    refused = true;
+                    break;
+                }
+            }
+        }
+        assert!(refused, "add_client must refuse once MAX_SSE_CLIENTS is reached");
+        assert!(
+            SSE_CLIENTS.lock().unwrap().len() <= MAX_SSE_CLIENTS,
+            "the SSE pool must never exceed the cap"
+        );
+        for cid in added {
+            remove_client(cid);
+        }
     }
 
     /// collect_hardware_usage produces a well-formed snapshot each tick — the
