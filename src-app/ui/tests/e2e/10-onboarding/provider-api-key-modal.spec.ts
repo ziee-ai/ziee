@@ -87,6 +87,52 @@ test.describe('Provider API key modal (chat model selector)', () => {
     await expect(modal).toBeHidden({ timeout: 10000 })
   })
 
+  test('cancelling the API-key modal closes it and reverts the selection', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const token = await getAdminToken(apiURL)
+    const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+
+    // Keyed provider (default selection) + keyless custom provider (triggers modal).
+    const keyedRes = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: 'Keyed Provider', provider_type: 'openai', enabled: true, api_key: 'sk-keyed' }),
+    })
+    if (!keyedRes.ok) throw new Error(`keyed provider create failed: ${keyedRes.status}`)
+    const keyedId = (await keyedRes.json()).id
+    await createModelViaAPI(apiURL, token, keyedId, 'keyed-model', 'Keyed Model', 'openai')
+    await assignToAdminGroup(apiURL, auth, keyedId)
+
+    const customRes = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: 'Keyless Custom', provider_type: 'custom', enabled: true }),
+    })
+    if (!customRes.ok) throw new Error(`custom provider create failed: ${customRes.status} ${await customRes.text()}`)
+    const customId = (await customRes.json()).id
+    await createModelViaAPI(apiURL, token, customId, 'custom-model', 'Custom Model')
+    await assignToAdminGroup(apiURL, auth, customId)
+
+    await goToNewChatPage(page, baseURL)
+    await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
+
+    // Select the keyless custom model → the modal opens.
+    await page.click('[data-testid="model-selector"] .ant-select')
+    const customOption = page.getByRole('option', { name: 'Custom Model' })
+    await customOption.waitFor({ state: 'visible' })
+    await customOption.click()
+    const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
+    await expect(modal).toBeVisible({ timeout: 10000 })
+
+    // Cancel → the modal closes and the selection reverts to the keyed model
+    // (setModelId is only called on success, so the custom model is NOT selected).
+    await modal.getByRole('button', { name: 'Cancel' }).click()
+    await expect(modal).toBeHidden({ timeout: 10000 })
+    await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
+    await expect(page.locator('[data-testid="model-selector"]')).not.toContainText('Custom Model')
+  })
+
   test('selecting a local-provider model does NOT prompt for an API key', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
