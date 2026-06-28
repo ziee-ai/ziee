@@ -869,3 +869,69 @@ async fn backfill_does_not_starve_behind_zero_chunk_wall() {
         assert_eq!(chunk_count(&pool, id).await, 0, "whitespace files still yield no chunks");
     }
 }
+
+/// Permission revocation is re-resolved per request, not cached on the token.
+///
+/// A user granted `file_rag::admin::read` can GET the admin settings (200).
+/// When that grant is removed from their group mid-flow, the *same* bearer
+/// token's next GET must be refused with 403 — proving the read gate
+/// (`RequirePermissions<(FileRagAdminRead,)>`) resolves group permissions live
+/// on every request rather than trusting a stale snapshot from issue time.
+/// (Existing `non_admin_rejected_from_admin_endpoints` only covers a user who
+/// never had the permission.)
+#[tokio::test]
+async fn admin_read_permission_revocation_is_enforced_per_request() {
+    let server = TestServer::start().await;
+    // Granted exactly the admin-read permission (plus profile::read so the
+    // account is otherwise normal). create_user_with_permissions puts these on
+    // a dedicated, non-default group we can later empty out.
+    let user = create_user_with_permissions(
+        &server,
+        "file_rag_revoke",
+        &["file_rag::admin::read", "profile::read"],
+    )
+    .await;
+
+    // Before revocation: the read gate admits the request.
+    let before = reqwest::Client::new()
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get settings (granted)");
+    assert_eq!(
+        before.status(),
+        reqwest::StatusCode::OK,
+        "user holding file_rag::admin::read must read admin settings"
+    );
+
+    // Revoke mid-flow: strip every permission from the user's custom group.
+    // (The default group never carried file_rag::admin::read, so this fully
+    // removes the grant.)
+    let pool = db_pool(&server).await;
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let affected = sqlx::query(
+        "UPDATE groups SET permissions = '{}', updated_at = NOW() \
+         WHERE is_default = false AND id IN \
+           (SELECT group_id FROM user_groups WHERE user_id = $1)",
+    )
+    .bind(user_uuid)
+    .execute(&pool)
+    .await
+    .expect("revoke custom-group permissions")
+    .rows_affected();
+    assert!(affected >= 1, "expected to clear at least the custom permissions group");
+
+    // After revocation: the SAME token is now refused — perms re-resolved live.
+    let after = reqwest::Client::new()
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get settings (revoked)");
+    assert_eq!(
+        after.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "after the grant is removed, the same token must be re-checked and refused (403), not served from a cached allow"
+    );
+}
