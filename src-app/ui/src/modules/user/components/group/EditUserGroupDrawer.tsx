@@ -91,12 +91,13 @@ export function EditUserGroupDrawer() {
         layout="vertical"
         onSubmit={handleSubmit}
         disabled={!canEdit}
+        data-testid="user-edit-group-form"
       >
         <FormField
           name="name"
           label="Group Name"
         >
-          <Input placeholder="Enter group name" />
+          <Input placeholder="Enter group name" data-testid="user-edit-group-name-input" />
         </FormField>
 
         <FormField name="description" label="Description">
@@ -104,6 +105,7 @@ export function EditUserGroupDrawer() {
             placeholder="Enter group description (optional)"
             rows={3}
             maxLength={500}
+            data-testid="user-edit-group-description-textarea"
           />
         </FormField>
 
@@ -112,15 +114,15 @@ export function EditUserGroupDrawer() {
         </FormField>
 
         <FormField name="is_active" label="Active" valuePropName="checked">
-          <Switch aria-label="Set group as active or inactive" />
+          <Switch aria-label="Set group as active or inactive" data-testid="user-edit-group-active-switch" />
         </FormField>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button variant="outline" onClick={handleClose} disabled={loading}>
+          <Button variant="outline" onClick={handleClose} disabled={loading} data-testid="user-edit-group-cancel-button">
             {canEdit ? 'Cancel' : 'Close'}
           </Button>
           {canEdit && (
-            <Button type="submit" loading={loading}>
+            <Button type="submit" loading={loading} data-testid="user-edit-group-save-button">
               Save
             </Button>
           )}

@@ -73,30 +73,31 @@ export function CreateUserDrawer() {
         layout="vertical"
         onSubmit={handleCreateUser}
         disabled={!canCreate}
+        data-testid="user-create-form"
       >
         <FormField
           name="username"
           label="Username"
           required
         >
-          <Input placeholder="Enter username" />
+          <Input placeholder="Enter username" data-testid="user-create-username-input" />
         </FormField>
         <FormField
           name="email"
           label="Email"
           required
         >
-          <Input placeholder="Enter email" />
+          <Input placeholder="Enter email" data-testid="user-create-email-input" />
         </FormField>
         <FormField
           name="password"
           label="Password"
           required
         >
-          <PasswordInput placeholder="Enter password" showLabel="Show" hideLabel="Hide" />
+          <PasswordInput placeholder="Enter password" showLabel="Show" hideLabel="Hide" data-testid="user-create-password-input" />
         </FormField>
         <FormField name="display_name" label="Display Name">
-          <Input placeholder="Enter display name (optional)" />
+          <Input placeholder="Enter display name (optional)" data-testid="user-create-display-name-input" />
         </FormField>
         <FormField name="permissions" label="Permissions">
           <PermissionsField disabled={!canCreate} />
@@ -110,11 +111,12 @@ export function CreateUserDrawer() {
                 createForm.reset()
               }}
               disabled={creatingUser}
+              data-testid="user-create-cancel-button"
             >
               {canCreate ? 'Cancel' : 'Close'}
             </Button>
             {canCreate && (
-              <Button type="submit" loading={creatingUser}>
+              <Button type="submit" loading={creatingUser} data-testid="user-create-submit-button">
                 Create
               </Button>
             )}

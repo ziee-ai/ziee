@@ -119,6 +119,7 @@ export function UserGroupsSettings() {
             icon={<Plus aria-hidden="true" />}
             onClick={() => setCreateModalVisible(true)}
             aria-label="Create group"
+            data-testid="user-groups-create-button"
           />
         </Tooltip>
       </Can>
@@ -130,7 +131,7 @@ export function UserGroupsSettings() {
       {loadingGroups ? (
         <Loading />
       ) : groups.length === 0 ? (
-        <Empty description="No user groups yet" />
+        <Empty description="No user groups yet" data-testid="user-groups-empty" />
       ) : (
         // Each GroupListItem already renders its own <Card>, so
         // dropping the outer wrapping card makes every group a
@@ -148,6 +149,7 @@ export function UserGroupsSettings() {
           ))}
           <div className="flex justify-end">
             <Pagination
+              data-testid="user-groups-pagination"
               aria-label="Groups pagination"
               previousLabel="Previous page"
               nextLabel="Next page"
@@ -187,12 +189,13 @@ export function UserGroupsSettings() {
           layout="vertical"
           onSubmit={handleCreateGroup}
           disabled={!canCreate}
+          data-testid="user-create-group-form"
         >
           <FormField name="name" label="Group Name" required>
-            <Input placeholder="Enter group name" />
+            <Input placeholder="Enter group name" data-testid="user-create-group-name-input" />
           </FormField>
           <FormField name="description" label="Description">
-            <Textarea rows={3} placeholder="Enter group description" />
+            <Textarea rows={3} placeholder="Enter group description" data-testid="user-create-group-description-textarea" />
           </FormField>
           <FormField name="permissions" label="Permissions">
             <PermissionsField disabled={!canCreate} />
@@ -205,11 +208,12 @@ export function UserGroupsSettings() {
                 setCreateModalVisible(false)
                 createForm.reset()
               }}
+              data-testid="user-create-group-cancel-button"
             >
               {canCreate ? 'Cancel' : 'Close'}
             </Button>
             {canCreate && (
-              <Button type="submit">
+              <Button type="submit" data-testid="user-create-group-submit-button">
                 Create
               </Button>
             )}

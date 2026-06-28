@@ -31,6 +31,7 @@ export function GroupMembersDrawer() {
         loading={loadingGroupMembers}
         dataSource={currentGroupMembers}
         rowKey="id"
+        data-testid="user-group-members-list"
         renderItem={user => (
           <div className="flex items-start gap-3">
             <User aria-hidden="true" className="mt-0.5 shrink-0" />
@@ -38,7 +39,7 @@ export function GroupMembersDrawer() {
               <span className="font-medium">{user.username}</span>
               <div>
                 <div>{user.email}</div>
-                <Tag tone={user.is_active ? 'success' : 'error'}>
+                <Tag tone={user.is_active ? 'success' : 'error'} data-testid={`user-group-member-status-tag-${user.id}`}>
                   {user.is_active ? 'Active' : 'Inactive'}
                 </Tag>
               </div>

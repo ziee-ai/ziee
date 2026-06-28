@@ -54,6 +54,7 @@ export function GroupListItem({
           icon={<User aria-hidden="true" />}
           onClick={() => onViewMembers(group)}
           aria-label={`View members of ${group.name}`}
+          data-testid={`user-group-members-button-${group.id}`}
         >
           Members
         </Button>,
@@ -68,6 +69,7 @@ export function GroupListItem({
           icon={<Pencil aria-hidden="true" />}
           onClick={() => onEdit(group)}
           aria-label={`Edit ${group.name}`}
+          data-testid={`user-group-edit-button-${group.id}`}
         >
           Edit
         </Button>,
@@ -84,11 +86,13 @@ export function GroupListItem({
           onConfirm={() => onDelete(group.id)}
           okText="Delete"
           cancelText="Cancel"
+          data-testid={`user-group-delete-confirm-${group.id}`}
         >
           <Button
             variant="destructive"
             icon={<Trash2 aria-hidden="true" />}
             aria-label={`Delete ${group.name}`}
+            data-testid={`user-group-delete-button-${group.id}`}
           >
             Delete
           </Button>
@@ -123,7 +127,7 @@ export function GroupListItem({
   ]
 
   return (
-    <Card>
+    <Card data-testid={`user-group-card-${group.id}`}>
       <div className="flex items-start gap-3 flex-wrap">
         {/* Group Info */}
         <div className="flex-1">
@@ -132,8 +136,8 @@ export function GroupListItem({
               <Flex className="gap-2 items-center">
                 <Users aria-hidden="true" />
                 <Text className="font-medium">{group.name}</Text>
-                {group.is_system && <Tag tone="warning">System</Tag>}
-                <Badge color={group.is_active ? 'green' : 'red'} />
+                {group.is_system && <Tag tone="warning" data-testid={`user-group-system-tag-${group.id}`}>System</Tag>}
+                <Badge color={group.is_active ? 'green' : 'red'} data-testid={`user-group-active-badge-${group.id}`} />
                 <Text>{group.is_active ? 'Active' : 'Inactive'}</Text>
               </Flex>
             </div>
@@ -154,6 +158,7 @@ export function GroupListItem({
             column={2}
             className="text-[12px]"
             items={descriptionItems}
+            data-testid={`user-group-descriptions-${group.id}`}
           />
         </div>
       </div>

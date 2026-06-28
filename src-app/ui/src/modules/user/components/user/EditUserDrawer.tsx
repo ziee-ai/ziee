@@ -78,15 +78,16 @@ export function EditUserDrawer() {
         layout="vertical"
         onSubmit={handleEditUser}
         disabled={!canEdit}
+        data-testid="user-edit-form"
       >
         <FormField name="username" label="Username" required>
-          <Input placeholder="Enter username" />
+          <Input placeholder="Enter username" data-testid="user-edit-username-input" />
         </FormField>
         <FormField name="display_name" label="Display Name">
-          <Input placeholder="Enter display name (optional)" />
+          <Input placeholder="Enter display name (optional)" data-testid="user-edit-display-name-input" />
         </FormField>
         <FormField name="is_active" label="Active" valuePropName="checked">
-          <Switch />
+          <Switch data-testid="user-edit-active-switch" />
         </FormField>
         {/*
          * Email + Permissions removed from this form per security work:
@@ -104,11 +105,12 @@ export function EditUserDrawer() {
               Stores.EditUserDrawer.closeEditUserDrawer()
               editForm.reset()
             }}
+            data-testid="user-edit-cancel-button"
           >
             {canEdit ? 'Cancel' : 'Close'}
           </Button>
           {canEdit && (
-            <Button type="submit">
+            <Button type="submit" data-testid="user-edit-submit-button">
               Save
             </Button>
           )}
