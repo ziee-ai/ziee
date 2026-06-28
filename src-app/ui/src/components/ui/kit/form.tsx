@@ -139,15 +139,17 @@ export interface FormProps<T extends FieldValues> {
   /** Fixed label-column width for horizontal layout (legacy labelCol), e.g. 120 or '8rem'. */
   labelWidth?: number | string
   className?: string
+  /** Test selector — forwarded onto the <form> root (i18n-safe). */
+  'data-testid'?: string
   children: React.ReactNode
 }
 
-export function Form<T extends FieldValues>({ form, onSubmit, disabled, size, name, layout = 'vertical', labelWidth, className, children }: FormProps<T>) {
+export function Form<T extends FieldValues>({ form, onSubmit, disabled, size, name, layout = 'vertical', labelWidth, className, children, 'data-testid': testid }: FormProps<T>) {
   return (
     <FormProvider {...form}>
       <FormLayoutContext.Provider value={React.useMemo(() => ({ layout, labelWidth }), [layout, labelWidth])}>
         <KitSurfaceProvider disabled={disabled} size={size}>
-          <form name={name} onSubmit={form.handleSubmit(onSubmit)} className={className} noValidate>
+          <form name={name} onSubmit={form.handleSubmit(onSubmit)} className={className} noValidate data-testid={testid}>
             {/* KitSurface disables kit components (+ <a>/custom); <fieldset disabled>
                 also disables native + third-party form controls. `contents` keeps layout. */}
             <fieldset disabled={disabled} className="contents">
