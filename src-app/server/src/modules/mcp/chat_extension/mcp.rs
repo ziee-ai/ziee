@@ -1508,13 +1508,20 @@ impl ChatExtension for McpChatExtension {
             context.iteration
         );
 
-        // === STEP 0: Check loop settings ===
-        // Get loop settings from conversation MCP settings (or use defaults)
-        let loop_settings = crate::core::Repos
+        // Fetch this conversation's MCP settings ONCE for the whole call; both
+        // the loop-settings check (STEP 0) and the approval check below derive
+        // from it (previously two separate get_conversation_settings round-trips
+        // per after_llm_call iteration).
+        let conv_settings = crate::core::Repos
             .chat
             .mcp
             .get_conversation_settings(context.conversation_id)
-            .await?
+            .await?;
+
+        // === STEP 0: Check loop settings ===
+        // Get loop settings from conversation MCP settings (or use defaults)
+        let loop_settings = conv_settings
+            .as_ref()
             .map(|s| s.get_loop_settings())
             .unwrap_or_default();
 
@@ -1740,12 +1747,9 @@ impl ChatExtension for McpChatExtension {
             }
         }
 
-        // Check MCP approval settings for this conversation
-        let settings = crate::core::Repos
-            .chat
-            .mcp
-            .get_conversation_settings(context.conversation_id)
-            .await?;
+        // Check MCP approval settings for this conversation (reuses the single
+        // fetch from the top of after_llm_call).
+        let settings = conv_settings;
 
         // Load user defaults — used both as fallback when this conversation
         // has no per-conversation settings AND as an additional source of
