@@ -71,6 +71,8 @@ export function ThemeSettings() {
                   aria-label={`${def.label} accent`}
                   data-testid={`settingsgen-accent-${id}`}
                   onClick={() => Stores.ConfigClient.setAccentPreset(id as AccentPreset)}
+                  // genuinely-dynamic: the swatch shows the preset's own color.
+                  data-allow-custom-color
                   style={{ backgroundColor: `hsl(${def.light.primary})` }}
                   className={cn(
                     // inline bg wins over ghost's hover bg, so signal hover via scale instead.
