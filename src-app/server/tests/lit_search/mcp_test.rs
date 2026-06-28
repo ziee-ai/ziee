@@ -582,3 +582,96 @@ async fn test_select_included_partitions_decisions_via_http() {
     // p2 (exclude) + the object missing `decision` both count as excluded.
     assert_eq!(sc["excluded"], 2, "non-include decisions are excluded: {sc}");
 }
+
+#[tokio::test]
+async fn test_research_journey_search_then_dedup_then_select() {
+    // The complete research USER JOURNEY across the pure-pipeline tools:
+    //   literature_search → dedup_records (combine snowball rounds) →
+    //   select_included (turn screening decisions into the fetch id-list).
+    // This wires the REAL output of one tool into the next, rather than
+    // exercising each in isolation with hand-authored inputs.
+    let epmc = start_mock_europepmc().await;
+    let crossref = start_mock_crossref().await;
+    let server = server_with_seams(vec![
+        ("LIT_SEARCH_EUROPEPMC_ENDPOINT".to_string(), format!("{epmc}/search")),
+        ("LIT_SEARCH_CROSSREF_ENDPOINT".to_string(), format!("{crossref}/works")),
+    ])
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_journey_admin", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc", "crossref"]).await;
+
+    // 1) Search → 3 deduped records.
+    let search: serde_json::Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "literature_search", "arguments": { "query": "crispr" } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    let records = search["result"]["structuredContent"]["records"]
+        .as_array()
+        .expect("search records")
+        .clone();
+    assert_eq!(records.len(), 3, "search returns 3 deduped records: {search}");
+
+    // 2) Feed the SAME search output in as two "rounds" → dedup collapses the
+    //    6 inputs back to the 3 unique DOIs.
+    let dedup: serde_json::Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "dedup_records", "arguments": {
+            "record_sets": [records.clone(), records.clone()],
+            "query": "crispr"
+        } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    let merged = dedup["result"]["structuredContent"]["records"]
+        .as_array()
+        .expect("dedup records")
+        .clone();
+    assert_eq!(dedup["result"]["structuredContent"]["after_dedup"], 3, "6→3: {dedup}");
+    assert_eq!(merged.len(), 3);
+
+    // 3) Screen the merged union: include the first DOI, exclude the second,
+    //    then select_included turns those decisions into the fetch id-list.
+    let doi0 = merged[0]["doi"].as_str().expect("doi0").to_string();
+    let doi1 = merged[1]["doi"].as_str().expect("doi1").to_string();
+    let select: serde_json::Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "select_included", "arguments": {
+            "decisions": [
+                { "id": doi0, "decision": "include" },
+                { "id": doi1, "decision": "exclude" }
+            ]
+        } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    let sc = &select["result"]["structuredContent"];
+    let included: Vec<&str> = sc["included_ids"]
+        .as_array()
+        .expect("included_ids")
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(included, [doi0.as_str()], "only the included DOI flows to fetch: {sc}");
+    assert_eq!(sc["included"], 1, "{sc}");
+    assert_eq!(sc["excluded"], 1, "{sc}");
+}
