@@ -72,7 +72,12 @@ export default function UserLlmProvidersPage() {
 
   const handleDelete = async () => {
     if (!selectedId) return
-    await Stores.UserLlmProviders.deleteKey(selectedId)
+    try {
+      await Stores.UserLlmProviders.deleteKey(selectedId)
+      message.success('API key removed')
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Failed to remove API key')
+    }
   }
 
   const menuItems = providers.map(provider => {
