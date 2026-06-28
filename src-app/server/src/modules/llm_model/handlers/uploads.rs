@@ -1406,23 +1406,17 @@ pub async fn initiate_repository_download_internal(
                         DownloadStatus::Cancelled,
                         "Download was cancelled by user".to_string(),
                     )
-                } else if e.to_string().contains("403")
-                    || e.to_string().contains("HTTP status code: 403")
+                } else if matches!(e, GitError::AccessDenied(_))
+                    || matches!(e, GitError::HttpStatus { status: 401 | 403, .. })
+                    // Fallback for git2 smart-HTTP transport auth failures, whose
+                    // status is only available inside the opaque git2 message.
+                    || (matches!(e, GitError::Git(_))
+                        && (e.to_string().contains("403") || e.to_string().contains("401")))
                 {
                     (
                         DownloadStatus::Failed,
                         format!(
-                            "Access denied (403): Authentication failed or insufficient permissions. {}",
-                            e
-                        ),
-                    )
-                } else if e.to_string().contains("401")
-                    || e.to_string().contains("HTTP status code: 401")
-                {
-                    (
-                        DownloadStatus::Failed,
-                        format!(
-                            "Authentication required (401): Invalid or missing credentials. {}",
+                            "Access denied (401/403): Authentication failed or insufficient permissions. {}",
                             e
                         ),
                     )
