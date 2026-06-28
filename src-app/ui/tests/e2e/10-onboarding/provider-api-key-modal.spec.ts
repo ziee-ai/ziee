@@ -135,4 +135,54 @@ test.describe('Provider API key modal (chat model selector)', () => {
     const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
     await expect(modal).toHaveCount(0)
   })
+
+  // audit id 2710974b6635 — the empty-API-key guard (ProviderApiKeyModal.tsx
+  // :31-34, "API key cannot be empty") was untested; the existing test only
+  // covers the happy save.
+  test('submitting an empty API key shows a validation error and keeps the modal open', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const token = await getAdminToken(apiURL)
+    const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+
+    // A keyed provider gives a non-modal default selection.
+    const keyedRes = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: 'Keyed Provider', provider_type: 'openai', enabled: true, api_key: 'sk-keyed' }),
+    })
+    if (!keyedRes.ok) throw new Error(`keyed provider create failed: ${keyedRes.status}`)
+    const keyedId = (await keyedRes.json()).id
+    await createModelViaAPI(apiURL, token, keyedId, 'keyed-model', 'Keyed Model', 'openai')
+    await assignToAdminGroup(apiURL, auth, keyedId)
+
+    // Keyless custom provider → selecting its model opens the key modal.
+    const customRes = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: 'Keyless Custom', provider_type: 'custom', enabled: true }),
+    })
+    if (!customRes.ok) throw new Error(`custom provider create failed: ${customRes.status}`)
+    const customId = (await customRes.json()).id
+    await createModelViaAPI(apiURL, token, customId, 'custom-model', 'Custom Model')
+    await assignToAdminGroup(apiURL, auth, customId)
+
+    await goToNewChatPage(page, baseURL)
+    await page.click('[data-testid="model-selector"] .ant-select')
+    const customOption = page.getByRole('option', { name: 'Custom Model' })
+    await customOption.waitFor({ state: 'visible' })
+    await customOption.click()
+
+    const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
+    await expect(modal).toBeVisible({ timeout: 10000 })
+
+    // Click Save with an EMPTY key field → guard rejects it.
+    await modal.getByRole('button', { name: 'Save & Select Model' }).click()
+    await expect(modal.getByText('API key cannot be empty')).toBeVisible({ timeout: 5000 })
+    // The modal stays open (save did not proceed).
+    await expect(modal).toBeVisible()
+  })
 })
