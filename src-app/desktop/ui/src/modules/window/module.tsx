@@ -37,11 +37,14 @@ const windowModule: AppModule = createModule({
   initialize: () => {
     console.log('Window module initialized')
 
-    // Desktop-specific initialization
-    // e.g., set up Tauri event listeners
+    // Sync the store with the ACTUAL OS window state on startup so
+    // `isMaximized` doesn't sit at the stale `false` default until the
+    // user first toggles it (a window restored maximized from a previous
+    // session would otherwise render the wrong titlebar control). Fire-
+    // and-forget; the action swallows its own errors. Guarded on Tauri so
+    // the phone/web build (no native window) is a no-op.
     if (window.__TAURI__) {
-      // Listen for window events
-      // window.__TAURI__.event.listen('window-resized', ...)
+      void useWindowStore.getState().checkIsMaximized()
     }
   },
 })
