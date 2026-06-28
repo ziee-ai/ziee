@@ -400,6 +400,47 @@ test.describe('LLM Repositories - Edit Repository', () => {
     }
   })
 
+  test('edit drawer pre-fills the existing auth fields', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const repositoryName = `test-prefill-${Date.now()}`
+    const username = 'prefilluser123'
+    const endpoint = 'https://prefill.example.com/whoami'
+
+    await loginAsAdmin(page, baseURL)
+    await createRepository(page, baseURL, {
+      name: repositoryName,
+      url: 'https://example.com',
+      authType: 'basic_auth',
+      username,
+      password: 'secretpw',
+      authTestEndpoint: endpoint,
+    })
+
+    // Re-open the EDIT drawer — the form must rehydrate from the saved row.
+    await openEditRepositoryDrawer(page, repositoryName)
+
+    await expect(page.locator('#llm-repository-form_name')).toHaveValue(
+      repositoryName,
+    )
+    await expect(page.locator('#llm-repository-form_url')).toHaveValue(
+      'https://example.com',
+    )
+    // Username + the auth-test endpoint are pre-filled from auth_config
+    // (the password is intentionally NOT echoed for security).
+    await expect(page.locator('#llm-repository-form_username')).toHaveValue(
+      username,
+    )
+    await expect(
+      page.locator('#llm-repository-form_auth_test_api_endpoint'),
+    ).toHaveValue(endpoint)
+
+    await page.click('button:has-text("Cancel")')
+    await deleteRepository(page, repositoryName)
+  })
+
   test('Enable switch OFF in the edit drawer disables the repository', async ({
     page,
     testInfra,
@@ -600,6 +641,36 @@ test.describe('LLM Repositories - Enable/Disable Toggle', () => {
 })
 
 test.describe('LLM Repositories - Connection Testing', () => {
+  test('the built-in Hugging Face repo exposes a working Test button', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Mock the probe so the built-in repo's Test button is deterministic
+    // (no real network call to huggingface.co).
+    await page.route(/\/api\/llm-repositories(\/[0-9a-f-]+)?\/test$/, async (route, req) => {
+      if (req.method() === 'POST') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'Connection successful' }),
+        })
+      }
+      return route.continue()
+    })
+
+    await goToRepositoriesPage(page, baseURL)
+    await waitForRepositoriesPageLoad(page)
+
+    // The seeded built-in repo shows a Test button (canEdit gates it on, even
+    // for built-ins). Clicking it runs the health probe → success toast.
+    await assertTestConnectionButtonVisible(page, 'Hugging Face Hub')
+    await clickTestConnectionFromList(page, 'Hugging Face Hub')
+    await waitForConnectionTestResult(page, 'success')
+  })
+
   // Get HuggingFace API key from environment
   const HF_API_KEY = process.env.HUGGINGFACE_API_KEY || ''
 
