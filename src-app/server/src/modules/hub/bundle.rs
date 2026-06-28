@@ -1152,4 +1152,46 @@ mod tests {
         assert!(!is_safe_bundle_rel("evil/x/1.0.tar.gz"));
         assert!(!is_safe_bundle_rel("skills/foo/1.0.json"));
     }
+
+    /// A bundle whose bytes don't hash to the manifest's declared sha256 is
+    /// REJECTED with BUNDLE_SHA256_MISMATCH and nothing is extracted.
+    #[tokio::test]
+    async fn seed_bundle_sha256_mismatch_is_rejected() {
+        let body = build_tar_gz(
+            &[("SKILL.md", 0o644, b"---\nname: x\ndescription: y\n---\nbody")],
+            None,
+        );
+        // Declare a deliberately wrong sha (64 hex zeroes).
+        let bundle = synth_bundle(&"0".repeat(64), body.len() as u64, 1);
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("extracted");
+
+        let err = extract_from_seed_bytes(&bundle, &body, &target, BundleKind::Skill)
+            .await
+            .expect_err("sha256 mismatch must be rejected");
+        assert!(
+            format!("{err:?}").contains("sha256 mismatch")
+                || format!("{err:?}").contains("BUNDLE_SHA256_MISMATCH"),
+            "error must name the sha256 mismatch: {err:?}"
+        );
+        assert!(
+            !target.join("SKILL.md").exists(),
+            "nothing must be extracted on a sha mismatch"
+        );
+    }
+
+    /// Bytes that pass the sha256 check but are NOT a valid tar.gz fail in the
+    /// extraction step (the decode/extract error path).
+    #[tokio::test]
+    async fn seed_bundle_corrupt_archive_fails_extraction() {
+        let garbage = b"this is not a gzip tarball".to_vec();
+        let sha = hex_sha256(&garbage); // matches, so we pass the sha gate
+        let bundle = synth_bundle(&sha, garbage.len() as u64, 1);
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("extracted");
+
+        let res =
+            extract_from_seed_bytes(&bundle, &garbage, &target, BundleKind::Skill).await;
+        assert!(res.is_err(), "a corrupt (non-tar.gz) archive must fail to extract");
+    }
 }
