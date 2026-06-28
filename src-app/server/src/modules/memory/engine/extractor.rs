@@ -89,13 +89,12 @@ async fn run(
     // covers spam-via-many-short-conversations evasion since memories
     // accumulate globally per user, not per conversation. Plan §11.
     //
-    // SOFT-CAP (audit R7-#3): the count-then-insert window means two
-    // concurrent extractions can each see today_count = quota-1 and both
-    // insert (total = quota+1). Acceptable — the quota is a brake against
-    // casual spam, not a determined-attacker hard ceiling. The real
-    // cost gate is the LLM API spend, not the row count. A hard-
-    // enforce variant would need a BEFORE INSERT trigger or
-    // SELECT FOR UPDATE NOWAIT; both add cost for marginal benefit.
+    // Per-user daily extraction quota. The HARD enforcement is atomic at
+    // insert time (see `apply_add` → `insert_extraction_under_quota`, which
+    // takes a per-user advisory lock + counts inside the same tx, closing the
+    // former count-then-insert TOCTOU — audit R7-#3). This pre-check is a cheap
+    // early-skip so we don't pay for the extraction LLM call when the user is
+    // already at quota; the per-insert guard is what actually enforces it.
     let daily_quota = i64::from(admin.daily_extraction_quota);
     let pool = Repos.memory.pool_clone();
     let today_count = sqlx::query_scalar!(
@@ -197,6 +196,7 @@ async fn run(
             "ADD" => apply_add(
                 &pool,
                 user_id,
+                daily_quota,
                 op.content,
                 op.importance,
                 op.kind,
@@ -230,9 +230,11 @@ async fn run(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn apply_add(
     pool: &PgPool,
     user_id: Uuid,
+    daily_quota: i64,
     content: Option<String>,
     importance: i16,
     kind: String,
@@ -250,12 +252,15 @@ async fn apply_add(
     } else {
         "other".to_string()
     };
-    let new_row = Repos
+    // Atomic per-user quota enforcement (closes the TOCTOU): returns None when
+    // the user is already at the daily extraction quota, so a burst of
+    // concurrent extractions can't push the user past it.
+    let new_row = match Repos
         .memory
-        .insert(
+        .insert_extraction_under_quota(
             user_id,
+            daily_quota,
             &content,
-            "extraction",
             importance.clamp(0, 100),
             &kind,
             &serde_json::json!({}),
@@ -263,10 +268,18 @@ async fn apply_add(
             // Background extraction stays user-global (scope-aware extraction is
             // a documented future option; only explicit `remember` is scoped).
             "user",
-            None,
-            None,
         )
-        .await?;
+        .await?
+    {
+        Some(row) => row,
+        None => {
+            tracing::info!(
+                "memory.extract: user {} hit daily extraction quota mid-batch — skipping ADD",
+                user_id
+            );
+            return Ok(());
+        }
+    };
 
     // Embed + write back. The model NAME (not UUID) goes into
     // embedding_model so the re-embed worker can compare it cheaply
