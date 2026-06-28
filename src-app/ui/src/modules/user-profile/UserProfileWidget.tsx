@@ -58,12 +58,14 @@ function SidebarItem({
         {icon}
       </div>
       <span
+        title={label}
         style={{
           fontSize: token.fontSize,
           opacity: collapsed ? 0 : 1,
           maxWidth: collapsed ? 0 : 200,
           overflow: 'hidden',
           whiteSpace: 'nowrap',
+          textOverflow: 'ellipsis',
           transition: 'opacity 200ms ease-out, max-width 200ms ease-out',
         }}
       >
