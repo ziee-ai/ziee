@@ -91,6 +91,22 @@ test.describe('Settings - Profile (self-service)', () => {
     await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible()
   })
 
+  test('shows the read-only account info card', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    const user = await loginAsFreshUser(page, baseURL, apiURL, 'acct')
+    await gotoProfile(page, baseURL)
+
+    // The account-info Descriptions surface the user's email + temporal stats.
+    await expect(page.getByText(user.email)).toBeVisible()
+    await expect(page.getByText('Member since')).toBeVisible()
+    await expect(page.getByText('Last login')).toBeVisible()
+    // A fresh local registration is not email-verified.
+    await expect(page.getByText(/Email (verified|unverified)/)).toBeVisible()
+  })
+
   test('edits display name and persists across reload', async ({
     page,
     testInfra,
