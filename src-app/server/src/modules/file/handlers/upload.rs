@@ -210,22 +210,30 @@ pub async fn upload_file_inner(
     }
 
     // Create database record
-    let file = Repos.file
-        .create(FileCreateData {
-            id: file_id,
-            user_id,
-            filename,
-            file_size: file_data.len() as i64,
-            mime_type,
-            checksum: Some(checksum),
-            has_thumbnail: !processing_result.thumbnails.is_empty(),
-            preview_page_count: processing_result.images.len() as i32,
-            text_page_count: processing_result.text_pages.len() as i32,
-            processing_metadata,
-            source_message_id: None,
-            created_by: "user".to_string(),
-        })
-        .await?;
+    let file_create = FileCreateData {
+        id: file_id,
+        user_id,
+        filename,
+        file_size: file_data.len() as i64,
+        mime_type,
+        checksum: Some(checksum),
+        has_thumbnail: !processing_result.thumbnails.is_empty(),
+        preview_page_count: processing_result.images.len() as i32,
+        text_page_count: processing_result.text_pages.len() as i32,
+        processing_metadata,
+        source_message_id: None,
+        created_by: "user".to_string(),
+    };
+    // Atomic quota guard (closes the TOCTOU between the pre-check above and the
+    // insert). On a lost race the blob is already on disk — remove it so a
+    // quota rejection doesn't leave an orphan.
+    let file = match Repos.file.create_with_quota(file_create, PER_USER_STORAGE_QUOTA_BYTES).await {
+        Ok(f) => f,
+        Err(e) => {
+            let _ = storage.delete_all(user_id, file_id).await;
+            return Err(e);
+        }
+    };
 
     // Notify the owner's other devices a new file exists (I3). Emitted from the
     // shared core so BOTH the direct `/files/upload` and the project

@@ -92,6 +92,105 @@ impl FileRepository {
             .ok_or_else(|| AppError::internal_error("file vanished after create"))
     }
 
+    /// Like `create`, but enforces the per-user storage quota atomically.
+    /// A per-user transaction-scoped advisory lock serializes concurrent
+    /// uploads so two can't both pass a separate count-then-insert check and
+    /// overshoot the quota (closes the TOCTOU in the upload handler). Returns
+    /// `STORAGE_QUOTA_EXCEEDED` (the handler's pre-check is the fast path).
+    pub async fn create_with_quota(
+        &self,
+        data: FileCreateData,
+        quota_bytes: i64,
+    ) -> Result<File, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+
+        // Serialize per user for the lifetime of the transaction.
+        sqlx::query!(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+            data.user_id.to_string()
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let used: i64 = sqlx::query_scalar!(
+            r#"SELECT COALESCE(SUM(file_size), 0)::BIGINT AS "total"
+               FROM files WHERE user_id = $1"#,
+            data.user_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?
+        .unwrap_or(0);
+
+        if used.saturating_add(data.file_size) > quota_bytes {
+            return Err(AppError::bad_request(
+                "STORAGE_QUOTA_EXCEEDED",
+                format!(
+                    "Upload would exceed the per-user storage quota \
+                     ({used} bytes already used + {} bytes incoming)",
+                    data.file_size
+                ),
+            ));
+        }
+
+        sqlx::query!(
+            r#"
+            INSERT INTO files (
+                id, user_id, filename, file_size, mime_type, checksum,
+                has_thumbnail, preview_page_count, text_page_count,
+                processing_metadata, created_by, current_version_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $1)
+            "#,
+            data.id,
+            data.user_id,
+            data.filename,
+            data.file_size,
+            data.mime_type,
+            data.checksum,
+            data.has_thumbnail,
+            data.preview_page_count,
+            data.text_page_count,
+            data.processing_metadata,
+            data.created_by,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO file_versions (
+                id, file_id, version, is_head, blob_version_id,
+                file_size, mime_type, checksum, has_thumbnail,
+                preview_page_count, text_page_count, processing_metadata,
+                source_message_id, created_by
+            )
+            VALUES ($1, $1, 1, true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            "#,
+            data.id,
+            data.file_size,
+            data.mime_type,
+            data.checksum,
+            data.has_thumbnail,
+            data.preview_page_count,
+            data.text_page_count,
+            data.processing_metadata,
+            data.source_message_id,
+            data.created_by,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        tx.commit().await.map_err(AppError::database_error)?;
+
+        self.get_by_id(data.id)
+            .await?
+            .ok_or_else(|| AppError::internal_error("file vanished after create"))
+    }
+
     /// Link a file to the workflow run that produced it (A3). Lets the
     /// run-delete cascade (A5) find a run's files, and the run history surface
     /// them. Nullable FK (`ON DELETE SET NULL`) — deleting the run keeps the
