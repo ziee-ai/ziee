@@ -220,3 +220,63 @@ async fn conversation_run_still_works_as_a_regression() {
     let final_run = poll_run(&server, &user.token, run_id).await;
     assert_eq!(final_run["status"], "completed", "conversation run completes: {final_run}");
 }
+
+#[tokio::test]
+async fn dispatched_llm_step_accrues_token_cost_on_run_row() {
+    // Cost tracking (audit all-75e02bfb7833): a workflow whose `llm` step is
+    // NOT mocked actually dispatches to the model, and the step's real token
+    // usage is accumulated onto the run row's `total_tokens` cost field (the
+    // `persist_step_meta` `total_tokens = total_tokens + $4` accumulator fed by
+    // the runner's `tokens_used`).
+    //
+    // Every other run test mocks all llm steps via the `mocks` map, which
+    // short-circuits dispatch (`run_mock_step`) and accrues ZERO tokens; and
+    // `status_machine::persist_step_meta_merges_steps_and_accumulates_tokens`
+    // only drives the repository fn with SYNTHETIC deltas. So the full
+    // runner → dispatch → `tokens_used` → run-row `total_tokens` path — i.e.
+    // that the cost field is populated from real step usage — was untested.
+    let server = plain_server().await;
+    let user = workflow_user(&server, "wf_cost_tokens").await;
+    let (_stub, model_id) = stub_model_for(&server, &user.user_id).await;
+
+    let wf = import_dev_workflow(&server, &user.token, "cost-tracking", SIMPLE_OK_YAML).await;
+    let wf_id = wf["id"].as_str().unwrap();
+
+    // NO `mocks` map → the sole `gen` llm step really dispatches to the stub
+    // model, which returns a `usage` payload (total_tokens > 0). A mocked step
+    // would short-circuit dispatch and accrue zero, hiding the cost path.
+    let run = run_workflow(
+        &server,
+        &user.token,
+        wf_id,
+        json!({
+            "inputs": { "topic": "workflow cost tracking" },
+            "model_id": model_id.to_string(),
+        }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().unwrap()).unwrap();
+
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(
+        final_run["status"], "completed",
+        "dispatched (un-mocked) run completes: {final_run}"
+    );
+
+    // The run row's cost field must be populated from the real step usage —
+    // a strictly-positive token count proves the runner accrued the dispatched
+    // step's usage (not the 0 a mocked/short-circuited step would leave).
+    let pool = db_pool(&server).await;
+    let total_tokens: i64 =
+        sqlx::query_scalar("SELECT total_tokens FROM workflow_runs WHERE id = $1")
+            .bind(run_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read run-row total_tokens");
+    pool.close().await;
+    assert!(
+        total_tokens > 0,
+        "a dispatched llm step must accrue token cost on the run row \
+         (got total_tokens={total_tokens})"
+    );
+}
