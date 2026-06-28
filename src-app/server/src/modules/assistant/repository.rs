@@ -27,6 +27,30 @@ impl AssistantRepository {
         create_assistant(&self.pool, user_id, request).await
     }
 
+    /// Atomically delete the given prior-install assistant ids and create the
+    /// new one, in ONE transaction — the hub "replace existing install" path.
+    /// Previously these were separate awaits, so a create failure after the
+    /// deletes left the user with NO assistant. Returns the created assistant
+    /// plus the ids that were actually deleted (so the caller can emit
+    /// `assistant.deleted` events AFTER the commit).
+    pub async fn replace_from_hub(
+        &self,
+        existing_ids: &[Uuid],
+        user_id: Option<Uuid>,
+        request: CreateAssistantRequest,
+    ) -> Result<(Assistant, Vec<Uuid>), AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+        let mut deleted = Vec::new();
+        for id in existing_ids {
+            if delete_assistant_tx(&mut tx, *id).await? {
+                deleted.push(*id);
+            }
+        }
+        let assistant = create_assistant_tx(&mut tx, user_id, request).await?;
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok((assistant, deleted))
+    }
+
     pub async fn list(
         &self,
         user_id: Option<Uuid>,
@@ -120,21 +144,34 @@ pub async fn create_assistant(
     user_id: Option<Uuid>,
     request: CreateAssistantRequest,
 ) -> Result<Assistant, AppError> {
+    // Start a transaction to handle default assistant logic.
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+    let assistant = create_assistant_tx(&mut tx, user_id, request).await?;
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(assistant)
+}
+
+/// Transaction-scoped assistant create. Runs the clear-defaults UPDATE + the
+/// INSERT on the caller's connection so it can be composed atomically with
+/// other writes (e.g. the hub "replace existing install" delete-then-create).
+/// The caller owns begin/commit.
+pub async fn create_assistant_tx(
+    conn: &mut sqlx::PgConnection,
+    user_id: Option<Uuid>,
+    request: CreateAssistantRequest,
+) -> Result<Assistant, AppError> {
     let assistant_id = Uuid::new_v4();
     let is_default = request.is_default.unwrap_or(false);
     let is_template = request.is_template.unwrap_or(false);
     let enabled = request.enabled.unwrap_or(true);
     let parameters_json = request.parameters_to_json();
 
-    // Start a transaction to handle default assistant logic
-    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
-
     // If this assistant is being set as default, unset all other defaults for the same context
     if is_default {
         if is_template {
             // For template assistants, unset all other default templates
             sqlx::query!("UPDATE assistants SET is_default = false WHERE is_template = true")
-                .execute(&mut *tx)
+                .execute(&mut *conn)
                 .await
                 .map_err(AppError::database_error)?;
         } else if let Some(uid) = user_id {
@@ -143,7 +180,7 @@ pub async fn create_assistant(
                 "UPDATE assistants SET is_default = false WHERE created_by = $1 AND is_template = false",
                 uid
             )
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await
             .map_err(AppError::database_error)?;
         }
@@ -163,7 +200,7 @@ pub async fn create_assistant(
         is_default,
         enabled
     )
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *conn)
     .await
     .map_err(AppError::database_error)?;
 
@@ -181,10 +218,21 @@ pub async fn create_assistant(
         row.updated_at,
     );
 
-    // Commit the transaction
-    tx.commit().await.map_err(AppError::database_error)?;
-
     Ok(assistant)
+}
+
+/// Transaction-scoped assistant delete. Like `delete_assistant` but runs on the
+/// caller's connection. Returns whether a row was actually deleted (the hub
+/// replace path tolerates an already-gone prior install).
+pub async fn delete_assistant_tx(
+    conn: &mut sqlx::PgConnection,
+    id: Uuid,
+) -> Result<bool, AppError> {
+    let result = sqlx::query!("DELETE FROM assistants WHERE id = $1", id)
+        .execute(&mut *conn)
+        .await
+        .map_err(AppError::database_error)?;
+    Ok(result.rows_affected() > 0)
 }
 
 /// Get assistant by ID
