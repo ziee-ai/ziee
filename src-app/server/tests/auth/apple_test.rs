@@ -381,3 +381,110 @@ async fn test_apple_test_connection_succeeds_for_valid_config() {
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["ok"], json!(true), "test_connection must succeed");
 }
+
+/// SECURITY: when the signed id_token already carries a verified email, an
+/// attacker-supplied `user` JSON email (POST body, NOT signed) must be IGNORED
+/// — otherwise a captured (code, state) pair could rebind a victim's email.
+#[tokio::test]
+async fn test_apple_user_json_email_cannot_override_verified_id_token_email() {
+    let test_server = crate::common::TestServer::start().await;
+    let apple_mock = AppleMockServer::start().await;
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .unwrap();
+    let services_id = "com.example.app";
+    let provider_id =
+        seed_apple_provider(&pool, "apple-spoof", services_id, &apple_mock).await;
+
+    let (state, nonce) = init_apple_flow(&test_server, "apple-spoof").await;
+    let now = Utc::now().timestamp();
+    let id_token = apple_mock.sign_id_token(&json!({
+        "iss": apple_mock.base_url,
+        "aud": services_id,
+        "sub": "001234.spoofspoofspoofspoofspoof.0001",
+        "iat": now,
+        "exp": now + 3600,
+        "email": "victim@privaterelay.appleid.com",   // verified by the id_token
+        "email_verified": "true",
+        "is_private_email": "true",
+        "nonce": nonce,
+    }));
+    apple_mock.queue_token_response(&id_token).await;
+
+    // Attacker supplies a different email in the unsigned `user` blob.
+    let resp = post_apple_callback(
+        &test_server,
+        "apple-spoof",
+        "spoof-code",
+        &state,
+        Some(r#"{"name":{"firstName":"A","lastName":"B"},"email":"attacker@evil.com"}"#),
+    )
+    .await;
+    assert!(resp.status().is_redirection(), "callback should still succeed");
+
+    let row = sqlx::query!(
+        r#"SELECT l.external_email
+           FROM user_auth_links l WHERE l.provider_id = $1"#,
+        provider_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("link should exist");
+    assert_eq!(
+        row.external_email.as_deref(),
+        Some("victim@privaterelay.appleid.com"),
+        "the verified id_token email must win; the unsigned user-JSON email must be ignored"
+    );
+}
+
+/// First-login-only private-relay path: when the id_token carries NO email,
+/// a relay-shaped email from the `user` JSON IS accepted (Apple only sends the
+/// `user` blob on the first authorization).
+#[tokio::test]
+async fn test_apple_user_json_relay_email_accepted_when_id_token_has_none() {
+    let test_server = crate::common::TestServer::start().await;
+    let apple_mock = AppleMockServer::start().await;
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .unwrap();
+    let services_id = "com.example.app";
+    let provider_id =
+        seed_apple_provider(&pool, "apple-relay", services_id, &apple_mock).await;
+
+    let (state, nonce) = init_apple_flow(&test_server, "apple-relay").await;
+    let now = Utc::now().timestamp();
+    // id_token deliberately omits `email`.
+    let id_token = apple_mock.sign_id_token(&json!({
+        "iss": apple_mock.base_url,
+        "aud": services_id,
+        "sub": "001234.relayrelayrelayrelay.0002",
+        "iat": now,
+        "exp": now + 3600,
+        "nonce": nonce,
+    }));
+    apple_mock.queue_token_response(&id_token).await;
+
+    let resp = post_apple_callback(
+        &test_server,
+        "apple-relay",
+        "relay-code",
+        &state,
+        Some(r#"{"name":{"firstName":"R","lastName":"E"},"email":"newuser@privaterelay.appleid.com"}"#),
+    )
+    .await;
+    assert!(resp.status().is_redirection(), "callback should succeed");
+
+    let row = sqlx::query!(
+        r#"SELECT l.external_email
+           FROM user_auth_links l WHERE l.provider_id = $1"#,
+        provider_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("link should exist");
+    assert_eq!(
+        row.external_email.as_deref(),
+        Some("newuser@privaterelay.appleid.com"),
+        "a relay email from the first-auth user JSON must be accepted when the id_token had none"
+    );
+}
