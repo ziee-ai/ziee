@@ -1,4 +1,4 @@
-import { ImportOutlined, ReadOutlined } from '@ant-design/icons'
+import { BookOpen, Import as ImportIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Button, Card, Empty, Flex, Space, Text } from '@/components/ui'
 import { Permissions } from '@/api-client/types'
@@ -29,7 +29,7 @@ export function SkillsList() {
         <Flex justify="end">
           <Can permission={Permissions.SkillsInstall}>
             <Button
-              icon={<ImportOutlined />}
+              icon={<ImportIcon />}
               onClick={() => setImportOpen(true)}
             >
               Import
@@ -52,7 +52,7 @@ export function SkillsList() {
               <Flex justify="between" align="start" className="gap-3">
                 <Space direction="vertical" className="min-w-0" size="small">
                   <Space size={8}>
-                    <ReadOutlined />
+                    <BookOpen />
                     <Text strong>{skill.display_name || skill.name}</Text>
                     <SkillScopeBadge scope={skill.scope} isDev={skill.is_dev} />
                   </Space>

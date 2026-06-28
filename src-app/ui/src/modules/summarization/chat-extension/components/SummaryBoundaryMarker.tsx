@@ -1,6 +1,6 @@
+import { Shrink, ChevronRight, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { Card, Separator, Flex, Text } from '@/components/ui'
-import { CompressOutlined, RightOutlined, DownOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
 
@@ -61,14 +61,14 @@ export function SummaryBoundaryMarker() {
             }
           }}
         >
-          <CompressOutlined className="opacity-70" />
+          <Shrink className="opacity-70" />
           <Text type="secondary" className="text-xs">
             Earlier {summary.message_count} messages condensed into a summary
           </Text>
           {expanded ? (
-            <DownOutlined className="text-[10px] opacity-50" />
+            <ChevronDown className="text-[10px] opacity-50" />
           ) : (
-            <RightOutlined className="text-[10px] opacity-50" />
+            <ChevronRight className="text-[10px] opacity-50" />
           )}
         </Flex>
       </Separator>

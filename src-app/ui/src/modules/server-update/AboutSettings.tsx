@@ -3,7 +3,7 @@
  * Notification only — updating is a manual operator action (install.sh).
  */
 
-import { ReloadOutlined } from '@ant-design/icons'
+import { RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import {
@@ -125,7 +125,7 @@ export default function AboutSettings() {
 
         <Button
           className="mt-2"
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           loading={loading}
           onClick={() => Stores.ServerUpdate.loadStatus()}
         >

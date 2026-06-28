@@ -1,6 +1,6 @@
+import { Shrink, FileText, EyeOff } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Tooltip, Tag, Dropdown, message } from '@/components/ui'
-import { CompressOutlined, FileTextOutlined, EyeInvisibleOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 
@@ -108,13 +108,13 @@ export function SummarizationStatusPill() {
     {
       key: 'inherit',
       label: 'Inherit (follow deployment setting)',
-      icon: <CompressOutlined />,
+      icon: <Shrink />,
     },
-    { key: 'on', label: 'Always summarize this conversation', icon: <FileTextOutlined /> },
+    { key: 'on', label: 'Always summarize this conversation', icon: <FileText /> },
     {
       key: 'off',
       label: 'Never summarize this conversation',
-      icon: <EyeInvisibleOutlined />,
+      icon: <EyeOff />,
     },
   ]
 
@@ -139,7 +139,7 @@ export function SummarizationStatusPill() {
         <Tag
           tone={toneByMode[mode]}
           icon={
-            mode === 'off' ? <EyeInvisibleOutlined /> : <CompressOutlined />
+            mode === 'off' ? <EyeOff /> : <Shrink />
           }
           className="cursor-pointer m-0"
         >

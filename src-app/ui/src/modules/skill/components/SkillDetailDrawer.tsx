@@ -1,4 +1,4 @@
-import { DeleteOutlined } from '@ant-design/icons'
+import { Trash2 } from 'lucide-react'
 import {
   Button,
   Checkbox,
@@ -184,7 +184,7 @@ export function SkillDetailDrawer() {
             cancelText="Cancel"
             okButtonProps={{ danger: true }}
           >
-            <Button variant="destructive" size="sm" icon={<DeleteOutlined />}>
+            <Button variant="destructive" size="sm" icon={<Trash2 />}>
               Delete
             </Button>
           </Confirm>

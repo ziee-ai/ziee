@@ -1,4 +1,4 @@
-import { EditOutlined } from '@ant-design/icons'
+import { Pencil } from 'lucide-react'
 import {
   App,
   Button,
@@ -89,7 +89,7 @@ export function AdminSkillGroupAssignment({
               <Button
                 type="text"
                 size="small"
-                icon={<EditOutlined aria-hidden="true" />}
+                icon={<Pencil aria-hidden="true" />}
                 onClick={e => {
                   e.stopPropagation()
                   void startEdit()

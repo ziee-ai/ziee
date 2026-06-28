@@ -1,4 +1,4 @@
-import { InboxOutlined } from '@ant-design/icons'
+import { Inbox } from 'lucide-react'
 import type { UploadFile } from 'antd'
 import { Alert, App, Button, Modal, Space, Typography, Upload } from 'antd'
 import { useState } from 'react'
@@ -125,7 +125,7 @@ export function ImportSkillDialog({
           }}
         >
           <p className="ant-upload-drag-icon">
-            <InboxOutlined />
+            <Inbox />
           </p>
           <p className="ant-upload-text">
             Drop a skill bundle (.tar.gz) or SKILL.md here

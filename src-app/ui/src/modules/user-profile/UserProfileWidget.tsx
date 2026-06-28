@@ -1,5 +1,5 @@
 import { Dropdown, Tooltip } from '@/components/ui'
-import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
+import { LogOut, User } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -64,7 +64,7 @@ export function UserProfileWidget() {
       ? [
           {
             key: 'profile',
-            icon: <UserOutlined />,
+            icon: <User />,
             label: 'Profile',
             onClick: () => navigate('/settings/profile'),
           },
@@ -72,7 +72,7 @@ export function UserProfileWidget() {
       : []),
     {
       key: 'logout',
-      icon: <LogoutOutlined />,
+      icon: <LogOut />,
       label: 'Logout',
       onClick: async () => await Stores.Auth.logoutUser(),
     },
@@ -82,7 +82,7 @@ export function UserProfileWidget() {
     <Dropdown items={items} side="top" align="start">
       <div data-testid="user-profile-widget">
         <SidebarItem
-          icon={<UserOutlined />}
+          icon={<User />}
           label={user.username}
           collapsed={isSidebarCollapsed}
         />

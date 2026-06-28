@@ -1,4 +1,4 @@
-import { CompressOutlined } from '@ant-design/icons'
+import { Shrink } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -41,7 +41,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'summarization-admin',
-        icon: <CompressOutlined />,
+        icon: <Shrink />,
         label: 'Summarization',
         path: 'summarization-admin',
         order: 65,

@@ -1,4 +1,4 @@
-import { ImportOutlined } from '@ant-design/icons'
+import { Import } from 'lucide-react'
 import { Button, Card, Empty, Flex, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
@@ -29,7 +29,7 @@ export function AdminSkillsPage() {
         <Flex justify="end">
           <Can permission={Permissions.SkillsManageSystem}>
             <Button
-              icon={<ImportOutlined />}
+              icon={<Import />}
               onClick={() => setImportOpen(true)}
             >
               Import
