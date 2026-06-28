@@ -134,3 +134,30 @@ fn set_executable(path: &PathBuf) -> Result<(), AppError> {
     })?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The embedded-binary extraction path (ensure_biomcp_extracted) is
+    /// build-conditioned (a real binary vs a zero-byte stub), so assert its
+    /// fail-soft CONTRACT either way: extraction succeeds IFF a real binary is
+    /// embedded; on success the file is written to disk with exactly the embedded
+    /// bytes. Drives the real fn (writes to the ambient app_data_dir; idempotent).
+    #[test]
+    fn ensure_biomcp_extracted_matches_availability() {
+        let avail = biomcp_available();
+        match ensure_biomcp_extracted() {
+            Ok(p) => {
+                assert!(avail, "extraction succeeded → a real binary must be embedded");
+                assert!(p.exists(), "the extracted binary must exist on disk");
+                let len = std::fs::metadata(p).unwrap().len() as usize;
+                assert_eq!(len, binaries::BIOMCP.len(), "on-disk size matches the embedded bytes");
+                assert!(len > 0, "a real embedded binary is non-empty");
+            }
+            Err(_) => {
+                assert!(!avail, "extraction fails ONLY for a stub build (no real binary)");
+            }
+        }
+    }
+}
