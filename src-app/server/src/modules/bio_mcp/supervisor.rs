@@ -352,7 +352,38 @@ pub async fn shutdown() {
 
 #[cfg(test)]
 mod tests {
-    use super::fingerprint;
+    use super::{fingerprint, is_unsafe_env_name};
+
+    /// The loader-hijack / whitelist-override env filter (security-critical: an
+    /// admin must not inject these via the bio row's headers).
+    #[test]
+    fn is_unsafe_env_name_blocks_loader_and_whitelist_vars() {
+        // Whitelist vars (case-insensitive) are blocked.
+        for n in ["PATH", "path", "Home", "LANG", "lc_all", "TZ"] {
+            assert!(is_unsafe_env_name(n), "{n} must be rejected");
+        }
+        // Dynamic-loader hijack prefixes (any case) are blocked.
+        for n in [
+            "LD_PRELOAD",
+            "ld_library_path",
+            "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES",
+            "dyld_library_path",
+        ] {
+            assert!(is_unsafe_env_name(n), "{n} must be rejected");
+        }
+        // Legitimate upstream API keys are allowed.
+        for n in [
+            "NCBI_API_KEY",
+            "S2_API_KEY",
+            "OPENFDA_API_KEY",
+            "ONCOKB_TOKEN",
+            "PATHOLOGY", // not exactly PATH; substring must not match
+            "MYLD_KEY",  // does not start with LD_ / DYLD_
+        ] {
+            assert!(!is_unsafe_env_name(n), "{n} must be allowed");
+        }
+    }
 
     #[test]
     fn fingerprint_is_stable_and_value_sensitive() {
