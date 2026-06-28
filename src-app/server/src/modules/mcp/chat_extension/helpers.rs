@@ -947,6 +947,44 @@ mod tests {
         );
     }
 
+    /// Stream-close AT SEND TIME: the chat stream is already gone before the
+    /// elicitation form can be surfaced (the receiver was dropped before the
+    /// tool ran). The `sse_tx.send(...).is_err()` guard must short-circuit —
+    /// BEFORE the select — and return the DISTINCT "the chat stream closed"
+    /// marker (non-error), not the select-arm "cancelled or timed out" one.
+    /// This is the send-time-close branch the mid-wait test (above) explicitly
+    /// does NOT cover, and it must never block on the 300s timeout.
+    #[tokio::test]
+    async fn ask_user_send_time_stream_close_returns_distinct_marker() {
+        use tokio::sync::mpsc;
+        let (tx, rx) =
+            mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
+        // Drop the receiver FIRST so the very first form `send` fails.
+        drop(rx);
+
+        // No wall-clock wait: if this hangs, the send-guard regressed into the
+        // select (which would block on ASK_USER_ELICITATION_TIMEOUT = 300s).
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            run_ask_user_elicitation(
+                serde_json::json!({ "message": "Pick a color", "schema": { "type": "object" } }),
+                None,
+                None,
+                Some(tx),
+                None,
+            ),
+        )
+        .await
+        .expect("send-time close must return immediately, never block on the timeout");
+
+        let (content, is_error) = tool_result_parts(&result);
+        assert!(!is_error, "send-time stream-close is not a tool failure");
+        assert!(
+            content.contains("chat stream closed"),
+            "send-time close must use the distinct 'chat stream closed' marker; got: {content}"
+        );
+    }
+
     fn make_mcp_tool(name: &str) -> McpToolDef {
         McpToolDef {
             name: name.to_string(),
