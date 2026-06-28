@@ -10,6 +10,7 @@ import {
   createRepository,
   deleteRepository,
   toggleRepositoryStatus,
+  openEditRepositoryDrawer,
   assertRepositoryExists,
   assertRepositoryNotExists,
   assertRepositoryEnabled,
@@ -397,6 +398,38 @@ test.describe('LLM Repositories - Edit Repository', () => {
       // Close drawer
       await page.click('button:has-text("Cancel")')
     }
+  })
+
+  test('Enable switch OFF in the edit drawer disables the repository', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const repositoryName = `test-edit-disable-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createRepository(page, baseURL, {
+      name: repositoryName,
+      url: 'https://example.com',
+      authType: 'none',
+      enabled: true,
+    })
+    await assertRepositoryEnabled(page, repositoryName)
+
+    // Open the EDIT drawer and flip the Enable switch OFF. Edit-mode OFF is a
+    // minimal PUT (enabled:false, no connection probe) → "Repository disabled".
+    await openEditRepositoryDrawer(page, repositoryName)
+    const enableSwitch = page.locator('#llm-repository-form_enabled')
+    await expect(enableSwitch).toBeChecked()
+    await enableSwitch.click()
+    await expect(
+      page.locator('.ant-message-success', { hasText: 'Repository disabled' }),
+    ).toBeVisible({ timeout: 10000 })
+
+    await page.click('button:has-text("Cancel")')
+    await assertRepositoryDisabled(page, repositoryName)
+
+    await deleteRepository(page, repositoryName)
   })
 })
 
