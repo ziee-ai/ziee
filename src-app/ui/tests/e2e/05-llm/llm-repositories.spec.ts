@@ -536,6 +536,34 @@ test.describe('LLM Repositories - Enable/Disable Toggle', () => {
     // Cleanup
     await deleteRepository(page, repositoryName)
   })
+
+  test('should create a DISABLED repository and enable it afterwards', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const repositoryName = `test-disabled-create-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+
+    // Create with the enabled switch OFF — the repo lands disabled.
+    await createRepository(page, baseURL, {
+      name: repositoryName,
+      url: 'https://example.com',
+      authType: 'none',
+      enabled: false,
+    })
+    await assertRepositoryExists(page, repositoryName)
+    await assertRepositoryDisabled(page, repositoryName)
+
+    // Later enable it from the list toggle.
+    await toggleRepositoryStatus(page, repositoryName)
+    await page.waitForTimeout(500)
+    await assertRepositoryEnabled(page, repositoryName)
+
+    // Cleanup
+    await deleteRepository(page, repositoryName)
+  })
 })
 
 test.describe('LLM Repositories - Connection Testing', () => {
