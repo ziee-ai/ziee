@@ -95,3 +95,60 @@ pub fn is_mapping_expired(mapping: &LlmProviderFile) -> bool {
     }
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn mapping_with_metadata(metadata: serde_json::Value) -> LlmProviderFile {
+        LlmProviderFile {
+            id: Uuid::new_v4(),
+            file_id: Uuid::new_v4(),
+            provider_id: Uuid::new_v4(),
+            provider_file_id: Some("file_cached_123".to_string()),
+            provider_metadata: metadata,
+            upload_status: UploadStatus::Completed,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn cache_mapping_without_expiry_never_expires() {
+        // No `expires_at` (e.g. Anthropic, which has no per-file TTL) → the
+        // cached provider_file_id is reusable indefinitely.
+        let m = mapping_with_metadata(json!({}));
+        assert!(!is_mapping_expired(&m));
+        let m2 = mapping_with_metadata(json!({ "api_key_fingerprint": "abc" }));
+        assert!(!is_mapping_expired(&m2));
+    }
+
+    #[test]
+    fn cache_mapping_with_future_expiry_is_valid() {
+        // A Gemini-style mapping whose 48h TTL hasn't elapsed → still cached.
+        let future = (Utc::now() + chrono::Duration::hours(10)).to_rfc3339();
+        let m = mapping_with_metadata(json!({ "expires_at": future }));
+        assert!(
+            !is_mapping_expired(&m),
+            "a not-yet-expired mapping must remain a cache hit"
+        );
+    }
+
+    #[test]
+    fn cache_mapping_past_expiry_is_invalidated() {
+        // A mapping past its TTL → the cached id must NOT be reused (forces
+        // re-upload).
+        let past = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        let m = mapping_with_metadata(json!({ "expires_at": past }));
+        assert!(is_mapping_expired(&m), "an expired mapping must invalidate the cache");
+    }
+
+    #[test]
+    fn cache_mapping_malformed_expiry_does_not_panic_and_keeps_cache() {
+        // An unparseable expires_at falls through to "not expired" rather than
+        // panicking or eagerly discarding a usable cache entry.
+        let m = mapping_with_metadata(json!({ "expires_at": "not-a-date" }));
+        assert!(!is_mapping_expired(&m));
+    }
+}
