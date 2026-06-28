@@ -267,3 +267,63 @@ async fn test_get_progress_is_authentication_only() {
         .expect("Request failed");
     assert_eq!(response.status(), 401, "unauthenticated GET progress should be 401");
 }
+
+// audit id all-3339417ae42b — guide_id validation edge cases beyond the
+// whitespace/empty case: invalid characters and over-length ids must 400.
+#[tokio::test]
+async fn test_complete_guide_invalid_chars_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "onb_badchars", &[]).await;
+
+    // Uppercase letters are not in the slug allowlist (lowercase/digit/-/_).
+    let response = reqwest::Client::new()
+        .post(server.api_url("/onboarding/Getting-Started/complete"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(response.status(), 400, "uppercase guide_id should be rejected");
+
+    // A dot is outside the allowlist too.
+    let response = reqwest::Client::new()
+        .post(server.api_url("/onboarding/bad.id/complete"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(response.status(), 400, "dotted guide_id should be rejected");
+}
+
+#[tokio::test]
+async fn test_complete_guide_overlong_id_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "onb_long", &[]).await;
+
+    // 65 chars > MAX_ONBOARDING_ID_LEN (64).
+    let long_id = "a".repeat(65);
+    let response = reqwest::Client::new()
+        .post(server.api_url(&format!("/onboarding/{long_id}/complete")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(response.status(), 400, "over-length guide_id should be rejected");
+}
+
+#[tokio::test]
+async fn test_complete_step_invalid_step_id_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "onb_badstep", &[]).await;
+
+    // Valid guide_id, invalid step_id (uppercase) → 400.
+    let response = reqwest::Client::new()
+        .post(server.api_url("/onboarding/getting-started/steps/BadStep/complete"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(response.status(), 400, "invalid step_id should be rejected");
+}
