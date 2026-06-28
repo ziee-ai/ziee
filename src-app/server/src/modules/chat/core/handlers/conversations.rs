@@ -201,6 +201,10 @@ pub async fn delete_conversation(
         return Err(AppError::not_found("Conversation").into());
     }
 
+    // Cascade fs cleanup: drop the conversation's lit-search `/lit` view dir so
+    // its hard-linked full-text files don't linger on disk after delete.
+    crate::modules::lit_search::fulltext::cache::cleanup_conversation_view(id);
+
     sync_publish(
         SyncEntity::Conversation,
         SyncAction::Delete,

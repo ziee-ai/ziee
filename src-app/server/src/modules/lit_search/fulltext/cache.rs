@@ -269,6 +269,25 @@ pub fn conversation_view_dir(conversation_id: Uuid) -> PathBuf {
     view_dir(conversation_id)
 }
 
+/// Best-effort removal of a conversation's full-text view dir (the per-
+/// conversation `/lit` mount source full of hard-linked blobs). Call this when
+/// the conversation is deleted so these dirs don't accumulate on disk forever.
+/// A missing dir is a no-op; failures are logged, never propagated (cleanup
+/// must not fail the delete).
+pub fn cleanup_conversation_view(conversation_id: Uuid) {
+    let dir = view_dir(conversation_id);
+    if !dir.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::remove_dir_all(&dir) {
+        tracing::warn!(
+            conversation_id = %conversation_id,
+            error = %e,
+            "lit-cache: failed to remove conversation view dir on delete"
+        );
+    }
+}
+
 fn sanitize(name: &str) -> String {
     let s: String = name
         .chars()
