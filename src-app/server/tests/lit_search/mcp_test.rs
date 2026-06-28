@@ -538,3 +538,47 @@ async fn test_verify_quote_uncached_paper_reports_not_cached() {
     assert_eq!(sc["status"], "not_cached", "uncached paper: {body}");
     assert_eq!(sc["verified"], false);
 }
+
+#[tokio::test]
+async fn test_select_included_partitions_decisions_via_http() {
+    // The `select_included` SR tool takes a `decisions` array and returns the
+    // de-duplicated `included_ids` plus include/exclude/skip counts. Drive it
+    // through the real tools/call HTTP path (no upstream — pure decision logic).
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_select_incl", &["lit_search::use"]).await;
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "select_included",
+            "arguments": {
+                "decisions": [
+                    { "id": "p1", "decision": "include" },
+                    { "id": "p2", "decision": "exclude" },
+                    { "id": "p1", "decision": "include" },   // duplicate id → deduped
+                    { "id": "p3", "decision": "include" },
+                    null,                                       // dropped llm_map item → skipped
+                    { "no_decision_field": true }               // non-decision object → excluded path
+                ]
+            }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    let ids: Vec<&str> = sc["included_ids"]
+        .as_array()
+        .expect("included_ids array")
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["p1", "p3"], "deduped, first-seen order: {sc}");
+    assert_eq!(sc["included"], 2, "two distinct included: {sc}");
+    assert_eq!(sc["skipped"], 1, "the null entry is skipped: {sc}");
+    // p2 (exclude) + the object missing `decision` both count as excluded.
+    assert_eq!(sc["excluded"], 2, "non-include decisions are excluded: {sc}");
+}
