@@ -1,4 +1,4 @@
-import { Button, Dropdown, Flex, Menu, Result, theme, Typography } from 'antd'
+import { Button, Dropdown, Flex, Result, theme, Typography } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -7,6 +7,8 @@ import { useEffect, useRef } from 'react'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
 import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
+import { Menu } from '@/components/ui'
+import type { MenuItem } from '@/components/ui/kit/menu'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -52,8 +54,36 @@ export default function SettingsPage() {
     ...(slots.get('settingsAdminPages') || []),
   ].filter(item => !isAllowed(item))
 
-  // Build final menu
-  const menuItems = [
+  // Kit Menu items — group nesting required by kit Menu's MenuItem type.
+  const kitMenuItems: MenuItem[] = [
+    ...userSettingsItems.map(item => ({
+      key: item.path,
+      icon: item.icon,
+      label: item.label,
+    })),
+    ...(adminSettingsItems.length > 0
+      ? [
+          { type: 'divider' as const },
+          {
+            type: 'group' as const,
+            label: (
+              <span className="flex items-center gap-1">
+                <IoMdSettings />
+                Admin
+              </span>
+            ),
+            children: adminSettingsItems.map(item => ({
+              key: item.path,
+              icon: item.icon,
+              label: item.label,
+            })),
+          },
+        ]
+      : []),
+  ]
+
+  // Antd-format items kept for the mobile Dropdown (antd Dropdown, out of scope).
+  const dropdownItems = [
     ...userSettingsItems.map(item => ({
       key: item.path,
       icon: item.icon,
@@ -77,17 +107,14 @@ export default function SettingsPage() {
       : []),
   ]
 
+  // For permission checks on deep-linked URLs we need the flat valid section keys.
+  const validSections = [
+    ...userSettingsItems.map(item => item.path),
+    ...adminSettingsItems.map(item => item.path),
+  ]
+
   // Extract the current settings section from the URL and validate it
   const urlSection = location.pathname.match(/\/settings\/([^/]+)/)?.[1]
-  const validSections = menuItems
-    .filter(
-      item =>
-        'key' in item &&
-        item.key &&
-        (item as any).type !== 'divider' &&
-        (item as any).type !== 'group',
-    )
-    .map(item => (item as any).key)
 
   // Did the user deep-link to a section that exists but their
   // permissions hide? Treat that distinctly from "section doesn't
@@ -97,7 +124,7 @@ export default function SettingsPage() {
     ? forbiddenSettingsItems.find(item => item.path === urlSection)
     : undefined
 
-  const currentSection = validSections.includes(urlSection)
+  const currentSection = validSections.includes(urlSection ?? '')
     ? urlSection
     : validSections[0]
 
@@ -122,29 +149,21 @@ export default function SettingsPage() {
 
   // Get current section display info
   const getCurrentSectionInfo = () => {
-    const currentItem = menuItems.find(
-      item => 'key' in item && item.key === currentSection,
-    )
-    return currentItem || { icon: <IoMdSettings />, label: 'Settings' }
+    const flat = [
+      ...userSettingsItems,
+      ...adminSettingsItems,
+    ]
+    return flat.find(item => item.path === currentSection) || { icon: <IoMdSettings />, label: 'Settings' }
   }
 
   const SettingsMenu = () => (
     <Menu
-      className={`
-      w-fit
-      h-full
-      !p-1
-      !border-r-0
-      [&_.ant-menu]:!px-2
-      [&_.ant-menu-item]:!h-8
-      [&_.ant-menu-item]:!leading-[32px]
-      `}
-      style={{
-        lineHeight: 1,
-      }}
-      selectedKeys={[currentSection || validSections[0]]}
-      items={menuItems}
-      onClick={({ key }) => handleMenuClick(key)}
+      className="w-fit h-full p-1"
+      items={kitMenuItems}
+      selectedKey={currentSection ?? validSections[0]}
+      onSelect={handleMenuClick}
+      mode="vertical"
+      aria-label="Settings navigation"
     />
   )
 
@@ -173,7 +192,7 @@ export default function SettingsPage() {
                   `,
                 }}
                 menu={{
-                  items: menuItems.map((item: any) => {
+                  items: dropdownItems.map((item: any) => {
                     if ('type' in item && item.type === 'divider') {
                       return { type: 'divider' }
                     }
