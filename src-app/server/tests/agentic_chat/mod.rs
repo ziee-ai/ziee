@@ -1101,3 +1101,62 @@ async fn files_mcp_and_memory_coexist_in_one_conversation() {
         "memory should persist alongside the files_mcp usage; rows={rows:?}"
     );
 }
+
+/// Summarization chat-extension before_llm_call hook (summarization.rs:89-131).
+/// With a persisted rolling summary for the branch, a subsequent turn must have
+/// apply_summary_to_history inject the summary block (replacing the summarized
+/// prefix) into the OUTBOUND request the model sees — end-to-end through the
+/// chat pipeline, not just the unit-tested pure apply_summary_block. Driven by
+/// the StubChat which records every request it receives.
+#[tokio::test]
+async fn before_llm_call_injects_persisted_rolling_summary() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "summ_before").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+
+    // Turn 1 builds history (a user + an assistant message in the branch).
+    let _ = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id, "first turn about a tokyo trip",
+    )
+    .await;
+
+    // Seed a rolling summary covering those 2 messages (apply_summary_block uses
+    // message_count + summary_text only; summarized_up_to_id may be NULL).
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    sqlx::query!(
+        r#"INSERT INTO conversation_summaries
+            (branch_id, summary_text, summarized_up_to_id, message_count, model_used)
+            VALUES ($1, $2, NULL, 2, 'stub')"#,
+        Uuid::parse_str(&branch_id).unwrap(),
+        "SUMMARY_SENTINEL_XYZ — the user is planning a tokyo trip"
+    )
+    .execute(&pool)
+    .await
+    .expect("seed conversation_summaries");
+    pool.close().await;
+
+    // Turn 2 — before_llm_call must inject the summary block.
+    let _ = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id, "second turn",
+    )
+    .await;
+
+    // The most recent request the model saw carried the injected summary.
+    let reqs = stub.requests();
+    let last = reqs.last().expect("at least one recorded request");
+    assert!(
+        last.all_text.contains("SUMMARY_SENTINEL_XYZ")
+            && last.all_text.contains("Earlier conversation summary"),
+        "before_llm_call must inject the persisted rolling summary into the outbound request; all_text={}",
+        last.all_text
+    );
+}
