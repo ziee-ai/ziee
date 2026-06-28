@@ -700,3 +700,104 @@ async fn test_failing_connector_is_degraded_others_still_return() {
         "the healthy connector's records must still return despite the failure: {body}"
     );
 }
+
+// A complete LitRecord JSON (the struct derives Deserialize WITHOUT serde
+// defaults, so every field must be present). `source`/`doi` vary per call.
+fn lit_record(doi: &str, title: &str, source: &str) -> serde_json::Value {
+    json!({
+        "doi": doi,
+        "pmid": null,
+        "title": title,
+        "abstract_text": null,
+        "authors": ["Smith J"],
+        "year": 2021,
+        "venue": "Nature",
+        "url": null,
+        "source": source,
+        "source_ids": [format!("{source}:{doi}")],
+        "cited_by_count": 3,
+        "is_preprint": false,
+        "relevance": 0.0
+    })
+}
+
+/// audit id 0cc2f91e14b2 — the `dedup_records` tool's end-to-end path (JSON-RPC
+/// tools/call → dispatch → do_dedup_records → structuredContent) was untested.
+/// Two record sets sharing one DOI must collapse to a single deduped union with
+/// per-source PRISMA `identified` counts and `after_dedup`.
+#[tokio::test]
+async fn test_dedup_records_tool_merges_and_counts() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_dedup", &["lit_search::use"]).await;
+
+    // Set A (europepmc): two records. Set B (crossref): two records, one of which
+    // shares DOI 10.1/shared with set A → 4 inputs collapse to 3 after dedup.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "dedup_records",
+            "arguments": {
+                "record_sets": [
+                    [
+                        lit_record("10.1/shared", "Shared paper", "europepmc"),
+                        lit_record("10.1/aaa", "Europe-only paper", "europepmc")
+                    ],
+                    [
+                        lit_record("10.1/shared", "Shared paper", "crossref"),
+                        lit_record("10.1/bbb", "Crossref-only paper", "crossref")
+                    ]
+                ],
+                "query": "paper"
+            }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["identified"]["europepmc"], 2, "pre-dedup per-source count: {body}");
+    assert_eq!(sc["identified"]["crossref"], 2, "pre-dedup per-source count: {body}");
+    assert_eq!(sc["after_dedup"], 3, "shared DOI must collapse 4→3: {body}");
+    assert_eq!(sc["records"].as_array().unwrap().len(), 3, "deduped union size: {body}");
+}
+
+/// audit id 828f444f1ebf — the `select_included` tool's end-to-end path through
+/// the MCP endpoint (the result the chat "Select Included" card renders from)
+/// was untested at the HTTP/JSON-RPC layer (only the pure fn had a unit test).
+#[tokio::test]
+async fn test_select_included_tool_via_mcp() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_select", &["lit_search::use"]).await;
+
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "select_included",
+            "arguments": {
+                "decisions": [
+                    { "id": "10.1/a", "decision": "include" },
+                    { "id": "10.2/b", "decision": "exclude" },
+                    { "id": "10.1/a", "decision": "include" },
+                    null,
+                    { "id": "10.3/c", "decision": "include" }
+                ]
+            }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["included_ids"], json!(["10.1/a", "10.3/c"]), "deduped includes: {body}");
+    assert_eq!(sc["included"], 2, "unique included: {body}");
+    assert_eq!(sc["excluded"], 1, "{body}");
+    assert_eq!(sc["skipped"], 1, "null decision skipped: {body}");
+}
