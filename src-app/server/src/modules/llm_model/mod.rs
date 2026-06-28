@@ -15,6 +15,7 @@ pub mod handlers;
 pub mod model_files;
 pub mod models;
 pub mod permissions;
+pub mod prune;
 pub mod repository;
 pub mod routes;
 pub mod storage;
@@ -57,6 +58,14 @@ impl AppModule for LlmModelModule {
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
+
+        // Boot-time retention loop: prune terminal download_instances rows and
+        // evict stale transient git/LFS caches (mirrors mcp tool-call pruning).
+        let prune_pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move {
+            prune::run_retention_loop(prune_pool).await;
+        });
+
         Ok(())
     }
 
