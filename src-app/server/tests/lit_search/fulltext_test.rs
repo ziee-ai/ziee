@@ -10,7 +10,9 @@ use uuid::Uuid;
 
 use crate::common::test_helpers::create_user_with_permissions;
 use crate::common::{TestServer, TestServerOptions};
-use crate::lit_search::{configure, jsonrpc_conv, start_mock_epmc_fulltext};
+use crate::lit_search::{
+    configure, jsonrpc, jsonrpc_conv, start_mock_epmc_fulltext, start_mock_europepmc,
+};
 
 fn admin_perms() -> &'static [&'static str] {
     &["lit_search::admin::read", "lit_search::admin::manage"]
@@ -231,4 +233,66 @@ async fn test_fetch_empty_ids_is_rejected() {
         body["error"]["message"].as_str().unwrap_or("").contains("must not be empty"),
         "blank ids should be rejected: {body}"
     );
+}
+
+/// End-to-end multi-step researcher flow (gap 3bed): a SINGLE server instance
+/// drives `literature_search` (mock Europe PMC /search) and THEN
+/// `fetch_paper_fulltext` (mock Europe PMC fullTextXML), exercising the
+/// search → open-access-fulltext chain that prior tests only covered in
+/// isolation. (Quote-verification + screening are frontend right-panel state
+/// per CLAUDE.md — no server tables — so the server-side chain ends at fetch.)
+#[tokio::test]
+async fn test_search_then_fetch_fulltext_end_to_end() {
+    let search = start_mock_europepmc().await;
+    let (fulltext, hits) = start_mock_epmc_fulltext().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+            ("LIT_SEARCH_EUROPEPMC_ENDPOINT".to_string(), format!("{search}/search")),
+            ("LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT".to_string(), fulltext),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_e2e_admin", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc"]).await;
+    let conv = seed_conversation(&server, &admin.user_id).await;
+
+    // Step 1 — discover.
+    let res = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "literature_search", "arguments": { "query": "crispr" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let records = body["result"]["structuredContent"]["records"]
+        .as_array()
+        .expect("search records");
+    assert!(!records.is_empty(), "search step must return records: {body}");
+
+    // Step 2 — fetch open-access full text for a resolved id, into the /lit view.
+    let res = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "fetch_paper_fulltext", "arguments": { "ids": ["PMC123456"] } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let paper = &body["result"]["structuredContent"]["papers"][0];
+    assert_eq!(paper["status"], "full_text", "fetch step body: {body}");
+    assert!(
+        paper["sandbox_path"].as_str().unwrap_or("").starts_with("/lit/"),
+        "fetched paper must be mounted in the conversation /lit view: {paper}"
+    );
+    assert_eq!(hits.load(Ordering::SeqCst), 1, "fulltext fetched from upstream once");
 }

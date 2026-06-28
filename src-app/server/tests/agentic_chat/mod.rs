@@ -872,3 +872,65 @@ async fn third_party_mcp_server_excluded_when_enable_mcp_false() {
         "the third-party MCP server must record ZERO hits during a disabled-MCP send"
     );
 }
+
+/// Cross-subsystem sync cascade (gap 49e65): a SINGLE chat turn that invokes a
+/// built-in MCP tool (read_file) must, in addition to streaming the reply,
+/// record the invocation and emit an owner-scoped `mcp_tool_call`/create frame
+/// on the realtime-sync stream. Existing chat_stream tests assert the reply but
+/// not the multi-entity sync cascade a tool-using turn produces.
+#[tokio::test]
+async fn chat_tool_turn_emits_mcp_tool_call_sync_to_owner() {
+    use crate::common::sync_probe::SyncProbe;
+    use std::time::Duration;
+
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "cascade_owner").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let project_id = create_project(&server, &user, "cascade-project").await;
+    let file_id = upload_text(&server, &user, "notes.txt", "CASCADE_MARKER alpha").await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // A second user must never see the owner-scoped tool-call frame.
+    let other = create_user_with_permissions(&server, "cascade_other", &[]).await;
+
+    // Open the realtime-sync probes BEFORE the turn so we capture the cascade.
+    let mut owner_probe = SyncProbe::open(&server, &user.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    let body = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file what is in my notes?",
+    )
+    .await;
+    // Real round-trip: the read_file tool actually ran.
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "read_file must be called; requests={:?}",
+        stub.requests()
+    );
+    assert!(body.contains("CASCADE_MARKER"), "answer should echo file content: {body}");
+
+    // The tool invocation produced an owner-scoped mcp_tool_call/create frame.
+    let frame = owner_probe
+        .expect_event("mcp_tool_call", "create", Duration::from_secs(10))
+        .await;
+    assert!(
+        uuid::Uuid::parse_str(&frame.id).is_ok() && frame.id != uuid::Uuid::nil().to_string(),
+        "frame must carry the tool-call row id, got {:?}",
+        frame.id
+    );
+
+    // Owner-scoped: the unrelated user observes nothing.
+    other_probe.expect_silence(Duration::from_secs(1)).await;
+}
