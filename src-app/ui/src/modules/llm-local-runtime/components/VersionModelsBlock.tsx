@@ -11,13 +11,7 @@ import {
   Text,
   Tooltip,
 } from '@/components/ui'
-import {
-  DownOutlined,
-  PlayCircleOutlined,
-  PoweroffOutlined,
-  ReloadOutlined,
-  UpOutlined,
-} from '@ant-design/icons'
+import { ChevronDown, CirclePlay, Power, RotateCw, ChevronUp } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { RuntimeEngine } from '../types'
 import { LiveLogsPanel } from './LiveLogsPanel'
@@ -175,7 +169,7 @@ function ModelRow({
               {model.running ? (
                 <>
                   <Button
-                    icon={<ReloadOutlined />}
+                    icon={<RotateCw />}
                     loading={busy}
                     onClick={() =>
                       Stores.RuntimeModelUsage.restartModel(engine, model.id).catch(
@@ -187,7 +181,7 @@ function ModelRow({
                   </Button>
                   <Button
                     variant="destructive"
-                    icon={<PoweroffOutlined />}
+                    icon={<Power />}
                     loading={busy}
                     onClick={() =>
                       Stores.RuntimeModelUsage.stopModel(engine, model.id).catch(
@@ -200,7 +194,7 @@ function ModelRow({
                 </>
               ) : (
                 <Button
-                  icon={<PlayCircleOutlined />}
+                  icon={<CirclePlay />}
                   loading={busy}
                   onClick={() =>
                     Stores.RuntimeModelUsage.startModel(engine, model.id).catch(
@@ -216,7 +210,7 @@ function ModelRow({
           {model.running && canViewLogs && (
             <Button
               variant="ghost"
-              icon={expanded ? <UpOutlined /> : <DownOutlined />}
+              icon={expanded ? <ChevronUp /> : <ChevronDown />}
               onClick={() => setExpanded(e => !e)}
               aria-label={
                 expanded

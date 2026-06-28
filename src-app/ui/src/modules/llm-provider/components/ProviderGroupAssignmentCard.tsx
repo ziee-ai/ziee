@@ -1,5 +1,5 @@
+import { Pencil } from 'lucide-react'
 import { Button, Card, Flex, Spin, Tag, Text } from '@/components/ui'
-import { EditOutlined } from '@ant-design/icons'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
@@ -39,7 +39,7 @@ export function ProviderGroupAssignmentCard() {
       extra={
         <Button
           variant="ghost"
-          icon={<EditOutlined />}
+          icon={<Pencil />}
           onClick={handleManageGroups}
           aria-label="Manage user groups"
         />

@@ -1,4 +1,4 @@
-import { CloudServerOutlined } from '@ant-design/icons'
+import { Server } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
@@ -159,7 +159,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'llm-providers',
-        icon: <CloudServerOutlined />,
+        icon: <Server />,
         label: 'LLM Providers',
         path: 'llm-providers',
         order: 21,

@@ -1,4 +1,4 @@
-import { CloudDownloadOutlined } from '@ant-design/icons'
+import { CloudDownload } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { useLlmRepositoryDrawerStore } from '@/modules/llm-repository/components/LlmRepositoryDrawer.store'
@@ -56,7 +56,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'llm-repositories',
-        icon: <CloudDownloadOutlined />,
+        icon: <CloudDownload />,
         label: 'LLM Repositories',
         path: 'llm-repositories',
         order: 20,

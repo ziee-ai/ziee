@@ -1,5 +1,5 @@
+import { RotateCw } from 'lucide-react'
 import { Fragment, useEffect } from 'react'
-import { ReloadOutlined } from '@ant-design/icons'
 import { Button, Card, Separator, Empty, Flex, Spin, Tag, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -82,7 +82,7 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
       title="Installed versions"
       extra={
         <Button
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           loading={refreshing}
           onClick={handleRefresh}
           aria-label={`Refresh installed ${engine} versions`}

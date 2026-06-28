@@ -9,10 +9,7 @@ import {
   Text,
   message,
 } from '@/components/ui'
-import {
-  DeleteOutlined,
-  StarOutlined,
-} from '@ant-design/icons'
+import { Trash2, Star } from 'lucide-react'
 
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -77,7 +74,7 @@ export function RuntimeVersionCard({ version }: Props) {
       >
         <Button
           variant="ghost"
-          icon={<StarOutlined />}
+          icon={<Star />}
           loading={isSettingDefault}
           onClick={handleSetDefault}
           aria-label={`Set version ${version.version} as default`}
@@ -116,7 +113,7 @@ export function RuntimeVersionCard({ version }: Props) {
       >
         <Button
           variant="destructive"
-          icon={<DeleteOutlined />}
+          icon={<Trash2 />}
           loading={isDeleting}
           aria-label={`Delete version ${version.version}`}
         >
