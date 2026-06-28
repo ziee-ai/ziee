@@ -120,7 +120,7 @@ export function RootfsVersionGroup({
 
       {showProgress && (
         <div data-testid={`install-progress-${group.version}`}>
-          <Progress value={aggPercent} size="sm" tone={failed.length > 0 ? 'error' : 'primary'} aria-label="Install progress" />
+          <Progress value={aggPercent} size="sm" tone={failed.length > 0 ? 'error' : 'primary'} aria-label="Install progress" data-testid={`sandbox-install-progress-bar-${group.version}`} />
           {progressMessage && (
             <Text type="secondary" className="text-xs">
               {progressMessage}
@@ -157,6 +157,7 @@ function DeleteVersionButton({
 }) {
   const del = (
     <Confirm
+      data-testid={`sandbox-delete-confirm-${version}`}
       title="Delete this version?"
       description="Removes all downloaded flavors of this version. Frees disk; the next use re-downloads. Refused while it is the default."
       okText="OK"
@@ -192,17 +193,18 @@ function FlavorSubRow({
   return (
     <div data-testid={`rootfs-row-${version}-${f.flavor}`}>
       <Flex align="center" gap="small" wrap>
-        <Tag>{f.flavor}</Tag>
-        <Tag>{f.arch}</Tag>
+        <Tag data-testid={`sandbox-flavor-tag-${version}-${f.flavor}`}>{f.flavor}</Tag>
+        <Tag data-testid={`sandbox-arch-tag-${version}-${f.flavor}`}>{f.arch}</Tag>
         {f.artifact ? (
           <Tag
             icon={<CircleCheck />}
             tone="success"
+            data-testid={`sandbox-status-tag-${version}-${f.flavor}`}
           >
             Downloaded
           </Tag>
         ) : (
-          <Tag>Available</Tag>
+          <Tag data-testid={`sandbox-status-tag-${version}-${f.flavor}`}>Available</Tag>
         )}
         {f.live > 0 && (
           <Tag

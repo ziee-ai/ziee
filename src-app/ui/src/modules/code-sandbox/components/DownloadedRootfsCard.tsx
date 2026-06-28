@@ -25,6 +25,7 @@ export function DownloadedRootfsCard({
       {groups.length === 0 ? (
         <Empty
           description="No rootfs versions downloaded yet. Download one from the Available versions list below."
+          data-testid="sandbox-downloaded-empty"
         />
       ) : (
         <Flex vertical className="gap-1">

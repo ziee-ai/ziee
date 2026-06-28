@@ -100,6 +100,7 @@ export function SandboxRootfsVersionsSection() {
         tone="warning"
         title="Not authorized"
         description="You don't have permission to view rootfs versions."
+        data-testid="sandbox-rootfs-noperm-alert"
       />
     )
   }
@@ -221,6 +222,7 @@ export function SandboxRootfsVersionsSection() {
           tone="info"
           onClose={() => {}}
           closeLabel="Close"
+          data-testid="sandbox-rootfs-draining-alert"
           title={
             <span data-testid="draining-indicator">
               {lastSwap.draining_mounts} session
@@ -235,7 +237,7 @@ export function SandboxRootfsVersionsSection() {
         />
       )}
 
-      {error && <Alert tone="error" title={error} />}
+      {error && <Alert tone="error" title={error} data-testid="sandbox-rootfs-error-alert" />}
 
       {loading && groups.length === 0 ? (
         <Spin label="Loading" />

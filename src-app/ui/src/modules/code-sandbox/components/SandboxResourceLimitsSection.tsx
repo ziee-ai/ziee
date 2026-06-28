@@ -189,10 +189,11 @@ export function SandboxResourceLimitsSection() {
 
   if (!canRead) {
     return (
-      <Card title="Resource limits">
+      <Card title="Resource limits" data-testid="sandbox-resource-limits-card">
         <Alert
           tone="warning"
           title="You don't have permission to view sandbox resource limits."
+          data-testid="sandbox-resource-limits-noperm-alert"
         />
       </Card>
     )
@@ -205,24 +206,27 @@ export function SandboxResourceLimitsSection() {
           tone="error"
           title="Failed to load resource limits"
           description={error}
+          data-testid="sandbox-resource-limits-error-alert"
         />
       )}
 
       {loading && !limits ? (
         <Spin label="Loading resource limits…" description="Loading resource limits…" />
       ) : (
-        <Card title="Resource limits">
+        <Card title="Resource limits" data-testid="sandbox-resource-limits-card">
         <Form
           form={form}
           layout="horizontal"
           onSubmit={onSubmit}
           disabled={!canManage}
+          data-testid="sandbox-resource-limits-form"
         >
           {!canManage && (
             <Alert
               tone="info"
               title="Read-only view"
               description="You have read permission for resource limits but not manage. Save is disabled."
+              data-testid="sandbox-resource-limits-readonly-alert"
             />
           )}
 
@@ -240,21 +244,21 @@ export function SandboxResourceLimitsSection() {
             label="memory.max"
             description="cgroup v2 memory cap (MiB). OOM-kills the workload if exceeded."
           >
-            <InputNumber min={16} suffix="MiB" className="w-full" />
+            <InputNumber min={16} suffix="MiB" className="w-full" data-testid="sandbox-rl-memory-max" />
           </FormField>
           <FormField
             name="memory_swap_max_mib"
             label="memory.swap.max"
             description="cgroup v2 swap cap (MiB). 0 disables swap."
           >
-            <InputNumber min={0} suffix="MiB" className="w-full" />
+            <InputNumber min={0} suffix="MiB" className="w-full" data-testid="sandbox-rl-memory-swap-max" />
           </FormField>
           <FormField
             name="address_space_mib"
             label="rlimit --as"
             description="Virtual address space cap (MiB). prlimit backstop."
           >
-            <InputNumber min={16} suffix="MiB" className="w-full" />
+            <InputNumber min={16} suffix="MiB" className="w-full" data-testid="sandbox-rl-address-space" />
           </FormField>
 
           <Separator titlePlacement="left">
@@ -263,31 +267,31 @@ export function SandboxResourceLimitsSection() {
             </Text>
           </Separator>
           <FormField name="pids_max" label="cgroup pids.max">
-            <InputNumber min={8} max={100_000} className="w-full" />
+            <InputNumber min={8} max={100_000} className="w-full" data-testid="sandbox-rl-pids-max" />
           </FormField>
           <FormField name="nproc_max" label="rlimit --nproc">
-            <InputNumber min={8} max={100_000} className="w-full" />
+            <InputNumber min={8} max={100_000} className="w-full" data-testid="sandbox-rl-nproc-max" />
           </FormField>
           <FormField
             name="cpu_max"
             label="cgroup cpu.max"
             description='"<quota_us> <period_us>" — "100000 100000" = 1 CPU'
           >
-            <Input placeholder="100000 100000" />
+            <Input placeholder="100000 100000" data-testid="sandbox-rl-cpu-max" />
           </FormField>
           <FormField
             name="cpu_secs_max"
             label="rlimit --cpu (seconds)"
             description="CPU-seconds backstop. Largely redundant with the wall-clock timeout."
           >
-            <InputNumber min={10} max={86_400} suffix="s" className="w-full" />
+            <InputNumber min={10} max={86_400} suffix="s" className="w-full" data-testid="sandbox-rl-cpu-secs-max" />
           </FormField>
           <FormField
             name="timeout_secs"
             label="Wall-clock per-exec timeout"
             description="Hard SIGKILL after this many seconds."
           >
-            <InputNumber min={5} max={86_400} suffix="s" className="w-full" />
+            <InputNumber min={5} max={86_400} suffix="s" className="w-full" data-testid="sandbox-rl-timeout-secs" />
           </FormField>
 
           <Separator titlePlacement="left">
@@ -296,10 +300,10 @@ export function SandboxResourceLimitsSection() {
             </Text>
           </Separator>
           <FormField name="fsize_mib" label="rlimit --fsize (single file)">
-            <InputNumber min={1} suffix="MiB" className="w-full" />
+            <InputNumber min={1} suffix="MiB" className="w-full" data-testid="sandbox-rl-fsize" />
           </FormField>
           <FormField name="nofile_max" label="rlimit --nofile">
-            <InputNumber min={64} max={1_048_576} className="w-full" />
+            <InputNumber min={64} max={1_048_576} className="w-full" data-testid="sandbox-rl-nofile-max" />
           </FormField>
 
           <Separator titlePlacement="left">
@@ -312,14 +316,14 @@ export function SandboxResourceLimitsSection() {
             label="Idle-evict timeout"
             description="After this many idle seconds with nothing in-flight, the per-flavor microVM / WSL2 distro is evicted to free its RAM. Set to 0 to disable eviction (warm VMs hold memory indefinitely)."
           >
-            <InputNumber min={0} suffix="s (0 = never)" className="w-full" />
+            <InputNumber min={0} suffix="s (0 = never)" className="w-full" data-testid="sandbox-rl-vm-idle-evict" />
           </FormField>
           <FormField
             name="vm_max_concurrent_execs"
             label="Concurrent execs per VM / distro"
             description="Cap on parallel execute_command calls that share one VM. Each call is cgroup-capped at memory.max; this bound keeps N concurrent calls from summing past the VM's RAM ceiling. Applies to macOS libkrun + Windows WSL2."
           >
-            <InputNumber min={1} max={1000} className="w-full" />
+            <InputNumber min={1} max={1000} className="w-full" data-testid="sandbox-rl-vm-max-execs" />
           </FormField>
 
           <Separator titlePlacement="left">
@@ -332,26 +336,27 @@ export function SandboxResourceLimitsSection() {
             label="vCPUs"
             description="Per-flavor libkrun microVM vCPU count (krun_set_vm_config num_vcpus). Applies on the NEXT cold boot of a flavor; warm VMs keep their boot-time sizing."
           >
-            <InputNumber min={1} max={128} className="w-full" />
+            <InputNumber min={1} max={128} className="w-full" data-testid="sandbox-rl-mac-vcpus" />
           </FormField>
           <FormField
             name="mac_vm_ram_mib"
             label="RAM ceiling"
             description="Per-flavor libkrun microVM RAM ceiling in MiB. Host RAM is demand-paged; this is the upper bound. Applies on the NEXT cold boot of a flavor."
           >
-            <InputNumber min={256} max={262_144} suffix="MiB" className="w-full" />
+            <InputNumber min={256} max={262_144} suffix="MiB" className="w-full" data-testid="sandbox-rl-mac-ram" />
           </FormField>
 
           {/* Actions on the right — matches the pattern used by the
             * Memory admin / PreferencesSection forms. */}
           <Flex justify="end" gap="small" className="mt-3">
-            <Button variant="outline" onClick={onReset} disabled={!dirty || saving}>
+            <Button variant="outline" onClick={onReset} disabled={!dirty || saving} data-testid="sandbox-rl-reset-btn">
               Reset
             </Button>
             <Button
               type="submit"
               loading={saving}
               disabled={!canManage || !dirty}
+              data-testid="sandbox-rl-save-btn"
             >
               Save
             </Button>

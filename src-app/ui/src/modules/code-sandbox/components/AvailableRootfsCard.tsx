@@ -21,6 +21,7 @@ export function AvailableRootfsCard({
       {groups.length === 0 ? (
         <Empty
           description="No versions available to download. GitHub Releases may be unreachable, or no compatible releases were found — ensure the server can reach api.github.com, then Refresh."
+          data-testid="sandbox-available-empty"
         />
       ) : (
         <Flex vertical className="gap-1">
