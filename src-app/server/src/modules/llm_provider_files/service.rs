@@ -82,7 +82,7 @@ pub async fn get_or_upload_provider_file(
             .and_then(|v| v.as_str())
             != Some(&current_key_fingerprint);
 
-        if !is_expired && !key_rotated && mapping.upload_status == UploadStatus::Completed
+        if cached_mapping_reusable(is_expired, key_rotated, mapping.upload_status)
             && let Some(provider_file_id) = mapping.provider_file_id {
                 // Valid mapping exists - return it
                 // Note: If provider returns "not found" error later, the caller
@@ -197,9 +197,45 @@ fn get_extension(filename: &str) -> String {
     crate::modules::file::utils::extension_of(filename)
 }
 
+/// Whether a cached provider-file mapping can be reused as-is. Reusable only
+/// when it hasn't passed the provider TTL, the upload completed, AND the API key
+/// hasn't rotated (a rotated key means the cached provider_file_id belongs to a
+/// different upstream account and must be re-uploaded). Extracted so the
+/// cache-validity edge cases are unit-testable without a live provider.
+fn cached_mapping_reusable(is_expired: bool, key_rotated: bool, status: UploadStatus) -> bool {
+    !is_expired && !key_rotated && status == UploadStatus::Completed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_mapping_reusable_only_when_fresh_completed_and_same_key() {
+        // Happy path: fresh, completed, same key → reuse.
+        assert!(cached_mapping_reusable(false, false, UploadStatus::Completed));
+
+        // Expired (e.g. Gemini 48h TTL) → must re-upload.
+        assert!(!cached_mapping_reusable(true, false, UploadStatus::Completed));
+
+        // API key rotated → cached id belongs to another account → re-upload.
+        assert!(!cached_mapping_reusable(false, true, UploadStatus::Completed));
+
+        // Not completed → never reuse a half-finished/failed upload.
+        for status in [
+            UploadStatus::Pending,
+            UploadStatus::Uploading,
+            UploadStatus::Failed,
+        ] {
+            assert!(
+                !cached_mapping_reusable(false, false, status),
+                "status {status:?} must not be reusable"
+            );
+        }
+
+        // Expiry/rotation both dominate even a completed upload.
+        assert!(!cached_mapping_reusable(true, true, UploadStatus::Completed));
+    }
 
     #[test]
     fn test_get_extension() {
