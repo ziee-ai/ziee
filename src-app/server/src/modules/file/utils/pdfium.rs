@@ -1,35 +1,75 @@
 // PDFium utility for runtime usage
 
-use std::cell::RefCell;
+use std::sync::OnceLock;
+use std::sync::mpsc::{Sender, channel};
 
 use crate::common::AppError;
 use pdfium_render::prelude::*;
 
-thread_local! {
-    /// Per-thread cached `Pdfium`. `Pdfium` (and its library bindings) are
-    /// `!Send`, so a thread-local — not a global `OnceLock` — is the correct
-    /// cache. All PDF work runs inside `tokio::task::spawn_blocking`, so each
-    /// blocking-pool worker binds the dynamic library exactly once and then
-    /// reuses it, instead of re-`dlopen`-ing on every PDF fetch.
-    static PDFIUM: RefCell<Option<Pdfium>> = const { RefCell::new(None) };
+/// A unit of PDF work to run on the dedicated PDFium thread. Receives the
+/// single process-wide `&Pdfium` and is responsible for sending its own result
+/// back to the caller.
+type Job = Box<dyn FnOnce(&Pdfium) + Send>;
+
+/// Sender to the single PDFium worker thread. `Pdfium` (pdfium-render) is
+/// `!Send`/`!Sync` and `FPDF_InitLibrary`/`FPDF_DestroyLibrary` are process-wide
+/// global state, so it is unsound to hold multiple `Pdfium` instances across
+/// threads (a `Drop` on one tears down the library for all). We therefore own
+/// exactly ONE `Pdfium`, built once on a dedicated long-lived thread, and
+/// funnel every PDF operation to it over this channel. This both fixes the
+/// per-fetch re-`dlopen`/re-init cost and removes the multi-init hazard.
+static WORKER: OnceLock<Sender<Job>> = OnceLock::new();
+
+fn worker() -> &'static Sender<Job> {
+    WORKER.get_or_init(|| {
+        let (tx, rx) = channel::<Job>();
+        std::thread::Builder::new()
+            .name("pdfium-worker".to_string())
+            .spawn(move || {
+                // Bind + init PDFium exactly once on this thread. The instance
+                // lives for the whole process, so the library is never
+                // destroyed-then-used by another thread.
+                let pdfium = match build_pdfium() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::error!(
+                            "pdfium worker: initialization failed ({e}); PDF features disabled"
+                        );
+                        // Returning drops `rx`; queued + future `with_pdfium`
+                        // sends then fail, surfacing a clean error per call.
+                        return;
+                    }
+                };
+                while let Ok(job) = rx.recv() {
+                    job(&pdfium);
+                }
+            })
+            .expect("failed to spawn pdfium worker thread");
+        tx
+    })
 }
 
-/// Run `f` with a thread-local, lazily-initialized `Pdfium` instance.
+/// Run `f` on the single PDFium worker thread and block until it returns.
 ///
 /// The closure receives `&Pdfium`; any `PdfDocument`/`PdfPage` it loads borrows
-/// from that reference and must not escape the closure (the same lifetime
-/// constraint the old `init_pdfium()` imposed by ownership). Binding the
-/// library is the expensive part and now happens once per worker thread.
-pub fn with_pdfium<R>(f: impl FnOnce(&Pdfium) -> Result<R, AppError>) -> Result<R, AppError> {
-    PDFIUM.with(|cell| {
-        // Initialize on first use for this thread.
-        if cell.borrow().is_none() {
-            let pdfium = build_pdfium()?;
-            *cell.borrow_mut() = Some(pdfium);
-        }
-        let slot = cell.borrow();
-        f(slot.as_ref().expect("pdfium initialized above"))
-    })
+/// from that reference and must not escape the closure. Because this blocks on
+/// the worker, **async callers must invoke it inside `tokio::task::spawn_blocking`**
+/// (synchronous CPU-bound PDF paths already do).
+pub fn with_pdfium<R, F>(f: F) -> Result<R, AppError>
+where
+    F: FnOnce(&Pdfium) -> Result<R, AppError> + Send + 'static,
+    R: Send + 'static,
+{
+    let (rtx, rrx) = channel::<Result<R, AppError>>();
+    let job: Job = Box::new(move |pdfium| {
+        // Ignore send error: it only fails if the caller already gave up.
+        let _ = rtx.send(f(pdfium));
+    });
+    worker()
+        .send(job)
+        .map_err(|_| AppError::internal_error("PDFium worker unavailable (initialization failed)"))?;
+    rrx.recv()
+        .map_err(|_| AppError::internal_error("PDFium worker dropped the job"))?
 }
 
 /// Bind the PDFium dynamic library (embedded first, then system fallback) and

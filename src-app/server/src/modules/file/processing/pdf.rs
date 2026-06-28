@@ -71,7 +71,7 @@ impl ContentProcessor for PdfProcessor {
         tokio::task::spawn_blocking(move || {
             let processor = PdfProcessor;
 
-            with_pdfium(|pdfium| {
+            with_pdfium(move |pdfium| {
                 // Load PDF document
                 let document = pdfium
                     .load_pdf_from_byte_slice(&data, None)
@@ -119,7 +119,7 @@ impl ContentProcessor for PdfProcessor {
         // CPU-bound, so run it off the async runtime.
         let data_owned = data.to_vec();
         let page_count = tokio::task::spawn_blocking(move || {
-            with_pdfium(|pdfium| {
+            with_pdfium(move |pdfium| {
                 Ok(pdfium
                     .load_pdf_from_byte_slice(&data_owned, None)
                     .ok()
@@ -154,7 +154,7 @@ impl ImageGenerator for PdfProcessor {
         // async runtime so it cannot block executor threads.
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || {
-        with_pdfium(|pdfium| {
+        with_pdfium(move |pdfium| {
         // Load the PDF document from bytes
         let document = pdfium
             .load_pdf_from_byte_slice(&data, None)
