@@ -200,7 +200,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
       </div>
       {isExpanded && (
         <div className="mt-2 text-xs">
-          {toolUseData.input && (
+          {!!toolUseData.input && (
             <div className="mb-2">
               <Text strong>Input:</Text>
               <pre className="p-2 rounded mt-1 overflow-auto max-h-40">

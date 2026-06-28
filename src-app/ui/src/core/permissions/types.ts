@@ -14,8 +14,8 @@ import type { Permissions } from '@/api-client/types'
  * endpoint-level OpenAPI annotation is missing the structured 403
  * example — fix the handler (call `with_permission` and drop any
  * `.response::<403, ...>` / `.response_with::<403, ...>` overrides
- * that clobber the auto-attached body), regenerate the OpenAPI spec,
- * and rerun `npm run generate-openapi`.
+ * that clobber the auto-attached body), then rerun `just openapi-regen`
+ * (which regenerates the OpenAPI spec + this `types.ts`).
  */
 export type Permission = Permissions
 

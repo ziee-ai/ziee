@@ -159,7 +159,10 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
                 v.status = d.status
                 v.totalTokens = d.total_tokens
                 v.currentStep = d.current_step ?? undefined
-                v.pendingElicitation = d.pending_elicitation_json ?? undefined
+                v.pendingElicitation =
+                  (d.pending_elicitation_json as
+                    | SSEElicitationRequiredData
+                    | undefined) ?? undefined
                 // P1: seed the full pipeline (pending steps incl.) up front.
                 seedManifest(v, d.step_manifest)
                 // P2: rehydrate the running step's in-flight tracks after a

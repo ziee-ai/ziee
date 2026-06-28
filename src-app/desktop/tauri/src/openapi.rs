@@ -93,10 +93,24 @@ pub async fn generate_openapi_spec(
         openapi_json_path.display()
     );
 
+    // Generate TypeScript types directly (Rust port of the former
+    // `desktop/ui/openapi/generate-endpoints.ts`). `output_dir` is
+    // `desktop/ui/openapi`, so `types.ts` lands at
+    // `desktop/ui/src/api-client/types.ts`.
+    let types_ts = ziee::generate_types_ts_from_json(&json)?;
+    let types_ts_path = output_path.join("../src/api-client/types.ts");
+    if let Some(parent) = types_ts_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&types_ts_path, &types_ts)?;
+    println!(
+        "✓ TypeScript types written to: {}",
+        types_ts_path.display()
+    );
+
     println!("\n✓ OpenAPI generation complete!");
     println!("  - OpenAPI spec: {}", openapi_json_path.display());
-    println!("\nTo generate TypeScript types, run:");
-    println!("  cd ui && npm run generate-openapi");
+    println!("  - TypeScript types: {}", types_ts_path.display());
 
     Ok(())
 }

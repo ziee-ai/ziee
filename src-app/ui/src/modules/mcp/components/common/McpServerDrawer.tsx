@@ -221,7 +221,7 @@ export function McpServerDrawer() {
         url: editingServer.url,
         command: editingServer.command,
         args:
-          editingServer.args && editingServer.args.length > 0
+          Array.isArray(editingServer.args) && editingServer.args.length > 0
             ? JSON.stringify(editingServer.args, null, 2)
             : '',
         // Structured entries from the server (write-only-secret

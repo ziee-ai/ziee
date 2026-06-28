@@ -6,6 +6,11 @@ mod modules;
 mod openapi;
 mod utils;
 
+/// Rust port of the former `ui/openapi/generate-endpoints.ts`. Re-exported so
+/// the desktop crate can emit its own `types.ts` from the combined OpenAPI spec
+/// without the Node/tsx codegen step.
+pub use openapi::emit_ts::generate_types_ts_from_json;
+
 use module_api::ModuleContext;
 use std::net::SocketAddr;
 use std::sync::Arc;

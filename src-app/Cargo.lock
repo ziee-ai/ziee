@@ -12959,6 +12959,7 @@ dependencies = [
  "imageproc",
  "include-flate",
  "include_dir",
+ "indexmap 2.14.0",
  "jsonschema",
  "jsonwebtoken",
  "lazy_static",
