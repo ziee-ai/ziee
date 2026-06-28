@@ -217,6 +217,72 @@ async fn test_list_providers_with_pagination() {
 }
 
 #[tokio::test]
+async fn test_discover_models_not_found_provider() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "discover_404",
+        &["llm_providers::read"],
+    )
+    .await;
+    let missing = uuid::Uuid::new_v4();
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{missing}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_discover_models_local_provider_returns_note_no_network() {
+    // A `local` provider short-circuits before any live /v1/models call: it
+    // returns an empty model list + a note pointing at /api/llm-models. This
+    // exercises the discover handler end-to-end without touching the network.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "discover_local",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
+
+    let provider: serde_json::Value = {
+        let res = reqwest::Client::new()
+            .post(server.api_url("/llm-providers"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&json!({
+                "name": "Local Runtime",
+                "provider_type": "local",
+                "enabled": false
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+        res.json().await.unwrap()
+    };
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{provider_id}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["provider_type"], "local");
+    assert_eq!(body["models"].as_array().unwrap().len(), 0);
+    let notes = body["notes"].as_array().unwrap();
+    assert!(
+        notes.iter().any(|n| n.as_str().unwrap_or("").contains("llm-models")),
+        "expected a note redirecting to /api/llm-models; got {body}"
+    );
+}
+
+#[tokio::test]
 async fn test_get_provider_by_id_success() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
