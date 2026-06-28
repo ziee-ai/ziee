@@ -417,6 +417,24 @@ async fn workspace_reaper(root: std::path::PathBuf) {
     }
 }
 
+/// Cascade fs cleanup: remove a conversation's sandbox workspace dir on
+/// conversation delete (instead of waiting for the 30d reaper) and drop its
+/// in-memory lock entry. Best-effort + idempotent.
+pub fn cleanup_conversation_workspace(conversation_id: uuid::Uuid) {
+    let dir = crate::core::get_app_data_dir()
+        .join("sandboxes")
+        .join(conversation_id.to_string());
+    if dir.exists()
+        && let Err(e) = std::fs::remove_dir_all(&dir)
+    {
+        tracing::warn!(
+            "code_sandbox: failed to clean workspace {} on conversation delete: {e}",
+            dir.display()
+        );
+    }
+    handlers::prune_conversation_lock(conversation_id);
+}
+
 /// Audit H-4: synchronous TCP connect to the cloud instance metadata
 /// endpoint with a tight timeout. Used at boot to refuse-to-register when
 /// `--share-net` would expose the IMDS to LLM-generated code. Returns

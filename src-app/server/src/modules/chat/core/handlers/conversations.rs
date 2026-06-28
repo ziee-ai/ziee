@@ -205,6 +205,10 @@ pub async fn delete_conversation(
     // its hard-linked full-text files don't linger on disk after delete.
     crate::modules::lit_search::fulltext::cache::cleanup_conversation_view(id);
 
+    // Cascade fs cleanup: drop the conversation's sandbox workspace dir now
+    // rather than waiting up to 30 days for the workspace reaper.
+    crate::modules::code_sandbox::cleanup_conversation_workspace(id);
+
     sync_publish(
         SyncEntity::Conversation,
         SyncAction::Delete,
