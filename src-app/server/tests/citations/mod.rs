@@ -879,3 +879,92 @@ async fn memory_and_citations_compose_for_one_user() {
         "the citation must persist in the same user's library: {titles:?}"
     );
 }
+
+// audit id all-719c24437b13 — the citations MCP add/remove with a `project_id`
+// (handlers.rs:241-252 add-to-project, 196-231 remove-from-project) was untested
+// (only the REST attach/detach path was). add_citations{project_id} must link
+// the entry to the project's reference list; remove_citations{project_id,ids}
+// must UNLINK it (detach) while keeping it in the library.
+#[tokio::test]
+async fn test_mcp_add_and_remove_with_project_id() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(
+        &server,
+        "cit_mcp_proj",
+        &["citations::use", "citations::manage", "projects::create", "projects::read", "projects::edit"],
+    )
+    .await;
+    let pid = create_project(&server, &user.token, "Ref List Project").await;
+    let client = reqwest::Client::new();
+
+    // MCP add_citations WITH project_id → entry created + linked to the project.
+    let add: Value = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "add_citations", "arguments": {
+            "project_id": pid,
+            "items": [{ "csl": { "type": "article-journal", "title": "Project Linked Paper", "issued": { "date-parts": [[2024]] } } }]
+        }}),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert!(add["error"].is_null(), "add_citations with project_id: {add}");
+
+    // The project's reference list contains it.
+    let proj_list: Value = client
+        .get(server.api_url(&format!("/projects/{pid}/citations")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let entries = proj_list["entries"].as_array().or_else(|| proj_list.as_array()).cloned().unwrap_or_default();
+    let entry = entries
+        .iter()
+        .find(|e| e["title"].as_str() == Some("Project Linked Paper"))
+        .unwrap_or_else(|| panic!("entry must be in the project list: {proj_list}"));
+    let entry_id = entry["id"].as_str().unwrap().to_string();
+
+    // MCP remove_citations WITH project_id → unlink (detach), keep in library.
+    let remove: Value = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "remove_citations", "arguments": { "project_id": pid, "ids": [entry_id] } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert!(remove["error"].is_null(), "remove_citations with project_id: {remove}");
+
+    // Detached from the project...
+    let after: Value = client
+        .get(server.api_url(&format!("/projects/{pid}/citations")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let after_entries = after["entries"].as_array().or_else(|| after.as_array()).cloned().unwrap_or_default();
+    assert!(
+        !after_entries.iter().any(|e| e["title"].as_str() == Some("Project Linked Paper")),
+        "entry must be unlinked from the project: {after}"
+    );
+    // ...but still in the user's library (unlink ≠ delete).
+    assert!(
+        list_entries(&server, &user.token).await.iter().any(|e| e["title"].as_str() == Some("Project Linked Paper")),
+        "unlinked entry must remain in the library"
+    );
+}
