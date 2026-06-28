@@ -7,6 +7,8 @@ mod ldap_test;
 mod oauth_test;
 // Self-service profile (update profile + change password + has_password).
 mod profile_self_service_test;
+// Realtime-sync emission on admin auth-provider mutations.
+mod sync_emit_test;
 
 #[tokio::test]
 async fn test_auth_registration() {
