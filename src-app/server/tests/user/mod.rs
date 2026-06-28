@@ -244,6 +244,65 @@ async fn test_create_user_duplicate_email() {
     assert_eq!(response.status(), 409, "Should conflict");
 }
 
+/// TOCTOU race: the create-user handler (user.rs:144-157) does a
+/// check-then-insert — `get_by_username`/`get_by_email` then `create`. Two
+/// concurrent requests for the SAME username+email can both pass the
+/// app-level pre-check before either inserts. The DB UNIQUE constraint on
+/// users(username)/users(email) is what actually closes the window, and the
+/// repo's `create` maps the unique-violation into a 409 (repository.rs).
+///
+/// This fires both requests concurrently against the same live server (two
+/// independent reqwest clients → two real connections, so they race at the
+/// DB, not in a serialized single connection) and asserts EXACTLY ONE wins:
+/// one 2xx, one 409. A regression that dropped the unique constraint (or
+/// surfaced the race as a 500) would make this fail.
+#[tokio::test]
+async fn test_create_user_concurrent_duplicate_is_race_safe() {
+    let server = crate::common::TestServer::start().await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
+
+    let url = server.api_url("/users");
+    let token = admin.token.clone();
+
+    // Same username AND email on both requests — either field's unique
+    // constraint is sufficient to reject the loser.
+    let payload = json!({
+        "username": "raceuser",
+        "email": "race@example.com",
+        "password": "SecurePass123!"
+    });
+
+    let fire = |url: String, token: String, payload: serde_json::Value| async move {
+        // A fresh client per task = a distinct connection, so the two inserts
+        // genuinely contend at the database rather than being serialized.
+        reqwest::Client::new()
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&payload)
+            .send()
+            .await
+            .expect("Request failed")
+            .status()
+            .as_u16()
+    };
+
+    let (s1, s2) = tokio::join!(
+        fire(url.clone(), token.clone(), payload.clone()),
+        fire(url.clone(), token.clone(), payload.clone()),
+    );
+
+    let mut statuses = [s1, s2];
+    statuses.sort_unstable();
+    assert_eq!(
+        statuses,
+        [201, 409],
+        "exactly one concurrent create must succeed (201) and the other must \
+         lose to the unique constraint (409); got {:?}",
+        statuses
+    );
+}
+
 #[tokio::test]
 async fn test_create_user_validation() {
     let server = crate::common::TestServer::start().await;
