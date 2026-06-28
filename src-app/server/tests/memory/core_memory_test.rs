@@ -358,3 +358,157 @@ async fn test_core_memory_blocks_are_isolated_per_user() {
     let bob_after = list(bob.token.clone()).await;
     assert_eq!(bob_after.len(), 0, "bob's block is gone");
 }
+
+/// Cross-subsystem composition (file + memory + chat): a single chat turn that
+/// BOTH attaches a file AND has memory injection active must carry both into the
+/// outgoing ChatRequest without one clobbering the other. We compose the two
+/// production mutations — `file::process_file_blocks` (attaches the file's
+/// content to the user message) and `memory::retrieve_and_inject` (prepends the
+/// assistant's core-memory as a front System message) — on one request and
+/// assert both survive. Deterministic (no LLM).
+#[tokio::test]
+async fn test_file_attachment_and_memory_inject_coexist_in_one_request() {
+    use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
+
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "file_mem_chat",
+        &[
+            "assistants::create",
+            "memory::core::read",
+            "memory::core::write",
+            "files::upload",
+        ],
+    )
+    .await;
+    let token = &user.token;
+    let client = reqwest::Client::new();
+    let user_uuid = Uuid::parse_str(&user.user_id).expect("user uuid");
+
+    // ── Memory side: assistant + core-memory block + memory enabled. ──────
+    let assistant: Value = client
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "name": "FileMem Assistant" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let assistant_uuid = Uuid::parse_str(assistant["id"].as_str().unwrap()).unwrap();
+    let up = client
+        .put(server.api_url("/assistants/core-memory"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({
+            "assistant_id": assistant_uuid,
+            "block_label": "persona",
+            "content": "SENTINEL_CORE_FACT: the user prefers metric units.",
+            "char_limit": 1000
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(up.status().as_u16(), 200);
+    ziee::Repos
+        .memory
+        .update_admin_settings(
+            None, None, None, None,
+            Some(true), // enabled
+            None, None, None, None, None, None, None,
+        )
+        .await
+        .expect("enable memory admin");
+
+    // ── File side: upload a text file with a distinctive fact. ────────────
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(
+            b"SENTINEL_FILE_FACT: the deployment runs PostgreSQL 17.".to_vec(),
+        )
+        .file_name("notes.txt")
+        .mime_str("text/plain")
+        .unwrap(),
+    );
+    let upload: Value = client
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {token}"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let file_id = Uuid::parse_str(upload["id"].as_str().expect("file id")).unwrap();
+
+    // Same-process pool to drive the file processor (server shares this test DB).
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+
+    // text/plain → inlined as text content blocks (provider_id unused on this
+    // path, so a placeholder is fine).
+    let file_blocks = ziee::file_routing::process_file_blocks(
+        &pool,
+        file_id,
+        Uuid::new_v4(),
+        "openai",
+        user_uuid,
+    )
+    .await
+    .expect("process_file_blocks for a text file");
+    assert!(!file_blocks.is_empty(), "text file must yield content blocks");
+
+    // ── Compose: one user turn carrying the file blocks, then memory inject.
+    let mut user_content = vec![ContentBlock::Text {
+        text: "Summarize my notes and remember my unit preference.".into(),
+    }];
+    user_content.extend(file_blocks);
+    let mut req = ChatRequest {
+        model: "test-model".to_string(),
+        messages: vec![ChatMessage {
+            role: Role::User,
+            content: user_content,
+        }],
+        ..Default::default()
+    };
+    ziee::memory::retrieve_and_inject(user_uuid, None, Some(assistant_uuid), &mut req)
+        .await
+        .expect("retrieve_and_inject");
+
+    // ── Both subsystems present in ONE request. ──────────────────────────
+    // Memory: a front System message carrying the core fact.
+    let first = req.messages.first().expect("a message");
+    assert!(matches!(first.role, Role::System), "memory injects a front System message");
+    let sys_text: String = first
+        .content
+        .iter()
+        .filter_map(|c| match c {
+            ContentBlock::Text { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        sys_text.contains("SENTINEL_CORE_FACT"),
+        "memory core fact must be injected; got: {sys_text}"
+    );
+
+    // File: the user turn still carries the file's content (not clobbered).
+    let all_text: String = req
+        .messages
+        .iter()
+        .flat_map(|m| m.content.iter())
+        .filter_map(|c| match c {
+            ContentBlock::Text { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        all_text.contains("SENTINEL_FILE_FACT"),
+        "attached file content must survive alongside the memory inject; got: {all_text}"
+    );
+}
