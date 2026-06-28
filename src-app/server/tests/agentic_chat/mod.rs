@@ -1160,3 +1160,44 @@ async fn before_llm_call_injects_persisted_rolling_summary() {
         last.all_text
     );
 }
+
+/// Cross-subsystem COEXISTENCE: in ONE tool-capable conversation, the auto-
+/// attached built-ins from MULTIPLE independent subsystems are all present
+/// together — memory (remember), lit_search (literature_search), citations
+/// (list_citations), tool_result recall (get_tool_result), and elicitation
+/// (ask_user). The audit flagged that no test references these subsystems
+/// together; this asserts the attach set spans all of them, the integration
+/// point the lit_search→recall→citations and web_search+memory+… flows rely on.
+#[tokio::test]
+async fn multiple_subsystem_builtins_coexist_in_one_conversation() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "coexist_user").await;
+    enable_memory(&server, &user).await; // attaches the memory `remember` tool
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+
+    // A plain text turn — we only need one generation so the auto-attached
+    // built-in tool set is recorded by the stub.
+    let _ = send_and_collect(&server, &user, &conv_id, &branch_id, &model_id, "hello there").await;
+
+    let reqs = stub.requests();
+    let first = reqs.first().expect("at least one recorded request");
+    let attached = &first.tool_names;
+
+    for (subsystem, tool) in [
+        ("memory", "remember"),
+        ("lit_search", "literature_search"),
+        ("citations", "list_citations"),
+        ("tool_result", "get_tool_result"),
+        ("elicitation", "ask_user"),
+    ] {
+        assert!(
+            first.has_tool(tool),
+            "{subsystem} built-in '{tool}' must be auto-attached alongside the others; attached={attached:?}"
+        );
+    }
+}
