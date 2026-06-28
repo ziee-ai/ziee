@@ -159,14 +159,21 @@ pub async fn run_one_tick(pool: &PgPool) -> Result<(), AppError> {
 /// so the sub-tick precision loss is immaterial — and it sidesteps a
 /// chrono↔time bind-type conversion.
 async fn flush_last_used(pool: &PgPool) {
-    for (model_id, _ts) in proxy::drain_last_used().await {
-        let _ = sqlx::query!(
-            "UPDATE llm_runtime_instances SET last_used_at = NOW() WHERE model_id = $1",
-            model_id,
-        )
-        .execute(pool)
-        .await;
+    let model_ids: Vec<Uuid> = proxy::drain_last_used()
+        .await
+        .into_iter()
+        .map(|(model_id, _ts)| model_id)
+        .collect();
+    if model_ids.is_empty() {
+        return;
     }
+    // One batched UPDATE for all touched models instead of a query per row.
+    let _ = sqlx::query!(
+        "UPDATE llm_runtime_instances SET last_used_at = NOW() WHERE model_id = ANY($1)",
+        &model_ids,
+    )
+    .execute(pool)
+    .await;
 }
 
 /// CAS the proxy flag to Draining; wait up to `drain_timeout_secs`
