@@ -16,6 +16,7 @@ mod mcp_content_test;
 mod mcp_defaults_test;
 mod mcp_elicitation_test;
 mod mcp_extension_test;
+mod group_cascade_test;          // group-cascade system-MCP assignment grant/revoke via real endpoints
 mod mcp_loop_settings_test;
 mod mcp_sampling_test;
 mod mcp_streaming_workflow_test;
