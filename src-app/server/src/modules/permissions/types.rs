@@ -184,3 +184,55 @@ pub struct PermissionInfo {
     /// The action being performed
     pub action: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct UsersRead;
+    impl PermissionCheck for UsersRead {
+        const NAME: &'static str = "UsersRead";
+        const PERMISSION: &'static str = "users::read";
+        const DESCRIPTION: &'static str = "Read users";
+        const MODULE: &'static str = "users";
+    }
+
+    // A permission with a namespaced action to exercise the split logic.
+    struct CoreMemoryWrite;
+    impl PermissionCheck for CoreMemoryWrite {
+        const NAME: &'static str = "CoreMemoryWrite";
+        const PERMISSION: &'static str = "memory::core::write";
+        const DESCRIPTION: &'static str = "Write core memory";
+        const MODULE: &'static str = "memory";
+    }
+
+    #[test]
+    fn resource_is_first_segment_action_is_last() {
+        assert_eq!(UsersRead::resource(), "users");
+        assert_eq!(UsersRead::action(), "read");
+        // For a 3-segment permission, resource() takes the FIRST segment and
+        // action() the LAST.
+        assert_eq!(CoreMemoryWrite::resource(), "memory");
+        assert_eq!(CoreMemoryWrite::action(), "write");
+    }
+
+    #[test]
+    fn to_info_projects_all_fields() {
+        let info = UsersRead::to_info();
+        assert_eq!(info.permission, "users::read");
+        assert_eq!(info.description, "Read users");
+        assert_eq!(info.module, "users");
+        assert_eq!(info.resource, "users");
+        assert_eq!(info.action, "read");
+    }
+
+    #[test]
+    fn to_info_serializes_to_expected_json_shape() {
+        let info = CoreMemoryWrite::to_info();
+        let v = serde_json::to_value(&info).unwrap();
+        assert_eq!(v["permission"], "memory::core::write");
+        assert_eq!(v["module"], "memory");
+        assert_eq!(v["resource"], "memory");
+        assert_eq!(v["action"], "write");
+    }
+}
