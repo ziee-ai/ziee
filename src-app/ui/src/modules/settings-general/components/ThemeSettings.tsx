@@ -10,7 +10,7 @@ export function ThemeSettings() {
   }
 
   return (
-    <Card title="Appearance">
+    <Card title="Appearance" data-testid="settingsgen-appearance-card">
       <Flex
         justify="between"
         align="start"
@@ -28,6 +28,7 @@ export function ThemeSettings() {
         </div>
         <div className="flex-shrink-0">
           <Select
+            data-testid="settingsgen-theme-select"
             aria-label="Theme"
             className="min-w-[120px]"
             value={themePreference}
