@@ -1876,3 +1876,71 @@ async fn dedup_collapses_identical_uploads_in_resolve_available_files() {
         f.name, f.aka
     );
 }
+
+/// provider_routing dispatch + its defense-in-depth ownership re-validation.
+/// (1) Calling the resolver with a DIFFERENT user's id than the file owner is
+/// refused (FILE_ACCESS_DENIED) even though callers already gate it.
+/// (2) For the owner, a real text file routes to content block(s) (the
+/// extracted-text / base64 dispatch arms), not an empty result.
+#[tokio::test]
+async fn provider_routing_enforces_ownership_and_routes_text_file() {
+    let server = crate::common::TestServer::start().await;
+    let owner = test_helpers::create_user_with_permissions(
+        &server,
+        "routing_owner",
+        &["files::upload", "files::read"],
+    )
+    .await;
+    let other = test_helpers::create_user_with_permissions(
+        &server,
+        "routing_other",
+        &["files::read"],
+    )
+    .await;
+
+    // Upload a text file as the owner.
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(b"ROUTING_CONTENT hello provider routing".to_vec())
+            .file_name("route.txt")
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+    let up: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload")
+        .json()
+        .await
+        .unwrap();
+    let file_id = uuid::Uuid::parse_str(up["id"].as_str().unwrap()).unwrap();
+    let owner_id = uuid::Uuid::parse_str(&owner.user_id).unwrap();
+    let other_id = uuid::Uuid::parse_str(&other.user_id).unwrap();
+
+    let pool = ziee::Repos.pool();
+    // provider_id is unused on the text dispatch arm — a random id is fine.
+    let provider_id = uuid::Uuid::new_v4();
+
+    // (1) Foreign user → forbidden, regardless of provider.
+    let denied =
+        ziee::file_routing::process_file_blocks(pool, file_id, provider_id, "anthropic", other_id)
+            .await;
+    let err = denied.expect_err("a foreign user must be refused");
+    assert!(
+        format!("{err}").to_lowercase().contains("access"),
+        "ownership refusal should surface an access error; got: {err}"
+    );
+
+    // (2) Owner → routes the text file to at least one content block.
+    let blocks =
+        ziee::file_routing::process_file_blocks(pool, file_id, provider_id, "anthropic", owner_id)
+            .await
+            .expect("owner routing should succeed");
+    assert!(
+        !blocks.is_empty(),
+        "a text file must route to at least one content block"
+    );
+}

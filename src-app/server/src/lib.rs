@@ -171,6 +171,13 @@ pub mod file_available {
     pub use crate::modules::file::available_files::{resolve_available_files, AvailableFile};
 }
 
+// Re-export the provider file-routing entrypoint for the integration test that
+// exercises its ownership re-validation + routing dispatch.
+#[doc(hidden)]
+pub mod file_routing {
+    pub use crate::modules::file::provider_routing::process_file_blocks;
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`
