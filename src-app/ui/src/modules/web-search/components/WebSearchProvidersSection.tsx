@@ -34,13 +34,13 @@ export function WebSearchProvidersSection() {
   const { providers, loading } = Stores.WebSearchAdmin
   if (loading && providers.length === 0) {
     return (
-      <Card title="Search providers">
+      <Card data-testid="websearch-providers-card" title="Search providers">
         <Spin label="Loading" />
       </Card>
     )
   }
   return (
-    <Card title="Search providers">
+    <Card data-testid="websearch-providers-card" title="Search providers">
       <Paragraph type="secondary" className="text-xs">
         Configure each engine you want available. Keys are stored encrypted and
         never shown again.
@@ -153,6 +153,7 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
       </Paragraph>
 
       <Form
+        data-testid={`websearch-provider-${entry.key}-form`}
         form={form}
         layout="horizontal"
         labelWidth="33%"
@@ -161,7 +162,7 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
       >
         {entry.config_fields.map(f => (
           <FormField key={f.key} name={f.key} label={f.label} required={f.required}>
-            <Input placeholder={f.placeholder} />
+            <Input data-testid={`websearch-provider-${entry.key}-field-${f.key}`} placeholder={f.placeholder} />
           </FormField>
         ))}
 
@@ -176,6 +177,7 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
             }
           >
             <PasswordInput
+              data-testid={`websearch-provider-${entry.key}-api-key`}
               showLabel="Show API key"
               hideLabel="Hide API key"
               autoComplete="new-password"
@@ -186,11 +188,12 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
 
         <Flex justify="end" gap="small">
           {entry.needs_api_key && entry.api_key_set && (
-            <Button variant="destructive" onClick={clearKey} disabled={!canManage || isSaving}>
+            <Button data-testid={`websearch-provider-${entry.key}-clear`} variant="destructive" onClick={clearKey} disabled={!canManage || isSaving}>
               Clear key
             </Button>
           )}
           <Button
+            data-testid={`websearch-provider-${entry.key}-save`}
             type="submit"
             loading={isSaving}
             disabled={!canManage || !dirty}

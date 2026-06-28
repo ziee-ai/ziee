@@ -20,6 +20,7 @@ export function WebSearchSettingsPage() {
     >
       {error && (
         <Alert
+          data-testid="websearch-settings-error-alert"
           tone="error"
           title="Failed to load web search settings"
           description={error}

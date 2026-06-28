@@ -111,16 +111,17 @@ export function WebSearchGlobalSection() {
 
   if (loading && !settings) {
     return (
-      <Card title="Web search">
+      <Card data-testid="websearch-global-card" title="Web search">
         <Spin label="Loading" />
       </Card>
     )
   }
 
   return (
-    <Card title="Web search">
+    <Card data-testid="websearch-global-card" title="Web search">
       {!canManage && (
         <Alert
+          data-testid="websearch-global-readonly-alert"
           tone="info"
           title="Read-only view"
           description="You can view web search settings but not change them."
@@ -129,6 +130,7 @@ export function WebSearchGlobalSection() {
       )}
 
       <Form
+        data-testid="websearch-global-form"
         form={form}
         layout="horizontal"
         labelWidth="42%"
@@ -141,7 +143,7 @@ export function WebSearchGlobalSection() {
           valuePropName="checked"
           description="Master switch. Even when on, web tools only attach to a chat once a provider in the chain is configured."
         >
-          <Switch />
+          <Switch data-testid="websearch-global-enabled" />
         </FormField>
 
         <Separator titlePlacement="left">
@@ -150,28 +152,29 @@ export function WebSearchGlobalSection() {
           </Text>
         </Separator>
         <FormField name="max_results" label="Max results per search">
-          <InputNumber min={1} max={20} className="w-full" />
+          <InputNumber data-testid="websearch-global-max-results" min={1} max={20} className="w-full" />
         </FormField>
         <FormField
           name="fetch_max_mib"
           label="Page fetch size cap"
           description="Maximum bytes downloaded per fetch_url call."
         >
-          <InputNumber min={1} max={100} suffix="MiB" className="w-full" />
+          <InputNumber data-testid="websearch-global-fetch-mib" min={1} max={100} suffix="MiB" className="w-full" />
         </FormField>
         <FormField
           name="fetch_max_chars"
           label="Page fetch char cap"
           description="Extracted markdown is truncated to this many characters."
         >
-          <InputNumber min={1000} max={500000} step={1000} className="w-full" />
+          <InputNumber data-testid="websearch-global-fetch-chars" min={1000} max={500000} step={1000} className="w-full" />
         </FormField>
         <FormField name="request_timeout_secs" label="Request timeout">
-          <InputNumber min={1} max={120} suffix="s" className="w-full" />
+          <InputNumber data-testid="websearch-global-timeout" min={1} max={120} suffix="s" className="w-full" />
         </FormField>
 
         <Flex justify="end" gap="small">
           <Button
+            data-testid="websearch-global-save"
             type="submit"
             loading={savingSettings}
             disabled={!canManage || !form.formState.isDirty}
@@ -194,6 +197,7 @@ export function WebSearchGlobalSection() {
 
       {chain.length === 0 ? (
         <Alert
+          data-testid="websearch-global-empty-chain-alert"
           tone="warning"
           title="No providers in the chain"
           description="Add at least one provider below and configure it for web search to work."
@@ -201,6 +205,7 @@ export function WebSearchGlobalSection() {
         />
       ) : (
         <List
+          data-testid="websearch-global-chain-list"
           size="sm"
           className="border rounded-md"
           dataSource={chain}
@@ -218,6 +223,7 @@ export function WebSearchGlobalSection() {
                 <Space>
                   <Tooltip content="Move up">
                     <Button
+                      data-testid={`websearch-chain-${key}-up`}
                       variant="ghost"
                       size="sm"
                       aria-label={`Move ${nameOf(key)} up`}
@@ -228,6 +234,7 @@ export function WebSearchGlobalSection() {
                   </Tooltip>
                   <Tooltip content="Move down">
                     <Button
+                      data-testid={`websearch-chain-${key}-down`}
                       variant="ghost"
                       size="sm"
                       aria-label={`Move ${nameOf(key)} down`}
@@ -238,6 +245,7 @@ export function WebSearchGlobalSection() {
                   </Tooltip>
                   <Tooltip content="Remove from chain">
                     <Button
+                      data-testid={`websearch-chain-${key}-remove`}
                       variant="destructive"
                       size="sm"
                       aria-label={`Remove ${nameOf(key)} from chain`}
@@ -255,6 +263,7 @@ export function WebSearchGlobalSection() {
 
       {canManage && notInChain.length > 0 && (
         <Select
+          data-testid="websearch-global-add-provider"
           className="mt-3 w-full"
           placeholder="Add a provider to the chain…"
           value={undefined}
