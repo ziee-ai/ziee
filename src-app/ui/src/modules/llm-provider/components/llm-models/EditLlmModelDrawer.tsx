@@ -1,4 +1,5 @@
-import { App, Button, Card, Flex, Form } from 'antd'
+import { Button, Card, Flex, Form, message, useForm, zodResolver } from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/modules/llm-provider/stores'
@@ -11,13 +12,13 @@ import {
   MODEL_PARAMETERS,
 } from '@/modules/llm-provider/constants/llmModelParameters'
 
+const schema = z.object({ name: z.string().min(1, 'Name is required') }).passthrough()
+
 /**
  * Edit drawer for both local and remote LLM models
  * For local models, additional engine/device settings would be shown (currently stubbed)
  */
 export function EditLlmModelDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
   const { open, modelId } = Stores.EditLlmModelDrawer
@@ -33,9 +34,21 @@ export function EditLlmModelDrawer() {
   const isLocalModel = currentProvider?.provider_type === 'local'
   const engineType = currentModel?.engine_type
 
+  const form = useForm<any>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: '',
+      display_name: '',
+      description: '',
+      capabilities: {},
+      parameters: {},
+      engine_settings: {},
+    },
+  })
+
   useEffect(() => {
     if (currentModel && open) {
-      form.setFieldsValue({
+      form.reset({
         name: currentModel.name,
         display_name: currentModel.display_name,
         description: currentModel.description,
@@ -46,12 +59,11 @@ export function EditLlmModelDrawer() {
     }
   }, [currentModel, open, form])
 
-  const handleSubmit = async () => {
+  const onSubmit = async (values: any) => {
     if (!currentModel || !currentProvider) return
 
     try {
       setLoading(true)
-      const values = await form.validateFields()
 
       // Update via the store (which calls the API + reconciles
       // local provider state).
@@ -76,7 +88,7 @@ export function EditLlmModelDrawer() {
   }
 
   const handleCancel = () => {
-    form.resetFields()
+    form.reset()
     Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
   }
 
@@ -86,14 +98,13 @@ export function EditLlmModelDrawer() {
       open={open}
       onClose={handleCancel}
       footer={[
-        <Button key="cancel" onClick={handleCancel}>
+        <Button key="cancel" variant="outline" onClick={handleCancel}>
           Cancel
         </Button>,
         <Button
           key="submit"
-          type="primary"
           loading={loading}
-          onClick={handleSubmit}
+          onClick={form.handleSubmit(onSubmit)}
         >
           Save
         </Button>,
@@ -101,7 +112,12 @@ export function EditLlmModelDrawer() {
       size={600}
       mask={{ closable: false }}
     >
-      <Form name="edit-llm-model-form" form={form} layout="vertical">
+      <Form
+        name="edit-llm-model-form"
+        form={form}
+        onSubmit={onSubmit}
+        layout="vertical"
+      >
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />
 
         <Flex className={`flex-col gap-3`}>

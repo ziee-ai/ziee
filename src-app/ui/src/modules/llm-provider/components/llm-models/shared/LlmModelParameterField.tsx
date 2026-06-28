@@ -1,68 +1,12 @@
-import { Form, Input, InputNumber, Select, Tag } from 'antd'
-import { useState } from 'react'
-
-const { TextArea } = Input
-
-interface StringArrayInputProps {
-  value?: string[]
-  onChange?: (value: string[]) => void
-  placeholder?: string
-  style?: React.CSSProperties
-}
-
-function StringArrayInput({
-  value = [],
-  onChange,
-  placeholder,
-  style,
-}: StringArrayInputProps) {
-  const [inputValue, setInputValue] = useState('')
-
-  const handleAddTag = () => {
-    if (inputValue.trim() && !value.includes(inputValue.trim())) {
-      const newValue = [...value, inputValue.trim()]
-      onChange?.(newValue)
-      setInputValue('')
-    }
-  }
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    const newValue = value.filter(tag => tag !== tagToRemove)
-    onChange?.(newValue)
-  }
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleAddTag()
-    }
-  }
-
-  return (
-    <div style={style}>
-      <div style={{ marginBottom: 8 }}>
-        {value?.map(tag => (
-          <Tag
-            key={tag}
-            closable
-            onClose={() => handleRemoveTag(tag)}
-            style={{ marginBottom: 4 }}
-          >
-            {tag}
-          </Tag>
-        ))}
-      </div>
-      <Input
-        value={inputValue}
-        onChange={e => setInputValue(e.target.value)}
-        onKeyPress={handleKeyPress}
-        onBlur={handleAddTag}
-        placeholder={placeholder || 'Press Enter to add'}
-        style={{ width: '100%' }}
-      />
-    </div>
-  )
-}
+import {
+  FormField,
+  Input,
+  InputNumber,
+  MultiSelect,
+  PasswordInput,
+  Select,
+  Textarea,
+} from '@/components/ui'
 
 export interface ParameterFieldConfig {
   name: string | string[]
@@ -91,52 +35,66 @@ export function LlmModelParameterField({
   step,
   required,
   options,
-  rules = [],
 }: LlmModelParameterFieldProps) {
-  const fieldRules = [
-    ...(required ? [{ required: true, message: `${label} is required` }] : []),
-    ...rules,
-  ]
+  const fieldName = Array.isArray(name) ? name.join('.') : name
 
   const renderInput = () => {
-    const commonStyle = { width: '100%' }
-
     switch (type) {
       case 'number':
         return (
           <InputNumber
             placeholder={placeholder}
-            style={commonStyle}
             min={min}
             max={max}
             step={step}
           />
         )
       case 'password':
-        return <Input.Password placeholder={placeholder} style={commonStyle} />
+        return (
+          <PasswordInput
+            placeholder={placeholder}
+            showLabel="Show"
+            hideLabel="Hide"
+          />
+        )
       case 'textarea':
-        return <TextArea placeholder={placeholder} rows={3} />
+        return <Textarea placeholder={placeholder} rows={3} />
       case 'select':
         return (
           <Select
             placeholder={placeholder}
-            style={commonStyle}
-            options={options}
+            options={(options ?? []).map(o => ({
+              value: String(o.value),
+              label: o.label,
+            }))}
           />
         )
       case 'string-array':
         return (
-          <StringArrayInput placeholder={placeholder} style={commonStyle} />
+          <MultiSelect
+            allowCreate
+            options={[]}
+            placeholder={placeholder ?? ''}
+            searchPlaceholder="Type to add"
+            emptyText="No values"
+            removeLabel={l => `Remove ${l}`}
+            aria-label={label}
+          />
         )
       case 'text':
       default:
-        return <Input placeholder={placeholder} style={commonStyle} />
+        return <Input placeholder={placeholder} />
     }
   }
 
   return (
-    <Form.Item name={name} label={label} extra={help} rules={fieldRules}>
+    <FormField
+      name={fieldName}
+      label={label}
+      description={help}
+      required={required}
+    >
       {renderInput()}
-    </Form.Item>
+    </FormField>
   )
 }

@@ -1,16 +1,21 @@
 import { Upload as UploadIcon } from 'lucide-react'
 import {
-  App,
   Button,
   Card,
   Form,
+  FormField,
   List,
   Progress,
   Select,
   Tag,
-  Typography,
+  Text,
   Upload,
-} from 'antd'
+  message,
+  useForm,
+  useWatch,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants'
@@ -19,8 +24,6 @@ import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { formatBytes } from '@/utils/downloadUtils'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
-
-const { Text } = Typography
 
 /**
  * File with metadata for display
@@ -31,9 +34,14 @@ interface FilteredFile {
   required: boolean
 }
 
+const schema = z
+  .object({
+    local_folder_path: z.string().min(1, 'Please select a model folder'),
+    main_filename: z.string().min(1, 'Please select the main model file'),
+  })
+  .passthrough()
+
 export function AddLocalLlmModelUploadDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [filteredFiles, setFilteredFiles] = useState<FilteredFile[]>([])
@@ -42,6 +50,15 @@ export function AddLocalLlmModelUploadDrawer() {
     Stores.LlmModelUpload
   const { open, providerId } = Stores.AddLocalLlmModelUploadDrawer
   const canCreate = usePermission(Permissions.LlmModelsCreate)
+
+  const form = useForm<any>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      local_folder_path: '',
+      main_filename: '',
+      engine_type: 'mistralrs',
+    },
+  })
 
   /**
    * Generate a unique model ID from display name
@@ -170,11 +187,9 @@ export function AddLocalLlmModelUploadDrawer() {
   }
 
   /**
-   * Handle folder upload
+   * Handle folder / file selection (raw File[] from the kit Upload dropzone).
    */
-  const handleFolderUpload = (info: any) => {
-    const allFiles = info.fileList.map((item: any) => item.originFileObj)
-
+  const handleFiles = (allFiles: File[]) => {
     // Filter to only include files in the root folder (no subdirectories) and no dot files
     const rootFiles = allFiles.filter((file: File) => {
       // Check if file path contains '/' (subdirectory)
@@ -189,15 +204,17 @@ export function AddLocalLlmModelUploadDrawer() {
         return false
       }
 
-      // Only keep files that are in root (pathParts.length === 2: folderName/fileName)
-      return pathParts.length === 2
+      // Keep root-level files: a plain file selection (pathParts.length === 1)
+      // or a folder's root file (folderName/fileName === 2). Deeper paths are
+      // subdirectory files and are ignored.
+      return pathParts.length <= 2
     })
 
     setSelectedFiles(rootFiles)
 
     // Auto-detect file format from uploaded files and always update the form
     const detectedFormat = detectFileFormat(rootFiles)
-    form.setFieldValue('file_format', detectedFormat)
+    form.setValue('file_format', detectedFormat)
 
     // Filter files based on detected format
     const filtered = filterFilesByFormat(rootFiles, detectedFormat)
@@ -208,43 +225,27 @@ export function AddLocalLlmModelUploadDrawer() {
       item => item.purpose === 'model' && item.required,
     )
     if (mainFiles.length > 0) {
-      form.setFieldValue('main_filename', mainFiles[0].file.name)
+      form.setValue('main_filename', mainFiles[0].file.name)
     }
 
     // Update form field
-    form.setFieldValue(
-      'local_folder_path',
-      `${rootFiles.length} files selected`,
-    )
+    form.setValue('local_folder_path', `${rootFiles.length} files selected`)
   }
 
   /**
    * Handle form submission
    */
-  const handleSubmit = async () => {
+  const onSubmit = async (values: any) => {
     try {
       setLoading(true)
       Stores.LlmModelUpload.clearUploadError()
 
-      // Validate that files were selected (form validation doesn't catch this since we set a display string)
+      // Validate that files were selected (schema only sees the display string)
       if (selectedFiles.length === 0) {
-        form.setFields([
-          {
-            name: 'local_folder_path',
-            errors: ['Please select a model folder'],
-          },
-        ])
-        setLoading(false)
-        return
-      }
-
-      // Validate form fields (this will show inline errors for display_name, main_filename, etc.)
-      // If validation fails, validateFields throws an error and Ant Design automatically shows the error messages
-      let values
-      try {
-        values = await form.validateFields()
-      } catch (_error) {
-        // Form validation failed - errors are already displayed by Ant Design
+        form.setError('local_folder_path', {
+          type: 'manual',
+          message: 'Please select a model folder',
+        })
         setLoading(false)
         return
       }
@@ -257,12 +258,10 @@ export function AddLocalLlmModelUploadDrawer() {
 
       if (!validation.isValid) {
         // Show file validation errors inline on the local_folder_path field
-        form.setFields([
-          {
-            name: 'local_folder_path',
-            errors: validation.errors,
-          },
-        ])
+        form.setError('local_folder_path', {
+          type: 'manual',
+          message: validation.errors.join(' '),
+        })
         setLoading(false)
         return
       }
@@ -280,12 +279,10 @@ export function AddLocalLlmModelUploadDrawer() {
         file => file.name === values.main_filename,
       )
       if (!mainFile) {
-        form.setFields([
-          {
-            name: 'main_filename',
-            errors: ['Selected main file not found in uploaded files'],
-          },
-        ])
+        form.setError('main_filename', {
+          type: 'manual',
+          message: 'Selected main file not found in uploaded files',
+        })
         setLoading(false)
         return
       }
@@ -307,7 +304,7 @@ export function AddLocalLlmModelUploadDrawer() {
       message.success('Model uploaded successfully')
 
       // Reset and close
-      form.resetFields()
+      form.reset()
       setSelectedFiles([])
       setFilteredFiles([])
 
@@ -344,7 +341,7 @@ export function AddLocalLlmModelUploadDrawer() {
       )
       return
     }
-    form.resetFields()
+    form.reset()
     setSelectedFiles([])
     setFilteredFiles([])
 
@@ -352,7 +349,7 @@ export function AddLocalLlmModelUploadDrawer() {
   }
 
   // Update filtered files when format changes
-  const file_format = Form.useWatch('file_format', form)
+  const file_format = useWatch({ control: form.control, name: 'file_format' })
   useEffect(() => {
     if (selectedFiles.length > 0) {
       const newFilteredFiles = filterFilesByFormat(selectedFiles, file_format)
@@ -364,12 +361,13 @@ export function AddLocalLlmModelUploadDrawer() {
       )
       if (mainFiles.length > 0) {
         // Auto-select first matching model file
-        form.setFieldValue('main_filename', mainFiles[0].file.name)
+        form.setValue('main_filename', mainFiles[0].file.name)
       } else {
         // Clear selection if no matching model files
-        form.setFieldValue('main_filename', undefined)
+        form.setValue('main_filename', undefined)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file_format, selectedFiles])
 
   return (
@@ -378,15 +376,19 @@ export function AddLocalLlmModelUploadDrawer() {
       open={open}
       onClose={handleCancel}
       footer={[
-        <Button key="cancel" onClick={handleCancel} disabled={uploading}>
+        <Button
+          key="cancel"
+          variant="outline"
+          onClick={handleCancel}
+          disabled={uploading}
+        >
           {canCreate ? 'Cancel' : 'Close'}
         </Button>,
         canCreate && (
           <Button
             key="submit"
-            type="primary"
             loading={loading}
-            onClick={handleSubmit}
+            onClick={form.handleSubmit(onSubmit)}
             disabled={uploading}
           >
             {uploading ? 'Uploading...' : 'Upload'}
@@ -400,59 +402,30 @@ export function AddLocalLlmModelUploadDrawer() {
       <Form
         name="llm-model-upload"
         form={form}
+        onSubmit={onSubmit}
         layout="vertical"
-        initialValues={{
-          local_folder_path: '',
-          main_filename: '',
-          engine_type: 'mistralrs',
-        }}
       >
         <LocalLlmModelCommonFields />
 
-        <Form.Item
-          name="local_folder_path"
-          label="Model Folder"
-          rules={[
-            {
-              required: true,
-              message: 'Please select a model folder',
-            },
-          ]}
-          valuePropName={'file'}
-        >
-          <Upload.Dragger
-            directory
+        <FormField name="local_folder_path" label="Model Folder" required>
+          <Upload
+            label="Click or drag folder to select model files"
             multiple
-            beforeUpload={() => false}
-            onChange={handleFolderUpload}
-            showUploadList={false}
+            directory
             disabled={uploading}
+            onFiles={handleFiles}
           >
-            <p className="ant-upload-drag-icon">
-              <UploadIcon />
-            </p>
-            <p className="ant-upload-text">
-              Click or drag folder to select model files
-            </p>
-            <p className="ant-upload-hint">
+            <UploadIcon />
+            <p>Click or drag folder to select model files</p>
+            <p className="text-muted-foreground text-xs">
               Only root folder files will be uploaded (subdirectories ignored)
             </p>
-          </Upload.Dragger>
-        </Form.Item>
+          </Upload>
+        </FormField>
 
-        <Form.Item
-          name="main_filename"
-          label="Main Model File"
-          rules={[
-            {
-              required: true,
-              message: 'Please select the main model file',
-            },
-          ]}
-        >
+        <FormField name="main_filename" label="Main Model File" required>
           <Select
             placeholder="Select the main model file"
-            showSearch={{ optionFilterProp: 'children' }}
             disabled={uploading}
             options={filteredFiles
               .filter(item => item.purpose === 'model')
@@ -461,42 +434,27 @@ export function AddLocalLlmModelUploadDrawer() {
                 label: item.file.name,
               }))}
           />
-        </Form.Item>
+        </FormField>
 
         {!uploading && filteredFiles.length > 0 && (
-          <Card title="Selected Files (Root Folder Only)" size="small">
+          <Card title="Selected Files (Root Folder Only)" size="sm">
             <List
               dataSource={filteredFiles}
+              rowKey={item => item.file.name}
               renderItem={item => (
-                <List.Item
-                  extra={
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '8px',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Tag
-                        color={item.required ? 'green' : 'blue'}
-                        style={{ margin: 0 }}
-                      >
-                        {item.purpose}
-                      </Tag>
-                      <Text type="secondary" style={{ fontSize: '12px' }}>
-                        {formatBytes(item.file.size)}
-                      </Text>
-                    </div>
-                  }
-                >
-                  <Text
-                    style={{
-                      fontWeight: item.required ? 'bold' : 'normal',
-                    }}
-                  >
+                <div className="flex items-center justify-between">
+                  <Text className={item.required ? 'font-bold' : undefined}>
                     {item.file.name}
                   </Text>
-                </List.Item>
+                  <div className="flex gap-2 items-center">
+                    <Tag tone={item.required ? 'success' : 'info'}>
+                      {item.purpose}
+                    </Tag>
+                    <Text type="secondary" className="text-xs">
+                      {formatBytes(item.file.size)}
+                    </Text>
+                  </div>
+                </div>
               )}
             />
           </Card>
@@ -506,12 +464,12 @@ export function AddLocalLlmModelUploadDrawer() {
           (uploadProgress.length > 0 || overallUploadProgress > 0) && (
             <Card
               title="Upload Progress"
-              size="small"
+              size="sm"
               extra={
                 <Button
-                  type="link"
-                  danger
-                  size="small"
+                  variant="link"
+                  size="sm"
+                  className="text-destructive"
                   onClick={handleCancelUpload}
                 >
                   Cancel Upload
@@ -519,13 +477,14 @@ export function AddLocalLlmModelUploadDrawer() {
               }
             >
               {overallUploadProgress > 0 && (
-                <div style={{ marginBottom: '12px' }}>
+                <div className="mb-3">
                   <Text strong>Overall Progress:</Text>
                   <Progress
-                    percent={Math.round(overallUploadProgress)}
-                    status="active"
+                    aria-label="Overall upload progress"
+                    value={Math.round(overallUploadProgress)}
+                    tone="primary"
                   />
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                  <Text type="secondary" className="text-xs">
                     {
                       uploadProgress.filter(f => f.status === 'completed')
                         .length
@@ -537,18 +496,17 @@ export function AddLocalLlmModelUploadDrawer() {
               {uploadProgress.length > 0 && (
                 <div>
                   {uploadProgress.map((fileProgress, index) => (
-                    <div key={index} style={{ marginBottom: '8px' }}>
+                    <div key={index} className="mb-2">
                       <Text strong>{fileProgress.filename}</Text>
                       <Progress
-                        percent={Math.round(fileProgress.progress)}
-                        status={
-                          fileProgress.status === 'error'
-                            ? 'exception'
-                            : 'active'
+                        aria-label={`Upload progress for ${fileProgress.filename}`}
+                        value={Math.round(fileProgress.progress)}
+                        tone={
+                          fileProgress.status === 'error' ? 'error' : 'primary'
                         }
                       />
                       {fileProgress.size && (
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                        <Text type="secondary" className="text-xs">
                           {formatBytes(
                             Math.round(
                               (fileProgress.progress * fileProgress.size) / 100,

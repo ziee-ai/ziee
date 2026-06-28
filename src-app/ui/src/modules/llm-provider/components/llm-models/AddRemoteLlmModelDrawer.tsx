@@ -1,29 +1,39 @@
-import { App, Button, Form } from 'antd'
+import { Button, Form, message, useForm, zodResolver } from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useState } from 'react'
-import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { BASIC_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
 
+const schema = z.object({ name: z.string().min(1, 'Name is required') }).passthrough()
+
 export function AddRemoteLlmModelDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
   // Get modal state from drawer store
   const { open, providerId } = Stores.AddRemoteLlmModelDrawer
   const canCreate = usePermission(Permissions.LlmModelsCreate)
 
-  const handleSubmit = async () => {
+  const form = useForm<any>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      enabled: true,
+      vision: false,
+      audio: false,
+      tools: false,
+      codeInterpreter: false,
+    },
+  })
+
+  const onSubmit = async (values: any) => {
     if (!providerId) return
 
     try {
       setLoading(true)
       Stores.LlmProvider.clearLlmProviderStoreError()
-      const values = await form.validateFields()
 
       // Create model via the store (which calls the API + updates
       // local provider state + refreshes the providers list).
@@ -47,7 +57,7 @@ export function AddRemoteLlmModelDrawer() {
         },
       })
 
-      form.resetFields()
+      form.reset()
       Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()
 
       message.success('Model added successfully')
@@ -60,7 +70,7 @@ export function AddRemoteLlmModelDrawer() {
   }
 
   const handleCancel = () => {
-    form.resetFields()
+    form.reset()
     Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()
   }
 
@@ -70,15 +80,14 @@ export function AddRemoteLlmModelDrawer() {
       open={open}
       onClose={handleCancel}
       footer={[
-        <Button key="cancel" onClick={handleCancel}>
+        <Button key="cancel" variant="outline" onClick={handleCancel}>
           {canCreate ? 'Cancel' : 'Close'}
         </Button>,
         canCreate && (
           <Button
             key="submit"
-            type="primary"
             loading={loading}
-            onClick={handleSubmit}
+            onClick={form.handleSubmit(onSubmit)}
           >
             Add
           </Button>
@@ -87,17 +96,7 @@ export function AddRemoteLlmModelDrawer() {
       size={600}
       mask={{ closable: false }}
     >
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{
-          enabled: true,
-          vision: false,
-          audio: false,
-          tools: false,
-          codeInterpreter: false,
-        }}
-      >
+      <Form form={form} onSubmit={onSubmit} layout="vertical">
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />
       </Form>
     </Drawer>
