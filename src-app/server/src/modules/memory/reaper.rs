@@ -143,3 +143,152 @@ pub async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    /// Drives the REAL single-pass `run_once` (the body of `run_reaper_loop`,
+    /// which the existing `tests/memory/retention_test.rs` deliberately could
+    /// not call — it re-implements the SQL because `ziee::modules` is private).
+    /// Seeds the three states the reaper acts on and asserts each transition:
+    ///   - a soft-deleted row past the grace window is HARD-deleted (gone),
+    ///   - a live row older than the user's `retention_days` is SOFT-deleted,
+    ///   - a fresh live row within retention survives untouched,
+    ///   - and the per-user `max_memories` cap soft-deletes the oldest overflow.
+    ///
+    /// DB-gated: soft-skips (mirroring the suite's env-gated real-stack tests)
+    /// when no Postgres is reachable, so `cargo test --lib` without a DB stays
+    /// green; runs for real wherever `DATABASE_URL` points at a migrated DB.
+    #[tokio::test]
+    async fn run_once_reaps_grace_retention_and_cap() {
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skip: DATABASE_URL unset — no DB to exercise run_once against");
+                return;
+            }
+        };
+        let pool = match PgPoolOptions::new().max_connections(2).connect(&url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return;
+            }
+        };
+        // `run_once` reads admin settings via the global `Repos`; init is
+        // idempotent (no-op if another lib test already won the race).
+        crate::core::init_repositories(pool.clone());
+
+        let tag = Uuid::new_v4();
+        let user_id: Uuid =
+            sqlx::query_scalar("INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id")
+                .bind(format!("reaper_{tag}"))
+                .bind(format!("reaper_{tag}@example.com"))
+                .fetch_one(&pool)
+                .await
+                .expect("seed user");
+
+        // retention_days = 1 (so a 2-day-old row is reaped), max_memories = 2.
+        sqlx::query(
+            "INSERT INTO user_memory_settings (user_id, retention_days, max_memories) \
+             VALUES ($1, 1, 2)",
+        )
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("seed settings");
+
+        // Helper: insert a memory row with explicit updated_at / deleted_at.
+        async fn seed(
+            pool: &PgPool,
+            user_id: Uuid,
+            content: &str,
+            updated_age_days: f64,
+            deleted_age_days: Option<f64>,
+        ) -> Uuid {
+            let deleted = deleted_age_days
+                .map(|d| format!("NOW() - INTERVAL '{d} days'"))
+                .unwrap_or_else(|| "NULL".to_string());
+            let q = format!(
+                "INSERT INTO user_memories (user_id, content, updated_at, created_at, deleted_at) \
+                 VALUES ($1, $2, NOW() - INTERVAL '{updated_age_days} days', NOW(), {deleted}) \
+                 RETURNING id"
+            );
+            sqlx::query_scalar(&q)
+                .bind(user_id)
+                .bind(content)
+                .fetch_one(pool)
+                .await
+                .expect("seed memory")
+        }
+
+        // (1) grace: soft-deleted 40 days ago → hard-deleted (grace default 30d).
+        let grace_expired = seed(&pool, user_id, "grace-expired", 40.0, Some(40.0)).await;
+        // (1b) soft-deleted only 5 days ago → still within grace, NOT hard-deleted.
+        let grace_fresh = seed(&pool, user_id, "grace-fresh", 5.0, Some(5.0)).await;
+        // (2) retention: live, updated 2 days ago (> retention_days 1) → soft-deleted.
+        let retention_aged = seed(&pool, user_id, "retention-aged", 2.0, None).await;
+        // (3) fresh live row within retention → survives. Newest two updated_at
+        // values among live rows so the cap keeps them.
+        let fresh_a = seed(&pool, user_id, "fresh-a", 0.10, None).await;
+        let fresh_b = seed(&pool, user_id, "fresh-b", 0.05, None).await;
+        // (3b) cap: a 3rd live row. After retention_aged is reaped there are 3
+        // live rows (retention_aged, fresh_a, fresh_b); retention drops the aged
+        // one, leaving exactly 2 — at the cap. Add one more live row that is
+        // within retention but OLDER than fresh_a/fresh_b so the cap evicts it.
+        let cap_evicted = seed(&pool, user_id, "cap-evicted", 0.5, None).await;
+
+        run_once(&pool)
+            .await
+            .expect("run_once completes without error");
+
+        // Assert helper: read deleted_at; None row means hard-deleted.
+        async fn state(pool: &PgPool, id: Uuid) -> Option<Option<chrono::DateTime<chrono::Utc>>> {
+            sqlx::query_scalar::<_, Option<chrono::DateTime<chrono::Utc>>>(
+                "SELECT deleted_at FROM user_memories WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .expect("read state")
+        }
+
+        // (1) hard-deleted: the row is GONE entirely.
+        assert!(
+            state(&pool, grace_expired).await.is_none(),
+            "grace-expired soft-deleted row must be hard-deleted (removed)"
+        );
+        // (1b) still soft-deleted but present (within grace).
+        assert!(
+            matches!(state(&pool, grace_fresh).await, Some(Some(_))),
+            "within-grace soft-deleted row must survive the hard-delete"
+        );
+        // (2) retention-aged live row flipped to soft-deleted.
+        assert!(
+            matches!(state(&pool, retention_aged).await, Some(Some(_))),
+            "retention-aged row must be soft-deleted"
+        );
+        // (3) fresh rows within retention + under cap survive (deleted_at NULL).
+        assert!(
+            matches!(state(&pool, fresh_a).await, Some(None)),
+            "fresh-a within retention + under cap must survive"
+        );
+        assert!(
+            matches!(state(&pool, fresh_b).await, Some(None)),
+            "fresh-b within retention + under cap must survive"
+        );
+        // (3b) cap evicted the oldest over-cap live row.
+        assert!(
+            matches!(state(&pool, cap_evicted).await, Some(Some(_))),
+            "over-cap oldest live row must be soft-deleted by the max_memories cap"
+        );
+
+        // Cleanup (best-effort) so reruns don't accumulate.
+        let _ = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&pool)
+            .await;
+    }
+}
