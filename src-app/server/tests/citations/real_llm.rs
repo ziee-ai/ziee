@@ -278,3 +278,125 @@ async fn real_llm_multi_turn_citations() {
         "turn 2 should also invoke a citations tool (built-in stays attached across turns)"
     );
 }
+
+/// Cross-subsystem cascade: a SINGLE real-LLM chat turn that invokes a built-in
+/// MCP tool must fan out MORE than the chat message — the tool invocation is
+/// recorded and emits an owner-scoped `mcp_tool_call`/`create` realtime-sync
+/// frame. This pins the chat→MCP→sync multi-entity cascade end-to-end (the
+/// per-turn chat tests never assert the McpToolCall sync emission). Soft-skips
+/// without an API key.
+#[tokio::test]
+async fn real_llm_tool_call_emits_mcp_tool_call_sync() {
+    use std::time::Duration;
+
+    let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
+        eprintln!("skipping citations::real_llm sync cascade — ANTHROPIC_API_KEY unset");
+        return;
+    };
+
+    let doi = crate::citations::start_mock_doi_resolver().await;
+    let idconv = crate::citations::start_mock_idconv().await;
+    let crossref = crate::citations::start_mock_crossref().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("ANTHROPIC_API_KEY".to_string(), api_key.clone()),
+            ("CITATIONS_RESOLVER_ENDPOINT".to_string(), doi),
+            ("CITATIONS_IDCONV_ENDPOINT".to_string(), idconv),
+            ("CITATIONS_CROSSREF_ENDPOINT".to_string(), crossref),
+            ("CITATIONS_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+        ],
+        ..Default::default()
+    })
+    .await;
+
+    // `profile::read` is required to open the sync subscribe stream.
+    let user = create_user_with_permissions(
+        &server,
+        "cit_sync_cascade",
+        &[
+            "profile::read",
+            "conversations::create",
+            "conversations::read",
+            "conversations::edit",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+            "mcp_servers::read",
+            "citations::use",
+            "citations::manage",
+        ],
+    )
+    .await;
+
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let cit_id = citations_server_id();
+    for _ in 0..50 {
+        let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM mcp_servers WHERE id = $1")
+            .bind(cit_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
+        if exists.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let default_group: Uuid =
+        sqlx::query_scalar("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id, assigned_at) \
+         VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING",
+    )
+    .bind(default_group)
+    .bind(cit_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    let model = create_tool_capable_anthropic_model(&server, &user.user_id, &api_key).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    // Open the realtime-sync stream BEFORE the chat turn so the McpToolCall
+    // create frame is observed live.
+    let mut probe = crate::common::sync_probe::SyncProbe::open(&server, &user.token).await;
+
+    let payload = json!({
+        "content": "Use the verify_citations tool to check whether DOI 10.5555/known \
+                    resolves to a real record. You MUST call the tool — do not answer from memory.",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string(),
+        "enable_mcp": true,
+        "mcp_config": { "mcp_servers": [ { "server_id": cit_id.to_string(), "tools": [] } ] }
+    });
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        payload,
+        &["complete"],
+    )
+    .await;
+    assert!(
+        events.iter().any(|e| e.event == "mcpToolStart"),
+        "the model should have invoked a citations tool"
+    );
+
+    // The cascade: the same turn's tool call lands an mcp_tool_calls row and
+    // emits an owner-scoped sync frame.
+    let frame = probe
+        .expect_event("mcp_tool_call", "create", Duration::from_secs(60))
+        .await;
+    assert!(
+        Uuid::parse_str(&frame.id).is_ok(),
+        "mcp_tool_call sync frame carries the new row id: {}",
+        frame.id
+    );
+}
