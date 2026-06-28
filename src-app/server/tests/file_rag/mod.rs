@@ -362,6 +362,61 @@ async fn on_by_default_fts_search_with_provenance() {
     );
 }
 
+/// Cross-module linkage: a file produced by a workflow MCP step
+/// (`created_by='workflow'`, the provenance `persist_links` stamps on
+/// run-created files) flows through the SAME shared `ingest_bytes` tail as an
+/// uploaded file, so it is chunked by file_rag and answerable via the
+/// `semantic_search` tool. This guards the workflow→file_rag retrieval seam
+/// the audit flagged as untested — proving file_rag retrieval is
+/// provenance-agnostic (workflow outputs are first-class searchable content).
+#[tokio::test]
+async fn workflow_provenance_file_is_chunked_and_retrievable() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_workflow").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-workflow",
+        &[(
+            "workflow-report.txt",
+            "Workflow run summary: the migration assistant analyzed 412 call sites \
+             and recommends replacing the deprecated tokenizer with the streaming \
+             variant to reduce peak memory during ingestion.",
+        )],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+
+    // Stamp the workflow provenance the run tool-step would set, then confirm
+    // the background ingest still produced FTS-ready chunks for it.
+    sqlx::query("UPDATE files SET created_by = 'workflow' WHERE id = $1::uuid")
+        .bind(&file_ids[0])
+        .execute(&pool)
+        .await
+        .unwrap();
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+    let provenance: String =
+        sqlx::query_scalar("SELECT created_by FROM files WHERE id = $1::uuid")
+            .bind(&file_ids[0])
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(provenance, "workflow", "file is workflow-provenance");
+
+    // The workflow-produced content is retrievable through file_rag.
+    let body = semantic_search(&server, &user, conv_uuid, "deprecated tokenizer streaming memory").await;
+    assert!(body["error"].is_null(), "semantic_search should succeed; body={body}");
+    let results = body["result"]["structuredContent"]["results"]
+        .as_array()
+        .expect("results array");
+    assert!(
+        results.iter().any(|r| r["file_id"].as_str() == Some(file_ids[0].as_str())),
+        "workflow-provenance file must be retrievable via file_rag; results={results:?}"
+    );
+}
+
 /// Scope isolation: a conversation only searches its own project's files; a
 /// term that exists only in another project's file returns nothing.
 #[tokio::test]
