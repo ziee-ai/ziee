@@ -108,6 +108,18 @@ impl JwtService {
         })
     }
 
+    /// Infallible constructor preserved for tests / callers that have
+    /// already validated the secret. Production code MUST use `try_new`
+    /// so a weak secret aborts boot. This thin wrapper panics on a bad
+    /// secret so misuse can't go unnoticed.
+    ///
+    /// Used cross-crate by the `ziee-desktop` integration tests, so it
+    /// appears unused from the `ziee` crate's own build — keep it.
+    #[allow(dead_code)]
+    pub fn new(config: JwtConfig) -> Self {
+        Self::try_new(config).expect("JWT secret validation failed; use try_new for graceful errors")
+    }
+
     /// Generate access and refresh tokens for a user (legacy form).
     ///
     /// Refresh token does NOT carry a jti, so it bypasses the whitelist

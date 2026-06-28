@@ -11,7 +11,7 @@ use crate::modules::{
 };
 use anyhow::Result;
 use tauri::App;
-use ziee::{ApiRouter, Router};
+use ziee::ApiRouter;
 
 /// Create all desktop modules
 ///

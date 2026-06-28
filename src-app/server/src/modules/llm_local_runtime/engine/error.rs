@@ -7,6 +7,9 @@ pub type Result<T> = std::result::Result<T, RuntimeError>;
 
 /// Errors that can occur during runtime operations
 #[derive(Debug, thiserror::Error)]
+// A couple of variants (InstanceNotFound / PortUnavailable) are part of the
+// error taxonomy but not currently constructed; keep them for completeness.
+#[allow(dead_code)]
 pub enum RuntimeError {
     /// Configuration error (invalid YAML, missing required fields, etc.)
     #[error("Configuration error: {0}")]

@@ -193,8 +193,26 @@ pub struct TestServerOptions {
 impl TestServer {
     /// Start a TestServer with the default options (sandbox disabled).
     /// Equivalent to `start_with_options(TestServerOptions::default())`.
+    /// Used by the ziee server tests but not the desktop tests (which use
+    /// `start_desktop`), so it reads as dead on the desktop build — keep it.
+    #[allow(dead_code)]
     pub async fn start() -> Self {
         Self::start_with_options(TestServerOptions::default()).await
+    }
+
+    /// Start a TestServer that spawns `ziee-desktop --headless`
+    /// instead of the server-only `ziee` binary. Required for tests
+    /// that exercise routes owned by the desktop crate.
+    ///
+    /// Used cross-crate by the `ziee-desktop` integration tests, so it
+    /// appears unused from the `ziee` crate's own build — keep it.
+    #[allow(dead_code)]
+    pub async fn start_desktop() -> Self {
+        Self::start_with_options(TestServerOptions {
+            use_desktop_binary: true,
+            ..Default::default()
+        })
+        .await
     }
 
     /// Start a TestServer with the given options. Use this when a test
@@ -735,6 +753,9 @@ pub mod test_helpers {
     /// `create_user_with_permissions(_, _, &["A"])` would leave the user
     /// in default + add a separate group with [A], giving them both A
     /// AND every default permission.
+    // Shared cross-crate harness: used by the ziee server tests but not the
+    // desktop tests, so it reads as dead on the desktop build — keep it.
+    #[allow(dead_code)]
     pub async fn create_user_with_only_permissions(
         server: &TestServer,
         username: &str,
@@ -767,6 +788,9 @@ pub mod test_helpers {
     }
 
     /// Create a test user via API (requires admin token)
+    // Shared cross-crate harness: used by the ziee server tests but not the
+    // desktop tests, so it reads as dead on the desktop build — keep it.
+    #[allow(dead_code)]
     pub async fn create_test_user(
         server: &TestServer,
         admin_token: &str,

@@ -108,6 +108,11 @@ pub struct EnsureOutcome {
 // =====================================================================
 
 #[derive(Debug, Clone)]
+// Several VM-backend variants below are constructed only on macOS/Windows
+// build paths (and some are forward-looking error taxonomy); their `From`
+// match arms map each to a user-facing AppError. Keep them on every build so
+// the match stays total and the Win/macOS error UX is preserved.
+#[allow(dead_code)]
 pub enum ReadyError {
     SquashfuseMissing,
     NoRootfsForFlavor { flavor: String, cache_dir: PathBuf },

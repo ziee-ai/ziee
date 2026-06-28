@@ -683,7 +683,6 @@ impl SandboxBackend for MacVmBackend {
             mount_dir: PathBuf::from(GUEST_ROOTFS_MOUNT),
             fetch_info: Some(outcome),
             artifact_id: Some(artifact_id),
-            artifact_version: Some(artifact_version),
         })
     }
 
@@ -996,59 +995,6 @@ impl SandboxBackend for MacVmBackend {
             Some(Box::new(guard)),
         );
         Ok(Some(session))
-    }
-
-    /// Legacy admin-DELETE evict by flavor: tear down EVERY pinned
-    /// version's VM for this flavor + delete every cached squashfs.
-    /// Idempotent. The version-aware path is `evict_artifact`.
-    async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {
-        let suffix_match = format!("/{flavor}");
-        let stale_keys: Vec<String> = VMS
-            .lock()
-            .await
-            .keys()
-            .filter(|k| k.as_str() == flavor || k.ends_with(&suffix_match))
-            .cloned()
-            .collect();
-        for key in stale_keys {
-            if let Some(handle) = VMS.lock().await.remove(&key) {
-                let mut child = handle.child.lock().await;
-                let _ = child.start_kill();
-                let _ = child.wait().await;
-                let _ = std::fs::remove_file(&handle.socket_path);
-            }
-        }
-        // Walk every per-version cache subdir and delete `*-{flavor}.squashfs`.
-        let suffix = format!("-{flavor}.squashfs");
-        let mut bytes_freed = 0;
-        let mut was_cached = false;
-        fn walk(
-            dir: &Path,
-            suffix: &str,
-            bytes_freed: &mut u64,
-            was_cached: &mut bool,
-        ) {
-            if let Ok(rd) = std::fs::read_dir(dir) {
-                for entry in rd.flatten() {
-                    let p = entry.path();
-                    if p.is_dir() {
-                        walk(&p, suffix, bytes_freed, was_cached);
-                    } else if p
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.ends_with(suffix))
-                    {
-                        *was_cached = true;
-                        if let Ok(m) = std::fs::metadata(&p) {
-                            *bytes_freed += m.len();
-                        }
-                        let _ = std::fs::remove_file(&p);
-                    }
-                }
-            }
-        }
-        walk(cache_dir, &suffix, &mut bytes_freed, &mut was_cached);
-        EvictOutcome { bytes_freed, was_cached }
     }
 
     /// Version-aware evict (Plan 5 Phase 3 drain-on-swap): tear down

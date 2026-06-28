@@ -263,6 +263,7 @@ pub enum Compat {
 
 impl Compat {
     /// Check if this is the Ok variant (tests use this directly).
+    #[cfg(test)]
     pub fn is_ok(&self) -> bool {
         matches!(self, Compat::Ok)
     }
