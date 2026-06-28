@@ -93,6 +93,7 @@ export function PhoneAuthPage() {
     return (
       <PageShell>
         <Result
+          data-testid="desktop-tunnel-phone-config-error-result"
           status="warning"
           title="Couldn't load login options"
           subtitle={configError}
@@ -112,7 +113,7 @@ export function PhoneAuthPage() {
   if (!authConfig.password_auth_enabled) {
     return (
       <PageShell>
-        <Card className="max-w-md w-full">
+        <Card data-testid="desktop-tunnel-phone-magic-only-card" className="max-w-md w-full">
           <Title level={4}>Open the desktop app</Title>
           <Paragraph>
             This device can only sign in via a fresh magic-link from the
@@ -126,12 +127,12 @@ export function PhoneAuthPage() {
 
   return (
     <PageShell>
-      <Card className="max-w-md w-full">
+      <Card data-testid="desktop-tunnel-phone-signin-card" className="max-w-md w-full">
         <Title level={4}>Sign in</Title>
         <Paragraph type="secondary">
           Enter the password set on this device's desktop app.
         </Paragraph>
-        <Form form={form} onSubmit={onSubmit} layout="vertical">
+        <Form data-testid="desktop-tunnel-phone-password-form" form={form} onSubmit={onSubmit} layout="vertical">
           {/* Hidden username anchor so password managers
               (1Password / Chrome / Safari Keychain) can attach the
               saved credential to this host. No visible field — the
@@ -146,6 +147,7 @@ export function PhoneAuthPage() {
           />
           <FormField label="Password" name="password">
             <PasswordInput
+              data-testid="desktop-tunnel-phone-password-input"
               autoFocus
               autoComplete="current-password"
               aria-label="Password"
@@ -154,9 +156,10 @@ export function PhoneAuthPage() {
             />
           </FormField>
           {submitError && (
-            <Alert tone="error" title={submitError} />
+            <Alert data-testid="desktop-tunnel-phone-submit-error-alert" tone="error" title={submitError} />
           )}
           <Button
+            data-testid="desktop-tunnel-phone-signin-btn"
             type="submit"
             block
             loading={submitting}

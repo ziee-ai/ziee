@@ -72,6 +72,7 @@ export function MagicLinkPage() {
     return (
       <PageShell>
         <Result
+          data-testid="desktop-tunnel-magic-missing-token-result"
           status="warning"
           title="Missing token"
           subtitle="This URL doesn't include a magic-link token. Open the desktop Remote Access page and scan a fresh QR."
@@ -102,6 +103,7 @@ export function MagicLinkPage() {
     return (
       <PageShell>
         <Result
+          data-testid="desktop-tunnel-magic-invalid-link-result"
           status="error"
           title="Link no longer valid"
           subtitle={
@@ -114,7 +116,7 @@ export function MagicLinkPage() {
             </>
           }
           extra={
-            <Button onClick={() => navigate('/', { replace: true })}>
+            <Button data-testid="desktop-tunnel-magic-open-login-btn" onClick={() => navigate('/', { replace: true })}>
               Open login page
             </Button>
           }
