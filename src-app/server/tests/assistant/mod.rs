@@ -754,6 +754,62 @@ async fn test_default_template_cloned_on_user_registration() {
     assert_eq!(cloned_assistant["enabled"], true);
 }
 
+// audit id all-c7e6de052279 — the clone-on-registration handler clones ONLY
+// templates where `is_default && enabled` (event_handlers.rs:44-45). The
+// existing test proves a default template IS cloned; nothing proves a
+// NON-default template is SKIPPED. Here we create both kinds, register a new
+// user, and assert only the default one lands in the user's assistant list.
+#[tokio::test]
+async fn test_non_default_template_not_cloned_on_user_registration() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin_tmpl_skip",
+        &["assistant_templates::create", "assistant_templates::set_default"],
+    )
+    .await;
+
+    for (is_default, name) in [(true, "Default Tmpl Skip"), (false, "NonDefault Tmpl Skip")] {
+        let r = reqwest::Client::new()
+            .post(server.api_url("/assistant-templates"))
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .json(&json!({ "name": name, "instructions": "x", "is_default": is_default }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::CREATED);
+    }
+
+    // Registering a new user fires the UserCreated → clone-templates event.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "newuser_tmpl_skip",
+        &["assistants::read"],
+    )
+    .await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+    let list: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let assistants = list["assistants"].as_array().unwrap();
+    let names: Vec<&str> = assistants.iter().filter_map(|a| a["name"].as_str()).collect();
+    assert!(
+        names.contains(&"Default Tmpl Skip"),
+        "the DEFAULT template must be cloned: {names:?}"
+    );
+    assert!(
+        !names.contains(&"NonDefault Tmpl Skip"),
+        "a NON-default template must NOT be cloned: {names:?}"
+    );
+}
+
 // =====================================================
 // Helper Functions
 // =====================================================
