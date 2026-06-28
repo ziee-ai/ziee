@@ -488,3 +488,129 @@ async fn test_apple_user_json_relay_email_accepted_when_id_token_has_none() {
         "a relay email from the first-auth user JSON must be accepted when the id_token had none"
     );
 }
+
+/// SECURITY — first-time-only `user` JSON must NOT clobber a stored profile.
+///
+/// Apple sends the `user` form field (name/email) ONLY on the user's FIRST
+/// authorization. A SECOND callback for the same `sub` that nonetheless
+/// carries a `user` JSON — whether a benign client replay or an attacker
+/// forging the form field to overwrite a victim's display name — must be
+/// ignored: the existing-link branch issues a JWT off the `sub` mapping and
+/// never writes the merged name back. This asserts the no-clobber contract
+/// the `reuses_existing_user` test (which only checks the row count) leaves
+/// unguarded.
+#[tokio::test]
+async fn test_apple_second_login_user_json_does_not_clobber_profile() {
+    let test_server = crate::common::TestServer::start().await;
+    let apple_mock = AppleMockServer::start().await;
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .unwrap();
+    let services_id = "com.example.noclobber";
+    let provider_id =
+        seed_apple_provider(&pool, "apple-test", services_id, &apple_mock).await;
+
+    let sub = "001234.no-clobber-user.5678";
+
+    // ── First login: user JSON establishes display_name "Real Name". ──
+    let (state1, nonce1) = init_apple_flow(&test_server, "apple-test").await;
+    let now = Utc::now().timestamp();
+    let id_token1 = apple_mock.sign_id_token(&json!({
+        "iss": apple_mock.base_url,
+        "aud": services_id,
+        "sub": sub,
+        "iat": now,
+        "exp": now + 3600,
+        "email": "victim@privaterelay.appleid.com",
+        "email_verified": "true",
+        "is_private_email": "true",
+        "nonce": nonce1,
+    }));
+    apple_mock.queue_token_response(&id_token1).await;
+    let r1 = post_apple_callback(
+        &test_server,
+        "apple-test",
+        "code1",
+        &state1,
+        Some(r#"{"name":{"firstName":"Real","lastName":"Name"},"email":"victim@privaterelay.appleid.com"}"#),
+    )
+    .await;
+    assert!(r1.status().is_redirection(), "first login should succeed");
+
+    let first = sqlx::query!(
+        r#"SELECT u.id, u.display_name, u.email, l.external_email
+           FROM users u JOIN user_auth_links l ON l.user_id = u.id
+           WHERE l.provider_id = $1 AND l.external_id = $2"#,
+        provider_id,
+        sub,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("user provisioned on first login");
+    assert_eq!(first.display_name.as_deref(), Some("Real Name"));
+
+    // ── Second login: SAME sub, but the callback carries an ANOMALOUS
+    //    user JSON forging a different name (Apple never resends it). ──
+    let (state2, nonce2) = init_apple_flow(&test_server, "apple-test").await;
+    let now = Utc::now().timestamp();
+    let id_token2 = apple_mock.sign_id_token(&json!({
+        "iss": apple_mock.base_url,
+        "aud": services_id,
+        "sub": sub,
+        "iat": now,
+        "exp": now + 3600,
+        "email": "victim@privaterelay.appleid.com",
+        "email_verified": "true",
+        "is_private_email": "true",
+        "nonce": nonce2,
+    }));
+    apple_mock.queue_token_response(&id_token2).await;
+    let r2 = post_apple_callback(
+        &test_server,
+        "apple-test",
+        "code2",
+        &state2,
+        Some(r#"{"name":{"firstName":"Evil","lastName":"Overwrite"},"email":"attacker@evil.example"}"#),
+    )
+    .await;
+    assert!(r2.status().is_redirection(), "second login should authenticate");
+
+    // ── No new user, and the stored profile is untouched. ──
+    let count: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) AS "c!" FROM user_auth_links WHERE provider_id = $1"#,
+        provider_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "second login must not create a second link/user");
+
+    let after = sqlx::query!(
+        r#"SELECT u.display_name, u.email, l.external_email
+           FROM users u JOIN user_auth_links l ON l.user_id = u.id
+           WHERE l.provider_id = $1 AND l.external_id = $2"#,
+        provider_id,
+        sub,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("same user resolved on second login");
+    assert_eq!(
+        after.display_name.as_deref(),
+        Some("Real Name"),
+        "a forged second-auth user JSON must NOT overwrite the stored display_name"
+    );
+    assert_eq!(
+        first.id,
+        sqlx::query_scalar!(
+            r#"SELECT u.id FROM users u JOIN user_auth_links l ON l.user_id = u.id
+               WHERE l.provider_id = $1 AND l.external_id = $2"#,
+            provider_id,
+            sub,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        "second login must resolve the SAME user id",
+    );
+}
