@@ -223,4 +223,105 @@ mod permission_check_tests {
         assert_eq!(info.resource, "users");
         assert_eq!(info.action, "read");
     }
+
+    // --- RequirePermissions tuple (PermissionList) AND-combination ---
+    //
+    // RequirePermissions<L> requires ALL of `L::permissions()`; the extractor
+    // grants access only when the caller holds every entry. The tuple impls for
+    // 3 and 4 permissions (types.rs:119-168) were previously untested — these
+    // assert that a 3- and 4-tuple surface the COMPLETE, ordered permission set
+    // (so the extractor AND-checks all of them) and that the OpenAPI
+    // `format_description` advertises every one under the "ALL" header.
+    use super::PermissionList;
+
+    struct PRead;
+    impl PermissionCheck for PRead {
+        const NAME: &'static str = "ProjectsRead";
+        const PERMISSION: &'static str = "projects::read";
+        const DESCRIPTION: &'static str = "Read projects";
+        const MODULE: &'static str = "projects";
+    }
+    struct PWrite;
+    impl PermissionCheck for PWrite {
+        const NAME: &'static str = "ProjectsEdit";
+        const PERMISSION: &'static str = "projects::edit";
+        const DESCRIPTION: &'static str = "Edit projects";
+        const MODULE: &'static str = "projects";
+    }
+    struct PDelete;
+    impl PermissionCheck for PDelete {
+        const NAME: &'static str = "ProjectsDelete";
+        const PERMISSION: &'static str = "projects::delete";
+        const DESCRIPTION: &'static str = "Delete projects";
+        const MODULE: &'static str = "projects";
+    }
+    struct PShare;
+    impl PermissionCheck for PShare {
+        const NAME: &'static str = "ProjectsShare";
+        const PERMISSION: &'static str = "projects::share";
+        const DESCRIPTION: &'static str = "Share projects";
+        const MODULE: &'static str = "projects";
+    }
+
+    #[test]
+    fn three_tuple_yields_all_three_permissions_in_order() {
+        type Required = (PRead, PWrite, PDelete);
+        assert_eq!(
+            Required::permissions(),
+            vec!["projects::read", "projects::edit", "projects::delete"],
+        );
+        assert_eq!(
+            Required::names(),
+            vec!["ProjectsRead", "ProjectsEdit", "ProjectsDelete"],
+        );
+        assert_eq!(
+            Required::descriptions(),
+            vec!["Read projects", "Edit projects", "Delete projects"],
+        );
+
+        // The required set is the full AND-set: holding any 2 of the 3 is not
+        // a superset, so the extractor would reject — assert all 3 are present
+        // and none is dropped.
+        let required = Required::permissions();
+        assert_eq!(required.len(), 3, "a 3-tuple must require exactly 3 perms");
+        for p in ["projects::read", "projects::edit", "projects::delete"] {
+            assert!(required.contains(&p), "missing required perm {p}");
+        }
+    }
+
+    #[test]
+    fn four_tuple_yields_all_four_permissions_in_order() {
+        type Required = (PRead, PWrite, PDelete, PShare);
+        assert_eq!(
+            Required::permissions(),
+            vec![
+                "projects::read",
+                "projects::edit",
+                "projects::delete",
+                "projects::share",
+            ],
+        );
+        assert_eq!(Required::permissions().len(), 4);
+        assert_eq!(Required::descriptions().len(), 4);
+    }
+
+    #[test]
+    fn multi_permission_format_description_lists_all_under_all_header() {
+        // 3+ tuples render the multi-permission "ALL" form (not the single
+        // "Required Permission" form), advertising every required permission.
+        let doc = <(PRead, PWrite, PDelete) as PermissionList>::format_description();
+        assert!(
+            doc.contains("**Required Permissions (ALL):**"),
+            "3-tuple must use the ALL header, got: {doc}",
+        );
+        for line in [
+            "- `projects::read` - Read projects",
+            "- `projects::edit` - Edit projects",
+            "- `projects::delete` - Delete projects",
+        ] {
+            assert!(doc.contains(line), "format_description missing line: {line}");
+        }
+        // The single-permission phrasing must NOT appear for a multi-tuple.
+        assert!(!doc.contains("**Required Permission:**"));
+    }
 }
