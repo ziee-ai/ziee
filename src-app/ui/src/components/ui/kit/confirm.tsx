@@ -57,7 +57,8 @@ export function Confirm({ title, description, okText, cancelText, danger, onConf
           {description != null && <AlertDialogDescription>{description}</AlertDialogDescription>}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy} onClick={() => onCancel?.()}>{cancelText}</AlertDialogCancel>
+          {/* onCancel is fired once, from onOpenChange(false) — which also covers Esc + overlay. */}
+          <AlertDialogCancel disabled={busy}>{cancelText}</AlertDialogCancel>
           {/* a plain Button (not AlertDialogAction) so the dialog only closes on success. */}
           <Button variant={isDanger ? 'destructive' : 'default'} disabled={okButtonProps?.disabled} loading={busy} onClick={run}>{okText}</Button>
         </AlertDialogFooter>

@@ -7,7 +7,15 @@ export type MenuItem =
   | { type: 'divider' }
   | { type: 'group'; label: React.ReactNode; children: MenuItem[] }
   | { type: 'label'; label: React.ReactNode }
-  | { key: string; label: React.ReactNode; icon?: React.ReactNode; disabled?: boolean }
+  | {
+      key: string
+      label: React.ReactNode
+      icon?: React.ReactNode
+      disabled?: boolean
+      /** Explicit accessible name — REQUIRED for a non-string label in `collapsed` mode
+       *  (the label is hidden then). Preferred over the label/key fallbacks. */
+      title?: string
+    }
 
 // legacy Menu (navigation subset): vertical/horizontal item list with single selection.
 // Rendered as a <nav> + roving list; items are real buttons. `aria-label` required (i18n).
@@ -62,7 +70,8 @@ function Items({ items, selectedSet, onSelect, locked, collapsed }: {
         }
         const item = it
         const selected = selectedSet.has(item.key)
-        const name = labelText(item.label)
+        // Never nameless in collapsed mode: explicit title → string label → the key.
+        const name = item.title ?? labelText(item.label) ?? item.key
         return (
           <li key={item.key}>
             <button

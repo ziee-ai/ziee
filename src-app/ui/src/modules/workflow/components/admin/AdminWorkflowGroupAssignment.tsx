@@ -83,6 +83,7 @@ export function AdminWorkflowGroupAssignment({
               <Space direction="vertical" className="w-full">
                 <MultiSelect
                   className="w-full"
+                  aria-label="Restrict to groups"
                   placeholder="Restrict to specific groups (empty = all users)"
                   searchPlaceholder="Search groups…"
                   value={draft}

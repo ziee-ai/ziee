@@ -24,21 +24,40 @@ const countTones: Record<BadgeTone, string> = {
   info: 'bg-blue-600 text-white',
 }
 
-export type BadgeProps = Omit<React.ComponentProps<'span'>, 'prefix' | 'style'> & {
+type BadgeBase = Omit<React.ComponentProps<'span'>, 'prefix' | 'style'> & {
   tone?: BadgeTone
+} & KitStyleProps
+
+// Tag mode (default): a soft-tinted label badge. No count/dot props.
+type BadgeTagProps = BadgeBase & {
   icon?: React.ReactNode
-  /** Notification count. When set (or `dot`), Badge switches to overlay mode and wraps
-   *  `children` with a positioned superscript bubble (legacy antd Badge `count`). */
-  count?: number
-  /** Render a small status dot instead of a number (legacy `dot`). Implies overlay mode. */
-  dot?: boolean
+  count?: never
+  dot?: never
+  overflowCount?: never
+  showZero?: never
+  offset?: never
+}
+
+// Count/dot overlay mode: wraps `children` (or renders standalone). An accessible name is
+// REQUIRED — a bare number/dot is a context-free SR announcement (kit no-silent-default rule).
+type BadgeCountBase = BadgeBase & {
+  icon?: never
   /** Cap the displayed number; counts above show `${overflowCount}+`. Default 99. */
   overflowCount?: number
   /** Render the bubble even when `count` is 0 (legacy `showZero`). Default false. */
   showZero?: boolean
   /** Shift the corner bubble from the top-right by [x, y] px (legacy `offset`). */
   offset?: [number, number]
-} & KitStyleProps
+  /** Accessible name for the indicator — REQUIRED in count/dot mode. */
+  'aria-label': string
+}
+
+export type BadgeProps =
+  | BadgeTagProps
+  // count present (numeric bubble); dot may also force the dot rendering.
+  | (BadgeCountBase & { count: number; dot?: boolean })
+  // dot present without a count.
+  | (BadgeCountBase & { dot: true; count?: number })
 
 export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
   (

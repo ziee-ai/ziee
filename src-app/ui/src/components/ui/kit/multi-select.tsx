@@ -88,8 +88,11 @@ function VirtualMultiList({
     else if (e.key === 'Enter') {
       e.preventDefault()
       const o = filtered[active]
-      if (o && !o.disabled) onToggle(o.value)
-      else if (canCreate) commit(trimmed)
+      if (o && !o.disabled) { onToggle(o.value); return }
+      // typed text that matches an option's value OR label selects that option (not a new token).
+      const exact = options.find((op) => op.value === trimmed || op.label === trimmed)
+      if (exact && !exact.disabled) { onToggle(exact.value); return }
+      if (canCreate) commit(trimmed)
     }
   }
   const virtualItems = virtualizer.getVirtualItems()
@@ -190,10 +193,13 @@ export type MultiSelectProps = {
   id?: string
   className?: string
   'aria-describedby'?: string
-  'aria-label'?: string
-  'aria-labelledby'?: string
   'aria-required'?: boolean
-} & KitStyleProps
+} & KitStyleProps &
+  // An accessible name is REQUIRED — either an inline label or a referenced one (no silent default).
+  (
+    | { 'aria-label': string; 'aria-labelledby'?: never }
+    | { 'aria-labelledby': string; 'aria-label'?: never }
+  )
 
 export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(function MultiSelect(
   { options, value, defaultValue, onValueChange, onChange, onBlur, placeholder, searchPlaceholder, emptyText, removeLabel,
@@ -218,10 +224,14 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
     return m
   }, [options])
   const selectedSet = React.useMemo(() => new Set(current), [current])
+  // De-dupe incoming value/defaultValue so repeated entries never collide as React keys on the
+  // tags + hidden inputs (a parent may pass a list with duplicates).
+  const uniqueCurrent = React.useMemo(() => [...selectedSet], [selectedSet])
   // functional updater (the hook supports it) → no stale read-modify-write on rapid toggles.
-  const toggle = (v: string) => setCurrent((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v])
+  // Mutations are no-ops while locked (disabled/loading/readOnly).
+  const toggle = (v: string) => { if (locked) return; setCurrent((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]) }
   // Create-only (add, never toggle off) for free-text tokens.
-  const addToken = (v: string) => { const t = v.trim(); if (t) setCurrent((prev) => prev.includes(t) ? prev : [...prev, t]) }
+  const addToken = (v: string) => { if (locked) return; const t = v.trim(); if (t) setCurrent((prev) => prev.includes(t) ? prev : [...prev, t]) }
   const resolvedCreateLabel = createLabel ?? ((q: string) => `Create "${q}"`)
 
   const trimmed = query.trim()
@@ -239,9 +249,9 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
 
   if (s.loading) return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
   return (
-    <Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) { onBlur?.(); setQuery('') } }}>
+    <Root open={open} onOpenChange={(o) => { if (locked && o) return; setOpen(o); if (!o) { onBlur?.(); setQuery('') } }}>
       {/* native form submission: one hidden input per selected value (div trigger has no name). */}
-      {name != null && current.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
+      {name != null && uniqueCurrent.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
       <PopoverTrigger asChild>
         {/* a DIV (not a <button>) so the removable Tag <button>s can legally nest; keyboard
             open is wired manually since a div has no implicit button activation. */}
@@ -272,8 +282,8 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
             className, invalid && 'border-destructive focus-visible:ring-destructive',
           )}
         >
-          {current.length === 0 && <span className="px-1 text-muted-foreground">{placeholder}</span>}
-          {current.map((v) => {
+          {uniqueCurrent.length === 0 && <span className="px-1 text-muted-foreground">{placeholder}</span>}
+          {uniqueCurrent.map((v) => {
             const label = labelByValue.get(v) ?? v
             return (
               // stop the remove click/keys from bubbling to the trigger (which would open it).

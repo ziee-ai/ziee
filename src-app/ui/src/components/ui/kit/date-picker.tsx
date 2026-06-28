@@ -36,6 +36,12 @@ export type DatePickerProps = {
   format?: string
   /** date-fns format the change handlers emit. Default 'yyyy-MM-dd' (ISO date). */
   valueFormat?: string
+  /** Disable selecting any date before this one (forwarded to the calendar). */
+  minDate?: Date
+  /** Disable selecting any date after this one (forwarded to the calendar). */
+  maxDate?: Date
+  /** Predicate to disable arbitrary dates (legacy antd `disabledDate`). */
+  disabledDate?: (date: Date) => boolean
   disabled?: boolean
   loading?: boolean
   invalid?: boolean
@@ -56,7 +62,7 @@ const triggerH = (size?: 'sm' | 'default' | 'lg') =>
 export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(function DatePicker(
   {
     value, defaultValue, onChange, onValueChange, onBlur, placeholder,
-    format = 'PP', valueFormat = 'yyyy-MM-dd',
+    format = 'PP', valueFormat = 'yyyy-MM-dd', minDate, maxDate, disabledDate,
     disabled, loading, invalid, size, name, id, className, style,
     'aria-label': ariaLabel, 'aria-describedby': ariaDescribedby,
     'aria-labelledby': ariaLabelledby, 'aria-required': ariaRequired,
@@ -71,18 +77,30 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
     defaultValue: toDate(defaultValue) ? formatDate(toDate(defaultValue)!, valueFormat) : '',
     onChange: (v) => { onChange?.(v); onValueChange?.(v) },
   })
-  const locked = s.disabled || loading || s.readOnly
+  // A disabled/loading trigger can't open at all; a readOnly surface stays openable but
+  // ignores selection (parallels the other kit controls).
+  const blocked = s.disabled || loading
   const selected = toDate(current)
+
+  // react-day-picker disabled matchers: min/max bounds + an optional predicate.
+  const calendarDisabled = React.useMemo(() => {
+    const m: Array<{ before: Date } | { after: Date } | ((date: Date) => boolean)> = []
+    if (minDate) m.push({ before: minDate })
+    if (maxDate) m.push({ after: maxDate })
+    if (disabledDate) m.push((date: Date) => disabledDate(date))
+    return m
+  }, [minDate, maxDate, disabledDate])
 
   if (s.loading) return <Skeleton className={cn(triggerH(s.size), 'w-full rounded-md', className)} />
 
   const choose = (d: Date | undefined) => {
+    if (s.readOnly) return
     setCurrent(d ? formatDate(d, valueFormat) : '')
     setOpen(false)
   }
 
   return (
-    <Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) onBlur?.() }}>
+    <Root open={open} onOpenChange={(o) => { if (blocked) return; setOpen(o) }}>
       {/* native form submission (the trigger is a button with no value of its own). */}
       {name != null && <input type="hidden" name={name} value={current} />}
       <PopoverTrigger asChild>
@@ -95,14 +113,17 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
           aria-labelledby={ariaLabelledby}
           aria-required={ariaRequired || undefined}
           aria-invalid={invalid || undefined}
+          aria-readonly={s.readOnly || undefined}
           aria-haspopup="dialog"
           aria-expanded={open}
-          disabled={locked}
+          disabled={blocked}
+          // form onBlur fires only on real focus-leave of the trigger, never on popover close.
+          onBlur={() => onBlur?.()}
           style={style}
           className={cn(
             'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-            triggerH(s.size), className, invalid && 'border-destructive focus-visible:ring-destructive',
+            triggerH(s.size), invalid && 'border-destructive focus-visible:ring-destructive', className,
           )}
         >
           <span className={cn('truncate', !selected && 'text-muted-foreground')}>
@@ -117,6 +138,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
           autoFocus
           selected={selected}
           onSelect={choose}
+          disabled={calendarDisabled.length ? calendarDisabled : undefined}
         />
       </PopoverContent>
     </Root>

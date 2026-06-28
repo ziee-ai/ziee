@@ -60,33 +60,32 @@ export function Tabs({
       <TabsList>
         {items.map((t) => {
           const showClose = (t.closable ?? editable) && !s.disabled && !t.disabled
+          // The close affordance is a REAL sibling <button>, never nested inside the
+          // TabsTrigger <button> (button-in-button is invalid + keyboard-unreachable).
+          // A native button gives Enter/Space + Tab focus for free.
           return (
-            <TabsTrigger
-              key={t.key}
-              value={t.key}
-              disabled={t.disabled || s.disabled}
-              onClick={() => onTabClick?.(t.key)}
-              className={cn(size === 'sm' && 'px-2 py-1 text-xs', showClose && 'gap-1.5')}
-            >
-              {t.label}
+            <div key={t.key} className="relative inline-flex items-center">
+              <TabsTrigger
+                value={t.key}
+                disabled={t.disabled || s.disabled}
+                onClick={() => onTabClick?.(t.key)}
+                className={cn(size === 'sm' && 'px-2 py-1 text-xs', showClose && 'pr-7')}
+              >
+                {t.label}
+              </TabsTrigger>
               {showClose && (
-                // role=button (not a nested <button>, which is invalid inside the trigger button).
-                <span
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   aria-label={closeLabel ? closeLabel(t) : `Close ${typeof t.label === 'string' ? t.label : t.key}`}
                   // stop the activation from also selecting the tab.
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); remove(t) }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); remove(t) }
-                  }}
-                  className="inline-flex size-4 items-center justify-center rounded-sm opacity-60 hover:bg-accent hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="absolute right-1.5 top-1/2 inline-flex size-4 -translate-y-1/2 items-center justify-center rounded-sm opacity-60 hover:bg-accent hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X className="size-3" aria-hidden />
-                </span>
+                </button>
               )}
-            </TabsTrigger>
+            </div>
           )
         })}
         {editable && !hideAdd && (
