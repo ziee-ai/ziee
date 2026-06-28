@@ -1007,11 +1007,27 @@ pub async fn initiate_repository_download_internal(
         },
     };
 
-    let download_instance = Repos
-        .download_instance
-        .create(download_request)
-        .await
-        .map_err(|e| format!("Database error: {}", e))?;
+    let download_instance = match Repos.download_instance.create(download_request).await {
+        Ok(d) => d,
+        Err(e) => {
+            // Lost the create race: a concurrent identical download won and the
+            // partial unique index (uq_download_instances_in_progress) rejected
+            // this duplicate. Return the in-flight winner rather than erroring.
+            match Repos
+                .download_instance
+                .find_existing_in_progress(
+                    request.repository_id,
+                    request.provider_id,
+                    &request.repository_path,
+                    &request.main_filename,
+                )
+                .await
+            {
+                Ok(Some(existing)) => existing,
+                _ => return Err(format!("Database error: {}", e)),
+            }
+        }
+    };
 
     // Clone necessary data for the background task
     let download_id = download_instance.id;
