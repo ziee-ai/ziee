@@ -415,16 +415,43 @@ impl BinaryDownloader {
         })
     }
 
+    /// GET a GitHub API URL with exponential-backoff retry on transient
+    /// failures (network/timeout errors, HTTP 5xx, and 429 rate-limit). A
+    /// single hiccup on the release-resolution path shouldn't fail the whole
+    /// download/version-check; persistent failures still surface the last error.
+    async fn github_get_with_retry(&self, url: &str) -> Result<reqwest::Response> {
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let result = self
+                .client
+                .get(url)
+                .header("Accept", "application/vnd.github.v3+json")
+                .timeout(std::time::Duration::from_secs(30))
+                .send()
+                .await;
+            let transient = match &result {
+                Ok(resp) => resp.status().is_server_error() || resp.status().as_u16() == 429,
+                Err(_) => true,
+            };
+            if transient && attempt < MAX_ATTEMPTS {
+                let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                tracing::warn!(
+                    "GitHub API {url}: transient failure, retrying in {delay:?} (attempt {attempt}/{MAX_ATTEMPTS})"
+                );
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+            return Ok(result?);
+        }
+    }
+
     /// Get the latest release version from GitHub
     async fn get_latest_version(&self, repo: &str) -> Result<String> {
         let url = format!("{}/repos/{}/releases/latest", api_base_url(), repo);
 
-        let response = self.client
-            .get(&url)
-            .header("Accept", "application/vnd.github.v3+json")
-            .timeout(std::time::Duration::from_secs(30))
-            .send()
-            .await?;
+        let response = self.github_get_with_retry(&url).await?;
 
         if !response.status().is_success() {
             return Err(RuntimeError::network(format!(
@@ -448,13 +475,7 @@ impl BinaryDownloader {
     pub async fn list_releases(&self, engine: EngineType) -> Result<Vec<ReleaseInfo>> {
         let url = format!("{}/repos/{}/releases", api_base_url(), engine_repo(engine));
 
-        let response = self
-            .client
-            .get(&url)
-            .header("Accept", "application/vnd.github.v3+json")
-            .timeout(std::time::Duration::from_secs(30))
-            .send()
-            .await?;
+        let response = self.github_get_with_retry(&url).await?;
 
         if !response.status().is_success() {
             return Err(RuntimeError::network(format!(
