@@ -116,4 +116,35 @@ test.describe('Memory — manual add', () => {
     await expect(page.getByText(updated)).toBeVisible()
     await expect(page.getByText(original, { exact: true })).toHaveCount(0)
   })
+
+  test('exports memories as JSON and CSV', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    const username = await memoryUser(apiURL, 'mem_export')
+    await login(page, baseURL, username, 'password123')
+    const token = await getCurrentUserToken(page)
+    const created = await page.request.post(`${apiURL}/api/memories`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { content: 'Exportable memory row', kind: 'fact' },
+    })
+    expect(created.status()).toBe(201)
+
+    await page.goto(`${baseURL}/settings/memory`)
+    await expect(page.getByText('Exportable memory row')).toBeVisible({
+      timeout: 15000,
+    })
+
+    // Export as JSON → a ziee-memories-*.json download.
+    let download = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Export' }).click()
+    await page.getByText('Export as JSON').click()
+    const jsonFile = await download
+    expect(jsonFile.suggestedFilename()).toMatch(/^ziee-memories-.*\.json$/)
+
+    // Export as CSV → a ziee-memories-*.csv download.
+    download = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Export' }).click()
+    await page.getByText('Export as CSV').click()
+    const csvFile = await download
+    expect(csvFile.suggestedFilename()).toMatch(/^ziee-memories-.*\.csv$/)
+  })
 })
