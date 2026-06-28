@@ -1,9 +1,5 @@
 import { useState } from 'react'
-import {
-  DownloadOutlined,
-  ImportOutlined,
-  SafetyCertificateOutlined,
-} from '@ant-design/icons'
+import { Download, Import, ShieldCheck } from 'lucide-react'
 import { Button, Card, Space, Spin, Text, Empty, Dropdown } from '@/components/ui'
 import { message } from '@/components/ui'
 import { Permissions } from '@/api-client/types'
@@ -69,7 +65,7 @@ export function CitationsSettingsPage() {
           {canManage && (
             <Button
               variant="outline"
-              icon={<ImportOutlined />}
+              icon={<Import />}
               loading={importing}
               onClick={() => setImportOpen(true)}
             >
@@ -77,7 +73,7 @@ export function CitationsSettingsPage() {
             </Button>
           )}
           <Button
-            icon={<SafetyCertificateOutlined />}
+            icon={<ShieldCheck />}
             loading={verifying}
             disabled={entries.length === 0 || !canManage}
             onClick={handleVerifyAll}
@@ -89,7 +85,7 @@ export function CitationsSettingsPage() {
             items={EXPORT_FORMATS.map(f => ({ key: f.key, label: f.label }))}
             onSelect={(key) => void handleExport(key)}
           >
-            <Button icon={<DownloadOutlined />}>Export</Button>
+            <Button icon={<Download />}>Export</Button>
           </Dropdown>
           <Text type="secondary">{entries.length} reference(s)</Text>
         </Space>

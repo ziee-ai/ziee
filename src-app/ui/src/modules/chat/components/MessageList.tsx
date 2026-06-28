@@ -1,6 +1,6 @@
 import { Flex } from '@/components/ui'
 import { Text } from '@/components/ui'
-import { LoadingOutlined, MessageOutlined } from '@ant-design/icons'
+import { Loader2, MessageSquare } from 'lucide-react'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatMessage } from '@/modules/chat/components/ChatMessage'
 import { Stores } from '@/core/stores'
@@ -19,7 +19,7 @@ export function MessageList() {
   if (!loading && messagesArray.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center py-20">
-        <MessageOutlined className="text-5xl mb-4" />
+        <MessageSquare className="text-5xl mb-4" />
         <Text className="text-lg">Start your conversation</Text>
       </div>
     )
@@ -37,7 +37,7 @@ export function MessageList() {
       {/* Streaming indicator */}
       {(loading || isStreaming) && (
         <div className={'w-full h-20 mt-3'}>
-          <LoadingOutlined spin className={'text-xl'} />
+          <Loader2 className={'text-xl animate-spin'} />
         </div>
       )}
 

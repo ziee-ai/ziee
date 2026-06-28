@@ -4,7 +4,7 @@
 // mirrors file/project-extension/extension.tsx. Triggered both by the projects
 // auto-discovery glob and a direct import from citations/module.tsx.
 
-import { BookOutlined } from '@ant-design/icons'
+import { Book } from 'lucide-react'
 import { projectExtensionRegistry } from '@/modules/projects/core/extensions'
 import { ProjectBibliographyInlinePreview } from './components/ProjectBibliographyInlinePreview'
 import { ProjectBibliographyManagePanel } from './components/ProjectBibliographyManagePanel'
@@ -14,7 +14,7 @@ projectExtensionRegistry.register({
   slots: {
     knowledge_kinds: {
       label: 'References',
-      icon: <BookOutlined />,
+      icon: <Book />,
       inlinePreview: ProjectBibliographyInlinePreview,
       managePanel: ProjectBibliographyManagePanel,
       order: 20,

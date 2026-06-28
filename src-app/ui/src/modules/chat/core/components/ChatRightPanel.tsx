@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { Button, Empty, Tabs, Typography, theme } from 'antd'
-import { CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
+import { CircleAlert, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { resolvePanelRenderer } from '@/modules/chat/core/stores/Chat.store'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
@@ -25,7 +25,7 @@ function ActivePanelContent() {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6">
         <Empty
-          image={<ExclamationCircleOutlined style={{ fontSize: 56, color: token.colorWarning }} />}
+          image={<CircleAlert style={{ fontSize: 56, color: token.colorWarning }} />}
           description={
             <div className="flex flex-col items-center gap-1">
               <Text strong>Can't display this tab</Text>
@@ -85,7 +85,7 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
             <Button
               type="text"
               size="small"
-              icon={<CloseOutlined style={{ fontSize: 12 }} />}
+              icon={<X style={{ fontSize: 12 }} />}
               className="!w-6 !h-6 !min-w-0 !p-0 opacity-60 hover:opacity-100 mr-1"
               title="Close panel"
               onClick={onCloseAll}
