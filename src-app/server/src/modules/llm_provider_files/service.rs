@@ -70,8 +70,9 @@ pub async fn get_or_upload_provider_file(
     if let Some(mapping) =
         repository::get_provider_file_mapping(pool, file_id, provider.id, user_id).await?
     {
-        // 2a. Check if expired (Gemini 48h TTL)
-        let is_expired = repository::is_file_expired(pool, file_id, provider.id, user_id).await?;
+        // 2a. Check if expired (Gemini 48h TTL) — computed from the mapping we
+        //     just loaded, no redundant re-query.
+        let is_expired = repository::is_mapping_expired(&mapping);
 
         // 2b. Detect API key rotation: if the stored fingerprint doesn't
         //     match the current key, the cached provider_file_id belongs to

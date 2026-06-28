@@ -80,27 +80,18 @@ pub async fn upsert_provider_file_mapping(
     .await
 }
 
-/// Check if file expired (for Gemini 48h TTL).
+/// Check if an already-loaded mapping has expired (for Gemini 48h TTL).
 ///
-/// Checks the `expires_at` field in provider_metadata to determine if a file
-/// has expired. Scoped by user_id to match get_provider_file_mapping's
-/// JOIN-based access control (06-llm-provider F-04).
-pub async fn is_file_expired(
-    pool: &PgPool,
-    file_id: Uuid,
-    provider_id: Uuid,
-    user_id: Uuid,
-) -> Result<bool, sqlx::Error> {
-    let mapping = get_provider_file_mapping(pool, file_id, provider_id, user_id).await?;
-
-    if let Some(mapping) = mapping
-        && let Some(expires_at_str) = mapping
-            .provider_metadata
-            .get("expires_at")
-            .and_then(|v| v.as_str())
-            && let Ok(expires_at) = DateTime::parse_from_rfc3339(expires_at_str) {
-                return Ok(Utc::now() > expires_at);
-            }
-
-    Ok(false)
+/// Inspects the `expires_at` field in `provider_metadata`. Pure (no DB round
+/// trip) so callers that already hold the mapping don't re-query it.
+pub fn is_mapping_expired(mapping: &LlmProviderFile) -> bool {
+    if let Some(expires_at_str) = mapping
+        .provider_metadata
+        .get("expires_at")
+        .and_then(|v| v.as_str())
+        && let Ok(expires_at) = DateTime::parse_from_rfc3339(expires_at_str)
+    {
+        return Utc::now() > expires_at;
+    }
+    false
 }
