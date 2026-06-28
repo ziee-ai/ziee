@@ -156,6 +156,35 @@ const ASK_USER_SERVER_LABEL: &str = "Assistant";
 /// timeout is a legitimate answer the assistant should reason about, not a
 /// tool failure it should retry. `accept` returns the answer content as a
 /// JSON string so the model can parse the field values.
+/// Generous ceiling on the persisted `structuredContent` (stored as JSONB +
+/// shipped to the frontend + recalled via `get_tool_result`). Beyond it the
+/// typed copy is DROPPED (the readable text digest still works). Fits a
+/// max-size literature result of ~200 records.
+const MAX_STRUCTURED_CONTENT_BYTES: usize = 1_000_000;
+
+/// Drop a `structuredContent` payload that serializes beyond
+/// [`MAX_STRUCTURED_CONTENT_BYTES`] (or that fails to serialize). Returns the
+/// payload unchanged when it's within the cap. Production calls this from
+/// `execute_tool`; extracted so the cap is unit-testable.
+fn cap_structured_content(
+    sc: Option<serde_json::Value>,
+    tool_name: &str,
+) -> Option<serde_json::Value> {
+    sc.filter(|sc| {
+        let too_big = serde_json::to_string(sc)
+            .map(|s| s.len() > MAX_STRUCTURED_CONTENT_BYTES)
+            .unwrap_or(true);
+        if too_big {
+            tracing::warn!(
+                "dropping oversized structuredContent (> {} bytes) from tool '{}'",
+                MAX_STRUCTURED_CONTENT_BYTES,
+                tool_name
+            );
+        }
+        !too_big
+    })
+}
+
 fn ask_user_tool_result(
     response: &crate::modules::mcp::elicitation::models::ElicitationResponse,
 ) -> (String, bool) {
@@ -499,20 +528,8 @@ pub async fn execute_tool(
             // unboundedly. Generous ceiling (fits a max-size literature result of
             // ~200 records); beyond it we DROP it (None) — the readable text
             // digest still works, only the typed UI copy degrades.
-            const MAX_STRUCTURED_CONTENT_BYTES: usize = 1_000_000;
-            let mut structured_content = tool_result.structured_content.clone().filter(|sc| {
-                let too_big = serde_json::to_string(sc)
-                    .map(|s| s.len() > MAX_STRUCTURED_CONTENT_BYTES)
-                    .unwrap_or(true);
-                if too_big {
-                    tracing::warn!(
-                        "dropping oversized structuredContent (> {} bytes) from tool '{}'",
-                        MAX_STRUCTURED_CONTENT_BYTES,
-                        tool_name
-                    );
-                }
-                !too_big
-            });
+            let mut structured_content =
+                cap_structured_content(tool_result.structured_content.clone(), tool_name);
 
             // Guard #3 (defense in depth): a raw `ziee://<host_path>` must never persist into
             // the tool result the browser reads / `get_tool_result` recalls.
@@ -747,8 +764,9 @@ pub fn build_query_input(schema: &serde_json::Value, query_text: &str) -> Option
 #[cfg(test)]
 mod tests {
     use super::{
-        ask_user_tool_result, build_query_input, convert_mcp_tool_to_ai_tool,
-        run_ask_user_elicitation, McpContentData, MAX_ANTHROPIC_TOOL_NAME_LEN,
+        ask_user_tool_result, build_query_input, cap_structured_content,
+        convert_mcp_tool_to_ai_tool, run_ask_user_elicitation, McpContentData,
+        MAX_ANTHROPIC_TOOL_NAME_LEN, MAX_STRUCTURED_CONTENT_BYTES,
     };
     use crate::modules::mcp::client::traits::Tool as McpToolDef;
     use crate::modules::mcp::elicitation::models::ElicitationResponse;
@@ -762,6 +780,45 @@ mod tests {
             }
             other => panic!("expected ToolResult, got {other:?}"),
         }
+    }
+
+    /// A within-cap structuredContent (e.g. a normal web_search result) is
+    /// preserved verbatim.
+    #[test]
+    fn structured_content_under_cap_is_kept() {
+        let sc = serde_json::json!({
+            "provider": "searxng",
+            "results": [
+                { "title": "Rust", "url": "https://rust-lang.org", "snippet": "systems lang" },
+                { "title": "Tokio", "url": "https://tokio.rs", "snippet": "async runtime" },
+            ],
+        });
+        let out = cap_structured_content(Some(sc.clone()), "web_search");
+        assert_eq!(out, Some(sc), "small payload must pass through unchanged");
+    }
+
+    /// An oversized structuredContent (a pathologically large search/fetch
+    /// result) is DROPPED to None so it can't bloat the JSONB row / response.
+    #[test]
+    fn structured_content_over_cap_is_dropped() {
+        // Build a results array whose serialized form clears the 1MB ceiling.
+        let big_snippet = "x".repeat(2048);
+        let results: Vec<_> = (0..1000)
+            .map(|i| {
+                serde_json::json!({
+                    "title": format!("result {i}"),
+                    "url": format!("https://example.com/{i}"),
+                    "snippet": big_snippet,
+                })
+            })
+            .collect();
+        let sc = serde_json::json!({ "provider": "searxng", "results": results });
+        assert!(
+            serde_json::to_string(&sc).unwrap().len() > MAX_STRUCTURED_CONTENT_BYTES,
+            "fixture must actually exceed the cap",
+        );
+        let out = cap_structured_content(Some(sc), "web_search");
+        assert!(out.is_none(), "oversized structuredContent must be dropped");
     }
 
     /// An empty `message` is a malformed tool call from the model → the ONE
