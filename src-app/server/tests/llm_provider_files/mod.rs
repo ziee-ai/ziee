@@ -798,3 +798,51 @@ async fn test_key_rotation_discards_cached_mapping_and_reuploads() {
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+// audit id all-e69ba2fb610d — cross-tenant isolation of provider-file mappings.
+// get_provider_file_mapping joins to files and filters f.user_id = $3
+// (repository.rs:31-33), so user B must NOT resolve a mapping for user A's file
+// even with the (globally-unique) file_id + provider_id. Drive the REAL repo fn.
+#[tokio::test]
+async fn test_provider_file_mapping_is_user_scoped() {
+    use ziee::llm_provider_files_test_api::get_provider_file_mapping;
+
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+
+    let user_a =
+        crate::common::test_helpers::create_user_with_permissions(&server, "pf_owner_a", &[]).await;
+    let user_b =
+        crate::common::test_helpers::create_user_with_permissions(&server, "pf_other_b", &[]).await;
+    let a_id = Uuid::parse_str(&user_a.user_id).unwrap();
+    let b_id = Uuid::parse_str(&user_b.user_id).unwrap();
+
+    // A's file + a completed mapping.
+    let file_id = create_test_file(&pool, a_id, "secret.pdf").await;
+    let provider_id = create_test_provider(&pool, "Shared Provider", "anthropic").await;
+    sqlx::query!(
+        r#"INSERT INTO llm_provider_files
+               (file_id, provider_id, provider_file_id, provider_metadata, upload_status)
+           VALUES ($1, $2, $3, $4, 'completed')"#,
+        file_id,
+        provider_id,
+        "file_owned_by_a",
+        json!({}),
+    )
+    .execute(&pool)
+    .await
+    .expect("insert mapping");
+
+    // Owner A resolves the mapping.
+    let owner = get_provider_file_mapping(&pool, file_id, provider_id, a_id)
+        .await
+        .expect("query ok");
+    assert!(owner.is_some(), "owner must resolve their own provider-file mapping");
+
+    // User B (same file_id + provider_id) must get NOTHING — the f.user_id
+    // filter makes another tenant's mapping structurally invisible.
+    let cross = get_provider_file_mapping(&pool, file_id, provider_id, b_id)
+        .await
+        .expect("query ok");
+    assert!(cross.is_none(), "a different user must NOT resolve user A's provider-file mapping");
+}

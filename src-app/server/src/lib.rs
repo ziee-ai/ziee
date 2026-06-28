@@ -180,6 +180,7 @@ pub mod llm_provider_files_test_api {
     pub use crate::modules::file::storage::FileStorage;
     pub use crate::modules::file::FileRepository;
     pub use crate::modules::llm_provider::models::{LlmProvider, ProxySettings};
+    pub use crate::modules::llm_provider_files::repository::get_provider_file_mapping;
     pub use crate::modules::llm_provider_files::service::get_or_upload_provider_file;
 }
 
