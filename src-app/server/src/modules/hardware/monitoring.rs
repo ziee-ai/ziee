@@ -226,3 +226,50 @@ async fn broadcast_usage_update(usage_update: HardwareUsageUpdate) {
         }
     }
 }
+
+#[cfg(test)]
+mod sse_cap_tests {
+    use super::{add_client, remove_client, MAX_SSE_CLIENTS};
+    use uuid::Uuid;
+
+    // audit id all-88a88aca7ba3 — the MAX_SSE_CLIENTS=256 cap (the OOM guard for
+    // the hardware-monitoring SSE registry) had no test. add_client must return
+    // Some until the registry is full, None at capacity, and accept a new client
+    // again once a slot is freed via remove_client. Uses the real global
+    // registry; the test fills, asserts, then cleans up every id it inserted.
+    #[test]
+    fn add_client_enforces_global_cap_and_frees_on_remove() {
+        // Fill to capacity. (Other tests don't touch this static, so the
+        // registry starts empty.)
+        let mut ids = Vec::with_capacity(MAX_SSE_CLIENTS);
+        for i in 0..MAX_SSE_CLIENTS {
+            let id = Uuid::new_v4();
+            assert!(
+                add_client(id).is_some(),
+                "client {i} (< cap) must be admitted"
+            );
+            ids.push(id);
+        }
+
+        // At capacity → the next registration is refused.
+        let overflow = Uuid::new_v4();
+        assert!(
+            add_client(overflow).is_none(),
+            "registration beyond MAX_SSE_CLIENTS must be refused (None)"
+        );
+
+        // Free one slot → a new client is admitted again.
+        remove_client(ids.pop().unwrap());
+        let readmitted = Uuid::new_v4();
+        assert!(
+            add_client(readmitted).is_some(),
+            "after freeing a slot a new client must be admitted"
+        );
+        ids.push(readmitted);
+
+        // Cleanup: leave the global registry empty for any other test.
+        for id in ids {
+            remove_client(id);
+        }
+    }
+}
