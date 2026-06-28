@@ -15,15 +15,15 @@ const tones: Record<TagTone, string> = {
   primary: 'bg-primary/10 text-primary border-primary/20',
   success: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
   warning: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
-  error: 'bg-destructive/10 text-destructive border-destructive/20',
+  error: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20',
   info: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
 }
 const solidTones: Record<TagTone, string> = {
   default: 'bg-foreground/80 text-background border-transparent',
   primary: 'bg-primary text-primary-foreground border-transparent',
-  success: 'bg-green-600 text-white border-transparent',
-  warning: 'bg-amber-500 text-white border-transparent',
-  error: 'bg-destructive text-white border-transparent',
+  success: 'bg-green-700 text-white border-transparent',
+  warning: 'bg-amber-500 text-amber-950 border-transparent',
+  error: 'bg-red-700 text-white border-transparent',
   info: 'bg-blue-600 text-white border-transparent',
 }
 const outlineTones: Record<TagTone, string> = {
@@ -31,7 +31,7 @@ const outlineTones: Record<TagTone, string> = {
   primary: 'bg-transparent text-primary border-primary/40',
   success: 'bg-transparent text-green-700 dark:text-green-400 border-green-500/40',
   warning: 'bg-transparent text-amber-700 dark:text-amber-400 border-amber-500/40',
-  error: 'bg-transparent text-destructive border-destructive/40',
+  error: 'bg-transparent text-red-700 dark:text-red-400 border-red-500/40',
   info: 'bg-transparent text-blue-700 dark:text-blue-400 border-blue-500/40',
 }
 const variantTones: Record<TagVariant, Record<TagTone, string>> = {

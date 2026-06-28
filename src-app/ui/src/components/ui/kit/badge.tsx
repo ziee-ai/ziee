@@ -9,7 +9,7 @@ const tones: Record<BadgeTone, string> = {
   primary: 'bg-primary/10 text-primary',
   success: 'bg-green-500/10 text-green-700 dark:text-green-400',
   warning: 'bg-amber-500/10 text-amber-700 dark:text-amber-500',
-  error: 'bg-destructive/10 text-destructive',
+  error: 'bg-red-500/10 text-red-700 dark:text-red-400',
   info: 'bg-blue-500/10 text-blue-700 dark:text-blue-400',
 }
 
@@ -18,9 +18,9 @@ const tones: Record<BadgeTone, string> = {
 const countTones: Record<BadgeTone, string> = {
   neutral: 'bg-muted-foreground text-background',
   primary: 'bg-primary text-primary-foreground',
-  success: 'bg-green-600 text-white',
-  warning: 'bg-amber-500 text-white',
-  error: 'bg-destructive text-white',
+  success: 'bg-green-700 text-white',
+  warning: 'bg-amber-500 text-amber-950',
+  error: 'bg-red-700 text-white',
   info: 'bg-blue-600 text-white',
 }
 
