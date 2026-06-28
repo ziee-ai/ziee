@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use async_trait::async_trait;
-use ldap3::{LdapConnAsync, Scope, SearchEntry};
+use ldap3::{Ldap, LdapConnAsync, Scope, SearchEntry};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -185,11 +185,38 @@ impl LdapAuthProvider {
         })
     }
 
+    /// Establish an LDAP connection, retrying ONLY the connection step on
+    /// transient network failures with exponential backoff. Bind/search are
+    /// deliberately NOT retried here — those failures are auth/config errors
+    /// (retrying a bind could lock the account), not transient.
+    async fn connect_with_retry(&self) -> Result<(LdapConnAsync, Ldap), AuthError> {
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match LdapConnAsync::new(&self.config.url).await {
+                Ok(pair) => return Ok(pair),
+                Err(e) if attempt < MAX_ATTEMPTS => {
+                    let delay =
+                        std::time::Duration::from_millis(300 * 2u64.pow(attempt - 1));
+                    tracing::warn!(
+                        "LDAP connect to {} failed: {e}; retrying in {delay:?} (attempt {attempt}/{MAX_ATTEMPTS})",
+                        self.config.url
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => {
+                    return Err(AuthError::ConnectionFailed(format!(
+                        "Failed to connect to LDAP after {MAX_ATTEMPTS} attempts: {e}"
+                    )));
+                }
+            }
+        }
+    }
+
     async fn search_user(&self, username: &str) -> Result<Option<SearchEntry>, AuthError> {
-        // Connect to LDAP
-        let (conn, mut ldap) = LdapConnAsync::new(&self.config.url).await.map_err(|e| {
-            AuthError::ConnectionFailed(format!("Failed to connect to LDAP: {}", e))
-        })?;
+        // Connect to LDAP (with transient-failure retry)
+        let (conn, mut ldap) = self.connect_with_retry().await?;
 
         ldap3::drive!(conn);
 
@@ -248,10 +275,8 @@ impl AuthProviderTrait for LdapAuthProvider {
             user_entry.dn
         };
 
-        // Connect and bind as user
-        let (conn, mut ldap) = LdapConnAsync::new(&self.config.url).await.map_err(|e| {
-            AuthError::ConnectionFailed(format!("Failed to connect to LDAP: {}", e))
-        })?;
+        // Connect and bind as user (connection retried on transient failure)
+        let (conn, mut ldap) = self.connect_with_retry().await?;
 
         ldap3::drive!(conn);
 
