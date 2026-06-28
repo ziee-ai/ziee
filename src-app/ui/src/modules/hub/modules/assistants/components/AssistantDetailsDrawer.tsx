@@ -99,7 +99,7 @@ export function AssistantDetailsDrawer({
         {/* Instructions */}
         <div>
           <Title level={5}>Instructions</Title>
-          <Card size="sm" className="bg-gray-50" data-testid="hub-assistant-detail-instructions-card">
+          <Card size="sm" className="bg-muted" data-testid="hub-assistant-detail-instructions-card">
             <Text className="text-sm whitespace-pre-wrap">
               {assistant.instructions}
             </Text>

@@ -68,7 +68,7 @@ export function McpServerDetailsDrawer({
         {firstRemote ? (
           <div>
             <Title level={5}>Remote endpoint</Title>
-            <Card size="sm" className="bg-gray-50" data-testid="hub-mcp-detail-remote-card">
+            <Card size="sm" className="bg-muted" data-testid="hub-mcp-detail-remote-card">
               <a
                 href={firstRemote.url}
                 target="_blank"
@@ -87,7 +87,7 @@ export function McpServerDetailsDrawer({
         ) : firstPackage ? (
           <div>
             <Title level={5}>Install command</Title>
-            <Card size="sm" className="bg-gray-50" data-testid="hub-mcp-detail-install-card">
+            <Card size="sm" className="bg-muted" data-testid="hub-mcp-detail-install-card">
               <Text code className="text-xs break-all">
                 {firstPackage.runtimeHint ?? 'run'}{' '}
                 {(firstPackage.runtimeArguments ?? [])
