@@ -971,3 +971,46 @@ async fn rag_admin_settings_regate_on_permission_revocation() {
         .unwrap();
     assert_eq!(denied.status(), 403, "revoked user must be re-gated out (403)");
 }
+
+/// A file with NO extractable text (an image — text_page_count <= 0) must
+/// produce ZERO chunks: `ingest::spawn_index` no-ops on it. Prior coverage
+/// only exercised the whitespace-only-TXT case (which still has a text page);
+/// this pins the image/binary path where there is no text page at all.
+#[tokio::test]
+async fn image_file_with_no_text_pages_yields_no_chunks() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_image_noindex").await;
+    let pool = db_pool(&server).await;
+
+    // Upload a real PNG (binary, no extractable text) through the upload path.
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/file/test_data/test.png"
+    ))
+    .expect("read png fixture");
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(bytes)
+            .file_name("photo.png")
+            .mime_str("image/png")
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload png");
+    assert_eq!(resp.status(), reqwest::StatusCode::CREATED, "png upload");
+    let file_id = resp.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string();
+
+    // The (no-op) ingest spawn gets a beat; an image has no text page, so no
+    // chunk rows are ever produced.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(
+        chunk_count(&pool, &file_id).await,
+        0,
+        "an image (no text pages) must yield zero file_rag chunks"
+    );
+}
