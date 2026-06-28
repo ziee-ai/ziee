@@ -221,8 +221,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // animating in/out, so:
   //   * the unconditional scrollTop reset yanked the user to the top
   //     mid-conversation every time they tapped an input;
-  //   * the body height write competed with `.ant-app { height: 100dvh }`
-  //     in index.css, causing layout thrash.
+  //   * the body height write competed with the global app-root
+  //     `height: 100dvh` rule in index.css, causing layout thrash.
   //
   // Fix (audit 02 B-4): only write body height when the viewport has
   // actually shrunk by more than ~100px from window.innerHeight (a
