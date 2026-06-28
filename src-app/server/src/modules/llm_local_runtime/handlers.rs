@@ -84,30 +84,55 @@ pub async fn start_model_instance(
         .start(model_id, &engine_type, &model_path, &engine_config)
         .await?;
 
-    // Create database record
-    let _instance_id = Repos
-        .local_runtime
-        .create_instance(
-            model_id,
-            provider.id,
-            result.port,
-            &result.base_url,
-            None,  // runtime_version_id: will be tracked properly in future iteration
-        )
-        .await?;
+    // The engine subprocess is now live but untracked. Any failure in the
+    // following DB writes (e.g. a UNIQUE(model_id) violation from a concurrent
+    // start that won the create_instance race, or a transient DB error) would
+    // otherwise LEAK the spawned process with no row to ever stop it. Run the
+    // record-creation steps under a compensating-cleanup helper: on the first
+    // error, tear the deployment back down before propagating, so we never
+    // leave a running engine the system has forgotten about.
+    let persist_instance = async {
+        // Create database record
+        Repos
+            .local_runtime
+            .create_instance(
+                model_id,
+                provider.id,
+                result.port,
+                &result.base_url,
+                None, // runtime_version_id: will be tracked properly in future iteration
+            )
+            .await?;
 
-    // Update status to running
-    Repos
-        .local_runtime
-        .update_instance_status(model_id, "running", None)
-        .await?;
+        // Update status to running
+        Repos
+            .local_runtime
+            .update_instance_status(model_id, "running", None)
+            .await?;
 
-    // Get and return the created instance
-    let instance = Repos
-        .local_runtime
-        .get_instance_by_model(model_id)
-        .await?
-        .ok_or_else(|| AppError::internal_error("Failed to retrieve created instance"))?;
+        // Get and return the created instance
+        Repos
+            .local_runtime
+            .get_instance_by_model(model_id)
+            .await?
+            .ok_or_else(|| AppError::internal_error("Failed to retrieve created instance"))
+    };
+
+    let instance = match persist_instance.await {
+        Ok(instance) => instance,
+        Err(e) => {
+            // Best-effort teardown of the just-spawned engine so it is not
+            // orphaned. Log but do not mask the original error.
+            if let Err(stop_err) = deployment.stop(model_id).await {
+                tracing::error!(
+                    "failed to tear down orphaned engine for model {} after start error: {}",
+                    model_id,
+                    stop_err
+                );
+            }
+            return Err(e.into());
+        }
+    };
 
     // Emit event for cache invalidation
     event_bus.emit_async(
