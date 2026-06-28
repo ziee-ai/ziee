@@ -35,4 +35,23 @@ test.describe('Skills - install → list → load content', () => {
       page.getByRole('heading', { name: /skill content \(SKILL\.md\)/i }),
     ).toBeVisible({ timeout: 15000 })
   })
+
+  // audit id 0f5dfc6c8a9d — the detail drawer's metadata view (the Descriptions
+  // table: Name / Files / Size, SkillDetailDrawer.tsx:44-255) was untested; the
+  // test above only asserts the SKILL.md body heading.
+  test('the skill detail drawer shows the metadata table', async ({ page }) => {
+    const skillRow = page
+      .locator('[role="button"]')
+      .filter({ hasText: 'Built-in' })
+      .first()
+    await expect(skillRow).toBeVisible({ timeout: 15000 })
+    await skillRow.click()
+
+    const drawer = page.locator('.ant-drawer-content')
+    await expect(drawer).toBeVisible({ timeout: 15000 })
+    // The Descriptions metadata rows render their labels.
+    await expect(drawer.getByText('Name', { exact: true })).toBeVisible()
+    await expect(drawer.getByText('Files', { exact: true })).toBeVisible()
+    await expect(drawer.getByText('Size', { exact: true })).toBeVisible()
+  })
 })
