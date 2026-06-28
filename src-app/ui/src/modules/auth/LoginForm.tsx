@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Form, Input, Typography } from 'antd'
+import { Alert, Button, Card, Form, Input, Modal, Typography } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
@@ -74,6 +74,25 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
             autoComplete="current-password"
           />
         </Form.Item>
+
+        <div className="text-right -mt-2 mb-2">
+          <Button
+            type="link"
+            className="p-0"
+            onClick={() =>
+              Modal.info({
+                title: 'Forgot your password?',
+                content:
+                  'Password recovery is handled by your administrator. ' +
+                  'Contact them to have your password reset — once reset, ' +
+                  'you can sign in and change it from Profile settings.',
+                okText: 'Got it',
+              })
+            }
+          >
+            Forgot password?
+          </Button>
+        </div>
 
         <Form.Item>
           <Button
