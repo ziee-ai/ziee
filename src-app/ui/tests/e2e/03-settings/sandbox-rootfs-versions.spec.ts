@@ -844,6 +844,41 @@ test.describe('Sandbox rootfs versions admin', () => {
     await expect(downloadedCard(page)).toHaveCount(0)
   })
 
+  test('SSE subscribe failure surfaces a reconnecting error + retries', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await mockVersions(page, () => versionStatus())
+
+    // The install-progress SSE endpoint hard-fails (503). The store's catch
+    // sets `error = "SSE disconnected; reconnecting (attempt n/5)"` (rendered
+    // as a top-level error Alert) and schedules a bounded reconnect.
+    let subscribeCalls = 0
+    await page.route(
+      /\/api\/code-sandbox\/rootfs\/versions\/install\/subscribe$/,
+      async route => {
+        subscribeCalls += 1
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'unavailable' }),
+        })
+      },
+    )
+
+    await gotoSandbox(page, baseURL)
+
+    // The disconnect error surfaces.
+    await expect(
+      page.getByText(/SSE disconnected; reconnecting/),
+    ).toBeVisible({ timeout: 15000 })
+
+    // A bounded reconnect fires (delay is 3s) — the store re-subscribes.
+    await expect.poll(() => subscribeCalls, { timeout: 15000 }).toBeGreaterThan(1)
+  })
+
   test('Downloaded card shows the empty state when nothing is downloaded', async ({
     page,
     testInfra,
