@@ -34,7 +34,6 @@ pub mod repository;
 pub mod routes;
 pub mod tools;
 
-pub use repository::SkillMcpRepository;
 
 /// Deterministic UUID for the built-in skill MCP server row. Stable
 /// across deployments. Mirrors `memory_mcp_server_id` /

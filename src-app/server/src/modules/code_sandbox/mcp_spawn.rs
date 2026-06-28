@@ -297,7 +297,6 @@ async fn spawn_on_linux_host(
     req: McpSpawnRequest,
     inflight: Option<crate::modules::code_sandbox::version_manager::InflightGuard>,
 ) -> Result<McpSandboxTransport, AppError> {
-    use std::os::unix::process::CommandExt;
     use std::path::Path;
     use std::process::Stdio;
     use tokio::process::Command;

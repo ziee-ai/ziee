@@ -121,7 +121,9 @@ pub struct DrainEntry {
 /// so the caller can inspect a wrapped error in tests.
 #[derive(Debug, Clone)]
 pub enum VersionError {
+    #[allow(dead_code)]
     PinNotSet,
+    #[allow(dead_code)]
     PinUnreachable(String),
     GitHubUnreachable(String),
     /// Pin is set but the corresponding GitHub release no longer exists
@@ -129,6 +131,7 @@ pub enum VersionError {
     ReleaseMissing { version: String },
     /// Pin is set + release exists, but the (arch, flavor, package)
     /// combination wasn't published. Surfaces as 422 in the admin UI.
+    #[allow(dead_code)]
     AssetMissing {
         version: String,
         arch: String,
@@ -1343,10 +1346,12 @@ impl Drop for InflightGuard {
 }
 
 impl InflightGuard {
+    #[allow(dead_code)]
     pub fn artifact_id(&self) -> Uuid {
         self.artifact.artifact_id
     }
 
+    #[allow(dead_code)]
     pub fn version(&self) -> &str {
         &self.artifact.version
     }
@@ -1434,6 +1439,7 @@ pub fn list_mounted_artifacts() -> Vec<Arc<MountedArtifact>> {
 /// version-manager registry — without this, MOUNTED_ARTIFACTS leaks
 /// stale entries until the next server restart. Returns the count
 /// of entries removed.
+#[allow(dead_code)]
 pub fn deregister_mounts_for_flavor(flavor: &str) -> usize {
     let stale: Vec<Uuid> = MOUNTED_ARTIFACTS
         .iter()

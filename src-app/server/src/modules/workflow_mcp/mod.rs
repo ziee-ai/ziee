@@ -41,7 +41,6 @@ pub mod resources;
 pub mod routes;
 pub mod tools;
 
-pub use repository::WorkflowMcpRepository;
 
 /// Deterministic UUID for the built-in workflow MCP server row. Stable
 /// across deployments. Mirrors `skill_mcp_server_id` /

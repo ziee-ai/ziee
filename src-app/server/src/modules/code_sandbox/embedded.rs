@@ -1,3 +1,4 @@
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 //! Self-contained mac-arm64 sandbox runtime.
 //!
 //! The build-time helper at `build_helper/sandbox_runtime.rs` assembles
