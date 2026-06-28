@@ -143,8 +143,15 @@ pub async fn resources_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value,
         // 2. Artifacts — every collected file per step.
         if let Some(obj) = run.step_artifacts_json.as_object() {
             for (step_id, arts) in obj {
-                let metas: Vec<ArtifactMeta> =
-                    serde_json::from_value(arts.clone()).unwrap_or_default();
+                let metas: Vec<ArtifactMeta> = serde_json::from_value(arts.clone())
+                    .inspect_err(|e| {
+                        tracing::warn!(
+                            "workflow_mcp.resources: dropping artifacts for run {} step {step_id}: \
+                             malformed step_artifacts_json: {e}",
+                            run.id
+                        )
+                    })
+                    .unwrap_or_default();
                 for m in metas {
                     resources.push(json!({
                         "uri": artifact_uri(run.id, step_id, &m.filename),
@@ -224,8 +231,17 @@ pub async fn resources_read(
             // Honor `expose: hidden` — resources/list never advertises a
             // hidden output, so resources/read (reachable via a guessed URI)
             // must refuse it too, or the Hidden intent is bypassed.
-            if let Some(d) = &def
-                && let Some(o) = d.outputs.iter().find(|o| o.name == name)
+            // M-6 symmetry with the Log path: a def-load failure leaves us
+            // unable to prove the output is not `hidden`, so fail CLOSED
+            // rather than fall through to `read_output` (which would expose
+            // a hidden output on any transient DB / YAML-parse error).
+            let Some(d) = def.as_ref() else {
+                return Err(AppError::forbidden(
+                    "WORKFLOW_OUTPUT_HIDDEN",
+                    "workflow definition unavailable; cannot verify the output's exposure policy",
+                ));
+            };
+            if let Some(o) = d.outputs.iter().find(|o| o.name == name)
                 && matches!(o.expose, ExposeMode::Hidden)
             {
                 return Err(AppError::forbidden(
@@ -406,10 +422,18 @@ fn read_log(
     confirm_under_run_dir(run, &path)?;
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,
-        Err(_) => {
+        Err(e) => {
             // A7: the staging dir was reclaimed — fall back to the durable body
             // in step_logs_json. The `expose_logs`/`logs_surfaceable` gate is
             // applied by the caller (resources_read) before reaching here.
+            // Log the underlying read error so a genuine disk/permission fault
+            // is distinguishable from the expected reclaim case in diagnostics.
+            tracing::debug!(
+                "workflow_mcp.resources: live log read failed for run {} step {step_id} ({}); \
+                 falling back to durable step_logs_json body: {e}",
+                run.id,
+                path.display()
+            );
             match run
                 .step_logs_json
                 .get(step_id)
