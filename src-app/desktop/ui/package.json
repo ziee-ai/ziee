@@ -50,7 +50,8 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
-    "check": "npm run generate-openapi && tsc",
+    "check": "npm run generate-openapi && tsc && npm run lint:guardrails",
+    "lint:guardrails": "biome lint --only=style/noRestrictedImports src",
     "dev": "vite",
     "format": "biome format --write ./src",
     "format:check": "biome check ./src",
