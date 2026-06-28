@@ -2833,7 +2833,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
 
 export interface SyncEvent {
   action: SyncAction

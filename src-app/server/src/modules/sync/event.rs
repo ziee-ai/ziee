@@ -82,6 +82,8 @@ pub enum SyncEntity {
     RuntimeSettings,
     /// Deployment-wide memory admin settings (singleton).
     MemoryAdminSettings,
+    /// Deployment-wide Document-RAG (file_rag) admin settings (singleton).
+    FileRagAdminSettings,
     /// Code-sandbox resource-limit settings (singleton).
     CodeSandboxSettings,
     /// Hub catalog settings (singleton).

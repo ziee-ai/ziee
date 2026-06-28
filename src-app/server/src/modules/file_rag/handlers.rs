@@ -21,6 +21,7 @@ use crate::{
         },
         memory::engine::dispatch,
         permissions::{RequirePermissions, with_permission},
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 
@@ -46,6 +47,7 @@ pub fn get_admin_settings_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_admin_settings(
     _auth: RequirePermissions<(FileRagAdminManage,)>,
+    origin: SyncOrigin,
     Json(body): Json<UpdateFileRagAdminSettingsRequest>,
 ) -> ApiResult<Json<FileRagAdminSettings>> {
     let bad = |m: &str| -> AppError { AppError::bad_request("VALIDATION_ERROR", m.to_string()) };
@@ -161,6 +163,15 @@ pub async fn update_admin_settings(
         let pool = Repos.file_rag.pool_clone();
         tokio::spawn(async move { embed_worker::reembed_all(pool, model_id, dim).await });
     }
+
+    // Cross-device sync: notify admins so their settings page refetches.
+    sync_publish(
+        SyncEntity::FileRagAdminSettings,
+        SyncAction::Update,
+        Uuid::nil(),
+        Audience::perm::<FileRagAdminRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(updated)))
 }

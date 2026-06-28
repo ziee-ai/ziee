@@ -129,6 +129,7 @@ export const useFileRagAdminStore = create<FileRagAdminStore>()(
             if (!hasPermissionNow(Permissions.FileRagAdminRead)) return
             void loadAdminSettings(set)
           }
+          eventBus.on('sync:file_rag_admin_settings', reload, GROUP)
           eventBus.on('sync:reconnect', reload, GROUP)
         },
         settings: () =>
