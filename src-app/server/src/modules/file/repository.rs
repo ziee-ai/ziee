@@ -514,6 +514,8 @@ impl FileRepository {
         &self,
         file_id: Uuid,
         user_id: Uuid,
+        limit: i64,
+        offset: i64,
     ) -> Result<Vec<FileVersion>, AppError> {
         let versions = sqlx::query_as!(
             FileVersion,
@@ -528,9 +530,12 @@ impl FileRepository {
             JOIN files f ON f.id = fv.file_id
             WHERE fv.file_id = $1 AND f.user_id = $2
             ORDER BY fv.version DESC
+            LIMIT $3 OFFSET $4
             "#,
             file_id,
-            user_id
+            user_id,
+            limit,
+            offset
         )
         .fetch_all(&self.pool)
         .await

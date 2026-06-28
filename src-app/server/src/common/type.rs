@@ -232,6 +232,11 @@ impl AppError {
 /// Closes 03-user F-06 (Medium).
 pub const PAGINATION_MAX_PER_PAGE: i32 = 100;
 
+/// Shared default page size for list endpoints that bound an otherwise
+/// unbounded query but don't take an explicit caller-supplied page size.
+/// One source of truth so every such endpoint agrees on the cap.
+pub const DEFAULT_PAGE_SIZE: i32 = 100;
+
 /// Pagination query that clamps at deserialize time so every existing
 /// handler that consumes `params.page` and `params.per_page` is safe
 /// without touching its body.
