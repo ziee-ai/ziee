@@ -93,6 +93,49 @@ async fn test_proxy_unavailable_is_graceful_503() {
     );
 }
 
+/// The /bio/mcp route also accepts GET (standalone SSE stream) and DELETE
+/// (session teardown) — both forward through the SAME proxy_handler as POST. The
+/// existing tests only exercise POST; assert GET + DELETE are routed (NOT 404/405)
+/// AND share the auth + graceful-503 behavior.
+#[tokio::test]
+async fn test_proxy_get_and_delete_methods_are_routed_and_gated() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Unauthenticated GET + DELETE → 401 (route exists + auth-gated, not 404/405).
+    for method in ["GET", "DELETE"] {
+        let req = match method {
+            "GET" => client.get(server.api_url("/bio/mcp")),
+            _ => client.delete(server.api_url("/bio/mcp")),
+        };
+        let res = req.send().await.unwrap();
+        assert_eq!(res.status(), 401, "{method} /bio/mcp must be auth-gated (got {})", res.status());
+    }
+
+    // Authorized GET + DELETE with BioMCP unavailable → graceful 503 (same as
+    // POST), proving they reach the proxy and its ensure_healthy path.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "bio_methods_authorized",
+        &["bio::query"],
+    )
+    .await;
+    let bearer = format!("Bearer {}", user.token);
+    for method in ["GET", "DELETE"] {
+        let req = match method {
+            "GET" => client.get(server.api_url("/bio/mcp")),
+            _ => client.delete(server.api_url("/bio/mcp")),
+        };
+        let res = req.header("Authorization", &bearer).send().await.unwrap();
+        assert_eq!(
+            res.status(),
+            503,
+            "{method} /bio/mcp must reach the proxy + return graceful 503 when the sidecar is unavailable (got {})",
+            res.status()
+        );
+    }
+}
+
 /// Resolve the build-staged biomcp binary path for the host triple and
 /// report whether a REAL (non-stub) binary is present. When the build had
 /// no network (or hit an unsupported triple), `build_helper/biomcp.rs`
