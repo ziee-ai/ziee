@@ -436,6 +436,13 @@ async fn shutdown_signal() {
         tracing::info!("Shutdown: signalled {cancelled} in-flight download(s) to cancel");
     }
 
+    // Same for in-flight ENGINE-binary downloads, which use their own task
+    // registry rather than the model-download cancellation tracker.
+    let engine_dl = modules::llm_local_runtime::runtime_version::download_task::shutdown_all().await;
+    if engine_dl > 0 {
+        tracing::info!("Shutdown: interrupted {engine_dl} in-flight engine download(s)");
+    }
+
     // Tear down the server-owned squashfuse FUSE daemon (if any was
     // lazily spawned by code_sandbox). No-op if sandbox is disabled
     // or no execute_command ever ran. PDEATHSIG handles SIGKILL paths

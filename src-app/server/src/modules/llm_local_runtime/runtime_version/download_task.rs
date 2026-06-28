@@ -136,6 +136,28 @@ crate::sse_event_enum! {
 pub static DOWNLOAD_TASKS: Lazy<DashMap<String, Arc<DownloadTask>>> =
     Lazy::new(DashMap::new);
 
+/// Engine-download graceful-shutdown signal. Engine-binary downloads (unlike
+/// model-file downloads, which use `utils::cancellation::CANCELLATION_TRACKER`)
+/// run as detached tasks with no cancellation hook, so on server shutdown they
+/// were abruptly aborted mid-transfer — leaving SSE subscribers hanging and the
+/// registry entry stuck in `Downloading`. Each runner now races its download
+/// against this `Notify`; `shutdown_all()` (called from `main::shutdown_signal`)
+/// wakes every in-flight runner so it tears down cleanly (Failed + SSE Failed).
+static SHUTDOWN: Lazy<tokio::sync::Notify> = Lazy::new(tokio::sync::Notify::new);
+
+/// Signal every in-flight engine download to interrupt and tear down. Returns
+/// the number of non-terminal tasks that were still running.
+pub async fn shutdown_all() -> usize {
+    let mut count = 0usize;
+    for entry in DOWNLOAD_TASKS.iter() {
+        if !entry.value().state.lock().await.status.is_terminal() {
+            count += 1;
+        }
+    }
+    SHUTDOWN.notify_waiters();
+    count
+}
+
 pub fn task_key(engine: &str, version: &str, backend: &str) -> String {
     format!("{engine}@{version}@{backend}")
 }
@@ -328,21 +350,36 @@ async fn run_download(
         ));
     };
 
-    let result = binary_manager
-        .download_and_register_with_progress(
+    // Race the download against the graceful-shutdown signal so a server stop
+    // interrupts the transfer instead of being abruptly aborted with the
+    // runtime (which would strand SSE subscribers + the registry entry).
+    let result = {
+        let download = binary_manager.download_and_register_with_progress(
             engine,
             &version,
             &platform,
             &arch,
             &backend,
             progress_cb,
-        )
-        .await;
+        );
+        tokio::select! {
+            r = download => Some(r),
+            _ = SHUTDOWN.notified() => None,
+        }
+    };
 
     let mut guard = task.state.lock().await;
     let duration_ms = started.elapsed().as_millis() as u64;
     match result {
-        Ok(version_row) => {
+        None => {
+            let msg = "engine download interrupted by server shutdown".to_string();
+            guard.status = EngineDownloadStatus::Failed;
+            guard.error = Some(msg.clone());
+            let _ = task.events.send(SSEEngineDownloadEvent::Failed(
+                SSEEngineDownloadFailedData { error: msg },
+            ));
+        }
+        Some(Ok(version_row)) => {
             let bytes = guard.bytes_received;
             guard.status = EngineDownloadStatus::Completed;
             guard.result = Some(version_row.clone());
@@ -363,7 +400,7 @@ async fn run_download(
                 None,
             );
         }
-        Err(e) => {
+        Some(Err(e)) => {
             let msg = e.to_string();
             guard.status = EngineDownloadStatus::Failed;
             guard.error = Some(msg.clone());
