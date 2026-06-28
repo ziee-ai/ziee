@@ -786,3 +786,56 @@ async fn test_assign_user_already_in_group_is_idempotent() {
         .count();
     assert_eq!(count, 1, "double-assign must not duplicate the membership row");
 }
+
+/// A system group's core attributes (name, is_active, permissions) cannot be
+/// modified even by a holder of `groups::edit` — guards the wildcard-escalation
+/// path in `update_group` (02-permissions F-02).
+#[tokio::test]
+async fn test_update_system_group_core_attrs_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let admin =
+        helpers::create_user_with_permissions(&server, "sysgrp_admin", &["groups::read", "groups::edit"]).await;
+
+    // Find a seeded system group (e.g. Administrators / Users).
+    let list: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    let groups = list["groups"].as_array().expect("groups array");
+    let system_group = groups
+        .iter()
+        .find(|g| g["is_system"].as_bool() == Some(true))
+        .expect("at least one seeded system group must exist");
+    let group_id = system_group["id"].as_str().expect("group id");
+
+    let url = server.api_url(&format!("/groups/{}", group_id));
+
+    // Renaming a system group must be refused with 400 SYSTEM_GROUP.
+    let rename = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "name": "hacked-system-group" }))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(rename.status(), 400, "renaming a system group must be rejected");
+    let body: serde_json::Value = rename.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"].as_str(), Some("SYSTEM_GROUP"));
+
+    // Rewriting a system group's permissions to wildcard must also be refused.
+    let escalate = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "permissions": ["*"] }))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(escalate.status(), 400, "rewriting system-group permissions must be rejected");
+    let body: serde_json::Value = escalate.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"].as_str(), Some("SYSTEM_GROUP"));
+}
