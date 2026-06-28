@@ -352,7 +352,9 @@ pub async fn shutdown() {
 
 #[cfg(test)]
 mod tests {
-    use super::{fingerprint, is_unsafe_env_name};
+    use super::{current_env, fingerprint, is_unsafe_env_name};
+    use crate::modules::bio_mcp::{bio_mcp_server_id, repository::BioMcpRepository};
+    use sqlx::postgres::PgPoolOptions;
 
     /// The loader-hijack / whitelist-override env filter (security-critical: an
     /// admin must not inject these via the bio row's headers).
@@ -435,5 +437,95 @@ mod tests {
         // from any keyed config, so dropping the last key also recycles.
         let none: Vec<(String, String)> = Vec::new();
         assert_ne!(fingerprint(&one), fingerprint(&none));
+    }
+
+    /// Drives the REAL `current_env()` end-to-end against the bio row in the DB
+    /// (the existing tests only cover its building blocks — the `is_unsafe_env_name`
+    /// denylist and the `fingerprint` of its output — never `current_env` itself).
+    /// Seeds the bio row's plain `headers` with a mix of legitimate upstream
+    /// API keys, a denylisted loader/whitelist name, and an empty value, then
+    /// asserts the function's three guarantees:
+    ///   - denylisted names (`PATH`, `LD_PRELOAD`) are filtered out (loader-hijack
+    ///     prevention),
+    ///   - empty values are skipped, legitimate keys are injected, and
+    ///   - the output is SORTED (the contract `fingerprint` relies on),
+    /// plus the disabled-row early return → `BIO_DISABLED`.
+    ///
+    /// DB-gated: soft-skips (mirroring the suite's env-gated tests) when no
+    /// Postgres is reachable, so `cargo test --lib` without a DB stays green;
+    /// runs for real wherever `DATABASE_URL` points at a migrated DB.
+    #[tokio::test]
+    async fn current_env_filters_denylist_and_empties_and_sorts() {
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skip: DATABASE_URL unset — no DB to exercise current_env against");
+                return;
+            }
+        };
+        let pool = match PgPoolOptions::new().max_connections(2).connect(&url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return;
+            }
+        };
+        // `current_env` reads the bio row via the global `Repos`; init is
+        // idempotent (no-op if another lib test already won the race).
+        crate::core::init_repositories(pool.clone());
+
+        let bio_id = bio_mcp_server_id();
+        // Ensure the bio row exists (boot normally upserts it; recreate here so
+        // the test is self-contained on a fresh DB).
+        BioMcpRepository::new(pool.clone())
+            .upsert_builtin_server(bio_id, "http://127.0.0.1:1/api/bio/mcp")
+            .await
+            .expect("upsert bio builtin row");
+
+        // Seed the plain (non-secret) `headers` column with a deliberate mix:
+        // two legitimate keys (out of alpha order so the sort is observable), a
+        // denylisted whitelist var + a loader-hijack var, and an empty value.
+        let headers = serde_json::json!({
+            "S2_API_KEY": "sval",
+            "NCBI_API_KEY": "nval",
+            "PATH": "/evil/bin",
+            "LD_PRELOAD": "/evil/lib.so",
+            "OPENFDA_API_KEY": "",
+        });
+        sqlx::query("UPDATE mcp_servers SET headers = $1, enabled = true WHERE id = $2")
+            .bind(&headers)
+            .bind(bio_id)
+            .execute(&pool)
+            .await
+            .expect("seed bio headers + enable");
+
+        let env = current_env().await.expect("current_env should succeed when enabled");
+        // Denylisted (PATH, LD_PRELOAD) and empty (OPENFDA_API_KEY) are gone;
+        // the legitimate keys survive, SORTED by name.
+        assert_eq!(
+            env,
+            vec![
+                ("NCBI_API_KEY".to_string(), "nval".to_string()),
+                ("S2_API_KEY".to_string(), "sval".to_string()),
+            ],
+            "current_env must filter denylisted + empty headers and return the rest sorted"
+        );
+
+        // Disabled row → early-return BIO_DISABLED (not an env map).
+        sqlx::query("UPDATE mcp_servers SET enabled = false WHERE id = $1")
+            .bind(bio_id)
+            .execute(&pool)
+            .await
+            .expect("disable bio row");
+        let err = current_env().await.expect_err("disabled bio row must error");
+        assert_eq!(err.error_code(), "BIO_DISABLED");
+
+        // Hygiene: leave the shared bio row re-enabled with empty headers so
+        // sibling tests / the running server see a clean default.
+        sqlx::query("UPDATE mcp_servers SET enabled = true, headers = '{}'::jsonb WHERE id = $1")
+            .bind(bio_id)
+            .execute(&pool)
+            .await
+            .ok();
     }
 }
