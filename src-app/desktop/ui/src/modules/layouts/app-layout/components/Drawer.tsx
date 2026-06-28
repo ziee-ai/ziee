@@ -37,7 +37,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { cn } from '@/lib/utils'
 
 const INTERACTIVE_SEL =
-  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger, .ant-segmented, .ant-segmented-item'
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"]'
 
 type Placement = 'left' | 'right' | 'top' | 'bottom'
 

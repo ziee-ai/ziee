@@ -32,7 +32,7 @@
 
 /* Custom component styles */
 @layer components {
-  .ant-app {
+  #root {
     height: 100dvh;
     width: 100dvw;
   }

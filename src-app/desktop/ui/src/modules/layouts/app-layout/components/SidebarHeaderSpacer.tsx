@@ -22,7 +22,7 @@ import { isTauriView, isLinux } from '@ziee/desktop/core/platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const INTERACTIVE_SEL =
-  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger, .ant-segmented, .ant-segmented-item'
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"]'
 
 export function SidebarHeaderSpacer() {
   const handleMouseDown = useCallback(

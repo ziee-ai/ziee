@@ -41,7 +41,7 @@ const INTERACTIVE_SEL =
   // wrapping `.ant-segmented`) explicitly. The HubPage tabs sit inside
   // HeaderBarContainer — without this exemption, mousedown initiates a
   // window drag and the tab-change click never fires.
-  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger, .ant-segmented, .ant-segmented-item'
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"]'
 
 interface HeaderBarContainerProps {
   children?: React.ReactNode

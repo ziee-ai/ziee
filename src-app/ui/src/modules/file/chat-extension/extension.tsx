@@ -110,7 +110,7 @@ const fileExtension: ChatExtension = createExtension({
     const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
     const { FilePanel: FilePanelComponent } = await import('@/modules/file/components/FilePanel')
     const { File: FileOutlinedIcon } = await import('lucide-react')
-    const { Spin: SpinComponent } = await import('antd')
+    const { Spin: SpinComponent } = await import('@/components/ui')
     const { Stores: StoresRef } = await import('@/core/stores')
 
     registerPanelRenderer('file', {
@@ -118,7 +118,7 @@ const fileExtension: ChatExtension = createExtension({
       component: ({ fileId, version }) => {
         const { selectedFiles, messageFilesCache } = StoresRef.File
         const file = selectedFiles.get(fileId) ?? messageFilesCache.get(fileId) ?? null
-        if (!file) return <SpinComponent />
+        if (!file) return <SpinComponent label="Loading file" />
         return <FilePanelComponent file={file} initialVersion={version} />
       },
     })

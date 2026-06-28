@@ -1,8 +1,19 @@
-import type { FormListProps, Rule } from 'antd/es/form'
+/** Local validation-rule shapes (dependency-free; formerly antd's Form `Rule`).
+ *  A thin async-validator rule model consumed by the workflow elicit forms. */
+export interface Rule {
+  required?: boolean
+  message?: string
+  pattern?: RegExp
+  type?: 'string' | 'number' | 'array' | 'boolean' | 'object'
+  min?: number
+  max?: number
+  validator?: (rule: unknown, value: unknown) => Promise<void>
+}
 
-/** The validator-only rule shape antd's `Form.List` accepts (stricter
- *  than the general `Rule`). */
-export type ListRule = NonNullable<FormListProps['rules']>[number]
+/** Array-level (list) rule: validates the whole array value. */
+export type ListRule = {
+  validator: (rule: unknown, value: unknown[] | undefined) => Promise<void>
+}
 
 /**
  * Lightweight JSON-schema typing + antd-rule derivation shared by
