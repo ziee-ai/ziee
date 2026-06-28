@@ -844,6 +844,32 @@ test.describe('Sandbox rootfs versions admin', () => {
     await expect(downloadedCard(page)).toHaveCount(0)
   })
 
+  test('Downloaded card shows the empty state when nothing is downloaded', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    // Nothing installed → the Downloaded card renders its <Empty> placeholder;
+    // every release lands in the Available card instead.
+    await mockVersions(page, () =>
+      versionStatus({ pinned_version: null, installed: [] }),
+    )
+    await mockInstallSse(page)
+    await gotoSandbox(page, baseURL)
+
+    await expect(downloadedCard(page)).toBeVisible()
+    await expect(
+      downloadedCard(page).getByText(
+        'No rootfs versions downloaded yet. Download one from the Available versions list below.',
+      ),
+    ).toBeVisible()
+    // The Available card still lists a downloadable release.
+    await expect(
+      availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }),
+    ).toBeVisible()
+  })
+
   test('read permission gates the whole page', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
