@@ -13,6 +13,7 @@ import { Skeleton } from '../shadcn/skeleton'
 import { useSurface } from './surface'
 import { useControllableState } from './use-controllable-state'
 import { cn } from '@/lib/utils'
+import type { ValueBinding } from './value-binding'
 
 export interface SelectOption {
   label: React.ReactNode
@@ -35,11 +36,6 @@ export interface SelectOptionGroup {
 // selected value can render differently (legacy optionRender / labelRender / optionLabelProp).
 interface SelectBase {
   options: (SelectOption | SelectOptionGroup)[]
-  value?: string
-  defaultValue?: string
-  onValueChange?: (value: string) => void
-  /** Alias of onValueChange, for FormField binding. */
-  onChange?: (value: string) => void
   onBlur?: () => void
   placeholder?: string
   disabled?: boolean
@@ -65,9 +61,10 @@ interface SelectBase {
   'data-testid': string
 }
 // allowClear adds a clear button → its accessible name (clearLabel) is REQUIRED (no default, for i18n).
-export type SelectProps =
-  | (SelectBase & { allowClear?: false; clearLabel?: never })
-  | (SelectBase & { allowClear: true; clearLabel: string })
+// Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
+export type SelectProps = SelectBase &
+  ValueBinding<string> &
+  ({ allowClear?: false; clearLabel?: never } | { allowClear: true; clearLabel: string })
 
 const isGroup = (o: SelectOption | SelectOptionGroup): o is SelectOptionGroup =>
   Array.isArray((o as SelectOptionGroup).options)
