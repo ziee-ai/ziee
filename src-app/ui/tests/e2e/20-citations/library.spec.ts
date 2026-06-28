@@ -176,6 +176,65 @@ test.describe('Citations library', () => {
     await expect(page.getByText(/1 added/)).toBeVisible({ timeout: 5000 })
   })
 
+  // audit id 2ee363461578 — the empty-state (no citations) was never E2E-tested;
+  // every other test seeds entries via mockApi.
+  test('shows the empty-state when the library has no citations', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const state: State = { entries: [] }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    await gotoCitations(page, baseURL)
+
+    await expect(
+      page.getByText('No citations yet — import some or run a literature search.'),
+    ).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('0 reference(s)')).toBeVisible()
+  })
+
+  // audit id f437d5db3a45 — the import modal's empty-text no-op guard and the
+  // error-toast catch path were untested (only success + fabricated-DOI were).
+  test('import with empty text is a no-op (no request fired)', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const state: State = { entries: [] }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+
+    let importCalled = false
+    await page.route(/\/api\/citations\/import$/, async route => {
+      importCalled = true
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ results: [] }) })
+    })
+
+    await gotoCitations(page, baseURL)
+    await page.getByRole('button', { name: 'Import' }).click()
+    // Leave the textarea empty and click Import + verify → the guard returns early.
+    await page.getByRole('button', { name: 'Import + verify' }).click()
+    await page.waitForTimeout(500)
+    expect(importCalled).toBe(false)
+  })
+
+  test('import surfaces a backend error as a toast', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const state: State = { entries: [] }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    // Override the import route to fail (exercises handleImport's catch branch).
+    await page.route(/\/api\/citations\/import$/, async route =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error_code: 'INTERNAL', error: 'resolver exploded' }),
+      }),
+    )
+
+    await gotoCitations(page, baseURL)
+    await page.getByRole('button', { name: 'Import' }).click()
+    await page.getByPlaceholder(/10\.1038/).fill('10.5555/known')
+    await page.getByRole('button', { name: 'Import + verify' }).click()
+
+    await expect(page.locator('.ant-message-error')).toBeVisible({ timeout: 5000 })
+  })
+
   test('exports the library (download triggered)', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const state: State = { entries: [entry({ title: 'Exportable paper' })] }
