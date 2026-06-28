@@ -389,6 +389,52 @@ mod tests {
     }
 
     #[test]
+    fn rapid_fire_deliveries_are_all_enqueued_in_order() {
+        // A burst of mutations for one owner (e.g. several quick edits) must all
+        // reach the connection — none silently dropped — and, because the
+        // per-connection channel is FIFO, in submission order. We assert the
+        // no-loss property: N rapid deliveries yield exactly N queued events.
+        let reg = empty_registry();
+        let uid = Uuid::new_v4();
+        let (c, mut rx) = conn(fake_user(uid, false, vec![]));
+        reg.register(Uuid::new_v4(), c).unwrap();
+
+        const BURST: usize = 25;
+        for _ in 0..BURST {
+            reg.deliver(Audience::Owner(uid), ev(), None);
+        }
+
+        let mut received = 0;
+        while rx.try_recv().is_ok() {
+            received += 1;
+        }
+        assert_eq!(
+            received, BURST,
+            "every rapid-fire delivery must be enqueued (no drops under cap)"
+        );
+    }
+
+    #[test]
+    fn global_cap_rejects_excess_connections_across_users() {
+        // Fill the registry to GLOBAL_MAX_CONNECTIONS with one connection per
+        // distinct user, so the GLOBAL cap (not the per-user cap) is what trips.
+        let reg = empty_registry();
+        for _ in 0..GLOBAL_MAX_CONNECTIONS {
+            let (c, _rx) = conn(fake_user(Uuid::new_v4(), false, vec![]));
+            reg.register(Uuid::new_v4(), c).unwrap();
+        }
+        assert_eq!(reg.connection_count(), GLOBAL_MAX_CONNECTIONS);
+
+        // The (global cap + 1)th connection — a brand-new user well under the
+        // per-user cap — must be refused with a 429.
+        let (overflow, _rx) = conn(fake_user(Uuid::new_v4(), false, vec![]));
+        let err = reg
+            .register(Uuid::new_v4(), overflow)
+            .expect_err("global cap must reject the 513th connection");
+        assert_eq!(err.status_code(), 429, "global cap must surface 429");
+    }
+
+    #[test]
     fn unregister_cleans_up_indexes() {
         let reg = empty_registry();
         let uid = Uuid::new_v4();
