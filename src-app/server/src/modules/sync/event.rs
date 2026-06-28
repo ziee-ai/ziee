@@ -136,6 +136,10 @@ pub enum SyncEntity {
     /// cancelled) — NOT per-step events; those go on the dedicated per-run
     /// SSE channel (§4.4). Notify-only so cross-device list views refresh.
     WorkflowRun,
+    /// The caller's onboarding progress changed (a guide / step completed).
+    /// Owner-scoped, notify-only — other devices refetch `/api/onboarding/me`
+    /// so a guide completed on one device doesn't keep showing on another.
+    Onboarding,
 }
 
 /// What happened to the entity.
