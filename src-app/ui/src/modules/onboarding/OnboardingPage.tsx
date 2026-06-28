@@ -145,7 +145,7 @@ export default function OnboardingPage() {
                   {g.title}
                 </Text>
                 {isCompleted && (
-                  <CircleCheck className="text-primary" />
+                  <CircleCheck className="text-success" />
                 )}
               </div>
               <Text type="secondary" className="text-xs block mt-1">

@@ -80,7 +80,7 @@ export function WorkflowTestsPanel({
                     {r.skipped ? (
                       <CircleMinus className="text-muted-foreground text-lg" />
                     ) : r.passed ? (
-                      <CircleCheck className="text-primary text-lg" />
+                      <CircleCheck className="text-success text-lg" />
                     ) : (
                       <CircleX className="text-destructive text-lg" />
                     )}

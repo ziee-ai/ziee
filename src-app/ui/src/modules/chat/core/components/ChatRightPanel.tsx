@@ -25,7 +25,7 @@ function ActivePanelContent() {
           data-testid="chat-panel-no-renderer-empty"
           description={
             <div className="flex flex-col items-center gap-1">
-              <CircleAlert className="size-14 text-destructive" />
+              <CircleAlert className="size-14 text-warning" />
               <Text strong>Can't display this tab</Text>
               <Text type="secondary" className="text-xs">
                 No renderer is registered for type{' '}

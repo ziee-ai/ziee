@@ -31,7 +31,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
 
       <div className="space-y-2 mb-6">
         <div className="flex items-center gap-2">
-          <CircleCheck className="text-primary" />
+          <CircleCheck className="text-success" />
           <Text>
             {apiKeysCount > 0
               ? `${apiKeysCount} API key${apiKeysCount > 1 ? 's' : ''} saved`
@@ -39,7 +39,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
           </Text>
         </div>
         <div className="flex items-center gap-2">
-          <CircleCheck className="text-primary" />
+          <CircleCheck className="text-success" />
           <Text>
             {mcpCount > 0
               ? `${mcpCount} MCP server${mcpCount > 1 ? 's' : ''} selected for installation`

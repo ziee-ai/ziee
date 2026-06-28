@@ -53,7 +53,7 @@ export function ModelSelector() {
         if (enabledModels.length > 0) {
           const label = providerNeedsApiKey(provider) ? (
             <span className="flex items-center gap-1">
-              <TriangleAlert className="text-primary" />
+              <TriangleAlert className="text-warning" />
               {provider.name}
             </span>
           ) : (

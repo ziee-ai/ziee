@@ -32,7 +32,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
       case 'started':
         return <Wrench className="text-primary animate-spin" />
       case 'completed':
-        return <CircleCheck className="text-primary" />
+        return <CircleCheck className="text-success" />
       case 'error':
         return <CircleX className="text-destructive" />
     }
@@ -180,7 +180,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
           {toolResultData?.is_error ? (
             <CircleX className="text-destructive" />
           ) : toolResultData ? (
-            <CircleCheck className="text-primary" />
+            <CircleCheck className="text-success" />
           ) : (
             <Wrench className="text-primary" />
           )}

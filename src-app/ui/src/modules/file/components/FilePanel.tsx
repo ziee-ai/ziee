@@ -140,7 +140,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
             >
               <Empty
                 data-testid="file-panel-too-large-empty"
-                icon={<TriangleAlert className="text-5xl text-destructive" />}
+                icon={<TriangleAlert className="text-5xl text-warning" />}
                 description={
                   <div className="flex flex-col items-center gap-1">
                     <Text strong>File too large to preview</Text>
