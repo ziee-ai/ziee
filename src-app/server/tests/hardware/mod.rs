@@ -262,3 +262,59 @@ async fn test_subscribe_hardware_usage_sse_format() {
     // Note: We don't read the response body because SSE streams are endless
     // and would cause the test to hang. The content-type verification is sufficient.
 }
+
+// audit id all-b9693b87b997 — the hardware permission split was untested: GET
+// /hardware requires `hardware::read` while GET /hardware/usage-stream requires
+// the DISTINCT `hardware::monitor` (they are not hierarchically related). The
+// existing tests only cover "has hardware::read" vs "no perms"; neither proves
+// that holding the WRONG one of the pair is rejected. We use
+// create_user_with_only_permissions so the default group can't leak the other
+// permission.
+
+#[tokio::test]
+async fn test_hardware_info_rejects_monitor_only_user() {
+    let server = crate::common::TestServer::start().await;
+    // Holds hardware::monitor but NOT hardware::read.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "hw_monitor_only",
+        &["hardware::monitor"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .get(server.api_url("/hardware"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        res.status(),
+        403,
+        "hardware::monitor must NOT grant access to GET /hardware (needs hardware::read)"
+    );
+}
+
+#[tokio::test]
+async fn test_usage_stream_rejects_read_only_user() {
+    let server = crate::common::TestServer::start().await;
+    // Holds hardware::read but NOT hardware::monitor.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "hw_read_only",
+        &["hardware::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .get(server.api_url("/hardware/usage-stream"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        res.status(),
+        403,
+        "hardware::read must NOT grant access to the usage stream (needs hardware::monitor)"
+    );
+}
