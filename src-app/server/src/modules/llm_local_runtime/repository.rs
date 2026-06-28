@@ -28,6 +28,47 @@ impl LocalRuntimeRepository {
     // =====================================================
 
     /// Create a new runtime instance record
+    /// Atomically create an instance row already in the `running` state with
+    /// `started_at` stamped — a SINGLE INSERT, so there is no create-then-update
+    /// window that could leave a half-written row (or require a transaction) on
+    /// the spawn-then-record path in `start_model_instance`. Returns the new id.
+    pub async fn create_instance_running(
+        &self,
+        model_id: Uuid,
+        provider_id: Uuid,
+        local_port: i32,
+        base_url: &str,
+        runtime_version_id: Option<Uuid>,
+    ) -> AppResult<Uuid> {
+        let record = sqlx::query!(
+            r#"
+            INSERT INTO llm_runtime_instances
+                (model_id, provider_id, local_port, base_url, status,
+                 runtime_version_id, started_at, last_health_check)
+            VALUES ($1, $2, $3, $4, 'running', $5,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id
+            "#,
+            model_id,
+            provider_id,
+            local_port,
+            base_url,
+            runtime_version_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::conflict("Runtime instance");
+            }
+            AppError::internal_error(format!("Failed to create runtime instance: {}", e))
+        })?;
+
+        Ok(record.id)
+    }
+
     pub async fn create_instance(
         &self,
         model_id: Uuid,

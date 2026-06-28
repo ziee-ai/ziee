@@ -92,22 +92,19 @@ pub async fn start_model_instance(
     // error, tear the deployment back down before propagating, so we never
     // leave a running engine the system has forgotten about.
     let persist_instance = async {
-        // Create database record
+        // Single atomic INSERT in the `running` state — no create-then-update
+        // two-step (which had no surrounding transaction, so a failure between
+        // the two writes could leave a half-written row the system forgot to
+        // reconcile). One INSERT is atomic.
         Repos
             .local_runtime
-            .create_instance(
+            .create_instance_running(
                 model_id,
                 provider.id,
                 result.port,
                 &result.base_url,
                 None, // runtime_version_id: will be tracked properly in future iteration
             )
-            .await?;
-
-        // Update status to running
-        Repos
-            .local_runtime
-            .update_instance_status(model_id, "running", None)
             .await?;
 
         // Get and return the created instance
