@@ -201,6 +201,70 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
     await deleteProvider(page, updatedName)
   })
 
+  test('cancelling the inline name edit reverts to the original name', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const originalName = `test-cancel-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createLocalProvider(page, baseURL, originalName, 'desc')
+    await clickProviderCard(page, originalName)
+    await expect(page).toHaveURL(/\/settings\/llm-providers\/[a-f0-9-]+/)
+
+    await page.click('button[aria-label="Edit provider name"]')
+    const input = page.locator('input[value="' + originalName + '"]')
+    await expect(input).toBeVisible()
+
+    // Type a new value then CANCEL — the change must NOT persist.
+    await input.fill(`${originalName}-discarded`)
+    await page.click('button[aria-label="Cancel editing provider name"]')
+
+    await expect(
+      page.getByRole('heading', { name: originalName }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: `${originalName}-discarded` }),
+    ).toHaveCount(0)
+
+    await page.goBack()
+    await deleteProvider(page, originalName)
+  })
+
+  test('empty provider name fails inline-edit validation', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const originalName = `test-empty-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createLocalProvider(page, baseURL, originalName, 'desc')
+    await clickProviderCard(page, originalName)
+    await expect(page).toHaveURL(/\/settings\/llm-providers\/[a-f0-9-]+/)
+
+    await page.click('button[aria-label="Edit provider name"]')
+    const input = page.locator('input[value="' + originalName + '"]')
+    await expect(input).toBeVisible()
+
+    // Clear the field and try to save → the required rule blocks it.
+    await input.fill('')
+    await page.click('button[aria-label="Save provider name"]')
+
+    await expect(
+      page.locator('.ant-form-item-explain-error:has-text("Name is required")'),
+    ).toBeVisible()
+    // Still in edit mode (save was rejected) and the original name is intact.
+    await expect(
+      page.getByRole('button', { name: 'Save provider name' }),
+    ).toBeVisible()
+
+    await page.click('button[aria-label="Cancel editing provider name"]')
+    await page.goBack()
+    await deleteProvider(page, originalName)
+  })
+
   test('should delete a local provider', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const providerName = `test-delete-${Date.now()}`
