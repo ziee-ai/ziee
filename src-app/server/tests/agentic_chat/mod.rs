@@ -965,3 +965,101 @@ async fn model_authored_file_persists_and_is_reread_across_turns() {
         "turn 2 must read back the content the model authored in turn 1; body={t2}"
     );
 }
+
+// ── Cross-subsystem: files_mcp + memory in one conversation ──────────────────
+//
+// Audit all-ac7341fd2d7a: the agentic memory tests (Track B) exercise memory
+// alone, and the files tests (Track A) exercise files_mcp alone — nothing drives
+// BOTH built-in subsystems in a single conversation. This stub-driven test does:
+// with a project file attached AND per-user memory enabled, turn 1 has the model
+// read the file via the files_mcp `read_file` tool (asserting the marker rides
+// back into the answer), and turn 2 of the SAME conversation has it emit a
+// `remember` call (asserting a conversation-scoped memory row persists). Both the
+// files manifest→read_file round-trip and the memory side-effect loop run for
+// real against the same conversation; only the model is the deterministic stub.
+#[tokio::test]
+async fn files_mcp_and_memory_combine_in_one_conversation() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_files_memory").await;
+    enable_memory(&server, &user).await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    // A project knowledge file, surfaced via the manifest (not inlined).
+    let project_id = create_project(&server, &user, "files-memory-project").await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "notes.txt",
+        "XSUBSYS_MARKER_42 the launch is scheduled for Q3",
+    )
+    .await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // Turn 1 — files_mcp: the model reads the attached file on demand.
+    let t1 = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file what is in my notes?",
+    )
+    .await;
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "files_mcp read_file must fire in the combined conversation; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        t1.contains("XSUBSYS_MARKER_42"),
+        "turn 1 answer must echo file content read via files_mcp; body={t1}"
+    );
+
+    // Turn 2 — memory: the model self-saves a fact in the SAME conversation.
+    let t2 = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=remember The launch is scheduled for Q3.",
+    )
+    .await;
+    assert_eq!(
+        stub.requests_with_tool("remember"),
+        1,
+        "memory remember must fire exactly once in turn 2; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        t2.contains("remember that"),
+        "turn 2 answer should accompany the memory save; body={t2}"
+    );
+
+    // Memory subsystem actually persisted a conversation-scoped row.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT content, scope FROM user_memories WHERE user_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(user_uuid)
+    .fetch_all(&pool)
+    .await
+    .expect("query memories");
+    pool.close().await;
+    assert!(
+        rows.iter().any(|(content, scope)| content.contains("Q3") && scope == "conversation"),
+        "a conversation-scoped memory row must persist alongside the files_mcp read; rows={rows:?}"
+    );
+}
