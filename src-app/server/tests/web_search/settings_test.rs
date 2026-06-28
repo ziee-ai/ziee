@@ -2,12 +2,50 @@
 //! round-trip (the API key is stored but never returned).
 
 use serde_json::{Value, json};
+use std::time::Duration;
+use uuid::Uuid;
 
 use crate::common::TestServer;
+use crate::common::sync_probe::SyncProbe;
 use crate::common::test_helpers::create_user_with_permissions;
 
 fn admin_perms() -> &'static [&'static str] {
     &["web_search::admin::read", "web_search::admin::manage"]
+}
+
+/// A settings update must publish a `WebSearchSettings`/`update` sync frame
+/// to holders of `web_search::admin::read` (handlers.rs:333-339), and must
+/// NOT reach a user lacking that read perm (the audience is
+/// `Audience::perm::<WebSearchAdminRead>()`). The wire id is `Uuid::nil`
+/// because the settings row is a singleton.
+#[tokio::test]
+async fn test_web_search_settings_update_emits_sync_to_admins_only() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "ws_sync_admin", admin_perms()).await;
+    // Plain user: holds web_search::use (Users group) but no admin::read,
+    // so it is outside the sync audience — a negative control.
+    let plain =
+        create_user_with_permissions(&server, "ws_sync_plain", &["web_search::use"]).await;
+
+    let mut admin_probe = SyncProbe::open(&server, &admin.token).await;
+    let mut plain_probe = SyncProbe::open(&server, &plain.token).await;
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/web-search/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "max_results": 7 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+
+    let frame = admin_probe
+        .expect_event("web_search_settings", "update", Duration::from_secs(5))
+        .await;
+    assert_eq!(frame.id, Uuid::nil().to_string());
+
+    // The non-admin user is not in the audience and observes nothing.
+    plain_probe.expect_silence(Duration::from_secs(1)).await;
 }
 
 #[tokio::test]
