@@ -24,6 +24,15 @@ See `.claude/PERMISSION_GATING.md` for the gating pattern.
     the read-vs-manage form-disable path.
   - `hub_mcp_only` — only `hub::mcp_servers::read`. Verifies Hub's
     partial-tab visibility.
+  - `auth-providers-reader` (`loginAsAuthProvidersReader`) — only
+    `auth_providers::read`. Verifies the auth-providers list renders
+    without Add/Edit/Switch/Delete/Test controls.
+  - `auth-providers-manager` (`loginAsAuthProvidersManager`) —
+    `auth_providers::read` + `auth_providers::manage`. Verifies all
+    auth-provider admin surfaces are visible.
+  - `loginWithPerms(...)` — generic helper to create + log in as a
+    user with an arbitrary explicit permission set (for one-off tests
+    the named fixtures above don't cover).
 
 - **Per-module specs** — one file per module from the rollout
   checklist. Asserts what a permission-restricted user should NOT
