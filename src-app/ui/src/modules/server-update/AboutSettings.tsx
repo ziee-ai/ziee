@@ -3,7 +3,7 @@
  * Notification only — updating is a manual operator action (install.sh).
  */
 
-import { Alert, Button, Card, Descriptions, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Button, Card, Descriptions, Spin, Tag, Tooltip, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
@@ -25,6 +25,16 @@ export default function AboutSettings() {
     loading,
     error,
   } = Stores.ServerUpdate
+
+  if (loading && currentVersion == null) {
+    return (
+      <SettingsPageContainer title="About" subtitle="Server version and updates">
+        <div className="flex justify-center py-12">
+          <Spin />
+        </div>
+      </SettingsPageContainer>
+    )
+  }
 
   return (
     <SettingsPageContainer title="About" subtitle="Server version and updates">
