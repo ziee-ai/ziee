@@ -122,6 +122,7 @@ export default function OnboardingPage() {
           <Text strong>Onboarding</Text>
         </div>
         <Button
+          data-testid="onboarding-page-back-to-chat-button"
           variant="ghost"
           size="sm"
           icon={<ArrowLeft />}
@@ -163,6 +164,7 @@ export default function OnboardingPage() {
             {guide.title}
           </Title>
           <Progress
+            data-testid="onboarding-page-step-progress"
             value={Math.round(((currentStepIndex + 1) / guide.steps.length) * 100)}
             showInfo={false}
             size="sm"
@@ -174,6 +176,7 @@ export default function OnboardingPage() {
         <div className="flex-1 overflow-y-auto p-6">
           {nextError && (
             <Alert
+              data-testid="onboarding-page-next-error-alert"
               tone="error"
               title={nextError}
               onClose={() => Stores.Onboarding.setNextError(null)}
@@ -191,12 +194,14 @@ export default function OnboardingPage() {
         {/* Footer navigation */}
         <div className="p-4 border-t flex justify-between items-center border-border bg-card">
           <Button
+            data-testid="onboarding-page-back-button"
             disabled={currentStepIndex === 0}
             onClick={() => setManualStep(currentStepIndex - 1)}
           >
             Back
           </Button>
           <Button
+            data-testid="onboarding-page-next-button"
             variant="default"
             disabled={!nextEnabled}
             loading={nextLoading}

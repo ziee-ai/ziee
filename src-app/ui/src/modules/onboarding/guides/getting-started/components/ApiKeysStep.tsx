@@ -101,7 +101,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
       </Paragraph>
 
       {error && (
-        <Alert tone="error" title={error} className="mb-3" />
+        <Alert data-testid="onboarding-apikeys-error-alert" tone="error" title={error} className="mb-3" />
       )}
 
       {/* Two-column layout */}
@@ -135,7 +135,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
             })()}
             <Text strong className="text-base">{currentProvider.name}</Text>
             {(currentProvider.api_key_configured || hasUserKey) && (
-              <Tag icon={<CircleCheck />} tone="success">
+              <Tag data-testid="onboarding-apikeys-key-status-tag" icon={<CircleCheck />} tone="success">
                 {hasUserKey ? 'Your key configured' : 'Admin key configured'}
               </Tag>
             )}
@@ -151,6 +151,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
             <div className="mb-2">
               <label className="block text-sm font-medium mb-1">Your API Key</label>
               <PasswordInput
+                data-testid="onboarding-apikeys-password-input"
                 showLabel="Show API key"
                 hideLabel="Hide API key"
                 value={enteredApiKeys[currentProvider.id] || ''}

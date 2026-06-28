@@ -58,7 +58,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
       </Paragraph>
 
       {serversError && canSeeAdminControls && (
-        <Alert tone="error" title={serversError} className="mb-4" />
+        <Alert data-testid="onboarding-mcp-error-alert" tone="error" title={serversError} className="mb-4" />
       )}
 
       {canManageSystemMcp && systemServers.length > 0 && (
@@ -73,6 +73,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                 className="flex items-start gap-3 border rounded-lg p-3"
               >
                 <Switch
+                  data-testid={`onboarding-mcp-system-server-switch-${server.id}`}
                   size="sm"
                   defaultChecked
                   onChange={checked => Stores.McpServersStep.toggleSystemServer(server.id, checked)}
@@ -119,6 +120,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                   onClick={alreadyInstalled ? undefined : () => Stores.McpServersStep.toggleMcpServer(server.name)}
                 >
                   <Checkbox
+                    data-testid={`onboarding-mcp-hub-server-checkbox-${server.name}`}
                     checked={isSelected}
                     disabled={alreadyInstalled}
                     className="mt-1"
@@ -126,7 +128,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                   <div>
                     <div className="flex items-center gap-2">
                       <Text strong>{leaf}</Text>
-                      {alreadyInstalled && <Tag>Already installed</Tag>}
+                      {alreadyInstalled && <Tag data-testid={`onboarding-mcp-hub-server-installed-tag-${server.name}`}>Already installed</Tag>}
                     </div>
                     {server.description && (
                       <Text tone="secondary" className="block text-sm">
