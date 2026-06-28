@@ -24,9 +24,22 @@ export function AssistantSelector({
     title: assistant.description || assistant.name,
   }))
 
-  // If no assistants available, don't render
+  // No assistants available: render a disabled, empty selector rather than
+  // vanishing entirely, so the control stays present and self-explanatory.
   if (availableAssistants.length === 0) {
-    return null
+    return (
+      <Tooltip title="No assistants available">
+        <Select
+          aria-label="Select Assistant"
+          options={[]}
+          disabled
+          placeholder="No assistants"
+          style={{ minWidth: 120 }}
+          size="small"
+          suffixIcon={<RobotOutlined />}
+        />
+      </Tooltip>
+    )
   }
 
   return (
