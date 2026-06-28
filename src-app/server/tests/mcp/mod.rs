@@ -1693,3 +1693,88 @@ async fn test_call_tool_with_sampling_sse_roundtrip() {
     eprintln!("SSE roundtrip test passed: {:?}", result.content);
 }
 
+
+/// Group-cascade access: assigning a SYSTEM MCP server to a group must cascade
+/// to that group's members — a user in the group then sees the server in their
+/// own `GET /mcp/servers` (which joins user_group_mcp_servers). The existing
+/// assignment tests only assert the admin-side group list, never that a member
+/// actually gains access.
+#[tokio::test]
+async fn test_system_server_assignment_cascades_to_group_members() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "cascade_admin",
+        &["mcp_servers_admin::read", "mcp_servers_admin::edit"],
+    )
+    .await;
+    // A member (auto-added to the default group) who can list their servers.
+    let member = test_helpers::create_user_with_permissions(
+        &server,
+        "cascade_member",
+        &["mcp_servers::read"],
+    )
+    .await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let default_group_id = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .id;
+    let filesystem_server_id =
+        sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'filesystem' AND is_system = true")
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .id;
+    pool.close().await;
+
+    let member_server_names = || async {
+        let body: serde_json::Value = reqwest::Client::new()
+            .get(server.api_url("/mcp/servers"))
+            .header("Authorization", format!("Bearer {}", member.token))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        body["servers"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|s| s["name"].as_str().map(String::from))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+
+    // Before assignment: the member's default group has no filesystem grant.
+    let before = member_server_names().await;
+    assert!(
+        !before.contains(&"filesystem".to_string()),
+        "filesystem must NOT be visible before the group assignment: {before:?}"
+    );
+
+    // Admin assigns the system server to the default group.
+    let assign = reqwest::Client::new()
+        .post(server.api_url(&format!("/mcp/system-servers/{filesystem_server_id}/groups")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "group_ids": [default_group_id] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(assign.status(), 204, "assign system server to group");
+
+    // After assignment: the member now sees the cascaded system server.
+    let after = member_server_names().await;
+    assert!(
+        after.contains(&"filesystem".to_string()),
+        "filesystem must cascade to the group member after assignment: {after:?}"
+    );
+}

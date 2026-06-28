@@ -218,3 +218,60 @@ async fn system_install_creates_system_scope_row() {
         "system skill SKILL.md extracted"
     );
 }
+
+/// CHARACTERIZATION (documents CURRENT behavior + a known gap): deleting a
+/// hub-installed SKILL does NOT remove its `hub_entities` tracking row — unlike
+/// assistants/MCP servers, the event-driven CleanupHubEntitiesHandler does not
+/// subscribe to skill deletion and there is no FK cascade, so the row leaks.
+/// This pins the current state so a future fix (wiring skill-delete cleanup)
+/// flips this assertion. See /tmp/discovered-claude-live4.md.
+#[tokio::test]
+async fn deleting_hub_skill_currently_leaves_hub_entities_row() {
+    use sqlx::postgres::PgPoolOptions;
+
+    let (server, _mock) = server_with_skill_catalog().await;
+    let admin = admin_and_refresh(&server).await;
+    let body = install_fixture_skill(&server, &admin.token).await;
+    let skill_id = uuid::Uuid::parse_str(body["skill"]["id"].as_str().expect("skill id")).unwrap();
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+
+    // The install created a hub_entities tracking row for the skill.
+    let before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM hub_entities WHERE entity_type = 'skill' AND entity_id = $1",
+    )
+    .bind(skill_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(before, 1, "install must create a hub_entities tracking row");
+
+    // Delete the skill.
+    let del = reqwest::Client::new()
+        .delete(server.api_url(&format!("/skills/{skill_id}")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("delete skill");
+    assert_eq!(del.status(), 204, "skill delete should 204");
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // CURRENT behavior: the tracking row LEAKS (no cleanup wired for skills).
+    let after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM hub_entities WHERE entity_type = 'skill' AND entity_id = $1",
+    )
+    .bind(skill_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        after, 1,
+        "CURRENT (buggy) behavior: the hub_entities row is NOT cleaned up on \
+         skill deletion. When skill-delete cleanup is wired, flip this to 0."
+    );
+    pool.close().await;
+}

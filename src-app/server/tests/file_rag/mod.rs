@@ -1014,3 +1014,114 @@ async fn image_file_with_no_text_pages_yields_no_chunks() {
         "an image (no text pages) must yield zero file_rag chunks"
     );
 }
+
+/// Concurrency: two rewrites of the SAME file fired together each spawn a
+/// reindex; the `pg_advisory_xact_lock('file_rag_reindex:'||file_id)` serializes
+/// them so the final chunk set reflects exactly ONE rewrite — never a mix and
+/// never duplicated/leaked old chunks. The existing reindex tests are
+/// sequential (new-version / restore). Uses tokio::join! (shared &server, no
+/// clone) for the concurrent dispatch.
+#[tokio::test]
+async fn concurrent_reindex_same_file_yields_one_consistent_chunk_set() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_concurrent_reindex").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-concurrent",
+        &[("doc.md", "initial content version zero")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    let file_id = file_ids[0].clone();
+    wait_for_chunks(&pool, &file_id, 1).await;
+    let initial_count = chunk_count(&pool, &file_id).await;
+
+    // Two concurrent rewrites of the same file (distinct content markers).
+    let (r1, r2) = tokio::join!(
+        call_tool(
+            &server,
+            &user,
+            conv_uuid,
+            "rewrite_file",
+            json!({ "id": file_id, "content": "ALPHA marker first concurrent rewrite body" }),
+        ),
+        call_tool(
+            &server,
+            &user,
+            conv_uuid,
+            "rewrite_file",
+            json!({ "id": file_id, "content": "BETA marker second concurrent rewrite body" }),
+        ),
+    );
+    assert!(r1["error"].is_null(), "rewrite 1 must not error: {r1}");
+    assert!(r2["error"].is_null(), "rewrite 2 must not error: {r2}");
+
+    // Let both reindexes settle, then inspect the final chunk set.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    wait_for_chunks(&pool, &file_id, 1).await;
+    let chunk_contents: Vec<String> = sqlx::query_scalar(
+        "SELECT content FROM file_chunks WHERE file_id = $1 ORDER BY chunk_index",
+    )
+    .bind(&file_id)
+    .fetch_all(&pool)
+    .await
+    .expect("fetch final chunks");
+
+    let final_count = chunk_contents.len() as i64;
+    assert_eq!(
+        final_count, initial_count,
+        "final chunk count must match a single reindex (no duplicates from the race): \
+         got {final_count}, expected {initial_count}; chunks={chunk_contents:?}"
+    );
+    let has_alpha = chunk_contents.iter().any(|c| c.contains("ALPHA"));
+    let has_beta = chunk_contents.iter().any(|c| c.contains("BETA"));
+    assert!(
+        has_alpha ^ has_beta,
+        "chunks must reflect exactly ONE rewrite, not a mix: alpha={has_alpha} beta={has_beta} \
+         chunks={chunk_contents:?}"
+    );
+    pool.close().await;
+}
+
+/// Search safety during an embedding rebuild: when a file's chunk embeddings are
+/// NULL (the transient state while `embed_worker` ALTERs the column / re-embeds,
+/// or simply FTS-only mode), retrieval's `WHERE embedding IS NOT NULL` guard
+/// means a concurrent `semantic_search` must NOT crash or return garbage — it
+/// degrades to the FTS path and still answers. This pins that guard: we
+/// explicitly NULL every embedding (simulating mid-rebuild) and assert search
+/// still succeeds.
+#[tokio::test]
+async fn semantic_search_with_null_embeddings_degrades_gracefully() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_null_embed").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-null-embed",
+        &[("notes.md", "The Helsinki rendezvous codeword is NULLSAFE-4242 for evacuation.")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+
+    // Simulate the mid-rebuild window: every chunk embedding is NULL.
+    sqlx::query("UPDATE file_chunks SET embedding = NULL WHERE file_id = $1")
+        .bind(&file_ids[0])
+        .execute(&pool)
+        .await
+        .expect("null out embeddings");
+
+    // A search during this window must not error (the IS NOT NULL guard +
+    // FTS fallback keep it answering).
+    let body = semantic_search(&server, &user, conv_uuid, "evacuation codeword").await;
+    assert!(
+        body["error"].is_null(),
+        "search during the embedding-rebuild window must not error: {body}"
+    );
+    pool.close().await;
+}

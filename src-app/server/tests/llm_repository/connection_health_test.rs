@@ -753,3 +753,69 @@ async fn concurrent_test_by_id_probes_all_succeed_and_converge() {
     assert_eq!(reason, None);
     assert!(at.is_some(), "last_health_check_at stamped");
 }
+
+/// Concurrency: many simultaneous test-connection probes against the SAME repo
+/// must all return a consistent 200/success (no panic, no 500, no torn health
+/// bookkeeping), and the persisted health outcome converges to `healthy`. The
+/// existing health tests probe sequentially (create/update); this fires N
+/// concurrent `POST /llm-repositories/{id}/test`.
+#[tokio::test]
+async fn concurrent_test_connection_probes_same_repo_are_consistent() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let upstream = mock_ok().await;
+
+    // Create the repo disabled (no probe at create); we'll probe it concurrently.
+    let created: Value = reqwest::Client::new()
+        .post(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "concurrent-probe-repo",
+            "url": upstream.uri(),
+            "auth_type": "none",
+            "enabled": false,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let repo_id: Uuid = Uuid::parse_str(created["id"].as_str().expect("id")).unwrap();
+
+    // Fire 6 concurrent probes at the same repo.
+    let url = server.api_url(&format!("/llm-repositories/{repo_id}/test"));
+    let mut handles = Vec::new();
+    for i in 0..6 {
+        let url = url.clone();
+        let token = admin.token.clone();
+        handles.push(tokio::spawn(async move {
+            let res = reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "name": format!("probe-{i}"), "auth_type": "none" }))
+                .send()
+                .await
+                .unwrap();
+            let status = res.status();
+            let body: Value = res.json().await.unwrap();
+            (status, body["success"].as_bool())
+        }));
+    }
+    for h in handles {
+        let (status, success) = h.await.unwrap();
+        assert_eq!(status, StatusCode::OK, "each concurrent probe must 200");
+        assert_eq!(success, Some(true), "each probe must succeed against the 200 mock");
+    }
+
+    // The persisted health outcome converged to healthy (no torn write).
+    let pool = pool_for(&server).await;
+    let status: String =
+        sqlx::query_scalar("SELECT last_health_check_status FROM llm_repositories WHERE id = $1")
+            .bind(repo_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(status, "healthy", "final persisted health must be consistent");
+    pool.close().await;
+}

@@ -358,3 +358,26 @@ outputs:
         "unanswered finite-timeout elicit must terminate (failed/cancelled), got '{status}': {final_run}"
     );
 }
+
+/// Edge case: `PUT /workflow-runs/{run_id}/timeout` for a run that does not
+/// exist returns 404 `WorkflowRun` (the run-lookup 404s before any timeout
+/// mutation). The existing timeout tests cover owner-200 / other-user-403 /
+/// finished-run-already-terminal, but never the missing-run boundary.
+#[tokio::test]
+async fn set_run_timeout_nonexistent_run_is_404() {
+    let server = plain_server().await;
+    let user = workflow_user(&server, "elicit_timeout_404").await;
+
+    let fake_run = Uuid::new_v4();
+    let resp = reqwest::Client::new()
+        .put(server.api_url(&format!("/workflow-runs/{fake_run}/timeout")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "timeout_secs": 30 }))
+        .send()
+        .await
+        .expect("set timeout on nonexistent run");
+
+    assert_eq!(resp.status(), 404, "a nonexistent run must 404");
+    let body = resp.text().await.unwrap_or_default();
+    assert!(body.contains("WorkflowRun"), "404 must name the missing run: {body}");
+}
