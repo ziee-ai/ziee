@@ -78,6 +78,7 @@ pub fn connected_event(connection_id: Uuid) -> Event {
 /// [`connected_event`] (which keep the inner event name on the `event:` line).
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[allow(dead_code)]
 pub enum ChatStreamSseEvent {
     Connected(ChatStreamConnectedData),
     Frame(ChatStreamFrame),

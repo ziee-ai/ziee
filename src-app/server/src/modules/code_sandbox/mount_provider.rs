@@ -55,6 +55,10 @@ fn registry() -> &'static RwLock<Vec<Arc<dyn SandboxMountProvider>>> {
 /// from the desktop crate's `host_mount` module. With no provider registered
 /// (standalone/remote-web server) the seam is inert and `execute_command`
 /// behaves exactly as before.
+///
+/// NOTE: Currently only the desktop crate registers a provider. The
+/// standalone server build never calls this, so mark it allowed here.
+#[allow(dead_code)]
 pub fn register_sandbox_mount_provider(provider: Arc<dyn SandboxMountProvider>) {
     registry()
         .write()
@@ -64,6 +68,10 @@ pub fn register_sandbox_mount_provider(provider: Arc<dyn SandboxMountProvider>) 
 
 /// Whether any provider is registered — the "host mounts are possible on this
 /// deployment" capability (desktop registers one; remote web does not).
+///
+/// NOTE: Same status as `register_sandbox_mount_provider` — only the
+/// desktop crate calls this. Standalone build never reaches it.
+#[allow(dead_code)]
 pub fn has_providers() -> bool {
     !registry()
         .read()

@@ -318,7 +318,7 @@ async fn main() {
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)));
+        .layer(tower_http::timeout::TimeoutLayer::with_status_code(axum::http::StatusCode::REQUEST_TIMEOUT, std::time::Duration::from_secs(660)));
     // Rate limiter (tower-governor) — see core::app_builder::apply_rate_limit_layer.
     // Gated on `server.rate_limit.enabled`; the standalone server passes a
     // Some((50,500)) default so an un-configured deployment is still protected.

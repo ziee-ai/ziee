@@ -20,7 +20,7 @@ pub mod extractor;
 pub mod handlers;
 pub mod registry;
 
-pub use event::{Audience, PermRule, SyncAction, SyncEntity, publish, publish_session_to_users};
+pub use event::{Audience, SyncAction, SyncEntity, publish, publish_session_to_users};
 pub use extractor::SyncOrigin;
 
 /// Register the sync module via linkme.

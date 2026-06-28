@@ -27,8 +27,6 @@ pub mod repository;
 pub mod routes;
 pub mod tools;
 
-pub use repository::MemoryMcpRepository;
-
 /// Deterministic UUID for the built-in memory MCP server row.
 /// Stable across deployments. Mirrors the `code_sandbox_server_id`
 /// pattern.

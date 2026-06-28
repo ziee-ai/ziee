@@ -94,6 +94,7 @@ pub struct TestServer {
     _workspace_tempdir: Option<tempfile::TempDir>,
     /// Resolved workspace_root that was injected into the test YAML
     /// (`None` when sandbox was not enabled for this test).
+    #[allow(dead_code)]
     pub workspace_root: Option<PathBuf>,
     /// Tier-6 cache TempDir holding the staged test squashfs +
     /// known_revisions.dev.toml on Mac/Windows. Held for the
@@ -194,6 +195,10 @@ pub struct TestServerOptions {
 impl TestServer {
     /// Start a TestServer with the default options (sandbox disabled).
     /// Equivalent to `start_with_options(TestServerOptions::default())`.
+    ///
+    /// NOTE: dead_code allowed — the desktop test binary never starts
+    /// a server through this path (it uses `start_desktop` / `start_with_options`).
+    #[allow(dead_code)]
     pub async fn start() -> Self {
         Self::start_with_options(TestServerOptions::default()).await
     }
@@ -747,6 +752,10 @@ pub mod test_helpers {
     /// `create_user_with_permissions(_, _, &["A"])` would leave the user
     /// in default + add a separate group with [A], giving them both A
     /// AND every default permission.
+    ///
+    /// NOTE: dead_code allowed — the desktop test binary does not use these
+    /// helpers (only server integration tests do).
+    #[allow(dead_code)]
     pub async fn create_user_with_only_permissions(
         server: &TestServer,
         username: &str,
@@ -779,6 +788,9 @@ pub mod test_helpers {
     }
 
     /// Create a test user via API (requires admin token)
+    ///
+    /// NOTE: dead_code allowed — desktop test binary does not use this helper.
+    #[allow(dead_code)]
     pub async fn create_test_user(
         server: &TestServer,
         admin_token: &str,
@@ -806,6 +818,10 @@ pub mod test_helpers {
 }
 
 /// Helper to make HTTP requests during tests
+/// NOTE: dead_code allowed on the whole module — the HTTP helpers
+/// (`get`/`post`/`put`/`delete`) are used by server integration tests
+/// but not by the desktop test binary (which shares this file).
+#[allow(dead_code)]
 pub mod http {
     use serde::Serialize;
     use serde::de::DeserializeOwned;

@@ -13,6 +13,7 @@ use uuid::Uuid;
 pub enum SummarizationEvent {
     /// The singleton settings row was updated. `id` is the row id
     /// (always 1) for shape parity with the other settings events.
+    #[allow(dead_code)]
     Updated { id: Uuid },
 }
 
