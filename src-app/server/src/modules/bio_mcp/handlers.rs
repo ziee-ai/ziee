@@ -112,3 +112,67 @@ async fn stream_back(upstream: reqwest::Response) -> Response {
     *resp.headers_mut() = headers_out;
     resp
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `stream_back` must preserve the upstream status + MCP protocol headers
+    /// (e.g. `mcp-session-id`), STRIP `content-length` / `transfer-encoding`
+    /// (re-derived by the streaming body), and forward the body bytes verbatim.
+    /// Mocks ONLY the external boundary: a real loopback HTTP "sidecar" whose
+    /// response is fetched with reqwest and handed to `stream_back`.
+    #[tokio::test]
+    async fn stream_back_preserves_status_headers_strips_len_and_streams_body() {
+        // One-shot loopback "sidecar".
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind loopback");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let app = axum::Router::new().route(
+                "/mcp",
+                axum::routing::get(|| async {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header("content-type", "text/event-stream")
+                        .header("mcp-session-id", "sess-xyz")
+                        .header("content-length", "13") // must be stripped by stream_back
+                        .body(Body::from("hello-sidecar"))
+                        .unwrap()
+                }),
+            );
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let upstream = reqwest::Client::new()
+            .get(format!("http://{addr}/mcp"))
+            .send()
+            .await
+            .expect("fetch upstream");
+
+        let resp = stream_back(upstream).await;
+
+        assert_eq!(resp.status(), StatusCode::OK, "status must be preserved");
+        assert_eq!(
+            resp.headers().get("mcp-session-id").unwrap(),
+            "sess-xyz",
+            "MCP session header must be forwarded"
+        );
+        assert!(
+            resp.headers().get(reqwest::header::CONTENT_LENGTH).is_none(),
+            "content-length must be stripped"
+        );
+        assert_eq!(
+            resp.headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .unwrap(),
+            "text/event-stream",
+        );
+
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("collect body");
+        assert_eq!(&bytes[..], b"hello-sidecar", "body bytes must pass through");
+    }
+}
