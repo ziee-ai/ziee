@@ -67,4 +67,28 @@ test.describe('Settings shell', () => {
       .not.toBe(before)
     await expect(page).toHaveURL(/\/settings\/[a-z-]+/)
   })
+
+  test('desktop sidebar menu navigates between sections', async ({
+    page,
+    testInfra,
+  }) => {
+    // Desktop viewport → the section rail (antd Menu) is shown, not the
+    // mobile dropdown.
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(`${testInfra.baseURL}/settings/profile`)
+    await expect(
+      page.getByRole('heading', { name: 'Profile' }),
+    ).toBeVisible({ timeout: 15000 })
+
+    // Click the "MCP Servers" section in the sidebar → route + content follow.
+    await page.getByRole('menuitem', { name: 'MCP Servers' }).click()
+    await expect(page).toHaveURL(/\/settings\/mcp-servers$/)
+
+    // And back to Profile via the sidebar.
+    await page.getByRole('menuitem', { name: 'Profile' }).click()
+    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(
+      page.getByRole('heading', { name: 'Profile' }),
+    ).toBeVisible()
+  })
 })
