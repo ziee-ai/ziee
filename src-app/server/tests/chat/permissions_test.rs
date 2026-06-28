@@ -199,6 +199,125 @@ async fn test_send_message_requires_permission() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
+/// A user who HAS `messages::create` but is NOT in any group granted the
+/// model's provider must be blocked by the streaming handler's
+/// `user_has_access_to_provider` check (403 ACCESS_DENIED) — distinct from the
+/// RequirePermissions gate above. This exercises the chat-stream ↔ provider
+/// access-resolution path.
+#[tokio::test]
+async fn test_send_message_denied_without_provider_access() {
+    let server = crate::common::TestServer::start().await;
+
+    // `owner` gets the stub model (create_stub_model assigns the provider to a
+    // group containing `owner`).
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "prov_owner",
+        &["llm_models::read"],
+    )
+    .await;
+    let (_stub, model) = super::helpers::create_stub_model(&server, &owner.user_id).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+
+    // `user` can chat (has the message permissions) but is in NO group granted
+    // this provider.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "no_prov_access",
+        &[
+            "conversations::create",
+            "conversations::read",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+        ],
+    )
+    .await;
+    let conversation =
+        super::helpers::create_conversation(&server, &user.token, None, Some("Test")).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        conversation_id,
+        model_id,
+        branch_id,
+        "Hello, world!",
+    )
+    .await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "no provider access must be 403"
+    );
+    let body = response.text().await.unwrap_or_default();
+    assert!(
+        body.contains("ACCESS_DENIED"),
+        "403 must carry the ACCESS_DENIED code; got: {body}"
+    );
+}
+
+/// A disabled model is rejected by the streaming handler with MODEL_DISABLED
+/// (400) before any provider/key resolution.
+#[tokio::test]
+async fn test_send_message_disabled_model_is_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "disabled_model_user",
+        &[
+            "conversations::create",
+            "conversations::read",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+            "llm_models::edit",
+        ],
+    )
+    .await;
+    let (_stub, model) = super::helpers::create_stub_model(&server, &user.user_id).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+
+    // Disable the model.
+    let disable = reqwest::Client::new()
+        .put(server.api_url(&format!("/llm-models/{model_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert!(disable.status().is_success(), "disable model → {}", disable.status());
+
+    let conversation =
+        super::helpers::create_conversation(&server, &user.token, None, Some("Test")).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        conversation_id,
+        model_id,
+        branch_id,
+        "Hello, world!",
+    )
+    .await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "disabled model must be 400"
+    );
+    let body = response.text().await.unwrap_or_default();
+    assert!(
+        body.contains("MODEL_DISABLED"),
+        "400 must carry the MODEL_DISABLED code; got: {body}"
+    );
+}
+
 #[tokio::test]
 async fn test_get_message_requires_permission() {
     let server = crate::common::TestServer::start().await;
