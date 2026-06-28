@@ -174,3 +174,27 @@ async fn test_summary_endpoint_returns_404_for_nonexistent_conversation() {
         .unwrap();
     assert_eq!(res.status(), 404, "GET on ghost id must be 404");
 }
+
+// audit id all-0b8f4496681d — GET /conversations/{id}/summary is gated by
+// ConversationsRead (handlers.rs:210-212); only ownership (404) was tested. A
+// user lacking conversations::read must be refused with 403 — the perm gate
+// fires before existence/ownership, so any id suffices.
+#[tokio::test]
+async fn test_summary_endpoint_requires_conversations_read() {
+    let server = crate::common::TestServer::start().await;
+    // Default group removed → no conversations::read.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "summ_endpoint_noperm",
+        &["profile::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{}/summary", Uuid::new_v4())))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403, "missing conversations::read must be 403");
+}
