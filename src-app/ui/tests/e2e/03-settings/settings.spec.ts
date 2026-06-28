@@ -80,6 +80,10 @@ test.describe('Settings - General', () => {
   // toggle. This selects Dark via the UI, RELOADS (re-bootstrap + store
   // rehydrate), and asserts dark mode survives.
   test('theme preference persists across a page reload', async ({ page, testInfra }) => {
+  test('selecting Light / System persists the preference across a reload', async ({
+    page,
+    testInfra,
+  }) => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
     await goToSettingsPage(page, baseURL, 'general')
@@ -103,5 +107,33 @@ test.describe('Settings - General', () => {
     await page.reload({ waitUntil: 'load' })
     await expect.poll(() => isDarkMode(page), { timeout: 10000 }).toBe(true)
     expect(await getTheme(page)).toBe('dark')
+    const pickTheme = async (label: 'Light' | 'Dark' | 'System') => {
+      await page.locator('#theme-form [aria-label="Theme"]').first().click()
+      await page
+        .getByRole('listbox')
+        .or(page.locator('.ant-select-dropdown'))
+        .first()
+        .waitFor({ state: 'visible' })
+      const opt = page.getByTitle(label)
+      await opt.waitFor({ state: 'visible', timeout: 5000 })
+      await opt.click()
+      await page.waitForTimeout(300)
+    }
+
+    // Light → not dark, and the preference persists across a reload.
+    await pickTheme('Light')
+    expect(await isDarkMode(page)).toBe(false)
+    expect(await getTheme(page)).toBe('light')
+    await page.reload()
+    await waitForSettingsPageLoad(page, 'General')
+    expect(await getTheme(page)).toBe('light')
+    expect(await isDarkMode(page)).toBe(false)
+
+    // System → the stored preference is 'system' (and survives a reload).
+    await pickTheme('System')
+    expect(await getTheme(page)).toBe('system')
+    await page.reload()
+    await waitForSettingsPageLoad(page, 'General')
+    expect(await getTheme(page)).toBe('system')
   })
 })

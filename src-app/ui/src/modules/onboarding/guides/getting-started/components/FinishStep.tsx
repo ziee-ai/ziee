@@ -18,8 +18,11 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
 
   useEffect(() => {
     Stores.Onboarding.setReady(true)
+    // Hub-server installations and system-server toggles were already applied
+    // when the user clicked Next on the McpServersStep (if visited).
+    // Re-apply here as a safety net for guides that skip the MCP step.
     registerBeforeNext(async () => {
-      await Stores.McpServersStep.installSelectedMcpServers()
+      await Stores.McpServersStep.applyMcpServerChanges()
     })
   }, [])
 

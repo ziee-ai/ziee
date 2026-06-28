@@ -362,6 +362,61 @@ async fn on_by_default_fts_search_with_provenance() {
     );
 }
 
+/// Cross-module linkage: a file produced by a workflow MCP step
+/// (`created_by='workflow'`, the provenance `persist_links` stamps on
+/// run-created files) flows through the SAME shared `ingest_bytes` tail as an
+/// uploaded file, so it is chunked by file_rag and answerable via the
+/// `semantic_search` tool. This guards the workflow→file_rag retrieval seam
+/// the audit flagged as untested — proving file_rag retrieval is
+/// provenance-agnostic (workflow outputs are first-class searchable content).
+#[tokio::test]
+async fn workflow_provenance_file_is_chunked_and_retrievable() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_workflow").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-workflow",
+        &[(
+            "workflow-report.txt",
+            "Workflow run summary: the migration assistant analyzed 412 call sites \
+             and recommends replacing the deprecated tokenizer with the streaming \
+             variant to reduce peak memory during ingestion.",
+        )],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+
+    // Stamp the workflow provenance the run tool-step would set, then confirm
+    // the background ingest still produced FTS-ready chunks for it.
+    sqlx::query("UPDATE files SET created_by = 'workflow' WHERE id = $1::uuid")
+        .bind(&file_ids[0])
+        .execute(&pool)
+        .await
+        .unwrap();
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+    let provenance: String =
+        sqlx::query_scalar("SELECT created_by FROM files WHERE id = $1::uuid")
+            .bind(&file_ids[0])
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(provenance, "workflow", "file is workflow-provenance");
+
+    // The workflow-produced content is retrievable through file_rag.
+    let body = semantic_search(&server, &user, conv_uuid, "deprecated tokenizer streaming memory").await;
+    assert!(body["error"].is_null(), "semantic_search should succeed; body={body}");
+    let results = body["result"]["structuredContent"]["results"]
+        .as_array()
+        .expect("results array");
+    assert!(
+        results.iter().any(|r| r["file_id"].as_str() == Some(file_ids[0].as_str())),
+        "workflow-provenance file must be retrievable via file_rag; results={results:?}"
+    );
+}
+
 /// Scope isolation: a conversation only searches its own project's files; a
 /// term that exists only in another project's file returns nothing.
 #[tokio::test]
@@ -1652,4 +1707,203 @@ async fn admin_read_permission_grant_takes_effect_mid_session() {
         !sc["results"].as_array().unwrap().is_empty(),
         "FTS must still return results during embed-dispatch unavailability"
     );
+/// Permission re-gating: a user holding `file_rag::admin::read` can read the
+/// RAG admin settings, but once that permission is revoked (admin demotes them
+/// / strips the group grant) the very next read is 403 — the settings cannot
+/// be re-fetched with stale authority. This is the deterministic core of the
+/// "permission-denied mid-stream (RAG settings become stale)" concern: the
+/// gate re-resolves the caller's permissions per request, so a revoked user
+/// can never pull fresh settings after losing access. (The SSE stream's own
+/// 60s liveness re-check is the eventual teardown; this asserts the
+/// authoritative per-request gate it relies on.)
+#[tokio::test]
+async fn rag_admin_settings_regate_on_permission_revocation() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "rag_revoke", &["file_rag::admin::read"]).await;
+    let pool = db_pool(&server).await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", user.token);
+
+    // With the permission → 200.
+    let ok = client
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status(), 200, "holder can read RAG admin settings");
+
+    // Admin revokes file_rag::admin::read from every group the user belongs to.
+    let uid = Uuid::parse_str(&user.user_id).unwrap();
+    sqlx::query(
+        "UPDATE groups SET permissions = array_remove(permissions, 'file_rag::admin::read') \
+         WHERE id IN (SELECT group_id FROM user_groups WHERE user_id = $1)",
+    )
+    .bind(uid)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Next read is denied — no stale-authority fetch.
+    let denied = client
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), 403, "revoked user must be re-gated out (403)");
+}
+
+/// A file with NO extractable text (an image — text_page_count <= 0) must
+/// produce ZERO chunks: `ingest::spawn_index` no-ops on it. Prior coverage
+/// only exercised the whitespace-only-TXT case (which still has a text page);
+/// this pins the image/binary path where there is no text page at all.
+#[tokio::test]
+async fn image_file_with_no_text_pages_yields_no_chunks() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_image_noindex").await;
+    let pool = db_pool(&server).await;
+
+    // Upload a real PNG (binary, no extractable text) through the upload path.
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/file/test_data/test.png"
+    ))
+    .expect("read png fixture");
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(bytes)
+            .file_name("photo.png")
+            .mime_str("image/png")
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload png");
+    assert_eq!(resp.status(), reqwest::StatusCode::CREATED, "png upload");
+    let file_id = resp.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string();
+
+    // The (no-op) ingest spawn gets a beat; an image has no text page, so no
+    // chunk rows are ever produced.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(
+        chunk_count(&pool, &file_id).await,
+        0,
+        "an image (no text pages) must yield zero file_rag chunks"
+    );
+}
+
+/// Concurrency: two rewrites of the SAME file fired together each spawn a
+/// reindex; the `pg_advisory_xact_lock('file_rag_reindex:'||file_id)` serializes
+/// them so the final chunk set reflects exactly ONE rewrite — never a mix and
+/// never duplicated/leaked old chunks. The existing reindex tests are
+/// sequential (new-version / restore). Uses tokio::join! (shared &server, no
+/// clone) for the concurrent dispatch.
+#[tokio::test]
+async fn concurrent_reindex_same_file_yields_one_consistent_chunk_set() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_concurrent_reindex").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-concurrent",
+        &[("doc.md", "initial content version zero")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    let file_id = file_ids[0].clone();
+    wait_for_chunks(&pool, &file_id, 1).await;
+    let initial_count = chunk_count(&pool, &file_id).await;
+
+    // Two concurrent rewrites of the same file (distinct content markers).
+    let (r1, r2) = tokio::join!(
+        call_tool(
+            &server,
+            &user,
+            conv_uuid,
+            "rewrite_file",
+            json!({ "id": file_id, "content": "ALPHA marker first concurrent rewrite body" }),
+        ),
+        call_tool(
+            &server,
+            &user,
+            conv_uuid,
+            "rewrite_file",
+            json!({ "id": file_id, "content": "BETA marker second concurrent rewrite body" }),
+        ),
+    );
+    assert!(r1["error"].is_null(), "rewrite 1 must not error: {r1}");
+    assert!(r2["error"].is_null(), "rewrite 2 must not error: {r2}");
+
+    // Let both reindexes settle, then inspect the final chunk set.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    wait_for_chunks(&pool, &file_id, 1).await;
+    let chunk_contents: Vec<String> = sqlx::query_scalar(
+        "SELECT content FROM file_chunks WHERE file_id = $1 ORDER BY chunk_index",
+    )
+    .bind(&file_id)
+    .fetch_all(&pool)
+    .await
+    .expect("fetch final chunks");
+
+    let final_count = chunk_contents.len() as i64;
+    assert_eq!(
+        final_count, initial_count,
+        "final chunk count must match a single reindex (no duplicates from the race): \
+         got {final_count}, expected {initial_count}; chunks={chunk_contents:?}"
+    );
+    let has_alpha = chunk_contents.iter().any(|c| c.contains("ALPHA"));
+    let has_beta = chunk_contents.iter().any(|c| c.contains("BETA"));
+    assert!(
+        has_alpha ^ has_beta,
+        "chunks must reflect exactly ONE rewrite, not a mix: alpha={has_alpha} beta={has_beta} \
+         chunks={chunk_contents:?}"
+    );
+    pool.close().await;
+}
+
+/// Search safety during an embedding rebuild: when a file's chunk embeddings are
+/// NULL (the transient state while `embed_worker` ALTERs the column / re-embeds,
+/// or simply FTS-only mode), retrieval's `WHERE embedding IS NOT NULL` guard
+/// means a concurrent `semantic_search` must NOT crash or return garbage — it
+/// degrades to the FTS path and still answers. This pins that guard: we
+/// explicitly NULL every embedding (simulating mid-rebuild) and assert search
+/// still succeeds.
+#[tokio::test]
+async fn semantic_search_with_null_embeddings_degrades_gracefully() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_null_embed").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-null-embed",
+        &[("notes.md", "The Helsinki rendezvous codeword is NULLSAFE-4242 for evacuation.")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+
+    // Simulate the mid-rebuild window: every chunk embedding is NULL.
+    sqlx::query("UPDATE file_chunks SET embedding = NULL WHERE file_id = $1")
+        .bind(&file_ids[0])
+        .execute(&pool)
+        .await
+        .expect("null out embeddings");
+
+    // A search during this window must not error (the IS NOT NULL guard +
+    // FTS fallback keep it answering).
+    let body = semantic_search(&server, &user, conv_uuid, "evacuation codeword").await;
+    assert!(
+        body["error"].is_null(),
+        "search during the embedding-rebuild window must not error: {body}"
+    );
+    pool.close().await;
 }

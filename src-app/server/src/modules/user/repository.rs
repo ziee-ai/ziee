@@ -346,6 +346,24 @@ impl UserRepository {
         Ok(())
     }
 
+    /// Atomically delete a user only if they are NOT an admin. Returns `true`
+    /// if a row was deleted, `false` if no matching non-admin row existed
+    /// (either the user is gone, or it became admin since the caller's check).
+    /// Re-checking `is_admin` inside the DELETE closes the read-then-write
+    /// TOCTOU where a concurrent promotion could let an admin be deleted.
+    pub async fn delete_if_not_admin(&self, id: Uuid) -> Result<bool, AppError> {
+        let res = sqlx::query!(
+            r#"
+            DELETE FROM users WHERE id = $1 AND is_admin = FALSE
+            "#,
+            id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(res.rows_affected() > 0)
+    }
+
     /// Get user's groups
     pub async fn get_user_groups(&self, user_id: Uuid) -> Result<Vec<Group>, AppError> {
         sqlx::query_as!(

@@ -20,6 +20,9 @@ export interface FileUploadProgress {
   status: 'pending' | 'uploading' | 'completed' | 'error'
   error?: string
   size: number
+  /** The raw browser File, retained so a failed upload can be retried
+   *  without the user re-selecting it. */
+  rawFile?: File
 }
 
 /**
@@ -60,6 +63,7 @@ interface FileExtensionStore {
   uploadFiles: (files: File[]) => Promise<void>
   removeFile: (fileId: string) => void
   removeUploadingFile: (progressId: string) => void
+  retryUpload: (progressId: string) => Promise<void>
   clearFiles: () => void
   getFileIds: () => string[]
   getFiles: () => FileEntity[]
@@ -239,6 +243,7 @@ export const useFileStore = create<FileExtensionStore>()(
           progress: 0,
           status: 'pending',
           size: file.size,
+          rawFile: file,
         }
 
         // Add to uploading files
@@ -370,6 +375,16 @@ export const useFileStore = create<FileExtensionStore>()(
         newUploading.delete(progressId)
         state.uploadingFiles = newUploading
       })
+    },
+
+    // Retry a failed upload: drop the errored entry and re-run the upload for
+    // its retained raw File, producing a fresh progress entry. No-op if the
+    // entry is missing or the raw File wasn't retained.
+    retryUpload: async (progressId: string) => {
+      const entry = get().uploadingFiles.get(progressId)
+      if (!entry?.rawFile) return
+      get().removeUploadingFile(progressId)
+      await get().uploadFiles([entry.rawFile])
     },
 
     // Clear all files (called after message send or edit cancel)

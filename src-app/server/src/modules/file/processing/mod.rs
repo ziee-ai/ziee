@@ -279,5 +279,37 @@ mod tests {
         assert!(degraded.images.is_empty(), "no preview images");
         assert_eq!(degraded.metadata.has_text, None, "has_text unset");
         assert_eq!(degraded.metadata.text_length, None, "text_length unset");
+    /// Graceful degradation: the upload path falls back to
+    /// `ProcessingResult::default()` when processing fails, so the default MUST
+    /// be a safe no-artifacts result (empty text pages / thumbnails / images) —
+    /// the file is still stored, just with nothing derived.
+    #[test]
+    fn processing_result_default_is_empty_no_artifacts() {
+        let r = ProcessingResult::default();
+        assert!(r.text_pages.is_empty());
+        assert!(r.thumbnails.is_empty());
+        assert!(r.images.is_empty());
+    }
+
+    /// A corrupt file that CLAIMS a rich mime (PDF) but is garbage bytes must
+    /// degrade gracefully — no panic, and a safe result (no text pages / no
+    /// thumbnails) rather than crashing the upload. Exercises the failure path
+    /// that feeds the `ProcessingResult::default()` fallback.
+    #[tokio::test]
+    async fn corrupt_pdf_degrades_without_panic() {
+        let garbage = b"%PDF-1.7\nthis is not a real pdf body \x00\x01\x02 garbage";
+        let outcome = ProcessingManager::new()
+            .process_file(garbage, "application/pdf")
+            .await;
+        // Either an Err (caller falls back to default) OR an Ok degraded result
+        // with no extracted artifacts — both are graceful (no panic).
+        match outcome {
+            Ok(r) => {
+                assert!(r.thumbnails.is_empty(), "corrupt pdf yields no thumbnail");
+                // text_pages may be empty or a best-effort scrap; must not panic.
+                let _ = r.text_pages;
+            }
+            Err(_) => {}
+        }
     }
 }

@@ -7,6 +7,8 @@ mod ldap_test;
 mod oauth_test;
 // Self-service profile (update profile + change password + has_password).
 mod profile_self_service_test;
+// Realtime-sync emission on admin auth-provider mutations.
+mod sync_emit_test;
 
 #[tokio::test]
 async fn test_auth_registration() {
@@ -1201,6 +1203,42 @@ async fn refresh_token_jti_lifecycle_persists_across_connections() {
             .await
             .unwrap(),
         "an expired jti is inactive"
+/// `ensure_unique_username` (SSO auto-provision) appends the lowest free numeric
+/// suffix when the base is taken, returns the base verbatim when free, and
+/// defaults an empty base to "user". Driven directly by initializing the
+/// in-process Repos against the test DB (same pattern as resource_link_test).
+#[tokio::test]
+async fn test_ensure_unique_username_collision_suffix_and_defaults() {
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    if !ziee::is_repos_initialized() {
+        ziee::init_repositories(pool.clone());
+    }
+
+    // Seed a collision: "ssobase" and "ssobase2" already exist (distinct emails
+    // so the email path is irrelevant — we exercise username uniqueness only).
+    for (name, email) in [("ssobase", "a@x.com"), ("ssobase2", "b@x.com")] {
+        sqlx::query("INSERT INTO users (id, username, email, is_active, is_admin, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, true, false, NOW(), NOW())")
+            .bind(name)
+            .bind(email)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    // Taken base + taken base2 → next free is base3.
+    let got = ziee::ensure_unique_username("ssobase").await.expect("unique");
+    assert_eq!(got, "ssobase3", "lowest free numeric suffix");
+
+    // A free base is returned verbatim.
+    let free = format!("freebase_{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    assert_eq!(ziee::ensure_unique_username(&free).await.unwrap(), free);
+
+    // Empty base defaults to "user" (or user2… if taken) — must be non-empty.
+    let defaulted = ziee::ensure_unique_username("   ").await.unwrap();
+    assert!(
+        defaulted == "user" || defaulted.starts_with("user"),
+        "empty base must default to a user-prefixed name, got {defaulted}"
     );
 
     pool.close().await;
@@ -1408,5 +1446,84 @@ async fn test_concurrent_registration_same_username_creates_one_user() {
     assert!(
         loser >= 400,
         "the losing registration must be an error status, got {loser}"
+/// Refresh-token jti lifecycle is DB-backed (`refresh_tokens` table), so it
+/// survives a process restart and revocation is consulted from the persistent
+/// store on every `/auth/refresh` — not from in-memory state. Proven without a
+/// real restart by: (1) a registered token has a persisted active row, and
+/// (2) revoking that row in the DB makes the SAME refresh token fail validation
+/// on the next request. Connecting a FRESH pool to the same DATABASE_URL (a new
+/// process would do exactly this) still observes the row, demonstrating
+/// cross-restart persistence.
+#[tokio::test]
+async fn test_refresh_token_jti_lifecycle_is_db_backed() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    let register: serde_json::Value = client
+        .post(server.api_url("/auth/register"))
+        .json(&json!({
+            "username": "jti_lifecycle",
+            "email": "jti_lifecycle@example.com",
+            "password": "testpass123"
+        }))
+        .send()
+        .await
+        .expect("register")
+        .json()
+        .await
+        .unwrap();
+    let refresh_token = register["refresh_token"].as_str().unwrap().to_string();
+    let user_id = uuid::Uuid::parse_str(register["user"]["id"].as_str().unwrap()).unwrap();
+
+    // A FRESH connection to the same DB (what a restarted process would open)
+    // sees the persisted, active refresh-token row.
+    let fresh_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let active_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()",
+    )
+    .bind(user_id)
+    .fetch_one(&fresh_pool)
+    .await
+    .unwrap();
+    assert!(active_rows >= 1, "the issued jti must be persisted + active");
+
+    // Sanity: while the row is active, /auth/refresh validates against it (200).
+    let ok = client
+        .post(server.api_url("/auth/refresh"))
+        .json(&json!({ "refresh_token": refresh_token }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status(), 200, "active jti must validate");
+    // Rotation issues a new token; capture it (the old jti is now rotated out).
+    let rotated: serde_json::Value = ok.json().await.unwrap();
+    let rotated_token = rotated["refresh_token"].as_str().unwrap().to_string();
+
+    // Revoke ALL of the user's refresh tokens in the persistent store …
+    let affected = sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL")
+        .bind(user_id)
+        .execute(&fresh_pool)
+        .await
+        .unwrap()
+        .rows_affected();
+    assert!(affected >= 1, "revoke must touch the persisted row(s)");
+    fresh_pool.close().await;
+
+    // … and the next /auth/refresh consults that store → rejected (not 200).
+    let denied = client
+        .post(server.api_url("/auth/refresh"))
+        .json(&json!({ "refresh_token": rotated_token }))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        denied.status(),
+        200,
+        "a revoked (DB-persisted) jti must fail validation; got {}",
+        denied.status()
     );
 }

@@ -273,5 +273,51 @@ test.describe('Web search admin settings', () => {
       },
     )
     expect(ok.ok(), `valid base_url should be accepted: ${ok.status()}`).toBeTruthy()
+  test('disabled web search renders the master switch in the off state', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const state: State = {
+      settings: { ...defaultSettings(), enabled: false },
+      catalog: defaultCatalog(),
+      lastSettingsPatch: null,
+      lastProviderPatch: null,
+    }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    await gotoWebSearch(page, baseURL)
+
+    // The master switch reflects the disabled state (web tools won't attach).
+    // Scope to the "Web search" card's form (the only Switch on the page).
+    const enableSwitch = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Enable web search' })
+      .getByRole('switch')
+      .first()
+    await expect(enableSwitch).toHaveAttribute('aria-checked', 'false')
+  })
+
+  test('unconfigured providers show a "Not configured" status', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    // Default catalog: neither provider is configured (no SearXNG base_url, no
+    // Brave key).
+    const state: State = {
+      settings: defaultSettings(),
+      catalog: defaultCatalog(),
+      lastSettingsPatch: null,
+      lastProviderPatch: null,
+    }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    await gotoWebSearch(page, baseURL)
+
+    // Both per-provider cards advertise the unconfigured state, and NEITHER is
+    // marked Configured yet.
+    await expect(page.getByText('Not configured')).toHaveCount(2)
+    await expect(page.getByText('Configured', { exact: true })).toHaveCount(0)
   })
 })

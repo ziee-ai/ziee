@@ -268,6 +268,75 @@ async fn test_upsert_updates_existing_mapping() {
 }
 
 #[tokio::test]
+async fn test_concurrent_upserts_converge_to_single_row() {
+    // The mapping upsert is documented "idempotent and safe for concurrent
+    // calls" (ON CONFLICT (file_id, provider_id)). Fire many concurrent upserts
+    // for the SAME (file_id, provider_id) and assert: none errors with a
+    // duplicate-key violation, exactly ONE row survives, and its
+    // provider_file_id is one of the racing writers' values (last-writer-wins).
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "race_user", &[])
+        .await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+    let file_id = create_test_file(&pool, user_id, "race.pdf").await;
+    let provider_id = create_test_provider(&pool, "Race Provider", "openai").await;
+
+    const N: usize = 12;
+    let mut handles = Vec::with_capacity(N);
+    for i in 0..N {
+        let pool = pool.clone();
+        handles.push(tokio::spawn(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO llm_provider_files (
+                    file_id, provider_id, provider_file_id, provider_metadata, upload_status
+                )
+                VALUES ($1, $2, $3, $4, 'completed')
+                ON CONFLICT (file_id, provider_id) DO UPDATE SET
+                    provider_file_id = EXCLUDED.provider_file_id,
+                    provider_metadata = EXCLUDED.provider_metadata,
+                    upload_status = 'completed',
+                    updated_at = NOW()
+                "#,
+            )
+            .bind(file_id)
+            .bind(provider_id)
+            .bind(format!("file_race_{i}"))
+            .bind(json!({ "writer": i }))
+            .execute(&pool)
+            .await
+        }));
+    }
+    for h in handles {
+        h.await.unwrap().expect("concurrent upsert must not error (no duplicate-key violation)");
+    }
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
+    )
+    .bind(file_id)
+    .bind(provider_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "concurrent upserts must converge to exactly one row");
+
+    let pfid: Option<String> = sqlx::query_scalar(
+        "SELECT provider_file_id FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
+    )
+    .bind(file_id)
+    .bind(provider_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let pfid = pfid.expect("surviving row has a provider_file_id");
+    assert!(pfid.starts_with("file_race_"), "survivor is one of the writers: {pfid}");
+}
+
+#[tokio::test]
 async fn test_delete_provider_file_mapping() {
     let server = crate::common::TestServer::start().await;
     let pool = sqlx::PgPool::connect(&server.database_url)
@@ -846,6 +915,54 @@ async fn test_provider_file_mapping_is_user_scoped() {
         provider_id,
         "file_owned_by_a",
         json!({}),
+// API-key rotation → cached provider_file_id invalidation
+// ============================================================================
+
+/// The cache-reuse path in `get_or_upload_provider_file` keys on an
+/// `api_key_fingerprint` stored in `provider_metadata`: on a cache HIT it
+/// reuses the mapping ONLY when the stored fingerprint equals the current
+/// key's fingerprint, otherwise it treats the cached `provider_file_id` as
+/// belonging to a different account and re-uploads. This pins the persisted
+/// half of that decision end-to-end: the fingerprint round-trips through the
+/// real `llm_provider_files` row, and the same comparison the service performs
+/// (`stored != current ⇒ invalidate`) yields reuse for the same key and
+/// invalidation after rotation.
+#[tokio::test]
+async fn test_api_key_fingerprint_persists_and_detects_rotation() {
+    use sha2::{Digest, Sha256};
+
+    fn fingerprint(key: &str) -> String {
+        let mut h = Sha256::new();
+        h.update(key.as_bytes());
+        hex::encode(h.finalize())
+    }
+
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect");
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "rotation_user", &[])
+            .await;
+    let user_id = Uuid::parse_str(&user.user_id).expect("uuid");
+    let file_id = create_test_file(&pool, user_id, "doc.pdf").await;
+    let provider_id = create_test_provider(&pool, "Rotation Provider", "gemini").await;
+
+    let old_key = "sk-account-A-original";
+    // Persist a completed mapping carrying the OLD key's fingerprint — exactly
+    // what `save_upload_response` writes into provider_metadata.
+    sqlx::query!(
+        r#"
+        INSERT INTO llm_provider_files (
+            file_id, provider_id, provider_file_id,
+            provider_metadata, upload_status
+        )
+        VALUES ($1, $2, $3, $4, 'completed')
+        "#,
+        file_id,
+        provider_id,
+        "provider-file-acctA",
+        json!({ "api_key_fingerprint": fingerprint(old_key), "filename": "doc.pdf" })
     )
     .execute(&pool)
     .await
@@ -996,4 +1113,38 @@ async fn test_get_provider_file_mapping_is_cross_tenant_scoped() {
         .await
         .expect("query ok");
     assert!(intruder.is_none(), "cross-tenant access to another user's provider-file mapping must be blocked");
+    // Read the mapping back as the service does (provider_metadata JSONB).
+    let row = sqlx::query!(
+        r#"
+        SELECT provider_file_id, provider_metadata, upload_status
+        FROM llm_provider_files
+        WHERE file_id = $1 AND provider_id = $2
+        "#,
+        file_id,
+        provider_id
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("fetch mapping");
+
+    let stored = row
+        .provider_metadata
+        .get("api_key_fingerprint")
+        .and_then(|v| v.as_str())
+        .expect("fingerprint persisted in provider_metadata");
+
+    // Same key → NOT rotated → the cached provider_file_id is reused.
+    let key_rotated_same = stored != fingerprint(old_key);
+    assert!(!key_rotated_same, "same key must NOT be flagged as rotated");
+    assert_eq!(row.upload_status, "completed");
+    assert_eq!(row.provider_file_id.as_deref(), Some("provider-file-acctA"));
+
+    // Rotated key → the stored fingerprint no longer matches → the cached id is
+    // invalidated (the service re-uploads instead of returning the stale id).
+    let new_key = "sk-account-B-rotated";
+    let key_rotated_after = stored != fingerprint(new_key);
+    assert!(
+        key_rotated_after,
+        "rotated key must invalidate the cached provider_file_id"
+    );
 }

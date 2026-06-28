@@ -522,8 +522,22 @@ pub async fn delete_user(
         .await
         .unwrap_or_default();
 
-    // Delete user
-    Repos.user.delete(user_id).await?;
+    // Delete user atomically guarding against admin deletion: re-check
+    // `is_admin` INSIDE the DELETE so a promotion racing between the
+    // get_by_id check above and here cannot result in deleting an admin
+    // (TOCTOU). If no row was deleted, distinguish "became admin" from
+    // "already gone" for an accurate error.
+    if !Repos.user.delete_if_not_admin(user_id).await? {
+        let still = Repos.user.get_by_id(user_id).await?;
+        return match still {
+            Some(u) if u.is_admin => Err(AppError::bad_request(
+                "CANNOT_DELETE_ADMIN",
+                "Cannot delete admin users",
+            )
+            .into()),
+            _ => Err(AppError::not_found("User").into()),
+        };
+    }
 
     // Best-effort cleanup of the now-orphaned skill bundle dirs on disk.
     for dir in &skill_bundle_dirs {

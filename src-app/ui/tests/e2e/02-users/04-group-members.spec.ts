@@ -1,15 +1,23 @@
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import {
+  loginAsAdmin,
+  getAdminToken,
+  createTestUser,
+} from '../../common/auth-helpers'
+import { createGroupViaAPI } from '../../common/provider-helpers'
 import {
   navigateToUsers,
   navigateToUserGroups,
   openCreateUserDrawer,
   openCreateGroupDrawer,
+  openEditGroupDrawer,
   openGroupMembersDrawer as _openGroupMembersDrawer,
   openUserGroupsDrawer,
 } from './helpers/user-navigation'
 import { createUser, assignUserToGroups } from './helpers/user-actions'
 import { createGroup, viewGroupMembers } from './helpers/group-actions'
+import { createUser } from './helpers/user-actions'
+import { createGroup, updateGroup, viewGroupMembers } from './helpers/group-actions'
 import {
   assertUserExists as _assertUserExists,
   assertGroupExists as _assertGroupExists,
@@ -371,4 +379,132 @@ test.describe('Group Membership Management', () => {
     await viewGroupMembers(page, groupB)
     await _assertUserInGroup(page, username)
   })
+  test('assigns then removes a user from a group via the groups drawer', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    const ts = Date.now()
+    const groupName = `QA Team ${ts}`
+    await createGroupViaAPI(apiURL, adminToken, groupName, 'qa group', [
+      'profile::read',
+    ])
+    const username = `grpmember${ts}`
+    await createTestUser(
+      apiURL,
+      adminToken,
+      username,
+      `${username}@example.com`,
+      'password123',
+      [],
+    )
+
+    await navigateToUsers(page, baseURL)
+    await openUserGroupsDrawer(page, username)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+
+    // The drawer lists every group with a per-row Assign/Remove action.
+    const row = drawer.locator('.ant-list-item').filter({ hasText: groupName })
+    await expect(row).toBeVisible()
+
+    // ASSIGN: the row's "Assign" link → success + the row flips to Member.
+    await row.getByRole('button', { name: 'Assign' }).click()
+    await expect(
+      page.locator('.ant-message-success', { hasText: 'User assigned to group' }),
+    ).toBeVisible({ timeout: 5000 })
+    await expect(row.getByText('Member')).toBeVisible()
+
+    // REMOVE: the row's "Remove" link → Popconfirm → confirm.
+    await row.getByRole('button', { name: 'Remove' }).click()
+    const popconfirm = page.locator('.ant-popconfirm:visible')
+    await expect(popconfirm.getByText('Remove user from this group?')).toBeVisible()
+    await popconfirm.locator('.ant-btn-primary').click()
+    await expect(
+      page.locator('.ant-message-success', {
+        hasText: 'User removed from group successfully',
+      }),
+    ).toBeVisible({ timeout: 5000 })
+
+    // Back to "Assign" — no longer a member.
+    await expect(row.getByRole('button', { name: 'Assign' })).toBeVisible()
+  })
+
+  test('group status badge colors reflect active vs inactive', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await navigateToUserGroups(page, baseURL)
+
+    const ts = Date.now()
+    const groupName = `StatusGrp_${ts}`
+
+    // A new group is active by default → green/success status badge.
+    await openCreateGroupDrawer(page)
+    await createGroup(page, { name: groupName })
+    const card = () =>
+      page.locator('.ant-card').filter({ hasText: groupName }).first()
+    await expect(card().locator('.ant-badge-status-success')).toBeVisible()
+    await expect(card().getByText('Active', { exact: true })).toBeVisible()
+
+    // Edit it to inactive → grey/default status badge (groups use the 'default'
+    // status, not the 'error' status users use for inactive).
+    await openEditGroupDrawer(page, groupName)
+    await updateGroup(page, { isActive: false })
+    await expect(card().locator('.ant-badge-status-default')).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(card().getByText('Inactive', { exact: true })).toBeVisible()
+  })
+
+  test('bulk-assigns a user to multiple groups via the AssignGroupDrawer', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    const ts = Date.now()
+    const groupA = `Bulk A ${ts}`
+    const groupB = `Bulk B ${ts}`
+    await createGroupViaAPI(apiURL, adminToken, groupA, 'bulk a', ['profile::read'])
+    await createGroupViaAPI(apiURL, adminToken, groupB, 'bulk b', ['profile::read'])
+    const username = `bulkmember${ts}`
+    await createTestUser(apiURL, adminToken, username, `${username}@example.com`, 'password123', [])
+
+    await navigateToUsers(page, baseURL)
+    await openUserGroupsDrawer(page, username)
+    const groupsDrawer = page.locator('.ant-drawer.ant-drawer-open')
+
+    // Open the bulk AssignGroupDrawer from the header "+" CTA.
+    await groupsDrawer.getByRole('button', { name: 'Assign group' }).click()
+    const assignDrawer = page
+      .locator('.ant-drawer.ant-drawer-open')
+      .filter({ hasText: 'Assign to Group' })
+    await expect(assignDrawer).toBeVisible()
+
+    // Tick BOTH groups (the Checkbox.Group) and submit.
+    await assignDrawer.getByRole('checkbox', { name: groupA }).check()
+    await assignDrawer.getByRole('checkbox', { name: groupB }).check()
+    await assignDrawer.getByRole('button', { name: 'Assign', exact: true }).click()
+
+    // The bulk handler reports the per-call success count.
+    await expect(
+      page.locator('.ant-message-success', { hasText: /assigned to 2 group/i }),
+    ).toBeVisible({ timeout: 5000 })
+
+    // Back in the UserGroupsDrawer both rows now show "Member".
+    await expect(
+      groupsDrawer.locator('.ant-list-item').filter({ hasText: groupA }).getByText('Member'),
+    ).toBeVisible()
+    await expect(
+      groupsDrawer.locator('.ant-list-item').filter({ hasText: groupB }).getByText('Member'),
+    ).toBeVisible()
+  })
+
 })

@@ -298,6 +298,18 @@ async fn real_llm_add_persists_then_lookup_does_not() {
 async fn real_llm_invokes_lookup_citations() {
     let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
         eprintln!("skipping citations::real_llm_lookup — ANTHROPIC_API_KEY unset");
+/// Cross-subsystem cascade: a SINGLE real-LLM chat turn that invokes a built-in
+/// MCP tool must fan out MORE than the chat message — the tool invocation is
+/// recorded and emits an owner-scoped `mcp_tool_call`/`create` realtime-sync
+/// frame. This pins the chat→MCP→sync multi-entity cascade end-to-end (the
+/// per-turn chat tests never assert the McpToolCall sync emission). Soft-skips
+/// without an API key.
+#[tokio::test]
+async fn real_llm_tool_call_emits_mcp_tool_call_sync() {
+    use std::time::Duration;
+
+    let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
+        eprintln!("skipping citations::real_llm sync cascade — ANTHROPIC_API_KEY unset");
         return;
     };
 
@@ -324,6 +336,21 @@ async fn real_llm_invokes_lookup_citations() {
             "conversations::create", "conversations::read", "conversations::edit",
             "messages::create", "messages::read", "llm_models::read",
             "citations::use", "citations::manage",
+    // `profile::read` is required to open the sync subscribe stream.
+    let user = create_user_with_permissions(
+        &server,
+        "cit_sync_cascade",
+        &[
+            "profile::read",
+            "conversations::create",
+            "conversations::read",
+            "conversations::edit",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+            "mcp_servers::read",
+            "citations::use",
+            "citations::manage",
         ],
     )
     .await;
@@ -341,6 +368,7 @@ async fn real_llm_invokes_lookup_citations() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
     let default_group: Uuid =
         sqlx::query_scalar("SELECT id FROM groups WHERE is_default = true LIMIT 1")
@@ -454,6 +482,13 @@ async fn list_citation_dois(server: &TestServer, token: &str) -> Vec<String> {
     let payload = json!({
         "content": "Use ONLY the lookup_citations tool to look up DOI 10.5555/known. \
                     Do NOT add or save it — just look it up. You MUST call the tool.",
+    // Open the realtime-sync stream BEFORE the chat turn so the McpToolCall
+    // create frame is observed live.
+    let mut probe = crate::common::sync_probe::SyncProbe::open(&server, &user.token).await;
+
+    let payload = json!({
+        "content": "Use the verify_citations tool to check whether DOI 10.5555/known \
+                    resolves to a real record. You MUST call the tool — do not answer from memory.",
         "model_id": model_id.to_string(),
         "branch_id": branch_id.to_string(),
         "enable_mcp": true,
@@ -461,6 +496,11 @@ async fn list_citation_dois(server: &TestServer, token: &str) -> Vec<String> {
     });
     let events = crate::chat::helpers::send_body_and_collect_events(
         &server, &user.token, conversation_id, payload, &["complete"],
+        &server,
+        &user.token,
+        conversation_id,
+        payload,
+        &["complete"],
     )
     .await;
     assert!(
@@ -477,4 +517,17 @@ async fn list_citation_dois(server: &TestServer, token: &str) -> Vec<String> {
             .unwrap();
     pool.close().await;
     assert_eq!(count, 0, "lookup_citations must not persist an entry; found {count}");
+        "the model should have invoked a citations tool"
+    );
+
+    // The cascade: the same turn's tool call lands an mcp_tool_calls row and
+    // emits an owner-scoped sync frame.
+    let frame = probe
+        .expect_event("mcp_tool_call", "create", Duration::from_secs(60))
+        .await;
+    assert!(
+        Uuid::parse_str(&frame.id).is_ok(),
+        "mcp_tool_call sync frame carries the new row id: {}",
+        frame.id
+    );
 }

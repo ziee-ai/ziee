@@ -379,6 +379,16 @@ async fn test_usage_stream_rejects_read_only_user() {
 #[tokio::test]
 async fn test_hardware_usage_stream_emits_real_snapshot_frames() {
     use futures::StreamExt;
+/// The header-only test above proves the content-type but never reads a frame.
+/// This reads the live SSE body (with a hard timeout so an endless stream can't
+/// hang the suite) and asserts the FIRST emitted event is the `connected`
+/// handshake with a parseable `data:` JSON payload carrying the connect
+/// message — i.e. the stream actually serializes real SSE frames, not just the
+/// right header.
+#[tokio::test]
+async fn test_subscribe_hardware_usage_emits_connected_frame() {
+    use futures_util::StreamExt;
+    use std::time::Duration;
 
     let server = crate::common::TestServer::start().await;
     let admin = crate::common::test_helpers::create_user_with_permissions(
@@ -394,6 +404,7 @@ async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
     let admin = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "hw_sse_content",
+        "hw_sse_body",
         &["hardware::monitor"],
     )
     .await;
@@ -537,5 +548,52 @@ async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
     assert!(
         json.get("cpu").is_some() || json.get("memory").is_some() || json.get("timestamp").is_some(),
         "usage frame should carry hardware usage fields; got: {json}"
+        .expect("Request failed");
+    assert_eq!(response.status(), 200);
+
+    // Accumulate body chunks until we have a full SSE frame (terminated by a
+    // blank line), bounded by a wall-clock timeout — the stream never ends.
+    let mut stream = response.bytes_stream();
+    let mut buf = String::new();
+    let deadline = tokio::time::sleep(Duration::from_secs(10));
+    tokio::pin!(deadline);
+    loop {
+        tokio::select! {
+            _ = &mut deadline => panic!("no SSE frame within 10s; buf so far: {buf:?}"),
+            chunk = stream.next() => {
+                match chunk {
+                    Some(Ok(bytes)) => {
+                        buf.push_str(&String::from_utf8_lossy(&bytes));
+                        if buf.contains("\n\n") {
+                            break;
+                        }
+                    }
+                    Some(Err(e)) => panic!("stream error: {e}"),
+                    None => panic!("stream ended before a frame; buf: {buf:?}"),
+                }
+            }
+        }
+    }
+
+    // The first frame is the `connected` handshake event with a `data:` payload.
+    assert!(
+        buf.contains("data:"),
+        "SSE body must carry a data line: {buf:?}"
+    );
+    assert!(
+        buf.contains("Hardware monitoring connected"),
+        "first frame must be the connected handshake: {buf:?}"
+    );
+
+    // The `data:` line is valid JSON (the serialized event payload).
+    let data_line = buf
+        .lines()
+        .find_map(|l| l.strip_prefix("data:").or_else(|| l.strip_prefix("data: ")))
+        .expect("a data: line in the first frame");
+    let payload: serde_json::Value =
+        serde_json::from_str(data_line.trim()).expect("data line is JSON");
+    assert!(
+        payload.is_object() || payload.is_string(),
+        "event payload deserializes: {payload:?}"
     );
 }

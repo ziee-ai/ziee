@@ -445,3 +445,28 @@ async fn output_stream_unknown_step_is_404() {
         .expect("output stream unknown step");
     assert_eq!(resp.status(), 404, "an unknown step's output must 404");
 }
+/// `read_output` (GET /workflow-runs/{run_id}/output/{step_id}) returns 404
+/// `WorkflowRun` for a run that does not exist — proving the run-lookup runs
+/// (and 404s) BEFORE the step-output lookup, for a caller who holds
+/// workflows::read. The cross-user 403 + path-traversal cases are covered
+/// above; this pins the missing-run 404 boundary.
+#[tokio::test]
+async fn read_output_nonexistent_run_is_404() {
+    let server = plain_server().await;
+    let user = workflow_user(&server, "wf_output_404").await;
+
+    let fake_run = uuid::Uuid::new_v4();
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflow-runs/{fake_run}/output/some_step")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("read output for nonexistent run");
+
+    assert_eq!(resp.status(), 404, "a nonexistent run must 404 (not 403/500)");
+    let body = resp.text().await.unwrap_or_default();
+    assert!(
+        body.contains("WorkflowRun"),
+        "404 must be for the missing RUN, not a missing step: {body}"
+    );
+}

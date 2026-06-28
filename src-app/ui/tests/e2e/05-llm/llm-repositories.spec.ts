@@ -10,6 +10,7 @@ import {
   createRepository,
   deleteRepository,
   toggleRepositoryStatus,
+  openEditRepositoryDrawer,
   assertRepositoryExists,
   assertRepositoryNotExists,
   assertRepositoryEnabled,
@@ -398,6 +399,79 @@ test.describe('LLM Repositories - Edit Repository', () => {
       await page.click('button:has-text("Cancel")')
     }
   })
+
+  test('edit drawer pre-fills the existing auth fields', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const repositoryName = `test-prefill-${Date.now()}`
+    const username = 'prefilluser123'
+    const endpoint = 'https://prefill.example.com/whoami'
+
+    await loginAsAdmin(page, baseURL)
+    await createRepository(page, baseURL, {
+      name: repositoryName,
+      url: 'https://example.com',
+      authType: 'basic_auth',
+      username,
+      password: 'secretpw',
+      authTestEndpoint: endpoint,
+    })
+
+    // Re-open the EDIT drawer — the form must rehydrate from the saved row.
+    await openEditRepositoryDrawer(page, repositoryName)
+
+    await expect(page.locator('#llm-repository-form_name')).toHaveValue(
+      repositoryName,
+    )
+    await expect(page.locator('#llm-repository-form_url')).toHaveValue(
+      'https://example.com',
+    )
+    // Username + the auth-test endpoint are pre-filled from auth_config
+    // (the password is intentionally NOT echoed for security).
+    await expect(page.locator('#llm-repository-form_username')).toHaveValue(
+      username,
+    )
+    await expect(
+      page.locator('#llm-repository-form_auth_test_api_endpoint'),
+    ).toHaveValue(endpoint)
+
+    await page.click('button:has-text("Cancel")')
+    await deleteRepository(page, repositoryName)
+  })
+
+  test('Enable switch OFF in the edit drawer disables the repository', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const repositoryName = `test-edit-disable-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createRepository(page, baseURL, {
+      name: repositoryName,
+      url: 'https://example.com',
+      authType: 'none',
+      enabled: true,
+    })
+    await assertRepositoryEnabled(page, repositoryName)
+
+    // Open the EDIT drawer and flip the Enable switch OFF. Edit-mode OFF is a
+    // minimal PUT (enabled:false, no connection probe) → "Repository disabled".
+    await openEditRepositoryDrawer(page, repositoryName)
+    const enableSwitch = page.locator('#llm-repository-form_enabled')
+    await expect(enableSwitch).toBeChecked()
+    await enableSwitch.click()
+    await expect(
+      page.locator('.ant-message-success', { hasText: 'Repository disabled' }),
+    ).toBeVisible({ timeout: 10000 })
+
+    await page.click('button:has-text("Cancel")')
+    await assertRepositoryDisabled(page, repositoryName)
+
+    await deleteRepository(page, repositoryName)
+  })
 })
 
 test.describe('LLM Repositories - Form Validation', () => {
@@ -536,9 +610,67 @@ test.describe('LLM Repositories - Enable/Disable Toggle', () => {
     // Cleanup
     await deleteRepository(page, repositoryName)
   })
+
+  test('should create a DISABLED repository and enable it afterwards', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const repositoryName = `test-disabled-create-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+
+    // Create with the enabled switch OFF — the repo lands disabled.
+    await createRepository(page, baseURL, {
+      name: repositoryName,
+      url: 'https://example.com',
+      authType: 'none',
+      enabled: false,
+    })
+    await assertRepositoryExists(page, repositoryName)
+    await assertRepositoryDisabled(page, repositoryName)
+
+    // Later enable it from the list toggle.
+    await toggleRepositoryStatus(page, repositoryName)
+    await page.waitForTimeout(500)
+    await assertRepositoryEnabled(page, repositoryName)
+
+    // Cleanup
+    await deleteRepository(page, repositoryName)
+  })
 })
 
 test.describe('LLM Repositories - Connection Testing', () => {
+  test('the built-in Hugging Face repo exposes a working Test button', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Mock the probe so the built-in repo's Test button is deterministic
+    // (no real network call to huggingface.co).
+    await page.route(/\/api\/llm-repositories(\/[0-9a-f-]+)?\/test$/, async (route, req) => {
+      if (req.method() === 'POST') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'Connection successful' }),
+        })
+      }
+      return route.continue()
+    })
+
+    await goToRepositoriesPage(page, baseURL)
+    await waitForRepositoriesPageLoad(page)
+
+    // The seeded built-in repo shows a Test button (canEdit gates it on, even
+    // for built-ins). Clicking it runs the health probe → success toast.
+    await assertTestConnectionButtonVisible(page, 'Hugging Face Hub')
+    await clickTestConnectionFromList(page, 'Hugging Face Hub')
+    await waitForConnectionTestResult(page, 'success')
+  })
+
   // Get HuggingFace API key from environment
   const HF_API_KEY = process.env.HUGGINGFACE_API_KEY || ''
 
@@ -789,5 +921,39 @@ test.describe('LLM Repositories - Empty States', () => {
     // The page should still be functional even if there are repositories
     // (Empty state would show if no repositories exist, but we likely have built-ins)
     await expect(page.locator('button:has([data-icon="plus"])')).toBeVisible()
+  })
+
+  test('renders the Empty state when no repositories exist', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Built-in repos are always seeded, so force an empty list to reach the
+    // Empty component (CloudDownloadOutlined + the get-started copy).
+    await page.route(/\/api\/llm-repositories(\?.*)?$/, async (route, req) => {
+      if (req.method() === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            repositories: [],
+            page: 1,
+            per_page: 20,
+            total: 0,
+          }),
+        })
+      }
+      return route.continue()
+    })
+
+    await goToRepositoriesPage(page, baseURL)
+    await expect(page.getByText('No repositories yet')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(
+      page.getByText('Add a repository to get started'),
+    ).toBeVisible()
   })
 })

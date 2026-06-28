@@ -389,12 +389,18 @@ async fn real_llm_calls_semantic_search_and_grounds_answer() {
 /// `read_file`). A distinctive codeword is buried in a manifest-attached doc;
 /// the model is asked to READ the file and report it, and we assert the real
 /// model actually fired `read_file` and grounded its answer in the content.
+/// Agentic read_file via a REAL model: the same manifest-only setup, but the
+/// answer lives in a NAMED section the model must OPEN with the `read_file`
+/// tool (not semantic_search). Asserts `read_file` specifically fired AND the
+/// buried fact reached the answer — the existing agentic read_file test uses a
+/// STUB model, so this is the real-LLM path through the manifest→read_file loop.
 #[tokio::test]
 async fn real_llm_calls_read_file_through_agentic_loop() {
     if std::env::var("ANTHROPIC_API_KEY").is_err() {
         eprintln!(
             "test real_llm_calls_read_file_through_agentic_loop skipped: \
              ANTHROPIC_API_KEY unset (source tests/.env.test)"
+            "test real_llm_calls_read_file_through_agentic_loop skipped: ANTHROPIC_API_KEY unset"
         );
         return;
     }
@@ -416,6 +422,18 @@ async fn real_llm_calls_read_file_through_agentic_loop() {
 
     let project_id = create_project(&server, &user, "readfile-agentic").await;
     let file_id = upload_text(&server, &user, "reykjavik-ops-handbook.txt", &body).await;
+    let filler = "Routine operating procedures follow standard company policy and are \
+                  reviewed annually by the operations team. "
+        .repeat(30);
+    let body = format!(
+        "Reykjavik Logistics Handbook — internal reference.\n\n{filler}\n\n\
+         Section 7.2 — Cold-Chain Override: the manual override passphrase for the \
+         Reykjavik freezer bank is FROST-KELDA-0934. Operators must enter this exact \
+         passphrase to bypass the automatic lock.\n\n{filler}\n"
+    );
+
+    let project_id = create_project(&server, &user, "readfile-agentic").await;
+    let file_id = upload_text(&server, &user, "reykjavik-logistics-handbook.txt", &body).await;
     attach_file_to_project(&server, &user, &project_id, &file_id).await;
     wait_for_chunks(&pool, &file_id, 1).await;
 
@@ -446,6 +464,8 @@ async fn real_llm_calls_read_file_through_agentic_loop() {
         Uuid::parse_str(&model_id).unwrap(),
         "Open the Reykjavik operations handbook with the read_file tool and tell me the exact \
          master door-lock override code written in it.",
+        "Use the read_file tool to open the file 'reykjavik-logistics-handbook.txt' from this \
+         project and tell me the exact Cold-Chain Override passphrase in section 7.2.",
     )
     .await;
 
@@ -463,6 +483,12 @@ async fn real_llm_calls_read_file_through_agentic_loop() {
     assert!(
         turn.text.contains("GLACIER-5582"),
         "answer must contain the code read via read_file; answer={:?}",
+        "real LLM must call read_file; tools fired={tools_fired:?}; answer={:?}",
+        turn.text
+    );
+    assert!(
+        turn.text.contains("FROST-KELDA-0934"),
+        "answer must contain the passphrase read via read_file; answer={:?}",
         turn.text
     );
 }

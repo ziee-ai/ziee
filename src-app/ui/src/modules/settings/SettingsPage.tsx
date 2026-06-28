@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
 import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
@@ -27,6 +27,9 @@ export default function SettingsPage() {
   // the much tighter `xs` (≤480) which the page rarely hits.
   const useMobileLayout = minSize.sm
   const { token } = theme.useToken()
+  // Track the mobile section-picker dropdown's open state so the trigger
+  // button can expose `aria-expanded` (the menu-button ARIA contract).
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const { slots } = Stores.ModuleSystem
   const { user, permissions } = Stores.Auth
@@ -210,12 +213,14 @@ export default function SettingsPage() {
                   selectedKeys: [currentSection || validSections[0]],
                 }}
                 trigger={['click']}
+                onOpenChange={setMobileMenuOpen}
               >
                 <Button
                   type="text"
                   className={'mt-[2px]'}
                   aria-label="Select settings section"
                   aria-haspopup="menu"
+                  aria-expanded={mobileMenuOpen}
                 >
                   {getCurrentSectionInfo().icon} {getCurrentSectionInfo().label}{' '}
                   <IoIosArrowDown />
@@ -234,7 +239,11 @@ export default function SettingsPage() {
             which fights the soft fade overlay HeaderBarContainer
             paints below itself. */}
         {!useMobileLayout && (
-          <div className="w-fit pt-1">
+          <div
+            className="w-fit pt-1"
+            role="navigation"
+            aria-label="Settings sections"
+          >
             <SettingsMenu />
           </div>
         )}

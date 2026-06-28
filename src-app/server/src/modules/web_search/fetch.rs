@@ -186,6 +186,35 @@ mod tests {
     }
 
     #[test]
+    fn extract_markdown_preserves_non_html_content_types() {
+        // Non-HTML endpoints (JSON / CSV / XML) won't yield a Readability
+        // "article", but the fallback (htmd::convert of the raw body) must
+        // still preserve the substantive content rather than dropping it.
+        let (_t, json_md) =
+            extract_markdown(r#"{"codeword":"VALUE_JSON_123","n":7}"#, "https://api.example.com/x");
+        assert!(
+            json_md.contains("VALUE_JSON_123"),
+            "JSON content must survive extraction; got: {json_md}"
+        );
+
+        let (_t, csv_md) =
+            extract_markdown("name,score\nalice,VALUE_CSV_456\n", "https://example.com/data.csv");
+        assert!(
+            csv_md.contains("VALUE_CSV_456"),
+            "CSV content must survive extraction; got: {csv_md}"
+        );
+
+        let (_t, xml_md) = extract_markdown(
+            "<feed><entry><title>VALUE_XML_789</title></entry></feed>",
+            "https://example.com/feed.xml",
+        );
+        assert!(
+            xml_md.contains("VALUE_XML_789"),
+            "XML content must survive extraction; got: {xml_md}"
+        );
+    }
+
+    #[test]
     fn extract_markdown_strips_boilerplate_and_keeps_body() {
         let html = r#"<html><head><title>My Article</title></head><body>
             <nav>menu home about</nav>

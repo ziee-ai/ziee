@@ -80,27 +80,75 @@ pub async fn upsert_provider_file_mapping(
     .await
 }
 
-/// Check if file expired (for Gemini 48h TTL).
+/// Check if an already-loaded mapping has expired (for Gemini 48h TTL).
 ///
-/// Checks the `expires_at` field in provider_metadata to determine if a file
-/// has expired. Scoped by user_id to match get_provider_file_mapping's
-/// JOIN-based access control (06-llm-provider F-04).
-pub async fn is_file_expired(
-    pool: &PgPool,
-    file_id: Uuid,
-    provider_id: Uuid,
-    user_id: Uuid,
-) -> Result<bool, sqlx::Error> {
-    let mapping = get_provider_file_mapping(pool, file_id, provider_id, user_id).await?;
+/// Inspects the `expires_at` field in `provider_metadata`. Pure (no DB round
+/// trip) so callers that already hold the mapping don't re-query it.
+pub fn is_mapping_expired(mapping: &LlmProviderFile) -> bool {
+    if let Some(expires_at_str) = mapping
+        .provider_metadata
+        .get("expires_at")
+        .and_then(|v| v.as_str())
+        && let Ok(expires_at) = DateTime::parse_from_rfc3339(expires_at_str)
+    {
+        return Utc::now() > expires_at;
+    }
+    false
+}
 
-    if let Some(mapping) = mapping
-        && let Some(expires_at_str) = mapping
-            .provider_metadata
-            .get("expires_at")
-            .and_then(|v| v.as_str())
-            && let Ok(expires_at) = DateTime::parse_from_rfc3339(expires_at_str) {
-                return Ok(Utc::now() > expires_at);
-            }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
 
-    Ok(false)
+    fn mapping_with_metadata(metadata: serde_json::Value) -> LlmProviderFile {
+        LlmProviderFile {
+            id: Uuid::new_v4(),
+            file_id: Uuid::new_v4(),
+            provider_id: Uuid::new_v4(),
+            provider_file_id: Some("file_cached_123".to_string()),
+            provider_metadata: metadata,
+            upload_status: UploadStatus::Completed,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn cache_mapping_without_expiry_never_expires() {
+        // No `expires_at` (e.g. Anthropic, which has no per-file TTL) → the
+        // cached provider_file_id is reusable indefinitely.
+        let m = mapping_with_metadata(json!({}));
+        assert!(!is_mapping_expired(&m));
+        let m2 = mapping_with_metadata(json!({ "api_key_fingerprint": "abc" }));
+        assert!(!is_mapping_expired(&m2));
+    }
+
+    #[test]
+    fn cache_mapping_with_future_expiry_is_valid() {
+        // A Gemini-style mapping whose 48h TTL hasn't elapsed → still cached.
+        let future = (Utc::now() + chrono::Duration::hours(10)).to_rfc3339();
+        let m = mapping_with_metadata(json!({ "expires_at": future }));
+        assert!(
+            !is_mapping_expired(&m),
+            "a not-yet-expired mapping must remain a cache hit"
+        );
+    }
+
+    #[test]
+    fn cache_mapping_past_expiry_is_invalidated() {
+        // A mapping past its TTL → the cached id must NOT be reused (forces
+        // re-upload).
+        let past = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        let m = mapping_with_metadata(json!({ "expires_at": past }));
+        assert!(is_mapping_expired(&m), "an expired mapping must invalidate the cache");
+    }
+
+    #[test]
+    fn cache_mapping_malformed_expiry_does_not_panic_and_keeps_cache() {
+        // An unparseable expires_at falls through to "not expired" rather than
+        // panicking or eagerly discarding a usable cache entry.
+        let m = mapping_with_metadata(json!({ "expires_at": "not-a-date" }));
+        assert!(!is_mapping_expired(&m));
+    }
 }

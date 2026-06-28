@@ -95,6 +95,53 @@ async fn test_default_users_group_grants_web_search_use() {
 }
 
 #[tokio::test]
+async fn test_web_search_403_after_users_group_permission_revoked() {
+    // Inverse of the migration-098 grant test: if an admin strips
+    // web_search::use from the default Users group, a member whose ONLY source
+    // of the permission was that group must immediately be gated out (403) on
+    // the next call — the gate re-resolves group perms per request.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ws_revoked", &[]).await;
+
+    // Sanity: the grant is in place → passes the gate (200 in-band error).
+    let before = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "web_search", "arguments": { "query": "x" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(before.status(), 200, "grant present → passes gate");
+
+    // Admin action: remove web_search::use from the default Users group.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let affected = sqlx::query(
+        "UPDATE groups SET permissions = array_remove(permissions, 'web_search::use') \
+         WHERE is_default = TRUE",
+    )
+    .execute(&pool)
+    .await
+    .unwrap()
+    .rows_affected();
+    assert!(affected >= 1, "default Users group must exist to strip the perm");
+    pool.close().await;
+
+    // Next call → 403 (no other source of the permission).
+    let after = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "web_search", "arguments": { "query": "x" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(after.status(), 403, "revoking the group perm must gate the user out");
+}
+
+#[tokio::test]
 async fn test_search_with_no_provider_configured_returns_error() {
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "ws_noprov", &["web_search::use"]).await;
@@ -311,6 +358,64 @@ async fn test_search_chain_falls_back_to_second_provider() {
     );
 }
 
+#[tokio::test]
+async fn test_search_chain_falls_back_on_rate_limit_429() {
+    // A rate-limited (HTTP 429) first provider must be treated like an error and
+    // trigger fallback to the next provider — not a fatal stop. Chain
+    // [searxng, brave]: searxng 429s, brave serves.
+    let brave_mock = start_mock_brave().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("WEB_SEARCH_BRAVE_ENDPOINT".to_string(), brave_mock)],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(&server, "ws_429_admin", admin_perms()).await;
+    let (limited, searxng_hits) = start_rate_limited_searxng().await;
+    let client = reqwest::Client::new();
+
+    client
+        .put(server.api_url("/web-search/providers/searxng"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "config": { "base_url": limited } }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .put(server.api_url("/web-search/providers/brave"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "api_key": "BSA-test-key" }))
+        .send()
+        .await
+        .unwrap();
+    let r = client
+        .put(server.api_url("/web-search/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "enabled": true, "provider_chain": ["searxng", "brave"] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+
+    let res = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "web_search", "arguments": { "query": "y" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["provider"], "brave", "429 must fall back to brave; body: {body}");
+    assert_eq!(
+        searxng_hits.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "searxng must be attempted exactly once before the 429 fallback"
+    );
+}
+
 /// fetch_url's Accept header requests HTML, but a server may still return
 /// JSON / CSV / XML. The readability extractor is HTML-oriented; this asserts
 /// the best-effort path still 200s and surfaces the body text (rather than
@@ -393,6 +498,35 @@ async fn test_fetch_url_via_loopback_fixture() {
         text.contains("substantive body") && !text.trim_start().starts_with('{'),
         "fetch text channel must be readable markdown, not JSON: {text}"
     );
+}
+
+#[tokio::test]
+async fn test_fetch_url_blocks_redirect_to_private_ip() {
+    // Redirect-based SSRF: even with the loopback fixture reachable
+    // (WEB_SEARCH_FETCH_ALLOW_LOOPBACK), a 302 to an IMDS/private address must
+    // be blocked on the redirect HOP (the validated client re-validates every
+    // hop under the same SSRF policy), so the fetch fails in-band.
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("WEB_SEARCH_FETCH_ALLOW_LOOPBACK".to_string(), "1".to_string())],
+        ..Default::default()
+    })
+    .await;
+    let user = create_user_with_permissions(&server, "ws_redir", &["web_search::use"]).await;
+    let html = start_mock_html().await;
+
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "fetch_url", "arguments": { "url": format!("{html}/redirect-to-imds") } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200, "JSON-RPC carries the error in-band");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["result"].is_null(), "redirect to IMDS must not yield a page: {body}");
+    assert!(body["error"].is_object(), "must be an in-band fetch error: {body}");
 }
 
 #[tokio::test]

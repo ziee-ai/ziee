@@ -28,16 +28,41 @@ async function freshHubUser(apiURL: string, name: string) {
 }
 
 test.describe('Onboarding — MCP server install', () => {
+ * Onboarding "MCP Servers" step — toggling a system MCP server ON and advancing
+ * runs the `registerBeforeNext` apply handler (`applyMcpServerChanges`), which
+ * persists the toggle / installs selections. This focused spec exercises that
+ * install-on-Next flow (the path that previously failed silently): a user with
+ * MCP-admin permission sees the system-server toggles, enables one, clicks
+ * Next, and the wizard advances to the next step — proving the apply handler
+ * ran without surfacing an error.
+ *
+ * The generic step-walk is covered by onboarding-wizard.spec.ts; this adds the
+ * MCP-install action the wizard walk skips (it just clicks Next with no toggle).
+ */
+test.describe('Onboarding - MCP server install on Next', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     await loginAsAdmin(page, testInfra.baseURL)
   })
 
   test('selecting a hub MCP server marks it for installation on Finish', async ({
+  test('toggling a system MCP server on then Next advances the wizard', async ({
     page,
     testInfra,
   }) => {
     const { baseURL, apiURL } = testInfra
     const username = await freshHubUser(apiURL, 'mcpinst')
+    const adminToken = await getAdminToken(apiURL)
+    const username = `mcp_onb_${Date.now().toString(36)}`
+    // Needs MCP-admin perms so the system-server toggles render in the step.
+    await createTestUser(
+      apiURL,
+      adminToken,
+      username,
+      `${username}@ex.com`,
+      'password123',
+      ['profile::read', 'profile::edit', 'mcp_servers_admin::edit', 'mcp_servers_admin::read'],
+    )
+
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers → MCP Servers.
@@ -60,5 +85,19 @@ test.describe('Onboarding — MCP server install', () => {
     await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible({ timeout: 10000 })
     await expect(page.getByText(/MCP server.*selected for installation/i)).toBeVisible()
     await expect(page.getByText(/No MCP servers selected/i)).toHaveCount(0)
+    // Enable the first system MCP server toggle (antd Switch → role="switch").
+    const firstSwitch = page.getByRole('switch').first()
+    await expect(firstSwitch).toBeVisible({ timeout: 15000 })
+    if ((await firstSwitch.getAttribute('aria-checked')) !== 'true') {
+      await firstSwitch.click()
+    }
+    await expect(firstSwitch).toHaveAttribute('aria-checked', 'true')
+
+    // Next runs applyMcpServerChanges; the wizard must advance (no silent
+    // failure stalling on the MCP step) to the Memory step.
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(
+      page.getByRole('heading', { name: 'Persistent Memory' }),
+    ).toBeVisible({ timeout: 15000 })
   })
 })

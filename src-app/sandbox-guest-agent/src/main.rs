@@ -1226,11 +1226,22 @@ impl GuestCgroup {
         let path = std::path::PathBuf::from(format!("/sys/fs/cgroup/sb-{request_id}"));
         std::fs::create_dir(&path)?;
         // Per-controller writes are best-effort: a controller the guest kernel
-        // didn't build still leaves the others enforcing.
-        let _ = std::fs::write(path.join("memory.max"), limits.memory_max_bytes.to_string());
-        let _ = std::fs::write(path.join("memory.swap.max"), limits.memory_swap_max_bytes.to_string());
-        let _ = std::fs::write(path.join("pids.max"), limits.pids_max.to_string());
-        let _ = std::fs::write(path.join("cpu.max"), &limits.cpu_max);
+        // didn't build still leaves the others enforcing. We do NOT fail the
+        // whole call on a single controller miss, but every miss is logged so a
+        // silently-unenforced limit (e.g. memory.max not applied) is detectable
+        // rather than invisible.
+        let write_limit = |attr: &str, value: &str| {
+            if let Err(e) = std::fs::write(path.join(attr), value) {
+                tracing::warn!(
+                    "agent: cgroup {attr} not enforced for sb-{request_id}: {e} \
+                     (controller likely unavailable in guest kernel)"
+                );
+            }
+        };
+        write_limit("memory.max", &limits.memory_max_bytes.to_string());
+        write_limit("memory.swap.max", &limits.memory_swap_max_bytes.to_string());
+        write_limit("pids.max", &limits.pids_max.to_string());
+        write_limit("cpu.max", &limits.cpu_max);
         Ok(Self { path })
     }
 

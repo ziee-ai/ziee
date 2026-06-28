@@ -70,8 +70,9 @@ pub async fn get_or_upload_provider_file(
     if let Some(mapping) =
         repository::get_provider_file_mapping(pool, file_id, provider.id, user_id).await?
     {
-        // 2a. Check if expired (Gemini 48h TTL)
-        let is_expired = repository::is_file_expired(pool, file_id, provider.id, user_id).await?;
+        // 2a. Check if expired (Gemini 48h TTL) — computed from the mapping we
+        //     just loaded, no redundant re-query.
+        let is_expired = repository::is_mapping_expired(&mapping);
 
         // 2b. Detect API key rotation: if the stored fingerprint doesn't
         //     match the current key, the cached provider_file_id belongs to
@@ -425,5 +426,29 @@ mod tests {
         .expect_err("a provider with no API key must be rejected before any upload");
         assert_eq!(err.error_code(), "PROVIDER_NO_API_KEY");
         assert_eq!(err.status_code(), 400);
+    // ── API-key rotation detection (cached provider_file_id invalidation) ──────
+
+    #[test]
+    fn api_key_fingerprint_is_stable_for_same_key() {
+        // The cache-reuse path compares the stored fingerprint against the
+        // current key's fingerprint; the SAME key must yield the SAME
+        // fingerprint so a valid cached provider_file_id is reused.
+        let k = "sk-abc123";
+        assert_eq!(api_key_fingerprint(k), api_key_fingerprint(k));
+        // SHA-256 hex is 64 chars.
+        assert_eq!(api_key_fingerprint(k).len(), 64);
+        assert!(api_key_fingerprint(k).bytes().all(|b| b.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn api_key_fingerprint_differs_after_rotation() {
+        // A rotated key must produce a DIFFERENT fingerprint so `key_rotated`
+        // detects the rotation and discards the stale cached provider_file_id
+        // (which belongs to the previous account).
+        let old = api_key_fingerprint("sk-old-account-key");
+        let new = api_key_fingerprint("sk-new-account-key");
+        assert_ne!(old, new, "rotation must change the fingerprint");
+        // The comparison the service uses: stored != current ⇒ invalidate.
+        assert!(old != new, "stored fingerprint != current ⇒ cache invalidated");
     }
 }

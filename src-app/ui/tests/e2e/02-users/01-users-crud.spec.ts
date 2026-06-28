@@ -167,6 +167,13 @@ test.describe('Users CRUD Operations', () => {
     const userData = {
       username: `inactiveuser${ts}`,
       email: `inactiveuser${ts}@example.com`,
+  test('edit drawer Active switch deactivates a user', async ({ page }) => {
+    // Create an active user.
+    await openCreateUserDrawer(page)
+    const timestamp = Date.now()
+    const userData = {
+      username: `inactuser${timestamp}`,
+      email: `inactuser${timestamp}@example.com`,
       password: 'password123',
     }
     await createUser(page, userData)
@@ -184,6 +191,20 @@ test.describe('Users CRUD Operations', () => {
     await assertDrawerClosed(page)
 
     // The list now shows the user as inactive.
+    // Open the edit drawer and flip the "Active" switch OFF.
+    await openEditUserDrawer(page, userData.username)
+    await assertDrawerOpen(page, /edit user/i)
+
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    const activeSwitch = drawer.getByRole('switch', { name: 'Active' })
+    await expect(activeSwitch).toHaveAttribute('aria-checked', 'true')
+    await activeSwitch.click()
+    await expect(activeSwitch).toHaveAttribute('aria-checked', 'false')
+
+    await drawer.locator('.ant-btn-primary[type="submit"]').click()
+    await assertDrawerClosed(page)
+
+    // The list row now reports the user as inactive.
     await assertUserStatus(page, userData.username, 'inactive')
   })
 

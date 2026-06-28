@@ -40,13 +40,15 @@ pub async fn get_all_accessible_config(
     Ok(enabled_servers)
 }
 
-/// Validate requested servers and build final configuration
-/// Returns (valid_configs, accessible_server_ids)
+/// Validate requested servers and build final configuration.
+/// Returns (valid_configs, accessible_server_ids, accessible_servers).
+/// The full `accessible_servers` list is returned so callers can reuse it
+/// instead of re-issuing `get_all_accessible_config` for the same request.
 pub async fn validate_and_build_config(
     pool: &sqlx::PgPool,
     user_id: Uuid,
     requested_servers: Option<Vec<McpServerConfig>>,
-) -> Result<(Vec<(Uuid, Vec<String>)>, Vec<Uuid>), AppError> {
+) -> Result<(Vec<(Uuid, Vec<String>)>, Vec<Uuid>, Vec<McpServer>), AppError> {
     // Get all accessible servers
     let accessible_servers = get_all_accessible_config(pool, user_id).await?;
     let accessible_ids: Vec<Uuid> = accessible_servers.iter().map(|s| s.id).collect();
@@ -75,7 +77,7 @@ pub async fn validate_and_build_config(
         accessible_ids.iter().map(|&id| (id, vec![])).collect()
     };
 
-    Ok((config, accessible_ids))
+    Ok((config, accessible_ids, accessible_servers))
 }
 
 /// Anthropic API tool-name regex: `^[a-zA-Z0-9_-]{1,128}$`.
@@ -275,6 +277,24 @@ pub(crate) async fn run_ask_user_elicitation(
             .cloned()
             .unwrap_or_else(|| serde_json::json!({ "type": "object" })),
     );
+
+    // The schema is LLM-generated and arbitrary; the FE renders a form field
+    // per property, so a pathologically large/nested schema can hang the
+    // browser. Reject anything over the same 1 MB cap used for structured
+    // content rather than streaming it to the client. The model gets a clean
+    // tool-result error and can retry with a smaller schema.
+    let schema_bytes = serde_json::to_vec(&requested_schema)
+        .map(|v| v.len())
+        .unwrap_or(usize::MAX);
+    if schema_bytes > MAX_STRUCTURED_CONTENT_BYTES {
+        return ask_result(
+            format!(
+                "ask_user 'schema' is too large ({schema_bytes} bytes; limit \
+                 {MAX_STRUCTURED_CONTENT_BYTES}). Send a smaller schema."
+            ),
+            true,
+        );
+    }
 
     // No interactive stream (e.g. the before_llm_call no-SSE path) → nobody to ask.
     let Some(sse_tx) = sse_tx else {
@@ -933,6 +953,23 @@ mod tests {
         });
         let result = run_ask_user_elicitation(
             serde_json::json!({ "message": "Pick a color", "schema": schema }),
+    /// A pathologically large LLM-generated `schema` is rejected as a tool
+    /// error BEFORE it can be streamed to the form (the FE renders a field per
+    /// property, so an oversized schema would hang the browser). The size guard
+    /// runs ahead of the interactive-stream check, so all-None args drive it.
+    #[tokio::test]
+    async fn ask_user_oversized_schema_is_error() {
+        // Build a JSON-schema object whose serialized form clears the cap.
+        let big: std::collections::BTreeMap<String, serde_json::Value> = (0..60_000)
+            .map(|i| (format!("field_{i}"), serde_json::json!({ "type": "string" })))
+            .collect();
+        let schema = serde_json::json!({ "type": "object", "properties": big });
+        assert!(
+            serde_json::to_vec(&schema).unwrap().len() > MAX_STRUCTURED_CONTENT_BYTES,
+            "fixture must actually exceed the cap",
+        );
+        let result = run_ask_user_elicitation(
+            serde_json::json!({ "message": "Pick", "schema": schema }),
             None,
             None,
             None,
@@ -945,6 +982,8 @@ mod tests {
             !content.contains("1 MiB"),
             "normal schema must not trip the size cap, got: {content}",
         );
+        assert!(is_error, "oversized schema must be a tool error");
+        assert!(content.contains("too large"), "got: {content}");
     }
 
     // ── ask_user response → tool_result mapping (plan Tier 1) ─────────────────

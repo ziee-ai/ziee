@@ -16,13 +16,13 @@
 
 use axum::{
     Extension, Json, debug_handler,
-    extract::Path,
+    extract::{Path, Query},
     http::StatusCode,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::common::{ApiResult, AppError};
+use crate::common::{ApiResult, AppError, PaginationQuery};
 use crate::core::{events::EventBus, repository::Repos};
 use crate::modules::llm_provider::events::LlmProviderEvent;
 use crate::modules::llm_provider::permissions::{
@@ -213,10 +213,15 @@ pub fn remove_provider_from_group_docs(
 pub async fn get_group_providers(
     _auth: RequirePermissions<(LlmProvidersRead,)>,
     Path(group_id): Path<Uuid>,
+    Query(pagination): Query<PaginationQuery>,
 ) -> ApiResult<Json<GroupProvidersResponse>> {
+    // Offset pagination bounds the otherwise-unbounded SELECT (default page
+    // size 100). Params are optional; absent → first page of 100.
+    let limit = pagination.per_page_clamped() as i64;
+    let offset = (pagination.page_clamped() as i64 - 1) * limit;
     let providers = Repos
         .user_group_llm_provider
-        .get_for_group(group_id)
+        .get_for_group_paged(group_id, limit, offset)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get providers for group {}: {}", group_id, e);

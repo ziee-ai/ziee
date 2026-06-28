@@ -20,6 +20,7 @@ const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50MB per-file cap (DoS hardeni
 /// larger than this is rejected with FILE_TOO_LARGE; the route-level body limit
 /// (200 MB) bounds the whole multipart request on top of this.
 const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50 MB
+const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50MB per-file cap (approved policy)
 
 /// Per-user storage quota for uploads. Closes 05-file F-16 (Medium). 10 GiB
 /// matches typical SaaS chat-attachment quotas. Exposed as a constant so

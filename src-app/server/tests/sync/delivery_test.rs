@@ -175,6 +175,13 @@ async fn deactivating_a_user_mid_stream_closes_their_sync_stream() {
 // exact order the rows were created.
 #[tokio::test]
 async fn rapid_fire_mutations_are_delivered_in_order() {
+/// Rapid-fire mutations through the HTTP path: N memory creates fired in a tight
+/// loop must each deliver a `memory`/`create` sync frame to the owner's probe —
+/// no drops, in submission order (the bounded FIFO per-connection channel). The
+/// existing delivery tests only fire one mutation at a time; the registry's
+/// in-order/no-drop guarantee was only unit-tested (registry.rs::tests).
+#[tokio::test]
+async fn rapid_fire_memory_creates_deliver_all_events_in_order() {
     let server = crate::common::TestServer::start().await;
     let alice = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -207,4 +214,21 @@ async fn rapid_fire_mutations_are_delivered_in_order() {
 
     // No spurious extra frames after the N expected ones.
     probe.expect_silence(SILENCE_WINDOW).await;
+    let mut probe = SyncProbe::open(&server, &alice.token).await;
+
+    const BURST: usize = 10;
+    let mut ids = Vec::with_capacity(BURST);
+    for i in 0..BURST {
+        // No origin connection id → not self-suppressed; the probe is a separate
+        // connection and receives every owner event.
+        ids.push(create_memory(&server, &alice.token, &format!("burst {i}"), None).await);
+    }
+
+    // Every create event arrives, in submission order, with no drops.
+    for (i, expected) in ids.iter().enumerate() {
+        let frame = probe
+            .expect_event("memory", "create", EVENT_TIMEOUT)
+            .await;
+        assert_eq!(&frame.id, expected, "event {i} must arrive in order");
+    }
 }

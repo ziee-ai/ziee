@@ -27,10 +27,11 @@ export function ConversationSkillsPanel({
     Stores.ConversationSkills.loadAvailable(conversationId)
   }, [conversationId])
 
-  // Trigger the install-list load so `skills` is populated.
-  useEffect(() => {
-    void Stores.Skill.__state.loadSkills()
-  }, [])
+  // NOTE: no manual loadSkills() here — reading `Stores.Skill.skills`
+  // above self-initializes the install list via the store's
+  // `__init__.skills` hook (and `sync:skill` keeps it fresh), so a
+  // mount-time fetch would be redundant (REACT_COMPONENT_PATTERNS:
+  // don't manually load in useEffect).
 
   if (loading && !available) {
     return <Spin size="small" />

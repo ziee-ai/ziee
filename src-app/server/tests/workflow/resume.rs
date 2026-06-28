@@ -21,8 +21,8 @@ use uuid::Uuid;
 use ziee::workflow::fail_orphaned_runs_before_unix;
 
 use super::{
-    db_pool, import_dev_workflow, plain_server, poll_run, run_workflow, stub_model_for,
-    workflow_user,
+    db_pool, import_dev_workflow, plain_server, poll_run, run_workflow, stub_conversation,
+    stub_model_for, workflow_user,
 };
 use crate::common::TestServer;
 
@@ -320,4 +320,73 @@ async fn cold_waiting_run_can_be_cancelled() {
             .expect("status after cancel");
     db.close().await;
     assert_eq!(final_status, "cancelled", "the waiting run must read cancelled after /cancel");
+}
+
+/// Multi-step CONVERSATION-BOUND run that pauses on an elicit gate MID-RUN,
+/// then resumes to completion once answered. The existing resume coverage uses
+/// a STANDALONE run (explicit model_id); conversation-bound elicit was only
+/// exercised on the happy path in real_stack (real LLM). Here the model is
+/// derived from the conversation, the two llm steps are mocked (deterministic,
+/// no API key), and only the gate really suspends — proving the a → gate(park)
+/// → answer → b → complete sequence works when the run is bound to a chat.
+#[tokio::test]
+async fn conversation_bound_multistep_elicit_parks_and_resumes() {
+    let server = plain_server().await;
+    let user = workflow_user(&server, "resume_conv").await;
+    // Stub model + a conversation bound to it (no API key needed).
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+    let wf = import_dev_workflow(&server, &user.token, "durable-resume-conv", RESUME_WORKFLOW_YAML)
+        .await;
+    let wf_id = wf["id"].as_str().expect("workflow id");
+
+    // Conversation-bound run: the runner snapshots the model from the
+    // conversation (NOT an explicit model_id). The gate is not mocked.
+    let run = run_workflow(
+        &server,
+        &user.token,
+        wf_id,
+        json!({
+            "inputs": { "topic": "conversation-bound resume" },
+            "conversation_id": conv_id.to_string(),
+            "mocks": { "a": { "marker": "ORIGINAL" }, "b": "B_DONE" },
+        }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+
+    // ── Park mid-run on the elicit gate. ──
+    let elicitation_id = poll_until_waiting(&server, &user.token, run_id).await;
+
+    // Pre-gate step `a` ran; the gate + post-gate step `b` have not yet.
+    let db = db_pool(&server).await;
+    let parked: Json = sqlx::query_scalar::<_, Json>(
+        "SELECT to_jsonb(r) FROM workflow_runs r WHERE id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(&db)
+    .await
+    .expect("read parked run");
+    assert_eq!(parked["status"], "waiting", "gate parks the conversation-bound run: {parked}");
+    assert!(parked["step_outputs_json"].get("a").is_some(), "pre-gate step a ran: {parked}");
+    assert!(parked["step_outputs_json"].get("b").is_none(), "post-gate step b not yet: {parked}");
+
+    // ── Answer the elicit → run resumes and finishes step `b`. ──
+    let resp = submit_elicit(
+        &server,
+        &user.token,
+        run_id,
+        elicitation_id,
+        json!({ "approved": true }),
+    )
+    .await;
+    assert!(resp.status().is_success(), "submit elicit should succeed: {}", resp.status());
+
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(final_run["status"], "completed", "resumed run must complete: {final_run}");
+    // All three steps have outputs now (a pre-gate, gate consumed, b post-gate).
+    let outs = &final_run["step_outputs_json"];
+    assert!(outs.get("a").is_some(), "a present after resume: {final_run}");
+    assert!(outs.get("gate").is_some(), "gate response recorded: {final_run}");
+    assert!(outs.get("b").is_some(), "post-gate step b ran on resume: {final_run}");
+    db.close().await;
 }

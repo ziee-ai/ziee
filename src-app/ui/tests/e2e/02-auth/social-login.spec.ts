@@ -114,6 +114,42 @@ test.describe('Social login — provider buttons + callback flow', () => {
     await expect(page.getByText(/or continue with/i)).toHaveCount(0)
   })
 
+  test('shows a loading spinner then a warning Alert when providers fail to load', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    // Bootstrap admin so the app is past first-run setup, then log out.
+    await loginAsAdmin(page, baseURL)
+
+    // Gate the public providers endpoint so we can observe the loading state
+    // before resolving it as a failure.
+    let release: () => void = () => {}
+    const gate = new Promise<void>(r => (release = r))
+    await page.route(/\/api\/auth\/providers$/, async route => {
+      await gate
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'upstream down' }),
+      })
+    })
+
+    await logoutThenGoToLogin(page, baseURL)
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+
+    // While the request is in flight, ProviderButtons renders a Spin.
+    await expect(page.locator('.ant-spin').first()).toBeVisible({
+      timeout: 10_000,
+    })
+
+    // Resolve as a 500 → the loading state gives way to the warning Alert.
+    release()
+    await expect(
+      page.getByText('Unable to load sign-in options'),
+    ).toBeVisible({ timeout: 10_000 })
+  })
+
   test('clicking a provider button stashes returnTo and navigates to /authorize', async ({
     page,
     testInfra,

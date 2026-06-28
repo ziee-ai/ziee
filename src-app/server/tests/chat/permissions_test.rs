@@ -199,6 +199,125 @@ async fn test_send_message_requires_permission() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
+/// A user who HAS `messages::create` but is NOT in any group granted the
+/// model's provider must be blocked by the streaming handler's
+/// `user_has_access_to_provider` check (403 ACCESS_DENIED) — distinct from the
+/// RequirePermissions gate above. This exercises the chat-stream ↔ provider
+/// access-resolution path.
+#[tokio::test]
+async fn test_send_message_denied_without_provider_access() {
+    let server = crate::common::TestServer::start().await;
+
+    // `owner` gets the stub model (create_stub_model assigns the provider to a
+    // group containing `owner`).
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "prov_owner",
+        &["llm_models::read"],
+    )
+    .await;
+    let (_stub, model) = super::helpers::create_stub_model(&server, &owner.user_id).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+
+    // `user` can chat (has the message permissions) but is in NO group granted
+    // this provider.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "no_prov_access",
+        &[
+            "conversations::create",
+            "conversations::read",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+        ],
+    )
+    .await;
+    let conversation =
+        super::helpers::create_conversation(&server, &user.token, None, Some("Test")).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        conversation_id,
+        model_id,
+        branch_id,
+        "Hello, world!",
+    )
+    .await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "no provider access must be 403"
+    );
+    let body = response.text().await.unwrap_or_default();
+    assert!(
+        body.contains("ACCESS_DENIED"),
+        "403 must carry the ACCESS_DENIED code; got: {body}"
+    );
+}
+
+/// A disabled model is rejected by the streaming handler with MODEL_DISABLED
+/// (400) before any provider/key resolution.
+#[tokio::test]
+async fn test_send_message_disabled_model_is_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "disabled_model_user",
+        &[
+            "conversations::create",
+            "conversations::read",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+            "llm_models::edit",
+        ],
+    )
+    .await;
+    let (_stub, model) = super::helpers::create_stub_model(&server, &user.user_id).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+
+    // Disable the model.
+    let disable = reqwest::Client::new()
+        .put(server.api_url(&format!("/llm-models/{model_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert!(disable.status().is_success(), "disable model → {}", disable.status());
+
+    let conversation =
+        super::helpers::create_conversation(&server, &user.token, None, Some("Test")).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        conversation_id,
+        model_id,
+        branch_id,
+        "Hello, world!",
+    )
+    .await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "disabled model must be 400"
+    );
+    let body = response.text().await.unwrap_or_default();
+    assert!(
+        body.contains("MODEL_DISABLED"),
+        "400 must carry the MODEL_DISABLED code; got: {body}"
+    );
+}
+
 #[tokio::test]
 async fn test_get_message_requires_permission() {
     let server = crate::common::TestServer::start().await;
@@ -504,4 +623,127 @@ async fn test_get_conversation_history_succeeds_with_permission() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+// =====================================================
+// AND-logic + mid-session escalation (extractors.rs)
+// =====================================================
+
+/// HTTP-level proof of the multi-permission AND gate: `duplicate_project`
+/// requires BOTH `projects::create` AND `projects::read`. A user granted only
+/// ONE of the pair must be rejected (403) and the error must name the MISSING
+/// permission — the extractor's per-request `missing_permissions` path. A
+/// positive control (both perms → past the gate, surfacing 404 for the bogus
+/// id) confirms the 403 comes from the AND logic, not an unrelated failure.
+#[tokio::test]
+async fn test_duplicate_project_requires_all_permissions_and_logic() {
+    let server = crate::common::TestServer::start().await;
+    let bogus_project = uuid::Uuid::new_v4();
+
+    // Only `projects::create` — missing `projects::read`.
+    let partial = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "and_partial",
+        &["projects::create"],
+    )
+    .await;
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/projects/{bogus_project}/duplicate")))
+        .header("Authorization", format!("Bearer {}", partial.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::FORBIDDEN,
+        "partial grant must be rejected by the AND gate"
+    );
+    let body: serde_json::Value = res.json().await.unwrap();
+    let msg = serde_json::to_string(&body).unwrap();
+    assert!(
+        msg.contains("projects::read"),
+        "403 must name the missing permission; body={body}"
+    );
+
+    // Both perms → past the gate; the bogus id yields 404, NOT 403.
+    let full = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "and_full",
+        &["projects::create", "projects::read"],
+    )
+    .await;
+    let res2 = reqwest::Client::new()
+        .post(server.api_url(&format!("/projects/{bogus_project}/duplicate")))
+        .header("Authorization", format!("Bearer {}", full.token))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        res2.status(),
+        StatusCode::FORBIDDEN,
+        "full grant must clear the AND gate (got {}): {:?}",
+        res2.status(),
+        res2.text().await.ok()
+    );
+}
+
+/// Permissions are re-resolved from the DB on EVERY request, so a mid-session
+/// grant takes effect immediately on the next call (no token refresh). A user
+/// who starts with no `conversations::create` gets 403; after the permission is
+/// appended to their group, the very next request succeeds (201).
+#[tokio::test]
+async fn test_permission_escalation_takes_effect_mid_session() {
+    let server = crate::common::TestServer::start().await;
+    // In a per-test group with ZERO permissions (not the default Users group).
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "escalate",
+        &[],
+    )
+    .await;
+
+    let payload = json!({ "title": "Escalation" });
+
+    // Before: no conversations::create → 403.
+    let before = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(before.status(), StatusCode::FORBIDDEN, "starts unauthorized");
+
+    // Admin action: grant the permission to the user's group(s) mid-session.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let affected = sqlx::query(
+        "UPDATE groups SET permissions = array_append(permissions, 'conversations::create') \
+         WHERE id IN (SELECT group_id FROM user_groups WHERE user_id = $1) \
+           AND NOT ('conversations::create' = ANY(permissions))",
+    )
+    .bind(uuid::Uuid::parse_str(&user.user_id).unwrap())
+    .execute(&pool)
+    .await
+    .unwrap()
+    .rows_affected();
+    assert!(affected >= 1, "grant must touch the user's group");
+    pool.close().await;
+
+    // After: the NEXT request re-resolves perms from the DB → 201.
+    let after = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        after.status(),
+        StatusCode::CREATED,
+        "mid-session grant must take effect on the next request"
+    );
 }

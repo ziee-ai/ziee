@@ -1531,5 +1531,343 @@ async fn test_template_edit_and_delete_require_template_permissions() {
     assert!(
         !names.contains(&"Skipped NonDefault Tmpl"),
         "a NON-default template must NOT be cloned on signup; got {names:?}"
+// =====================================================
+// message_assistant attribution persistence (migration 75)
+// =====================================================
+
+/// The assistant extension's `after_user_message_created` hook records which
+/// assistant was active into the `message_assistant` join table, and
+/// `GET /api/messages/{id}/assistant` reads it back. This test seeds a
+/// user-owned conversation/branch/message + a message_assistant row directly,
+/// then asserts the read endpoint returns the attributed assistant — and that
+/// a message with NO attribution returns `assistant_id: null`.
+#[tokio::test]
+async fn test_message_assistant_attribution_persists_and_reads_back() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "msg_assistant",
+        &[
+            "assistants::create",
+            "assistants::read",
+            "conversations::read",
+        ],
+    )
+    .await;
+
+    // A real assistant row (message_assistant.assistant_id FKs to assistants).
+    let assistant = create_user_assistant(&server, &user.token, "Attributed Assistant").await;
+    let assistant_id = Uuid::parse_str(assistant["id"].as_str().unwrap()).unwrap();
+
+    // Seed a user-owned conversation → branch → two messages.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let uid = Uuid::parse_str(&user.user_id).unwrap();
+    let conv_id = Uuid::new_v4();
+    let branch_id = Uuid::new_v4();
+    let attributed_msg = Uuid::new_v4();
+    let bare_msg = Uuid::new_v4();
+
+    sqlx::query(
+        r#"INSERT INTO conversations (id, user_id, title, active_branch_id, created_at, updated_at)
+           VALUES ($1, $2, 'ma', NULL, NOW(), NOW())"#,
+    )
+    .bind(conv_id)
+    .bind(uid)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO branches (id, conversation_id, parent_branch_id, created_from_message_id, created_at)
+           VALUES ($1, $2, NULL, NULL, NOW())"#,
+    )
+    .bind(branch_id)
+    .bind(conv_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE conversations SET active_branch_id = $1 WHERE id = $2")
+        .bind(branch_id)
+        .bind(conv_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for msg_id in [attributed_msg, bare_msg] {
+        sqlx::query(
+            r#"INSERT INTO messages (id, role, originated_from_id, created_at)
+               VALUES ($1, 'user', $1, NOW())"#,
+        )
+        .bind(msg_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"INSERT INTO branch_messages (branch_id, message_id, created_at)
+               VALUES ($1, $2, NOW())"#,
+        )
+        .bind(branch_id)
+        .bind(msg_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    // Attribute exactly one message.
+    sqlx::query(
+        r#"INSERT INTO message_assistant (message_id, assistant_id) VALUES ($1, $2)"#,
+    )
+    .bind(attributed_msg)
+    .bind(assistant_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    let get_attr = |msg: Uuid| {
+        let url = server.api_url(&format!("/messages/{msg}/assistant"));
+        let token = user.token.clone();
+        async move {
+            reqwest::Client::new()
+                .get(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // Attributed message → returns the assistant id.
+    let res = get_attr(attributed_msg).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(
+        body["assistant_id"].as_str().unwrap(),
+        assistant_id.to_string(),
+        "attributed message must read back its assistant: {body}"
+    );
+
+    // Message with no attribution → owned, but assistant_id is null.
+    let res = get_attr(bare_msg).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["assistant_id"].is_null(), "un-attributed message → null: {body}");
+
+    // A message the user doesn't own (random id) → 404 (ownership conflation).
+    let res = get_attr(Uuid::new_v4()).await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+// =====================================================
+// Template cloning on user creation (event_handlers.rs)
+// =====================================================
+
+/// CloneTemplateAssistantsHandler (fired async on UserEvent::Created) clones
+/// ONLY templates where `is_default && enabled` to each new user. A default+
+/// enabled template is cloned (as a non-template, non-default user assistant);
+/// a non-default template is NOT. We create both as admin BEFORE registering a
+/// fresh user, then poll that user's assistant list.
+#[tokio::test]
+async fn test_user_creation_clones_only_default_enabled_templates() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tpl_clone_admin",
+        &["assistant_templates::create"],
+    )
+    .await;
+
+    let tag = &Uuid::new_v4().to_string()[..8];
+    let default_name = format!("CloneDefault-{tag}");
+    let nondefault_name = format!("CloneSkip-{tag}");
+    let client = reqwest::Client::new();
+    let mk_template = |name: String, is_default: bool| {
+        let client = client.clone();
+        let url = server.api_url("/assistant-templates");
+        let token = admin.token.clone();
+        async move {
+            let r = client
+                .post(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "name": name, "is_default": is_default, "enabled": true }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::CREATED, "create template {name:?}");
+        }
+    };
+    mk_template(default_name.clone(), true).await;
+    mk_template(nondefault_name.clone(), false).await;
+
+    // Register a fresh user AFTER the templates exist → the async clone handler
+    // runs for this user.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tpl_clone_target",
+        &["assistants::read"],
+    )
+    .await;
+
+    // Poll the new user's assistant list until the cloned default appears.
+    let list_names = || {
+        let client = client.clone();
+        let url = server.api_url("/assistants");
+        let token = user.token.clone();
+        async move {
+            let body: serde_json::Value = client
+                .get(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            body["assistants"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x["name"].as_str().map(|s| s.to_string())).collect::<Vec<_>>())
+                .unwrap_or_default()
+        }
+    };
+
+    let mut names: Vec<String> = Vec::new();
+    for _ in 0..40 {
+        names = list_names().await;
+        if names.iter().any(|n| n == &default_name) {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+    }
+    assert!(
+        names.iter().any(|n| n == &default_name),
+        "the default+enabled template must be cloned to the new user; got {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n == &nondefault_name),
+        "the non-default template must NOT be cloned; got {names:?}"
+    );
+}
+
+// =====================================================
+// Message-assistant attribution: persistence + ON CONFLICT idempotence
+// (migration 75; chat_extension/repository.rs::insert_message_assistant)
+// =====================================================
+
+/// A message sent with a selected assistant records a durable
+/// `message_assistant` row (readable via GET /messages/{id}/assistant), and the
+/// repository's `ON CONFLICT (message_id) DO NOTHING` makes the attribution
+/// immutable — a later duplicate insert for the same message can't overwrite
+/// the original (the snapshot survives re-sends / restarts since it lives in
+/// Postgres, not memory).
+#[tokio::test]
+async fn message_assistant_attribution_persists_and_is_idempotent() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "msg_attr_user",
+        &[
+            "conversations::create",
+            "conversations::read",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+            "assistants::create",
+            "assistants::read",
+        ],
+    )
+    .await;
+
+    // Stub chat model (no real LLM) + two assistants.
+    let (_stub, model) = crate::chat::helpers::create_stub_model(&server, &user.user_id).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+
+    let mk_assistant = |name: &'static str| {
+        let token = user.token.clone();
+        let api = server.api_url("/assistants");
+        async move {
+            let resp = reqwest::Client::new()
+                .post(api)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "name": name, "description": "attr", "instructions": "be brief" }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::CREATED);
+            let body: serde_json::Value = resp.json().await.unwrap();
+            Uuid::parse_str(body["id"].as_str().unwrap()).unwrap()
+        }
+    };
+    let assistant_id = mk_assistant("Primary Assistant").await;
+    let other_assistant_id = mk_assistant("Other Assistant").await;
+
+    // Conversation + branch.
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, Some(model_id), Some("attr"))
+            .await;
+    let conv_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    // Send a message WITH the assistant selected → the assistant chat extension
+    // snapshots the attribution onto the user message.
+    let send = reqwest::Client::new()
+        .post(server.api_url(&format!("/conversations/{conv_id}/messages")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "content": "hi",
+            "model_id": model_id.to_string(),
+            "branch_id": branch_id.to_string(),
+            "assistant_id": assistant_id.to_string(),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(send.status(), StatusCode::OK, "send should 200");
+    let send_body: serde_json::Value = send.json().await.unwrap();
+    let user_message_id =
+        Uuid::parse_str(send_body["user_message_id"].as_str().unwrap()).unwrap();
+
+    // Poll the attribution endpoint until the (stream-time) snapshot lands.
+    let client = reqwest::Client::new();
+    let mut got: Option<Uuid> = None;
+    for _ in 0..40 {
+        let resp = client
+            .get(server.api_url(&format!("/messages/{user_message_id}/assistant")))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body: serde_json::Value = resp.json().await.unwrap();
+        if let Some(id) = body["assistant_id"].as_str() {
+            got = Some(Uuid::parse_str(id).unwrap());
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    assert_eq!(
+        got,
+        Some(assistant_id),
+        "the persisted attribution must be the assistant the message was sent with"
+    );
+
+    // ON CONFLICT DO NOTHING: a duplicate insert for the SAME message_id (with a
+    // DIFFERENT assistant) must NOT overwrite the original snapshot.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    sqlx::query("INSERT INTO message_assistant (message_id, assistant_id) VALUES ($1, $2) ON CONFLICT (message_id) DO NOTHING")
+        .bind(user_message_id)
+        .bind(other_assistant_id)
+        .execute(&pool)
+        .await
+        .expect("duplicate insert must not error (ON CONFLICT)");
+    pool.close().await;
+
+    let after = client
+        .get(server.api_url(&format!("/messages/{user_message_id}/assistant")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let after_body: serde_json::Value = after.json().await.unwrap();
+    assert_eq!(
+        after_body["assistant_id"].as_str().map(|s| Uuid::parse_str(s).unwrap()),
+        Some(assistant_id),
+        "ON CONFLICT must keep the ORIGINAL attribution, not the duplicate"
     );
 }

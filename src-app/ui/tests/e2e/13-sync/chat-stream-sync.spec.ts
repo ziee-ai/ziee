@@ -145,6 +145,7 @@ test.describe('Realtime sync — chat token stream (cross-device)', () => {
   })
 
   test('a MULTI-TURN exchange on device A accumulates both replies on device B', async ({
+  test('a reply to a message sent on device B streams back into device A (bidirectional, second turn)', async ({
     page,
     browser,
     testInfra,
@@ -157,6 +158,16 @@ test.describe('Realtime sync — chat token stream (cross-device)', () => {
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
     const providerId = await createProviderViaAPI(apiURL, adminToken, 'Anthropic', 'anthropic')
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    const providerId = await createProviderViaAPI(
+      apiURL,
+      adminToken,
+      'Anthropic',
+      'anthropic',
+    )
     await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
     await createModelViaAPI(
       apiURL,
@@ -170,12 +181,22 @@ test.describe('Realtime sync — chat token stream (cross-device)', () => {
     const convRes = await page.request.post(`${baseURL}/api/conversations`, {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
       data: { title: `XSync MultiTurn ${Date.now()}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      data: { title: `XSync BiDir ${Date.now()}` },
     })
     expect(convRes.ok()).toBeTruthy()
     const convId = (await convRes.json()).id as string
 
     await page.goto(`${baseURL}/chat/${convId}`)
     await page.waitForSelector('textarea[placeholder*="Type your message"]', { timeout: 30_000 })
+    // Device A opens the conversation and stays passive for the second turn.
+    await page.goto(`${baseURL}/chat/${convId}`)
+    await page.waitForSelector('textarea[placeholder*="Type your message"]', {
+      timeout: 30_000,
+    })
 
     const ctxB = await browser.newContext()
     const pageB = await ctxB.newPage()
@@ -203,6 +224,33 @@ test.describe('Realtime sync — chat token stream (cross-device)', () => {
       await expect(pageB.locator('body')).toContainText(marker2, { timeout: 60_000 })
       // Both turns are present on B's transcript (accumulated, not replaced).
       await expect(pageB.locator('body')).toContainText(marker1, { timeout: 5_000 })
+      await pageB.waitForSelector('textarea[placeholder*="Type your message"]', {
+        timeout: 30_000,
+      })
+
+      // Turn 1 — device A sends; both devices converge (establishes the shared
+      // transcript / subscription before the cross-direction turn).
+      const markerA = `XSYNC_A_${Date.now()}`
+      await page
+        .locator('textarea[placeholder*="Type your message"]')
+        .fill(`Reply with exactly this token and nothing else: ${markerA}`)
+      const sendA = page.getByRole('button', { name: 'Send message' })
+      await expect(sendA).toBeEnabled({ timeout: 10_000 })
+      await sendA.click()
+      await expect(pageB.locator('body')).toContainText(markerA, { timeout: 60_000 })
+
+      // Turn 2 — now device B drives a SECOND turn in the same conversation;
+      // device A (passive) must receive B's streamed reply, proving the stream
+      // fan-out is bidirectional + persists across turns (not just A→B once).
+      const markerB = `XSYNC_B_${Date.now()}`
+      const textareaB = pageB.locator('textarea[placeholder*="Type your message"]')
+      await expect(textareaB).toBeEnabled({ timeout: 30_000 })
+      await textareaB.fill(`Reply with exactly this token and nothing else: ${markerB}`)
+      const sendB = pageB.getByRole('button', { name: 'Send message' })
+      await expect(sendB).toBeEnabled({ timeout: 10_000 })
+      await sendB.click()
+
+      await expect(page.locator('body')).toContainText(markerB, { timeout: 60_000 })
     } finally {
       await ctxB.close()
     }

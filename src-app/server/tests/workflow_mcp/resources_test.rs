@@ -764,5 +764,61 @@ async fn await_terminal_fails_a_stalled_run_via_no_progress_guard() {
     assert!(
         msg.contains("no progress") || msg.contains("crashed"),
         "the failure must cite the no-progress/crashed-runner reason; got: {err}"
+// ── resources/list gracefully skips a run whose workflow def is gone ─────────
+
+/// `resources_list` loads each run's workflow.yaml from disk (`workflow_def_for_run`).
+/// If a workflow's extracted bundle is cleaned up / unreadable, the def load
+/// fails — and `resources_list` must SKIP that run (logged `continue`) and still
+/// return the rest, NOT error the whole listing. The happy path is M4 above.
+#[tokio::test]
+async fn resources_list_skips_run_with_unreadable_workflow_def() {
+    let server = TestServer::start().await;
+    let user = mcp_user(&server, "wf_res_gone").await;
+
+    let (run_id, _result, _conv) =
+        run_via_tools_call(&server, &user, "gone-def", REAL_LOGGED_WORKFLOW_YAML).await;
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(final_run["status"], "completed", "run completed: {final_run}");
+
+    // Sanity: the run's output resource is listed while the def is readable.
+    let before = jsonrpc(&server, &user.token, None, "resources/list", json!({})).await;
+    let before_body: Json = before.json().await.unwrap();
+    let expected_uri = format!("ziee://workflow-runs/{run_id}/outputs/summary");
+    assert!(
+        before_body["result"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["uri"].as_str() == Some(expected_uri.as_str())),
+        "sanity: resource listed before cleanup: {before_body}"
+    );
+
+    // Simulate the run's bundle being cleaned up: point the workflow's
+    // extracted_path at a nonexistent dir so the workflow.yaml read fails.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let affected = sqlx::query("UPDATE workflows SET extracted_path = '/nonexistent/ziee-cleaned'")
+        .execute(&pool)
+        .await
+        .unwrap()
+        .rows_affected();
+    assert!(affected >= 1, "the run's workflow row must exist to corrupt");
+    pool.close().await;
+
+    // resources/list must still 200 with NO error, and the now-undefinable run
+    // is skipped (its resource is gone) — not a crash.
+    let after = jsonrpc(&server, &user.token, None, "resources/list", json!({})).await;
+    assert_eq!(after.status(), 200, "resources/list still 200 after cleanup");
+    let after_body: Json = after.json().await.unwrap();
+    assert!(
+        after_body["error"].is_null(),
+        "resources/list must not error on a run with a gone def: {after_body}"
+    );
+    assert!(
+        !after_body["result"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["uri"].as_str() == Some(expected_uri.as_str())),
+        "the run with an unreadable def must be skipped from the listing: {after_body}"
     );
 }

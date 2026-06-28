@@ -255,6 +255,53 @@ async fn test_message_assistant_attribution_persists_and_is_readable() {
         .unwrap();
     assert_eq!(assistant_response.status(), StatusCode::CREATED);
     let assistant: serde_json::Value = assistant_response.json().await.unwrap();
+/// Integration proof that an assistant's INSTRUCTIONS actually reach the model:
+/// with a deterministic StubChat (which records the full prompt text of every
+/// request), a turn sent with `assistant_id` must carry the assistant's
+/// instruction text as a system message in the generation request. The existing
+/// assistant streaming tests only count content frames; this asserts the
+/// before_llm_call injection lands in the wire prompt (no real LLM needed).
+#[tokio::test]
+async fn test_assistant_instructions_reach_the_model_prompt() {
+    use crate::common::stub_chat::{register_stub_model, StubChat};
+
+    let server = crate::common::TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "assistant_inject",
+        &[
+            "conversations::create",
+            "conversations::read",
+            "conversations::edit",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+            "assistants::create",
+            "assistants::read",
+        ],
+    )
+    .await;
+    let model_id_str =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url, false, None).await;
+    let model_id = helpers::parse_uuid(&serde_json::json!(model_id_str));
+
+    // Distinctive instruction marker — easy to find in the recorded prompt.
+    let marker = "ASSISTANT_MAGIC_INSTR_7QX";
+    let assistant: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "Injector",
+            "instructions": format!("Always remember the codeword {marker}."),
+            "enabled": true
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     let assistant_id = helpers::parse_uuid(&assistant["id"]);
 
     let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
@@ -336,5 +383,15 @@ async fn test_disabled_model_is_rejected_by_chat_send() {
     assert_eq!(
         body["error_code"], "MODEL_DISABLED",
         "downstream consumer must reject a disabled model with MODEL_DISABLED: {body}"
+    let content =
+        send_with_assistant(&server, &user.token, conv_id, branch_id, model_id, Some(assistant_id), "hi").await;
+    assert!(content > 0, "assistant-driven turn should stream content");
+
+    // The assistant's instruction text was injected into the prompt the model
+    // actually received (a system message), not just acknowledged server-side.
+    assert!(
+        stub.requests().iter().any(|r| r.all_text.contains(marker)),
+        "assistant instructions must reach the model prompt; requests={:?}",
+        stub.requests()
     );
 }

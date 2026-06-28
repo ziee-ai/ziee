@@ -484,6 +484,24 @@ async fn test_convert_document_saved_bytes_are_a_real_pdf() {
     let server = TestServer::start().await;
     let user = power_user(&server, "files_mcp_convert_pdf").await;
     let conv_uuid = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+/// convert_document renders markdown → PDF, persists it to the file store, and
+/// emits a `resource_link` content block pointing at the saved file. This pins
+/// the full success path (real pandoc render → process_and_save → Repos.file)
+/// AND the resource_link shape the chat persist_links consumer relies on
+/// (`is_saved:true` + `uri = /api/files/{id}`). Persistence is verified for
+/// real by downloading the referenced file and asserting it is a PDF.
+#[tokio::test]
+async fn test_convert_document_persists_pdf_and_emits_resource_link() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_convert_ok").await;
+    let (conv_id, _ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "convert-ok-project",
+        &[("seed.txt", "content")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
 
     let body = call_tool(
         &server,
@@ -504,6 +522,31 @@ async fn test_convert_document_saved_bytes_are_a_real_pdf() {
 
     // The persisted file is downloadable and its bytes carry the %PDF magic —
     // proving the pandoc subprocess produced a real PDF, not a placeholder.
+        json!({ "markdown": "# Title\n\nHello **world**.", "filename": "report.pdf" }),
+    )
+    .await;
+
+    assert!(body["error"].is_null(), "convert should succeed; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    let file_id = sc["file_id"].as_str().expect("file_id present");
+
+    // The emitted resource_link references the persisted file, flagged saved so
+    // the chat persist_links path references (never re-saves) it.
+    let link = &sc["content"][0];
+    assert_eq!(link["type"], "resource_link", "resource_link block: {sc}");
+    assert_eq!(link["is_saved"], serde_json::Value::Bool(true));
+    assert_eq!(
+        link["uri"].as_str().unwrap(),
+        format!("/api/files/{file_id}"),
+        "uri points at the saved file"
+    );
+    assert_eq!(
+        link["mimeType"].as_str().unwrap(),
+        "application/pdf",
+        "converted artifact is a PDF"
+    );
+
+    // Persistence is REAL: the referenced file downloads and is a valid PDF.
     let dl = reqwest::Client::new()
         .get(server.api_url(&format!("/files/{file_id}/download")))
         .header("Authorization", format!("Bearer {}", user.token))
@@ -515,6 +558,12 @@ async fn test_convert_document_saved_bytes_are_a_real_pdf() {
     assert!(
         bytes.starts_with(b"%PDF"),
         "downloaded bytes must carry the %PDF magic (len={})",
+        .unwrap();
+    assert_eq!(dl.status(), 200, "saved file must be downloadable");
+    let bytes = dl.bytes().await.unwrap();
+    assert!(
+        bytes.starts_with(b"%PDF"),
+        "persisted artifact is a real PDF (got {} bytes)",
         bytes.len()
     );
 }
@@ -563,6 +612,10 @@ async fn test_grep_files_hits() {
 // corpus with MORE than 200 matching lines must cap `matches` at exactly 200 and
 // set `truncated=true`, so the model knows the result is partial. (The (MAX+1)th
 // sentinel is pushed then trimmed, so the cap is exact, not off-by-one.)
+/// (4a-trunc) When a corpus has MORE than GREP_MAX_MATCHES (200) matching
+/// lines, grep_files caps the returned matches at 200 and flags
+/// `truncated: true` with the "[results truncated …]" note — so the model can
+/// tell a capped result from an exhaustive one and narrow its pattern.
 #[tokio::test]
 async fn test_grep_files_truncates_at_match_cap() {
     let server = TestServer::start().await;
@@ -571,17 +624,23 @@ async fn test_grep_files_truncates_at_match_cap() {
     let mut body = String::new();
     for i in 0..250 {
         body.push_str(&format!("NEEDLE line {i}\n"));
+    // 250 matching lines > the 200-match cap.
+    let mut body_text = String::new();
+    for i in 0..250 {
+        body_text.push_str(&format!("NEEDLE line {i}\n"));
     }
     let (conv_id, _ids) = project_conversation_with_files(
         &server,
         &user,
         "grep-trunc-project",
         &[("big.txt", body.as_str())],
+        &[("big.txt", &body_text)],
     )
     .await;
     let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
 
     let res = call_tool(
+    let body = call_tool(
         &server,
         &user,
         conv_uuid,
@@ -603,6 +662,13 @@ async fn test_grep_files_truncates_at_match_cap() {
         true,
         "a >200-match corpus must report truncated=true"
     );
+    assert!(body["error"].is_null(), "grep should succeed; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    let matches = sc["matches"].as_array().expect("matches array");
+    assert_eq!(matches.len(), 200, "matches must be capped at GREP_MAX_MATCHES (200)");
+    assert_eq!(sc["truncated"].as_bool().unwrap(), true, "over-cap corpus is truncated");
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(text.contains("truncated"), "summary flags truncation: {text}");
 }
 
 /// (4b) A malformed regex (unbalanced `(`) must NOT error — it falls back to a
@@ -1320,4 +1386,56 @@ async fn test_grep_files_truncates_at_match_cap() {
     assert_eq!(sc["truncated"], true, "grep over 300 matches must report truncated; got {sc}");
     let matches = sc["matches"].as_array().expect("matches array");
     assert!(matches.len() <= 200, "matches must be capped at GREP_MAX_MATCHES; got {}", matches.len());
+}
+/// The files MCP WRITE tools are gated on `files::upload` by an in-handler
+/// `require_write` check (the route itself only requires `files::read`). A user
+/// holding `files::read` but NOT `files::upload` must be refused with a
+/// PERMISSION_DENIED JSON-RPC error when calling a write tool, while a read tool
+/// still works. (Prior tests only exercised the happy path with a `*` user.)
+#[tokio::test]
+async fn test_write_tools_denied_without_files_upload_permission() {
+    let server = TestServer::start().await;
+    // files::read + conversation perms, but deliberately NO files::upload.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "files_mcp_readonly",
+        &["files::read", "conversations::create", "conversations::read"],
+    )
+    .await;
+
+    // The user owns a bare conversation (write tools are conversation-scoped).
+    let conv: Value = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "title": "ro" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
+
+    // A WRITE tool → PERMISSION_DENIED (require_write fires before dispatch).
+    let body = call_tool(
+        &server,
+        &user,
+        conv_id,
+        "create_file",
+        json!({ "path": "blocked.txt", "content": "nope" }),
+    )
+    .await;
+    assert!(body["error"].is_object(), "create_file must be denied: {body}");
+    let err = serde_json::to_string(&body["error"]).unwrap();
+    assert!(
+        err.contains("PERMISSION_DENIED") || err.contains("files::upload"),
+        "denial must name the missing files::upload permission: {body}"
+    );
+
+    // A READ tool with the same token still succeeds (read is allowed).
+    let list = call_tool(&server, &user, conv_id, "list_files", json!({})).await;
+    assert!(
+        list["error"].is_null(),
+        "list_files (a read tool) must still work for a files::read user: {list}"
+    );
 }

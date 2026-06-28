@@ -723,3 +723,72 @@ async fn test_upload_sharded_safetensors_without_index_keeps_all_shards() {
         "both shards must be copied (gap-A); shard1={s1} shard2={s2} dir={model_dir:?}"
     );
 }
+
+/// File-content validation rejects an EMPTY file and an HTML error-page blob
+/// (magic-byte sniff) with 400 INVALID_MODEL_FILE — the previously-untested
+/// content-validation branch of the upload handler (existing tests cover
+/// missing-fields + duplicate-name only). No model download needed: the bytes
+/// are synthetic and must be refused before any storage write.
+#[tokio::test]
+async fn test_upload_rejects_empty_and_html_content() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "uploader_validation",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
+    )
+    .await;
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap().to_string();
+
+    let upload = |bytes: Vec<u8>, model_name: &str| {
+        let provider_id = provider_id.clone();
+        let token = user.token.clone();
+        let url = server.api_url("/llm-models/upload");
+        let model_name = model_name.to_string();
+        async move {
+            let part = Part::bytes(bytes)
+                .file_name("model.gguf")
+                .mime_str("application/octet-stream")
+                .unwrap();
+            let form = Form::new()
+                .text("provider_id", provider_id)
+                .text("name", model_name)
+                .text("display_name", "Bad Upload")
+                .text("description", "validation test")
+                .text("file_format", "gguf")
+                .text("main_filename", "model.gguf")
+                .part("files", part);
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .multipart(form)
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // Empty file → 400.
+    let empty = upload(Vec::new(), "empty-model").await;
+    assert_eq!(empty.status(), 400, "empty file must be rejected");
+    let body = empty.text().await.unwrap();
+    assert!(
+        body.contains("INVALID_MODEL_FILE") || body.to_lowercase().contains("empty"),
+        "empty-file rejection must name the validation failure: {body}"
+    );
+
+    // HTML error-page content (starts with `<htm`) → 400.
+    let html = upload(b"<html><body>502 Bad Gateway</body></html>".to_vec(), "html-model").await;
+    assert_eq!(html.status(), 400, "HTML content must be rejected");
+    let body = html.text().await.unwrap();
+    assert!(
+        body.contains("INVALID_MODEL_FILE") || body.to_uppercase().contains("HTML"),
+        "HTML rejection must name the validation failure: {body}"
+    );
+}

@@ -4,6 +4,7 @@ import {
   getAdminToken,
   createTestUser,
   login,
+  getCurrentUserToken,
 } from '../../common/auth-helpers'
 
 /**
@@ -79,5 +80,71 @@ test.describe('Memory — manual add', () => {
       .getByRole('button', { name: 'Delete', exact: true })
       .dispatchEvent('click')
     await expect(page.getByText('Memory deleted')).toBeVisible({ timeout: 5000 })
+  })
+
+  test('edit a memory via the Edit drawer', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    const username = await memoryUser(apiURL, 'mem_edit')
+    await login(page, baseURL, username, 'password123')
+
+    // Seed a memory via the user's own REST token.
+    const token = await getCurrentUserToken(page)
+    const original = `EDITME_${Date.now().toString(36)}`
+    const created = await page.request.post(`${apiURL}/api/memories`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { content: original, kind: 'fact' },
+    })
+    expect(created.status()).toBe(201)
+
+    await page.goto(`${baseURL}/settings/memory`)
+    await expect(page.getByText(original)).toBeVisible({ timeout: 15000 })
+
+    // Open the row's Edit drawer, change the Content, save.
+    await page
+      .locator('[data-memory-id]')
+      .filter({ hasText: original })
+      .getByRole('button', { name: 'Edit memory' })
+      .click()
+    const drawer = page.getByRole('dialog', { name: 'Edit memory' })
+    await expect(drawer).toBeVisible()
+    const updated = `${original}_UPDATED`
+    await drawer.getByLabel('Content').fill(updated)
+    await drawer.getByRole('button', { name: 'Save' }).click()
+
+    await expect(page.getByText('Memory updated')).toBeVisible({ timeout: 5000 })
+    // The list reflects the edited content (and no longer the original).
+    await expect(page.getByText(updated)).toBeVisible()
+    await expect(page.getByText(original, { exact: true })).toHaveCount(0)
+  })
+
+  test('exports memories as JSON and CSV', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    const username = await memoryUser(apiURL, 'mem_export')
+    await login(page, baseURL, username, 'password123')
+    const token = await getCurrentUserToken(page)
+    const created = await page.request.post(`${apiURL}/api/memories`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { content: 'Exportable memory row', kind: 'fact' },
+    })
+    expect(created.status()).toBe(201)
+
+    await page.goto(`${baseURL}/settings/memory`)
+    await expect(page.getByText('Exportable memory row')).toBeVisible({
+      timeout: 15000,
+    })
+
+    // Export as JSON → a ziee-memories-*.json download.
+    let download = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Export' }).click()
+    await page.getByText('Export as JSON').click()
+    const jsonFile = await download
+    expect(jsonFile.suggestedFilename()).toMatch(/^ziee-memories-.*\.json$/)
+
+    // Export as CSV → a ziee-memories-*.csv download.
+    download = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Export' }).click()
+    await page.getByText('Export as CSV').click()
+    const csvFile = await download
+    expect(csvFile.suggestedFilename()).toMatch(/^ziee-memories-.*\.csv$/)
   })
 })

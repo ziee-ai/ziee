@@ -1081,3 +1081,120 @@ async fn delete_conversation_cascades_project_conversations_row() {
         "project_conversations row should cascade-delete with conversation",
     );
 }
+
+/// Project default-model inheritance SOURCE: a project stores + returns
+/// `default_model_id` (the value the frontend seeds a new conversation's model
+/// picker from, after the backend snapshot-on-create was removed), and the FK
+/// is `ON DELETE SET NULL` so deleting the model blanks it without deleting the
+/// project. The assistant sibling has this coverage
+/// (`default_assistant_deleted_sets_null`); this adds the model side.
+#[tokio::test]
+async fn default_model_round_trips_and_sets_null_on_model_delete() {
+    let server = TestServer::start().await;
+    let mut perms: Vec<&str> = helpers::full_project_permissions().to_vec();
+    perms.extend([
+        "llm_providers::create",
+        "llm_providers::read",
+        "llm_models::create",
+        "llm_models::read",
+        "llm_models::delete",
+    ]);
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server, "proj_default_model", &perms,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", user.token);
+
+    // A local provider (no API key) + a model under it.
+    let provider: Value = client
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "name": "Local", "provider_type": "local", "enabled": false }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let provider_id = provider["id"].as_str().unwrap();
+    let model: Value = client
+        .post(server.api_url("/llm-models"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "provider_id": provider_id, "name": "default-model", "alias": "default-model" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let model_id = model["id"].as_str().expect("model id");
+
+    // Project carries the default_model_id and returns it on read.
+    let project = helpers::create_project_with(
+        &server,
+        &user,
+        json!({ "name": "Model Holder", "default_model_id": model_id }),
+    )
+    .await;
+    let pid = project["id"].as_str().unwrap();
+    assert_eq!(project["default_model_id"], model_id, "default_model_id round-trips");
+
+    // Deleting the model blanks the column (ON DELETE SET NULL), project lives.
+    let del = client
+        .delete(server.api_url(&format!("/llm-models/{model_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert!(del.status().is_success(), "model delete failed: {}", del.status());
+
+    let (_status, body) = helpers::get_project(&server, &user, pid).await;
+    let after = body.expect("project still exists after model delete");
+    assert!(
+        after["default_model_id"].is_null(),
+        "expected SET NULL on model FK, got: {:?}",
+        after["default_model_id"]
+    );
+}
+
+/// create_project validates default-asset references: a non-existent
+/// default_model_id → 422 DEFAULT_MODEL_NOT_FOUND, and a foreign/non-existent
+/// default_assistant_id → 422 DEFAULT_ASSISTANT_INACCESSIBLE. Neither error
+/// path was exercised by an integration test.
+#[tokio::test]
+async fn test_create_project_rejects_bad_default_asset_refs() {
+    let server = TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "proj_badrefs",
+        helpers::full_project_permissions(),
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", user.token);
+
+    // Non-existent model → 422 DEFAULT_MODEL_NOT_FOUND.
+    let r = client
+        .post(server.api_url("/projects"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "name": "Bad Model", "default_model_id": Uuid::new_v4() }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 422, "dangling default_model_id must 422");
+    let body: Value = r.json().await.unwrap();
+    assert_eq!(body["error_code"].as_str(), Some("DEFAULT_MODEL_NOT_FOUND"), "{body}");
+
+    // Foreign/non-existent assistant → 422 DEFAULT_ASSISTANT_INACCESSIBLE.
+    let r = client
+        .post(server.api_url("/projects"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "name": "Bad Asst", "default_assistant_id": Uuid::new_v4() }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 422, "inaccessible default_assistant_id must 422");
+    let body: Value = r.json().await.unwrap();
+    assert_eq!(body["error_code"].as_str(), Some("DEFAULT_ASSISTANT_INACCESSIBLE"), "{body}");
+}

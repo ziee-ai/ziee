@@ -202,6 +202,70 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
     await deleteProvider(page, updatedName)
   })
 
+  test('cancelling the inline name edit reverts to the original name', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const originalName = `test-cancel-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createLocalProvider(page, baseURL, originalName, 'desc')
+    await clickProviderCard(page, originalName)
+    await expect(page).toHaveURL(/\/settings\/llm-providers\/[a-f0-9-]+/)
+
+    await page.click('button[aria-label="Edit provider name"]')
+    const input = page.locator('input[value="' + originalName + '"]')
+    await expect(input).toBeVisible()
+
+    // Type a new value then CANCEL — the change must NOT persist.
+    await input.fill(`${originalName}-discarded`)
+    await page.click('button[aria-label="Cancel editing provider name"]')
+
+    await expect(
+      page.getByRole('heading', { name: originalName }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: `${originalName}-discarded` }),
+    ).toHaveCount(0)
+
+    await page.goBack()
+    await deleteProvider(page, originalName)
+  })
+
+  test('empty provider name fails inline-edit validation', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const originalName = `test-empty-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createLocalProvider(page, baseURL, originalName, 'desc')
+    await clickProviderCard(page, originalName)
+    await expect(page).toHaveURL(/\/settings\/llm-providers\/[a-f0-9-]+/)
+
+    await page.click('button[aria-label="Edit provider name"]')
+    const input = page.locator('input[value="' + originalName + '"]')
+    await expect(input).toBeVisible()
+
+    // Clear the field and try to save → the required rule blocks it.
+    await input.fill('')
+    await page.click('button[aria-label="Save provider name"]')
+
+    await expect(
+      page.locator('.ant-form-item-explain-error:has-text("Name is required")'),
+    ).toBeVisible()
+    // Still in edit mode (save was rejected) and the original name is intact.
+    await expect(
+      page.getByRole('button', { name: 'Save provider name' }),
+    ).toBeVisible()
+
+    await page.click('button[aria-label="Cancel editing provider name"]')
+    await page.goBack()
+    await deleteProvider(page, originalName)
+  })
+
   test('should delete a local provider', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const providerName = `test-delete-${Date.now()}`
@@ -478,5 +542,39 @@ test.describe('LLM Providers - Empty States', () => {
     // If no providers exist, the page should still be functional
     // (No specific empty state component is required - just verify page loads)
     await expect(page.locator('.ant-menu-item:has-text("Add Provider")')).toBeVisible()
+  })
+})
+
+test.describe('LLM Providers - Multiple providers (key + keyless mix)', () => {
+  test('a keyed remote provider and a keyless local provider coexist in the list', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const ts = Date.now()
+    const remoteName = `mix-remote-${ts}`
+    const localName = `mix-local-${ts}`
+
+    await loginAsAdmin(page, baseURL)
+
+    // A remote (OpenAI) provider configured WITH an API key.
+    await createRemoteProvider(
+      page,
+      baseURL,
+      remoteName,
+      'https://api.openai.com/v1',
+      'sk-mix-test-key-123',
+    )
+    // A local provider — keyless (no credentials).
+    await createLocalProvider(page, baseURL, localName, 'Keyless local provider')
+
+    // Both providers are present simultaneously (the prior suites only ever
+    // exercised a single provider at a time).
+    await assertProviderExists(page, remoteName)
+    await assertProviderExists(page, localName)
+
+    // Cleanup.
+    await deleteProvider(page, remoteName)
+    await deleteProvider(page, localName)
   })
 })

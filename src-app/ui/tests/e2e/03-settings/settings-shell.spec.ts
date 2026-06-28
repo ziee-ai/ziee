@@ -37,4 +37,58 @@ test.describe('Settings shell', () => {
     // the settings layout is not nested inside a second AppLayout.
     await expect(page.locator('#app-sidebar')).toHaveCount(1)
   })
+
+  test('mobile layout swaps the section rail for a dropdown picker', async ({
+    page,
+    testInfra,
+  }) => {
+    // A narrow viewport (< the `sm` breakpoint) flips SettingsPage into its
+    // mobile layout: the left section rail is replaced by a single dropdown
+    // button in the header (aria-label "Select settings section").
+    await page.setViewportSize({ width: 480, height: 900 })
+    await page.goto(`${testInfra.baseURL}/settings`)
+    await expect(page).toHaveURL(/\/settings\/[a-z-]+/, { timeout: 15000 })
+
+    const picker = page.getByRole('button', {
+      name: 'Select settings section',
+    })
+    await expect(picker).toBeVisible({ timeout: 15000 })
+
+    // Opening it reveals the section menu; pick a different section and the
+    // route follows.
+    await picker.click()
+    const menu = page.getByRole('menu')
+    await expect(menu).toBeVisible()
+    const before = page.url()
+    // Click the second selectable menu item (the first is the current section).
+    await menu.getByRole('menuitem').nth(1).click()
+    await expect
+      .poll(() => page.url(), { timeout: 15000 })
+      .not.toBe(before)
+    await expect(page).toHaveURL(/\/settings\/[a-z-]+/)
+  })
+
+  test('desktop sidebar menu navigates between sections', async ({
+    page,
+    testInfra,
+  }) => {
+    // Desktop viewport → the section rail (antd Menu) is shown, not the
+    // mobile dropdown.
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(`${testInfra.baseURL}/settings/profile`)
+    await expect(
+      page.getByRole('heading', { name: 'Profile' }),
+    ).toBeVisible({ timeout: 15000 })
+
+    // Click the "MCP Servers" section in the sidebar → route + content follow.
+    await page.getByRole('menuitem', { name: 'MCP Servers' }).click()
+    await expect(page).toHaveURL(/\/settings\/mcp-servers$/)
+
+    // And back to Profile via the sidebar.
+    await page.getByRole('menuitem', { name: 'Profile' }).click()
+    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(
+      page.getByRole('heading', { name: 'Profile' }),
+    ).toBeVisible()
+  })
 })

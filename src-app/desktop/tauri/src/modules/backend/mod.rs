@@ -365,6 +365,15 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
             }
             Err(e) => {
                 tracing::error!("Failed to start backend server: {}", e);
+                // Propagate the failure to the user instead of leaving the app
+                // invisible. The spawned start task has no caller to return the
+                // error to, so without this the window (created only on the Ok
+                // path below) never appears and a failed launch is silent.
+                // Creating the window anyway lets the desktop UI's bootstrap
+                // retry loop run, time out against the dead backend, and render
+                // the 'failed' state ("Backend failed to start. Try restarting
+                // Ziee.").
+                create_main_window(&app_handle);
             }
         }
     });

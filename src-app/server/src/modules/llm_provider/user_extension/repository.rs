@@ -116,7 +116,9 @@ impl UserGroupLlmProviderRepository {
     }
 
     /// All providers assigned to a user group. Returns full LlmProvider
-    /// rows (with api_key decrypted).
+    /// rows (with api_key decrypted). Unbounded — for internal callers that
+    /// need the complete set (e.g. the assignment-diff in update). The HTTP
+    /// read path uses [`get_for_group_paged`] instead.
     pub async fn get_for_group(
         &self,
         group_id: Uuid,
@@ -129,6 +131,52 @@ impl UserGroupLlmProviderRepository {
              WHERE ugp.group_id = $1
              ORDER BY p.built_in DESC, p.name ASC"#,
             group_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut providers = Vec::with_capacity(rows.len());
+        for r in rows {
+            let api_key = resolve_optional_secret(&self.pool, r.api_key_encrypted, r.api_key).await;
+            providers.push(LlmProvider {
+                id: r.id,
+                name: r.name,
+                provider_type: r.provider_type,
+                enabled: r.enabled,
+                api_key,
+                base_url: r.base_url,
+                built_in: r.built_in,
+                proxy_settings: r
+                    .proxy_settings
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or_default(),
+                created_at: to_chrono(r.created_at),
+                updated_at: to_chrono(r.updated_at),
+                default_runtime_version_id: r.default_runtime_version_id,
+            });
+        }
+        Ok(providers)
+    }
+
+    /// Offset-paginated view of a group's assigned providers for the HTTP read
+    /// path — bounds the otherwise-unbounded SELECT (default page size 100).
+    pub async fn get_for_group_paged(
+        &self,
+        group_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<LlmProvider>, sqlx::Error> {
+        let rows = sqlx::query!(
+            r#"SELECT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.api_key_encrypted, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
+                      p.default_runtime_version_id
+             FROM llm_providers p
+             INNER JOIN user_group_llm_providers ugp ON p.id = ugp.provider_id
+             WHERE ugp.group_id = $1
+             ORDER BY p.built_in DESC, p.name ASC
+             LIMIT $2 OFFSET $3"#,
+            group_id,
+            limit,
+            offset
         )
         .fetch_all(&self.pool)
         .await?;

@@ -70,6 +70,136 @@ test.describe('Document RAG — admin settings surface', () => {
     await expect(page.getByText(/Embedding model/)).toBeVisible()
   })
 
+  test('MaintenanceSection Run backfill dispatches a background job', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    const maintenance = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Backfill existing files' })
+    await expect(maintenance).toBeVisible({ timeout: 20000 })
+
+    // Trigger the (idempotent) backfill — with no eligible files it's a no-op
+    // server-side but still dispatches successfully.
+    await maintenance.getByTestId('backfill-button').click()
+    await expect(
+      page.getByText('Backfill dispatched in the background.'),
+    ).toBeVisible({ timeout: 10000 })
+  })
+
+  test('FullTextSection saves the RRF k tuning knob', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    // The file-rag FTS card carries the "RRF k" + "Candidate multiplier"
+    // labels (distinct from the master "Document search" card).
+    const ftsCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Candidate multiplier' })
+    await expect(ftsCard).toBeVisible({ timeout: 20000 })
+
+    await ftsCard.getByRole('spinbutton', { name: /RRF k/i }).fill('77')
+    await ftsCard.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Full-text settings saved.')).toBeVisible()
+  })
+
+  test('EnableSection master toggle saves the document-search setting', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    const enableCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Enable Document RAG deployment-wide' })
+    await expect(enableCard).toBeVisible({ timeout: 20000 })
+
+    // Flip the master switch and confirm it actually toggled, then save.
+    const master = enableCard.getByRole('switch', {
+      name: 'Enable Document RAG deployment-wide',
+    })
+    const before = await master.getAttribute('aria-checked')
+    await master.click()
+    await expect(master).not.toHaveAttribute('aria-checked', before ?? 'true')
+
+    await enableCard.getByRole('button', { name: 'Save' }).click()
+    await expect(
+      page.getByText('Document search settings saved.'),
+    ).toBeVisible()
+  })
+
+  test('embedding section: no-model state + cosine threshold save', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    const embedCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Embedding (semantic search)' })
+    await expect(embedCard).toBeVisible({ timeout: 20000 })
+
+    // Fresh deploy has no embedding-capable models → the info Alert shows, the
+    // model picker is disabled, and Re-embed is disabled (no current model).
+    await expect(
+      embedCard.getByText('No embedding-capable models found.'),
+    ).toBeVisible()
+    await expect(
+      embedCard.getByRole('button', { name: 'Re-embed now' }),
+    ).toBeDisabled()
+
+    // The cosine threshold knob still saves (no model required).
+    await embedCard
+      .getByRole('spinbutton', { name: /Cosine distance threshold/i })
+      .fill('0.35')
+    await embedCard.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Embedding settings saved.')).toBeVisible()
+  })
+
+  test('chunking rejects overlap >= chunk size with a validation error', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    await expect(page.getByText('Chunking', { exact: true })).toBeVisible()
+
+    const chunkingCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Chunk size (characters)' })
+
+    // Set overlap to be >= chunk size — an invalid combination.
+    await page.getByRole('spinbutton', { name: /Chunk size/i }).fill('1000')
+    await page
+      .getByRole('spinbutton', { name: /Chunk overlap/i })
+      .fill('2000')
+    await chunkingCard.getByRole('button', { name: 'Save' }).click()
+
+    // The client-side guard surfaces an error toast + inline field errors and
+    // does NOT save.
+    await expect(
+      page.getByText('Overlap must be smaller than the chunk size.'),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Must be smaller than the chunk size'),
+    ).toBeVisible()
+    await expect(page.getByText(/Chunking settings saved/)).toHaveCount(0)
+  })
+
   test('chunking settings save round-trips', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     const adminToken = await getAdminToken(apiURL)

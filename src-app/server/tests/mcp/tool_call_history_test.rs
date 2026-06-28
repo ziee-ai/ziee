@@ -749,4 +749,62 @@ async fn builtin_files_mcp_tool_call_records_is_built_in_true() {
         "a built-in MCP tool call must record is_built_in=true"
     );
     assert_eq!(row.get::<String, _>("tool_name"), "list_files");
+/// Retention prune (mcp/tool_calls/prune.rs → McpRepository::prune_tool_calls →
+/// `DELETE FROM mcp_tool_calls WHERE created_at < cutoff`). The existing
+/// suite only round-trips the retention SETTING; this exercises the actual
+/// deletion: an old row is pruned, a recent row is kept.
+#[tokio::test]
+async fn prune_deletes_rows_older_than_cutoff_and_keeps_recent() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "tc_prune", &[]).await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+
+    // Two owner-scoped tool-call rows: one ~100 days old, one fresh.
+    let old_id = Uuid::new_v4();
+    let recent_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO mcp_tool_calls (id, user_id, server_name, tool_name, created_at) \
+         VALUES ($1, $2, 'srv', 'echo', now() - interval '100 days')",
+    )
+    .bind(old_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO mcp_tool_calls (id, user_id, server_name, tool_name, created_at) \
+         VALUES ($1, $2, 'srv', 'echo', now())",
+    )
+    .bind(recent_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Prune everything older than 50 days via the REAL repository method.
+    let cutoff = time::OffsetDateTime::now_utc() - time::Duration::days(50);
+    let pruned = ziee::mcp::McpRepository::new(pool.clone())
+        .prune_tool_calls(cutoff)
+        .await
+        .expect("prune should succeed");
+    assert_eq!(pruned, 1, "exactly the >50d-old row is pruned");
+
+    let old_gone: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM mcp_tool_calls WHERE id = $1")
+            .bind(old_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(old_gone, 0, "the old row must be deleted");
+    let recent_kept: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM mcp_tool_calls WHERE id = $1")
+            .bind(recent_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(recent_kept, 1, "the recent row must be kept");
+    pool.close().await;
 }

@@ -187,6 +187,14 @@ pub async fn stop_model_instance(
     let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
     deployment.stop(model_id).await?;
 
+    // Evict in-memory per-model tracking so the HEALTH state machine + instance
+    // flag don't accumulate for the process lifetime once a model is explicitly
+    // stopped (the reaper does the same on idle-drain; this closes the leak on
+    // the explicit-stop path). A later restart re-creates fresh state. The
+    // in-flight counter is intentionally NOT forgotten (see reaper.rs / H1/H2).
+    super::proxy::clear_instance_flag(model_id).await;
+    super::auto_start::forget(model_id).await;
+
     // Get and return the updated instance
     let instance = Repos
         .local_runtime

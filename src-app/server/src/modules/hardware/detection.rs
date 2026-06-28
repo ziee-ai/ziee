@@ -894,3 +894,45 @@ fn get_system_total_memory() -> Option<u64> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Exercise the GPU *detection logic* directly (not just the HTTP wrapper):
+    /// `detect_gpu_devices` must never panic and must return well-formed rows —
+    /// every device carries a non-empty `device_id` + `name`, and `memory`,
+    /// when present, is positive. On a machine with no GPU it returns an empty
+    /// Vec, which is a valid (and asserted) outcome.
+    #[test]
+    fn detect_gpu_devices_returns_well_formed_rows() {
+        let devices = detect_gpu_devices();
+        for d in &devices {
+            assert!(!d.device_id.trim().is_empty(), "device_id non-empty: {d:?}");
+            assert!(!d.name.trim().is_empty(), "name non-empty: {d:?}");
+            if let Some(mem) = d.memory {
+                assert!(mem > 0, "reported memory must be positive: {d:?}");
+            }
+        }
+    }
+
+    /// `get_gpu_usage_data` must likewise be panic-free and well-formed: each
+    /// usage row has a non-empty `device_id`, and any present utilization /
+    /// memory-usage percentage is within [0, 100].
+    #[test]
+    fn get_gpu_usage_data_percentages_are_in_range() {
+        let usages = get_gpu_usage_data();
+        for u in &usages {
+            assert!(!u.device_id.trim().is_empty(), "usage device_id non-empty: {u:?}");
+            if let Some(p) = u.utilization_percentage {
+                assert!((0.0..=100.0).contains(&p), "utilization in range: {u:?}");
+            }
+            if let Some(p) = u.memory_usage_percentage {
+                assert!((0.0..=100.0).contains(&p), "memory % in range: {u:?}");
+            }
+            if let (Some(used), Some(total)) = (u.memory_used, u.memory_total) {
+                assert!(used <= total, "memory_used must not exceed memory_total: {u:?}");
+            }
+        }
+    }
+}

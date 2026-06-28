@@ -90,6 +90,9 @@ pub async fn start_failing_searxng() -> (String, std::sync::Arc<std::sync::atomi
 /// Spawn a loopback SearXNG that always returns HTTP 429 (rate-limited) — used
 /// to exercise the chain's fallback on a rate-limit response (distinct from a
 /// 500). Returns the base url + a hit counter.
+/// Loopback mock SearXNG that always replies HTTP 429 (rate-limited) and counts
+/// hits — to exercise the fallback-on-rate-limit path (distinct from the 500
+/// case `start_failing_searxng` covers).
 pub async fn start_rate_limited_searxng() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
     use axum::{Router, http::StatusCode, routing::get};
     use std::sync::Arc;
@@ -213,6 +216,17 @@ pub async fn start_mock_html() -> String {
                  <p>This is the substantive body paragraph that readability keeps so the model can read the page.</p>\
                  <p>A second meaningful paragraph with enough words to be retained by the extractor.</p>\
                  </article><footer>copyright boilerplate</footer></body></html>",
+            )
+        }),
+    )
+    .route(
+        // Redirect (302) to a private/IMDS address — the SSRF guard must block
+        // the redirect HOP even though the initial loopback URL was allowed.
+        "/redirect-to-imds",
+        get(|| async {
+            (
+                axum::http::StatusCode::FOUND,
+                [(axum::http::header::LOCATION, "http://169.254.169.254/latest/meta-data/")],
             )
         }),
     )

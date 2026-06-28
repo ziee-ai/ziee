@@ -275,5 +275,42 @@ mod tests {
         assert!(check_permission_union(&user2, &groups, "a::b::c::d::e"));
         assert!(check_permission_union(&user2, &groups, "a::b::x"));
         assert!(!check_permission_union(&user2, &groups, "a::z::c::d"));
+    /// Permission resolution must stay correct (and not false-positive) with
+    /// LARGE permission/group sets — a user with 1000 direct perms across many
+    /// groups: a present needle is found, an absent one is rejected, and a
+    /// single `*` wildcard still short-circuits a huge non-matching set.
+    #[test]
+    fn test_large_permission_and_group_sets() {
+        // 1000 direct perms; the needle `perm::500` is in the set.
+        let owned: Vec<String> = (0..1000).map(|i| format!("perm::{i}")).collect();
+        let user = User {
+            permissions: owned,
+            ..create_test_user_with_permissions(vec![])
+        };
+        let groups: Vec<Group> = (0..50)
+            .map(|g| {
+                let gp: Vec<String> = (0..20).map(|i| format!("grp{g}::cap{i}")).collect();
+                Group {
+                    permissions: gp,
+                    ..create_test_group(vec![])
+                }
+            })
+            .collect();
+
+        // Present needles (direct + a deep group perm) resolve true.
+        assert!(check_permission_union(&user, &groups, "perm::500"));
+        assert!(check_permission_union(&user, &groups, "grp49::cap19"));
+        // Absent needles resolve false (no spurious match across the big set).
+        assert!(!check_permission_union(&user, &groups, "perm::9999"));
+        assert!(!check_permission_union(&user, &groups, "grp99::cap0"));
+
+        // A lone `*` wildcard short-circuits even a huge non-matching set.
+        let wildcard = User {
+            permissions: vec!["*".to_string()],
+            ..create_test_user_with_permissions(vec![])
+        };
+        let big_irrelevant: Vec<Group> =
+            (0..100).map(|_| create_test_group(vec!["noise::x"])).collect();
+        assert!(check_permission_union(&wildcard, &big_irrelevant, "anything::at::all"));
     }
 }

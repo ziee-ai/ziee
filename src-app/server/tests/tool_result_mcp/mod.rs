@@ -39,6 +39,19 @@ async fn seed_tool_result(
     content: &str,
     structured: Option<Value>,
 ) -> (Uuid, Uuid) {
+    seed_tool_result_ex(server, user_id, tool_use_id, content, structured, false).await
+}
+
+/// Like `seed_tool_result` but lets the caller mark the block as an ERROR
+/// result (`is_error: true`) — the failure path a failing MCP tool persists.
+async fn seed_tool_result_ex(
+    server: &TestServer,
+    user_id: &str,
+    tool_use_id: &str,
+    content: &str,
+    structured: Option<Value>,
+    is_error: bool,
+) -> (Uuid, Uuid) {
     let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
     let uid = Uuid::parse_str(user_id).unwrap();
     let conv_id = Uuid::new_v4();
@@ -92,7 +105,7 @@ async fn seed_tool_result(
         "tool_use_id": tool_use_id,
         "name": "literature_search",
         "content": content,
-        "is_error": false,
+        "is_error": is_error,
     });
     if let Some(sc) = structured {
         block["structured_content"] = sc;
@@ -298,6 +311,71 @@ async fn get_tool_result_pages_large_content() {
     assert_eq!(sc["total_chars"], 500);
     let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
     assert!(text.contains("more available"), "paging marker present: {text}");
+}
+
+#[tokio::test]
+async fn get_tool_result_multi_page_recall_cycle() {
+    // A model recalling a large tool result walks it page-by-page: it reads
+    // `has_more` + the echoed `offset`, then re-calls with the next offset
+    // until `has_more` is false, reassembling the full content. This exercises
+    // the FULL offset-based pagination cycle (the existing test only fetched a
+    // single window).
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_cycle", &[]).await;
+    let total = 500usize;
+    let big = "A".repeat(total);
+    let (conv, _msg) =
+        seed_tool_result(&server, &user.user_id, "toolu_cycle", &big, None).await;
+
+    let page_size = 120u64;
+    let mut offset = 0u64;
+    let mut accumulated = String::new();
+    let mut pages = 0;
+    loop {
+        let res = jsonrpc(
+            &server,
+            &user.token,
+            Some(&conv.to_string()),
+            "tools/call",
+            json!({ "name": "get_tool_result",
+                    "arguments": { "tool_use_id": "toolu_cycle",
+                                   "offset": offset, "max_chars": page_size } }),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(res.status(), 200);
+        let body: Value = res.json().await.unwrap();
+        let sc = &body["result"]["structuredContent"];
+
+        // The page echoes the requested offset + the canonical total.
+        assert_eq!(sc["offset"].as_u64().unwrap(), offset, "offset echoed: {body}");
+        assert_eq!(sc["total_chars"].as_u64().unwrap(), total as u64);
+
+        let returned = sc["returned_chars"].as_u64().unwrap();
+        assert!(returned > 0 && returned <= page_size, "page bounded: {body}");
+
+        // Accumulate the CONTENT (the window before the continuation marker).
+        let text = body["result"]["content"][0]["text"].as_str().unwrap();
+        let content = text.split("\n[…").next().unwrap_or(text);
+        accumulated.push_str(content);
+
+        pages += 1;
+        assert!(pages <= 10, "must terminate, not loop forever");
+
+        if sc["has_more"].as_bool().unwrap() {
+            // Advance to exactly where this page ended.
+            offset += returned;
+        } else {
+            break;
+        }
+    }
+
+    // The walk reassembled the entire result and took the expected number of
+    // pages (ceil(500/120) = 5).
+    assert_eq!(pages, 5, "500 chars / 120 per page = 5 pages");
+    assert_eq!(accumulated.chars().count(), total, "full content reassembled");
+    assert!(accumulated.chars().all(|c| c == 'A'), "content intact across pages");
 }
 
 #[tokio::test]
@@ -537,6 +615,77 @@ async fn get_tool_result_recalls_attached_resource_links() {
                 { "uri": "/api/files/abc123/download", "name": "chart.png", "mimeType": "image/png", "is_saved": true }
             ]
         })),
+/// `max_chars` is clamped to the inclusive range [1, 100_000] before paging.
+/// This pins BOTH boundaries against a >100k payload: a sub-range request
+/// (0, which Serde accepts but the handler clamps up to 1) returns exactly one
+/// char, and an over-range request (200_000, clamped down to 100_000) returns
+/// exactly 100_000 — neither under- nor over-shoots the clamp.
+#[tokio::test]
+async fn get_tool_result_clamps_max_chars_to_bounds() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_clamp", &[]).await;
+    // Larger than the upper clamp so the 100_000 ceiling is observable.
+    let big = "A".repeat(100_010);
+    let (conv, _msg) =
+        seed_tool_result(&server, &user.user_id, "toolu_clamp", &big, None).await;
+    let conv = conv.to_string();
+
+    // Lower bound: max_chars=0 clamps UP to 1 → exactly one char, more to come.
+    let lo: Value = jsonrpc(
+        &server,
+        &user.token,
+        Some(&conv),
+        "tools/call",
+        json!({ "name": "get_tool_result",
+                "arguments": { "tool_use_id": "toolu_clamp", "offset": 0, "max_chars": 0 } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    let lo_sc = &lo["result"]["structuredContent"];
+    assert_eq!(lo_sc["returned_chars"], 1, "max_chars=0 clamps up to 1: {lo}");
+    assert_eq!(lo_sc["has_more"], true);
+    assert_eq!(lo_sc["total_chars"], 100_010);
+
+    // Upper bound: max_chars=200_000 clamps DOWN to 100_000.
+    let hi: Value = jsonrpc(
+        &server,
+        &user.token,
+        Some(&conv),
+        "tools/call",
+        json!({ "name": "get_tool_result",
+                "arguments": { "tool_use_id": "toolu_clamp", "offset": 0, "max_chars": 200_000 } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    let hi_sc = &hi["result"]["structuredContent"];
+    assert_eq!(hi_sc["returned_chars"], 100_000, "max_chars clamps down to 100_000: {hi}");
+    assert_eq!(hi_sc["has_more"], true, "100_010 > 100_000 ⇒ more remains");
+}
+
+/// An ERROR tool_result block (`is_error: true`) — what a failing MCP tool
+/// persists — must STILL be recallable via `get_tool_result`: the handler keys
+/// only on `tool_use_id` + `content_type='tool_result'` and must NOT filter out
+/// error blocks (otherwise the model can never inspect why a tool failed). This
+/// pins recall of the error-result path that `clear_old_tool_results` trims.
+#[tokio::test]
+async fn get_tool_result_recalls_error_blocks() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_error", &[]).await;
+    let (conv, _msg) = seed_tool_result_ex(
+        &server,
+        &user.user_id,
+        "toolu_err",
+        "Tool execution failed: upstream returned 503",
+        Some(json!({ "error": "upstream_unavailable", "status": 503 })),
+        true,
     )
     .await;
 
@@ -546,6 +695,7 @@ async fn get_tool_result_recalls_attached_resource_links() {
         Some(&conv.to_string()),
         "tools/call",
         json!({ "name": "get_tool_result", "arguments": { "tool_use_id": "toolu_reslink" } }),
+        json!({ "name": "get_tool_result", "arguments": { "tool_use_id": "toolu_err" } }),
     )
     .send()
     .await
@@ -954,5 +1104,17 @@ async fn real_llm_invokes_get_tool_result_to_recall_a_prior_result() {
     assert!(
         text.to_lowercase().contains("teal"),
         "the model's answer must reflect the recalled tool result; got: {text}"
+
+    // The error block is found + recalled (not filtered away as a non-result).
+    assert!(body["error"].is_null(), "recall must succeed for an error block: {body}");
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("Tool execution failed: upstream returned 503"),
+        "error content must be recalled verbatim: {text}"
+    );
+    // Its structuredContent (the typed error payload) round-trips too.
+    assert!(
+        text.contains("upstream_unavailable"),
+        "error structuredContent must be recalled: {text}"
     );
 }

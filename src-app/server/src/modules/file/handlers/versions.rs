@@ -169,11 +169,9 @@ async fn version_and_file(
 pub async fn download_version(
     auth: RequirePermissions<(FilesDownload,)>,
     Path((file_id, version)): Path<(Uuid, i32)>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     let user_id = auth.user.id;
-    let (file, v) = version_and_file(file_id, version, user_id)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let (file, v) = version_and_file(file_id, version, user_id).await?;
     let extension = file
         .filename
         .rsplit('.')
@@ -184,7 +182,7 @@ pub async fn download_version(
     let bytes = storage
         .load_original(user_id, v.blob_version_id, &extension)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| AppError::not_found("File version"))?;
     let headers = [
         (
             header::CONTENT_TYPE,
@@ -197,7 +195,7 @@ pub async fn download_version(
         (header::CONTENT_LENGTH, bytes.len().to_string()),
         (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
-    Ok((headers, bytes).into_response())
+    Ok((StatusCode::OK, (headers, bytes).into_response()))
 }
 
 /// Get a specific version's preview image.
@@ -205,22 +203,20 @@ pub async fn preview_version(
     auth: RequirePermissions<(FilesPreview,)>,
     Path((file_id, version)): Path<(Uuid, i32)>,
     Query(query): Query<PreviewQuery>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     let user_id = auth.user.id;
-    let (_file, v) = version_and_file(file_id, version, user_id)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let (_file, v) = version_and_file(file_id, version, user_id).await?;
     let storage = get_file_storage();
     let image = storage
         .load_preview(user_id, v.blob_version_id, query.page)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| AppError::internal_error(format!("preview load failed: {e}")))?;
     let headers = [
         (header::CONTENT_TYPE, "image/jpeg".to_string()),
         (header::CONTENT_LENGTH, image.len().to_string()),
         (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
-    Ok((headers, image).into_response())
+    Ok((StatusCode::OK, (headers, image).into_response()))
 }
 
 /// Get a specific version's extracted text.
@@ -228,21 +224,19 @@ pub async fn text_version(
     auth: RequirePermissions<(FilesRead,)>,
     Path((file_id, version)): Path<(Uuid, i32)>,
     Query(query): Query<TextPageQuery>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     let user_id = auth.user.id;
-    let (_file, v) = version_and_file(file_id, version, user_id)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let (_file, v) = version_and_file(file_id, version, user_id).await?;
     let storage = get_file_storage();
     let text = match query.page {
         Some(page_num) => {
             if page_num < 1 || page_num > v.text_page_count as u32 {
-                return Err(StatusCode::BAD_REQUEST);
+                return Err(AppError::bad_request("INVALID_PAGE", "page out of range").into());
             }
             storage
                 .load_text_page(user_id, v.blob_version_id, page_num)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .map_err(|e| AppError::internal_error(format!("text load failed: {e}")))?
         }
         None => {
             let mut out = String::new();
@@ -250,7 +244,7 @@ pub async fn text_version(
                 let page = storage
                     .load_text_page(user_id, v.blob_version_id, page_num as u32)
                     .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                    .map_err(|e| AppError::internal_error(format!("text load failed: {e}")))?;
                 if page_num > 1 {
                     out.push_str("\n\n--- Page ");
                     out.push_str(&page_num.to_string());
@@ -266,7 +260,7 @@ pub async fn text_version(
         (header::CONTENT_LENGTH, text.len().to_string()),
         (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
-    Ok((headers, text).into_response())
+    Ok((StatusCode::OK, (headers, text).into_response()))
 }
 
 // ---- OpenAPI docs ----

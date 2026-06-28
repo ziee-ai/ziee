@@ -28,9 +28,13 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
 
   useEffect(() => {
     Stores.Onboarding.setReady(true)
-    registerBeforeNext(null)
     if (canSeeAdminControls) {
+      // Wire up the before-next handler so hub-server installations AND
+      // system-server toggles are persisted when the user clicks Next/Start Chatting.
+      registerBeforeNext(() => Stores.McpServersStep.applyMcpServerChanges())
       Stores.McpServersStep.loadMcpServers()
+    } else {
+      registerBeforeNext(null)
     }
   }, [canSeeAdminControls])
 

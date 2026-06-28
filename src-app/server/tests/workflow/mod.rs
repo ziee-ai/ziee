@@ -16,6 +16,7 @@
 
 mod access_and_durability;
 mod conversation_elicit;
+mod diamond_dag;
 mod elicit;
 mod elicit_data_seeding;
 mod install_from_hub;

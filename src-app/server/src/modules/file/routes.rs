@@ -14,6 +14,10 @@ use super::handlers::*;
 /// policy value: 200 MB). The global router cap is 16 MB (see main.rs); this
 /// route opts into the higher ceiling. Individual files are additionally capped
 /// at 50 MB by `MAX_FILE_SIZE` in the upload handler.
+/// (see main.rs); this route opts into a higher ceiling. Set to 200 MB
+/// (approved policy) so the request is rejected before buffering huge bodies
+/// into RAM — paired with the 50 MB per-file cap enforced in upload.rs (the
+/// extra headroom covers multipart framing + multiple fields).
 const FILE_UPLOAD_BODY_LIMIT: usize = 200 * 1024 * 1024;
 
 /// File management routes

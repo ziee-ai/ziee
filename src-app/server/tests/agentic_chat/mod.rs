@@ -898,6 +898,16 @@ async fn model_authored_file_persists_and_is_reread_across_turns() {
     let server = TestServer::start().await;
     let stub = StubChat::start().await;
     let user = power_user(&server, "agentic_authored").await;
+/// Tool-call history records BUILT-IN MCP tool calls too: when the chat loop
+/// drives a `files_mcp` tool (read_file) via the StubChat, an `mcp_tool_calls`
+/// row is written with `is_built_in = true` and `server_name = 'files_mcp'`.
+/// The existing tool_call_history tests only cover a user MockMcpServer
+/// (is_built_in = false). Recording is fire-and-forget, so poll briefly.
+#[tokio::test]
+async fn files_mcp_tool_call_is_recorded_as_built_in() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "files_record").await;
     let model_id = crate::common::stub_chat::register_stub_model(
         &server, &user.token, &user.user_id, &stub.base_url, true, None,
     )
@@ -905,6 +915,8 @@ async fn model_authored_file_persists_and_is_reread_across_turns() {
 
     let project_id = create_project(&server, &user, "cascade-project").await;
     let file_id = upload_text(&server, &user, "notes.txt", "CASCADE_MARKER alpha").await;
+    let project_id = create_project(&server, &user, "rec-project").await;
+    let file_id = upload_text(&server, &user, "rec.txt", "RECORDED_MARKER_77 content here").await;
     attach_file_to_project(&server, &user, &project_id, &file_id).await;
     let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
     attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
@@ -1042,6 +1054,7 @@ async fn multi_step_upload_analyze_mcp_edit_then_followup() {
 
     // Turn 1 — files_mcp: the model reads the attached file on demand.
     let t1 = send_and_collect(
+    let _ = send_and_collect(
         &server,
         &user,
         &conv_id,
@@ -1734,4 +1747,40 @@ async fn multiple_subsystem_builtins_coexist_in_one_conversation() {
             "{subsystem} built-in '{tool}' must be auto-attached alongside the others; attached={attached:?}"
         );
     }
+}
+
+    // The built-in files_mcp call must land an mcp_tool_calls row (fire-and-forget).
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let uid = Uuid::parse_str(&user.user_id).unwrap();
+    let mut found: Option<(bool, String, String)> = None;
+    for _ in 0..40 {
+        let row = sqlx::query_as::<_, (bool, String, String)>(
+            "SELECT is_built_in, server_name, tool_name FROM mcp_tool_calls \
+             WHERE user_id = $1 AND server_name = 'files_mcp' \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(uid)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        if let Some(r) = row {
+            found = Some(r);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    pool.close().await;
+
+    let (is_built_in, server_name, tool_name) =
+        found.expect("a files_mcp tool-call row must be recorded");
+    assert!(is_built_in, "files_mcp is a built-in server → is_built_in=true");
+    assert_eq!(server_name, "files_mcp");
+    assert!(
+        tool_name.ends_with("read_file") || tool_name == "read_file",
+        "recorded tool should be read_file, got {tool_name}"
+    );
 }
