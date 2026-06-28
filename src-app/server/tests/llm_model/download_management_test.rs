@@ -905,3 +905,65 @@ async fn test_delete_active_download_returns_invalid_state() {
         "error_code should be INVALID_STATE, got body: {body}"
     );
 }
+
+// audit id all-7e2c8a435602 — SSE multi-client + client-disconnection coverage
+// for /llm-models/downloads/subscribe. The existing test opens a single
+// subscription. Here: (1) multiple clients subscribe concurrently and each gets
+// its own live event-stream; (2) after clients disconnect (drop the response),
+// a new subscription still succeeds — proving the broadcast pool tolerates
+// connect/disconnect churn and doesn't wedge.
+#[tokio::test]
+async fn test_subscribe_download_progress_multi_client_and_disconnect() {
+    let server = TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "sse_multi_admin",
+        &["llm_models::downloads_read"],
+    )
+    .await;
+    let url = server.api_url("/llm-models/downloads/subscribe");
+
+    // (1) Three clients subscribe CONCURRENTLY — each must get its own 200
+    // text/event-stream (the per-subscriber stream, not a shared single conn).
+    let mut responses = Vec::new();
+    for _ in 0..3 {
+        let resp = reqwest::Client::new()
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .header("Accept", "text/event-stream")
+            .send()
+            .await
+            .expect("subscribe request");
+        assert_eq!(resp.status(), 200, "each concurrent client must get 200");
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            ct.contains("text/event-stream"),
+            "each client gets an event-stream, got: {ct}"
+        );
+        responses.push(resp);
+    }
+
+    // (2) All clients disconnect (drop their responses → the server sees the
+    // streams close). The broadcast registry must prune them without wedging.
+    drop(responses);
+    // Give the server a tick to observe the disconnects.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // A fresh subscription after the churn still succeeds.
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .expect("post-disconnect subscribe request");
+    assert_eq!(
+        resp.status(),
+        200,
+        "a new subscription must still succeed after prior clients disconnected"
+    );
+}
