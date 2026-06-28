@@ -7,11 +7,10 @@ use axum::extract::DefaultBodyLimit;
 use super::handlers::*;
 
 /// Per-route body limit for file uploads. The global router cap is 16 MB
-/// (see main.rs); this route opts into a higher ceiling since files can
-/// legitimately be hundreds of MB. The hard limit is 1 GiB — any single
-/// file beyond that should be uploaded via a streaming/multipart-aware
-/// flow rather than buffered.
-const FILE_UPLOAD_BODY_LIMIT: usize = 1024 * 1024 * 1024;
+/// (see main.rs); this route opts into a higher ceiling. Capped at 200 MB
+/// (DoS hardening) — comfortably above the 50 MB per-file content cap
+/// (`MAX_FILE_SIZE`) to leave headroom for multipart envelope/metadata.
+const FILE_UPLOAD_BODY_LIMIT: usize = 200 * 1024 * 1024;
 
 /// File management routes
 pub fn file_router() -> ApiRouter {

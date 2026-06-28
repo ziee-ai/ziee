@@ -255,6 +255,20 @@ pub(crate) async fn run_ask_user_elicitation(
         .get("schema")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
+    // Cap the model-supplied form schema at 1 MiB. It is serialized,
+    // persisted as a DB content block, and pushed over the SSE stream, so an
+    // oversized schema would bloat storage + every connected client's payload.
+    const MAX_REQUESTED_SCHEMA_BYTES: usize = 1024 * 1024;
+    if serde_json::to_string(&requested_schema)
+        .map(|s| s.len())
+        .unwrap_or(0)
+        > MAX_REQUESTED_SCHEMA_BYTES
+    {
+        return ask_result(
+            "ask_user 'schema' exceeds the 1 MiB limit.".to_string(),
+            true,
+        );
+    }
 
     // No interactive stream (e.g. the before_llm_call no-SSE path) → nobody to ask.
     let Some(sse_tx) = sse_tx else {
