@@ -1,10 +1,21 @@
-import { Alert, App, Form, Input, Modal, Select, Switch, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import type { Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import {
+  message,
+  Dialog,
+  Form,
+  FormField,
+  useForm,
+  Button,
+  Alert,
+  Text,
+  Select,
+  Switch,
+  Input,
+  Textarea,
+} from '@/components/ui'
 import { parseWorkflowIr } from './workflowIr'
-
-const { Text } = Typography
 
 interface WorkflowRunDialogProps {
   workflow: Workflow
@@ -27,8 +38,7 @@ export function WorkflowRunDialog({
   conversationId,
   onStarted,
 }: WorkflowRunDialogProps) {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
+  const form = useForm({ defaultValues: {} as Record<string, unknown> })
   const [jsonInputs, setJsonInputs] = useState('{}')
   const [submitting, setSubmitting] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
@@ -60,7 +70,7 @@ export function WorkflowRunDialog({
   // doesn't surface the prior run's values.
   useEffect(() => {
     if (!open) return
-    form.resetFields()
+    form.reset(Object.fromEntries(inputs.map(i => [i.name, i.default ?? ''])))
     setJsonInputs('{}')
     setJsonError(null)
     setModelId(selectedModelId ?? undefined)
@@ -70,12 +80,9 @@ export function WorkflowRunDialog({
   const handleRun = async () => {
     let inputValues: Record<string, unknown> = {}
     if (structured) {
-      try {
-        const values = await form.validateFields()
-        inputValues = values
-      } catch {
-        return
-      }
+      const valid = await form.trigger()
+      if (!valid) return
+      inputValues = form.getValues()
     } else {
       try {
         inputValues = JSON.parse(jsonInputs || '{}')
@@ -112,31 +119,33 @@ export function WorkflowRunDialog({
   }
 
   return (
-    <Modal
+    <Dialog
       open={open}
+      onOpenChange={v => { if (!v) onClose() }}
       title={`Run ${workflow.display_name || workflow.name}`}
-      onCancel={onClose}
-      onOk={handleRun}
-      okText="Run"
-      confirmLoading={submitting}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleRun} loading={submitting}>
+            Run
+          </Button>
+        </>
+      }
     >
       {structured ? (
-        <Form form={form} layout="vertical">
+        <Form form={form} onSubmit={() => { void handleRun() }}>
           {inputs.map(input => (
-            <Form.Item
+            <FormField
               key={input.name}
               name={input.name}
               label={input.name}
-              extra={input.description}
-              rules={
-                input.required
-                  ? [{ required: true, message: `${input.name} is required` }]
-                  : undefined
-              }
-              initialValue={input.default}
+              description={input.description}
+              required={input.required}
             >
               <Input placeholder={input.description} />
-            </Form.Item>
+            </FormField>
           ))}
         </Form>
       ) : (
@@ -144,13 +153,13 @@ export function WorkflowRunDialog({
           <Text type="secondary" className="text-xs">
             Provide inputs as a JSON object.
           </Text>
-          <Input.TextArea
+          <Textarea
             rows={6}
             value={jsonInputs}
             onChange={e => setJsonInputs(e.target.value)}
             placeholder='{ "topic": "quantum entanglement" }'
           />
-          {jsonError && <Alert type="error" title={jsonError} showIcon />}
+          {jsonError && <Alert tone="error" title={jsonError} />}
         </div>
       )}
       {!conversationId && (
@@ -164,26 +173,24 @@ export function WorkflowRunDialog({
             onChange={setModelId}
             options={modelOptions}
             placeholder="Select a model"
-            showSearch
-            optionFilterProp="label"
             popupMatchSelectWidth={false}
           />
         </div>
       )}
       <div className="mt-2 flex items-center gap-2">
-        <Switch checked={captureLogs} onChange={setCaptureLogs} size="small" />
+        <Switch checked={captureLogs} onChange={setCaptureLogs} size="sm" />
         <Text type="secondary" className="text-xs">
           Capture debug logs (prompts + raw output) for this run
         </Text>
       </div>
       {conversationId && (
         <div className="mt-2 flex items-center gap-2">
-          <Switch checked disabled size="small" />
+          <Switch checked disabled size="sm" />
           <Text type="secondary" className="text-xs">
             Output posts back to the current conversation
           </Text>
         </div>
       )}
-    </Modal>
+    </Dialog>
   )
 }
