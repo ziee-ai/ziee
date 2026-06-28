@@ -247,3 +247,114 @@ async fn test_retrieve_and_inject_injects_core_memory_block() {
         "injected system message must contain the assistant core-memory block; got: {text}"
     );
 }
+
+/// Cross-user isolation: core-memory blocks are keyed by (assistant_id, user_id,
+/// block_label) and `list_for_user_assistant` scopes on `auth.user.id`. Two
+/// users referencing the SAME assistant must each see ONLY their own block —
+/// Alice's persona must never leak into Bob's list, and deleting one must not
+/// touch the other.
+#[tokio::test]
+async fn test_core_memory_blocks_are_isolated_per_user() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Alice can create an assistant + write/read core memory.
+    let alice = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_iso_alice",
+        &[
+            "assistants::create",
+            "memory::core::read",
+            "memory::core::write",
+        ],
+    )
+    .await;
+    // Bob can read/write core memory but references Alice's assistant id.
+    let bob = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_iso_bob",
+        &["memory::core::read", "memory::core::write"],
+    )
+    .await;
+
+    // Alice creates a real assistant (satisfies the FK to assistants(id)).
+    let assistant_id = {
+        let res = client
+            .post(server.api_url("/assistants"))
+            .header("Authorization", format!("Bearer {}", alice.token))
+            .json(&json!({ "name": "core-iso-assistant" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 201, "assistant create should 201");
+        let row: Value = res.json().await.unwrap();
+        row["id"].as_str().unwrap().to_string()
+    };
+
+    let upsert = |token: String, content: &'static str| {
+        let client = client.clone();
+        let url = server.api_url("/assistants/core-memory");
+        let assistant_id = assistant_id.clone();
+        async move {
+            client
+                .put(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "assistant_id": assistant_id,
+                    "block_label": "persona",
+                    "content": content,
+                    "char_limit": 1000,
+                }))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+    let list = |token: String| {
+        let client = client.clone();
+        let url = server.api_url(&format!("/assistants/{assistant_id}/core-memory"));
+        async move {
+            let res = client
+                .get(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(res.status(), 200, "list should 200");
+            res.json::<Vec<Value>>().await.unwrap()
+        }
+    };
+
+    // Both users write their OWN persona block for the same assistant.
+    assert_eq!(
+        upsert(alice.token.clone(), "ALICE_ONLY_FACT").await.status(),
+        200
+    );
+    assert_eq!(upsert(bob.token.clone(), "BOB_ONLY_FACT").await.status(), 200);
+
+    // Each user sees ONLY their own block.
+    let alice_blocks = list(alice.token.clone()).await;
+    assert_eq!(alice_blocks.len(), 1, "alice sees exactly her block");
+    assert_eq!(alice_blocks[0]["content"], "ALICE_ONLY_FACT");
+
+    let bob_blocks = list(bob.token.clone()).await;
+    assert_eq!(bob_blocks.len(), 1, "bob sees exactly his block");
+    assert_eq!(bob_blocks[0]["content"], "BOB_ONLY_FACT");
+
+    // Bob deleting his block leaves Alice's intact (no cross-user delete).
+    let del = client
+        .delete(server.api_url(&format!(
+            "/assistants/{assistant_id}/core-memory/persona"
+        )))
+        .header("Authorization", format!("Bearer {}", bob.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del.status(), 200, "bob deletes his own block");
+
+    let alice_after = list(alice.token.clone()).await;
+    assert_eq!(alice_after.len(), 1, "alice's block survives bob's delete");
+    assert_eq!(alice_after[0]["content"], "ALICE_ONLY_FACT");
+    let bob_after = list(bob.token.clone()).await;
+    assert_eq!(bob_after.len(), 0, "bob's block is gone");
+}
