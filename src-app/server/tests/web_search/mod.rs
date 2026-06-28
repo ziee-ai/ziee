@@ -216,6 +216,17 @@ pub async fn start_mock_html() -> String {
         }),
     )
     .route(
+        // Redirect (302) to a private/IMDS address — the SSRF guard must block
+        // the redirect HOP even though the initial loopback URL was allowed.
+        "/redirect-to-imds",
+        get(|| async {
+            (
+                axum::http::StatusCode::FOUND,
+                [(axum::http::header::LOCATION, "http://169.254.169.254/latest/meta-data/")],
+            )
+        }),
+    )
+    .route(
         // Oversized page (~81 KB body) for the char-truncation + byte-cap tests.
         "/big",
         get(|| async {

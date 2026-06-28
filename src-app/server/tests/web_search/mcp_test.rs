@@ -501,6 +501,35 @@ async fn test_fetch_url_via_loopback_fixture() {
 }
 
 #[tokio::test]
+async fn test_fetch_url_blocks_redirect_to_private_ip() {
+    // Redirect-based SSRF: even with the loopback fixture reachable
+    // (WEB_SEARCH_FETCH_ALLOW_LOOPBACK), a 302 to an IMDS/private address must
+    // be blocked on the redirect HOP (the validated client re-validates every
+    // hop under the same SSRF policy), so the fetch fails in-band.
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("WEB_SEARCH_FETCH_ALLOW_LOOPBACK".to_string(), "1".to_string())],
+        ..Default::default()
+    })
+    .await;
+    let user = create_user_with_permissions(&server, "ws_redir", &["web_search::use"]).await;
+    let html = start_mock_html().await;
+
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "fetch_url", "arguments": { "url": format!("{html}/redirect-to-imds") } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200, "JSON-RPC carries the error in-band");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["result"].is_null(), "redirect to IMDS must not yield a page: {body}");
+    assert!(body["error"].is_object(), "must be an in-band fetch error: {body}");
+}
+
+#[tokio::test]
 async fn test_fetch_url_truncates_at_char_cap() {
     let server = TestServer::start_with_options(TestServerOptions {
         extra_env: vec![("WEB_SEARCH_FETCH_ALLOW_LOOPBACK".to_string(), "1".to_string())],
