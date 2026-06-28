@@ -506,7 +506,7 @@ pub async fn refresh_summary(
     };
 
     let summary_text = call_summarization_llm(&model, prompt).await?;
-    if summary_text.is_empty() {
+    if !summary_is_writable(&summary_text) {
         tracing::warn!(
             "summarization: empty {mode} summary returned for branch {branch_id} — skipping write"
         );
@@ -631,6 +631,14 @@ async fn call_summarization_llm(
     Ok(summary_text.trim().to_string())
 }
 
+/// Guard against persisting a degenerate (empty / whitespace-only) summary. An
+/// LLM that returns no text (provider hiccup, refusal, all-whitespace) must not
+/// overwrite a good prior summary with a blank one — `refresh_summary` skips the
+/// write when this returns false.
+fn summary_is_writable(summary_text: &str) -> bool {
+    !summary_text.trim().is_empty()
+}
+
 async fn upsert_summary(
     pool: &PgPool,
     branch_id: Uuid,
@@ -678,6 +686,18 @@ mod tests {
             role: role.to_string(),
             text: text.to_string(),
         }
+    }
+
+    #[test]
+    fn empty_or_whitespace_summary_is_not_writable() {
+        // An empty or whitespace-only LLM response must be rejected so it can't
+        // overwrite a good prior summary with a blank one.
+        assert!(!summary_is_writable(""));
+        assert!(!summary_is_writable("   "));
+        assert!(!summary_is_writable("\n\t  \n"));
+        // Any real content is writable.
+        assert!(summary_is_writable("A concise summary."));
+        assert!(summary_is_writable("  trimmed but non-empty  "));
     }
 
     #[test]
