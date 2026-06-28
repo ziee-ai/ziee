@@ -87,6 +87,12 @@ pub trait FileStorage: Send + Sync {
     /// Delete all files for a file_id
     async fn delete_all(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<()>;
 
+    /// Remove every on-disk directory scoped to a user across all storage
+    /// subdirs. Called on user delete so the per-user dirs (and any remaining
+    /// blobs) don't linger as filesystem orphans after the `files` rows
+    /// cascade-delete.
+    async fn delete_user_dirs(&self, user_id: Uuid) -> StorageResult<()>;
+
     /// Calculate SHA-256 checksum
     fn calculate_checksum(&self, data: &[u8]) -> String;
 }

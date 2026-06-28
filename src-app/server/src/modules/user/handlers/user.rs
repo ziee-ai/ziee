@@ -539,6 +539,31 @@ pub async fn delete_user(
             tracing::warn!("delete_user: failed to remove file blob {}: {}", blob_id, e);
         }
     }
+    // Remove the now-empty per-user storage dirs (originals/text/images/
+    // thumbnails) so no orphaned directory lingers after the cascade.
+    if let Err(e) = storage.delete_user_dirs(user_id).await {
+        tracing::warn!("delete_user: failed to remove user storage dirs: {}", e);
+    }
+
+    // Best-effort cleanup of the user's hub-installed skill + workflow bundle
+    // dirs on disk. `list_owned_extracted_paths` above covers skill rows, but
+    // hub installs nest bundles under `<app_data>/{skills,workflows}/<uid>/...`;
+    // removing the whole per-user dir reclaims every version regardless of how
+    // the bundle was tracked.
+    let app_data_dir = crate::core::get_app_data_dir();
+    for kind in ["skills", "workflows"] {
+        let dir = app_data_dir.join(kind).join(user_id.to_string());
+        if dir.exists()
+            && let Err(e) = std::fs::remove_dir_all(&dir)
+        {
+            tracing::warn!(
+                "delete_user: failed to remove {} bundle dir {}: {}",
+                kind,
+                dir.display(),
+                e
+            );
+        }
+    }
 
     // Emit deletion event for other modules to react
     event_bus.emit_async(UserEvent::deleted(user_id));
