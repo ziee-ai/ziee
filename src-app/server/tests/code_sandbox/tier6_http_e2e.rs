@@ -468,3 +468,112 @@ async fn e2e_download_endpoint_returns_workspace_file_bytes() {
     let bytes = resp.bytes().await.expect("body");
     assert_eq!(&bytes[..], b"the-bytes-we-expect");
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// 6e — Large output (streaming + OUTPUT_CAP_BYTES) + multi-user contention
+// ─────────────────────────────────────────────────────────────────────
+
+/// A command that emits more than the 1 MiB output cap must come back with
+/// `stdout_truncated: true` and a bounded stdout — exercising the streaming
+/// capture + cap path end-to-end rather than buffering unboundedly.
+#[tokio::test]
+async fn e2e_execute_command_large_output_is_capped_and_flagged() {
+    let Some(server) = enabled_test_server().await else { return };
+    let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
+
+    // ~2 MiB of 'A' on stdout — well over the 1 MiB OUTPUT_CAP_BYTES.
+    let body = tool_call(
+        &server,
+        &jwt,
+        conv_id,
+        "execute_command",
+        json!({ "command": "head -c 2097152 /dev/zero | tr '\\0' 'A'" }),
+    )
+    .await;
+    let structured = body
+        .get("result")
+        .and_then(|r| r.get("structuredContent"))
+        .unwrap_or_else(|| panic!("structuredContent missing — body: {body:#?}"));
+
+    assert_eq!(
+        structured["stdout_truncated"].as_bool(),
+        Some(true),
+        "2 MiB of stdout must set stdout_truncated=true: {structured:#?}"
+    );
+    let stdout_len = structured["stdout"].as_str().map(|s| s.len()).unwrap_or(0);
+    assert!(
+        stdout_len > 0 && stdout_len <= 1_100_000,
+        "captured stdout must be bounded near the 1 MiB cap, got {stdout_len} bytes"
+    );
+    assert!(
+        !structured["timed_out"].as_bool().unwrap_or(true),
+        "the large-output command should complete, not time out"
+    );
+}
+
+/// Two DIFFERENT users running commands in their OWN conversations concurrently
+/// must both succeed with their own correct, non-cross-contaminated output —
+/// covering multi-user sandbox access under contention (each gets an isolated
+/// workspace).
+#[tokio::test]
+async fn e2e_concurrent_multi_user_sandbox_isolated() {
+    let Some(server) = enabled_test_server().await else { return };
+
+    async fn setup_named(
+        server: &crate::common::TestServer,
+        name: &str,
+    ) -> (String, Uuid) {
+        let u = test_helpers::create_user_with_permissions(
+            server,
+            name,
+            &["code_sandbox::execute"],
+        )
+        .await;
+        let user_id = Uuid::parse_str(&u.user_id).expect("user uuid");
+        let pool = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&server.database_url)
+            .await
+            .expect("connect test db");
+        let conv_id = create_test_conversation(&pool, user_id).await;
+        pool.close().await;
+        (u.token, conv_id)
+    }
+
+    let (jwt_a, conv_a) = setup_named(&server, "tier6_multiuser_a").await;
+    let (jwt_b, conv_b) = setup_named(&server, "tier6_multiuser_b").await;
+
+    // Fire both users' commands concurrently; each echoes a user-specific token.
+    let fut_a = tool_call(
+        &server,
+        &jwt_a,
+        conv_a,
+        "execute_command",
+        json!({ "command": "echo USER_A_MARKER_42" }),
+    );
+    let fut_b = tool_call(
+        &server,
+        &jwt_b,
+        conv_b,
+        "execute_command",
+        json!({ "command": "echo USER_B_MARKER_99" }),
+    );
+    let (body_a, body_b) = tokio::join!(fut_a, fut_b);
+
+    let out = |b: &serde_json::Value| -> String {
+        b.get("result")
+            .and_then(|r| r.get("structuredContent"))
+            .and_then(|s| s.get("stdout"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let out_a = out(&body_a);
+    let out_b = out(&body_b);
+
+    assert!(out_a.contains("USER_A_MARKER_42"), "user A output wrong: {out_a:?}");
+    assert!(out_b.contains("USER_B_MARKER_99"), "user B output wrong: {out_b:?}");
+    // No cross-contamination between the two concurrent workspaces.
+    assert!(!out_a.contains("USER_B_MARKER_99"), "A leaked B's output");
+    assert!(!out_b.contains("USER_A_MARKER_42"), "B leaked A's output");
+}
