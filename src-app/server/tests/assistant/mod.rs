@@ -922,3 +922,127 @@ async fn test_is_template_is_immutable_on_update() {
         .unwrap();
     assert_eq!(got["is_template"], false, "GET must also show is_template still false");
 }
+
+// =====================================================
+// message_assistant attribution persistence (migration 75)
+// =====================================================
+
+/// The assistant extension's `after_user_message_created` hook records which
+/// assistant was active into the `message_assistant` join table, and
+/// `GET /api/messages/{id}/assistant` reads it back. This test seeds a
+/// user-owned conversation/branch/message + a message_assistant row directly,
+/// then asserts the read endpoint returns the attributed assistant — and that
+/// a message with NO attribution returns `assistant_id: null`.
+#[tokio::test]
+async fn test_message_assistant_attribution_persists_and_reads_back() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "msg_assistant",
+        &[
+            "assistants::create",
+            "assistants::read",
+            "conversations::read",
+        ],
+    )
+    .await;
+
+    // A real assistant row (message_assistant.assistant_id FKs to assistants).
+    let assistant = create_user_assistant(&server, &user.token, "Attributed Assistant").await;
+    let assistant_id = Uuid::parse_str(assistant["id"].as_str().unwrap()).unwrap();
+
+    // Seed a user-owned conversation → branch → two messages.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let uid = Uuid::parse_str(&user.user_id).unwrap();
+    let conv_id = Uuid::new_v4();
+    let branch_id = Uuid::new_v4();
+    let attributed_msg = Uuid::new_v4();
+    let bare_msg = Uuid::new_v4();
+
+    sqlx::query(
+        r#"INSERT INTO conversations (id, user_id, title, active_branch_id, created_at, updated_at)
+           VALUES ($1, $2, 'ma', NULL, NOW(), NOW())"#,
+    )
+    .bind(conv_id)
+    .bind(uid)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO branches (id, conversation_id, parent_branch_id, created_from_message_id, created_at)
+           VALUES ($1, $2, NULL, NULL, NOW())"#,
+    )
+    .bind(branch_id)
+    .bind(conv_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE conversations SET active_branch_id = $1 WHERE id = $2")
+        .bind(branch_id)
+        .bind(conv_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for msg_id in [attributed_msg, bare_msg] {
+        sqlx::query(
+            r#"INSERT INTO messages (id, role, originated_from_id, created_at)
+               VALUES ($1, 'user', $1, NOW())"#,
+        )
+        .bind(msg_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"INSERT INTO branch_messages (branch_id, message_id, created_at)
+               VALUES ($1, $2, NOW())"#,
+        )
+        .bind(branch_id)
+        .bind(msg_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    // Attribute exactly one message.
+    sqlx::query(
+        r#"INSERT INTO message_assistant (message_id, assistant_id) VALUES ($1, $2)"#,
+    )
+    .bind(attributed_msg)
+    .bind(assistant_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    let get_attr = |msg: Uuid| {
+        let url = server.api_url(&format!("/messages/{msg}/assistant"));
+        let token = user.token.clone();
+        async move {
+            reqwest::Client::new()
+                .get(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // Attributed message → returns the assistant id.
+    let res = get_attr(attributed_msg).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(
+        body["assistant_id"].as_str().unwrap(),
+        assistant_id.to_string(),
+        "attributed message must read back its assistant: {body}"
+    );
+
+    // Message with no attribution → owned, but assistant_id is null.
+    let res = get_attr(bare_msg).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["assistant_id"].is_null(), "un-attributed message → null: {body}");
+
+    // A message the user doesn't own (random id) → 404 (ownership conflation).
+    let res = get_attr(Uuid::new_v4()).await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
