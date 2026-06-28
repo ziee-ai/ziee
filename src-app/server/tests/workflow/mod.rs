@@ -32,6 +32,7 @@ mod sr_real_llm;
 mod sr_workflow;
 mod status_machine;
 mod stream_access;
+mod sync_emit_test;
 mod system_endpoints;
 mod tool_step;
 mod validate_and_dry_run;
