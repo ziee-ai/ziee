@@ -301,19 +301,24 @@ async fn pdf_to_text(client: &reqwest::Client, url: &str, timeout: Duration) -> 
         return None;
     }
 
-    let pdfium = crate::modules::file::utils::pdfium::init_pdfium().ok()?;
-    let document = pdfium.load_pdf_from_byte_slice(&bytes, None).ok()?;
-    let mut out = String::new();
-    let pages = document.pages();
-    for i in 0..pages.len() {
-        if let Ok(page) = pages.get(i)
-            && let Ok(text) = page.text()
-        {
-            out.push_str(&text.all());
-            out.push('\n');
+    // Reuse the per-thread cached Pdfium (binds the library once per worker).
+    let out = crate::modules::file::utils::pdfium::with_pdfium(|pdfium| {
+        let document = pdfium
+            .load_pdf_from_byte_slice(&bytes, None)
+            .map_err(|e| AppError::internal_error(format!("Failed to load PDF: {e}")))?;
+        let mut out = String::new();
+        let pages = document.pages();
+        for i in 0..pages.len() {
+            if let Ok(page) = pages.get(i)
+                && let Ok(text) = page.text()
+            {
+                out.push_str(&text.all());
+                out.push('\n');
+            }
         }
-    }
-    let out = out.trim().to_string();
+        Ok(out.trim().to_string())
+    })
+    .ok()?;
     (!out.is_empty()).then_some(out)
 }
 

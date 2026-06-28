@@ -1,11 +1,41 @@
 // PDFium utility for runtime usage
 
+use std::cell::RefCell;
+
 use crate::common::AppError;
 use pdfium_render::prelude::*;
 
-/// Initialize PDFium library
-/// Note: Pdfium is not Send+Sync, so we create a new instance each time
-pub fn init_pdfium() -> Result<Pdfium, AppError> {
+thread_local! {
+    /// Per-thread cached `Pdfium`. `Pdfium` (and its library bindings) are
+    /// `!Send`, so a thread-local — not a global `OnceLock` — is the correct
+    /// cache. All PDF work runs inside `tokio::task::spawn_blocking`, so each
+    /// blocking-pool worker binds the dynamic library exactly once and then
+    /// reuses it, instead of re-`dlopen`-ing on every PDF fetch.
+    static PDFIUM: RefCell<Option<Pdfium>> = const { RefCell::new(None) };
+}
+
+/// Run `f` with a thread-local, lazily-initialized `Pdfium` instance.
+///
+/// The closure receives `&Pdfium`; any `PdfDocument`/`PdfPage` it loads borrows
+/// from that reference and must not escape the closure (the same lifetime
+/// constraint the old `init_pdfium()` imposed by ownership). Binding the
+/// library is the expensive part and now happens once per worker thread.
+pub fn with_pdfium<R>(f: impl FnOnce(&Pdfium) -> Result<R, AppError>) -> Result<R, AppError> {
+    PDFIUM.with(|cell| {
+        // Initialize on first use for this thread.
+        if cell.borrow().is_none() {
+            let pdfium = build_pdfium()?;
+            *cell.borrow_mut() = Some(pdfium);
+        }
+        let slot = cell.borrow();
+        f(slot.as_ref().expect("pdfium initialized above"))
+    })
+}
+
+/// Bind the PDFium dynamic library (embedded first, then system fallback) and
+/// construct a fresh `Pdfium`. Callers should prefer [`with_pdfium`], which
+/// caches the result per thread; this builder is invoked once per worker.
+fn build_pdfium() -> Result<Pdfium, AppError> {
     // Try embedded library first (extracted to app_data_dir/bin/)
     match super::embedded::get_pdfium_path() {
         Ok(library_path) => {
