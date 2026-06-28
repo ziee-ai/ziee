@@ -18,5 +18,10 @@ export function BlankLayout({ children }: BlankLayoutProps) {
     }
   }, [token.colorBgLayout])
 
-  return <>{children}</>
+  // Provide a top-level `main` landmark so assistive tech has a primary
+  // content region on the auth/blank pages (these render outside the app
+  // shell that normally supplies it). `display: contents` keeps the element
+  // out of the box tree so it has zero layout impact while still exposing the
+  // landmark role.
+  return <main style={{ display: 'contents' }}>{children}</main>
 }
