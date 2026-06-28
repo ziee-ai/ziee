@@ -210,6 +210,55 @@ test.describe('Settings - Profile (self-service)', () => {
     await expect(page.locator('.ant-message-error')).toBeVisible()
   })
 
+  test('saving the profile form with no changes still succeeds (no-op save)', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    const user = await loginAsFreshUser(page, baseURL, apiURL, 'noop')
+    await gotoProfile(page, baseURL)
+
+    // Don't touch any field — just save. The form submits the unchanged
+    // values and the backend treats it as an idempotent update.
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Profile saved.')).toBeVisible()
+
+    // The username is unchanged after the no-op save.
+    await page.reload()
+    await gotoProfile(page, baseURL)
+    await expect(page.getByLabel('Username')).toHaveValue(user.username)
+  })
+
+  test('OAuth/password-less account hides the change-password form', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    const user = await loginAsFreshUser(page, baseURL, apiURL, 'oauth')
+
+    // Simulate an external-only (OAuth/LDAP) account: the user has no
+    // local password hash. The profile page gates the password form on
+    // `has_password`, so the change-password form must NOT render — only
+    // the "external provider" notice.
+    await testInfra.sql(
+      'UPDATE users SET password_hash = NULL WHERE username = $1',
+      [user.username],
+    )
+
+    await gotoProfile(page, baseURL)
+    await page.reload()
+    await gotoProfile(page, baseURL)
+
+    await expect(
+      page.getByText(
+        'You sign in through an external provider, so there is no password to change here.',
+      ),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Change password' }),
+    ).toHaveCount(0)
+  })
+
   test('blocks weak new password and mismatched confirmation client-side', async ({
     page,
     testInfra,
