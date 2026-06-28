@@ -28,6 +28,7 @@ export function ProjectFilesInlinePreview() {
           onClick={openManageDrawer}
           className="!p-0"
           data-test-files-empty="true"
+          data-testid="file-project-inline-manage-link"
         >
           No knowledge files yet — click Manage to attach.
         </Button>

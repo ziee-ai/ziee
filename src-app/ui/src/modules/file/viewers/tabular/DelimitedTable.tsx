@@ -97,6 +97,7 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           tone="warning"
           title={`Showing first ${MAX_ROWS.toLocaleString()} rows. Download the file to view all data.`}
           className="mb-2 flex-shrink-0"
+          data-testid="file-delimited-truncated-alert"
         />
       )}
       <div className="flex-1 min-h-0 overflow-auto w-full">
@@ -104,6 +105,7 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           columns={columns}
           dataSource={dataSource}
           rowKey="key"
+          data-testid="file-delimited-table"
         />
       </div>
     </div>

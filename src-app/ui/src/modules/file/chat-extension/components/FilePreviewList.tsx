@@ -86,6 +86,7 @@ export function FilePreviewList() {
             {advisories.map(({ f, meta }) => (
               <Alert
                 key={f.id}
+                data-testid={`file-preview-advisory-${f.id}`}
                 tone="warning"
                 title={
                   <span>

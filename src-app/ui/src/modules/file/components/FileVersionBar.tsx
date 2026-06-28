@@ -80,7 +80,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
       />
       {isViewingOld ? (
         <>
-          <Tag tone="warning">viewing v{current} — not current</Tag>
+          <Tag tone="warning" data-testid="file-version-old-tag">viewing v{current} — not current</Tag>
           <Button
             size="sm"
             variant="outline"
@@ -91,12 +91,12 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
           >
             Restore this version
           </Button>
-          <Button size="sm" variant="outline" onClick={() => onSelectVersion(null)}>
+          <Button size="sm" variant="outline" onClick={() => onSelectVersion(null)} data-testid="file-version-back-latest">
             Back to latest
           </Button>
         </>
       ) : (
-        <Tag>v{headVersion} · {versions.length} versions</Tag>
+        <Tag data-testid="file-version-current-tag">v{headVersion} · {versions.length} versions</Tag>
       )}
     </div>
   )

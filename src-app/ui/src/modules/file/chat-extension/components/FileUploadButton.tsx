@@ -44,6 +44,7 @@ export function FileUploadButton() {
       accept="*/*"
       label="Attach files"
       onFiles={handleFiles}
+      data-testid="file-upload-button-area"
       className="!border-0 !p-0 inline-flex"
     >
       <Tooltip title="Attach files">

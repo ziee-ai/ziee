@@ -102,7 +102,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
     return <div className="flex items-center justify-center py-8"><Text type="secondary">No data found</Text></div>
   }
 
-  const renderSheet = (sheet: { headers: string[]; rows: string[][]; truncated: boolean }) => {
+  const renderSheet = (sheet: { name: string; headers: string[]; rows: string[][]; truncated: boolean }) => {
     // Row-number gutter column — matches the CSV/TSV view for
     // visual consistency. kit Table has no fixed/sticky column support,
     // so the gutter scrolls with the rest of the sheet.
@@ -145,6 +145,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
             tone="warning"
             title={`Showing first ${MAX_ROWS.toLocaleString()} rows. Download the file to view all data.`}
             className="mb-2 flex-shrink-0"
+            data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
           />
         )}
         <div className="flex-1 min-h-0 overflow-auto w-full">
@@ -152,6 +153,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
             columns={columns}
             dataSource={dataSource}
             rowKey="key"
+            data-testid={`file-xlsx-table-${sheet.name}`}
           />
         </div>
       </div>
@@ -169,6 +171,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
   return (
     <div className="flex flex-col h-full w-full">
       <Tabs
+        data-testid="file-xlsx-tabs"
         className="flex-1 min-h-0 flex flex-col overflow-hidden"
         items={sheets.map(sheet => ({
           key: sheet.name,

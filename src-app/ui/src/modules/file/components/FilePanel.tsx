@@ -139,6 +139,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
               data-testid="too-large-to-preview"
             >
               <Empty
+                data-testid="file-panel-too-large-empty"
                 icon={<TriangleAlert className="text-5xl text-amber-500" />}
                 description={
                   <div className="flex flex-col items-center gap-1">
@@ -163,6 +164,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
               data-testid="cannot-preview"
             >
               <Empty
+                data-testid="file-panel-cannot-preview-empty"
                 icon={<FileQuestion className="text-5xl text-muted-foreground" />}
                 description={
                   <div className="flex flex-col items-center gap-1">

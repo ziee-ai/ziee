@@ -147,6 +147,7 @@ export function FileCard({
               size="sm"
               format={() => ext}
               aria-label={`Upload progress for ${uploadProgress.filename}`}
+              data-testid="file-card-upload-progress"
             />
           )}
         </div>
@@ -175,6 +176,7 @@ export function FileCard({
               icon={<RotateCw />}
               onClick={() => onRetry()}
               aria-label={`Retry upload ${uploadProgress.filename}`}
+              data-testid="file-card-retry-btn"
             />
           </Tooltip>
         ) : (
@@ -185,6 +187,7 @@ export function FileCard({
                 icon={<X />}
                 onClick={() => onRemove()}
                 aria-label={`Dismiss ${uploadProgress.filename}`}
+                data-testid="file-card-dismiss-btn"
               />
             </Tooltip>
           )
@@ -217,6 +220,7 @@ export function FileCard({
                 onClick={() => onRemove()}
                 className="!absolute top-1 right-1"
                 aria-label="Cancel upload"
+                data-testid="file-card-cancel-btn"
               />
             </Tooltip>
           )}
@@ -273,6 +277,7 @@ export function FileCard({
               checked={selected}
               onChange={checked => onSelectChange?.(checked)}
               aria-label={`Select ${file.filename}`}
+              data-testid="file-card-select-checkbox"
             />
           </div>
         )}
@@ -317,6 +322,7 @@ export function FileCard({
                 variant="ghost"
                 icon={<Download style={{ fontSize: 20 }} />}
                 aria-label={`Download ${file.filename}`}
+                data-testid="file-card-download-btn"
                 onClick={e => {
                   e.stopPropagation()
                   Stores.File.downloadFile(file)
@@ -407,6 +413,7 @@ export function FileCard({
               okButtonProps={{ danger: true }}
               cancelText="Cancel"
               onConfirm={() => onRemove()}
+              data-testid="file-card-remove-confirm"
             >
               <Tooltip content="Remove">
                 <Button
@@ -415,6 +422,7 @@ export function FileCard({
                   icon={<Trash2 />}
                   aria-label="Remove file"
                   className="bg-transparent"
+                  data-testid="file-card-remove-btn"
                 />
               </Tooltip>
             </Confirm>

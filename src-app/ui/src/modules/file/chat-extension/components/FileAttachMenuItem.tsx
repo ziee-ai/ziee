@@ -35,6 +35,7 @@ export function FileAttachMenuItem() {
       accept="*/*"
       label="Attach files or photos"
       onFiles={handleFiles}
+      data-testid="file-attach-menu-upload"
       className="!flex-row !items-center !justify-start !border-0 !p-0 gap-2 px-3 py-2 rounded-md text-foreground min-w-[180px] hover:bg-muted"
     >
       <Paperclip className="size-4" />

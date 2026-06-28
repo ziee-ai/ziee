@@ -186,6 +186,7 @@ export function ProjectFilesManagePanel() {
     <Tag
       tone={atCap ? 'error' : nearCap ? 'warning' : undefined}
       aria-label={`Project file count: ${count} of ${PROJECT_FILE_CAP}`}
+      data-testid="file-project-count-tag"
     >
       {count} / {PROJECT_FILE_CAP} files
     </Tag>
@@ -198,12 +199,14 @@ export function ProjectFilesManagePanel() {
       accept="*/*"
       disabled={atCap}
       label="Upload files"
+      data-testid="file-project-upload-area"
     >
       <Tooltip title={atCap ? `At ${PROJECT_FILE_CAP}-file cap` : 'Upload files'}>
         <Button
           icon={<UploadIcon />}
           disabled={atCap}
           aria-label="Upload files to project"
+          data-testid="file-project-upload-btn"
         >
           Upload
         </Button>
@@ -229,7 +232,7 @@ export function ProjectFilesManagePanel() {
         {selectedFileIds.size} selected
       </Text>
       <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => Stores.ProjectFiles.deselectAll()}>
+        <Button size="sm" variant="outline" onClick={() => Stores.ProjectFiles.deselectAll()} data-testid="file-project-clear-selection-btn">
           Clear
         </Button>
         <Button
@@ -237,6 +240,7 @@ export function ProjectFilesManagePanel() {
           variant="destructive"
           icon={<Trash2 />}
           onClick={handleBatchDelete}
+          data-testid="file-project-delete-selected-btn"
         >
           Delete selected
         </Button>
@@ -266,6 +270,7 @@ export function ProjectFilesManagePanel() {
     !filesLoading && files.length === 0 ? (
       <Empty
         description="No knowledge files yet"
+        data-testid="file-project-empty"
       >
         <Text type="secondary" className="block">
           {canUpload
@@ -304,12 +309,14 @@ export function ProjectFilesManagePanel() {
                     cancelText="Cancel"
                     okButtonProps={{ danger: true }}
                     onConfirm={() => handleDelete(file.id, file.filename)}
+                    data-testid={`file-project-delete-confirm-${file.id}`}
                   >
                     <Tooltip title="Delete">
                       <Button
                         variant="ghost"
                         icon={<Trash2 />}
                         aria-label={`Delete ${file.filename}`}
+                        data-testid={`file-project-delete-btn-${file.id}`}
                       />
                     </Tooltip>
                   </Confirm>

@@ -50,6 +50,7 @@ export function PdfBody(props: FileViewerSlotProps) {
             `Download the file to view all pages.`
           }
           className="flex-shrink-0"
+          data-testid="file-pdf-truncated-alert"
         />
       )}
       {pageUrls.map((url, i) => (

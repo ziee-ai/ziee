@@ -156,6 +156,7 @@ export function RawCodeView({
           title={`Showing first ${MAX_LINES.toLocaleString()} lines. Download the file to view all data.`}
           tone="warning"
           className="m-2 flex-shrink-0"
+          data-testid="file-rawcode-truncated-alert"
         />
       )}
       {/* OverlayScrollbars for consistent themed scrollbar styling

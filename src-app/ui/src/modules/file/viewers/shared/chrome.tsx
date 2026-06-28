@@ -35,6 +35,7 @@ export function RawToggle({ file }: { file: FileEntity }) {
         variant={mode === 'compiled' ? 'default' : 'outline'}
         aria-label="Rendered view"
         onClick={() => Stores.File.setFileViewMode(file.id, 'compiled')}
+        data-testid="file-viewer-rendered-btn"
       >
         Rendered view
       </Button>
@@ -43,6 +44,7 @@ export function RawToggle({ file }: { file: FileEntity }) {
         variant={mode === 'raw' ? 'default' : 'outline'}
         aria-label="Raw view"
         onClick={() => Stores.File.setFileViewMode(file.id, 'raw')}
+        data-testid="file-viewer-raw-btn"
       >
         Raw view
       </Button>
@@ -85,7 +87,7 @@ export function CopyButton({ file }: { file: FileEntity }) {
     }
   }
   return (
-    <Button icon={<Copy />} onClick={handleCopy}>
+    <Button icon={<Copy />} onClick={handleCopy} data-testid="file-viewer-copy-btn">
       Copy
     </Button>
   )
@@ -104,6 +106,7 @@ export function DownloadButton({ file }: { file: FileEntity }) {
           message.error('Failed to download file'),
         )
       }}
+      data-testid="file-viewer-download-btn"
     >
       Download
     </Button>
