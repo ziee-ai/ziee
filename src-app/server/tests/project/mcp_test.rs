@@ -257,3 +257,122 @@ async fn project_state_persists_for_a_restarted_server() {
 
     pool.close().await;
 }
+
+// audit id all-b1bef8dcbd84 — project-MCP-defaults + group-assignment COMBINED
+// flow. The project→conversation snapshot is covered for USER-owned servers, but
+// nothing exercised a project default that references a SYSTEM server the owner
+// can only reach via GROUP membership: the access validator must accept it AND
+// the conversation snapshot must carry it. A non-admin owner whose sole access
+// to the server is the group assignment is the realistic case.
+#[tokio::test]
+async fn project_mcp_defaults_snapshot_group_assigned_system_server() {
+    let server = crate::common::TestServer::start().await;
+
+    // Setup actor (all perms) creates a SYSTEM MCP server + a group + assigns
+    // the server to the group.
+    let setup = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "mcp_grp_setup",
+        &["*"],
+    )
+    .await;
+    let sys: Value = reqwest::Client::new()
+        .post(server.api_url("/mcp/system-servers"))
+        .header("Authorization", format!("Bearer {}", setup.token))
+        .json(&json!({
+            "name": "grp_sys_srv",
+            "display_name": "Group System Server",
+            "description": "system server reached via group",
+            "enabled": true,
+            "transport_type": "http",
+            "url": "http://127.0.0.1:9/mcp",
+            "timeout_seconds": 60
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let sid = sys["id"].as_str().expect("system server id").to_string();
+
+    let grp: Value = reqwest::Client::new()
+        .post(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", setup.token))
+        .json(&json!({ "name": format!("mcp-grp-{}", &sid[..8]), "description": "x", "permissions": {} }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let gid = grp["id"].as_str().expect("group id").to_string();
+
+    let assign = reqwest::Client::new()
+        .post(server.api_url(&format!("/mcp/system-servers/{sid}/groups")))
+        .header("Authorization", format!("Bearer {}", setup.token))
+        .json(&json!({ "group_ids": [gid] }))
+        .send()
+        .await
+        .unwrap();
+    assert!(assign.status().is_success(), "assign server→group: {}", assign.text().await.unwrap_or_default());
+
+    // Project owner: NON-admin, only project perms → access to the system
+    // server is ONLY via the group membership below.
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "mcp_grp_owner",
+        helpers::full_project_permissions(),
+    )
+    .await;
+    let add = reqwest::Client::new()
+        .post(server.api_url("/groups/assign"))
+        .header("Authorization", format!("Bearer {}", setup.token))
+        .json(&json!({ "user_id": owner.user_id, "group_id": gid }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add.status(), StatusCode::NO_CONTENT, "add owner to group: {}", add.text().await.unwrap_or_default());
+
+    // Owner sets project MCP defaults referencing the GROUP-assigned system
+    // server — the access validator must accept it (proves the group path).
+    let p = helpers::create_project(&server, &owner, "Group MCP Project").await;
+    let pid = p["id"].as_str().unwrap();
+    let put = reqwest::Client::new()
+        .put(server.api_url(&format!("/projects/{}/mcp-settings", pid)))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&json!({
+            "approval_mode": "auto_approve",
+            "auto_approved_tools": [{ "server_id": sid, "tools": ["greet"] }],
+            "disabled_servers": [],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        put.status(),
+        StatusCode::OK,
+        "project defaults must accept a group-assigned system server: {}",
+        put.text().await.unwrap_or_default()
+    );
+
+    // A conversation created in the project snapshots those defaults, INCLUDING
+    // the group-assigned server.
+    let conv_id = helpers::create_project_conversation(&server, &owner, pid).await;
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{}/mcp-settings", conv_id)))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "conversation mcp-settings GET");
+    let body: Value = resp.json().await.unwrap();
+    let snap = &body["settings"];
+    assert!(!snap.is_null(), "snapshot row must exist: {body}");
+    assert_eq!(snap["approval_mode"], "auto_approve");
+    assert_eq!(
+        snap["auto_approved_tools"][0]["server_id"].as_str(),
+        Some(sid.as_str()),
+        "the group-assigned system server must be in the conversation snapshot: {body}"
+    );
+}
