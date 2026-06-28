@@ -68,6 +68,7 @@ function CapabilityRow({
       </span>
       <FormField
         name={`capabilities.${name}`}
+        aria-label={label}
         valuePropName="checked"
         className="mb-0"
       >

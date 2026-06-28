@@ -48,7 +48,12 @@ export function UserRegistrationSettings() {
               </Text>
             </div>
           </div>
-          <FormField name="enabled" valuePropName="checked" className="mb-0">
+          <FormField
+            name="enabled"
+            aria-label="Enable user registration"
+            valuePropName="checked"
+            className="mb-0"
+          >
             <Switch
               loading={loadingRegistrationSettings}
               onChange={handleToggle}

@@ -164,9 +164,8 @@ export function Form<T extends FieldValues>({ form, onSubmit, disabled, size, na
   )
 }
 
-export interface FormFieldProps {
+interface FormFieldBase {
   name: string
-  label?: React.ReactNode
   description?: React.ReactNode
   className?: string
   /** Marks the field required: adds `aria-required` + a visual `*` on the label. */
@@ -175,16 +174,28 @@ export interface FormFieldProps {
   valuePropName?: string
   /**
    * A single kit control element. value/onChange/onBlur/name/id/ref + invalid +
-   * aria-describedby are injected. The control MUST accept an `onChange(value)`
-   * (kit controls do; Select aliases it). A consumer-supplied onChange/onBlur on the
-   * child is composed (called after the form binding); a consumer ref is NOT merged.
+   * aria-describedby (and aria-label/labelledby when there's no visible label) are
+   * injected. The control MUST accept an `onChange(value)` (kit controls do; Select
+   * aliases it). A consumer-supplied onChange/onBlur on the child is composed.
    */
   children: React.ReactElement
 }
+// ACCESSIBLE NAME REQUIRED (a11y): every field must have a `label`, OR — when there
+// is no visible label (e.g. a table-cell editor named by its column header) — an
+// explicit `aria-label`/`aria-labelledby`. tsc rejects a nameless FormField.
+export type FormFieldProps = FormFieldBase & (
+  | { label: React.ReactNode; 'aria-label'?: string; 'aria-labelledby'?: string }
+  | { label?: undefined; 'aria-label': string; 'aria-labelledby'?: string }
+  | { label?: undefined; 'aria-label'?: string; 'aria-labelledby': string }
+)
 
 // Wrap the control element; control comes from the Form context
 // (no `control` prop). Bindings are injected via cloneElement onto the kit control.
-export function FormField({ name, label, description, className, required, valuePropName = 'value', children }: FormFieldProps) {
+export function FormField(props: FormFieldProps) {
+  const {
+    name, label, description, className, required, valuePropName = 'value', children,
+    'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby,
+  } = props
   const { control } = useFormContext()
   const { layout, labelWidth } = React.useContext(FormLayoutContext)
   const beside = layout === 'horizontal' || layout === 'inline'
@@ -226,6 +237,9 @@ export function FormField({ name, label, description, className, required, value
         }
         if (showError) injected.invalid = true
         if (required) injected['aria-required'] = true
+        // No visible label → the explicit name goes on the control itself.
+        if (label == null && ariaLabel) injected['aria-label'] = ariaLabel
+        if (label == null && ariaLabelledby) injected['aria-labelledby'] = ariaLabelledby
         const labelEl = label != null && (
           <FieldLabel
             htmlFor={fieldId}

@@ -130,7 +130,7 @@ export function ProviderHeader() {
           onSubmit={handleSaveName}
         >
           <div className={'flex items-center gap-2 w-full flex-wrap'}>
-            <FormField name="name">
+            <FormField name="name" aria-label="Provider name">
               <Input className={'!text-lg'} />
             </FormField>
             <div className={'flex items-center gap-2'}>

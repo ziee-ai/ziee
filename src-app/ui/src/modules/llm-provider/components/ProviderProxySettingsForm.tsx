@@ -112,6 +112,7 @@ export function ProviderProxySettingsForm({
                 </div>
                 <FormField
                   name="enabled"
+                  aria-label="Enable proxy"
                   valuePropName="checked"
                 >
                   <Switch
@@ -132,6 +133,7 @@ export function ProviderProxySettingsForm({
               <div className="mt-2">
                 <FormField
                   name="url"
+                  aria-label="Proxy URL"
                 >
                   <Input
                     placeholder={'http://proxy.example.com:8080'}
@@ -148,12 +150,12 @@ export function ProviderProxySettingsForm({
                 Optional username and password for proxy authentication
               </Text>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <FormField name="username">
+                <FormField name="username" aria-label="Proxy username">
                   <Input
                     placeholder={'Username (optional)'}
                   />
                 </FormField>
-                <FormField name="password">
+                <FormField name="password" aria-label="Proxy password">
                   <PasswordInput
                     placeholder={'Password (optional)'}
                     showLabel="Show"
@@ -171,7 +173,7 @@ export function ProviderProxySettingsForm({
                 Comma-separated list of hosts that should bypass the proxy
               </Text>
               <div className="mt-2">
-                <FormField name="no_proxy">
+                <FormField name="no_proxy" aria-label="No-proxy hosts">
                   <Input
                     placeholder={'localhost,127.0.0.1,.example.com'}
                   />
@@ -190,6 +192,7 @@ export function ProviderProxySettingsForm({
               </div>
               <FormField
                 name="ignore_ssl_certificates"
+                aria-label="Ignore SSL certificate errors"
                 valuePropName="checked"
               >
                 <Switch

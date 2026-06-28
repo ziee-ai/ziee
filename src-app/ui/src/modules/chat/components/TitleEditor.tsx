@@ -81,7 +81,11 @@ export function TitleEditor() {
         onSubmit={handleSave}
         className="flex items-center gap-1 flex-1 max-w-full"
       >
-        <FormField name="title" className="!mb-0 flex-1">
+        <FormField
+          name="title"
+          aria-label="Conversation title"
+          className="!mb-0 flex-1"
+        >
           <Input
             placeholder="Enter conversation title"
             autoFocus

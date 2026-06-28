@@ -78,6 +78,7 @@ function KeyValueRow({
     <div className="flex flex-wrap items-start gap-2 w-full">
       <FormField
         name={`${path}.key`}
+        aria-label={`${labelSingular} key`}
         required
         className="!mb-0 flex-1 min-w-40"
       >
@@ -88,6 +89,7 @@ function KeyValueRow({
       </FormField>
       <FormField
         name={`${path}.value`}
+        aria-label={`${labelSingular} value`}
         className="!mb-0 flex-1 min-w-40"
       >
         {isSecret ? (
@@ -118,6 +120,7 @@ function KeyValueRow({
       >
         <FormField
           name={`${path}.is_secret`}
+          aria-label={`${labelSingular} is secret`}
           valuePropName="checked"
           className="!mb-0 shrink-0"
         >

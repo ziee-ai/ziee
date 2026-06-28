@@ -45,6 +45,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('device_type')}
+              aria-label="Device Type"
               className="m-0 w-[120px]"
             >
               <Select
@@ -72,6 +73,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('ctx_size')}
+              aria-label="Context Size"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -91,6 +93,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('batch_size')}
+              aria-label="Batch Size"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -110,6 +113,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('ubatch_size')}
+              aria-label="Physical Batch Size"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -129,6 +133,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('parallel')}
+              aria-label="Parallel Sequences"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -148,6 +153,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('keep')}
+              aria-label="Keep Tokens"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -167,6 +173,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('mlock')}
+              aria-label="Memory Lock"
               valuePropName="checked"
               className="m-0"
             >
@@ -182,6 +189,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('no_mmap')}
+              aria-label="Disable Memory Mapping"
               valuePropName="checked"
               className="m-0"
             >
@@ -200,6 +208,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('threads')}
+              aria-label="Generation Threads"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -219,6 +228,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('threads_batch')}
+              aria-label="Batch Processing Threads"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -238,6 +248,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('cont_batching')}
+              aria-label="Continuous Batching"
               valuePropName="checked"
               className="m-0"
             >
@@ -253,6 +264,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('flash_attn')}
+              aria-label="Flash Attention"
               valuePropName="checked"
               className="m-0"
             >
@@ -268,6 +280,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('no_kv_offload')}
+              aria-label="Disable KV Offload"
               valuePropName="checked"
               className="m-0"
             >
@@ -286,6 +299,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('n_gpu_layers')}
+              aria-label="GPU Layers"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -305,6 +319,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('main_gpu')}
+              aria-label="Main GPU"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -324,6 +339,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('split_mode')}
+              aria-label="Split Mode"
               className="m-0 w-[120px]"
             >
               <Select
@@ -346,6 +362,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('tensor_split')}
+              aria-label="Tensor Split"
               className="m-0 w-[120px]"
             >
               <Input placeholder="3,1" className="w-full" />
@@ -363,6 +380,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('rope_freq_base')}
+              aria-label="RoPE Base Frequency"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -382,6 +400,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('rope_freq_scale')}
+              aria-label="RoPE Frequency Scale"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -402,6 +421,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('rope_scaling')}
+              aria-label="RoPE Scaling"
               className="m-0 w-[120px]"
             >
               <Select
@@ -424,6 +444,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('cache_type_k')}
+              aria-label="KV Cache Type (K)"
               className="m-0 w-[120px]"
             >
               <Select
@@ -447,6 +468,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('cache_type_v')}
+              aria-label="KV Cache Type (V)"
               className="m-0 w-[120px]"
             >
               <Select
@@ -473,6 +495,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('seed')}
+              aria-label="Random Seed"
               className="m-0 w-[120px]"
             >
               <InputNumber
@@ -492,6 +515,7 @@ export function LlmModelLlamaCppSettingsSection() {
           >
             <FormField
               name={getFieldName('numa')}
+              aria-label="NUMA Optimization"
               className="m-0 w-[120px]"
             >
               <Select

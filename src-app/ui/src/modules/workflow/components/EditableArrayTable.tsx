@@ -84,7 +84,7 @@ function EditableCell({
 
   if (field.enum) {
     return (
-      <FormField name={fullName} className="!mb-0">
+      <FormField name={fullName} aria-label={field.title || col.key} className="!mb-0">
         <Select
           disabled={disabled}
           options={field.enum.map(v => ({ value: String(v), label: String(v) }))}
@@ -94,14 +94,14 @@ function EditableCell({
   }
   if (field.type === 'boolean') {
     return (
-      <FormField name={fullName} valuePropName="checked" className="!mb-0">
+      <FormField name={fullName} aria-label={field.title || col.key} valuePropName="checked" className="!mb-0">
         <Switch disabled={disabled} />
       </FormField>
     )
   }
   if (field.type === 'number' || field.type === 'integer') {
     return (
-      <FormField name={fullName} className="!mb-0">
+      <FormField name={fullName} aria-label={field.title || col.key} className="!mb-0">
         <InputNumber
           min={field.minimum}
           max={field.maximum}
@@ -113,7 +113,7 @@ function EditableCell({
     )
   }
   return (
-    <FormField name={fullName} className="!mb-0">
+    <FormField name={fullName} aria-label={field.title || col.key} className="!mb-0">
       <Input disabled={disabled} />
     </FormField>
   )

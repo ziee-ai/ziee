@@ -145,6 +145,7 @@ export function RemoteProviderSettings() {
               </Text>
               <FormField
                 name="api_key"
+                aria-label="API key"
                 className="mt-4"
                 description={
                   /* The server no longer returns the API key in GET
@@ -176,7 +177,7 @@ export function RemoteProviderSettings() {
                 endpoint to use. See the {currentProvider.name} documentation{' '}
                 for more information.
               </Text>
-              <FormField name="base_url" className="mt-4">
+              <FormField name="base_url" aria-label="Base URL" className="mt-4">
                 <Input placeholder={'Base URL'} />
               </FormField>
             </div>
