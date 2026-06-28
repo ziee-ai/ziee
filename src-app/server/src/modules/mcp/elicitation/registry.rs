@@ -115,3 +115,81 @@ pub fn remove(elicitation_id: Uuid) -> Option<Uuid> {
     };
     entry.and_then(|e| e.content_id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::mcp::elicitation::models::ElicitationResponse;
+
+    fn decline() -> ElicitationResponse {
+        ElicitationResponse { action: "decline".into(), content: None }
+    }
+
+    /// The owner-binding contract the chat-extension notification handler
+    /// (mcp.rs `execute_approved_tools_sync`) relies on for F-04:
+    ///   - before `bind_owner`, ownership is fail-closed (`Some(false)`),
+    ///   - after binding, only the bound user matches,
+    ///   - an unknown elicitation is `None` (→ 404, not 403).
+    #[test]
+    fn owner_binding_is_fail_closed_until_bound() {
+        let id = Uuid::new_v4();
+        let owner = Uuid::new_v4();
+        let stranger = Uuid::new_v4();
+        let (tx, _rx) = oneshot::channel::<ElicitationResponse>();
+
+        // Unknown elicitation → None.
+        assert_eq!(owner_matches(id, owner), None);
+
+        register(id, tx, Some(Uuid::new_v4()));
+        // Registered but unbound → fail-closed (Some(false)) for everyone.
+        assert_eq!(owner_matches(id, owner), Some(false));
+
+        bind_owner(id, owner);
+        assert_eq!(owner_matches(id, owner), Some(true), "bound owner matches");
+        assert_eq!(
+            owner_matches(id, stranger),
+            Some(false),
+            "a different user never matches"
+        );
+
+        // cleanup
+        let _ = respond(id, decline());
+    }
+
+    /// `respond` delivers the answer to the waiting receiver exactly once and
+    /// removes the entry; a second respond / owner check no longer finds it.
+    #[test]
+    fn respond_delivers_once_and_removes_entry() {
+        let id = Uuid::new_v4();
+        let content_id = Uuid::new_v4();
+        let (tx, rx) = oneshot::channel::<ElicitationResponse>();
+        register(id, tx, Some(content_id));
+        bind_owner(id, Uuid::new_v4());
+
+        let (found, cid) = respond(id, decline());
+        assert!(found, "respond finds the registered entry");
+        assert_eq!(cid, Some(content_id), "respond returns the content_id");
+        assert_eq!(rx.blocking_recv().unwrap().action, "decline");
+
+        // Entry is gone now.
+        assert_eq!(owner_matches(id, Uuid::new_v4()), None);
+        assert_eq!(respond(id, decline()).0, false, "second respond finds nothing");
+    }
+
+    /// `remove` (the cancellation path) drops the entry and returns its
+    /// content_id so the caller can mark the DB row cancelled; binding a
+    /// removed elicitation is a no-op.
+    #[test]
+    fn remove_cancels_and_returns_content_id() {
+        let id = Uuid::new_v4();
+        let content_id = Uuid::new_v4();
+        let (tx, _rx) = oneshot::channel::<ElicitationResponse>();
+        register(id, tx, Some(content_id));
+
+        assert_eq!(remove(id), Some(content_id));
+        assert_eq!(owner_matches(id, Uuid::new_v4()), None, "removed → gone");
+        // bind_owner on a removed/unknown entry is a harmless no-op.
+        bind_owner(id, Uuid::new_v4());
+        assert_eq!(owner_matches(id, Uuid::new_v4()), None);
+    }
+}
