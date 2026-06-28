@@ -529,6 +529,77 @@ async fn test_unauthorized_without_token_groups() {
     assert_eq!(response.status(), 401, "Should be unauthorized without token");
 }
 
+// audit id all-6d548316db87 — concurrent multi-user group editing. Existing
+// tests assign users one-at-a-time; this fires N assignments to the SAME group
+// concurrently and asserts every one lands (no lost write / membership row
+// dropped under concurrency). Exercises the assign path under parallel load.
+#[tokio::test]
+async fn test_concurrent_user_assignments_to_same_group_all_land() {
+    let server = crate::common::TestServer::start().await;
+    let admin = helpers::create_user_with_permissions(
+        &server,
+        "concurrent_admin",
+        &["groups::create", "groups::read", "users::create", "groups::assign_users"],
+    )
+    .await;
+
+    let group = helpers::create_test_group(&server, &admin.token, "concurrentgroup").await;
+    let group_id = group["id"].as_str().expect("group id").to_string();
+
+    // Create N distinct users up front (sequentially — user creation isn't the
+    // behavior under test).
+    const N: usize = 6;
+    let mut user_ids = Vec::new();
+    for i in 0..N {
+        let u = helpers::create_test_user_via_api(&server, &admin.token, &format!("cc_user_{i}")).await;
+        user_ids.push(u["id"].as_str().unwrap().to_string());
+    }
+
+    // Fire all assignments CONCURRENTLY to the same group.
+    let assign_url = server.api_url("/groups/assign");
+    let mut handles = Vec::new();
+    for uid in &user_ids {
+        let url = assign_url.clone();
+        let token = admin.token.clone();
+        let gid = group_id.clone();
+        let uid = uid.clone();
+        handles.push(tokio::spawn(async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "user_id": uid, "group_id": gid }))
+                .send()
+                .await
+                .expect("assign request")
+                .status()
+        }));
+    }
+    for h in handles {
+        let status = h.await.expect("join");
+        assert_eq!(status, 204, "every concurrent assignment must succeed");
+    }
+
+    // Every user must appear in the group's member list — no lost assignment.
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/groups/{}/members", group_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("members request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("parse members");
+    let members = body["users"].as_array().expect("users array");
+    let member_ids: std::collections::HashSet<&str> =
+        members.iter().filter_map(|m| m["id"].as_str()).collect();
+    for uid in &user_ids {
+        assert!(
+            member_ids.contains(uid.as_str()),
+            "user {uid} must be a member after concurrent assignment (got {} members)",
+            members.len()
+        );
+    }
+}
+
 // ============================================================================
 // Helper Functions Module
 // ============================================================================
