@@ -112,3 +112,83 @@ async fn delete_requires_delete_permission() {
 
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn duplicate_requires_all_of_a_two_permission_and_tuple() {
+    // `POST /projects/{id}/duplicate` is gated by the multi-permission tuple
+    // `RequirePermissions<(ProjectsCreate, ProjectsRead)>` — the extractor's
+    // AND logic (extractors.rs:130-151) requires the caller to hold BOTH.
+    // A PARTIAL grant (only one of the two) must be refused at the HTTP layer
+    // with 403, and the full grant must succeed. The other project permission
+    // tests each exercise a single-permission endpoint, so this is the only
+    // coverage of the AND-combining tuple gate.
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // A fully-permissioned owner creates the project to be duplicated.
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "dup_owner",
+        super::helpers::full_project_permissions(),
+    )
+    .await;
+    let project = super::helpers::create_project(&server, &owner, "Dup Source").await;
+    let pid = project["id"].as_str().unwrap().to_string();
+    let dup_url = server.api_url(&format!("/projects/{}/duplicate", pid));
+
+    // Partial grant #1: `projects::read` ONLY (missing `projects::create`).
+    // Read access to the row is not enough to clone it — AND logic denies.
+    let read_only = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "dup_read_only",
+        &["projects::read"],
+    )
+    .await;
+    let resp = client
+        .post(&dup_url)
+        .header("Authorization", format!("Bearer {}", read_only.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "projects::read alone must NOT satisfy the (create, read) AND gate"
+    );
+
+    // Partial grant #2: `projects::create` ONLY (missing `projects::read`).
+    // The complementary half of the tuple — also denied.
+    let create_only = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "dup_create_only",
+        &["projects::create"],
+    )
+    .await;
+    let resp = client
+        .post(&dup_url)
+        .header("Authorization", format!("Bearer {}", create_only.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "projects::create alone must NOT satisfy the (create, read) AND gate"
+    );
+
+    // Full grant: BOTH permissions present → the AND gate passes. (The owner
+    // holds both via full_project_permissions; duplicating one's own project
+    // proves the tuple is satisfiable and the 403s above were the gate, not a
+    // broken route.)
+    let resp = client
+        .post(&dup_url)
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "holding BOTH projects::create AND projects::read must satisfy the gate"
+    );
+}
