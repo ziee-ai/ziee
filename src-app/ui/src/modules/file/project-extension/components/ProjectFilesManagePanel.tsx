@@ -136,12 +136,12 @@ export function ProjectFilesManagePanel() {
   const dispatchRef = useRef(dispatchFiles)
   dispatchRef.current = dispatchFiles
 
-  // Drag handlers — attach to the antd Drawer's body so the overlay
-  // covers the full drawer surface.
+  // Drag handlers — attach to the Drawer's panel (the Radix dialog
+  // surface) so the overlay covers the full drawer.
   useEffect(() => {
     if (!canUpload) return
     const body = rootRef.current?.closest(
-      '.ant-drawer-body',
+      '[role="dialog"]',
     ) as HTMLElement | null
     if (!body) return
     setDrawerBody(body)
