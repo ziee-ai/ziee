@@ -402,3 +402,57 @@ async fn installed_endpoint_surfaces_null_version_rows() {
 // publisher-switches-catalog flow is exercised hermetically in
 // `catalog_hermetic.rs` via the mock Pages server's
 // `MockHub::switch_to`.
+
+/// Catalog-refresh error recovery: a `/hub/refresh` against an unreachable
+/// Pages base (dead loopback port → connection refused) must fail GRACEFULLY
+/// (non-2xx, no panic) and leave the boot-loaded seed catalog intact + still
+/// queryable. Guards the atomic-rotate contract: a failed fetch never wipes the
+/// current `current/` dir.
+#[tokio::test]
+async fn refresh_failure_leaves_seed_catalog_intact() {
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: vec![(
+            "ZIEE_HUB_PAGES_BASE".to_string(),
+            "http://127.0.0.1:1".to_string(),
+        )],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "hub_refresh_recovery_admin",
+        &["hub::catalog::read", "hub::catalog::manage", "hub::models::read"],
+    )
+    .await;
+
+    // Refresh against the dead base → graceful error, NOT a 200/panic.
+    let refresh = reqwest::Client::new()
+        .post(server.api_url("/hub/refresh"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("refresh request should not hang/panic");
+    assert!(
+        !refresh.status().is_success(),
+        "refresh against an unreachable Pages base must fail, got {}",
+        refresh.status()
+    );
+
+    // Error recovery: the boot-loaded seed catalog is still served unharmed.
+    let index = reqwest::Client::new()
+        .get(server.api_url("/hub/index"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("index request");
+    assert_eq!(
+        index.status(),
+        200,
+        "the seed catalog must survive a failed refresh (atomic rotate, no wipe)"
+    );
+    let catalog: Json = index.json().await.expect("parse index json");
+    assert!(
+        catalog["items"].as_array().map(|a| !a.is_empty()).unwrap_or(false),
+        "seed catalog still lists items after the failed refresh: {catalog}"
+    );
+}
