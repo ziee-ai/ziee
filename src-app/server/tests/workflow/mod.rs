@@ -34,6 +34,7 @@ mod sr_workflow;
 mod status_machine;
 mod stream_access;
 mod system_endpoints;
+mod test_endpoint;
 mod tool_step;
 mod validate_and_dry_run;
 
