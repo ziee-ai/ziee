@@ -60,11 +60,14 @@ Exit 0 = pass. Anything else = fail.
 
 ## Limitations
 
-- macOS only: no DISPLAY needed on macOS for `safaridriver`, but
-  Linux requires X11/Wayland for `webkit2gtk-driver`.
-- No isolation: uses the user's real `~/Library/Application
-  Support/com.ziee.chat/` data dir. Don't run while you have a real
-  session open (port collision).
+- macOS only: this harness currently targets the macOS bundle —
+  `smoke.mjs` resolves `target/release/bundle/macos/Ziee.app`, so it
+  does not run on Linux/Windows as-is. (On macOS no DISPLAY is needed
+  for `safaridriver`; a Linux port would need X11/Wayland for
+  `webkit2gtk-driver` plus the corresponding Linux bundle path.)
+- No isolation: uses the user's real macOS data dir
+  (`~/Library/Application Support/com.ziee.chat/`). Don't run while
+  you have a real session open (port collision).
 - One-shot: the script boots, asserts, kills. No interactive REPL.
   For deeper exploration of the bundled app, use Safari's Web
   Inspector against the running `Ziee.app` directly.
