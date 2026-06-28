@@ -174,3 +174,44 @@ async fn test_summary_endpoint_returns_404_for_nonexistent_conversation() {
         .unwrap();
     assert_eq!(res.status(), 404, "GET on ghost id must be 404");
 }
+
+#[tokio::test]
+async fn test_summary_endpoint_requires_conversations_read_permission() {
+    // The endpoint is gated by `ConversationsRead` (handlers.rs:232). The
+    // existing tests cover ownership (404) but never the permission gate:
+    // a user WITHOUT `conversations::read` must be refused 403 by the
+    // RequirePermissions extractor BEFORE the ownership/existence check
+    // runs — so even a valid, real conversation id owned by someone else
+    // yields 403 (perm gate), not 404 (ownership).
+    let server = crate::common::TestServer::start().await;
+
+    // Owner has read+edit and creates a real conversation (valid id).
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_perm_owner",
+        &["conversations::read", "conversations::edit"],
+    )
+    .await;
+    let conv_id = create_conversation(&server, &owner.token).await;
+
+    // This user is intentionally missing `conversations::read` (only a
+    // profile perm so the account is valid/active).
+    let no_read = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_perm_no_read",
+        &["profile::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{conv_id}/summary")))
+        .header("Authorization", format!("Bearer {}", no_read.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        403,
+        "a user lacking conversations::read must get 403 (perm gate fires before ownership)"
+    );
+}
