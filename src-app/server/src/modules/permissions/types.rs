@@ -206,6 +206,53 @@ mod tests {
         const MODULE: &'static str = "memory";
     }
 
+    struct UsersDelete;
+    impl PermissionCheck for UsersDelete {
+        const NAME: &'static str = "UsersDelete";
+        const PERMISSION: &'static str = "users::delete";
+        const DESCRIPTION: &'static str = "Delete users";
+        const MODULE: &'static str = "users";
+    }
+
+    struct GroupsRead;
+    impl PermissionCheck for GroupsRead {
+        const NAME: &'static str = "GroupsRead";
+        const PERMISSION: &'static str = "groups::read";
+        const DESCRIPTION: &'static str = "Read groups";
+        const MODULE: &'static str = "groups";
+    }
+
+    /// `PermissionList` for a 3-tuple collects all three permissions' name /
+    /// permission / description in order — the RequirePermissions<(A,B,C)> path.
+    #[test]
+    fn permission_list_three_tuple_collects_all() {
+        type Three = (UsersRead, CoreMemoryWrite, UsersDelete);
+        assert_eq!(
+            <Three as PermissionList>::permissions(),
+            vec!["users::read", "memory::core::write", "users::delete"]
+        );
+        assert_eq!(
+            <Three as PermissionList>::names(),
+            vec!["UsersRead", "CoreMemoryWrite", "UsersDelete"]
+        );
+        assert_eq!(
+            <Three as PermissionList>::descriptions(),
+            vec!["Read users", "Write core memory", "Delete users"]
+        );
+    }
+
+    /// `PermissionList` for a 4-tuple — RequirePermissions<(A,B,C,D)>.
+    #[test]
+    fn permission_list_four_tuple_collects_all() {
+        type Four = (UsersRead, CoreMemoryWrite, UsersDelete, GroupsRead);
+        assert_eq!(
+            <Four as PermissionList>::permissions(),
+            vec!["users::read", "memory::core::write", "users::delete", "groups::read"]
+        );
+        assert_eq!(<Four as PermissionList>::names().len(), 4);
+        assert_eq!(<Four as PermissionList>::descriptions().len(), 4);
+    }
+
     #[test]
     fn resource_is_first_segment_action_is_last() {
         assert_eq!(UsersRead::resource(), "users");
