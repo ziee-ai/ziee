@@ -1020,3 +1020,79 @@ async fn refresh_token_jti_lifecycle_persists_across_connections() {
 
     pool.close().await;
 }
+
+/// Cross-subsystem effect of admin creation: the bootstrapped admin is assigned
+/// to BOTH the `Administrators` AND the `Users` groups (app/repository.rs
+/// create_admin), so it inherits default Users-group resource access — not just
+/// admin powers. Asserts the membership in both groups via the members API.
+#[tokio::test]
+async fn test_setup_admin_is_member_of_administrators_and_users_groups() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    let setup: serde_json::Value = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "admin",
+            "email": "admin@example.com",
+            "password": "SecurePass123!"
+        }))
+        .send()
+        .await
+        .expect("setup admin")
+        .json()
+        .await
+        .expect("setup body");
+    let admin_id = setup["user"]["id"].as_str().expect("admin id").to_string();
+    let token = setup["access_token"].as_str().expect("token").to_string();
+
+    // Resolve the two system group ids.
+    let groups: serde_json::Value = client
+        .get(server.api_url("/groups?page=1&per_page=100"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .expect("list groups")
+        .json()
+        .await
+        .expect("groups body");
+    let arr = groups["groups"].as_array().or(groups.as_array()).expect("groups array");
+    let id_of = |name: &str| {
+        arr.iter()
+            .find(|g| g["name"] == name)
+            .and_then(|g| g["id"].as_str())
+            .map(String::from)
+            .unwrap_or_else(|| panic!("group {name} not found"))
+    };
+    let admins_gid = id_of("Administrators");
+    let users_gid = id_of("Users");
+
+    let is_member = |gid: String, token: String, admin_id: String| {
+        let url = server.api_url(&format!("/groups/{gid}/members?page=1&per_page=100"));
+        async move {
+            let body: serde_json::Value = reqwest::Client::new()
+                .get(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .expect("members")
+                .json()
+                .await
+                .expect("members body");
+            body["users"]
+                .as_array()
+                .expect("users array")
+                .iter()
+                .any(|u| u["id"].as_str() == Some(admin_id.as_str()))
+        }
+    };
+
+    assert!(
+        is_member(admins_gid, token.clone(), admin_id.clone()).await,
+        "admin must be in the Administrators group"
+    );
+    assert!(
+        is_member(users_gid, token, admin_id).await,
+        "admin must ALSO be in the Users group (default-resource access)"
+    );
+}
