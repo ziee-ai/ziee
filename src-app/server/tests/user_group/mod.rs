@@ -977,3 +977,37 @@ async fn test_update_system_group_is_rejected() {
         "SYSTEM_GROUP"
     );
 }
+
+// audit ids all-9831f451449c + all-9af0f9dc93f6 — permission-denied responses
+// (RequirePermissions, extractors.rs:146-160) return a typed body
+// {error_code:"INSUFFICIENT_PERMISSIONS", error:"Missing required permission: …"}.
+// The user_group tests asserted only the 403 status, never the body shape.
+#[tokio::test]
+async fn test_permission_denied_response_body_format() {
+    let server = crate::common::TestServer::start().await;
+    // Default group removed → lacks groups::read.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "perm_body_user",
+        &["profile::read"],
+    )
+    .await;
+
+    let resp = reqwest::Client::new()
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 403, "missing groups::read must be 403");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["error_code"], "INSUFFICIENT_PERMISSIONS",
+        "403 body must carry the typed error_code: {body}"
+    );
+    let msg = body["error"].as_str().or_else(|| body["message"].as_str()).unwrap_or("");
+    assert!(
+        msg.contains("groups::read") && msg.to_lowercase().contains("missing required permission"),
+        "the error message must name the missing permission: {body}"
+    );
+}
