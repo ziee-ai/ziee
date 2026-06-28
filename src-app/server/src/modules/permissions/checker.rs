@@ -189,4 +189,47 @@ mod tests {
         let groups = vec![];
         assert!(!check_permission_union(&user, &groups, "users::read"));
     }
+
+    // audit id all-d6976975c860 — permission exhaustion with large sets. The
+    // linear scan in check_permissions_array must still resolve correctly when a
+    // user/group carries thousands of permissions: an exact match deep in the
+    // list, a miss against the whole set, and a hierarchical wildcard buried
+    // among many unrelated entries.
+    #[test]
+    fn test_large_permission_set_exact_and_miss() {
+        // 5000 distinct non-matching permissions spread across user + groups.
+        let bulk: Vec<String> = (0..4000).map(|i| format!("mod{i}::action{i}")).collect();
+        let mut user_perms = bulk.clone();
+        user_perms.push("target::read".to_string()); // the needle, last in the list
+        let user = create_test_user_with_permissions(
+            user_perms.iter().map(String::as_str).collect(),
+        );
+        let group_perms: Vec<String> =
+            (4000..5000).map(|i| format!("grp{i}::x")).collect();
+        let groups = vec![create_test_group(
+            group_perms.iter().map(String::as_str).collect(),
+        )];
+
+        // Exact match present despite the size of the set.
+        assert!(check_permission_union(&user, &groups, "target::read"));
+        // A permission absent from BOTH large sets is denied.
+        assert!(!check_permission_union(&user, &groups, "target::write"));
+        assert!(!check_permission_union(&user, &groups, "nowhere::at::all"));
+    }
+
+    #[test]
+    fn test_large_permission_set_hierarchical_wildcard_buried() {
+        let mut bulk: Vec<String> =
+            (0..3000).map(|i| format!("noise{i}::leaf")).collect();
+        // A hierarchical wildcard buried in the middle of the haystack.
+        bulk.insert(1500, "config::auth::*".to_string());
+        let group = create_test_group(bulk.iter().map(String::as_str).collect());
+        let user = create_test_user_with_permissions(vec![]);
+        let groups = vec![group];
+
+        assert!(check_permission_union(&user, &groups, "config::auth::read"));
+        assert!(check_permission_union(&user, &groups, "config::auth::edit"));
+        // Sibling namespace not covered by config::auth::*.
+        assert!(!check_permission_union(&user, &groups, "config::proxy::read"));
+    }
 }
