@@ -184,10 +184,10 @@ pub struct PermissionInfo {
     /// The action being performed
     pub action: String,
 }
-
 #[cfg(test)]
 mod format_description_tests {
     use super::{PermissionCheck, PermissionList};
+
 
     struct A;
     impl PermissionCheck for A {
@@ -196,6 +196,7 @@ mod format_description_tests {
         const PERMISSION: &'static str = "alpha::read";
         const DESCRIPTION: &'static str = "Read alpha";
     }
+
     struct B;
     impl PermissionCheck for B {
         const NAME: &'static str = "B";
@@ -203,6 +204,7 @@ mod format_description_tests {
         const PERMISSION: &'static str = "beta::write";
         const DESCRIPTION: &'static str = "Write beta";
     }
+
 
     // audit id all-f0874266c44a — format_description's MULTI-permission branch
     // (types.rs:66-83) was untested; only the single-permission shape is hit by
@@ -218,115 +220,19 @@ mod format_description_tests {
         assert!(!out.contains("**Required Permission:**"), "must not use single header: {out}");
     }
 
+
     #[test]
     fn single_permission_format_uses_singular_header() {
         let out = <(A,)>::format_description();
         assert!(out.contains("**Required Permission:**"), "single header: {out}");
         assert!(out.contains("alpha::read"), "names the perm: {out}");
         assert!(!out.contains("Required Permissions (ALL)"), "not the multi header: {out}");
+    }
+}
+#[cfg(test)]
 mod permission_check_tests {
     use super::{PermissionCheck, PermissionInfo};
 
-    struct TwoSeg;
-    impl PermissionCheck for TwoSeg {
-mod tests {
-    use super::*;
-
-    struct UsersRead;
-    impl PermissionCheck for UsersRead {
-        const NAME: &'static str = "UsersRead";
-        const PERMISSION: &'static str = "users::read";
-        const DESCRIPTION: &'static str = "Read users";
-        const MODULE: &'static str = "users";
-    }
-
-    struct ThreeSeg;
-    impl PermissionCheck for ThreeSeg {
-        const NAME: &'static str = "CodeSandboxResourceLimitsManage";
-        const PERMISSION: &'static str = "code_sandbox::resource_limits::manage";
-        const DESCRIPTION: &'static str = "Manage limits";
-        const MODULE: &'static str = "code_sandbox";
-    // A permission with a namespaced action to exercise the split logic.
-    struct CoreMemoryWrite;
-    impl PermissionCheck for CoreMemoryWrite {
-        const NAME: &'static str = "CoreMemoryWrite";
-        const PERMISSION: &'static str = "memory::core::write";
-        const DESCRIPTION: &'static str = "Write core memory";
-        const MODULE: &'static str = "memory";
-    }
-
-    struct UsersDelete;
-    impl PermissionCheck for UsersDelete {
-        const NAME: &'static str = "UsersDelete";
-        const PERMISSION: &'static str = "users::delete";
-        const DESCRIPTION: &'static str = "Delete users";
-        const MODULE: &'static str = "users";
-    }
-
-    struct GroupsRead;
-    impl PermissionCheck for GroupsRead {
-        const NAME: &'static str = "GroupsRead";
-        const PERMISSION: &'static str = "groups::read";
-        const DESCRIPTION: &'static str = "Read groups";
-        const MODULE: &'static str = "groups";
-    }
-
-    /// `PermissionList` for a 3-tuple collects all three permissions' name /
-    /// permission / description in order — the RequirePermissions<(A,B,C)> path.
-    #[test]
-    fn permission_list_three_tuple_collects_all() {
-        type Three = (UsersRead, CoreMemoryWrite, UsersDelete);
-        assert_eq!(
-            <Three as PermissionList>::permissions(),
-            vec!["users::read", "memory::core::write", "users::delete"]
-        );
-        assert_eq!(
-            <Three as PermissionList>::names(),
-            vec!["UsersRead", "CoreMemoryWrite", "UsersDelete"]
-        );
-        assert_eq!(
-            <Three as PermissionList>::descriptions(),
-            vec!["Read users", "Write core memory", "Delete users"]
-        );
-    }
-
-    /// `PermissionList` for a 4-tuple — RequirePermissions<(A,B,C,D)>.
-    #[test]
-    fn permission_list_four_tuple_collects_all() {
-        type Four = (UsersRead, CoreMemoryWrite, UsersDelete, GroupsRead);
-        assert_eq!(
-            <Four as PermissionList>::permissions(),
-            vec!["users::read", "memory::core::write", "users::delete", "groups::read"]
-        );
-        assert_eq!(<Four as PermissionList>::names().len(), 4);
-        assert_eq!(<Four as PermissionList>::descriptions().len(), 4);
-    }
-
-    #[test]
-    fn resource_is_first_segment_action_is_last() {
-        assert_eq!(TwoSeg::resource(), "users");
-        assert_eq!(TwoSeg::action(), "read");
-        // For a 3-segment permission, resource = first, action = last.
-        assert_eq!(ThreeSeg::resource(), "code_sandbox");
-        assert_eq!(ThreeSeg::action(), "manage");
-        assert_eq!(UsersRead::resource(), "users");
-        assert_eq!(UsersRead::action(), "read");
-        // For a 3-segment permission, resource() takes the FIRST segment and
-        // action() the LAST.
-        assert_eq!(CoreMemoryWrite::resource(), "memory");
-        assert_eq!(CoreMemoryWrite::action(), "write");
-    }
-
-    #[test]
-    fn to_info_projects_all_fields() {
-        let info: PermissionInfo = TwoSeg::to_info();
-        let info = UsersRead::to_info();
-        assert_eq!(info.permission, "users::read");
-        assert_eq!(info.description, "Read users");
-        assert_eq!(info.module, "users");
-        assert_eq!(info.resource, "users");
-        assert_eq!(info.action, "read");
-    }
 
     // --- RequirePermissions tuple (PermissionList) AND-combination ---
     //
@@ -338,6 +244,46 @@ mod tests {
     // `format_description` advertises every one under the "ALL" header.
     use super::PermissionList;
 
+
+    struct TwoSeg;
+    impl PermissionCheck for TwoSeg {
+        const NAME: &'static str = "UsersRead";
+        const PERMISSION: &'static str = "users::read";
+        const DESCRIPTION: &'static str = "Read users";
+        const MODULE: &'static str = "users";
+    }
+
+
+    struct ThreeSeg;
+    impl PermissionCheck for ThreeSeg {
+        const NAME: &'static str = "CodeSandboxResourceLimitsManage";
+        const PERMISSION: &'static str = "code_sandbox::resource_limits::manage";
+        const DESCRIPTION: &'static str = "Manage limits";
+        const MODULE: &'static str = "code_sandbox";
+    }
+
+
+    #[test]
+    fn resource_is_first_segment_action_is_last() {
+        assert_eq!(TwoSeg::resource(), "users");
+        assert_eq!(TwoSeg::action(), "read");
+        // For a 3-segment permission, resource = first, action = last.
+        assert_eq!(ThreeSeg::resource(), "code_sandbox");
+        assert_eq!(ThreeSeg::action(), "manage");
+    }
+
+
+    #[test]
+    fn to_info_projects_all_fields() {
+        let info: PermissionInfo = TwoSeg::to_info();
+        assert_eq!(info.permission, "users::read");
+        assert_eq!(info.description, "Read users");
+        assert_eq!(info.module, "users");
+        assert_eq!(info.resource, "users");
+        assert_eq!(info.action, "read");
+    }
+
+
     struct PRead;
     impl PermissionCheck for PRead {
         const NAME: &'static str = "ProjectsRead";
@@ -345,6 +291,7 @@ mod tests {
         const DESCRIPTION: &'static str = "Read projects";
         const MODULE: &'static str = "projects";
     }
+
     struct PWrite;
     impl PermissionCheck for PWrite {
         const NAME: &'static str = "ProjectsEdit";
@@ -352,6 +299,7 @@ mod tests {
         const DESCRIPTION: &'static str = "Edit projects";
         const MODULE: &'static str = "projects";
     }
+
     struct PDelete;
     impl PermissionCheck for PDelete {
         const NAME: &'static str = "ProjectsDelete";
@@ -359,6 +307,7 @@ mod tests {
         const DESCRIPTION: &'static str = "Delete projects";
         const MODULE: &'static str = "projects";
     }
+
     struct PShare;
     impl PermissionCheck for PShare {
         const NAME: &'static str = "ProjectsShare";
@@ -366,6 +315,7 @@ mod tests {
         const DESCRIPTION: &'static str = "Share projects";
         const MODULE: &'static str = "projects";
     }
+
 
     #[test]
     fn three_tuple_yields_all_three_permissions_in_order() {
@@ -393,6 +343,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn four_tuple_yields_all_four_permissions_in_order() {
         type Required = (PRead, PWrite, PDelete, PShare);
@@ -408,6 +359,7 @@ mod tests {
         assert_eq!(Required::permissions().len(), 4);
         assert_eq!(Required::descriptions().len(), 4);
     }
+
 
     #[test]
     fn multi_permission_format_description_lists_all_under_all_header() {
@@ -427,8 +379,12 @@ mod tests {
         }
         // The single-permission phrasing must NOT appear for a multi-tuple.
         assert!(!doc.contains("**Required Permission:**"));
+    }
+}
+#[cfg(test)]
 mod tests {
     use super::*;
+
 
     struct PermA;
     impl PermissionCheck for PermA {
@@ -437,6 +393,7 @@ mod tests {
         const PERMISSION: &'static str = "users::read";
         const DESCRIPTION: &'static str = "Read users";
     }
+
     struct PermB;
     impl PermissionCheck for PermB {
         const NAME: &'static str = "PermB";
@@ -444,6 +401,7 @@ mod tests {
         const PERMISSION: &'static str = "users::edit";
         const DESCRIPTION: &'static str = "Edit users";
     }
+
 
     /// Single-permission format uses the "**Required Permission:**" heading.
     #[test]
@@ -455,6 +413,7 @@ mod tests {
         assert!(!s.contains("ALL"), "single-perm must not use the ALL heading: {s}");
     }
 
+
     /// Multi-permission format uses the "(ALL)" heading + a bullet per permission,
     /// each pairing its name with its description. Untested before.
     #[test]
@@ -463,6 +422,101 @@ mod tests {
         assert!(s.contains("**Required Permissions (ALL):**"), "got: {s}");
         assert!(s.contains("- `users::read` - Read users"), "got: {s}");
         assert!(s.contains("- `users::edit` - Edit users"), "got: {s}");
+    }
+
+
+    struct UsersRead;
+    impl PermissionCheck for UsersRead {
+        const NAME: &'static str = "UsersRead";
+        const PERMISSION: &'static str = "users::read";
+        const DESCRIPTION: &'static str = "Read users";
+        const MODULE: &'static str = "users";
+    }
+
+
+    // A permission with a namespaced action to exercise the split logic.
+    struct CoreMemoryWrite;
+    impl PermissionCheck for CoreMemoryWrite {
+        const NAME: &'static str = "CoreMemoryWrite";
+        const PERMISSION: &'static str = "memory::core::write";
+        const DESCRIPTION: &'static str = "Write core memory";
+        const MODULE: &'static str = "memory";
+    }
+
+
+    struct UsersDelete;
+    impl PermissionCheck for UsersDelete {
+        const NAME: &'static str = "UsersDelete";
+        const PERMISSION: &'static str = "users::delete";
+        const DESCRIPTION: &'static str = "Delete users";
+        const MODULE: &'static str = "users";
+    }
+
+
+    struct GroupsRead;
+    impl PermissionCheck for GroupsRead {
+        const NAME: &'static str = "GroupsRead";
+        const PERMISSION: &'static str = "groups::read";
+        const DESCRIPTION: &'static str = "Read groups";
+        const MODULE: &'static str = "groups";
+    }
+
+
+    /// `PermissionList` for a 3-tuple collects all three permissions' name /
+    /// permission / description in order — the RequirePermissions<(A,B,C)> path.
+    #[test]
+    fn permission_list_three_tuple_collects_all() {
+        type Three = (UsersRead, CoreMemoryWrite, UsersDelete);
+        assert_eq!(
+            <Three as PermissionList>::permissions(),
+            vec!["users::read", "memory::core::write", "users::delete"]
+        );
+        assert_eq!(
+            <Three as PermissionList>::names(),
+            vec!["UsersRead", "CoreMemoryWrite", "UsersDelete"]
+        );
+        assert_eq!(
+            <Three as PermissionList>::descriptions(),
+            vec!["Read users", "Write core memory", "Delete users"]
+        );
+    }
+
+
+    /// `PermissionList` for a 4-tuple — RequirePermissions<(A,B,C,D)>.
+    #[test]
+    fn permission_list_four_tuple_collects_all() {
+        type Four = (UsersRead, CoreMemoryWrite, UsersDelete, GroupsRead);
+        assert_eq!(
+            <Four as PermissionList>::permissions(),
+            vec!["users::read", "memory::core::write", "users::delete", "groups::read"]
+        );
+        assert_eq!(<Four as PermissionList>::names().len(), 4);
+        assert_eq!(<Four as PermissionList>::descriptions().len(), 4);
+    }
+
+
+    #[test]
+    fn resource_is_first_segment_action_is_last() {
+        assert_eq!(UsersRead::resource(), "users");
+        assert_eq!(UsersRead::action(), "read");
+        // For a 3-segment permission, resource() takes the FIRST segment and
+        // action() the LAST.
+        assert_eq!(CoreMemoryWrite::resource(), "memory");
+        assert_eq!(CoreMemoryWrite::action(), "write");
+    }
+
+
+    #[test]
+    fn to_info_projects_all_fields() {
+        let info = UsersRead::to_info();
+        assert_eq!(info.permission, "users::read");
+        assert_eq!(info.description, "Read users");
+        assert_eq!(info.module, "users");
+        assert_eq!(info.resource, "users");
+        assert_eq!(info.action, "read");
+    }
+
+
     #[test]
     fn to_info_serializes_to_expected_json_shape() {
         let info = CoreMemoryWrite::to_info();

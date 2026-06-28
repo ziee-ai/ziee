@@ -206,10 +206,41 @@ fn get_extension(filename: &str) -> String {
 fn cached_mapping_reusable(is_expired: bool, key_rotated: bool, status: UploadStatus) -> bool {
     !is_expired && !key_rotated && status == UploadStatus::Completed
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    // ── get_or_upload_provider_file early-guard error paths ──────────────
+    //
+    // These two guards return BEFORE any DB / storage access, so they're unit-
+    // testable with a lazy pool + a minimal mock AIProvider. The mock only needs
+    // to control `supports_file_api`; its stream/embeddings stubs are never
+    // called on these paths.
+    use crate::modules::llm_provider::models::{LlmProvider, ProxySettings};
+
+    use ai_providers::{
+        ChatRequest, EmbeddingsRequest, EmbeddingsResponse, ProviderError, StreamChatChunk,
+    };
+
+    use async_trait::async_trait;
+
+    use futures::Stream;
+
+    use std::pin::Pin;
+
+
+    #[test]
+    fn test_get_extension() {
+        assert_eq!(get_extension("test.pdf"), "pdf");
+        assert_eq!(get_extension("image.jpeg"), "jpeg");
+        assert_eq!(get_extension("document.tar.gz"), "gz");
+        // Per `file::utils::extension_of`'s documented contract, a dot-less
+        // name yields the WHOLE (lowercased) name — so the on-disk blob key
+        // matches how `upload` wrote it — NOT "".
+        assert_eq!(get_extension("noext"), "noext");
+    }
+
 
     #[test]
     fn cached_mapping_reusable_only_when_fresh_completed_and_same_key() {
@@ -237,6 +268,7 @@ mod tests {
         // Expiry/rotation both dominate even a completed upload.
         assert!(!cached_mapping_reusable(true, true, UploadStatus::Completed));
     }
+
 
     #[test]
     fn api_key_rotation_changes_fingerprint_and_invalidates_cached_id() {
@@ -293,34 +325,11 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_get_extension() {
-        assert_eq!(get_extension("test.pdf"), "pdf");
-        assert_eq!(get_extension("image.jpeg"), "jpeg");
-        assert_eq!(get_extension("document.tar.gz"), "gz");
-        // Per `file::utils::extension_of`'s documented contract, a dot-less
-        // name yields the WHOLE (lowercased) name — so the on-disk blob key
-        // matches how `upload` wrote it — NOT "".
-        assert_eq!(get_extension("noext"), "noext");
-    }
-
-    // ── get_or_upload_provider_file early-guard error paths ──────────────
-    //
-    // These two guards return BEFORE any DB / storage access, so they're unit-
-    // testable with a lazy pool + a minimal mock AIProvider. The mock only needs
-    // to control `supports_file_api`; its stream/embeddings stubs are never
-    // called on these paths.
-    use crate::modules::llm_provider::models::{LlmProvider, ProxySettings};
-    use ai_providers::{
-        ChatRequest, EmbeddingsRequest, EmbeddingsResponse, ProviderError, StreamChatChunk,
-    };
-    use async_trait::async_trait;
-    use futures::Stream;
-    use std::pin::Pin;
 
     struct MockProvider {
         supports_file_api: bool,
     }
+
 
     #[async_trait]
     impl AIProvider for MockProvider {
@@ -351,6 +360,7 @@ mod tests {
         }
     }
 
+
     fn provider(api_key: Option<&str>) -> LlmProvider {
         LlmProvider {
             id: Uuid::new_v4(),
@@ -367,6 +377,7 @@ mod tests {
         }
     }
 
+
     async fn unused_deps() -> (PgPool, FileRepository, Arc<dyn FileStorage>) {
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(1)
@@ -380,6 +391,7 @@ mod tests {
         );
         (pool, repo, storage)
     }
+
 
     #[tokio::test]
     async fn upload_rejects_provider_without_file_api() {
@@ -404,6 +416,7 @@ mod tests {
         assert_eq!(err.status_code(), 400);
     }
 
+
     #[tokio::test]
     async fn upload_rejects_provider_with_no_api_key() {
         let (pool, repo, storage) = unused_deps().await;
@@ -426,6 +439,9 @@ mod tests {
         .expect_err("a provider with no API key must be rejected before any upload");
         assert_eq!(err.error_code(), "PROVIDER_NO_API_KEY");
         assert_eq!(err.status_code(), 400);
+    }
+
+
     // ── API-key rotation detection (cached provider_file_id invalidation) ──────
 
     #[test]
@@ -439,6 +455,7 @@ mod tests {
         assert_eq!(api_key_fingerprint(k).len(), 64);
         assert!(api_key_fingerprint(k).bytes().all(|b| b.is_ascii_hexdigit()));
     }
+
 
     #[test]
     fn api_key_fingerprint_differs_after_rotation() {

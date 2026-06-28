@@ -483,11 +483,6 @@ pub async fn refresh_summary(
             }
         };
 
-    // Apply the fraction-of-window override (summarize at the SMALLER of the
-    // admin cap and 0.75× the model's context window) + the keep_recent
-    // re-clamp. Extracted to `effective_thresholds` so the selection + clamp
-    // are unit-testable as one unit.
-    let (trigger, keep_recent) = effective_thresholds(trigger, keep_recent, trigger_override);
     // Apply the fraction-of-window override: summarize at the SMALLER of the
     // admin cap and 0.75× the model's context window, re-clamping keep_recent
     // so a small-context override can't silently disable summarization.
@@ -722,57 +717,12 @@ async fn upsert_summary(
 // ============================================================================
 // Unit tests — pure logic only. No DB, no LLM, no clock.
 // ============================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use chrono::TimeZone;
 
-    #[test]
-    fn empty_or_whitespace_llm_summary_is_not_writable() {
-        // The empty-LLM-response rejection: a blank/whitespace-only summary
-        // from the model must be treated as non-writable (the refresh path
-        // skips the upsert and returns early instead of persisting garbage).
-        assert!(!summary_is_writable(""));
-        assert!(!summary_is_writable("   "));
-        assert!(!summary_is_writable("\n\t  \n"));
-        // A real summary IS writable.
-        assert!(summary_is_writable("The user prefers metric units."));
-        assert!(summary_is_writable("  leading/trailing trimmed but non-empty  "));
-    }
-
-    #[test]
-    fn window_override_none_is_identity() {
-        // No model context window known → admin thresholds pass through.
-        assert_eq!(apply_window_override(8000, 2000, None), (8000, 2000));
-    }
-
-    #[test]
-    fn window_override_takes_the_smaller_trigger() {
-        // override (0.75×window) below the admin cap → summarize earlier.
-        assert_eq!(apply_window_override(8000, 2000, Some(3000)), (3000, 2000));
-        // override ABOVE the admin cap → admin cap wins, keep_recent untouched.
-        assert_eq!(apply_window_override(8000, 2000, Some(20000)), (8000, 2000));
-    }
-
-    #[test]
-    fn window_override_reclamps_keep_recent_below_trigger() {
-        // Small-context override pushing trigger below keep_recent must NOT
-        // leave keep_recent >= trigger (which would silently disable
-        // summarization). keep_recent is re-clamped to trigger-1.
-        let (trigger, keep_recent) = apply_window_override(8000, 2000, Some(1500));
-        assert_eq!(trigger, 1500);
-        assert_eq!(keep_recent, 1499, "keep_recent re-clamped strictly below trigger");
-        assert!(keep_recent < trigger, "summarization must still be able to fire");
-    }
-
-    #[test]
-    fn window_override_handles_degenerate_tiny_trigger() {
-        // Even a pathologically tiny override can't underflow keep_recent.
-        let (trigger, keep_recent) = apply_window_override(8000, 2000, Some(1));
-        assert_eq!(trigger, 1);
-        assert_eq!(keep_recent, 0);
-    }
 
     fn msg(id: Uuid, role: &str, text: &str) -> SummarizableMessage {
         SummarizableMessage {
@@ -782,17 +732,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn empty_or_whitespace_summary_is_not_writable() {
-        // An empty or whitespace-only LLM response must be rejected so it can't
-        // overwrite a good prior summary with a blank one.
-        assert!(!summary_is_writable(""));
-        assert!(!summary_is_writable("   "));
-        assert!(!summary_is_writable("\n\t  \n"));
-        // Any real content is writable.
-        assert!(summary_is_writable("A concise summary."));
-        assert!(summary_is_writable("  trimmed but non-empty  "));
-    }
 
     #[test]
     fn decide_is_token_based_not_message_count() {
@@ -814,25 +753,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn fraction_of_window_override_selects_smaller_trigger_and_reclamps() {
-        // No override → admin values pass through (keep_recent still re-clamped
-        // below the trigger, but here 3000 < 8000-1 so it is unchanged).
-        assert_eq!(effective_thresholds(8000, 3000, None), (8000, 3000));
-
-        // A SMALL override (e.g. 0.75 × a tiny context window) wins over the
-        // larger admin cap, and keep_recent is re-clamped to trigger - 1 so
-        // summarization still fires.
-        assert_eq!(effective_thresholds(8000, 3000, Some(200)), (200, 199));
-
-        // A LARGE override does NOT raise the admin cap (min keeps the admin
-        // value); keep_recent stays below it.
-        assert_eq!(effective_thresholds(8000, 3000, Some(20000)), (8000, 3000));
-
-        // Override equal to admin trigger → keep_recent clamps to trigger - 1
-        // only when it would otherwise exceed it.
-        assert_eq!(effective_thresholds(500, 1000, Some(500)), (500, 499));
-    }
 
     #[test]
     fn decide_keep_recent_is_a_token_budget() {
@@ -848,6 +768,7 @@ mod tests {
             SummarizeAction::Noop
         ));
     }
+
 
     #[test]
     fn decide_summarizes_after_keep_recent_clamped_below_trigger() {
@@ -887,6 +808,7 @@ mod tests {
         );
     }
 
+
     fn fake_summary(
         anchor: Option<Uuid>,
         message_count: i32,
@@ -903,6 +825,7 @@ mod tests {
         }
     }
 
+
     // ---- decide_summarize_action ----
 
     #[test]
@@ -916,6 +839,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn decide_at_trigger_is_noop() {
         // Boundary: `msgs.len() == trigger` is NOT enough to fire.
@@ -927,6 +851,7 @@ mod tests {
             SummarizeAction::Noop
         );
     }
+
 
     #[test]
     fn decide_above_trigger_no_existing_returns_full() {
@@ -959,6 +884,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn decide_incremental_with_valid_anchor() {
         let msgs: Vec<_> = (0..15)
@@ -990,6 +916,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn decide_anchor_at_cutoff_minus_one_is_noop() {
         // Anchor is the LAST message that would be summarized → no
@@ -1005,6 +932,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn decide_anchor_not_in_history_falls_back_to_full() {
         let msgs: Vec<_> = (0..12)
@@ -1018,6 +946,7 @@ mod tests {
         assert!(matches!(action, SummarizeAction::Full { .. }));
     }
 
+
     #[test]
     fn decide_null_anchor_falls_back_to_full() {
         let msgs: Vec<_> = (0..12)
@@ -1028,6 +957,7 @@ mod tests {
         let action = decide_summarize_action(&msgs, 10, 3, Some(&prev));
         assert!(matches!(action, SummarizeAction::Full { .. }));
     }
+
 
     #[test]
     fn decide_keep_recent_expanded_falls_back_to_full() {
@@ -1041,6 +971,7 @@ mod tests {
         let action = decide_summarize_action(&msgs, 10, 6, Some(&prev));
         assert!(matches!(action, SummarizeAction::Full { .. }));
     }
+
 
     #[test]
     fn decide_incremental_with_non_text_new_msgs_is_noop() {
@@ -1084,6 +1015,7 @@ mod tests {
         let _ = prev; // silence unused
     }
 
+
     // ---- build_transcript ----
 
     #[test]
@@ -1095,6 +1027,7 @@ mod tests {
         assert_eq!(build_transcript(&m), "user: hello\nassistant: hi there\n");
     }
 
+
     #[test]
     fn transcript_skips_empty_text() {
         let m = vec![
@@ -1105,6 +1038,7 @@ mod tests {
         assert_eq!(build_transcript(&m), "user: hello\nuser: world\n");
     }
 
+
     #[test]
     fn transcript_empty_when_no_text() {
         let m = vec![
@@ -1114,71 +1048,6 @@ mod tests {
         assert_eq!(build_transcript(&m), "");
     }
 
-    // ---- message_to_summarizable (content-block text extraction) ----
-
-    fn content_block(
-        content: serde_json::Value,
-    ) -> crate::modules::chat::core::models::content::MessageContent {
-        let ty = content
-            .get("type")
-            .and_then(|t| t.as_str())
-            .unwrap_or("text")
-            .to_string();
-        crate::modules::chat::core::models::content::MessageContent {
-            id: Uuid::new_v4(),
-            message_id: Uuid::new_v4(),
-            content_type: ty,
-            content,
-            sequence_order: 0,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        }
-    }
-
-    fn message_with(
-        role: &str,
-        blocks: Vec<serde_json::Value>,
-    ) -> crate::modules::chat::core::types::MessageWithContent {
-        crate::modules::chat::core::types::MessageWithContent {
-            message: crate::modules::chat::core::models::message::Message {
-                id: Uuid::new_v4(),
-                role: role.to_string(),
-                originated_from_id: Uuid::new_v4(),
-                edit_count: 0,
-                model_id: None,
-                created_at: chrono::Utc::now(),
-            },
-            contents: blocks.into_iter().map(content_block).collect(),
-        }
-    }
-
-    #[test]
-    fn message_to_summarizable_extracts_only_text_blocks() {
-        // A turn mixing a text block with a NON-text (thinking) block — only the
-        // text contributes to the summarizable text.
-        let m = message_with(
-            "assistant",
-            vec![
-                serde_json::json!({ "type": "text", "text": "the answer is 42" }),
-                serde_json::json!({ "type": "thinking", "thinking": "internal reasoning" }),
-            ],
-        );
-        let s = message_to_summarizable(&m);
-        assert_eq!(s.role, "assistant");
-        assert_eq!(s.text, "the answer is 42", "only the text block contributes");
-    }
-
-    #[test]
-    fn message_to_summarizable_non_text_only_turn_yields_empty_text() {
-        // A turn with NO text block (thinking-only) → empty text, so the
-        // downstream transcript/decide logic correctly skips it (no crash).
-        let m = message_with(
-            "user",
-            vec![serde_json::json!({ "type": "thinking", "thinking": "just reasoning" })],
-        );
-        let s = message_to_summarizable(&m);
-        assert_eq!(s.text, "", "a non-text-only turn must produce empty text");
-    }
 
     // ---- apply_summary_block ----
 
@@ -1191,6 +1060,7 @@ mod tests {
         }
     }
 
+
     fn asst_msg(text: &str) -> ChatMessage {
         ChatMessage {
             role: Role::Assistant,
@@ -1199,6 +1069,7 @@ mod tests {
             }],
         }
     }
+
 
     fn sys_msg(text: &str) -> ChatMessage {
         ChatMessage {
@@ -1209,12 +1080,14 @@ mod tests {
         }
     }
 
+
     fn request_text(req: &ChatRequest, idx: usize) -> &str {
         match &req.messages[idx].content[0] {
             ContentBlock::Text { text } => text.as_str(),
             _ => panic!("expected text content"),
         }
     }
+
 
     #[test]
     fn apply_block_drains_and_inserts_after_system_prefix() {
@@ -1245,6 +1118,7 @@ mod tests {
         assert_eq!(request_text(&req, 3), "m5");
     }
 
+
     #[test]
     fn apply_block_no_system_prefix() {
         let mut req = ChatRequest {
@@ -1259,6 +1133,7 @@ mod tests {
         assert!(matches!(req.messages[0].role, Role::System));
         assert_eq!(request_text(&req, 1), "m2");
     }
+
 
     #[test]
     fn apply_block_clamps_overflow_drain() {
@@ -1277,6 +1152,7 @@ mod tests {
         assert!(request_text(&req, 0).contains("condensed"));
     }
 
+
     #[test]
     fn render_incremental_prompt_substitutes_once() {
         // Sanity: both placeholders interpolate exactly once each.
@@ -1287,6 +1163,7 @@ mod tests {
         );
         assert_eq!(out, "PREV=S1 NEW=T1 END");
     }
+
 
     #[test]
     fn render_incremental_prompt_does_not_re_substitute_inserted_content() {
@@ -1314,12 +1191,14 @@ mod tests {
         assert_eq!(out.matches(new_tx).count(), 1);
     }
 
+
     #[test]
     fn render_incremental_prompt_handles_no_placeholders() {
         // Template with neither placeholder is returned unchanged.
         let out = render_incremental_prompt("nothing to substitute", "S", "T");
         assert_eq!(out, "nothing to substitute");
     }
+
 
     #[test]
     fn render_incremental_prompt_handles_only_one_placeholder() {
@@ -1329,39 +1208,6 @@ mod tests {
         assert_eq!(out, "only T");
     }
 
-    // ── Custom prompts ARE used in the rendered LLM prompt (gap 3bb02236012c) ─
-    // refresh_summary resolves the admin-overridden full/incremental templates
-    // and renders them into the prompt sent to the LLM. These pin that a CUSTOM
-    // template's literal instructions survive into the rendered prompt (the
-    // override isn't silently dropped in favor of the default).
-
-    #[test]
-    fn render_full_prompt_uses_custom_template_and_substitutes_transcript() {
-        let custom = "CUSTOM-FULL-INSTRUCTION: condense ->\n{transcript}\n<- end";
-        let out = render_full_prompt(custom, "alice: hi\nbob: hey\n");
-        assert!(out.starts_with("CUSTOM-FULL-INSTRUCTION:"), "custom template kept: {out}");
-        assert!(out.contains("alice: hi"), "transcript substituted: {out}");
-        assert!(!out.contains("{transcript}"), "placeholder consumed: {out}");
-    }
-
-    #[test]
-    fn render_full_prompt_without_placeholder_keeps_custom_text() {
-        // A custom template that omits {transcript} is still used verbatim
-        // (the LLM gets the admin's instruction, not the default).
-        let out = render_full_prompt("JUST SUMMARIZE TERSELY", "ignored transcript");
-        assert_eq!(out, "JUST SUMMARIZE TERSELY");
-    }
-
-    #[test]
-    fn default_full_prompt_differs_from_a_custom_one() {
-        // Guards against a regression where the override is ignored: the custom
-        // render must NOT equal the default-template render for the same input.
-        let transcript = "u: q\na: r\n";
-        let custom = render_full_prompt("MY OWN PROMPT {transcript}", transcript);
-        let default = render_full_prompt(DEFAULT_FULL_SUMMARY_PROMPT, transcript);
-        assert_ne!(custom, default, "a custom prompt must change the rendered text");
-        assert!(custom.contains("MY OWN PROMPT"));
-    }
 
     #[test]
     fn apply_block_message_count_zero_just_inserts() {
@@ -1381,6 +1227,44 @@ mod tests {
         assert_eq!(request_text(&req, 2), "m0");
         assert_eq!(request_text(&req, 3), "m1");
     }
+
+
+    // ── Custom prompts ARE used in the rendered LLM prompt (gap 3bb02236012c) ─
+    // refresh_summary resolves the admin-overridden full/incremental templates
+    // and renders them into the prompt sent to the LLM. These pin that a CUSTOM
+    // template's literal instructions survive into the rendered prompt (the
+    // override isn't silently dropped in favor of the default).
+
+    #[test]
+    fn render_full_prompt_uses_custom_template_and_substitutes_transcript() {
+        let custom = "CUSTOM-FULL-INSTRUCTION: condense ->\n{transcript}\n<- end";
+        let out = render_full_prompt(custom, "alice: hi\nbob: hey\n");
+        assert!(out.starts_with("CUSTOM-FULL-INSTRUCTION:"), "custom template kept: {out}");
+        assert!(out.contains("alice: hi"), "transcript substituted: {out}");
+        assert!(!out.contains("{transcript}"), "placeholder consumed: {out}");
+    }
+
+
+    #[test]
+    fn render_full_prompt_without_placeholder_keeps_custom_text() {
+        // A custom template that omits {transcript} is still used verbatim
+        // (the LLM gets the admin's instruction, not the default).
+        let out = render_full_prompt("JUST SUMMARIZE TERSELY", "ignored transcript");
+        assert_eq!(out, "JUST SUMMARIZE TERSELY");
+    }
+
+
+    #[test]
+    fn default_full_prompt_differs_from_a_custom_one() {
+        // Guards against a regression where the override is ignored: the custom
+        // render must NOT equal the default-template render for the same input.
+        let transcript = "u: q\na: r\n";
+        let custom = render_full_prompt("MY OWN PROMPT {transcript}", transcript);
+        let default = render_full_prompt(DEFAULT_FULL_SUMMARY_PROMPT, transcript);
+        assert_ne!(custom, default, "a custom prompt must change the rendered text");
+        assert!(custom.contains("MY OWN PROMPT"));
+    }
+
     // ── Non-text message handling (gap 9846f7fe8f6d) ──────────────────────
     // build_transcript + decide_summarize_action must treat messages whose
     // only content is non-text (tool calls, file attachments → text == "")
@@ -1403,6 +1287,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn all_non_text_messages_never_summarize() {
         // A branch whose messages are all non-text contributes 0 transcript
@@ -1416,6 +1301,99 @@ mod tests {
             SummarizeAction::Noop,
             "all-non-text branch must not trigger summarization"
         );
+    }
+
+
+    #[test]
+    fn fraction_of_window_override_selects_smaller_trigger_and_reclamps() {
+        // No override → admin values pass through (keep_recent still re-clamped
+        // below the trigger, but here 3000 < 8000-1 so it is unchanged).
+        assert_eq!(effective_thresholds(8000, 3000, None), (8000, 3000));
+
+        // A SMALL override (e.g. 0.75 × a tiny context window) wins over the
+        // larger admin cap, and keep_recent is re-clamped to trigger - 1 so
+        // summarization still fires.
+        assert_eq!(effective_thresholds(8000, 3000, Some(200)), (200, 199));
+
+        // A LARGE override does NOT raise the admin cap (min keeps the admin
+        // value); keep_recent stays below it.
+        assert_eq!(effective_thresholds(8000, 3000, Some(20000)), (8000, 3000));
+
+        // Override equal to admin trigger → keep_recent clamps to trigger - 1
+        // only when it would otherwise exceed it.
+        assert_eq!(effective_thresholds(500, 1000, Some(500)), (500, 499));
+    }
+
+
+    // ---- message_to_summarizable (content-block text extraction) ----
+
+    fn content_block(
+        content: serde_json::Value,
+    ) -> crate::modules::chat::core::models::content::MessageContent {
+        let ty = content
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("text")
+            .to_string();
+        crate::modules::chat::core::models::content::MessageContent {
+            id: Uuid::new_v4(),
+            message_id: Uuid::new_v4(),
+            content_type: ty,
+            content,
+            sequence_order: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+
+    fn message_with(
+        role: &str,
+        blocks: Vec<serde_json::Value>,
+    ) -> crate::modules::chat::core::types::MessageWithContent {
+        crate::modules::chat::core::types::MessageWithContent {
+            message: crate::modules::chat::core::models::message::Message {
+                id: Uuid::new_v4(),
+                role: role.to_string(),
+                originated_from_id: Uuid::new_v4(),
+                edit_count: 0,
+                model_id: None,
+                created_at: chrono::Utc::now(),
+            },
+            contents: blocks.into_iter().map(content_block).collect(),
+        }
+    }
+
+
+    #[test]
+    fn message_to_summarizable_extracts_only_text_blocks() {
+        // A turn mixing a text block with a NON-text (thinking) block — only the
+        // text contributes to the summarizable text.
+        let m = message_with(
+            "assistant",
+            vec![
+                serde_json::json!({ "type": "text", "text": "the answer is 42" }),
+                serde_json::json!({ "type": "thinking", "thinking": "internal reasoning" }),
+            ],
+        );
+        let s = message_to_summarizable(&m);
+        assert_eq!(s.role, "assistant");
+        assert_eq!(s.text, "the answer is 42", "only the text block contributes");
+    }
+
+
+    #[test]
+    fn message_to_summarizable_non_text_only_turn_yields_empty_text() {
+        // A turn with NO text block (thinking-only) → empty text, so the
+        // downstream transcript/decide logic correctly skips it (no crash).
+        let m = message_with(
+            "user",
+            vec![serde_json::json!({ "type": "thinking", "thinking": "just reasoning" })],
+        );
+        let s = message_to_summarizable(&m);
+        assert_eq!(s.text, "", "a non-text-only turn must produce empty text");
+    }
+
 
     /// Concurrent-refresh race (summarizer.rs:27-32 comment) on the per-branch
     /// `ON CONFLICT (branch_id) DO UPDATE` upsert (summarizer.rs:645-). Two
@@ -1509,5 +1487,69 @@ mod tests {
             .bind(user_id)
             .execute(&pool)
             .await;
+    }
+
+
+    #[test]
+    fn empty_or_whitespace_llm_summary_is_not_writable() {
+        // The empty-LLM-response rejection: a blank/whitespace-only summary
+        // from the model must be treated as non-writable (the refresh path
+        // skips the upsert and returns early instead of persisting garbage).
+        assert!(!summary_is_writable(""));
+        assert!(!summary_is_writable("   "));
+        assert!(!summary_is_writable("\n\t  \n"));
+        // A real summary IS writable.
+        assert!(summary_is_writable("The user prefers metric units."));
+        assert!(summary_is_writable("  leading/trailing trimmed but non-empty  "));
+    }
+
+
+    #[test]
+    fn window_override_none_is_identity() {
+        // No model context window known → admin thresholds pass through.
+        assert_eq!(apply_window_override(8000, 2000, None), (8000, 2000));
+    }
+
+
+    #[test]
+    fn window_override_takes_the_smaller_trigger() {
+        // override (0.75×window) below the admin cap → summarize earlier.
+        assert_eq!(apply_window_override(8000, 2000, Some(3000)), (3000, 2000));
+        // override ABOVE the admin cap → admin cap wins, keep_recent untouched.
+        assert_eq!(apply_window_override(8000, 2000, Some(20000)), (8000, 2000));
+    }
+
+
+    #[test]
+    fn window_override_reclamps_keep_recent_below_trigger() {
+        // Small-context override pushing trigger below keep_recent must NOT
+        // leave keep_recent >= trigger (which would silently disable
+        // summarization). keep_recent is re-clamped to trigger-1.
+        let (trigger, keep_recent) = apply_window_override(8000, 2000, Some(1500));
+        assert_eq!(trigger, 1500);
+        assert_eq!(keep_recent, 1499, "keep_recent re-clamped strictly below trigger");
+        assert!(keep_recent < trigger, "summarization must still be able to fire");
+    }
+
+
+    #[test]
+    fn window_override_handles_degenerate_tiny_trigger() {
+        // Even a pathologically tiny override can't underflow keep_recent.
+        let (trigger, keep_recent) = apply_window_override(8000, 2000, Some(1));
+        assert_eq!(trigger, 1);
+        assert_eq!(keep_recent, 0);
+    }
+
+
+    #[test]
+    fn empty_or_whitespace_summary_is_not_writable() {
+        // An empty or whitespace-only LLM response must be rejected so it can't
+        // overwrite a good prior summary with a blank one.
+        assert!(!summary_is_writable(""));
+        assert!(!summary_is_writable("   "));
+        assert!(!summary_is_writable("\n\t  \n"));
+        // Any real content is writable.
+        assert!(summary_is_writable("A concise summary."));
+        assert!(summary_is_writable("  trimmed but non-empty  "));
     }
 }

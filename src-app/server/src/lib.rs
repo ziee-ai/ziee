@@ -216,6 +216,8 @@ pub mod llm_provider_files_test_api {
     pub use crate::modules::llm_provider::models::{LlmProvider, ProxySettings};
     pub use crate::modules::llm_provider_files::repository::get_provider_file_mapping;
     pub use crate::modules::llm_provider_files::service::get_or_upload_provider_file;
+}
+
 // Re-export the memory chat-extension retrieval+injection entrypoint for the
 // integration test that exercises the combined recall + core-memory injection
 // flow against a real assistant.

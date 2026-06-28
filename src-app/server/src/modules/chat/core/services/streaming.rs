@@ -1684,224 +1684,6 @@ impl Drop for TerminalGuard {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ai_providers::ContentBlock;
-    use serde_json::json;
-
-    fn text(s: &str) -> ContentBlock {
-        ContentBlock::Text {
-            text: s.to_string(),
-        }
-    }
-
-    fn tool_use(id: &str, name: &str) -> ContentBlock {
-        ContentBlock::ToolUse {
-            id: id.to_string(),
-            name: name.to_string(),
-            input: json!({}),
-        }
-    }
-
-    fn tool_result(id: &str, content: &str) -> ContentBlock {
-        ContentBlock::ToolResult {
-            tool_use_id: id.to_string(),
-            name: None,
-            content: vec![ContentBlock::Text {
-                text: content.to_string(),
-            }],
-            is_error: None,
-        }
-    }
-
-    /// The core fix: an Assistant turn with text + tool_use + tool_result must
-    /// produce TWO messages — `[Assistant { text + tool_use }, Tool { tool_result }]`
-    /// — not three with text as a trailing assistant message. Anthropic rejects
-    /// the latter (text + tool_use must share a message; conversation must not
-    /// end on an assistant turn).
-    #[test]
-    fn assistant_with_text_tool_use_and_tool_result_groups_to_two_messages() {
-        let msgs = group_blocks_into_provider_messages(
-            MessageRole::Assistant,
-            vec![tool_use("call_1", "search")],
-            vec![tool_result("call_1", "ok")],
-            vec![text("Let me search for that.")],
-        );
-
-        assert_eq!(msgs.len(), 2, "must produce exactly two provider messages");
-
-        // First: Assistant with text BEFORE tool_use (Anthropic requires this order)
-        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
-        assert_eq!(msgs[0].content.len(), 2);
-        assert!(matches!(msgs[0].content[0], ContentBlock::Text { .. }));
-        assert!(matches!(msgs[0].content[1], ContentBlock::ToolUse { .. }));
-
-        // Second: Tool with tool_result (provider maps Role::Tool appropriately)
-        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
-        assert_eq!(msgs[1].content.len(), 1);
-        assert!(matches!(msgs[1].content[0], ContentBlock::ToolResult { .. }));
-    }
-
-    /// Even with NO text, tool_use + tool_result still produce two messages.
-    #[test]
-    fn assistant_with_tool_use_and_tool_result_only_groups_to_two_messages() {
-        let msgs = group_blocks_into_provider_messages(
-            MessageRole::Assistant,
-            vec![tool_use("call_1", "search")],
-            vec![tool_result("call_1", "ok")],
-            vec![],
-        );
-
-        assert_eq!(msgs.len(), 2);
-        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
-        assert_eq!(msgs[0].content.len(), 1);
-        assert!(matches!(msgs[0].content[0], ContentBlock::ToolUse { .. }));
-        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
-    }
-
-    /// tool_result without tool_use (e.g. resumed approval) still emits the
-    /// Tool message but skips the empty Assistant message.
-    #[test]
-    fn assistant_with_only_tool_result_emits_single_tool_message() {
-        let msgs = group_blocks_into_provider_messages(
-            MessageRole::Assistant,
-            vec![],
-            vec![tool_result("call_1", "ok")],
-            vec![],
-        );
-
-        assert_eq!(msgs.len(), 1);
-        assert!(matches!(msgs[0].role, ai_providers::Role::Tool));
-    }
-
-    /// Plain assistant text (no tool blocks) stays as a single Assistant message
-    /// — the categorization path must not fire.
-    #[test]
-    fn assistant_with_only_text_emits_single_assistant_message() {
-        let msgs = group_blocks_into_provider_messages(
-            MessageRole::Assistant,
-            vec![],
-            vec![],
-            vec![text("Hello!")],
-        );
-
-        assert_eq!(msgs.len(), 1);
-        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
-        assert_eq!(msgs[0].content.len(), 1);
-        assert!(matches!(msgs[0].content[0], ContentBlock::Text { .. }));
-    }
-
-    /// User messages are never split — even if they (hypothetically) carried tool
-    /// blocks, they're combined into one User message.
-    #[test]
-    fn user_messages_are_never_split() {
-        let msgs = group_blocks_into_provider_messages(
-            MessageRole::User,
-            vec![],
-            vec![],
-            vec![text("question")],
-        );
-
-        assert_eq!(msgs.len(), 1);
-        assert!(matches!(msgs[0].role, ai_providers::Role::User));
-    }
-
-    /// Empty blocks → no message emitted.
-    #[test]
-    fn no_blocks_emits_no_messages() {
-        let msgs = group_blocks_into_provider_messages(
-            MessageRole::Assistant,
-            vec![],
-            vec![],
-            vec![],
-        );
-        assert!(msgs.is_empty());
-    }
-
-    /// Regression guard for the OLD bug: the previous implementation emitted
-    /// `[Assistant { tool_use }, Tool { tool_result }, Assistant { text }]` —
-    /// three messages, with the conversation ending on an Assistant turn. This
-    /// test fails loudly if anyone reintroduces that order.
-    #[test]
-    fn no_trailing_assistant_message_after_tool_result() {
-        let msgs = group_blocks_into_provider_messages(
-            MessageRole::Assistant,
-            vec![tool_use("call_1", "search")],
-            vec![tool_result("call_1", "ok")],
-            vec![text("Let me search.")],
-        );
-        // The LAST message must NOT be an Assistant turn — Anthropic rejects
-        // conversations that end on an assistant message.
-        let last = msgs.last().expect("at least one message");
-        assert!(
-            !matches!(last.role, ai_providers::Role::Assistant),
-            "last message must not be Assistant (would break Anthropic no-prefill rule); \
-             got role={:?}",
-            last.role
-        );
-    }
-
-    #[test]
-    fn thinking_config_for_registry_gated() {
-        use ai_providers::ThinkingMode;
-        // Adaptive thinking model.
-        let cfg = thinking_config_for("anthropic", "claude-opus-4-7").expect("thinking enabled");
-        assert_eq!(cfg.mode, ThinkingMode::Adaptive);
-        assert!(cfg.effort.is_some());
-        // Non-thinking model.
-        assert!(thinking_config_for("openai", "gpt-4o").is_none());
-        // Unknown model.
-        assert!(thinking_config_for("anthropic", "no-such-model").is_none());
-    }
-
-    #[test]
-    fn apply_model_params_maps_and_defaults() {
-        use crate::modules::llm_model::models::ModelParameters;
-
-        // Configured params flow through.
-        let mut req = ai_providers::ChatRequest::default();
-        let params = ModelParameters {
-            temperature: Some(0.3),
-            top_k: Some(20),
-            stop: Some(vec!["END".into()]),
-            ..Default::default()
-        };
-        apply_model_params(&mut req, &params);
-        assert_eq!(req.temperature, Some(0.3));
-        assert_eq!(req.top_k, Some(20));
-        assert_eq!(req.stop, Some(vec!["END".to_string()]));
-
-        // Empty params fall back to the historical defaults.
-        let mut req2 = ai_providers::ChatRequest::default();
-        apply_model_params(&mut req2, &ModelParameters::default());
-        assert_eq!(req2.temperature, Some(0.7));
-        assert_eq!(req2.max_tokens, Some(8192));
-        assert!(req2.top_k.is_none());
-    }
-
-    #[test]
-    fn thinking_block_groups_before_tool_use() {
-        // A thinking block must precede tool_use in the assembled assistant turn.
-        let msgs = group_assistant_blocks(vec![
-            ai_providers::ContentBlock::Thinking {
-                thinking: "reasoning".into(),
-                signature: Some("sig".into()),
-            },
-            tool_use("call_1", "search"),
-        ]);
-        let assistant = msgs
-            .iter()
-            .find(|m| matches!(m.role, ai_providers::Role::Assistant))
-            .expect("assistant message");
-        let first_kinds: Vec<_> = assistant
-            .content
-            .iter()
-            .map(|b| matches!(b, ai_providers::ContentBlock::Thinking { .. }))
-            .collect();
-        assert!(first_kinds.first().copied().unwrap_or(false), "thinking must come first");
-    }
-}
 
 // ── Context trimming ─────────────────────────────────────────────────────────
 
@@ -2042,11 +1824,245 @@ fn truncate_kept_result(
         flat.chars().take(MAX_KEPT_TOOL_RESULT_CHARS).collect();
     format!("{kept}{}", kept_truncation_marker(tool_use_id))
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    use ai_providers::ContentBlock;
+
+    use serde_json::json;
+
+
+    fn text(s: &str) -> ContentBlock {
+        ContentBlock::Text {
+            text: s.to_string(),
+        }
+    }
+
+
+    fn tool_use(id: &str, name: &str) -> ContentBlock {
+        ContentBlock::ToolUse {
+            id: id.to_string(),
+            name: name.to_string(),
+            input: json!({}),
+        }
+    }
+
+
+    fn tool_result(id: &str, content: &str) -> ContentBlock {
+        ContentBlock::ToolResult {
+            tool_use_id: id.to_string(),
+            name: None,
+            content: vec![ContentBlock::Text {
+                text: content.to_string(),
+            }],
+            is_error: None,
+        }
+    }
+
+
+    /// The core fix: an Assistant turn with text + tool_use + tool_result must
+    /// produce TWO messages — `[Assistant { text + tool_use }, Tool { tool_result }]`
+    /// — not three with text as a trailing assistant message. Anthropic rejects
+    /// the latter (text + tool_use must share a message; conversation must not
+    /// end on an assistant turn).
+    #[test]
+    fn assistant_with_text_tool_use_and_tool_result_groups_to_two_messages() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![tool_use("call_1", "search")],
+            vec![tool_result("call_1", "ok")],
+            vec![text("Let me search for that.")],
+        );
+
+        assert_eq!(msgs.len(), 2, "must produce exactly two provider messages");
+
+        // First: Assistant with text BEFORE tool_use (Anthropic requires this order)
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(msgs[0].content.len(), 2);
+        assert!(matches!(msgs[0].content[0], ContentBlock::Text { .. }));
+        assert!(matches!(msgs[0].content[1], ContentBlock::ToolUse { .. }));
+
+        // Second: Tool with tool_result (provider maps Role::Tool appropriately)
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+        assert_eq!(msgs[1].content.len(), 1);
+        assert!(matches!(msgs[1].content[0], ContentBlock::ToolResult { .. }));
+    }
+
+
+    /// Even with NO text, tool_use + tool_result still produce two messages.
+    #[test]
+    fn assistant_with_tool_use_and_tool_result_only_groups_to_two_messages() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![tool_use("call_1", "search")],
+            vec![tool_result("call_1", "ok")],
+            vec![],
+        );
+
+        assert_eq!(msgs.len(), 2);
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(msgs[0].content.len(), 1);
+        assert!(matches!(msgs[0].content[0], ContentBlock::ToolUse { .. }));
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+    }
+
+
+    /// tool_result without tool_use (e.g. resumed approval) still emits the
+    /// Tool message but skips the empty Assistant message.
+    #[test]
+    fn assistant_with_only_tool_result_emits_single_tool_message() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![],
+            vec![tool_result("call_1", "ok")],
+            vec![],
+        );
+
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(msgs[0].role, ai_providers::Role::Tool));
+    }
+
+
+    /// Plain assistant text (no tool blocks) stays as a single Assistant message
+    /// — the categorization path must not fire.
+    #[test]
+    fn assistant_with_only_text_emits_single_assistant_message() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![],
+            vec![],
+            vec![text("Hello!")],
+        );
+
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(msgs[0].content.len(), 1);
+        assert!(matches!(msgs[0].content[0], ContentBlock::Text { .. }));
+    }
+
+
+    /// User messages are never split — even if they (hypothetically) carried tool
+    /// blocks, they're combined into one User message.
+    #[test]
+    fn user_messages_are_never_split() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::User,
+            vec![],
+            vec![],
+            vec![text("question")],
+        );
+
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(msgs[0].role, ai_providers::Role::User));
+    }
+
+
+    /// Empty blocks → no message emitted.
+    #[test]
+    fn no_blocks_emits_no_messages() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![],
+            vec![],
+            vec![],
+        );
+        assert!(msgs.is_empty());
+    }
+
+
+    /// Regression guard for the OLD bug: the previous implementation emitted
+    /// `[Assistant { tool_use }, Tool { tool_result }, Assistant { text }]` —
+    /// three messages, with the conversation ending on an Assistant turn. This
+    /// test fails loudly if anyone reintroduces that order.
+    #[test]
+    fn no_trailing_assistant_message_after_tool_result() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![tool_use("call_1", "search")],
+            vec![tool_result("call_1", "ok")],
+            vec![text("Let me search.")],
+        );
+        // The LAST message must NOT be an Assistant turn — Anthropic rejects
+        // conversations that end on an assistant message.
+        let last = msgs.last().expect("at least one message");
+        assert!(
+            !matches!(last.role, ai_providers::Role::Assistant),
+            "last message must not be Assistant (would break Anthropic no-prefill rule); \
+             got role={:?}",
+            last.role
+        );
+    }
+
+
+    #[test]
+    fn thinking_config_for_registry_gated() {
+        use ai_providers::ThinkingMode;
+        // Adaptive thinking model.
+        let cfg = thinking_config_for("anthropic", "claude-opus-4-7").expect("thinking enabled");
+        assert_eq!(cfg.mode, ThinkingMode::Adaptive);
+        assert!(cfg.effort.is_some());
+        // Non-thinking model.
+        assert!(thinking_config_for("openai", "gpt-4o").is_none());
+        // Unknown model.
+        assert!(thinking_config_for("anthropic", "no-such-model").is_none());
+    }
+
+
+    #[test]
+    fn apply_model_params_maps_and_defaults() {
+        use crate::modules::llm_model::models::ModelParameters;
+
+        // Configured params flow through.
+        let mut req = ai_providers::ChatRequest::default();
+        let params = ModelParameters {
+            temperature: Some(0.3),
+            top_k: Some(20),
+            stop: Some(vec!["END".into()]),
+            ..Default::default()
+        };
+        apply_model_params(&mut req, &params);
+        assert_eq!(req.temperature, Some(0.3));
+        assert_eq!(req.top_k, Some(20));
+        assert_eq!(req.stop, Some(vec!["END".to_string()]));
+
+        // Empty params fall back to the historical defaults.
+        let mut req2 = ai_providers::ChatRequest::default();
+        apply_model_params(&mut req2, &ModelParameters::default());
+        assert_eq!(req2.temperature, Some(0.7));
+        assert_eq!(req2.max_tokens, Some(8192));
+        assert!(req2.top_k.is_none());
+    }
+
+
+    #[test]
+    fn thinking_block_groups_before_tool_use() {
+        // A thinking block must precede tool_use in the assembled assistant turn.
+        let msgs = group_assistant_blocks(vec![
+            ai_providers::ContentBlock::Thinking {
+                thinking: "reasoning".into(),
+                signature: Some("sig".into()),
+            },
+            tool_use("call_1", "search"),
+        ]);
+        let assistant = msgs
+            .iter()
+            .find(|m| matches!(m.role, ai_providers::Role::Assistant))
+            .expect("assistant message");
+        let first_kinds: Vec<_> = assistant
+            .content
+            .iter()
+            .map(|b| matches!(b, ai_providers::ContentBlock::Thinking { .. }))
+            .collect();
+        assert!(first_kinds.first().copied().unwrap_or(false), "thinking must come first");
+    }
+}
 #[cfg(test)]
 mod trim_tests {
     use super::*;
+
     use ai_providers::{ChatMessage, ContentBlock, Role};
+
 
     fn tool_result_msg(id: &str, text: &str) -> ChatMessage {
         ChatMessage {
@@ -2062,10 +2078,12 @@ mod trim_tests {
         }
     }
 
+
     fn is_cleared(m: &ChatMessage) -> bool {
         matches!(&m.content[0], ContentBlock::ToolResult { content, .. }
             if matches!(&content[0], ContentBlock::Text { text } if text.contains("cleared")))
     }
+
 
     #[test]
     fn clears_old_keeps_recent_past_threshold() {
@@ -2081,12 +2099,14 @@ mod trim_tests {
         assert!(!is_cleared(&msgs[9]), "kept last 2");
     }
 
+
     #[test]
     fn noop_under_threshold() {
         let mut msgs = vec![tool_result_msg("t", "small")];
         clear_old_tool_results(&mut msgs, 30_000, 2);
         assert!(!is_cleared(&msgs[0]), "nothing trimmed under threshold");
     }
+
 
     #[test]
     fn noop_when_fewer_than_keep_last() {
@@ -2097,6 +2117,7 @@ mod trim_tests {
         assert!(!is_cleared(&msgs[1]));
     }
 
+
     fn result_text_chars(m: &ChatMessage) -> usize {
         match &m.content[0] {
             ContentBlock::ToolResult { content, .. } => {
@@ -2105,6 +2126,7 @@ mod trim_tests {
             _ => 0,
         }
     }
+
 
     #[test]
     fn caps_oversized_kept_results() {
@@ -2146,6 +2168,7 @@ mod trim_tests {
         );
     }
 
+
     #[test]
     fn small_kept_results_not_truncated() {
         // Oversized older results get cleared; the kept tail is small and must
@@ -2172,6 +2195,7 @@ mod trim_tests {
         }
     }
 
+
     // audit id all-643c33d76832 — trimming→recall ROUNDTRIP handoff. Existing
     // tests assert a cleared block merely contains "cleared"; this asserts the
     // placeholder names the EXACT tool_use_id in a get_tool_result(...) call so
@@ -2194,6 +2218,10 @@ mod trim_tests {
         assert!(
             text.contains(&needle),
             "placeholder must carry the recall pointer for its own tool_use_id: {text}"
+        );
+    }
+
+
     /// Recall-roundtrip linkage: a CLEARED older result's placeholder must carry
     /// the EXACT `tool_use_id` inside a `get_tool_result(...)` hint, so the model
     /// can recover the full result via the tool_result_mcp recall path (whose own

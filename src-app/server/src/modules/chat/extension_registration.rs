@@ -30,10 +30,12 @@ pub fn auto_register_extensions(pool: PgPool, config: Arc<Config>) -> ExtensionR
 
     registry
 }
-
 #[cfg(test)]
 mod tests {
     use super::CHAT_EXTENSIONS;
+
+    use super::*;
+
 
     /// Reproduce the production pipeline ordering exactly as
     /// `auto_register_extensions` does (sort the linkme-collected
@@ -45,6 +47,7 @@ mod tests {
         entries.sort_by_key(|e| e.order);
         entries.iter().map(|e| e.name).collect()
     }
+
 
     /// Cross-module ordering contract (audit all-6907cfab0cd8):
     /// summarization (order 24) must run BEFORE memory (order 25) in the
@@ -85,6 +88,7 @@ mod tests {
         );
     }
 
+
     /// Guard the underlying `order` values that produce the relation above,
     /// read from the actual registered entries (not literals in this test).
     #[test]
@@ -104,7 +108,8 @@ mod tests {
             summ < mem,
             "summarization order ({summ}) must be < memory order ({mem})",
         );
-    use super::*;
+    }
+
 
     /// The summarization (order 24) and memory (order 25) chat extensions have
     /// a load-bearing ordering: summarization MUST run before memory so the

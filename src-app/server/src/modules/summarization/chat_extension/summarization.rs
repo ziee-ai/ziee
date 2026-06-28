@@ -214,10 +214,10 @@ impl ChatExtension for SummarizationExtension {
         router.merge(super::summarization_mode_routes::summarization_mode_router())
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     #[test]
     fn conversation_model_id_present_and_valid() {
@@ -227,11 +227,13 @@ mod tests {
         assert_eq!(conversation_model_id(&m), Some(id));
     }
 
+
     #[test]
     fn conversation_model_id_missing_returns_none() {
         let m = HashMap::new();
         assert_eq!(conversation_model_id(&m), None);
     }
+
 
     #[test]
     fn conversation_model_id_non_string_returns_none() {
@@ -240,6 +242,7 @@ mod tests {
         assert_eq!(conversation_model_id(&m), None);
     }
 
+
     #[test]
     fn conversation_model_id_malformed_uuid_returns_none() {
         let mut m = HashMap::new();
@@ -247,32 +250,25 @@ mod tests {
         assert_eq!(conversation_model_id(&m), None);
     }
 
-    /// The after_llm_call spawn's cheap "skip brand-new branches" guard: fewer
-    /// than MIN_HISTORY_TO_SUMMARIZE (4) messages → skip; 4+ → proceed.
-    #[test]
-    fn branch_too_new_guard_skips_short_histories() {
-        assert!(branch_too_new_to_summarize(0));
-        assert!(branch_too_new_to_summarize(1));
-        assert!(branch_too_new_to_summarize(3));
-        assert!(!branch_too_new_to_summarize(4));
-        assert!(!branch_too_new_to_summarize(10));
-    }
 
     #[test]
     fn resolve_effective_enabled_per_conv_on_overrides_admin_off() {
         assert!(resolve_effective_enabled("on", false));
     }
 
+
     #[test]
     fn resolve_effective_enabled_per_conv_off_overrides_admin_on() {
         assert!(!resolve_effective_enabled("off", true));
     }
+
 
     #[test]
     fn resolve_effective_enabled_inherit_follows_admin() {
         assert!(resolve_effective_enabled("inherit", true));
         assert!(!resolve_effective_enabled("inherit", false));
     }
+
 
     // audit id all-25660d690d6d — DB-failure fail-soft. When the per-conversation
     // mode read fails, before/after_llm_call do
@@ -292,6 +288,21 @@ mod tests {
             !resolve_effective_enabled(default_mode, false),
             "with admin explicitly off, the fail-soft default mode stays disabled"
         );
+    }
+
+
+    /// The after_llm_call spawn's cheap "skip brand-new branches" guard: fewer
+    /// than MIN_HISTORY_TO_SUMMARIZE (4) messages → skip; 4+ → proceed.
+    #[test]
+    fn branch_too_new_guard_skips_short_histories() {
+        assert!(branch_too_new_to_summarize(0));
+        assert!(branch_too_new_to_summarize(1));
+        assert!(branch_too_new_to_summarize(3));
+        assert!(!branch_too_new_to_summarize(4));
+        assert!(!branch_too_new_to_summarize(10));
+    }
+
+
     /// Fail-soft contract: on a DB error before_llm_call defaults per_conv_mode
     /// to DEFAULT_SUMMARIZATION_MODE and admin_enabled to `true`
     /// (`.unwrap_or_else(|_| DEFAULT)` + `.unwrap_or(true)`). Those exact

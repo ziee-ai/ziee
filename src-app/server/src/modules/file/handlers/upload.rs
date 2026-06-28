@@ -15,11 +15,6 @@ use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::openapi::with_permission;
 use uuid::Uuid;
 
-const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50MB per-file cap (DoS hardening)
-/// Per-file upload size cap (approved policy value). A single uploaded file
-/// larger than this is rejected with FILE_TOO_LARGE; the route-level body limit
-/// (200 MB) bounds the whole multipart request on top of this.
-const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50 MB
 const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50MB per-file cap (approved policy)
 
 /// Per-user storage quota for uploads. Closes 05-file F-16 (Medium). 10 GiB
@@ -291,35 +286,6 @@ fn file_suitability(mime: &str, has_text: bool) -> (&'static str, Option<&'stati
     ("low", Some("This file type can't be read by the assistant."))
 }
 
-#[cfg(test)]
-mod suitability_tests {
-    use super::file_suitability;
-
-    #[test]
-    fn images_and_text_are_good() {
-        assert_eq!(file_suitability("image/png", false).0, "good");
-        assert_eq!(file_suitability("text/markdown", true).0, "good");
-        assert_eq!(file_suitability("application/pdf", true).0, "good");
-    }
-
-    #[test]
-    fn powerpoint_suggests_pdf() {
-        let (s, sug) = file_suitability(
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            false,
-        );
-        assert_eq!(s, "low");
-        assert!(sug.unwrap().contains("PDF"));
-    }
-
-    #[test]
-    fn scanned_pdf_archive_media_are_low() {
-        assert_eq!(file_suitability("application/pdf", false).0, "low");
-        assert_eq!(file_suitability("application/zip", false).0, "low");
-        assert_eq!(file_suitability("audio/mpeg", false).0, "low");
-        assert_eq!(file_suitability("application/octet-stream", false).0, "low");
-    }
-}
 
 /// Upload file handler — thin wrapper around `upload_file_inner` that
 /// adds permission gating + the 201 response code.
@@ -343,4 +309,36 @@ pub fn upload_file_docs(op: TransformOperation) -> TransformOperation {
             res.description("Bad Request - Invalid file or file too large")
         })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+#[cfg(test)]
+mod suitability_tests {
+    use super::file_suitability;
+
+
+    #[test]
+    fn images_and_text_are_good() {
+        assert_eq!(file_suitability("image/png", false).0, "good");
+        assert_eq!(file_suitability("text/markdown", true).0, "good");
+        assert_eq!(file_suitability("application/pdf", true).0, "good");
+    }
+
+
+    #[test]
+    fn powerpoint_suggests_pdf() {
+        let (s, sug) = file_suitability(
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            false,
+        );
+        assert_eq!(s, "low");
+        assert!(sug.unwrap().contains("PDF"));
+    }
+
+
+    #[test]
+    fn scanned_pdf_archive_media_are_low() {
+        assert_eq!(file_suitability("application/pdf", false).0, "low");
+        assert_eq!(file_suitability("application/zip", false).0, "low");
+        assert_eq!(file_suitability("audio/mpeg", false).0, "low");
+        assert_eq!(file_suitability("application/octet-stream", false).0, "low");
+    }
 }

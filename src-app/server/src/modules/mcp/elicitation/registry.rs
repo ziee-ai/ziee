@@ -115,14 +115,17 @@ pub fn remove(elicitation_id: Uuid) -> Option<Uuid> {
     };
     entry.and_then(|e| e.content_id)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::modules::mcp::elicitation::models::ElicitationResponse;
+
+
     fn resp() -> ElicitationResponse {
         ElicitationResponse { action: "accept".to_string(), content: None }
     }
+
 
     /// respond() returns the DB content_id so the handler (handlers.rs:71-85)
     /// can persist the user's answer to the right message_contents row.
@@ -142,6 +145,7 @@ mod tests {
         assert!(!found2, "respond must consume the entry");
     }
 
+
     /// content_id mismatch / unknown elicitation: respond() on an id never
     /// registered returns (false, None) so the handler 404s instead of
     /// updating an unrelated DB row.
@@ -152,6 +156,7 @@ mod tests {
         assert!(!found);
         assert_eq!(content_id, None);
     }
+
 
     /// An elicitation started without a message_id has content_id == None;
     /// respond() reports found but no DB row to persist into.
@@ -164,6 +169,7 @@ mod tests {
         assert!(found);
         assert_eq!(content_id, None);
     }
+
 
     /// owner_matches enforces the per-user binding the handler relies on.
     #[test]
@@ -180,11 +186,13 @@ mod tests {
         assert_eq!(owner_matches(eid, other), Some(false));
         // cleanup
         let _ = respond(eid, resp());
-    use crate::modules::mcp::elicitation::models::ElicitationResponse;
+    }
+
 
     fn decline() -> ElicitationResponse {
         ElicitationResponse { action: "decline".into(), content: None }
     }
+
 
     /// The owner-binding contract the chat-extension notification handler
     /// (mcp.rs `execute_approved_tools_sync`) relies on for F-04:
@@ -217,6 +225,7 @@ mod tests {
         let _ = respond(id, decline());
     }
 
+
     /// `respond` delivers the answer to the waiting receiver exactly once and
     /// removes the entry; a second respond / owner check no longer finds it.
     #[test]
@@ -236,6 +245,7 @@ mod tests {
         assert_eq!(owner_matches(id, Uuid::new_v4()), None);
         assert_eq!(respond(id, decline()).0, false, "second respond finds nothing");
     }
+
 
     /// `remove` (the cancellation path) drops the entry and returns its
     /// content_id so the caller can mark the DB row cancelled; binding a

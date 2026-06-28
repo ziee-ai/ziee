@@ -171,10 +171,10 @@ fn looks_like_text(data: &[u8]) -> bool {
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     #[tokio::test]
     async fn r_script_octet_stream_extracts_text() {
@@ -188,6 +188,7 @@ mod tests {
         assert_eq!(result.text_pages.len(), 1, "R script should yield one text page");
         assert_eq!(result.text_pages[0], src);
     }
+
 
     #[tokio::test]
     async fn code_mimes_outside_allowlist_extract_text() {
@@ -207,6 +208,7 @@ mod tests {
         }
     }
 
+
     #[tokio::test]
     async fn binary_data_yields_no_text_pages() {
         // PNG magic + a NUL byte → must stay binary (no garbage text page).
@@ -217,6 +219,7 @@ mod tests {
             .unwrap();
         assert!(result.text_pages.is_empty(), "binary data must not be extracted as text");
     }
+
 
     #[tokio::test]
     async fn csv_still_extracted_by_text_processor() {
@@ -229,6 +232,7 @@ mod tests {
         assert_eq!(result.text_pages, vec![csv.to_string()]);
     }
 
+
     #[test]
     fn looks_like_text_guards() {
         assert!(looks_like_text(b"plain text"));
@@ -236,6 +240,7 @@ mod tests {
         assert!(!looks_like_text(b"has\0nul"));
         assert!(!looks_like_text(&[0xff, 0xfe, 0xfd, 0x00]));
     }
+
 
     // ----- Graceful degradation for failed processing (audit all-f2c43a4939b6) -----
     //
@@ -268,6 +273,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn processing_result_default_is_safe_empty_degradation() {
         // The value the upload handler falls back to on a processing error:
@@ -279,6 +285,9 @@ mod tests {
         assert!(degraded.images.is_empty(), "no preview images");
         assert_eq!(degraded.metadata.has_text, None, "has_text unset");
         assert_eq!(degraded.metadata.text_length, None, "text_length unset");
+    }
+
+
     /// Graceful degradation: the upload path falls back to
     /// `ProcessingResult::default()` when processing fails, so the default MUST
     /// be a safe no-artifacts result (empty text pages / thumbnails / images) —
@@ -290,6 +299,7 @@ mod tests {
         assert!(r.thumbnails.is_empty());
         assert!(r.images.is_empty());
     }
+
 
     /// A corrupt file that CLAIMS a rich mime (PDF) but is garbage bytes must
     /// degrade gracefully — no panic, and a safe result (no text pages / no

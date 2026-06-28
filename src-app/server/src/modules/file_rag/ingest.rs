@@ -237,7 +237,6 @@ async fn embed_file_chunks(file_id: Uuid, model_id: Uuid, expected_dim: i32) {
         match embed_batch(model_id, &texts).await {
             Ok(vecs) => {
                 for ((id, uid, _), vec) in batch.iter().zip(vecs.iter()) {
-                    if !super::embed_worker::embedding_dim_matches(vec.len(), expected_dim) {
                     if !embedding_dim_ok(vec.len(), expected_dim) {
                         tracing::warn!(
                             "file_rag: model returned {}-dim vector but column is {}-dim — skipping chunk {}",
@@ -350,10 +349,21 @@ async fn run_backfill_inner() {
     }
 }
 
+
+/// After an embedding-model swap, a re-embed pass can receive a vector whose
+/// dimension no longer matches the `file_chunks.embedding` column (e.g. a 1024-d
+/// model while the column is halfvec(768)). Storing it would error/corrupt the
+/// index, so both `ingest` and `embed_worker` SKIP such chunks (left NULL →
+/// FTS-only until a full column rebuild). This is the shared guard predicate.
+pub(crate) fn embedding_dim_ok(vec_len: usize, expected_dim: i32) -> bool {
+    vec_len as i32 == expected_dim
+}
 #[cfg(test)]
 mod backfill_guard_tests {
     use super::{end_backfill, try_begin_backfill, BACKFILL_IN_PROGRESS};
+
     use std::sync::atomic::Ordering;
+
 
     /// The single-flight guard (ingest.rs:265-275) must admit exactly one
     /// in-flight backfill: a second concurrent acquire fails until the first
@@ -385,8 +395,12 @@ mod backfill_guard_tests {
 
         // Leave the static clean for any other test in this binary.
         end_backfill();
+    }
+}
+#[cfg(test)]
 mod backfill_single_flight_tests {
     use super::*;
+
 
     /// The single-flight guard: while a backfill is in flight
     /// (`BACKFILL_IN_PROGRESS == true`), a second `run_backfill()` caller
@@ -415,8 +429,12 @@ mod backfill_single_flight_tests {
 
         // Restore shared state so other in-source tests aren't poisoned.
         BACKFILL_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
+#[cfg(test)]
 mod ingest_tests {
     use super::{truncate_to_max_page_bytes, MAX_PAGE_BYTES};
+
 
     #[test]
     fn under_cap_is_untouched() {
@@ -425,6 +443,7 @@ mod ingest_tests {
         assert_eq!(s, "short text");
     }
 
+
     #[test]
     fn at_cap_is_untouched() {
         let mut s = "a".repeat(MAX_PAGE_BYTES);
@@ -432,12 +451,14 @@ mod ingest_tests {
         assert_eq!(s.len(), MAX_PAGE_BYTES);
     }
 
+
     #[test]
     fn oversized_ascii_truncates_to_cap() {
         let mut s = "a".repeat(MAX_PAGE_BYTES + 1234);
         assert!(truncate_to_max_page_bytes(&mut s));
         assert_eq!(s.len(), MAX_PAGE_BYTES, "ASCII cuts exactly at the cap");
     }
+
 
     #[test]
     fn oversized_multibyte_truncates_on_char_boundary_no_panic() {
@@ -454,19 +475,10 @@ mod ingest_tests {
         assert!(s.chars().all(|c| c == '€'));
     }
 }
-
-/// After an embedding-model swap, a re-embed pass can receive a vector whose
-/// dimension no longer matches the `file_chunks.embedding` column (e.g. a 1024-d
-/// model while the column is halfvec(768)). Storing it would error/corrupt the
-/// index, so both `ingest` and `embed_worker` SKIP such chunks (left NULL →
-/// FTS-only until a full column rebuild). This is the shared guard predicate.
-pub(crate) fn embedding_dim_ok(vec_len: usize, expected_dim: i32) -> bool {
-    vec_len as i32 == expected_dim
-}
-
 #[cfg(test)]
 mod dim_guard_tests {
     use super::embedding_dim_ok;
+
 
     #[test]
     fn matching_dimension_is_stored_mismatch_is_skipped() {

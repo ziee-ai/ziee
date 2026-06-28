@@ -134,16 +134,17 @@ fn set_executable(path: &PathBuf) -> Result<(), AppError> {
     })?;
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     /// `biomcp_available()` is exactly "a non-stub binary is embedded".
     #[test]
     fn availability_reflects_embedded_payload() {
         assert_eq!(biomcp_available(), !binaries::BIOMCP.is_empty());
     }
+
 
     /// Extraction contract is consistent with availability: a stub build errors
     /// out (feature self-disables), a real build extracts a non-empty binary to
@@ -164,6 +165,7 @@ mod tests {
             );
         }
     }
+
 
     /// On Unix the extracted binary MUST be marked executable (0o755) or the
     /// supervisor can't spawn it.
@@ -193,6 +195,8 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
+
+
     /// The embedded-binary extraction path (ensure_biomcp_extracted) is
     /// build-conditioned (a real binary vs a zero-byte stub), so assert its
     /// fail-soft CONTRACT either way: extraction succeeds IFF a real binary is

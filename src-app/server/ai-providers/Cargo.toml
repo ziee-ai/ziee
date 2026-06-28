@@ -8,44 +8,6 @@ license = ""
 
 [dependencies]
 # All providers now use custom HTTP implementations (no external provider libraries)
-#
-# Versions are inherited from `[workspace.dependencies]` in src-app/Cargo.toml
-# so every member crate stays on one shared line per dep (bump once, everyone
-# follows). Crate-specific extra features are added on the dep line.
-
-# Core async runtime
-tokio = { workspace = true }
-async-trait = { workspace = true }
-
-# Serialization
-serde = { workspace = true }
-serde_json = { workspace = true }
-
-# HTTP client — workspace base is default-features=false + rustls-tls/charset/http2;
-# this crate additionally needs json/stream/multipart.
-reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
-
-# Error handling
-thiserror = { workspace = true }
-
-# Streaming
-# futures-core is not in the workspace set (the workspace exposes `futures`
-# and `futures-util`); keep it pinned locally.
-futures-core = "0.3"
-futures-util = { workspace = true }
-async-stream = { workspace = true }
-
-# Base64 encoding (for file attachments)
-base64 = { workspace = true }
-
-# Date/time handling (for file expiration)
-chrono = { workspace = true }
-
-# Logging
-tracing = { workspace = true }
-
-# UUID generation (for Gemini tool use IDs)
-uuid = { workspace = true }
 # Versions are inherited from the workspace `[workspace.dependencies]` catalog
 # (`src-app/Cargo.toml`) so every member stays on the same line.
 

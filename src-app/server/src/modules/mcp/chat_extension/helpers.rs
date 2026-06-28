@@ -253,24 +253,6 @@ pub(crate) async fn run_ask_user_elicitation(
     if message.is_empty() {
         return ask_result("ask_user requires a non-empty 'message'.".to_string(), true);
     }
-    let requested_schema = input
-        .get("schema")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
-    // Cap the model-supplied form schema at 1 MiB. It is serialized,
-    // persisted as a DB content block, and pushed over the SSE stream, so an
-    // oversized schema would bloat storage + every connected client's payload.
-    const MAX_REQUESTED_SCHEMA_BYTES: usize = 1024 * 1024;
-    if serde_json::to_string(&requested_schema)
-        .map(|s| s.len())
-        .unwrap_or(0)
-        > MAX_REQUESTED_SCHEMA_BYTES
-    {
-        return ask_result(
-            "ask_user 'schema' exceeds the 1 MiB limit.".to_string(),
-            true,
-        );
-    }
     let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
         input
             .get("schema")
@@ -800,7 +782,6 @@ pub fn build_query_input(schema: &serde_json::Value, query_text: &str) -> Option
         Some(serde_json::json!({ "query": query_text }))
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -808,9 +789,13 @@ mod tests {
         convert_mcp_tool_to_ai_tool, run_ask_user_elicitation, McpContentData,
         MAX_ANTHROPIC_TOOL_NAME_LEN, MAX_STRUCTURED_CONTENT_BYTES,
     };
+
     use crate::modules::mcp::client::traits::Tool as McpToolDef;
+
     use crate::modules::mcp::elicitation::models::ElicitationResponse;
+
     use uuid::Uuid;
+
 
     /// Pull `(content, is_error)` out of a `ToolResult` for assertions.
     fn tool_result_parts(r: &McpContentData) -> (String, bool) {
@@ -821,6 +806,7 @@ mod tests {
             other => panic!("expected ToolResult, got {other:?}"),
         }
     }
+
 
     /// A within-cap structuredContent (e.g. a normal web_search result) is
     /// preserved verbatim.
@@ -836,6 +822,7 @@ mod tests {
         let out = cap_structured_content(Some(sc.clone()), "web_search");
         assert_eq!(out, Some(sc), "small payload must pass through unchanged");
     }
+
 
     /// An oversized structuredContent (a pathologically large search/fetch
     /// result) is DROPPED to None so it can't bloat the JSONB row / response.
@@ -861,6 +848,7 @@ mod tests {
         assert!(out.is_none(), "oversized structuredContent must be dropped");
     }
 
+
     /// An empty `message` is a malformed tool call from the model → the ONE
     /// genuine error outcome (so the model retries with a real prompt). Returns
     /// before any registry/SSE work, so it's drivable with all-None args.
@@ -879,6 +867,7 @@ mod tests {
         assert!(content.contains("non-empty"), "got: {content}");
     }
 
+
     /// With no interactive stream (sse_tx == None — the before_llm_call no-SSE
     /// approved-tools path) there's nobody to ask, so ask_user returns a
     /// NON-error "no interactive session" marker (not a failure to retry).
@@ -896,6 +885,200 @@ mod tests {
         assert!(!is_error, "no-session is not a tool failure");
         assert!(content.contains("no interactive session"), "got: {content}");
     }
+
+
+    // ── ask_user response → tool_result mapping (plan Tier 1) ─────────────────
+
+    #[test]
+    fn ask_user_accept_returns_answer_json_non_error() {
+        let r = ElicitationResponse {
+            action: "accept".to_string(),
+            content: Some(serde_json::json!({ "color": "green" })),
+        };
+        let (content, is_error) = ask_user_tool_result(&r);
+        assert_eq!(content, r#"{"color":"green"}"#);
+        assert!(!is_error, "accept must never be a tool error");
+    }
+
+
+    #[test]
+    fn ask_user_accept_without_content_is_json_null() {
+        let r = ElicitationResponse {
+            action: "accept".to_string(),
+            content: None,
+        };
+        let (content, is_error) = ask_user_tool_result(&r);
+        assert_eq!(content, "null");
+        assert!(!is_error);
+    }
+
+
+    #[test]
+    fn ask_user_decline_returns_marker_non_error() {
+        let r = ElicitationResponse {
+            action: "decline".to_string(),
+            content: None,
+        };
+        let (content, is_error) = ask_user_tool_result(&r);
+        assert!(content.contains("declined"), "got: {content}");
+        assert!(!is_error, "decline is an answer, not a failure");
+    }
+
+
+    #[test]
+    fn ask_user_cancel_timeout_and_unknown_map_to_no_response_marker() {
+        // cancel (explicit), the synthesized timeout/stream-closed cancel, and
+        // any unexpected action all collapse to the same non-error "no response"
+        // marker so the assistant reasons about it instead of retrying.
+        for action in ["cancel", "timeout", "weird-action"] {
+            let r = ElicitationResponse {
+                action: action.to_string(),
+                content: None,
+            };
+            let (content, is_error) = ask_user_tool_result(&r);
+            assert!(
+                content.contains("did not respond"),
+                "action={action} got: {content}"
+            );
+            assert!(!is_error, "action={action} must be non-error");
+        }
+    }
+
+
+    /// Stream-close DURING the wait: the form is surfaced on the SSE stream,
+    /// then the user closes the chat stream (Stop) before answering. The
+    /// `sse_tx.closed()` arm of the select must fire and produce a NON-error
+    /// "did not respond" marker (so the assistant reasons about it, never
+    /// retries). Distinct from the no-SSE path and from the send-time close.
+    #[tokio::test]
+    async fn ask_user_stream_close_during_wait_returns_non_error_no_response() {
+        use tokio::sync::mpsc;
+        let (tx, mut rx) =
+            mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
+
+        let handle = tokio::spawn(run_ask_user_elicitation(
+            serde_json::json!({ "message": "Pick a color", "schema": { "type": "object" } }),
+            None,
+            None,
+            Some(tx),
+            None,
+        ));
+
+        // Receive the elicitation form first — proves the form was surfaced and
+        // the elicitation is now blocked on the select — THEN drop the receiver
+        // to simulate the chat stream closing before the user answers.
+        let _form = rx.recv().await.expect("elicitation form event surfaced");
+        drop(rx);
+
+        let result = handle.await.expect("elicitation task joins");
+        let (content, is_error) = tool_result_parts(&result);
+        assert!(!is_error, "stream-close mid-wait is not a tool failure");
+        assert!(
+            content.contains("did not respond"),
+            "stream-close must map to the no-response marker; got: {content}"
+        );
+    }
+
+
+    fn make_mcp_tool(name: &str) -> McpToolDef {
+        McpToolDef {
+            name: name.to_string(),
+            description: Some("test".to_string()),
+            input_schema: serde_json::json!({}),
+        }
+    }
+
+
+    #[test]
+    fn convert_mcp_tool_accepts_safe_name() {
+        let server_id = Uuid::new_v4();
+        let tool = make_mcp_tool("short_name-1");
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        assert!(out.is_some(), "safe name should produce a tool");
+    }
+
+
+    #[test]
+    fn convert_mcp_tool_drops_oversize_composed_name() {
+        let server_id = Uuid::new_v4();
+        // server_id is 36 chars + "__" = 38; budget for tool_name is 90.
+        // Pick > 90 to exceed 128.
+        let big = "a".repeat(MAX_ANTHROPIC_TOOL_NAME_LEN);
+        let tool = make_mcp_tool(&big);
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        assert!(out.is_none(), "oversize composed name should be dropped");
+    }
+
+
+    #[test]
+    fn convert_mcp_tool_drops_disallowed_charset() {
+        let server_id = Uuid::new_v4();
+        // Colons + dots are common in non-conforming MCP servers and
+        // fail Anthropic's regex.
+        let tool = make_mcp_tool("category:subtool.v2");
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        assert!(
+            out.is_none(),
+            "name with colons/dots should be dropped (charset rejection)"
+        );
+    }
+
+
+    #[test]
+    fn test_build_query_input_required_string_param() {
+        let schema = serde_json::json!({
+            "required": ["query"],
+            "properties": {
+                "query": { "type": "string" }
+            }
+        });
+        let result = build_query_input(&schema, "test message");
+        assert_eq!(result, Some(serde_json::json!({ "query": "test message" })));
+    }
+
+
+    #[test]
+    fn test_build_query_input_fallback_to_query_key() {
+        // Schema has no required params (only optional) → uses generic fallback
+        let schema = serde_json::json!({
+            "properties": {
+                "count": { "type": "integer" }
+            }
+        });
+        let result = build_query_input(&schema, "test message");
+        assert_eq!(result, Some(serde_json::json!({ "query": "test message" })));
+    }
+
+
+    #[test]
+    fn test_build_query_input_picks_first_required_string() {
+        // First required string param is "topic", not "limit" (integer)
+        let schema = serde_json::json!({
+            "required": ["topic", "limit"],
+            "properties": {
+                "topic": { "type": "string" },
+                "limit": { "type": "integer" }
+            }
+        });
+        let result = build_query_input(&schema, "test message");
+        assert_eq!(result, Some(serde_json::json!({ "topic": "test message" })));
+    }
+
+
+    #[test]
+    fn test_build_query_input_returns_none_for_non_string_required_params() {
+        // Schema has required params but none are strings — auto-mapping is impossible
+        let schema = serde_json::json!({
+            "required": ["count", "enabled"],
+            "properties": {
+                "count": { "type": "integer" },
+                "enabled": { "type": "boolean" }
+            }
+        });
+        let result = build_query_input(&schema, "test message");
+        assert_eq!(result, None, "Should return None when required params exist but none are strings");
+    }
+
 
     /// Prompt-injection / abuse guard: the form `schema` is MODEL-supplied and
     /// is serialized, persisted as a DB content block, and pushed over the SSE
@@ -941,6 +1124,7 @@ mod tests {
         );
     }
 
+
     /// Negative control: a within-cap schema passes the size guard (and, with
     /// no sse_tx, falls through to the non-error "no interactive session"
     /// marker) — proving the cap rejects ONLY oversized schemas.
@@ -953,23 +1137,6 @@ mod tests {
         });
         let result = run_ask_user_elicitation(
             serde_json::json!({ "message": "Pick a color", "schema": schema }),
-    /// A pathologically large LLM-generated `schema` is rejected as a tool
-    /// error BEFORE it can be streamed to the form (the FE renders a field per
-    /// property, so an oversized schema would hang the browser). The size guard
-    /// runs ahead of the interactive-stream check, so all-None args drive it.
-    #[tokio::test]
-    async fn ask_user_oversized_schema_is_error() {
-        // Build a JSON-schema object whose serialized form clears the cap.
-        let big: std::collections::BTreeMap<String, serde_json::Value> = (0..60_000)
-            .map(|i| (format!("field_{i}"), serde_json::json!({ "type": "string" })))
-            .collect();
-        let schema = serde_json::json!({ "type": "object", "properties": big });
-        assert!(
-            serde_json::to_vec(&schema).unwrap().len() > MAX_STRUCTURED_CONTENT_BYTES,
-            "fixture must actually exceed the cap",
-        );
-        let result = run_ask_user_elicitation(
-            serde_json::json!({ "message": "Pick", "schema": schema }),
             None,
             None,
             None,
@@ -982,97 +1149,8 @@ mod tests {
             !content.contains("1 MiB"),
             "normal schema must not trip the size cap, got: {content}",
         );
-        assert!(is_error, "oversized schema must be a tool error");
-        assert!(content.contains("too large"), "got: {content}");
     }
 
-    // ── ask_user response → tool_result mapping (plan Tier 1) ─────────────────
-
-    #[test]
-    fn ask_user_accept_returns_answer_json_non_error() {
-        let r = ElicitationResponse {
-            action: "accept".to_string(),
-            content: Some(serde_json::json!({ "color": "green" })),
-        };
-        let (content, is_error) = ask_user_tool_result(&r);
-        assert_eq!(content, r#"{"color":"green"}"#);
-        assert!(!is_error, "accept must never be a tool error");
-    }
-
-    #[test]
-    fn ask_user_accept_without_content_is_json_null() {
-        let r = ElicitationResponse {
-            action: "accept".to_string(),
-            content: None,
-        };
-        let (content, is_error) = ask_user_tool_result(&r);
-        assert_eq!(content, "null");
-        assert!(!is_error);
-    }
-
-    #[test]
-    fn ask_user_decline_returns_marker_non_error() {
-        let r = ElicitationResponse {
-            action: "decline".to_string(),
-            content: None,
-        };
-        let (content, is_error) = ask_user_tool_result(&r);
-        assert!(content.contains("declined"), "got: {content}");
-        assert!(!is_error, "decline is an answer, not a failure");
-    }
-
-    #[test]
-    fn ask_user_cancel_timeout_and_unknown_map_to_no_response_marker() {
-        // cancel (explicit), the synthesized timeout/stream-closed cancel, and
-        // any unexpected action all collapse to the same non-error "no response"
-        // marker so the assistant reasons about it instead of retrying.
-        for action in ["cancel", "timeout", "weird-action"] {
-            let r = ElicitationResponse {
-                action: action.to_string(),
-                content: None,
-            };
-            let (content, is_error) = ask_user_tool_result(&r);
-            assert!(
-                content.contains("did not respond"),
-                "action={action} got: {content}"
-            );
-            assert!(!is_error, "action={action} must be non-error");
-        }
-    }
-
-    /// Stream-close DURING the wait: the form is surfaced on the SSE stream,
-    /// then the user closes the chat stream (Stop) before answering. The
-    /// `sse_tx.closed()` arm of the select must fire and produce a NON-error
-    /// "did not respond" marker (so the assistant reasons about it, never
-    /// retries). Distinct from the no-SSE path and from the send-time close.
-    #[tokio::test]
-    async fn ask_user_stream_close_during_wait_returns_non_error_no_response() {
-        use tokio::sync::mpsc;
-        let (tx, mut rx) =
-            mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
-
-        let handle = tokio::spawn(run_ask_user_elicitation(
-            serde_json::json!({ "message": "Pick a color", "schema": { "type": "object" } }),
-            None,
-            None,
-            Some(tx),
-            None,
-        ));
-
-        // Receive the elicitation form first — proves the form was surfaced and
-        // the elicitation is now blocked on the select — THEN drop the receiver
-        // to simulate the chat stream closing before the user answers.
-        let _form = rx.recv().await.expect("elicitation form event surfaced");
-        drop(rx);
-
-        let result = handle.await.expect("elicitation task joins");
-        let (content, is_error) = tool_result_parts(&result);
-        assert!(!is_error, "stream-close mid-wait is not a tool failure");
-        assert!(
-            content.contains("did not respond"),
-            "stream-close must map to the no-response marker; got: {content}"
-        );
-    }
 
     /// Stream-close AT SEND TIME: the chat stream is already gone before the
     /// elicitation form can be surfaced (the receiver was dropped before the
@@ -1112,95 +1190,32 @@ mod tests {
         );
     }
 
-    fn make_mcp_tool(name: &str) -> McpToolDef {
-        McpToolDef {
-            name: name.to_string(),
-            description: Some("test".to_string()),
-            input_schema: serde_json::json!({}),
-        }
-    }
 
-    #[test]
-    fn convert_mcp_tool_accepts_safe_name() {
-        let server_id = Uuid::new_v4();
-        let tool = make_mcp_tool("short_name-1");
-        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
-        assert!(out.is_some(), "safe name should produce a tool");
-    }
-
-    #[test]
-    fn convert_mcp_tool_drops_oversize_composed_name() {
-        let server_id = Uuid::new_v4();
-        // server_id is 36 chars + "__" = 38; budget for tool_name is 90.
-        // Pick > 90 to exceed 128.
-        let big = "a".repeat(MAX_ANTHROPIC_TOOL_NAME_LEN);
-        let tool = make_mcp_tool(&big);
-        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
-        assert!(out.is_none(), "oversize composed name should be dropped");
-    }
-
-    #[test]
-    fn convert_mcp_tool_drops_disallowed_charset() {
-        let server_id = Uuid::new_v4();
-        // Colons + dots are common in non-conforming MCP servers and
-        // fail Anthropic's regex.
-        let tool = make_mcp_tool("category:subtool.v2");
-        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+    /// A pathologically large LLM-generated `schema` is rejected as a tool
+    /// error BEFORE it can be streamed to the form (the FE renders a field per
+    /// property, so an oversized schema would hang the browser). The size guard
+    /// runs ahead of the interactive-stream check, so all-None args drive it.
+    #[tokio::test]
+    async fn ask_user_oversized_schema_is_error() {
+        // Build a JSON-schema object whose serialized form clears the cap.
+        let big: std::collections::BTreeMap<String, serde_json::Value> = (0..60_000)
+            .map(|i| (format!("field_{i}"), serde_json::json!({ "type": "string" })))
+            .collect();
+        let schema = serde_json::json!({ "type": "object", "properties": big });
         assert!(
-            out.is_none(),
-            "name with colons/dots should be dropped (charset rejection)"
+            serde_json::to_vec(&schema).unwrap().len() > MAX_STRUCTURED_CONTENT_BYTES,
+            "fixture must actually exceed the cap",
         );
-    }
-
-    #[test]
-    fn test_build_query_input_required_string_param() {
-        let schema = serde_json::json!({
-            "required": ["query"],
-            "properties": {
-                "query": { "type": "string" }
-            }
-        });
-        let result = build_query_input(&schema, "test message");
-        assert_eq!(result, Some(serde_json::json!({ "query": "test message" })));
-    }
-
-    #[test]
-    fn test_build_query_input_fallback_to_query_key() {
-        // Schema has no required params (only optional) → uses generic fallback
-        let schema = serde_json::json!({
-            "properties": {
-                "count": { "type": "integer" }
-            }
-        });
-        let result = build_query_input(&schema, "test message");
-        assert_eq!(result, Some(serde_json::json!({ "query": "test message" })));
-    }
-
-    #[test]
-    fn test_build_query_input_picks_first_required_string() {
-        // First required string param is "topic", not "limit" (integer)
-        let schema = serde_json::json!({
-            "required": ["topic", "limit"],
-            "properties": {
-                "topic": { "type": "string" },
-                "limit": { "type": "integer" }
-            }
-        });
-        let result = build_query_input(&schema, "test message");
-        assert_eq!(result, Some(serde_json::json!({ "topic": "test message" })));
-    }
-
-    #[test]
-    fn test_build_query_input_returns_none_for_non_string_required_params() {
-        // Schema has required params but none are strings — auto-mapping is impossible
-        let schema = serde_json::json!({
-            "required": ["count", "enabled"],
-            "properties": {
-                "count": { "type": "integer" },
-                "enabled": { "type": "boolean" }
-            }
-        });
-        let result = build_query_input(&schema, "test message");
-        assert_eq!(result, None, "Should return None when required params exist but none are strings");
+        let result = run_ask_user_elicitation(
+            serde_json::json!({ "message": "Pick", "schema": schema }),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        let (content, is_error) = tool_result_parts(&result);
+        assert!(is_error, "oversized schema must be a tool error");
+        assert!(content.contains("too large"), "got: {content}");
     }
 }

@@ -220,11 +220,12 @@ async fn broadcast_usage_update(usage_update: HardwareUsageUpdate) {
         }
     }
 }
-
 #[cfg(test)]
 mod sse_cap_tests {
     use super::{add_client, remove_client, MAX_SSE_CLIENTS};
+
     use uuid::Uuid;
+
 
     // audit id all-88a88aca7ba3 — the MAX_SSE_CLIENTS=256 cap (the OOM guard for
     // the hardware-monitoring SSE registry) had no test. add_client must return
@@ -265,8 +266,12 @@ mod sse_cap_tests {
         for id in ids {
             remove_client(id);
         }
+    }
+}
+#[cfg(test)]
 mod tests {
     use super::*;
+
 
     /// F-01: the SSE client pool is capped at MAX_SSE_CLIENTS — `add_client`
     /// returns `Some` until the cap, then `None` (the caller surfaces 429/503),
@@ -303,114 +308,11 @@ mod tests {
         SSE_CLIENTS.lock().unwrap().clear();
     }
 
+
     /// F-04: `stop_hardware_monitoring` clears the active flag so the monitoring
     /// loop exits on its next tick (graceful shutdown).
     #[test]
     fn stop_clears_active_flag() {
-mod tests {
-    use super::*;
-
-    /// add_client registers a client + returns its receiver; remove_client
-    /// drops it from the SSE pool. The monitoring loop (start_hardware_monitoring)
-    /// keys entirely off this pool, so its registration lifecycle is the unit
-    /// under test. Unique ids keep this safe under parallel test execution.
-    #[test]
-    fn add_then_remove_client_updates_the_sse_pool() {
-        let id = Uuid::new_v4();
-        assert!(
-            !SSE_CLIENTS.lock().unwrap().contains_key(&id),
-            "precondition: id not present"
-        );
-
-        let rx = add_client(id);
-        assert!(rx.is_some(), "add_client must return a receiver under the cap");
-        assert!(
-            SSE_CLIENTS.lock().unwrap().contains_key(&id),
-            "client must be registered in the pool"
-        );
-
-        remove_client(id);
-        assert!(
-            !SSE_CLIENTS.lock().unwrap().contains_key(&id),
-            "remove_client must drop the client from the pool"
-        );
-
-        // Cap enforcement (MAX_SSE_CLIENTS = 256): add_client must eventually
-        // refuse (return None) and the pool must never exceed the cap — the
-        // OOM guard for the unbounded per-client channel. Kept in THIS test (the
-        // only one mutating SSE_CLIENTS) so the pool-fill can't race the
-        // add/remove assertions above. Tolerant of any pre-existing clients.
-        let mut added = Vec::new();
-        let mut refused = false;
-        for _ in 0..(MAX_SSE_CLIENTS + 4) {
-            let cid = Uuid::new_v4();
-            match add_client(cid) {
-                Some(_) => added.push(cid),
-                None => {
-                    refused = true;
-mod tests {
-    use super::*;
-
-    /// The SSE registry caps concurrent clients at MAX_SSE_CLIENTS: once full,
-    /// `add_client` returns None (the caller surfaces 429/503), and freeing a
-    /// slot via `remove_client` lets a new client in again. Robust to any
-    /// baseline count: we add until the first rejection, prove rejection
-    /// happened, then prove a removal re-opens a slot, and clean up after.
-    #[test]
-    fn add_client_enforces_cap_and_remove_frees_a_slot() {
-        let mut accepted: Vec<Uuid> = Vec::new();
-        let mut rejected = false;
-        // Try to add a few more than the cap; one of them MUST be rejected.
-        for _ in 0..(MAX_SSE_CLIENTS + 8) {
-            let id = Uuid::new_v4();
-            match add_client(id) {
-                Some(_rx) => accepted.push(id),
-                None => {
-                    rejected = true;
-                    break;
-                }
-            }
-        }
-        assert!(refused, "add_client must refuse once MAX_SSE_CLIENTS is reached");
-        assert!(
-            SSE_CLIENTS.lock().unwrap().len() <= MAX_SSE_CLIENTS,
-            "the SSE pool must never exceed the cap"
-        );
-        for cid in added {
-            remove_client(cid);
-        }
-    }
-
-    /// collect_hardware_usage produces a well-formed snapshot each tick — the
-    /// per-tick payload the monitoring loop broadcasts. Guards the saturating
-    /// memory math (12-hardware F-05): usage_percentage stays in [0,100] and
-    /// available_ram never wraps even if used > total.
-    #[test]
-    fn collect_hardware_usage_returns_a_valid_snapshot() {
-        let mut sys = System::new_all();
-        sys.refresh_all();
-        let snap = collect_hardware_usage(&mut sys);
-
-        assert!(!snap.timestamp.is_empty(), "timestamp must be set");
-        assert!(
-            snap.memory.usage_percentage >= 0.0 && snap.memory.usage_percentage <= 100.0,
-            "memory usage% must be clamped to [0,100]; got {}",
-            snap.memory.usage_percentage
-        );
-        assert!(
-            snap.memory.available_ram <= snap.memory.used_ram + snap.memory.available_ram,
-            "available_ram must not have wrapped (saturating sub)"
-        );
-        assert!(
-            snap.cpu.usage_percentage.is_finite(),
-            "cpu usage% must be a finite number"
-        );
-    }
-
-    /// stop_hardware_monitoring clears the active flag so the spawned loop exits
-    /// within one tick (graceful shutdown path).
-    #[test]
-    fn stop_hardware_monitoring_clears_the_active_flag() {
         MONITORING_ACTIVE.store(true, Ordering::SeqCst);
         stop_hardware_monitoring();
         assert!(
@@ -418,6 +320,7 @@ mod tests {
             "stop must clear MONITORING_ACTIVE"
         );
     }
+
 
     /// The per-tick snapshot the monitoring loop broadcasts (`collect_hardware_usage`,
     /// driven from the loop at monitoring.rs:138) must be a well-formed
@@ -452,6 +355,7 @@ mod tests {
             snap.memory.usage_percentage
         );
     }
+
 
     /// The broadcast step of the loop (monitoring.rs:199-228): a connected client
     /// receives the usage event, and a client whose receiver has been dropped is
@@ -496,6 +400,7 @@ mod tests {
 
         SSE_CLIENTS.lock().unwrap().clear();
     }
+
 
     /// The start lifecycle (monitoring.rs:81-132): `start_hardware_monitoring`
     /// atomically claims the active flag and spawns the loop; a second start while
@@ -546,6 +451,121 @@ mod tests {
         stop_hardware_monitoring();
         SSE_CLIENTS.lock().unwrap().clear();
     }
+
+
+    /// add_client registers a client + returns its receiver; remove_client
+    /// drops it from the SSE pool. The monitoring loop (start_hardware_monitoring)
+    /// keys entirely off this pool, so its registration lifecycle is the unit
+    /// under test. Unique ids keep this safe under parallel test execution.
+    #[test]
+    fn add_then_remove_client_updates_the_sse_pool() {
+        let id = Uuid::new_v4();
+        assert!(
+            !SSE_CLIENTS.lock().unwrap().contains_key(&id),
+            "precondition: id not present"
+        );
+
+        let rx = add_client(id);
+        assert!(rx.is_some(), "add_client must return a receiver under the cap");
+        assert!(
+            SSE_CLIENTS.lock().unwrap().contains_key(&id),
+            "client must be registered in the pool"
+        );
+
+        remove_client(id);
+        assert!(
+            !SSE_CLIENTS.lock().unwrap().contains_key(&id),
+            "remove_client must drop the client from the pool"
+        );
+
+        // Cap enforcement (MAX_SSE_CLIENTS = 256): add_client must eventually
+        // refuse (return None) and the pool must never exceed the cap — the
+        // OOM guard for the unbounded per-client channel. Kept in THIS test (the
+        // only one mutating SSE_CLIENTS) so the pool-fill can't race the
+        // add/remove assertions above. Tolerant of any pre-existing clients.
+        let mut added = Vec::new();
+        let mut refused = false;
+        for _ in 0..(MAX_SSE_CLIENTS + 4) {
+            let cid = Uuid::new_v4();
+            match add_client(cid) {
+                Some(_) => added.push(cid),
+                None => {
+                    refused = true;
+                    break;
+                }
+            }
+        }
+        assert!(refused, "add_client must refuse once MAX_SSE_CLIENTS is reached");
+        assert!(
+            SSE_CLIENTS.lock().unwrap().len() <= MAX_SSE_CLIENTS,
+            "the SSE pool must never exceed the cap"
+        );
+        for cid in added {
+            remove_client(cid);
+        }
+    }
+
+
+    /// collect_hardware_usage produces a well-formed snapshot each tick — the
+    /// per-tick payload the monitoring loop broadcasts. Guards the saturating
+    /// memory math (12-hardware F-05): usage_percentage stays in [0,100] and
+    /// available_ram never wraps even if used > total.
+    #[test]
+    fn collect_hardware_usage_returns_a_valid_snapshot() {
+        let mut sys = System::new_all();
+        sys.refresh_all();
+        let snap = collect_hardware_usage(&mut sys);
+
+        assert!(!snap.timestamp.is_empty(), "timestamp must be set");
+        assert!(
+            snap.memory.usage_percentage >= 0.0 && snap.memory.usage_percentage <= 100.0,
+            "memory usage% must be clamped to [0,100]; got {}",
+            snap.memory.usage_percentage
+        );
+        assert!(
+            snap.memory.available_ram <= snap.memory.used_ram + snap.memory.available_ram,
+            "available_ram must not have wrapped (saturating sub)"
+        );
+        assert!(
+            snap.cpu.usage_percentage.is_finite(),
+            "cpu usage% must be a finite number"
+        );
+    }
+
+
+    /// stop_hardware_monitoring clears the active flag so the spawned loop exits
+    /// within one tick (graceful shutdown path).
+    #[test]
+    fn stop_hardware_monitoring_clears_the_active_flag() {
+        MONITORING_ACTIVE.store(true, Ordering::SeqCst);
+        stop_hardware_monitoring();
+        assert!(
+            !MONITORING_ACTIVE.load(Ordering::SeqCst),
+            "stop must clear MONITORING_ACTIVE"
+        );
+    }
+
+
+    /// The SSE registry caps concurrent clients at MAX_SSE_CLIENTS: once full,
+    /// `add_client` returns None (the caller surfaces 429/503), and freeing a
+    /// slot via `remove_client` lets a new client in again. Robust to any
+    /// baseline count: we add until the first rejection, prove rejection
+    /// happened, then prove a removal re-opens a slot, and clean up after.
+    #[test]
+    fn add_client_enforces_cap_and_remove_frees_a_slot() {
+        let mut accepted: Vec<Uuid> = Vec::new();
+        let mut rejected = false;
+        // Try to add a few more than the cap; one of them MUST be rejected.
+        for _ in 0..(MAX_SSE_CLIENTS + 8) {
+            let id = Uuid::new_v4();
+            match add_client(id) {
+                Some(_rx) => accepted.push(id),
+                None => {
+                    rejected = true;
+                    break;
+                }
+            }
+        }
         assert!(rejected, "add_client must reject once MAX_SSE_CLIENTS is reached");
 
         // Free one slot → the next add must succeed.

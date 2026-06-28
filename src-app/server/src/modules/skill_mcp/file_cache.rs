@@ -134,10 +134,10 @@ pub fn invalidate_skill(skill_id: Uuid) {
     let mut guard = cache().lock().unwrap_or_else(|p| p.into_inner());
     guard.invalidate_skill(skill_id);
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     fn key(id: Uuid, path: &str) -> CacheKey {
         CacheKey {
@@ -148,6 +148,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn put_then_get_returns_same_content() {
         let id = Uuid::new_v4();
@@ -155,6 +156,7 @@ mod tests {
         put(k.clone(), "hello".to_string());
         assert_eq!(get(&k).as_deref(), Some("hello"));
     }
+
 
     #[test]
     fn invalidate_skill_drops_only_matching_entries() {
@@ -169,6 +171,7 @@ mod tests {
         assert_eq!(get(&key(b, "f1")).as_deref(), Some("b1"));
     }
 
+
     #[test]
     fn put_same_key_replaces_content_bytes_accounting() {
         let id = Uuid::new_v4();
@@ -177,6 +180,7 @@ mod tests {
         put(k.clone(), "smaller".to_string()); // replaces
         assert_eq!(get(&k).as_deref(), Some("smaller"));
     }
+
 
     // audit id all-32c98a5e0b5b — resilience of the MCP skill-content cache: the
     // global cache mutex is intentionally poison-RECOVERING
@@ -209,6 +213,9 @@ mod tests {
             Some("after"),
             "put must recover from a poisoned cache mutex"
         );
+    }
+
+
     /// Resilience: an entry older than the 5-minute TTL is treated as a MISS and
     /// dropped on access (Inner::get TTL branch). Tested against a LOCAL Inner so
     /// it can't race the process-global CACHE the other tests use. Backdates
@@ -227,6 +234,7 @@ mod tests {
         assert!(inner.get(&k).is_none(), "expired entry must be a miss");
         assert_eq!(inner.total_bytes, 0, "expired entry must be dropped from accounting");
     }
+
 
     /// Resilience: FIFO capacity eviction — putting past CAPACITY_BYTES evicts the
     /// OLDEST entry first (Inner::put eviction loop). Local Inner; ~40 MiB strings

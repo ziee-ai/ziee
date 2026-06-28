@@ -28,16 +28,22 @@ pub fn health_check_docs(op: TransformOperation) -> TransformOperation {
         .tag("health")
         .response::<200, Json<HealthResponse>>()
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     /// The health endpoint is an unauthenticated liveness probe: it must always
     /// return 200 with `{"status":"ok"}` (no DB, no auth). Gap 6da0741c8b92 —
     /// the health module had zero unit tests.
     #[tokio::test]
     async fn health_check_returns_ok_200() {
+        let (status, Json(body)) = health_check().await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.status, "ok");
+    }
+
+
     /// The handler is a pure function (no DB / no auth) — drive it directly and
     /// assert it yields exactly `200 OK` + the documented `{ "status": "ok" }`
     /// body. The HTTP-level wiring is covered by
@@ -45,14 +51,11 @@ mod tests {
     /// the in-source unit the module previously lacked entirely.
     #[tokio::test]
     async fn health_check_returns_200_and_ok_status() {
-    /// The health endpoint handler returns 200 with a static `{"status":"ok"}`
-    /// body. The health module had zero unit tests.
-    #[tokio::test]
-    async fn health_check_returns_ok_status() {
         let (status, Json(body)) = health_check().await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body.status, "ok");
     }
+
 
     /// `HealthResponse` must serialize to the exact wire shape clients/load
     /// balancers depend on (`{"status":"..."}`) and round-trip back, so a
@@ -68,6 +71,19 @@ mod tests {
         let back: HealthResponse =
             serde_json::from_value(json).expect("deserialize HealthResponse");
         assert_eq!(back.status, "ok");
+    }
+
+
+    /// The health endpoint handler returns 200 with a static `{"status":"ok"}`
+    /// body. The health module had zero unit tests.
+    #[tokio::test]
+    async fn health_check_returns_ok_status() {
+        let (status, Json(body)) = health_check().await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.status, "ok");
+    }
+
+
     /// HealthResponse serializes to the documented JSON shape.
     #[test]
     fn health_response_serializes_to_status_field() {

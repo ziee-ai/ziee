@@ -145,7 +145,6 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
         let mut updated = 0usize;
         for ((id, uid, _), vec) in batch.iter().zip(vecs.iter()) {
             if !embedding_dim_matches(vec.len(), target_dimensions) {
-            if !super::ingest::embedding_dim_ok(vec.len(), target_dimensions) {
                 tracing::warn!(
                     "file_rag.embed_worker: model returned {}-dim vector but column is {}-dim — skipping chunk {}",
                     vec.len(),
@@ -181,10 +180,10 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
     tracing::info!("file_rag.embed_worker: re-embedded {total} chunks with model {model_id} (dim {target_dimensions})");
     Ok(())
 }
-
 #[cfg(test)]
 mod dim_guard_tests {
     use super::embedding_dim_matches;
+
 
     /// Model-swap stale-chunk guard (gap f41785a24732): after swapping to a
     /// new embedding model the column is ALTERed to the new dimension; a vector
@@ -201,8 +200,12 @@ mod dim_guard_tests {
         assert!(!embedding_dim_matches(512, 768));
         // Degenerate: empty vector is never writable.
         assert!(!embedding_dim_matches(0, 768));
+    }
+}
+#[cfg(test)]
 mod tests {
     use super::*;
+
 
     /// All assertions live in ONE test fn because they mutate the
     /// process-global `REBUILD_IN_PROGRESS` static; splitting them into

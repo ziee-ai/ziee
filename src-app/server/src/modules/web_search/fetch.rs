@@ -145,10 +145,10 @@ fn truncate_chars(mut s: String, max_chars: usize) -> (String, bool) {
     s.truncate(end);
     (s, true)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     #[test]
     fn truncate_respects_char_cap() {
@@ -161,6 +161,7 @@ mod tests {
         assert!(!trunc);
     }
 
+
     #[test]
     fn truncate_is_char_boundary_safe() {
         // Multi-byte chars must not split mid-codepoint.
@@ -168,6 +169,7 @@ mod tests {
         assert_eq!(out.chars().count(), 4);
         assert!(trunc);
     }
+
 
     #[tokio::test]
     async fn fetch_rejects_imds_and_private_urls() {
@@ -185,34 +187,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn extract_markdown_preserves_non_html_content_types() {
-        // Non-HTML endpoints (JSON / CSV / XML) won't yield a Readability
-        // "article", but the fallback (htmd::convert of the raw body) must
-        // still preserve the substantive content rather than dropping it.
-        let (_t, json_md) =
-            extract_markdown(r#"{"codeword":"VALUE_JSON_123","n":7}"#, "https://api.example.com/x");
-        assert!(
-            json_md.contains("VALUE_JSON_123"),
-            "JSON content must survive extraction; got: {json_md}"
-        );
-
-        let (_t, csv_md) =
-            extract_markdown("name,score\nalice,VALUE_CSV_456\n", "https://example.com/data.csv");
-        assert!(
-            csv_md.contains("VALUE_CSV_456"),
-            "CSV content must survive extraction; got: {csv_md}"
-        );
-
-        let (_t, xml_md) = extract_markdown(
-            "<feed><entry><title>VALUE_XML_789</title></entry></feed>",
-            "https://example.com/feed.xml",
-        );
-        assert!(
-            xml_md.contains("VALUE_XML_789"),
-            "XML content must survive extraction; got: {xml_md}"
-        );
-    }
 
     #[test]
     fn extract_markdown_strips_boilerplate_and_keeps_body() {
@@ -229,6 +203,7 @@ mod tests {
         // Title best-effort (readability may derive it from <title> or <h1>).
         assert!(!title.is_empty() || md.contains("Real Heading"));
     }
+
 
     /// fetch.rs:122-133 — non-HTML bodies (plain text, XML, a PDF mislabeled
     /// text/html) must NOT panic and must degrade gracefully: Readability
@@ -256,6 +231,7 @@ mod tests {
         let _ = t3;
     }
 
+
     /// Empty body is a valid input — fallback path returns empty strings, no
     /// panic (guards the `unwrap_or_default()` on the htmd error arm).
     #[test]
@@ -263,6 +239,9 @@ mod tests {
         let (title, md) = extract_markdown("", "https://example.com/empty");
         assert!(title.is_empty());
         assert!(md.is_empty());
+    }
+
+
     /// Spawn a one-shot loopback HTTP/1.1 server that answers the first request
     /// with a `302 Found` to `location`, and return its port. Dependency-free
     /// (blocking `std::net` in a thread) so it doesn't rely on tokio `net`
@@ -285,6 +264,7 @@ mod tests {
         });
         port
     }
+
 
     /// SSRF: a redirect from an allowed (loopback) origin to a private/IMDS
     /// target must be REFUSED by the validated client's per-hop redirect policy
@@ -319,6 +299,7 @@ mod tests {
             );
         }
     }
+
 
     /// Complement / control: redirects ARE followed when the target is allowed
     /// — so the block above is specific to the private target, not "redirects
@@ -364,5 +345,35 @@ mod tests {
             .expect("loopback->loopback redirect should be followed under DEV_LOCAL");
         assert!(res.status().is_success(), "final status: {}", res.status());
         assert_eq!(res.text().await.unwrap(), "OK-FINAL");
+    }
+
+
+    #[test]
+    fn extract_markdown_preserves_non_html_content_types() {
+        // Non-HTML endpoints (JSON / CSV / XML) won't yield a Readability
+        // "article", but the fallback (htmd::convert of the raw body) must
+        // still preserve the substantive content rather than dropping it.
+        let (_t, json_md) =
+            extract_markdown(r#"{"codeword":"VALUE_JSON_123","n":7}"#, "https://api.example.com/x");
+        assert!(
+            json_md.contains("VALUE_JSON_123"),
+            "JSON content must survive extraction; got: {json_md}"
+        );
+
+        let (_t, csv_md) =
+            extract_markdown("name,score\nalice,VALUE_CSV_456\n", "https://example.com/data.csv");
+        assert!(
+            csv_md.contains("VALUE_CSV_456"),
+            "CSV content must survive extraction; got: {csv_md}"
+        );
+
+        let (_t, xml_md) = extract_markdown(
+            "<feed><entry><title>VALUE_XML_789</title></entry></feed>",
+            "https://example.com/feed.xml",
+        );
+        assert!(
+            xml_md.contains("VALUE_XML_789"),
+            "XML content must survive extraction; got: {xml_md}"
+        );
     }
 }

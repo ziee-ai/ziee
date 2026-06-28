@@ -42,11 +42,6 @@ const MAX_USAGE_VERSIONS: i64 = 500;
 pub struct ListVersionsQuery {
     /// Filter by engine (optional)
     pub engine: Option<String>,
-    /// Page size (offset pagination). Defaults to DEFAULT_PAGE_SIZE,
-    /// clamped to [1, PAGINATION_MAX_PER_PAGE].
-    pub limit: Option<i64>,
-    /// Row offset (offset pagination). Defaults to 0.
-    pub offset: Option<i64>,
     /// Page number (1-indexed, default 1)
     #[serde(default = "default_page")]
     pub page: i64,
@@ -707,56 +702,6 @@ pub async fn list_version_usage(
         let effective = resolution.get(&m.id).copied().flatten();
         let pinned = match effective {
             Some(v) => m.required_runtime_version_id == Some(v),
-        // Step 1: the model's pinned/required version (id already on the row).
-        let mut effective: Option<RuntimeVersion> = None;
-        if let Some(vid) = m.required_runtime_version_id {
-            if !ver_by_id.contains_key(&vid) {
-                let fetched = super::repository::get_by_id(pool, vid).await.unwrap_or(None);
-                ver_by_id.insert(vid, fetched);
-            }
-            effective = ver_by_id.get(&vid).cloned().flatten();
-        }
-
-        // Step 2: the provider's default version.
-        if effective.is_none() {
-            if !provider_default.contains_key(&m.provider_id) {
-                let resolved = match sqlx::query!(
-                    "SELECT default_runtime_version_id FROM llm_providers WHERE id = $1",
-                    m.provider_id
-                )
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten()
-                .and_then(|r| r.default_runtime_version_id)
-                {
-                    Some(vid) => super::repository::get_by_id(pool, vid).await.unwrap_or(None),
-                    None => None,
-                };
-                provider_default.insert(m.provider_id, resolved);
-            }
-            effective = provider_default.get(&m.provider_id).cloned().flatten();
-        }
-
-        // Step 3: the engine's system default.
-        if effective.is_none() {
-            if !engine_system_default.contains_key(&m.engine) {
-                let sd = binary_manager.get_system_default(&m.engine).await.unwrap_or(None);
-                engine_system_default.insert(m.engine.clone(), sd);
-            }
-            effective = engine_system_default.get(&m.engine).cloned().flatten();
-        }
-
-        // Step 4: the engine's latest version.
-        if effective.is_none() {
-            if !engine_latest.contains_key(&m.engine) {
-                let lt = binary_manager.get_latest_version(&m.engine).await.unwrap_or(None);
-                engine_latest.insert(m.engine.clone(), lt);
-            }
-            effective = engine_latest.get(&m.engine).cloned().flatten();
-        }
-        let pinned = match &effective {
-            Some(v) => m.required_runtime_version_id == Some(v.id),
             None => false,
         };
         let info = ModelUsageInfo {
@@ -965,3 +910,4 @@ pub fn sync_cache_docs(op: aide::transform::TransformOperation) -> aide::transfo
         .tag("Runtime Versions")
         .response::<200, Json<SyncCacheResponse>>()
 }
+

@@ -199,12 +199,14 @@ fn pin_or_detect_flavor_switch(conversation_id: uuid::Uuid, requested: &str) -> 
         None
     }
 }
-
 #[cfg(test)]
 mod flavor_lock_tests {
     use super::pin_or_detect_flavor_switch;
+
     use crate::modules::code_sandbox::types::CONVERSATION_FLAVOR;
+
     use uuid::Uuid;
+
 
     // audit id all-57d10b1be5e4 — execute_command had zero inline unit tests.
     // The per-conversation flavor lock is the one piece of pure logic worth
@@ -232,6 +234,7 @@ mod flavor_lock_tests {
         CONVERSATION_FLAVOR.remove(&conv);
         CONVERSATION_FLAVOR.remove(&other);
     }
+
 
     // audit id all-5c25dc6d4142 — flavor-switch within a conversation, chained
     // end-to-end at the logic level (the orchestration in
@@ -275,14 +278,22 @@ mod flavor_lock_tests {
 
         let _ = fs::remove_dir_all(&dir);
         CONVERSATION_FLAVOR.remove(&conv);
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::modules::code_sandbox::models::ConversationFile;
+
     use crate::modules::code_sandbox::types::{SandboxContext, CONVERSATION_FLAVOR};
+
     use std::path::PathBuf;
+
     use std::sync::Arc;
+
     use uuid::Uuid;
+
 
     fn ctx_for(conv: Uuid) -> SandboxContext {
         SandboxContext {
@@ -292,6 +303,7 @@ mod tests {
             files: Arc::new(Vec::<ConversationFile>::new()),
         }
     }
+
 
     /// The `SANDBOX_NOT_INITIALIZED` guard is the first thing
     /// `execute_command` does: when the module state is not initialized
@@ -321,6 +333,7 @@ mod tests {
         );
         assert_eq!(err.error_code(), "SANDBOX_NOT_INITIALIZED");
     }
+
 
     /// Ordering guarantee: the not-initialized guard short-circuits BEFORE
     /// the per-conversation flavor lock is written. A regression that moved

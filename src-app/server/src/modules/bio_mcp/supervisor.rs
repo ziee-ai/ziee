@@ -359,148 +359,24 @@ pub async fn shutdown() {
         let _ = r.child.start_kill();
     }
 }
-
 #[cfg(test)]
 mod tests {
+    use super::fingerprint;
+
     use super::{fingerprint, is_unsafe_env_name};
+
     use super::{current_env, fingerprint, is_unsafe_env_name};
+
     use crate::modules::bio_mcp::{bio_mcp_server_id, repository::BioMcpRepository};
+
     use sqlx::postgres::PgPoolOptions;
 
-    /// The loader-hijack / whitelist-override env filter (security-critical: an
-    /// admin must not inject these via the bio row's headers).
-    #[test]
-    fn is_unsafe_env_name_blocks_loader_and_whitelist_vars() {
-        // Whitelist vars (case-insensitive) are blocked.
-        for n in ["PATH", "path", "Home", "LANG", "lc_all", "TZ"] {
-            assert!(is_unsafe_env_name(n), "{n} must be rejected");
-        }
-        // Dynamic-loader hijack prefixes (any case) are blocked.
-        for n in [
-            "LD_PRELOAD",
-            "ld_library_path",
-            "LD_AUDIT",
-            "DYLD_INSERT_LIBRARIES",
-            "dyld_library_path",
-        ] {
-            assert!(is_unsafe_env_name(n), "{n} must be rejected");
-        }
-        // Legitimate upstream API keys are allowed.
-        for n in [
-    use super::{env_pairs_from_headers, fingerprint, is_unsafe_env_name};
-
-    #[test]
-    fn env_pairs_from_headers_filters_empty_and_unsafe_and_sorts() {
-        // current_env()'s core projection: legit API keys pass through, empty
-        // values are dropped, loader/whitelist-hijack names are rejected, and
-        // the output is sorted (stable fingerprint).
-        let headers = serde_json::json!({
-            "NCBI_API_KEY": "ncbi-secret",
-            "S2_API_KEY": "s2-secret",
-            "EMPTY_KEY": "",            // dropped: empty value
-            "PATH": "/evil/bin",        // rejected: env_clear whitelist var
-            "LD_PRELOAD": "/x.so",      // rejected: loader hijack
-            "DYLD_INSERT_LIBRARIES": "/y.dylib", // rejected: loader hijack
-            "NUMERIC": 5,               // dropped: non-string value
-        });
-        let pairs = env_pairs_from_headers(&headers);
-
-        assert_eq!(
-            pairs,
-            vec![
-                ("NCBI_API_KEY".to_string(), "ncbi-secret".to_string()),
-                ("S2_API_KEY".to_string(), "s2-secret".to_string()),
-            ],
-            "only non-empty, safe, string-valued headers survive, sorted"
-        );
-        // None of the rejected names leak into the injected env.
-        let names: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
-        for blocked in ["PATH", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "EMPTY_KEY", "NUMERIC"] {
-            assert!(!names.contains(&blocked), "{blocked} must not be injected");
-        }
-    }
-
-    #[test]
-    fn env_pairs_from_headers_empty_object_is_empty() {
-        assert!(env_pairs_from_headers(&serde_json::json!({})).is_empty());
-        assert!(env_pairs_from_headers(&serde_json::Value::Null).is_empty());
-    }
-
-    #[test]
-    fn is_unsafe_env_name_blocks_loader_and_whitelist_vars() {
-        // The env_clear whitelist vars must never be admin-injectable
-        // (case-insensitive) — overriding PATH/HOME would let biomcp exec
-        // arbitrary binaries.
-        for v in ["PATH", "HOME", "LANG", "LC_ALL", "TZ"] {
-            assert!(is_unsafe_env_name(v), "{v} must be protected");
-            assert!(
-                is_unsafe_env_name(&v.to_ascii_lowercase()),
-                "{v} must be protected case-insensitively"
-            );
-        }
-        // Dynamic-loader hijack prefixes (LD_*, DYLD_*).
-        assert!(is_unsafe_env_name("LD_PRELOAD"));
-        assert!(is_unsafe_env_name("LD_LIBRARY_PATH"));
-        assert!(is_unsafe_env_name("ld_preload"));
-        assert!(is_unsafe_env_name("DYLD_INSERT_LIBRARIES"));
-        assert!(is_unsafe_env_name("dyld_insert_libraries"));
-
-        // Legitimate upstream API-key vars (and other names) are allowed.
-        for v in [
-            "NCBI_API_KEY",
-            "S2_API_KEY",
-            "OPENFDA_API_KEY",
-            "ONCOKB_TOKEN",
-            "PATHOLOGY", // not exactly PATH; substring must not match
-            "MYLD_KEY",  // does not start with LD_ / DYLD_
-        ] {
-            assert!(!is_unsafe_env_name(n), "{n} must be allowed");
-        }
     use super::{fingerprint, flap_backoff_active, shutdown, spawn_idle_reaper, SPAWN_BACKOFF, STATE};
+
     use std::time::{Duration, Instant};
 
-    /// The idle reaper's first `interval.tick()` fires immediately, so spawning
-    /// it runs one iteration right away. Over an EMPTY state (no sidecar in this
-    /// unit-test process) that iteration must be a harmless no-op: it must not
-    /// panic, poison the STATE mutex, or fabricate a `running` sidecar.
-    #[tokio::test]
-    async fn idle_reaper_first_tick_is_a_safe_noop_over_empty_state() {
-        // Clean baseline (tests share the process-global STATE).
-        shutdown().await;
-        assert!(STATE.lock().await.running.is_none(), "baseline: no sidecar");
+    use super::{env_pairs_from_headers, fingerprint, is_unsafe_env_name};
 
-        spawn_idle_reaper();
-        // The first tick is immediate; give the spawned task a moment to run it.
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-        // STATE must still be lockable (not poisoned) and hold no sidecar.
-        let st = STATE.lock().await;
-        assert!(
-            st.running.is_none(),
-            "the reaper must not fabricate a sidecar when none is running"
-        );
-    }
-
-    /// `shutdown()` is the graceful-shutdown hook: with no sidecar running it
-    /// must be a safe no-op (no panic / no lock poisoning), idempotent across
-    /// repeated calls, and leave the supervisor state with no `running` sidecar
-    /// so the next `ensure_healthy()` would respawn cleanly.
-    #[tokio::test]
-    async fn shutdown_is_idempotent_noop_when_idle() {
-        // Nothing has spawned a sidecar in this unit-test process.
-        shutdown().await;
-        shutdown().await; // idempotent — second call must not panic either.
-        let st = STATE.lock().await;
-        assert!(
-            st.running.is_none(),
-            "after shutdown the supervisor holds no running sidecar"
-        );
-            "SOME_OTHER_VAR",
-            "PATHOLOGY", // starts with PATH but is NOT exactly PATH
-        ] {
-            assert!(!is_unsafe_env_name(v), "{v} must be allowed");
-        }
-    }
 
     #[test]
     fn fingerprint_is_stable_and_value_sensitive() {
@@ -516,6 +392,7 @@ mod tests {
         d.push(("S2_API_KEY".to_string(), "k".to_string()));
         assert_ne!(fingerprint(&a), fingerprint(&d));
     }
+
 
     /// Env-fingerprint recycling (gap ca2a70a5189c): REMOVING a key (admin
     /// clears an API key) must change the fingerprint so the supervisor
@@ -537,6 +414,7 @@ mod tests {
         assert_ne!(fingerprint(&empty), fingerprint(&removed));
     }
 
+
     /// The loader-hijack denylist (security control): PATH/HOME/LD_*/DYLD_* and
     /// friends are rejected as injectable sidecar env names (case-insensitive),
     /// while ordinary API-key names are allowed.
@@ -551,6 +429,41 @@ mod tests {
         for ok in ["NCBI_API_KEY", "S2_API_KEY", "OPENFDA_API_KEY", "ONCOKB_TOKEN"] {
             assert!(!is_unsafe_env_name(ok), "{ok} must be allowed");
         }
+    }
+
+
+    /// The loader-hijack / whitelist-override env filter (security-critical: an
+    /// admin must not inject these via the bio row's headers).
+    #[test]
+    fn is_unsafe_env_name_blocks_loader_and_whitelist_vars() {
+        // Whitelist vars (case-insensitive) are blocked.
+        for n in ["PATH", "path", "Home", "LANG", "lc_all", "TZ"] {
+            assert!(is_unsafe_env_name(n), "{n} must be rejected");
+        }
+        // Dynamic-loader hijack prefixes (any case) are blocked.
+        for n in [
+            "LD_PRELOAD",
+            "ld_library_path",
+            "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES",
+            "dyld_library_path",
+        ] {
+            assert!(is_unsafe_env_name(n), "{n} must be rejected");
+        }
+        // Legitimate upstream API keys are allowed.
+        for n in [
+            "NCBI_API_KEY",
+            "S2_API_KEY",
+            "OPENFDA_API_KEY",
+            "ONCOKB_TOKEN",
+            "PATHOLOGY", // not exactly PATH; substring must not match
+            "MYLD_KEY",  // does not start with LD_ / DYLD_
+        ] {
+            assert!(!is_unsafe_env_name(n), "{n} must be allowed");
+        }
+    }
+
+
     /// The recycle decision (`env_fingerprint == fp` in `ensure_healthy`) must
     /// recycle the sidecar when a key is REMOVED and must NOT recycle on a mere
     /// header-ordering difference — `current_env` sorts its `(name, value)`
@@ -587,6 +500,7 @@ mod tests {
         let none: Vec<(String, String)> = Vec::new();
         assert_ne!(fingerprint(&one), fingerprint(&none));
     }
+
 
     /// Drives the REAL `current_env()` end-to-end against the bio row in the DB
     /// (the existing tests only cover its building blocks — the `is_unsafe_env_name`
@@ -676,6 +590,49 @@ mod tests {
             .execute(&pool)
             .await
             .ok();
+    }
+
+
+    /// The idle reaper's first `interval.tick()` fires immediately, so spawning
+    /// it runs one iteration right away. Over an EMPTY state (no sidecar in this
+    /// unit-test process) that iteration must be a harmless no-op: it must not
+    /// panic, poison the STATE mutex, or fabricate a `running` sidecar.
+    #[tokio::test]
+    async fn idle_reaper_first_tick_is_a_safe_noop_over_empty_state() {
+        // Clean baseline (tests share the process-global STATE).
+        shutdown().await;
+        assert!(STATE.lock().await.running.is_none(), "baseline: no sidecar");
+
+        spawn_idle_reaper();
+        // The first tick is immediate; give the spawned task a moment to run it.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // STATE must still be lockable (not poisoned) and hold no sidecar.
+        let st = STATE.lock().await;
+        assert!(
+            st.running.is_none(),
+            "the reaper must not fabricate a sidecar when none is running"
+        );
+    }
+
+
+    /// `shutdown()` is the graceful-shutdown hook: with no sidecar running it
+    /// must be a safe no-op (no panic / no lock poisoning), idempotent across
+    /// repeated calls, and leave the supervisor state with no `running` sidecar
+    /// so the next `ensure_healthy()` would respawn cleanly.
+    #[tokio::test]
+    async fn shutdown_is_idempotent_noop_when_idle() {
+        // Nothing has spawned a sidecar in this unit-test process.
+        shutdown().await;
+        shutdown().await; // idempotent — second call must not panic either.
+        let st = STATE.lock().await;
+        assert!(
+            st.running.is_none(),
+            "after shutdown the supervisor holds no running sidecar"
+        );
+    }
+
+
     /// Flap guard: refuse re-spawn only while a recent failure is inside the
     /// SPAWN_BACKOFF window; no failure (None) or an old one never backs off.
     #[test]
@@ -684,5 +641,44 @@ mod tests {
         assert!(flap_backoff_active(Some(Instant::now())), "a just-now failure must back off");
         let old = Instant::now().checked_sub(SPAWN_BACKOFF + Duration::from_secs(1)).unwrap();
         assert!(!flap_backoff_active(Some(old)), "a failure older than SPAWN_BACKOFF must NOT back off");
+    }
+
+
+    #[test]
+    fn env_pairs_from_headers_filters_empty_and_unsafe_and_sorts() {
+        // current_env()'s core projection: legit API keys pass through, empty
+        // values are dropped, loader/whitelist-hijack names are rejected, and
+        // the output is sorted (stable fingerprint).
+        let headers = serde_json::json!({
+            "NCBI_API_KEY": "ncbi-secret",
+            "S2_API_KEY": "s2-secret",
+            "EMPTY_KEY": "",            // dropped: empty value
+            "PATH": "/evil/bin",        // rejected: env_clear whitelist var
+            "LD_PRELOAD": "/x.so",      // rejected: loader hijack
+            "DYLD_INSERT_LIBRARIES": "/y.dylib", // rejected: loader hijack
+            "NUMERIC": 5,               // dropped: non-string value
+        });
+        let pairs = env_pairs_from_headers(&headers);
+
+        assert_eq!(
+            pairs,
+            vec![
+                ("NCBI_API_KEY".to_string(), "ncbi-secret".to_string()),
+                ("S2_API_KEY".to_string(), "s2-secret".to_string()),
+            ],
+            "only non-empty, safe, string-valued headers survive, sorted"
+        );
+        // None of the rejected names leak into the injected env.
+        let names: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
+        for blocked in ["PATH", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "EMPTY_KEY", "NUMERIC"] {
+            assert!(!names.contains(&blocked), "{blocked} must not be injected");
+        }
+    }
+
+
+    #[test]
+    fn env_pairs_from_headers_empty_object_is_empty() {
+        assert!(env_pairs_from_headers(&serde_json::json!({})).is_empty());
+        assert!(env_pairs_from_headers(&serde_json::Value::Null).is_empty());
     }
 }

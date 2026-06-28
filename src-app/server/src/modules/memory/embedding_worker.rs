@@ -244,10 +244,10 @@ async fn run(
 pub(crate) fn embedding_dim_matches(actual_len: usize, expected_dim: i32) -> bool {
     actual_len as i32 == expected_dim
 }
-
 #[cfg(test)]
 mod embed_skip_tests {
     use super::embedding_dim_matches;
+
 
     /// Memory embedding skip path (gap 3cdb397a5069): a model returning a
     /// wrong-dimension vector (e.g. after a model swap) is skipped, while a
@@ -258,10 +258,14 @@ mod embed_skip_tests {
         assert!(embedding_dim_matches(768, 768));
         assert!(!embedding_dim_matches(1536, 768), "wrong-dim vector skipped");
         assert!(!embedding_dim_matches(0, 768), "empty vector skipped");
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use sqlx::postgres::PgPoolOptions;
+
 
     /// Drives the REAL `reembed_all` worker against an embedding model id that
     /// does not resolve, so `dispatch::embed` returns `Err` for the seeded row

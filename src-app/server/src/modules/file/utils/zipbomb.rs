@@ -96,12 +96,18 @@ pub fn is_ooxml_or_odf(mime_type: &str) -> bool {
             | "application/zip"
     )
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use std::io::Write;
+
     use zip::write::SimpleFileOptions;
+
+    use std::io::{Cursor, Write};
+
+    use zip::{CompressionMethod, ZipWriter};
+
 
     /// Build a single-entry zip whose `body` is Deflate-compressed.
     fn zip_with(body: &[u8]) -> Vec<u8> {
@@ -117,6 +123,7 @@ mod tests {
         buf
     }
 
+
     // audit id all-a745a3865cd6 — zip-bomb validation (the core decompression-
     // bomb guard) was untested. MIME smuggling is already covered by
     // file::utils::magic::tests (rejects_html_as_png / allows_html_as_html).
@@ -126,6 +133,7 @@ mod tests {
         let body: Vec<u8> = (0..2048u32).map(|i| (i % 251) as u8).collect();
         assert!(validate(&zip_with(&body)).is_ok(), "a normal zip must pass");
     }
+
 
     #[test]
     fn validate_rejects_a_high_ratio_bomb() {
@@ -137,9 +145,29 @@ mod tests {
                 assert_eq!(cap, MAX_COMPRESSION_RATIO);
             }
             other => panic!("a high-ratio zip must be rejected as RatioExceeded, got {other:?}"),
-    use std::io::{Cursor, Write};
-    use zip::write::SimpleFileOptions;
-    use zip::{CompressionMethod, ZipWriter};
+        }
+    }
+
+
+    #[test]
+    fn validate_rejects_non_zip_bytes_as_open_failed() {
+        match validate(b"this is plainly not a zip archive at all") {
+            Err(ZipBombError::OpenFailed(_)) => {}
+            other => panic!("non-zip bytes must fail to open, got {other:?}"),
+        }
+    }
+
+
+    #[test]
+    fn is_ooxml_or_odf_classifies_zip_family_mimes() {
+        assert!(is_ooxml_or_odf("application/zip"));
+        assert!(is_ooxml_or_odf(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ));
+        assert!(!is_ooxml_or_odf("text/plain"));
+        assert!(!is_ooxml_or_odf("image/png"));
+    }
+
 
     /// Build an in-memory ZIP with a single entry. We construct real
     /// archives (not hand-rolled bytes) so `validate` walks a genuine
@@ -151,6 +179,7 @@ mod tests {
         zw.write_all(data).unwrap();
         zw.finish().unwrap().into_inner()
     }
+
 
     #[test]
     fn rejects_high_ratio_entry_as_zip_bomb() {
@@ -169,11 +198,8 @@ mod tests {
         }
     }
 
+
     #[test]
-    fn validate_rejects_non_zip_bytes_as_open_failed() {
-        match validate(b"this is plainly not a zip archive at all") {
-            Err(ZipBombError::OpenFailed(_)) => {}
-            other => panic!("non-zip bytes must fail to open, got {other:?}"),
     fn accepts_legitimate_low_ratio_archive() {
         // Stored (uncompressed) → ratio 1:1, total tiny: a real DOCX-shaped
         // archive that must pass the guard untouched.
@@ -188,6 +214,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn non_zip_bytes_fail_to_open() {
         // A non-archive upload that slipped past the mime check must error
@@ -198,14 +225,8 @@ mod tests {
         }
     }
 
+
     #[test]
-    fn is_ooxml_or_odf_classifies_zip_family_mimes() {
-        assert!(is_ooxml_or_odf("application/zip"));
-        assert!(is_ooxml_or_odf(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ));
-        assert!(!is_ooxml_or_odf("text/plain"));
-        assert!(!is_ooxml_or_odf("image/png"));
     fn is_ooxml_or_odf_matches_zip_family_only() {
         // The processor only runs `validate` for these container mimes.
         for m in [
