@@ -1,10 +1,5 @@
 import { Alert, Button, Separator, Spin, Text } from '@/components/ui'
-import {
-  AppleFilled,
-  GoogleOutlined,
-  LoginOutlined,
-  WindowsFilled,
-} from '@ant-design/icons'
+import { Apple as AppleIcon, Globe, LogIn, Monitor } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { PublicProvider } from '@/api-client/types'
 import { SESSION_RETURN_TO_KEY } from './constants'
@@ -19,12 +14,12 @@ import { SESSION_RETURN_TO_KEY } from './constants'
 function iconFor(p: PublicProvider) {
   const t = p.provider_type.toLowerCase()
   const n = p.name.toLowerCase()
-  if (t === 'apple' || n.includes('apple')) return <AppleFilled />
-  if (n.includes('google')) return <GoogleOutlined />
+  if (t === 'apple' || n.includes('apple')) return <AppleIcon />
+  if (n.includes('google')) return <Globe />
   if (n.includes('microsoft') || n.includes('entra') || n.includes('azure')) {
-    return <WindowsFilled />
+    return <Monitor />
   }
-  return <LoginOutlined />
+  return <LogIn />
 }
 
 /**

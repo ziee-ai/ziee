@@ -1,5 +1,5 @@
 import { Button, Space, Text } from '@/components/ui'
-import { LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
 
@@ -41,7 +41,7 @@ export function BranchNavigator() {
       <Button
         variant="ghost"
         size="sm"
-        icon={<LeftOutlined />}
+        icon={<ChevronLeft />}
         disabled={displayIndex === 0}
         onClick={() => goTo(displayIndex - 1)}
       />
@@ -51,7 +51,7 @@ export function BranchNavigator() {
       <Button
         variant="ghost"
         size="sm"
-        icon={<RightOutlined />}
+        icon={<ChevronRight />}
         disabled={displayIndex === total - 1}
         onClick={() => goTo(displayIndex + 1)}
       />

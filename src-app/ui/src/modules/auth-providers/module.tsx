@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { LockOutlined } from '@ant-design/icons'
+import { Lock } from 'lucide-react'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/types'
@@ -43,7 +43,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'auth-providers',
-        icon: <LockOutlined />,
+        icon: <Lock />,
         label: 'Auth Providers',
         path: 'auth-providers',
         order: 22,

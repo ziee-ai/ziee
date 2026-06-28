@@ -12,12 +12,7 @@ import {
   Text,
   message,
 } from '@/components/ui'
-import {
-  DeleteOutlined,
-  EditOutlined,
-  ExperimentOutlined,
-  LockOutlined,
-} from '@ant-design/icons'
+import { Trash2, Pencil, FlaskConical, Lock } from 'lucide-react'
 import { Permissions, type AuthProviderResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
@@ -113,7 +108,7 @@ export function AuthProvidersListSection() {
       />
       <Button
         variant="ghost"
-        icon={<ExperimentOutlined />}
+        icon={<FlaskConical />}
         aria-label={`Test ${row.name}`}
         loading={testingIds.has(row.id)}
         onClick={() => onTest(row)}
@@ -122,7 +117,7 @@ export function AuthProvidersListSection() {
       </Button>
       <Button
         variant="ghost"
-        icon={<EditOutlined />}
+        icon={<Pencil />}
         aria-label={`Edit ${row.name}`}
         onClick={() => setDrawer({ mode: 'edit', existing: row })}
       >
@@ -138,7 +133,7 @@ export function AuthProvidersListSection() {
       >
         <Button
           variant="ghost"
-          icon={<DeleteOutlined />}
+          icon={<Trash2 />}
           aria-label={`Delete ${row.name}`}
         >
           Delete
@@ -177,7 +172,7 @@ export function AuthProvidersListSection() {
         ) : providers.length === 0 ? (
           <Empty
             description="No providers yet"
-            image={<LockOutlined className="text-4xl opacity-50" />}
+            image={<Lock className="text-4xl opacity-50" />}
           >
             <Text type="secondary">
               Use the + button to add Google, Microsoft, Apple, or a custom

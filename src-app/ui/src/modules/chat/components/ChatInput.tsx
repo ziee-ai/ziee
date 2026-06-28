@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { App, Button, Dropdown, theme } from 'antd'
-import { SendOutlined, PlusOutlined } from '@ant-design/icons'
+import { Plus, Send as SendIcon } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
@@ -109,7 +109,7 @@ export function ChatInput({
               )}
             >
               <Button
-                icon={<PlusOutlined style={{ fontSize: 16 }} />}
+                icon={<Plus style={{ fontSize: 16 }} />}
                 type="text"
                 size="large"
                 aria-label="Add attachment"
@@ -124,7 +124,7 @@ export function ChatInput({
             <Button
               type="primary"
               size="large"
-              icon={<SendOutlined rotate={270} />}
+              icon={<SendIcon className="rotate-[270deg]" />}
               onClick={handleSend}
               disabled={sending || isStreaming || disabled || isBlockedByExtension}
               loading={sending || isStreaming || isBlockedByExtension}

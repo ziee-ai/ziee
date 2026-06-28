@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Card, Button, Text, Empty, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { SearchOutlined, DeleteOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import type { ConversationResponse } from '@/api-client/types'
@@ -110,7 +110,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     <Input
       placeholder="Search conversations..."
       allowClear
-      prefix={<SearchOutlined />}
+      prefix={<SearchIcon />}
       onChange={e => setLocalSearchQuery(e.target.value)}
       className="self-center w-full"
       value={localSearchQuery}
@@ -146,7 +146,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                 </Text>
                 <Flex className="gap-2">
                   <Button
-                    icon={<CloseCircleOutlined />}
+                    icon={<CircleX />}
                     onClick={() => Stores.ChatHistory.__state.deselectAll()}
                   >
                     Deselect All
@@ -163,7 +163,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                       cancelText="Cancel"
                       okButtonProps={{ danger: true, disabled: deleting }}
                     >
-                      <Button variant="destructive" icon={<DeleteOutlined />} loading={deleting}>
+                      <Button variant="destructive" icon={<Trash2 />} loading={deleting}>
                         Delete Selected
                       </Button>
                     </Confirm>

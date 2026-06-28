@@ -1,5 +1,5 @@
 import { Tag } from '@/components/ui'
-import { RobotOutlined } from '@ant-design/icons'
+import { Bot } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
 /**
@@ -20,7 +20,7 @@ export function AssistantStatusChip() {
   return (
     <Tag
       tone="info"
-      icon={<RobotOutlined />}
+      icon={<Bot />}
       onClose={() => selectAssistant(null as any)}
       closeLabel="Remove"
       className="m-0"

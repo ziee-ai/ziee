@@ -1,6 +1,6 @@
 import { Button, Tooltip } from '@/components/ui'
 import { Text } from '@/components/ui'
-import { EditOutlined, CloseOutlined } from '@ant-design/icons'
+import { Pencil, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
 /**
@@ -21,7 +21,7 @@ export function EditingMessageBanner() {
       className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/40 rounded-lg rounded-b-none"
     >
       <div className="flex items-center gap-1.5">
-        <EditOutlined className="text-xs text-muted-foreground" />
+        <Pencil className="text-xs text-muted-foreground" />
         <Text type="secondary" className="text-xs">
           Editing message
         </Text>
@@ -30,7 +30,7 @@ export function EditingMessageBanner() {
         <Button
           variant="ghost"
           size="sm"
-          icon={<CloseOutlined />}
+          icon={<X />}
           onClick={() => Stores.Chat.__state.cancelEdit()}
           aria-label="Cancel edit"
         />

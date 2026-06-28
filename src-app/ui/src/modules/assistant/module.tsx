@@ -1,4 +1,4 @@
-import { RobotOutlined } from '@ant-design/icons'
+import { Bot } from 'lucide-react'
 import { createModule } from '@/core'
 import { useAssistantDrawerStore } from '@/modules/assistant/components/AssistantDrawer.store'
 import {
@@ -69,7 +69,7 @@ export default createModule({
     settingsUserPages: [
       {
         id: 'assistants',
-        icon: <RobotOutlined />,
+        icon: <Bot />,
         label: 'Assistants',
         path: 'assistants',
         order: 20,
@@ -79,7 +79,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'assistant-templates',
-        icon: <RobotOutlined />,
+        icon: <Bot />,
         label: 'Assistant Templates',
         path: 'assistant-templates',
         order: 25,
