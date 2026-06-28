@@ -2499,3 +2499,138 @@ async fn test_concurrent_approval_requests() {
     );
 }
 
+
+// ============================================================================
+// Combined: file attachment + manual tool-approval in one chat flow
+// (audit all-be146b8a0c52 — neither the file-attachment tests nor the
+// approval/elicitation tests cover a turn that has BOTH an attached file
+// AND a tool requiring manual approval; this asserts the two coexist.)
+// ============================================================================
+
+/// Upload a small text file, returning its file id (mirrors the file-attachment
+/// suite's multipart upload).
+async fn upload_attachment(server: &TestServer, token: &str, filename: &str, body: &str) -> String {
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(body.as_bytes().to_vec())
+            .file_name(filename.to_string())
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {token}"))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload file");
+    assert_eq!(
+        resp.status(),
+        201,
+        "file upload should succeed: {}",
+        resp.text().await.unwrap_or_default()
+    );
+    let v: serde_json::Value = resp.json().await.unwrap();
+    v["id"].as_str().expect("file id").to_string()
+}
+
+/// A turn with BOTH a current-turn file attachment AND an MCP tool gated by
+/// manual approval must: (a) persist the user message with the file content
+/// block, and (b) still drive the approval flow to a pending approval — the two
+/// features compose without one suppressing the other.
+#[tokio::test]
+async fn test_file_attachment_and_manual_approval_coexist_in_one_turn() {
+    let server = TestServer::start().await;
+
+    // The approval workflow perms PLUS the file-upload/read perms.
+    let mut perms: Vec<&str> = MCP_TEST_PERMISSIONS.to_vec();
+    perms.push("files::upload");
+    perms.push("files::read");
+    let user = test_helpers::create_user_with_permissions(&server, "file_approval_user", &perms).await;
+
+    // A file the user attaches to the turn.
+    let file_id = upload_attachment(
+        &server,
+        &user.token,
+        "attached_report.txt",
+        "ATTACHED_FILE_BEACON_be146 — content the model can reference.",
+    )
+    .await;
+
+    // A manual-approval MCP server + a conversation/model.
+    let mcp_server = create_test_mcp_server(&server, &user, true).await;
+    let mcp_server_id = Uuid::parse_str(mcp_server["id"].as_str().unwrap()).unwrap();
+
+    let conversation = crate::chat::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+
+    set_mcp_settings(&server, &user.token, conversation_id, "manual_approve", vec![]).await;
+
+    // ONE message carrying BOTH the attached file AND the MCP tool-use prompt.
+    let body = json!({
+        "content": TOOL_USE_PROMPT,
+        "model_id": model_id,
+        "branch_id": branch_id,
+        "file_ids": [file_id],
+        "enable_mcp": true,
+        "mcp_config": {
+            "mcp_servers": [ { "server_id": mcp_server_id, "tools": [] } ]
+        }
+    });
+
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&body)
+        .send()
+        .await
+        .expect("send combined message");
+    assert_eq!(
+        resp.status(),
+        200,
+        "combined file+mcp turn should be accepted"
+    );
+    let send_body: serde_json::Value = resp.json().await.unwrap();
+    let user_message_id = crate::chat::helpers::parse_uuid(&send_body["user_message_id"]);
+
+    // (a) The FILE is attached: the persisted user message carries a
+    // file_attachment content block referencing the uploaded file (written
+    // synchronously before the response, so no polling needed).
+    let message = crate::chat::helpers::get_message(&server, &user.token, user_message_id).await;
+    let blocks = message["contents"].as_array().expect("message contents");
+    let has_file_block = blocks.iter().any(|b| {
+        b["content_type"] == "file_attachment"
+            && b["content"]["file_id"].as_str() == Some(file_id.as_str())
+    });
+    assert!(
+        has_file_block,
+        "the attached file must be persisted as a file_attachment block on the user message; got: {blocks:#?}"
+    );
+
+    // (b) The APPROVAL flow still proceeds: with the file in the same turn, the
+    // manual-approval MCP tool call lands a PENDING approval (the elicitation/
+    // approval mid-file-flow the audit names). The turn is fire-and-forget, so
+    // poll briefly for the approval the before_llm_call persists.
+    let mut pending = get_pending_approvals(&server, &user.token, branch_id).await;
+    for _ in 0..60 {
+        if !pending.is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        pending = get_pending_approvals(&server, &user.token, branch_id).await;
+    }
+    assert!(
+        !pending.is_empty(),
+        "a manual-approval tool call in a file-attached turn must still create a pending approval"
+    );
+    let approval = &pending[0];
+    assert_eq!(approval["status"], "pending", "approval should be pending");
+    assert!(
+        approval["tool_name"].is_string(),
+        "pending approval should name the tool"
+    );
+}
