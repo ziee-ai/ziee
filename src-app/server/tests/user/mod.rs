@@ -1368,3 +1368,58 @@ async fn test_deactivated_user_denied_across_subsystems() {
         .unwrap();
     assert_eq!(mem.status(), 403, "deactivated user must be denied memory MCP");
 }
+
+// audit id all-f0f34d837db0 — concurrent user creation with the SAME username
+// (TOCTOU on the check-then-insert at user.rs:144-157). Only sequential
+// duplicate tests existed. Firing many identical creates at once must result in
+// EXACTLY ONE success — the DB unique constraint backstops the racing
+// check-then-insert so duplicates can't slip through.
+#[tokio::test]
+async fn test_concurrent_user_creation_same_username_yields_one() {
+    let server = crate::common::TestServer::start().await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "race_admin", &["users::create"]).await;
+
+    let url = server.api_url("/users");
+    let mut handles = Vec::new();
+    for _ in 0..8u32 {
+        let url = url.clone();
+        let token = admin.token.clone();
+        handles.push(tokio::spawn(async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "username": "raceduser",
+                    "email": "raced@example.com",
+                    "password": "SecurePass123!"
+                }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16()
+        }));
+    }
+
+    let mut created = 0;
+    let mut conflicts = 0;
+    for h in handles {
+        match h.await.unwrap() {
+            201 => created += 1,
+            409 | 400 | 422 => conflicts += 1,
+            other => panic!("unexpected status under race: {other}"),
+        }
+    }
+    assert_eq!(created, 1, "exactly one concurrent create must win (got {created})");
+    assert_eq!(conflicts, 7, "the other 7 must be rejected as duplicates (got {conflicts})");
+
+    // And only ONE row actually exists.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = $1")
+        .bind("raceduser")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "exactly one user row must persist");
+}
