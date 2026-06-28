@@ -160,3 +160,53 @@ async fn cannot_duplicate_other_users_project() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+/// Concurrency: the duplicate handler takes a FOR UPDATE lock to compute the
+/// "(copy N)" suffix race-safely. Several simultaneous duplicates of the same
+/// project must each get a DISTINCT name (no two racing requests collide on the
+/// same suffix). The existing suffix test only duplicates sequentially.
+#[tokio::test]
+async fn concurrent_duplicates_get_distinct_suffixes() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "concurrent_dup",
+        helpers::full_project_permissions(),
+    )
+    .await;
+
+    let p = helpers::create_project(&server, &user, "Foo").await;
+    let pid = p["id"].as_str().unwrap().to_string();
+
+    // Fire N duplicates concurrently.
+    let mut handles = Vec::new();
+    for _ in 0..4 {
+        let url = server.api_url(&format!("/projects/{}/duplicate", pid));
+        let token = user.token.clone();
+        handles.push(tokio::spawn(async move {
+            let resp = reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", token))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
+            let body: Value = resp.json().await.unwrap();
+            body["name"].as_str().unwrap().to_string()
+        }));
+    }
+
+    let mut names = Vec::new();
+    for h in handles {
+        names.push(h.await.unwrap());
+    }
+
+    // All names must be unique — the FOR UPDATE lock serializes suffix
+    // computation, so no two concurrent duplicates land on the same name.
+    let unique: std::collections::HashSet<&String> = names.iter().collect();
+    assert_eq!(
+        unique.len(),
+        names.len(),
+        "concurrent duplicates must get distinct names, got: {names:?}"
+    );
+}
