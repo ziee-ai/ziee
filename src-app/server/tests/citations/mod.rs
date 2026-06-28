@@ -725,3 +725,92 @@ async fn test_cannot_attach_to_another_users_project() {
         .json(&json!({ "entry_ids": [b_entry] })).send().await.unwrap();
     assert_eq!(r.status(), 404, "B must not attach into A's project (cross-tenant): {}", r.status());
 }
+
+// audit id all-60a187cda6c6 — the citations MCP JSON-RPC handler's error
+// responses (handlers.rs jsonrpc_handler) were untested: a malformed JSON body
+// → 400 parse_error, and an unknown method → in-band method_not_found.
+#[tokio::test]
+async fn test_jsonrpc_malformed_body_is_parse_error() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "cit_parse_err", &["citations::use"]).await;
+    // Send a body that is NOT valid JSON.
+    let res = reqwest::Client::new()
+        .post(server.api_url("/citations/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("content-type", "application/json")
+        .body("{ not valid json ")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400, "malformed JSON must be a 400 parse error");
+    let body: Value = res.json().await.unwrap_or_default();
+    assert!(body["error"].is_object(), "must carry a JSON-RPC error: {body}");
+    // JSON-RPC parse error code is -32700.
+    assert_eq!(body["error"]["code"], -32700, "parse error code: {body}");
+}
+
+#[tokio::test]
+async fn test_jsonrpc_unknown_method_is_method_not_found() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "cit_method_err", &["citations::use"]).await;
+    let res = jsonrpc(&server, &user.token, "no_such_method", json!({}))
+        .send()
+        .await
+        .unwrap();
+    // Unknown method → 200 transport with an in-band method_not_found error.
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert!(body["error"].is_object(), "unknown method must be an in-band error: {body}");
+    assert_eq!(body["error"]["code"], -32601, "method_not_found code: {body}");
+}
+
+// audit id all-b871095789a4 — delete_citation must CASCADE its project_bibliography
+// links (repository.rs delete_entry comment "cascades its project links"). The
+// existing test covers DETACH (unlink, library keeps the entry); this covers
+// full DELETE: the entry is removed AND its project link disappears (no orphan
+// row left dangling in project_bibliography).
+#[tokio::test]
+async fn test_delete_citation_cascades_project_bibliography_link() {
+    let server = server_with_mock_resolver().await;
+    let perms = &["citations::use","citations::manage","projects::create","projects::read","projects::edit","projects::delete"];
+    let user = create_user_with_permissions(&server, "cit_del_cascade", perms).await;
+    let client = reqwest::Client::new();
+    let auth = || format!("Bearer {}", user.token);
+
+    let body: Value = client.post(server.api_url("/citations/import")).header("Authorization", auth())
+        .json(&json!({ "items": [{ "id": "10.5555/known" }] })).send().await.unwrap().json().await.unwrap();
+    let entry_id = body["results"][0]["entry_id"].as_str().unwrap().to_string();
+    let project_id = create_project(&server, &user.token, "Cascade Project").await;
+
+    // Attach the entry to the project.
+    let r = client.post(server.api_url(&format!("/projects/{project_id}/citations"))).header("Authorization", auth())
+        .json(&json!({ "entry_ids": [entry_id] })).send().await.unwrap();
+    assert_eq!(r.status(), 200);
+    let plist: Value = client.get(server.api_url(&format!("/citations?project_id={project_id}"))).header("Authorization", auth())
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(plist["entries"].as_array().unwrap().len(), 1, "attach should add to project list");
+
+    // DELETE the citation from the library entirely.
+    let r = client.delete(server.api_url(&format!("/citations/{entry_id}"))).header("Authorization", auth())
+        .send().await.unwrap();
+    assert_eq!(r.status(), 200, "delete citation");
+    assert_eq!(r.json::<Value>().await.unwrap()["ok"], true);
+
+    // The project's citation list must now be EMPTY — the project_bibliography
+    // link was cascade-removed, not left as an orphan pointing at a dead entry.
+    let plist: Value = client.get(server.api_url(&format!("/citations?project_id={project_id}"))).header("Authorization", auth())
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(
+        plist["entries"].as_array().unwrap().len(),
+        0,
+        "deleting the citation must cascade-remove its project_bibliography link: {plist}"
+    );
+
+    // And the entry is gone from the library too.
+    let lib: Value = client.get(server.api_url("/citations")).header("Authorization", auth())
+        .send().await.unwrap().json().await.unwrap();
+    assert!(
+        !lib["entries"].as_array().unwrap().iter().any(|e| e["id"].as_str() == Some(entry_id.as_str())),
+        "deleted entry must be gone from the library"
+    );
+}
