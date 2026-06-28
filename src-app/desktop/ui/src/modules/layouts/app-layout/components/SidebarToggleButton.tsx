@@ -62,6 +62,7 @@ export function SidebarToggleButton() {
         >
         <Button
           variant="ghost"
+          data-testid="desktop-layout-sidebar-toggle-btn"
           onClick={Stores.AppLayout.toggleSidebar}
           className="flex items-center justify-center size-7 min-w-7 p-0 text-xl rounded"
           aria-label={

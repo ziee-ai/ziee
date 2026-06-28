@@ -259,7 +259,7 @@ export const Drawer: React.FC<DrawerProps> = ({
               onDoubleClick={handleTitleDoubleClick}
             >
               {closable && (
-                <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]">
+                <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]" data-testid="desktop-layout-drawer-close">
                   <span className="text-xl"><IoIosArrowBack aria-hidden="true" /></span>
                 </Button>
               )}
