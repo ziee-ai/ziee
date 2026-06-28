@@ -5,9 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="./index.css" />
     <title>Ziee</title>
+    <style>
+      /* Startup splash painted by the webview BEFORE the JS bundle parses
+         and React mounts. createRoot().render() replaces #root's children,
+         so the splash disappears the moment the app is interactive — the
+         user never stares at a blank window while modules register + the
+         Tauri host auto-login bootstrap runs. */
+      @keyframes ziee-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #ziee-boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+      }
+      #ziee-boot-splash .ziee-boot-spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid #e6e6e6;
+        border-top-color: #1677ff;
+        border-radius: 50%;
+        animation: ziee-boot-spin 0.8s linear infinite;
+      }
+      @media (prefers-color-scheme: dark) {
+        #ziee-boot-splash {
+          background: #141414;
+        }
+        #ziee-boot-splash .ziee-boot-spinner {
+          border-color: #303030;
+          border-top-color: #1677ff;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="ziee-boot-splash" role="status" aria-label="Loading Ziee">
+        <div class="ziee-boot-spinner"></div>
+      </div>
+    </div>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>
