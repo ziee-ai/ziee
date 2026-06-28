@@ -226,7 +226,7 @@ async fn embed_file_chunks(file_id: Uuid, model_id: Uuid, expected_dim: i32) {
         match embed_batch(model_id, &texts).await {
             Ok(vecs) => {
                 for ((id, uid, _), vec) in batch.iter().zip(vecs.iter()) {
-                    if vec.len() as i32 != expected_dim {
+                    if !super::embed_worker::embedding_dim_matches(vec.len(), expected_dim) {
                         tracing::warn!(
                             "file_rag: model returned {}-dim vector but column is {}-dim — skipping chunk {}",
                             vec.len(),

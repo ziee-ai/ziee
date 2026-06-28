@@ -40,6 +40,16 @@ pub fn is_in_progress() -> bool {
     REBUILD_IN_PROGRESS.load(Ordering::Acquire)
 }
 
+/// Whether an embedding vector can be stored in the current `halfvec(N)`
+/// column. After a model SWAP that changes the dimension, the column is ALTERed
+/// to the new N first; any vector whose length still differs (e.g. a stale
+/// in-flight batch, or a model that returns an unexpected dim) MUST be skipped
+/// rather than written — a length mismatch would be rejected by pgvector. Pure
+/// + shared by both the rebuild worker and the inline ingest path (ingest.rs).
+pub(crate) fn embedding_dim_matches(actual_len: usize, expected_dim: i32) -> bool {
+    actual_len as i32 == expected_dim
+}
+
 /// Re-embed all `file_chunks` with `model_id`. If `target_dimensions` differs
 /// from the column's current dimension, first NULLs all embeddings, then
 /// `ALTER`s the column + HNSW index. Tags rows with the model UUID so a model
@@ -134,7 +144,7 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
         };
         let mut updated = 0usize;
         for ((id, uid, _), vec) in batch.iter().zip(vecs.iter()) {
-            if vec.len() as i32 != target_dimensions {
+            if !embedding_dim_matches(vec.len(), target_dimensions) {
                 tracing::warn!(
                     "file_rag.embed_worker: model returned {}-dim vector but column is {}-dim — skipping chunk {}",
                     vec.len(),
@@ -169,4 +179,26 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
     }
     tracing::info!("file_rag.embed_worker: re-embedded {total} chunks with model {model_id} (dim {target_dimensions})");
     Ok(())
+}
+
+#[cfg(test)]
+mod dim_guard_tests {
+    use super::embedding_dim_matches;
+
+    /// Model-swap stale-chunk guard (gap f41785a24732): after swapping to a
+    /// new embedding model the column is ALTERed to the new dimension; a vector
+    /// whose length matches the (new) expected dim is written, one that doesn't
+    /// (a stale old-dim vector, or a model returning an unexpected dim) is
+    /// skipped. Used by both embed_worker (rebuild) and ingest (inline embed).
+    #[test]
+    fn matching_dim_is_writable_mismatch_is_skipped() {
+        assert!(embedding_dim_matches(768, 768), "exact match writes");
+        assert!(embedding_dim_matches(3072, 3072));
+        // Stale chunk from the previous model (old dim) after a swap to 3072.
+        assert!(!embedding_dim_matches(768, 3072), "old-dim vector must be skipped");
+        // Model returns a shorter-than-expected vector.
+        assert!(!embedding_dim_matches(512, 768));
+        // Degenerate: empty vector is never writable.
+        assert!(!embedding_dim_matches(0, 768));
+    }
 }

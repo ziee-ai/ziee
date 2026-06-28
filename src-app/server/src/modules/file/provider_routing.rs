@@ -72,50 +72,132 @@ pub async fn process_file_blocks_with_file(
         .as_deref()
         .unwrap_or("application/octet-stream");
 
-    // Native image/PDF for providers that support it (anthropic/gemini).
-    if matches!(provider_type, "anthropic" | "gemini")
-        && (mime == "application/pdf" || mime.starts_with("image/"))
-    {
-        return process_via_provider_api(pool, file_id, provider_id, mime, user_id).await;
-    }
-
-    // Genuine OpenAI uploads PDFs via the Files API. The mapped "openai" type is
-    // shared by groq/deepseek/mistral/custom/local — none of which implement it —
-    // so only a real OpenAI provider uploads; the rest fall through to the
-    // extracted-text / base64 paths below. (OpenAI images stay base64 — image
-    // file_id is Responses-API only.)
-    if provider_type == "openai" && mime == "application/pdf" {
-        let is_real_openai = Repos
+    // `is_real_openai` is only consulted by the openai+pdf branch; resolve it
+    // (one DB lookup) only when that branch could fire, so the pure routing
+    // decision below stays a function of plain values.
+    let is_real_openai = if provider_type == "openai" && mime == "application/pdf" {
+        Repos
             .llm_provider
             .get_by_id(provider_id)
             .await?
             .map(|p| p.provider_type == "openai")
-            .unwrap_or(false);
-        if is_real_openai {
-            return process_via_provider_api(pool, file_id, provider_id, mime, user_id).await;
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    let decision = route_decision(
+        provider_type,
+        mime,
+        is_real_openai,
+        file.text_page_count,
+        crate::modules::file::available_files::is_text_like(mime),
+    );
+
+    match decision {
+        RouteDecision::ProviderApi => {
+            process_via_provider_api(pool, file_id, provider_id, mime, user_id).await
+        }
+        RouteDecision::InlineText => {
+            inline_extracted_text(
+                file.blob_version_id,
+                &file.filename,
+                file.text_page_count as u32,
+                user_id,
+            )
+            .await
+        }
+        RouteDecision::Base64 => {
+            process_via_base64(file.blob_version_id, &file.filename, mime, user_id).await
+        }
+    }
+}
+
+/// Which content-routing path a file takes, as a pure function of the file's
+/// MIME + the (mapped) provider type. Extracted so the routing edge cases are
+/// unit-testable without a DB / provider / storage. See
+/// `process_file_blocks_with_file` for the prose rationale of each branch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RouteDecision {
+    /// Native image/PDF upload via the provider Files API.
+    ProviderApi,
+    /// Office/binary doc with extracted per-page text → inline that text.
+    InlineText,
+    /// Verbatim text / JSON-ish / base64 image fallback.
+    Base64,
+}
+
+pub(crate) fn route_decision(
+    provider_type: &str,
+    mime: &str,
+    is_real_openai: bool,
+    text_page_count: i32,
+    is_text_like: bool,
+) -> RouteDecision {
+    // 1. anthropic/gemini take native image + PDF.
+    if matches!(provider_type, "anthropic" | "gemini")
+        && (mime == "application/pdf" || mime.starts_with("image/"))
+    {
+        return RouteDecision::ProviderApi;
+    }
+    // 2. Only a GENUINE openai provider uploads PDFs (the mapped "openai" type
+    //    is shared by groq/deepseek/mistral/custom/local, which don't).
+    if provider_type == "openai" && mime == "application/pdf" && is_real_openai {
+        return RouteDecision::ProviderApi;
+    }
+    // 3. Office docs / native-PDF-less PDFs that carry extracted text inline it.
+    if text_page_count > 0
+        && !mime.starts_with("image/")
+        && !mime.starts_with("text/")
+        && !is_text_like
+    {
+        return RouteDecision::InlineText;
+    }
+    // 4. Everything else: verbatim text / base64.
+    RouteDecision::Base64
+}
+
+#[cfg(test)]
+mod route_decision_tests {
+    use super::{route_decision, RouteDecision};
+
+    #[test]
+    fn anthropic_gemini_take_native_image_and_pdf() {
+        for pt in ["anthropic", "gemini"] {
+            assert_eq!(route_decision(pt, "application/pdf", false, 3, false), RouteDecision::ProviderApi);
+            assert_eq!(route_decision(pt, "image/png", false, 0, false), RouteDecision::ProviderApi);
         }
     }
 
-    // Office docs (and PDFs on providers without native PDF) that have extracted
-    // text → inline the extracted per-page text instead of dropping to a useless
-    // `[File: x]` placeholder. Frees the old placeholder bug. text/* and JSON-ish
-    // files still go through process_via_base64's verbatim-text branch; images go
-    // there too for base64.
-    if file.text_page_count > 0
-        && !mime.starts_with("image/")
-        && !mime.starts_with("text/")
-        && !crate::modules::file::available_files::is_text_like(mime)
-    {
-        return inline_extracted_text(
-            file.blob_version_id,
-            &file.filename,
-            file.text_page_count as u32,
-            user_id,
-        )
-        .await;
+    #[test]
+    fn only_real_openai_uploads_pdf_others_fall_through() {
+        // Mapped-but-not-real openai (groq/deepseek/etc) → NOT provider API.
+        // A PDF with extracted text falls to InlineText; without text → Base64.
+        assert_eq!(route_decision("openai", "application/pdf", false, 5, false), RouteDecision::InlineText);
+        assert_eq!(route_decision("openai", "application/pdf", false, 0, false), RouteDecision::Base64);
+        // A genuine openai provider uploads via the Files API.
+        assert_eq!(route_decision("openai", "application/pdf", true, 5, false), RouteDecision::ProviderApi);
     }
 
-    process_via_base64(file.blob_version_id, &file.filename, mime, user_id).await
+    #[test]
+    fn office_doc_with_text_inlines_but_text_like_and_images_do_not() {
+        let docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        assert_eq!(route_decision("openai", docx, false, 4, false), RouteDecision::InlineText);
+        // text/* and is_text_like go base64 (verbatim text path), never inline.
+        assert_eq!(route_decision("openai", "text/plain", false, 4, false), RouteDecision::Base64);
+        assert_eq!(route_decision("openai", "application/json", false, 4, true), RouteDecision::Base64);
+        // Images always base64 here (image file_id is provider-API only).
+        assert_eq!(route_decision("openai", "image/png", false, 4, false), RouteDecision::Base64);
+        // No extracted text → base64 even for an office mime.
+        assert_eq!(route_decision("openai", docx, false, 0, false), RouteDecision::Base64);
+    }
+
+    #[test]
+    fn anthropic_office_doc_with_text_inlines() {
+        // anthropic only takes native image/pdf; an office doc still inlines text.
+        let docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        assert_eq!(route_decision("anthropic", docx, false, 2, false), RouteDecision::InlineText);
+    }
 }
 
 async fn process_via_provider_api(

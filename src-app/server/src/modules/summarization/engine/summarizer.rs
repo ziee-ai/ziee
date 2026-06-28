@@ -261,6 +261,15 @@ pub fn build_transcript(msgs: &[SummarizableMessage]) -> String {
 /// re-substitute and leak transcript content into the "earlier context"
 /// slot. Single-pass scanning never revisits substituted text, so
 /// neither placeholder can match content the other inserted.
+/// Render the FULL-summary prompt: substitute `{transcript}` in the (possibly
+/// admin-customized) template. The template is whatever
+/// `summarization_admin_settings.full_summary_prompt` holds, falling back to
+/// `DEFAULT_FULL_SUMMARY_PROMPT`, so this is the point where a CUSTOM full
+/// prompt becomes the text sent to the LLM.
+fn render_full_prompt(template: &str, transcript: &str) -> String {
+    template.replace("{transcript}", transcript)
+}
+
 fn render_incremental_prompt(
     template: &str,
     previous_summary: &str,
@@ -483,7 +492,7 @@ pub async fn refresh_summary(
             summarized_up_to_id,
             message_count,
         } => (
-            full_prompt.replace("{transcript}", &transcript),
+            render_full_prompt(&full_prompt, &transcript),
             summarized_up_to_id,
             message_count,
             "full",
@@ -1127,6 +1136,40 @@ mod tests {
         assert_eq!(out, "only S");
         let out = render_incremental_prompt("only {new_transcript}", "S", "T");
         assert_eq!(out, "only T");
+    }
+
+    // ── Custom prompts ARE used in the rendered LLM prompt (gap 3bb02236012c) ─
+    // refresh_summary resolves the admin-overridden full/incremental templates
+    // and renders them into the prompt sent to the LLM. These pin that a CUSTOM
+    // template's literal instructions survive into the rendered prompt (the
+    // override isn't silently dropped in favor of the default).
+
+    #[test]
+    fn render_full_prompt_uses_custom_template_and_substitutes_transcript() {
+        let custom = "CUSTOM-FULL-INSTRUCTION: condense ->\n{transcript}\n<- end";
+        let out = render_full_prompt(custom, "alice: hi\nbob: hey\n");
+        assert!(out.starts_with("CUSTOM-FULL-INSTRUCTION:"), "custom template kept: {out}");
+        assert!(out.contains("alice: hi"), "transcript substituted: {out}");
+        assert!(!out.contains("{transcript}"), "placeholder consumed: {out}");
+    }
+
+    #[test]
+    fn render_full_prompt_without_placeholder_keeps_custom_text() {
+        // A custom template that omits {transcript} is still used verbatim
+        // (the LLM gets the admin's instruction, not the default).
+        let out = render_full_prompt("JUST SUMMARIZE TERSELY", "ignored transcript");
+        assert_eq!(out, "JUST SUMMARIZE TERSELY");
+    }
+
+    #[test]
+    fn default_full_prompt_differs_from_a_custom_one() {
+        // Guards against a regression where the override is ignored: the custom
+        // render must NOT equal the default-template render for the same input.
+        let transcript = "u: q\na: r\n";
+        let custom = render_full_prompt("MY OWN PROMPT {transcript}", transcript);
+        let default = render_full_prompt(DEFAULT_FULL_SUMMARY_PROMPT, transcript);
+        assert_ne!(custom, default, "a custom prompt must change the rendered text");
+        assert!(custom.contains("MY OWN PROMPT"));
     }
 
     #[test]
