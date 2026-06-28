@@ -60,7 +60,7 @@ pub async fn ingest_bytes(
     }
 
     let checksum = storage.calculate_checksum(bytes);
-    let file = Repos
+    let file = match Repos
         .file
         .create(FileCreateData {
             id: file_id,
@@ -77,7 +77,23 @@ pub async fn ingest_bytes(
             source_message_id,
             created_by: created_by.to_string(),
         })
-        .await?;
+        .await
+    {
+        Ok(f) => f,
+        Err(e) => {
+            // The original + derivatives were already written to the file store
+            // above; the DB row failed, so roll the blobs back to avoid orphaned
+            // storage that no file_id row will ever reference.
+            if let Err(cleanup_err) = storage.delete_all(user_id, file_id).await {
+                tracing::warn!(
+                    "ingest_bytes: failed to clean up orphaned storage for {} after DB error: {}",
+                    file_id,
+                    cleanup_err
+                );
+            }
+            return Err(e);
+        }
+    };
 
     if let Some(run_id) = workflow_run_id {
         Repos.file.set_workflow_run_id(file_id, run_id).await?;
