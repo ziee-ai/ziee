@@ -519,14 +519,24 @@ pub async fn create_assistant_from_hub(
 
     let plan = build_assistant_create_from_hub(&request, false).await?;
 
-    // Atomically delete the prior install(s) and create the replacement in ONE
-    // transaction — previously these were separate awaits, so a create failure
-    // after the deletes left the user with no assistant at all. Emit the
-    // `assistant.deleted` events (for hub_entities orphan-cleanup) only after
-    // the commit so they reflect what actually happened.
-    let (assistant, deleted_ids) = Repos
+    // Atomically delete the prior install(s), create the replacement, AND
+    // record it in `hub_entities` in ONE transaction — previously the create
+    // and the hub-tracking insert were separate awaits, so a tracking failure
+    // left an untracked assistant (invisible to the Updates tab) and a create
+    // failure after the deletes left the user with no assistant at all. The
+    // version stamp lets /hub/installed detect when this row falls behind a
+    // future catalog activation. Emit the `assistant.deleted` events (for
+    // hub_entities orphan-cleanup) only after the commit so they reflect what
+    // actually happened.
+    let (assistant, deleted_ids, hub_tracking) = Repos
         .assistant
-        .replace_from_hub(&existing_ids, Some(auth.user.id), plan.create_request)
+        .replace_from_hub_tracked(
+            &existing_ids,
+            Some(auth.user.id),
+            plan.create_request,
+            &request.hub_id,
+            plan.hub_version.as_deref(),
+        )
         .await?;
 
     for existing_id in deleted_ids {
@@ -537,21 +547,6 @@ pub async fn create_assistant_from_hub(
             ))
             .await;
     }
-
-    // Track in hub_entities, stamping the catalog version captured
-    // by the lookup so /hub/installed can detect when this row falls
-    // behind a future catalog activation.
-    let hub_tracking = Repos
-        .hub
-        .track_hub_entity(
-            HubEntityType::Assistant,
-            assistant.id,
-            &request.hub_id,
-            HubCategory::Assistant,
-            Some(auth.user.id),
-            plan.hub_version.as_deref(),
-        )
-        .await?;
 
     event_bus.emit_async(
         HubEvent::assistant_created_from_hub(

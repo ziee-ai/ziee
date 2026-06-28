@@ -621,6 +621,25 @@ pub async fn get_download_instance_by_id(
     .await
 }
 
+/// Prune terminal (completed / failed) download-instance rows whose last
+/// update is older than `cutoff`. Cancelled rows are intentionally left to the
+/// existing manual-clear path. Returns the number of rows deleted. Used by the
+/// boot-time retention loop (mirrors mcp tool-call pruning).
+pub async fn prune_terminal_download_instances(
+    pool: &PgPool,
+    cutoff: time::OffsetDateTime,
+) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query!(
+        r#"DELETE FROM download_instances
+           WHERE status IN ('completed', 'failed')
+             AND updated_at < $1"#,
+        cutoff
+    )
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 /// Get all download instances with pagination and optional status filter
 pub async fn get_download_instances(
     pool: &PgPool,

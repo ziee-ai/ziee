@@ -155,6 +155,14 @@ impl DesktopModule for BackendModule {
         let bio_cfg = config.bio_mcp.get_or_insert_with(Default::default);
         bio_cfg.enabled = true;
 
+        // Web Search: force the deploy-level kill switch on. The module
+        // self-disables when no search providers are configured and degrades
+        // gracefully offline, so a desktop single-admin gets web search without
+        // hunting for a config flag, and an offline box simply sees the tools
+        // stay unavailable. Mirrors code_sandbox / bio_mcp above.
+        let web_search_cfg = config.web_search.get_or_insert_with(Default::default);
+        web_search_cfg.enabled = true;
+
         tracing::info!("Backend will use port {}", port);
 
         // Publish the bound port into the remote_access state so the

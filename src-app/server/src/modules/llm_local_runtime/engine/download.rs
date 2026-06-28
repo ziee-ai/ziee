@@ -387,14 +387,18 @@ impl BinaryDownloader {
         // Extract binary from archive
         std::fs::create_dir_all(&cache_dir)?;
 
-        if platform == "windows" {
-            self.extract_zip(&temp_archive, &cache_dir, binary_name)?;
+        let extract_result = if platform == "windows" {
+            self.extract_zip(&temp_archive, &cache_dir, binary_name)
         } else {
-            self.extract_tar_gz(&temp_archive, &cache_dir, binary_name)?;
-        }
+            self.extract_tar_gz(&temp_archive, &cache_dir, binary_name)
+        };
 
-        // Clean up temporary archive
-        std::fs::remove_file(&temp_archive)?;
+        // Clean up the temporary archive AND the sibling `.sig` regardless of
+        // whether extraction succeeded — otherwise a failed extract (or the
+        // never-removed `.sig`) leaves orphaned files in the temp dir forever.
+        let _ = std::fs::remove_file(&temp_archive);
+        let _ = std::fs::remove_file(&sig_path);
+        extract_result?;
 
         // Ensure executable on Unix
         #[cfg(unix)]

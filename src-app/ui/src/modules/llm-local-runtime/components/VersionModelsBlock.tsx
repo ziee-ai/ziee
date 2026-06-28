@@ -176,7 +176,11 @@ function ModelRow({
                       () => {},
                     )
                   }
-                  aria-label={`Engine version for ${model.display_name}`}
+                  aria-label={
+                    versionOptions.length < 2
+                      ? `Engine version for ${model.display_name} — swapping disabled, only one engine version installed; install another to swap`
+                      : `Engine version for ${model.display_name}`
+                  }
                 />
               </Tooltip>
               {model.running ? (

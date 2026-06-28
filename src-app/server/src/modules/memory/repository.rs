@@ -237,6 +237,107 @@ impl MemoryRepository {
         Ok(row)
     }
 
+    /// Insert an `extraction`-sourced memory ATOMICALLY enforcing the per-user
+    /// daily quota. Closes the count-then-insert TOCTOU (audit R7-#3): a
+    /// transaction-scoped advisory lock keyed on the user serializes concurrent
+    /// extraction inserts, and the trailing-24h count is taken inside that lock
+    /// so it observes every prior committed extraction. Returns `Ok(None)` when
+    /// the quota is already met (the row is NOT inserted), otherwise the new row.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_extraction_under_quota(
+        &self,
+        user_id: Uuid,
+        daily_quota: i64,
+        content: &str,
+        importance: i16,
+        kind: &str,
+        metadata: &serde_json::Value,
+        source_message_id: Option<Uuid>,
+        scope: &str,
+    ) -> Result<Option<UserMemory>, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+
+        // Per-user transaction advisory lock: concurrent extraction inserts for
+        // the same user serialize here, so the count below can't race.
+        sqlx::query!(
+            r#"SELECT pg_advisory_xact_lock(hashtext('memory_extraction'), hashtext($1))"#,
+            user_id.to_string()
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let today_count = sqlx::query_scalar!(
+            r#"
+            SELECT COUNT(*) as "count!"
+            FROM user_memories
+            WHERE user_id = $1
+              AND source = 'extraction'
+              AND created_at > NOW() - INTERVAL '24 hours'
+            "#,
+            user_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        if today_count >= daily_quota {
+            // Drop the tx (releases the advisory lock) without inserting.
+            return Ok(None);
+        }
+
+        let row = sqlx::query_as!(
+            UserMemory,
+            r#"
+            INSERT INTO user_memories
+                (user_id, content, source, source_message_id, importance, kind, metadata, scope)
+            VALUES ($1, $2, 'extraction', $3, $4, $5, $6, $7)
+            RETURNING
+                id,
+                user_id,
+                content,
+                embedding_model,
+                source,
+                source_message_id,
+                importance,
+                confidence,
+                kind,
+                metadata as "metadata: _",
+                created_at as "created_at: _",
+                updated_at as "updated_at: _",
+                last_recalled_at as "last_recalled_at: _",
+                recall_count
+            "#,
+            user_id,
+            content,
+            source_message_id,
+            importance,
+            kind,
+            metadata,
+            scope
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO memory_audit_log
+                (user_id, memory_id, op, source, content_snapshot, actor_kind)
+            VALUES ($1, $2, 'ADD', 'extraction', $3, 'system')
+            "#,
+            user_id,
+            row.id,
+            content
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(Some(row))
+    }
+
     /// Update content/importance/kind/metadata on an owned memory.
     /// `WHERE user_id = $1` prevents cross-user modification.
     /// Audit log records the PREVIOUS content snapshot (audit R5-#2).

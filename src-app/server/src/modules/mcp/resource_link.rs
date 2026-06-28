@@ -497,13 +497,34 @@ pub async fn persist_links(
     // delete-cascade can find them. Only `outcome.saved` (files this call
     // CREATED) — never the referenced `is_saved:true` files.
     if let Some(run) = workflow_run_id {
+        let mut orphaned: Vec<Uuid> = Vec::new();
         for art in &outcome.saved {
             if let Err(e) = Repos.file.set_workflow_run_id(art.file_id, run).await {
+                // Reconcile: the file was ingested but couldn't be linked to the
+                // producing run, so the A5 delete-cascade would never reclaim it.
+                // Delete it now (DB row + blobs) so it doesn't leak on disk/DB.
                 tracing::warn!(
-                    "failed to link file {} to workflow run {run}: {e}",
+                    "failed to link file {} to workflow run {run}: {e}; deleting orphan",
                     art.file_id
                 );
+                match Repos.file.delete(art.file_id, user_id).await {
+                    Ok(blob_ids) => {
+                        let storage =
+                            crate::modules::file::storage::manager::get_file_storage();
+                        for blob_id in blob_ids {
+                            let _ = storage.delete_all(user_id, blob_id).await;
+                        }
+                    }
+                    Err(del_err) => tracing::warn!(
+                        "failed to delete orphaned run file {}: {del_err}",
+                        art.file_id
+                    ),
+                }
+                orphaned.push(art.file_id);
             }
+        }
+        if !orphaned.is_empty() {
+            outcome.saved.retain(|a| !orphaned.contains(&a.file_id));
         }
     }
 

@@ -192,20 +192,17 @@ async fn lookup_accessible(
     // M5: resolve to the row THIS user can read (preferring their own copy),
     // not the global highest-version row — otherwise another user's same-named
     // install could shadow and make the caller's own skill uncallable.
+    // `find_accessible_by_name` already enforces the per-user access predicate
+    // (built_in / owned-user / group-granted system) AND `enabled = TRUE`, so a
+    // row returned here is necessarily readable by this user — a follow-up
+    // `user_can_read` would re-run the identical scope query for no behavioral
+    // change. A non-accessible skill simply resolves to None → not_found, which
+    // also avoids leaking the existence of another user's install.
     let skill = Repos
         .skill
         .find_accessible_by_name(user_id, name)
         .await?
         .ok_or_else(|| AppError::not_found("skill not installed"))?;
-
-    // Defense in depth: the resolver already filtered by access, but keep the
-    // explicit check so the gate is obvious at the call site.
-    if !Repos.skill.user_can_read(user_id, skill.id).await? {
-        return Err(AppError::forbidden(
-            "SKILL_INACCESSIBLE",
-            "skill not installed for this user",
-        ));
-    }
 
     if let Some(cid) = conversation_id {
         if Repos.skill.is_hidden_in_conversation(skill.id, cid).await? {

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useLayoutEffect } from 'react'
 import { theme } from 'antd'
 
 interface BlankLayoutProps {
@@ -8,7 +8,11 @@ interface BlankLayoutProps {
 export function BlankLayout({ children }: BlankLayoutProps) {
   const { token } = theme.useToken()
 
-  useEffect(() => {
+  // useLayoutEffect (not useEffect) so the background color is applied AND
+  // restored synchronously before the browser paints — with useEffect the
+  // change lands a frame late, producing a visible white/blank flash on mount
+  // and on teardown (e.g. closing a popup).
+  useLayoutEffect(() => {
     // set root document background color based on theme, restore on teardown
     const root = document.documentElement
     const prev = root.style.backgroundColor

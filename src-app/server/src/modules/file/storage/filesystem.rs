@@ -272,6 +272,18 @@ impl FileStorage for FilesystemStorage {
         Ok(())
     }
 
+    async fn delete_user_dirs(&self, user_id: Uuid) -> StorageResult<()> {
+        // Remove the per-user directory under every storage subdir so deleting
+        // a user leaves no orphaned (even empty) dirs behind.
+        for subdir in ["originals", "text", "images", "thumbnails"] {
+            let path = self.get_user_path(user_id, subdir);
+            if path.exists() {
+                let _ = fs::remove_dir_all(&path).await;
+            }
+        }
+        Ok(())
+    }
+
     fn calculate_checksum(&self, data: &[u8]) -> String {
         let mut hasher = Sha256::new();
         hasher.update(data);

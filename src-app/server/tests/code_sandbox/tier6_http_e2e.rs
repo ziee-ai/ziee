@@ -442,6 +442,108 @@ async fn e2e_get_resource_link_transient_artifact_ignores_public_base_url() {
     assert!(uri.ends_with("art.txt"), "uri: {uri}");
 }
 
+/// get_resource_link for a name that matches a USER ATTACHMENT (not a workspace
+/// artifact) takes the `is_saved: true` branch: it returns a signed
+/// download-with-token URL + the file_id/version, instead of a `ziee://` host
+/// path. Covers the previously-untested attachment branch of get_resource_link
+/// (the sibling test above only exercises is_saved:false workspace artifacts).
+#[tokio::test]
+async fn e2e_get_resource_link_for_user_attachment_returns_saved_url() {
+    let Some(server) = enabled_test_server().await else { return };
+    let (user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+
+    // Create a `files` row (+ v1 head) owned by the user, then attach it to the
+    // conversation as a `file_attachment` message content on the active branch —
+    // the shape get_conversation_files (and thus get_resource_link) resolves.
+    let file_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO files (id, user_id, filename, mime_type, file_size, current_version_id, created_at)
+           VALUES ($1, $2, 'report.csv', 'text/csv', 3, $1, NOW())"#,
+    )
+    .bind(file_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .expect("insert file");
+    sqlx::query(
+        r#"INSERT INTO file_versions (id, file_id, version, is_head, blob_version_id, file_size, mime_type, created_by)
+           VALUES ($1, $1, 1, true, $1, 3, 'text/csv', 'user')"#,
+    )
+    .bind(file_id)
+    .execute(&pool)
+    .await
+    .expect("insert file v1");
+
+    let branch_id: Uuid =
+        sqlx::query_scalar("SELECT active_branch_id FROM conversations WHERE id = $1")
+            .bind(conv_id)
+            .fetch_one(&pool)
+            .await
+            .expect("active branch");
+    let msg_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO messages (id, role, originated_from_id, created_at)
+           VALUES ($1, 'user', $1, NOW())"#,
+    )
+    .bind(msg_id)
+    .execute(&pool)
+    .await
+    .expect("insert message");
+    sqlx::query(
+        r#"INSERT INTO branch_messages (branch_id, message_id, created_at)
+           VALUES ($1, $2, NOW())"#,
+    )
+    .bind(branch_id)
+    .bind(msg_id)
+    .execute(&pool)
+    .await
+    .expect("insert branch_message");
+    sqlx::query(
+        r#"INSERT INTO message_contents (id, message_id, content_type, content, sequence_order, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, 'file_attachment',
+                   jsonb_build_object('file_id', $2::text), 0, NOW(), NOW())"#,
+    )
+    .bind(msg_id)
+    .bind(file_id.to_string())
+    .execute(&pool)
+    .await
+    .expect("insert file_attachment content");
+    pool.close().await;
+
+    let body = tool_call(
+        &server,
+        &jwt,
+        conv_id,
+        "get_resource_link",
+        json!({ "filename": "report.csv" }),
+    )
+    .await;
+
+    let link = &body["result"]["structuredContent"];
+    assert_eq!(link["type"].as_str().unwrap(), "resource_link");
+    assert_eq!(
+        link["is_saved"].as_bool(),
+        Some(true),
+        "a matched user attachment must be is_saved:true; got {link}"
+    );
+    let uri = link["uri"].as_str().expect("uri");
+    assert!(
+        uri.contains(&format!("/api/files/{file_id}/download-with-token?token=")),
+        "saved attachment uri must be a signed download URL: {uri}"
+    );
+    assert_eq!(
+        link["file_id"].as_str(),
+        Some(file_id.to_string().as_str()),
+        "saved link must carry the file_id"
+    );
+}
+
 #[tokio::test]
 async fn e2e_download_endpoint_returns_workspace_file_bytes() {
     let Some(server) = enabled_test_server().await else { return };

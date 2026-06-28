@@ -51,6 +51,51 @@ impl AssistantRepository {
         Ok((assistant, deleted))
     }
 
+    /// Like [`replace_from_hub`] but ALSO records the new assistant in
+    /// `hub_entities` inside the SAME transaction, so the install (delete prior
+    /// + create + track) commits atomically. Previously the `track_hub_entity`
+    /// call was a separate await after the create tx committed, so a tracking
+    /// failure left an untracked assistant (invisible to the Updates tab).
+    /// Returns the created assistant, the ids actually deleted, and the
+    /// hub-tracking row.
+    pub async fn replace_from_hub_tracked(
+        &self,
+        existing_ids: &[Uuid],
+        user_id: Option<Uuid>,
+        request: CreateAssistantRequest,
+        hub_id: &str,
+        hub_version: Option<&str>,
+    ) -> Result<
+        (
+            Assistant,
+            Vec<Uuid>,
+            crate::modules::hub::models::HubEntity,
+        ),
+        AppError,
+    > {
+        use crate::modules::hub::models::{HubCategory, HubEntityType};
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+        let mut deleted = Vec::new();
+        for id in existing_ids {
+            if delete_assistant_tx(&mut tx, *id).await? {
+                deleted.push(*id);
+            }
+        }
+        let assistant = create_assistant_tx(&mut tx, user_id, request).await?;
+        let hub_entity = crate::modules::hub::repository::track_hub_entity_in_tx(
+            &mut tx,
+            HubEntityType::Assistant,
+            assistant.id,
+            hub_id,
+            HubCategory::Assistant,
+            user_id,
+            hub_version,
+        )
+        .await?;
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok((assistant, deleted, hub_entity))
+    }
+
     pub async fn list(
         &self,
         user_id: Option<Uuid>,

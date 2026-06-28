@@ -53,6 +53,46 @@ test.describe('Realtime sync (cross-device)', () => {
     }
   })
 
+  test('device B catches up via sync:reconnect after going offline then back online', async ({
+    page,
+    browser,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+
+    // Device A.
+    await loginAsAdmin(page, baseURL)
+    await goToProjectsPage(page, baseURL)
+
+    // Device B — same admin user.
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    try {
+      await loginAsAdmin(pageB, baseURL)
+      await goToProjectsPage(pageB, baseURL)
+
+      // Take device B offline — its SSE sync stream drops.
+      await ctxB.setOffline(true)
+
+      const name = `Reconnect E2E ${Date.now()}`
+      // Create on A while B is disconnected, so no live event can reach B.
+      await openCreateProjectDrawer(page)
+      await fillProjectForm(page, { name })
+      await submitProjectForm(page)
+
+      // Offline B must NOT have the project (the live event was never delivered).
+      await expect(getProjectCard(pageB, name)).not.toBeVisible()
+
+      // Bring B back online: SyncClient reconnects and emits sync:reconnect; the
+      // projects store self-gates on projects::read and refetches — the project
+      // appears WITHOUT a manual reload. This is the reconnect-resync guarantee.
+      await ctxB.setOffline(false)
+      await expect(getProjectCard(pageB, name)).toBeVisible({ timeout: 30_000 })
+    } finally {
+      await ctxB.close()
+    }
+  })
+
   test("user A's project reaches A's other device but NOT a different user B", async ({
     page,
     browser,
