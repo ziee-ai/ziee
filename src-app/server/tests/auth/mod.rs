@@ -849,3 +849,63 @@ async fn test_setup_admin_assigns_to_administrators_group() {
         "Admin should have wildcard permission from Administrators group"
     );
 }
+
+/// Creating the first admin (`/app/setup/admin` → app/repository.rs
+/// create_admin_user) has a cross-subsystem effect: the new admin is enrolled
+/// in BOTH the `Administrators` group (admin perms) AND the `Users` group
+/// (default resource access). This asserts both memberships actually exist,
+/// not just that the user/token were returned.
+#[tokio::test]
+async fn test_setup_admin_joins_administrators_and_users_groups() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    let setup: serde_json::Value = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "rootadmin",
+            "email": "root@example.com",
+            "password": "SecurePass123!"
+        }))
+        .send()
+        .await
+        .expect("setup request failed")
+        .json()
+        .await
+        .expect("parse setup response");
+    assert_eq!(setup["user"]["is_admin"], true, "setup creates an is_admin user");
+    let admin_id = setup["user"]["id"].as_str().expect("admin id").to_string();
+    let token = setup["access_token"].as_str().expect("access_token").to_string();
+
+    let groups: serde_json::Value = client
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .expect("list groups failed")
+        .json()
+        .await
+        .expect("parse groups");
+    let arr = groups["groups"].as_array().expect("groups array");
+
+    for want in ["Administrators", "Users"] {
+        let gid = arr
+            .iter()
+            .find(|g| g["name"] == want)
+            .and_then(|g| g["id"].as_str())
+            .unwrap_or_else(|| panic!("{want} group missing from /groups: {groups}"));
+        let members: serde_json::Value = client
+            .get(server.api_url(&format!("/groups/{gid}/members")))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .expect("members request failed")
+            .json()
+            .await
+            .expect("parse members");
+        assert!(
+            members.to_string().contains(&admin_id),
+            "new admin must be a member of the {want} group: {members}"
+        );
+    }
+}
