@@ -347,3 +347,24 @@ async fn concurrent_multi_user_tools_call_runs_are_isolated() {
         assert_eq!(row.1, Some(conv), "run {run} must bind to its own conversation");
     }
 }
+
+// audit id all-de1df2988a61 — tools/list must return an empty tool set for a
+// user with ZERO accessible workflows (tools.rs:142-205). The existing list
+// test always imports a workflow first; nothing covered the empty case. A fresh
+// user that never imported a workflow must see {tools: []}.
+#[tokio::test]
+async fn tools_list_is_empty_when_user_has_no_workflows() {
+    let server = TestServer::start().await;
+    let user = mcp_user(&server, "wf_mcp_empty").await;
+
+    let list = jsonrpc(&server, &user.token, None, "tools/list", json!({})).await;
+    assert_eq!(list.status(), 200);
+    let body: Json = list.json().await.unwrap();
+    let tools = body["result"]["tools"]
+        .as_array()
+        .expect("tools array present even when empty");
+    assert!(
+        tools.is_empty(),
+        "a user with no accessible workflows must get an empty tools list, got: {body}"
+    );
+}
