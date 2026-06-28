@@ -165,7 +165,6 @@ export function HubPage() {
                 onChange={(value: string) => {
                   navigate(`/hub/${value}`)
                 }}
-                className="[&_.ant-segmented-item-label]:!px-4 [&_.ant-segmented-item-label]:!py-1"
                 options={segmentedOptions}
               />
             </div>
