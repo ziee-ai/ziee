@@ -74,6 +74,52 @@ async fn test_core_memory_block_label_validation() {
 }
 
 #[tokio::test]
+async fn test_core_memory_char_limit_edge_cases() {
+    // char_limit must be in 1..=50_000 and content <= 50_000 chars. These
+    // validations run BEFORE any DB/FK work, so they return 400 deterministically
+    // regardless of whether the assistant_id exists.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_charlimit",
+        &["memory::core::read", "memory::core::write"],
+    )
+    .await;
+    let assistant_id = Uuid::new_v4();
+    let client = reqwest::Client::new();
+    let token = &user.token;
+
+    let upsert = |char_limit: i64, content: String| {
+        let body = json!({
+            "assistant_id": assistant_id,
+            "block_label": "persona",
+            "content": content,
+            "char_limit": char_limit,
+        });
+        client
+            .put(server.api_url("/assistants/core-memory"))
+            .header("Authorization", format!("Bearer {token}"))
+            .json(&body)
+            .send()
+    };
+
+    // char_limit = 0 → below range → 400
+    assert_eq!(upsert(0, "x".into()).await.unwrap().status(), 400);
+    // char_limit = 50_001 → above range → 400
+    assert_eq!(upsert(50_001, "x".into()).await.unwrap().status(), 400);
+    // content longer than MAX_CONTENT_LEN (50_000) → 400, even with a valid
+    // char_limit.
+    let huge = "a".repeat(50_001);
+    assert_eq!(upsert(1000, huge).await.unwrap().status(), 400);
+    // Boundary char_limit = 1 and 50_000 with small content pass validation
+    // (they reach the DB layer; the FK may then 404/500 without a real
+    // assistant fixture — but they must NOT be rejected with a 400 validation
+    // error).
+    assert_ne!(upsert(1, "x".into()).await.unwrap().status(), 400);
+    assert_ne!(upsert(50_000, "x".into()).await.unwrap().status(), 400);
+}
+
+#[tokio::test]
 async fn test_delete_nonexistent_core_memory_block_returns_404() {
     // Deleting a block that was never created must surface 404, not a silent
     // 204. `delete` returns `false` (0 rows affected) and the handler maps
