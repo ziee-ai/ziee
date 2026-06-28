@@ -40,7 +40,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           title={error}
           type="error"
           showIcon
-          closable={{ onClose: Stores.Auth.clearAuthenticationError }}
+          closable={{ closeIcon: true, onClose: Stores.Auth.clearAuthenticationError }}
           className="mb-4"
         />
       )}
