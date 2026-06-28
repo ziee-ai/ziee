@@ -1,5 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { navigateToHub, waitForHubDataLoad } from './helpers/hub-navigation'
 import {
   installMcpServerFromHub,
@@ -232,5 +232,41 @@ test.describe('Hub MCP Servers', () => {
 
     // Should have at least some tags (varies by MCP server)
     expect(tagCount).toBeGreaterThanOrEqual(0)
+  })
+
+  // The install specs stop at "it shows installed"; none verify the installed
+  // server is wired into CHAT. This installs the HTTP hub MCP server then opens
+  // the chat MCP config and asserts the server is available to attach — the
+  // install → chat integration point (deterministic; no real LLM / server run).
+  test('an installed hub MCP server is available to attach in chat', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    const token = await getAdminToken(apiURL)
+
+    await installMcpServerFromHub(page, HTTP_HUB_MCP_ID)
+    await expect(
+      page.getByText(/installed.*successfully|mcp.*server.*installed/i).first(),
+    ).toBeVisible({ timeout: 15000 })
+
+    // A conversation so the composer's "Skills/MCP in this chat" entries render.
+    const convId = (await (
+      await fetch(`${apiURL}/api/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: 'hub-mcp-chat' }),
+      })
+    ).json()).id as string
+
+    await page.goto(`${baseURL}/chat/${convId}`)
+    await page.waitForSelector('textarea[placeholder*="Type your message"]', { timeout: 30000 })
+
+    // Open the composer "+" → MCP config modal → the installed server is listed.
+    await page.getByRole('button', { name: 'Add attachment' }).first().click()
+    await page.getByText('MCP tools & servers').click()
+    const modal = page.getByRole('dialog').filter({ hasText: 'MCP Configuration' })
+    await expect(modal).toBeVisible({ timeout: 10000 })
+    await expect(modal.getByText(/brave/i).first()).toBeVisible({ timeout: 10000 })
   })
 })
