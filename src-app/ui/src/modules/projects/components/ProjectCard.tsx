@@ -49,6 +49,7 @@ export function ProjectCard({
 
   return (
     <Card
+      data-testid={`project-card-${project.id}`}
       hoverable
       onClick={handleOpen}
       className="h-full"
@@ -66,6 +67,7 @@ export function ProjectCard({
           {canEdit && (
             <Tooltip content="Edit">
               <Button
+                data-testid={`project-card-edit-button-${project.id}`}
                 variant="ghost"
                 size="sm"
                 icon={<Pencil />}
@@ -80,6 +82,7 @@ export function ProjectCard({
           {canDuplicate && (
             <Tooltip content="Duplicate">
               <Button
+                data-testid={`project-card-duplicate-button-${project.id}`}
                 variant="ghost"
                 size="sm"
                 icon={<Copy />}
@@ -93,6 +96,7 @@ export function ProjectCard({
           )}
           {canDelete && (
             <Confirm
+              data-testid={`project-card-delete-confirm-${project.id}`}
               title="Delete project"
               description={`Are you sure you want to delete "${project.name}"? Conversations inside it will be preserved as unfiled.`}
               okText="Delete"
@@ -104,6 +108,7 @@ export function ProjectCard({
               onCancel={stop}
             >
               <Button
+                data-testid={`project-card-delete-button-${project.id}`}
                 variant="ghost"
                 size="sm"
                 icon={<Trash2 />}

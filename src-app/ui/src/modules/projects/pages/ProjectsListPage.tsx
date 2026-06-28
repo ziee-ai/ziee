@@ -45,6 +45,7 @@ export function ProjectsListPage() {
           </Title>
           <Can permission={Permissions.ProjectsCreate}>
             <Button
+              data-testid="project-list-create-button"
               variant="ghost"
               icon={<Plus />}
               onClick={handleCreate}
@@ -88,6 +89,7 @@ export function ProjectsListPage() {
               </Text>
               <Can permission={Permissions.ProjectsCreate}>
                 <Button
+                  data-testid="project-list-empty-create-button"
                   variant="default"
                   icon={<FolderPlus />}
                   onClick={handleCreate}

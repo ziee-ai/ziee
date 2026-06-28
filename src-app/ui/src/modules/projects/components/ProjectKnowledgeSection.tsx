@@ -18,6 +18,7 @@ export function ProjectKnowledgeSection() {
       <div className="flex items-center mb-2">
         <Text strong>Project knowledge</Text>
         <Button
+          data-testid="project-knowledge-manage-button"
           size="sm"
           onClick={openDrawer}
           aria-label="Manage knowledge files"
