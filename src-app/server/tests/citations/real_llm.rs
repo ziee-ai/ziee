@@ -166,3 +166,115 @@ async fn create_tool_capable_anthropic_model(
     crate::chat::helpers::ensure_user_has_model_access(server, user_id, &model).await;
     model
 }
+
+/// Multi-turn: the citations MCP tool is usable across more than one chat turn
+/// in the SAME conversation — turn 1 adds a citation, turn 2 lists it back.
+/// Asserts the tool is invoked on BOTH turns (the built-in stays attached and
+/// the conversation context carries across turns). Soft-skips without a key.
+#[tokio::test]
+async fn real_llm_multi_turn_citations() {
+    let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
+        eprintln!("skipping citations::real_llm_multi_turn — ANTHROPIC_API_KEY unset");
+        return;
+    };
+
+    let doi = crate::citations::start_mock_doi_resolver().await;
+    let idconv = crate::citations::start_mock_idconv().await;
+    let crossref = crate::citations::start_mock_crossref().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("ANTHROPIC_API_KEY".to_string(), api_key.clone()),
+            ("CITATIONS_RESOLVER_ENDPOINT".to_string(), doi),
+            ("CITATIONS_IDCONV_ENDPOINT".to_string(), idconv),
+            ("CITATIONS_CROSSREF_ENDPOINT".to_string(), crossref),
+            ("CITATIONS_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+        ],
+        ..Default::default()
+    })
+    .await;
+
+    let user = create_user_with_permissions(
+        &server,
+        "cit_real_llm_mt",
+        &[
+            "conversations::create", "conversations::read", "conversations::edit",
+            "messages::create", "messages::read", "llm_models::read",
+            "citations::use", "citations::manage",
+        ],
+    )
+    .await;
+
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let cit_id = citations_server_id();
+    for _ in 0..50 {
+        let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM mcp_servers WHERE id = $1")
+            .bind(cit_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
+        if exists.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let default_group: Uuid =
+        sqlx::query_scalar("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id, assigned_at) \
+         VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING",
+    )
+    .bind(default_group)
+    .bind(cit_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    let model = create_tool_capable_anthropic_model(&server, &user.user_id, &api_key).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let mcp_config = json!({ "mcp_servers": [ { "server_id": cit_id.to_string(), "tools": [] } ] });
+
+    // Turn 1 — add a citation.
+    let turn1 = json!({
+        "content": "Use the add_citations tool to add DOI 10.5555/known to my library. \
+                    You MUST call the tool — do not answer from memory.",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string(),
+        "enable_mcp": true,
+        "mcp_config": mcp_config,
+    });
+    let ev1 = crate::chat::helpers::send_body_and_collect_events(
+        &server, &user.token, conversation_id, turn1, &["complete"],
+    )
+    .await;
+    assert!(
+        ev1.iter().any(|e| e.event == "mcpToolStart"),
+        "turn 1 should invoke a citations tool"
+    );
+
+    // Turn 2 — same conversation/branch — list citations back.
+    let turn2 = json!({
+        "content": "Now use the list_citations tool to show what is saved in my library. \
+                    You MUST call the tool.",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string(),
+        "enable_mcp": true,
+        "mcp_config": mcp_config,
+    });
+    let ev2 = crate::chat::helpers::send_body_and_collect_events(
+        &server, &user.token, conversation_id, turn2, &["complete"],
+    )
+    .await;
+    assert!(
+        ev2.iter().any(|e| e.event == "mcpToolStart"),
+        "turn 2 should also invoke a citations tool (built-in stays attached across turns)"
+    );
+}
