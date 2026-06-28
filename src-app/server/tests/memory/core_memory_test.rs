@@ -196,3 +196,88 @@ async fn test_core_memory_endpoints_require_permission() {
         .unwrap();
     assert_eq!(delete.status(), 403, "delete must be perm-gated");
 }
+
+/// Concurrency: many simultaneous upserts to the SAME core-memory block
+/// (`user_id`, `assistant_id`, `block_label`) must converge to a single row via
+/// the `ON CONFLICT DO UPDATE` — every request succeeds (no duplicate-key
+/// error), and exactly one block survives holding one writer's content. Needs a
+/// real assistant (the FK target).
+#[tokio::test]
+async fn test_concurrent_core_memory_upserts_converge_to_one_row() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_concurrent",
+        &[
+            "memory::core::read",
+            "memory::core::write",
+            "assistants::create",
+            "assistants::read",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // A real assistant so the core-memory FK resolves (upsert returns 200).
+    let assistant: Value = client
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "CM Concurrency", "enabled": true }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let assistant_id = assistant["id"].as_str().expect("assistant id").to_string();
+
+    // Fire N concurrent upserts to the same block_label.
+    let url = server.api_url("/assistants/core-memory");
+    let mut handles = Vec::new();
+    for i in 0..8 {
+        let url = url.clone();
+        let token = user.token.clone();
+        let aid = assistant_id.clone();
+        handles.push(tokio::spawn(async move {
+            reqwest::Client::new()
+                .put(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "assistant_id": aid,
+                    "block_label": "persona",
+                    "content": format!("variant {i}"),
+                    "char_limit": 1000
+                }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }));
+    }
+    for h in handles {
+        let status = h.await.unwrap();
+        assert_eq!(status.as_u16(), 200, "each concurrent upsert must succeed");
+    }
+
+    // Exactly one block survives the race, holding a racer's value.
+    let blocks: Value = client
+        .get(server.api_url(&format!("/assistants/{assistant_id}/core-memory")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let arr = blocks.as_array().expect("core-memory list is an array");
+    let personas: Vec<&Value> = arr
+        .iter()
+        .filter(|b| b["block_label"] == "persona")
+        .collect();
+    assert_eq!(personas.len(), 1, "concurrent upserts must converge to one block: {blocks}");
+    assert!(
+        personas[0]["content"].as_str().unwrap_or("").starts_with("variant "),
+        "surviving block holds a racer's content: {}",
+        personas[0]
+    );
+}

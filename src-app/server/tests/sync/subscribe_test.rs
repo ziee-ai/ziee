@@ -186,3 +186,47 @@ async fn subscribe_first_frame_is_connected_handshake_with_uuid() {
         "connection_id must be a valid UUID, got {conn:?}"
     );
 }
+
+/// The per-user connection cap is enforced through the HTTP `/sync/subscribe`
+/// path (not just the registry unit test): one user opening more than
+/// PER_USER_MAX_CONNECTIONS (12) live streams gets a 429 on the overflow
+/// subscribe. The held responses keep the earlier connections registered.
+#[tokio::test]
+async fn subscribe_enforces_per_user_connection_cap_with_429() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_cap_http",
+        &["profile::read"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Hold 12 live subscribe streams open (registered on the server).
+    let mut held = Vec::new();
+    for i in 0..12 {
+        let res = client
+            .get(server.api_url("/sync/subscribe"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200, "connection {i} should open");
+        held.push(res); // keep the stream alive → stays registered
+    }
+
+    // The 13th subscribe for the SAME user exceeds the per-user cap → 429.
+    let overflow = client
+        .get(server.api_url("/sync/subscribe"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        overflow.status(),
+        429,
+        "the (cap+1)th connection must be refused with 429"
+    );
+
+    drop(held);
+}
