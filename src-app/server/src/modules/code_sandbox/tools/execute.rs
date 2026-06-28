@@ -69,20 +69,16 @@ pub async fn execute_command_with_mounts(
     // before the new flavor runs — protects the LLM from ABI
     // mismatches between Python/Node libraries baked against the
     // previous flavor.
-    let locked_flavor = CONVERSATION_FLAVOR
-        .entry(ctx.conversation_id)
-        .or_insert_with(|| flavor.to_string())
-        .clone();
-    if locked_flavor != flavor {
+    if let Some(previous) = pin_or_detect_flavor_switch(ctx.conversation_id, flavor) {
         tracing::info!(
             conv = %ctx.conversation_id,
             requested = flavor,
-            previous = locked_flavor.as_str(),
+            previous = previous.as_str(),
             "execute_command: flavor switch within conversation — wiping install-cache subdirs"
         );
         let wipe = version_manager::wipe_install_caches_for_conversation(
             &workspace_dir,
-            &locked_flavor,
+            &previous,
             flavor,
         );
         tracing::info!(
@@ -90,9 +86,6 @@ pub async fn execute_command_with_mounts(
             subdirs_removed = wipe.subdirs_removed,
             "execute_command: flavor-switch wipe complete"
         );
-        // Update the lock so the next call sees the new flavor as the
-        // baseline.
-        CONVERSATION_FLAVOR.insert(ctx.conversation_id, flavor.to_string());
     }
 
     // Read + unlink any pending wipe sentinel from a previous
@@ -185,4 +178,102 @@ pub async fn execute_command_with_mounts(
         response["mount_notes"] = json!(mount_notes);
     }
     Ok(response)
+}
+
+/// Per-conversation flavor pin + switch detection (extracted from
+/// `execute_command_with_mounts` so the state machine is unit-testable). Returns
+/// `Some(previous_flavor)` when the conversation was already pinned to a
+/// DIFFERENT flavor — a switch, which the caller follows with an install-cache
+/// wipe — and updates the lock to the new flavor. Returns `None` on the first
+/// call for a conversation (pins it) or when the requested flavor matches the
+/// pin.
+fn pin_or_detect_flavor_switch(conversation_id: uuid::Uuid, requested: &str) -> Option<String> {
+    let locked = CONVERSATION_FLAVOR
+        .entry(conversation_id)
+        .or_insert_with(|| requested.to_string())
+        .clone();
+    if locked != requested {
+        CONVERSATION_FLAVOR.insert(conversation_id, requested.to_string());
+        Some(locked)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod flavor_lock_tests {
+    use super::pin_or_detect_flavor_switch;
+    use crate::modules::code_sandbox::types::CONVERSATION_FLAVOR;
+    use uuid::Uuid;
+
+    // audit id all-57d10b1be5e4 — execute_command had zero inline unit tests.
+    // The per-conversation flavor lock is the one piece of pure logic worth
+    // pinning: first call pins, same flavor is a no-op, a different flavor is a
+    // switch (returns the previous flavor + updates the lock).
+    #[test]
+    fn pins_first_then_detects_switch_then_re_pins() {
+        let conv = Uuid::new_v4();
+        assert_eq!(pin_or_detect_flavor_switch(conv, "minimal"), None, "first call pins, no switch");
+        assert_eq!(pin_or_detect_flavor_switch(conv, "minimal"), None, "same flavor is not a switch");
+        assert_eq!(
+            pin_or_detect_flavor_switch(conv, "full").as_deref(),
+            Some("minimal"),
+            "a different flavor is a switch returning the previous flavor"
+        );
+        assert_eq!(
+            pin_or_detect_flavor_switch(conv, "full"),
+            None,
+            "the lock is updated to the new flavor → the next 'full' call is a no-op"
+        );
+        // Distinct conversations are independent.
+        let other = Uuid::new_v4();
+        assert_eq!(pin_or_detect_flavor_switch(other, "full"), None, "other conv pins independently");
+
+        CONVERSATION_FLAVOR.remove(&conv);
+        CONVERSATION_FLAVOR.remove(&other);
+    }
+
+    // audit id all-5c25dc6d4142 — flavor-switch within a conversation, chained
+    // end-to-end at the logic level (the orchestration in
+    // execute_command_with_mounts:66-89, minus the bwrap run which needs a
+    // rootfs). A switch must: (1) be detected by the pin/switch state machine,
+    // (2) wipe the conversation's install-cache subdirs + drop a sentinel, and
+    // (3) surface a system_note on the next call via consume_workspace_sentinel.
+    #[test]
+    fn flavor_switch_detects_wipes_and_surfaces_system_note() {
+        use crate::modules::code_sandbox::version_manager;
+        use std::fs;
+
+        let conv = Uuid::new_v4();
+        let dir = std::env::temp_dir().join(format!("ziee-flavorswitch-{conv}"));
+        // A workspace pre-populated with install-cache subdirs from "minimal".
+        fs::create_dir_all(dir.join(".local/lib")).unwrap();
+        fs::create_dir_all(dir.join(".cache")).unwrap();
+        fs::write(dir.join("keep.txt"), b"user data").unwrap();
+
+        // First call pins "minimal" (no switch).
+        assert_eq!(pin_or_detect_flavor_switch(conv, "minimal"), None);
+
+        // Switching to "full" is detected, returning the previous flavor.
+        let previous = pin_or_detect_flavor_switch(conv, "full").expect("switch detected");
+        assert_eq!(previous, "minimal");
+
+        // The switch wipes the install caches + drops a flavor-changed sentinel.
+        let wipe = version_manager::wipe_install_caches_for_conversation(&dir, &previous, "full");
+        assert!(wipe.subdirs_removed >= 1, "install caches must be wiped on switch");
+        assert!(!dir.join(".local").exists(), ".local cache wiped");
+        assert!(!dir.join(".cache").exists(), ".cache wiped");
+        assert!(dir.join("keep.txt").exists(), "user data must be preserved");
+
+        // The next call surfaces a human-readable system note (consumed once).
+        let note = version_manager::consume_workspace_sentinel(&dir)
+            .expect("a flavor-switch sentinel must produce a system note");
+        assert!(note.to_lowercase().contains("flavor") || note.contains("full") || note.contains("minimal"),
+            "system note describes the switch: {note}");
+        // Consumed → gone on the following call.
+        assert!(version_manager::consume_workspace_sentinel(&dir).is_none(), "sentinel is consumed once");
+
+        let _ = fs::remove_dir_all(&dir);
+        CONVERSATION_FLAVOR.remove(&conv);
+    }
 }
