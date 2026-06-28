@@ -2861,3 +2861,82 @@ async fn configure_hf_repo_credential(server: &crate::common::TestServer) {
         "configuring the Hugging Face repo credential should succeed"
     );
 }
+
+/// Cross-subsystem: install an assistant FROM THE HUB, then confirm it is
+/// available for chat — i.e. it lands in the user's assistant list, where the
+/// chat path looks it up by `assistant_id`. Closes the untested hub-install →
+/// chat-usage flow (no LLM needed: availability is the integration point).
+#[tokio::test]
+async fn hub_install_assistant_then_available_for_chat() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_install_chat",
+        &[
+            "hub::assistants::read",
+            "hub::assistants::create",
+            "assistants::read",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {}", user.token);
+
+    // Discover a hub assistant; its reverse-DNS `name` is the catalog hub_id.
+    let hub: serde_json::Value = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let hub_id = hub
+        .as_array()
+        .unwrap()
+        .first()
+        .expect("seed catalog has >=1 hub assistant")
+        .get("name")
+        .and_then(|v| v.as_str())
+        .expect("hub assistant name")
+        .to_string();
+
+    // Install it into the user's own assistants.
+    let created_res = client
+        .post(server.api_url("/hub/assistants/create"))
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "hub_id": hub_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        created_res.status(),
+        reqwest::StatusCode::CREATED,
+        "installing a hub assistant must succeed"
+    );
+    let created: serde_json::Value = created_res.json().await.unwrap();
+    let assistant_id = created["assistant"]["id"]
+        .as_str()
+        .expect("created assistant id")
+        .to_string();
+
+    // It is now in the user's assistant list — the chat path resolves an
+    // assistant by id from exactly this surface.
+    let list: serde_json::Value = client
+        .get(server.api_url("/assistants"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let items = list["assistants"].as_array().expect("assistants array");
+    assert!(
+        items
+            .iter()
+            .any(|a| a["id"].as_str() == Some(assistant_id.as_str())),
+        "the installed hub assistant must be available (in the chat-usable assistant list)"
+    );
+}
