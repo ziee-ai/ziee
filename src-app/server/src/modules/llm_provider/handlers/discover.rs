@@ -184,11 +184,17 @@ async fn fetch_v1_models(
     api_key: &str,
 ) -> Result<Vec<String>, String> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
-    // SSRF hardening: this request carries the provider's api_key. A
-    // malicious/compromised upstream could 302-redirect to an internal
-    // host (e.g. cloud metadata) and harvest the bearer. Disable
-    // redirect-following entirely and bypass any ambient proxy.
-    let client = reqwest::Client::builder()
+    // SSRF hardening: this request carries the provider's api_key. Threats:
+    //   * a 302 to an internal host (e.g. cloud metadata) to harvest the bearer
+    //     — blocked by `redirect(Policy::none())` (never follow ANY redirect),
+    //   * DNS rebinding (hostname resolves public at pre-flight, rebinds to
+    //     169.254.169.254 / loopback / RFC1918 before connect) — blocked by the
+    //     connect-time GuardingResolver baked into `validated_client_builder`,
+    //   * an ambient proxy tunnelling/seeing the secret — blocked by `no_proxy()`.
+    let policy = crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS;
+    crate::utils::url_validator::validate_outbound_url(&url, &policy)
+        .map_err(|e| format!("blocked url: {e}"))?;
+    let client = crate::utils::url_validator::validated_client_builder(policy)
         .timeout(std::time::Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())
         .no_proxy()
