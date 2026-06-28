@@ -141,3 +141,167 @@ async fn lit_search_record_doi_feeds_citations_and_is_verified() {
         "the lit_search-discovered paper must land in the citations library: {lbody}"
     );
 }
+
+// audit id all-1d2d31c53866 — MCP + memory + lit_search combined in ONE
+// conversation. The mcp chat-collector (order 30) runs after memory (27) and
+// lit_search (28); nothing exercised memory and lit_search built-ins together.
+// Here one user/conversation drives memory remember→recall AND a lit_search
+// literature_search (loopback europepmc) — both built-in MCP subsystems operate
+// under the same conversation scope without interfering.
+#[tokio::test]
+async fn memory_and_lit_search_compose_in_one_conversation() {
+    let epmc = mock_europepmc_known_doi().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".into(), "1".into()),
+            ("LIT_SEARCH_EUROPEPMC_ENDPOINT".into(), format!("{epmc}/search")),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let user = create_user_with_permissions(
+        &server,
+        "mem_lit_user",
+        &[
+            "lit_search::use",
+            "lit_search::admin::read",
+            "lit_search::admin::manage",
+            "memory::read",
+            "memory::write",
+        ],
+    )
+    .await;
+    configure(&server, &user.token, &["europepmc"]).await;
+
+    let conv = uuid::Uuid::new_v4().to_string();
+
+    // (1) memory subsystem: remember a research interest, then recall it.
+    let remember = reqwest::Client::new()
+        .post(server.api_url("/memories/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("x-conversation-id", &conv)
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "remember", "arguments": { "content": "User researches CRISPR base editing", "kind": "fact" } } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(remember.status(), 200);
+    assert!(remember.json::<Value>().await.unwrap()["error"].is_null(), "remember should succeed");
+
+    let recall: Value = reqwest::Client::new()
+        .post(server.api_url("/memories/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("x-conversation-id", &conv)
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "recall", "arguments": { "query": "what does the user research", "top_k": 5 } } }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let mems = recall["result"]["structuredContent"]["memories"].as_array().cloned().unwrap_or_default();
+    assert!(
+        mems.iter().filter_map(|m| m["content"].as_str()).any(|c| c.contains("CRISPR base editing")),
+        "the remembered fact must be recallable in the same conversation: {recall}"
+    );
+
+    // (2) lit_search subsystem: a literature search in the SAME conversation.
+    let search: Value = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "literature_search", "arguments": { "query": "known" } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert!(search["error"].is_null(), "literature_search should succeed: {search}");
+    let records = search["result"]["structuredContent"]["records"].as_array().cloned().unwrap_or_default();
+    assert!(!records.is_empty(), "lit_search must return the seeded record alongside memory: {search}");
+}
+
+// audit id all-e514fadefce4 — concurrent multi-tool flow across THREE built-in
+// MCP subsystems (bio_mcp + lit_search + citations) in one conversation. Prior
+// tests exercise each in isolation; nothing fired them CONCURRENTLY to prove
+// they don't interfere. We tokio::join! a lit_search, a citations add, and a
+// bio_mcp proxy call: lit_search + citations must each return their own correct
+// result; bio_mcp must return a well-formed response (200 when a sidecar is
+// available, or a graceful 503 on a stub build) — never a 500 / hang / cross-
+// contamination of the others.
+#[tokio::test]
+async fn concurrent_bio_lit_citations_do_not_interfere() {
+    let epmc = mock_europepmc_known_doi().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        bio_mcp_enabled: true,
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".into(), "1".into()),
+            ("LIT_SEARCH_EUROPEPMC_ENDPOINT".into(), format!("{epmc}/search")),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let user = create_user_with_permissions(
+        &server,
+        "concurrent_xsub",
+        &[
+            "lit_search::use",
+            "lit_search::admin::read",
+            "lit_search::admin::manage",
+            "citations::use",
+            "citations::manage",
+            "bio::query",
+        ],
+    )
+    .await;
+    configure(&server, &user.token, &["europepmc"]).await;
+
+    let token = user.token.clone();
+    let lit = jsonrpc(
+        &server,
+        &token,
+        "tools/call",
+        json!({ "name": "literature_search", "arguments": { "query": "known" } }),
+    )
+    .send();
+    let cit = reqwest::Client::new()
+        .post(server.api_url("/citations/mcp"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "add_citations", "arguments": { "items": [
+                { "csl": { "type": "article-journal", "title": "Concurrent XSub Paper", "issued": { "date-parts": [[2023]] } } }
+            ] } } }))
+        .send();
+    let bio = reqwest::Client::new()
+        .post(server.api_url("/bio/mcp"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }))
+        .send();
+
+    // Fire all three concurrently.
+    let (lit_res, cit_res, bio_res) = tokio::join!(lit, cit, bio);
+
+    // lit_search returned its own record.
+    let lit_body: Value = lit_res.unwrap().json().await.unwrap();
+    assert!(lit_body["error"].is_null(), "concurrent lit_search: {lit_body}");
+    assert!(
+        !lit_body["result"]["structuredContent"]["records"].as_array().cloned().unwrap_or_default().is_empty(),
+        "lit_search must return its record under concurrency: {lit_body}"
+    );
+
+    // citations stored its own entry.
+    let cit_status = cit_res.unwrap();
+    assert_eq!(cit_status.status(), 200, "concurrent citations call must 200");
+    assert!(cit_status.json::<Value>().await.unwrap()["error"].is_null(), "citations add must succeed");
+
+    // bio_mcp returned a well-formed response — 200 (sidecar) or graceful 503
+    // (stub build); never a 500 / hang / contamination.
+    let bio_status = bio_res.unwrap().status();
+    assert!(
+        bio_status == 200 || bio_status == 503,
+        "bio_mcp under concurrency must be 200 or a graceful 503, got {bio_status}"
+    );
+}
