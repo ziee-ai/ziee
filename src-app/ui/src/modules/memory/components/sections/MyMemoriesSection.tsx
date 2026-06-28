@@ -2,24 +2,36 @@ import { useEffect, useState } from 'react'
 import {
   Button,
   Card,
+  Confirm,
   Descriptions,
-  Divider,
   Dropdown,
   Empty,
   Flex,
   Form,
+  FormField,
   Input,
   InputNumber,
   Pagination,
-  Popconfirm,
   Select,
+  Separator,
   Spin,
   Tag,
+  Text,
+  Textarea,
   Tooltip,
-  Typography,
   message,
-} from 'antd'
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
+
+// Shared validation for the add/edit memory drawers (was antd Form.Item `rules`).
+const memoryFormSchema = z.object({
+  content: z.string().min(1, 'Required').max(4000, 'Max 4000 chars'),
+  importance: z.number(),
+  kind: z.string(),
+})
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -30,9 +42,6 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { UserMemory } from '@/api-client/types'
-
-const { Text } = Typography
-const { Search } = Input
 
 const READ_PERM = Permissions.MemoryRead
 const WRITE_PERM = Permissions.MemoryWrite
@@ -59,14 +68,6 @@ export function MyMemoriesSection() {
   } = Stores.Memories
   const [editing, setEditing] = useState<UserMemory | null>(null)
   const [creating, setCreating] = useState(false)
-
-  const handlePageChange = (page: number, size?: number) => {
-    const nextSize = size || storePageSize
-    // Reset to page 1 when the user changes page size — matches
-    // UsersSettings / UserGroupsSettings behavior.
-    const nextPage = size && size !== storePageSize ? 1 : page
-    Stores.Memories.load(nextPage, nextSize)
-  }
 
   // Filtering moved to the server — `memories` already reflects
   // searchQuery / kindFilter / sourceFilter via the store setters.
@@ -103,7 +104,7 @@ export function MyMemoriesSection() {
         canWrite ? (
           <Tooltip title="Add memory">
             <Button
-              type="text"
+              variant="ghost"
               icon={<PlusOutlined />}
               onClick={() => setCreating(true)}
               aria-label="Add memory"
@@ -123,23 +124,22 @@ export function MyMemoriesSection() {
         * some reason — antd Flex doesn't reset margins, but visual
         * verification showed the class wasn't applying. */}
       <Flex
-        wrap="wrap"
+        wrap
         gap="small"
         align="center"
-        style={{ marginBottom: 12 }}
+        className="mb-3"
       >
-        <Search
+        <Input
           placeholder="Search content"
           allowClear
           onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
-          style={{ minWidth: 200, flex: '1 1 240px', maxWidth: 360 }}
+          className="min-w-[200px] flex-[1_1_240px] max-w-[360px]"
         />
         <Select
           placeholder="Kind"
-          allowClear
           value={kindFilter ?? undefined}
           onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
-          style={{ flex: '0 1 160px', minWidth: 120 }}
+          className="flex-[0_1_160px] min-w-[120px]"
           options={[
             { value: 'preference', label: 'Preference' },
             { value: 'fact', label: 'Fact' },
@@ -150,10 +150,9 @@ export function MyMemoriesSection() {
         />
         <Select
           placeholder="Source"
-          allowClear
           value={sourceFilter ?? undefined}
           onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
-          style={{ flex: '0 1 160px', minWidth: 120 }}
+          className="flex-[0_1_160px] min-w-[120px]"
           options={[
             { value: 'manual', label: 'Manual' },
             { value: 'extraction', label: 'Auto-extracted' },
@@ -164,14 +163,15 @@ export function MyMemoriesSection() {
           * room; on narrow viewports they wrap to the next line
           * naturally. */}
         <div className="flex-1" />
-        <Dropdown menu={exportMenu}>
+        <Dropdown items={exportMenu.items}>
           <Button icon={<DownloadOutlined />}>Export</Button>
         </Dropdown>
         {canWrite && (
-          <Popconfirm
+          <Confirm
             title="Delete all memories?"
             description="This is permanent and cannot be undone."
             okText="Delete"
+            cancelText="Cancel"
             okButtonProps={{ danger: true }}
             onConfirm={async () => {
               try {
@@ -186,14 +186,14 @@ export function MyMemoriesSection() {
               }
             }}
           >
-            <Button danger>Delete all</Button>
-          </Popconfirm>
+            <Button variant="destructive">Delete all</Button>
+          </Confirm>
         )}
       </Flex>
 
       {loading && filtered.length === 0 ? (
         <div className="flex justify-center py-6">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       ) : filtered.length === 0 ? (
         <Empty description="No memories yet" />
@@ -212,16 +212,17 @@ export function MyMemoriesSection() {
                         <div className="flex gap-1 items-center justify-end">
                           <Tooltip title="Edit memory">
                             <Button
-                              type="text"
-                              size="small"
+                              variant="ghost"
+                              size="sm"
                               icon={<EditOutlined />}
                               onClick={() => setEditing(row)}
                               aria-label="Edit memory"
                             />
                           </Tooltip>
-                          <Popconfirm
+                          <Confirm
                             title="Delete this memory?"
                             okText="Delete"
+                            cancelText="Cancel"
                             okButtonProps={{ danger: true }}
                             onConfirm={async () => {
                               try {
@@ -238,58 +239,66 @@ export function MyMemoriesSection() {
                           >
                             <Tooltip title="Delete memory">
                               <Button
-                                type="text"
-                                size="small"
-                                danger
+                                variant="destructive"
+                                size="sm"
                                 icon={<DeleteOutlined />}
                                 aria-label={`Delete memory ${row.id}`}
                               />
                             </Tooltip>
-                          </Popconfirm>
+                          </Confirm>
                         </div>
                       )}
                     </div>
 
                     <Descriptions
-                      size="small"
-                      column={{ xs: 1, sm: 2, md: 4 }}
-                      colon={false}
-                      styles={{
-                        label: { fontSize: '12px' },
-                        content: { fontSize: '12px' },
-                      }}
-                    >
-                      <Descriptions.Item label="Kind">
-                        <Tag className="!m-0">{row.kind}</Tag>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Source">
-                        <Tag
-                          className="!m-0"
-                          color={
-                            row.source === 'manual'
-                              ? 'blue'
-                              : row.source === 'extraction'
-                                ? 'green'
-                                : 'purple'
-                          }
-                        >
-                          {row.source === 'mcp_tool' ? 'tool' : row.source}
-                        </Tag>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Importance">
-                        {row.importance}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Recalls">
-                        {row.recall_count}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Updated" span={{ xs: 1, sm: 2, md: 4 }}>
-                        {new Date(row.updated_at).toLocaleString()}
-                      </Descriptions.Item>
-                    </Descriptions>
+                      size="sm"
+                      column={4}
+                      items={[
+                        {
+                          key: 'kind',
+                          label: 'Kind',
+                          children: <Tag className="!m-0">{row.kind}</Tag>,
+                        },
+                        {
+                          key: 'source',
+                          label: 'Source',
+                          children: (
+                            <Tag
+                              className="!m-0"
+                              tone={
+                                row.source === 'manual'
+                                  ? 'info'
+                                  : row.source === 'extraction'
+                                    ? 'success'
+                                    : 'info'
+                              }
+                            >
+                              {row.source === 'mcp_tool' ? 'tool' : row.source}
+                            </Tag>
+                          ),
+                        },
+                        {
+                          key: 'importance',
+                          label: 'Importance',
+                          children: row.importance,
+                        },
+                        {
+                          key: 'recalls',
+                          label: 'Recalls',
+                          children: row.recall_count,
+                        },
+                        {
+                          key: 'updated',
+                          label: 'Updated',
+                          children: new Date(row.updated_at).toLocaleString(),
+                          span: 4,
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
                 {index < filtered.length - 1 && (
-                  <Divider className="my-4" />
+                  <Separator className="my-4" />
                 )}
               </div>
             ))}
@@ -299,20 +308,26 @@ export function MyMemoriesSection() {
 
       {totalMemories > 0 && (
         <>
-          <Divider className="!my-3" />
+          <Separator className="!my-3" />
           <Flex justify="end">
             <Pagination
               current={storePage}
               total={totalMemories}
               pageSize={storePageSize}
               showSizeChanger
+              pageSizeLabel="Memories per page"
+              pageSizeOptions={[5, 10, 20, 50]}
+              onPageSizeChange={(size) => Stores.Memories.load(1, size)}
               showQuickJumper
+              jumpLabel="Jump to page"
               showTotal={(total, range) =>
                 `${range[0]}-${range[1]} of ${total} memories`
               }
-              onChange={handlePageChange}
-              onShowSizeChange={handlePageChange}
-              pageSizeOptions={['5', '10', '20', '50']}
+              onChange={(page) => Stores.Memories.load(page, storePageSize)}
+              aria-label="Memory pagination"
+              previousLabel="Previous page"
+              nextLabel="Next page"
+              pageLabel={(p) => `Page ${p}`}
             />
           </Flex>
         </>
@@ -396,11 +411,14 @@ function CreateMemoryDrawer({
   open: boolean
   onClose: () => void
 }) {
-  const [form] = Form.useForm<{
+  const form = useForm<{
     content: string
     importance: number
     kind: string
-  }>()
+  }>({
+    resolver: zodResolver(memoryFormSchema),
+    defaultValues: { importance: 50, kind: 'fact' },
+  })
   const { saving } = Stores.Memories
 
   const handleSubmit = async (values: {
@@ -414,7 +432,7 @@ function CreateMemoryDrawer({
         values.importance,
         values.kind,
       )
-      form.resetFields()
+      form.reset()
       onClose()
       message.success('Memory added')
     } catch (error) {
@@ -431,7 +449,7 @@ function CreateMemoryDrawer({
       onClose={onClose}
       size={600}
       extra={
-        <Button type="primary" loading={saving} onClick={() => form.submit()}>
+        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()}>
           Add
         </Button>
       }
@@ -439,23 +457,18 @@ function CreateMemoryDrawer({
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ importance: 50, kind: 'fact' }}
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
       >
-        <Form.Item
+        <FormField
           name="content"
           label="Content"
-          rules={[
-            { required: true, message: 'Required' },
-            { max: 4000, message: 'Max 4000 chars' },
-          ]}
         >
-          <Input.TextArea
+          <Textarea
             rows={4}
             placeholder="One sentence, third-person about you"
           />
-        </Form.Item>
-        <Form.Item name="kind" label="Kind">
+        </FormField>
+        <FormField name="kind" label="Kind">
           <Select
             options={[
               { value: 'preference', label: 'Preference' },
@@ -465,10 +478,10 @@ function CreateMemoryDrawer({
               { value: 'other', label: 'Other' },
             ]}
           />
-        </Form.Item>
-        <Form.Item name="importance" label="Importance (0-100)">
+        </FormField>
+        <FormField name="importance" label="Importance (0-100)">
           <InputNumber min={0} max={100} />
-        </Form.Item>
+        </FormField>
       </Form>
     </Drawer>
   )
@@ -481,16 +494,16 @@ function EditMemoryDrawer({
   row: UserMemory | null
   onClose: () => void
 }) {
-  const [form] = Form.useForm<{
+  const form = useForm<{
     content: string
     importance: number
     kind: string
-  }>()
+  }>({ resolver: zodResolver(memoryFormSchema) })
   const { saving } = Stores.Memories
 
   useEffect(() => {
     if (row) {
-      form.setFieldsValue({
+      form.reset({
         content: row.content,
         importance: row.importance,
         kind: row.kind,
@@ -522,20 +535,19 @@ function EditMemoryDrawer({
       onClose={onClose}
       size={600}
       extra={
-        <Button type="primary" loading={saving} onClick={() => form.submit()}>
+        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()}>
           Save
         </Button>
       }
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
-        <Form.Item
+      <Form form={form} layout="vertical" onSubmit={handleSubmit}>
+        <FormField
           name="content"
           label="Content"
-          rules={[{ required: true, max: 4000 }]}
         >
-          <Input.TextArea rows={6} />
-        </Form.Item>
-        <Form.Item name="kind" label="Kind">
+          <Textarea rows={6} />
+        </FormField>
+        <FormField name="kind" label="Kind">
           <Select
             options={[
               { value: 'preference', label: 'Preference' },
@@ -545,10 +557,10 @@ function EditMemoryDrawer({
               { value: 'other', label: 'Other' },
             ]}
           />
-        </Form.Item>
-        <Form.Item name="importance" label="Importance (0-100)">
+        </FormField>
+        <FormField name="importance" label="Importance (0-100)">
           <InputNumber min={0} max={100} />
-        </Form.Item>
+        </FormField>
       </Form>
     </Drawer>
   )
