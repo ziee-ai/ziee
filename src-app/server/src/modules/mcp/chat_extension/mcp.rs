@@ -3015,4 +3015,54 @@ mod builtin_tests {
         // A third-party server id is NOT a privileged built-in.
         assert!(!is_builtin_server_id(Uuid::new_v4()));
     }
+
+    /// Cross-subsystem integration of the built-in MCP servers through the
+    /// SHARED approval-bypass seam (`is_builtin_server_id`). This asserts the
+    /// full matrix in one place — web_search + memory + lit_search + citations +
+    /// elicitation + files + tool_result + bio + skill are all approval-bypassed
+    /// together — and that the EXECUTION subsystems (code_sandbox, workflow) are
+    /// deliberately NOT approval-bypassed (they run code / mutate, so a
+    /// tool-capable chat that enables everything still gates them behind manual
+    /// approval). Covers the "never tested together" cross-subsystem gaps.
+    #[test]
+    fn all_readonly_builtins_share_approval_bypass_but_execution_ones_do_not() {
+        // Read-only / save-only / user-prompting built-ins: approval-bypassed.
+        let bypassed = [
+            crate::modules::memory_mcp::memory_mcp_server_id(),
+            crate::modules::web_search::web_search_server_id(),
+            crate::modules::lit_search::lit_search_server_id(),
+            crate::modules::citations::citations_server_id(),
+            crate::modules::elicitation_mcp::elicitation_mcp_server_id(),
+            crate::modules::files_mcp::files_mcp_server_id(),
+            crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
+            crate::modules::bio_mcp::bio_mcp_server_id(),
+            crate::modules::skill_mcp::skill_mcp_server_id(),
+        ];
+        for id in bypassed {
+            assert!(
+                is_builtin_server_id(id),
+                "read-only built-in {id} must be approval-bypassed"
+            );
+        }
+
+        // Execution subsystems are NOT approval-bypassed — they mutate / run code
+        // and must stay behind manual approval even when auto-attached.
+        let needs_approval = [
+            crate::modules::code_sandbox::code_sandbox_server_id(),
+            crate::modules::workflow_mcp::workflow_mcp_server_id(),
+        ];
+        for id in needs_approval {
+            assert!(
+                !is_builtin_server_id(id),
+                "execution built-in {id} must NOT be approval-bypassed"
+            );
+        }
+
+        // And every id here is distinct (no accidental v5-namespace collision
+        // between two subsystems that would conflate their privileges).
+        let mut all: Vec<Uuid> = bypassed.to_vec();
+        all.extend_from_slice(&needs_approval);
+        let unique: std::collections::HashSet<_> = all.iter().collect();
+        assert_eq!(unique.len(), all.len(), "built-in server ids must be unique");
+    }
 }
