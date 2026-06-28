@@ -9,12 +9,12 @@ import {
   Alert,
   Tag,
   Flex,
-  Menu,
   Dropdown,
   Empty,
 } from 'antd'
 import { CheckCircleOutlined } from '@ant-design/icons'
 import { IoIosArrowDown } from 'react-icons/io'
+import { Menu } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
@@ -87,15 +87,12 @@ export default function UserLlmProvidersPage() {
 
   const ProviderMenu = () => (
     <Menu
-      className={`
-        w-full h-full !m-0
-        [&_.ant-menu]:!px-0
-        [&_.ant-menu-item]:!h-8
-        [&_.ant-menu-item]:!leading-[32px]
-        !bg-transparent !border-none`}
-      selectedKeys={selectedId ? [selectedId] : []}
+      className="w-full h-full"
+      selectedKey={selectedId ?? undefined}
       items={menuItems}
-      onClick={({ key }) => setSelectedId(key)}
+      onSelect={(key) => setSelectedId(key)}
+      mode="vertical"
+      aria-label="Providers"
     />
   )
 
