@@ -517,3 +517,34 @@ async fn test_admin_providers_create_rejects_bad_type() {
     let body: serde_json::Value = r.json().await.unwrap();
     assert_eq!(body["error_code"], json!("INVALID_PROVIDER_TYPE"));
 }
+
+/// AuthProvider realtime-sync emission (handlers.rs:1768-1774). Creating an auth
+/// provider must publish an `auth_provider`/`create` frame to holders of
+/// `auth_providers::read` (the root admin via `*`); a plain member without that
+/// perm stays silent. This SyncEntity had no expect_event coverage.
+#[tokio::test]
+async fn test_auth_provider_create_emits_sync_to_readers_only() {
+    use crate::common::sync_probe::SyncProbe;
+    use std::time::Duration;
+
+    let server = crate::common::TestServer::start().await;
+    let admin_token = make_admin(&server).await;
+    let member_token = make_member(&server, "ap_sync_member").await;
+
+    let mut admin_probe = SyncProbe::open(&server, &admin_token).await;
+    let mut member_probe = SyncProbe::open(&server, &member_token).await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/admin/auth-providers"))
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .json(&json!({ "name": "sync-oidc", "provider_type": "oidc", "config": {} }))
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success(), "create auth provider: {}", res.status());
+
+    admin_probe
+        .expect_event("auth_provider", "create", Duration::from_secs(5))
+        .await;
+    member_probe.expect_silence(Duration::from_secs(1)).await;
+}

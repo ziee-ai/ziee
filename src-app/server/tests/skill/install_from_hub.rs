@@ -218,3 +218,27 @@ async fn system_install_creates_system_scope_row() {
         "system skill SKILL.md extracted"
     );
 }
+
+/// Skill realtime-sync emission: a USER install from the hub
+/// (create_skill_from_hub, hub/handlers.rs:1789) publishes an owner-scoped
+/// `skill`/`create` frame. The owner observes it; an unrelated user stays
+/// silent. The Skill SyncEntity had no expect_event coverage.
+#[tokio::test]
+async fn user_skill_install_emits_owner_scoped_skill_create() {
+    use crate::common::sync_probe::SyncProbe;
+    use std::time::Duration;
+
+    let (server, _mock) = server_with_skill_catalog().await;
+    let owner = admin_and_refresh(&server).await;
+    let other = create_user_with_permissions(&server, "skill_sync_other", &["skills::read"]).await;
+
+    let mut owner_probe = SyncProbe::open(&server, &owner.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    let _ = install_fixture_skill(&server, &owner.token).await;
+
+    owner_probe
+        .expect_event("skill", "create", Duration::from_secs(5))
+        .await;
+    other_probe.expect_silence(Duration::from_secs(1)).await;
+}
