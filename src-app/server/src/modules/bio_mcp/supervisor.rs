@@ -352,7 +352,29 @@ pub async fn shutdown() {
 
 #[cfg(test)]
 mod tests {
-    use super::{fingerprint, shutdown, STATE};
+    use super::{fingerprint, shutdown, spawn_idle_reaper, STATE};
+
+    /// The idle reaper's first `interval.tick()` fires immediately, so spawning
+    /// it runs one iteration right away. Over an EMPTY state (no sidecar in this
+    /// unit-test process) that iteration must be a harmless no-op: it must not
+    /// panic, poison the STATE mutex, or fabricate a `running` sidecar.
+    #[tokio::test]
+    async fn idle_reaper_first_tick_is_a_safe_noop_over_empty_state() {
+        // Clean baseline (tests share the process-global STATE).
+        shutdown().await;
+        assert!(STATE.lock().await.running.is_none(), "baseline: no sidecar");
+
+        spawn_idle_reaper();
+        // The first tick is immediate; give the spawned task a moment to run it.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // STATE must still be lockable (not poisoned) and hold no sidecar.
+        let st = STATE.lock().await;
+        assert!(
+            st.running.is_none(),
+            "the reaper must not fabricate a sidecar when none is running"
+        );
+    }
 
     /// `shutdown()` is the graceful-shutdown hook: with no sidecar running it
     /// must be a safe no-op (no panic / no lock poisoning), idempotent across
