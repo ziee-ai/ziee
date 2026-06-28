@@ -75,4 +75,26 @@ test.describe('Literature screening flow', () => {
     expect(csv).toContain('out of scope')
     expect(csv).toContain('Base editing reduces off-target effects')
   })
+
+  test('Unscreen bulk action returns included rows to unscreened', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
+
+    await page.getByRole('button', { name: /Open in screening/ }).click()
+    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({
+      timeout: 10000,
+    })
+
+    // Include both rows.
+    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
+    await page.getByRole('button', { name: 'Include', exact: true }).click()
+    await expect(page.getByText('Included: 2')).toBeVisible()
+
+    // Now Unscreen them → PRISMA Included drops back to 0.
+    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
+    await page.getByRole('button', { name: 'Unscreen', exact: true }).click()
+    await expect(page.getByText('Included: 0')).toBeVisible()
+  })
 })
