@@ -111,6 +111,23 @@ async fn db_pool(server: &TestServer) -> sqlx::PgPool {
         .expect("connect test db")
 }
 
+/// tools/list returns an EMPTY tools array for a user with no accessible
+/// workflows (the `{tools:[]}` branch) — initialize still succeeds.
+#[tokio::test]
+async fn tools_list_is_empty_with_no_accessible_workflows() {
+    let server = TestServer::start().await;
+    let user = mcp_user(&server, "wf_mcp_empty").await;
+
+    let init = jsonrpc(&server, &user.token, None, "initialize", json!({})).await;
+    assert_eq!(init.status(), 200, "initialize must succeed with no workflows");
+
+    let list = jsonrpc(&server, &user.token, None, "tools/list", json!({})).await;
+    assert_eq!(list.status(), 200);
+    let body: Json = list.json().await.unwrap();
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    assert!(tools.is_empty(), "no workflows → empty tools list, got: {body}");
+}
+
 #[tokio::test]
 async fn initialize_and_tools_list_expose_the_workflow_as_a_tool() {
     let server = TestServer::start().await;
