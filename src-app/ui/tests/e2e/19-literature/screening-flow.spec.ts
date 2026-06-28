@@ -113,6 +113,30 @@ test.describe('Literature screening flow', () => {
     await expect(page.getByText('Included: 2')).toBeVisible({ timeout: 15000 })
   })
 
+  test('per-row Segmented control sets an individual screening decision', async ({
+    page,
+    testInfra,
+  }) => {
+    // The other tests use the BULK Include/Exclude buttons; the per-row
+    // Segmented decision control (LiteratureScreeningPanel.tsx:243-251) was
+    // untested. Set ONE row to Include + ONE to Exclude via their Segmented.
+    await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
+    await page.getByRole('button', { name: /Open in screening/ }).click()
+    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({ timeout: 10000 })
+
+    const segmenteds = page.locator('[aria-label="Screening decision"]')
+    await expect.poll(async () => await segmenteds.count(), { timeout: 10000 }).toBeGreaterThanOrEqual(2)
+
+    // Row 1 → Include, Row 2 → Exclude, each via its own Segmented control.
+    await segmenteds.nth(0).getByText('Include', { exact: true }).click()
+    await expect(page.getByText('Included: 1')).toBeVisible({ timeout: 10000 })
+
+    await segmenteds.nth(1).getByText('Exclude', { exact: true }).click()
+    await expect(page.getByText('Excluded: 1')).toBeVisible({ timeout: 10000 })
+    // The exclusion-reason input appears for the per-row Exclude decision.
+    await expect(page.getByPlaceholder('Exclusion reason (optional)').first()).toBeVisible()
+  })
+
   test('inline tool-result card shows the dedup + saturation estimate', async ({
     page,
     testInfra,
