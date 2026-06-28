@@ -9,7 +9,7 @@
 //!
 //! Lives alongside other integration tests; runs in normal `cargo test`.
 
-use serde_yaml;
+use serde_norway;
 use std::path::PathBuf;
 use ziee::Config;
 
@@ -49,7 +49,7 @@ jwt:
 }
 
 fn parse_and_resolve(yaml: &str) -> Config {
-    let mut config: Config = serde_yaml::from_str(yaml).expect("config parses");
+    let mut config: Config = serde_norway::from_str(yaml).expect("config parses");
     config.resolve_paths();
     config
 }
@@ -148,7 +148,7 @@ fn embedded_postgres_paths_derive_when_unset() {
     );
     // Disable port autopick — `Config::load_from` requires a file path,
     // so we parse manually and call resolve_paths.
-    let mut config: Config = serde_yaml::from_str(&yaml).expect("config parses");
+    let mut config: Config = serde_norway::from_str(&yaml).expect("config parses");
     config.resolve_paths();
     let emb = config
         .postgresql
@@ -169,7 +169,7 @@ fn resolve_paths_is_idempotent() {
     // Running resolve_paths twice produces the same result — important
     // because some callers (test harness setup, Tauri's embedded
     // bootstrap) might invoke it more than once.
-    let mut config: Config = serde_yaml::from_str(&minimal_config("")).expect("parse");
+    let mut config: Config = serde_norway::from_str(&minimal_config("")).expect("parse");
     config.resolve_paths();
     let snapshot_caches = config.caches.clone();
     let snapshot_sandbox = config.code_sandbox.clone();

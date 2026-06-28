@@ -34,7 +34,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 async-trait.workspace = true
 async-stream.workspace = true
-serde_yaml.workspace = true
+serde_norway.workspace = true
 sqlx.workspace = true
 postgresql_embedded.workspace = true
 portpicker.workspace = true
@@ -258,7 +258,7 @@ flate2.workspace = true
 reqwest = { workspace = true, features = ["json", "cookies", "multipart", "blocking"] }
 uuid.workspace = true
 rand.workspace = true
-serde_yaml.workspace = true
+serde_norway.workspace = true
 sqlx.workspace = true
 postgresql_embedded.workspace = true
 testcontainers = "0.25.2"

@@ -657,7 +657,7 @@ async fn load_fixtures(extracted_path: &str) -> Result<Vec<(String, TestFixture)
         let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
             AppError::internal_error(format!("test: read fixture {}: {e}", path.display()))
         })?;
-        let fixture: TestFixture = serde_yaml::from_str(&content).map_err(|e| {
+        let fixture: TestFixture = serde_norway::from_str(&content).map_err(|e| {
             AppError::bad_request(
                 "WORKFLOW_FIXTURE_INVALID",
                 format!("tests/{name}.yaml is malformed: {e}"),
