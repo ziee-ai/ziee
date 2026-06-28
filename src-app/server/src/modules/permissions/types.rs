@@ -184,3 +184,43 @@ pub struct PermissionInfo {
     /// The action being performed
     pub action: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct PermA;
+    impl PermissionCheck for PermA {
+        const NAME: &'static str = "PermA";
+        const MODULE: &'static str = "users";
+        const PERMISSION: &'static str = "users::read";
+        const DESCRIPTION: &'static str = "Read users";
+    }
+    struct PermB;
+    impl PermissionCheck for PermB {
+        const NAME: &'static str = "PermB";
+        const MODULE: &'static str = "users";
+        const PERMISSION: &'static str = "users::edit";
+        const DESCRIPTION: &'static str = "Edit users";
+    }
+
+    /// Single-permission format uses the "**Required Permission:**" heading.
+    #[test]
+    fn format_description_single_permission() {
+        let s = <(PermA,)>::format_description();
+        assert!(s.contains("**Required Permission:**"), "got: {s}");
+        assert!(s.contains("`users::read`"), "got: {s}");
+        assert!(s.contains("Read users"), "got: {s}");
+        assert!(!s.contains("ALL"), "single-perm must not use the ALL heading: {s}");
+    }
+
+    /// Multi-permission format uses the "(ALL)" heading + a bullet per permission,
+    /// each pairing its name with its description. Untested before.
+    #[test]
+    fn format_description_multiple_permissions() {
+        let s = <(PermA, PermB)>::format_description();
+        assert!(s.contains("**Required Permissions (ALL):**"), "got: {s}");
+        assert!(s.contains("- `users::read` - Read users"), "got: {s}");
+        assert!(s.contains("- `users::edit` - Edit users"), "got: {s}");
+    }
+}

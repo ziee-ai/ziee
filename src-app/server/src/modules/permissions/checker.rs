@@ -189,4 +189,26 @@ mod tests {
         let groups = vec![];
         assert!(!check_permission_union(&user, &groups, "users::read"));
     }
+
+    #[test]
+    fn test_deeply_nested_wildcard_4_plus_levels() {
+        // The hierarchical-wildcard loop checks EVERY prefix level, not just the
+        // 2-/3-level cases the other tests cover. A 4-level wildcard matches its
+        // deeper leaves; an INTERMEDIATE-level wildcard also matches a deeper
+        // leaf; a sibling at any level does not.
+        let user = create_test_user_with_permissions(vec!["a::b::c::*"]);
+        let groups = vec![];
+        assert!(check_permission_union(&user, &groups, "a::b::c::d"));
+        assert!(check_permission_union(&user, &groups, "a::b::c::e::f"));
+        // Sibling under the same grandparent is NOT covered by a::b::c::*.
+        assert!(!check_permission_union(&user, &groups, "a::b::x::d"));
+        // The exact prefix itself isn't a granted leaf.
+        assert!(!check_permission_union(&user, &groups, "a::b::c"));
+
+        // An intermediate-level wildcard covers everything below it.
+        let user2 = create_test_user_with_permissions(vec!["a::b::*"]);
+        assert!(check_permission_union(&user2, &groups, "a::b::c::d::e"));
+        assert!(check_permission_union(&user2, &groups, "a::b::x"));
+        assert!(!check_permission_union(&user2, &groups, "a::z::c::d"));
+    }
 }
