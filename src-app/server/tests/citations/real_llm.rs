@@ -278,3 +278,168 @@ async fn real_llm_multi_turn_citations() {
         "turn 2 should also invoke a citations tool (built-in stays attached across turns)"
     );
 }
+
+/// add_citations vs lookup_citations (the two tools the verify-only test never
+/// exercised). Asserts the model invokes EACH tool by name AND the behavioral
+/// distinction that makes them different: `add_citations` PERSISTS into the
+/// library (the entry is retrievable via `GET /api/citations`), while
+/// `lookup_citations` resolves but PERSISTS NOTHING (the looked-up DOI never
+/// lands in the library). Soft-skips without `ANTHROPIC_API_KEY`; tool DATA is
+/// the loopback resolver mock so the assertions are deterministic.
+#[tokio::test]
+async fn real_llm_add_persists_then_lookup_does_not() {
+    let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
+        eprintln!("skipping citations::real_llm_add_persists_then_lookup_does_not — ANTHROPIC_API_KEY unset");
+        return;
+    };
+
+    let doi = crate::citations::start_mock_doi_resolver().await;
+    let idconv = crate::citations::start_mock_idconv().await;
+    let crossref = crate::citations::start_mock_crossref().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("ANTHROPIC_API_KEY".to_string(), api_key.clone()),
+            ("CITATIONS_RESOLVER_ENDPOINT".to_string(), doi),
+            ("CITATIONS_IDCONV_ENDPOINT".to_string(), idconv),
+            ("CITATIONS_CROSSREF_ENDPOINT".to_string(), crossref),
+            ("CITATIONS_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+        ],
+        ..Default::default()
+    })
+    .await;
+
+    let user = create_user_with_permissions(
+        &server,
+        "cit_real_llm_add_lookup",
+        &[
+            "conversations::create", "conversations::read", "conversations::edit",
+            "messages::create", "messages::read", "llm_models::read",
+            "citations::use", "citations::manage",
+        ],
+    )
+    .await;
+
+    // Wait for the boot upsert of the citations row, then grant the default group access.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let cit_id = citations_server_id();
+    for _ in 0..50 {
+        let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM mcp_servers WHERE id = $1")
+            .bind(cit_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
+        if exists.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let default_group: Uuid =
+        sqlx::query_scalar("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id, assigned_at) \
+         VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING",
+    )
+    .bind(default_group)
+    .bind(cit_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    let model = create_tool_capable_anthropic_model(&server, &user.user_id, &api_key).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let mcp_config = json!({ "mcp_servers": [ { "server_id": cit_id.to_string(), "tools": [] } ] });
+
+    // ── Turn 1 — add_citations: must invoke the tool AND persist the entry. ──
+    let turn1 = json!({
+        "content": "Use the add_citations tool to add DOI 10.5555/known to my library. \
+                    You MUST call the add_citations tool — do not answer from memory.",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string(),
+        "enable_mcp": true,
+        "mcp_config": mcp_config,
+    });
+    let ev1 = crate::chat::helpers::send_body_and_collect_events(
+        &server, &user.token, conversation_id, turn1, &["complete"],
+    )
+    .await;
+    assert!(
+        ev1.iter().any(|e| e.event == "mcpToolStart"
+            && e.data["tool_name"].as_str() == Some("add_citations")),
+        "turn 1 should invoke the add_citations tool (saw: {:?})",
+        ev1.iter().filter(|e| e.event == "mcpToolStart")
+            .map(|e| e.data["tool_name"].as_str().unwrap_or("?").to_string())
+            .collect::<Vec<_>>()
+    );
+
+    // The defining behavior of add_citations: the entry is durably persisted.
+    let after_add = list_citation_dois(&server, &user.token).await;
+    assert!(
+        after_add.iter().any(|d| d == "10.5555/known"),
+        "add_citations must persist DOI 10.5555/known into the library; got {after_add:?}"
+    );
+
+    // ── Turn 2 — lookup_citations: invokes the tool but PERSISTS NOTHING. ──
+    let turn2 = json!({
+        "content": "Use the lookup_citations tool to look up DOI 10.5555/other. \
+                    Only LOOK IT UP — do NOT add it to my library. You MUST call \
+                    the lookup_citations tool.",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string(),
+        "enable_mcp": true,
+        "mcp_config": mcp_config,
+    });
+    let ev2 = crate::chat::helpers::send_body_and_collect_events(
+        &server, &user.token, conversation_id, turn2, &["complete"],
+    )
+    .await;
+    assert!(
+        ev2.iter().any(|e| e.event == "mcpToolStart"
+            && e.data["tool_name"].as_str() == Some("lookup_citations")),
+        "turn 2 should invoke the lookup_citations tool (saw: {:?})",
+        ev2.iter().filter(|e| e.event == "mcpToolStart")
+            .map(|e| e.data["tool_name"].as_str().unwrap_or("?").to_string())
+            .collect::<Vec<_>>()
+    );
+
+    // lookup persists nothing: 10.5555/other never lands in the library, and the
+    // previously-added 10.5555/known is still the only thing there.
+    let after_lookup = list_citation_dois(&server, &user.token).await;
+    assert!(
+        !after_lookup.iter().any(|d| d == "10.5555/other"),
+        "lookup_citations must NOT persist the looked-up DOI; library now: {after_lookup:?}"
+    );
+    assert!(
+        after_lookup.iter().any(|d| d == "10.5555/known"),
+        "the add_citations entry should still be present after a lookup; got {after_lookup:?}"
+    );
+}
+
+/// `GET /api/citations` → the list of non-null DOIs in the user's library.
+async fn list_citation_dois(server: &TestServer, token: &str) -> Vec<String> {
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/citations"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    body["entries"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e["doi"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
