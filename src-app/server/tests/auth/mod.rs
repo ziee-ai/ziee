@@ -909,3 +909,45 @@ async fn test_setup_admin_joins_administrators_and_users_groups() {
         );
     }
 }
+
+/// Concurrent registrations with the SAME username must not both succeed: the
+/// handler's check-then-insert has a TOCTOU window, and the DB UNIQUE
+/// constraint is the real guard. Exactly one request creates the account; the
+/// other is rejected (pre-check 409 or the DB-race error), never a second user.
+#[tokio::test]
+async fn test_concurrent_registration_same_username_creates_one_user() {
+    let server = crate::common::TestServer::start().await;
+
+    let body = |email: &str| {
+        json!({
+            "username": "raceuser",
+            "email": email,
+            "password": "testpass123",
+            "display_name": "Race User"
+        })
+    };
+
+    let base = server.api_url("/auth/register");
+    let c1 = reqwest::Client::new();
+    let c2 = reqwest::Client::new();
+
+    // Fire both at once so they overlap on the check-then-insert window.
+    let (r1, r2) = tokio::join!(
+        c1.post(&base).json(&body("race1@example.com")).send(),
+        c2.post(&base).json(&body("race2@example.com")).send(),
+    );
+    let s1 = r1.expect("req1 failed").status().as_u16();
+    let s2 = r2.expect("req2 failed").status().as_u16();
+
+    let created = [s1, s2].iter().filter(|&&s| s == 201).count();
+    assert_eq!(
+        created, 1,
+        "exactly one concurrent same-username registration must succeed (got statuses {s1}, {s2})"
+    );
+    // The loser must be rejected, not a silent second account.
+    let loser = if s1 == 201 { s2 } else { s1 };
+    assert!(
+        loser >= 400,
+        "the losing registration must be an error status, got {loser}"
+    );
+}
