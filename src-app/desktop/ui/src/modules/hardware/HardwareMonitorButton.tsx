@@ -63,7 +63,7 @@ export function HardwareMonitorButton() {
   }
 
   return (
-    <Button icon={<MdOutlineMonitorHeart />} onClick={handleClick}>
+    <Button icon={<MdOutlineMonitorHeart />} onClick={handleClick} data-testid="desktop-hardware-monitor-btn">
       Monitor
     </Button>
   )
