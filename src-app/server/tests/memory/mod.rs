@@ -1,6 +1,7 @@
 // Memory module integration tests. See individual files for details.
 
 mod capability_filter_test;
+mod combined_real_llm;
 mod core_memory_test;
 mod crud_test;
 mod extraction_injection_test;
