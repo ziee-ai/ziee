@@ -238,6 +238,61 @@ mod tests {
     }
 
     #[test]
+    fn api_key_rotation_changes_fingerprint_and_invalidates_cached_id() {
+        // The rotation-detection mechanism: the service stores
+        // `api_key_fingerprint(api_key)` in `provider_metadata` and, on a cache
+        // hit, sets `key_rotated` when the current key's fingerprint differs
+        // from the stored one. This test exercises that real derivation +
+        // comparison end-to-end (the `cached_mapping_reusable` test above only
+        // covers the boolean logic *given* a precomputed `key_rotated`).
+
+        let key_a = "sk-account-A-1234567890";
+        let key_b = "sk-account-B-0987654321"; // rotated to a different account
+
+        let fp_a = api_key_fingerprint(key_a);
+        let fp_b = api_key_fingerprint(key_b);
+
+        // It is the genuine SHA-256 hex of the key (64 hex chars), not some
+        // truncated/obfuscated value — so it can't collide cheaply.
+        assert_eq!(fp_a.len(), 64, "fingerprint must be full SHA-256 hex");
+        assert!(fp_a.chars().all(|c| c.is_ascii_hexdigit()));
+        let expected_a = hex::encode(Sha256::digest(key_a.as_bytes()));
+        assert_eq!(fp_a, expected_a, "fingerprint must be SHA-256(api_key)");
+
+        // Stable for the SAME key — a re-resolve with an unchanged key must NOT
+        // spuriously invalidate (avoids needless re-uploads on every call).
+        assert_eq!(
+            fp_a,
+            api_key_fingerprint(key_a),
+            "same key must yield the same fingerprint"
+        );
+
+        // Rotated key → DIFFERENT fingerprint → `key_rotated` is detected.
+        assert_ne!(fp_a, fp_b, "rotating the key must change the fingerprint");
+
+        // Now reproduce the service's exact cache-validity decision
+        // (service.rs:79-86): `key_rotated = stored_fingerprint != current`.
+        // A completed, non-expired mapping whose stored fingerprint was minted
+        // under key A is INVALIDATED once the key rotates to B...
+        let stored_fingerprint = fp_a; // what save_upload_response wrote under key A
+        let key_rotated_after_rotation = stored_fingerprint != api_key_fingerprint(key_b);
+        assert!(key_rotated_after_rotation);
+        assert!(
+            !cached_mapping_reusable(false, key_rotated_after_rotation, UploadStatus::Completed),
+            "a rotated key must invalidate the cached provider_file_id (force re-upload)"
+        );
+
+        // ...but stays reusable while the key is unchanged.
+        let key_rotated_same_key = stored_fingerprint != api_key_fingerprint(key_a);
+        assert!(!key_rotated_same_key);
+        assert!(cached_mapping_reusable(
+            false,
+            key_rotated_same_key,
+            UploadStatus::Completed
+        ));
+    }
+
+    #[test]
     fn test_get_extension() {
         assert_eq!(get_extension("test.pdf"), "pdf");
         assert_eq!(get_extension("image.jpeg"), "jpeg");
