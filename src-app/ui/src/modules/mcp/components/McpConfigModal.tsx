@@ -217,7 +217,7 @@ export function McpConfigModal() {
   //     persisted on first message when the conversation is created.
   const handleSave = async () => {
     if (!isProjectScope && !currentConversationId) {
-      console.log('[MCP Config Modal] Settings stored in pending config (will save on first message)')
+      // Settings stay in pending config and persist on first message.
       return
     }
 
@@ -232,7 +232,6 @@ export function McpConfigModal() {
       } else {
         await mcpStore.saveConversationConfig(currentConversationId!, availableServerIds, serverToolsMap)
       }
-      console.log('[MCP Config Modal] Configuration saved successfully')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save configuration:', error)
     } finally {
@@ -256,7 +255,6 @@ export function McpConfigModal() {
     try {
       const availableServerIds = enabledServers.map(s => s.id)
       await mcpStore.saveUserDefaults(currentConversationId, availableServerIds, true)
-      console.log('[MCP Config Modal] Saved as user defaults')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save as defaults:', error)
     } finally {
