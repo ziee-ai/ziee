@@ -970,3 +970,53 @@ async fn test_setup_admin_joins_administrators_and_users_groups() {
         );
     }
 }
+
+/// Refresh-token jti lifecycle + persistence (the whitelist lives in
+/// `refresh_tokens`, so it survives a server restart — modeled here by
+/// re-querying through a FRESH connection that shares no in-process state).
+/// Exercises the re-exported `ziee::refresh_tokens` primitives directly.
+#[tokio::test]
+async fn refresh_token_jti_lifecycle_persists_across_connections() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "rt_user", &[]).await;
+    let user_id = uuid::Uuid::parse_str(&user.user_id).unwrap();
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+
+    let jti = uuid::Uuid::new_v4();
+    let expires = chrono::Utc::now() + chrono::Duration::hours(1);
+    ziee::refresh_tokens::register(&pool, jti, user_id, expires)
+        .await
+        .unwrap();
+
+    // Active immediately after registration.
+    assert!(ziee::refresh_tokens::is_active(&pool, jti).await.unwrap());
+
+    // "Across restart": a brand-new connection (no shared process state) still
+    // sees the jti as active because the whitelist is persisted in Postgres.
+    let pool2 = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    assert!(
+        ziee::refresh_tokens::is_active(&pool2, jti).await.unwrap(),
+        "a registered jti survives a fresh connection (server restart)"
+    );
+    pool2.close().await;
+
+    // Revoke → no longer active (rotation), and the revocation persists.
+    ziee::refresh_tokens::revoke(&pool, jti).await.unwrap();
+    assert!(!ziee::refresh_tokens::is_active(&pool, jti).await.unwrap());
+
+    // An already-expired jti is never active.
+    let jti_expired = uuid::Uuid::new_v4();
+    let past = chrono::Utc::now() - chrono::Duration::hours(1);
+    ziee::refresh_tokens::register(&pool, jti_expired, user_id, past)
+        .await
+        .unwrap();
+    assert!(
+        !ziee::refresh_tokens::is_active(&pool, jti_expired)
+            .await
+            .unwrap(),
+        "an expired jti is inactive"
+    );
+
+    pool.close().await;
+}
