@@ -63,3 +63,79 @@ pub fn read_frame<R: Read, T: for<'de> Deserialize<'de>>(r: &mut R) -> io::Resul
     r.read_exact(&mut buf)?;
     serde_json::from_slice(&buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    // Re-encode a value to JSON so we can compare decoded == original without
+    // requiring PartialEq on the protocol enums.
+    fn j<T: Serialize>(v: &T) -> Vec<u8> {
+        serde_json::to_vec(v).unwrap()
+    }
+
+    #[test]
+    fn write_frame_emits_le_length_prefix() {
+        let msg = Request::EnsureRegistered { port_start: 10001, count: 100 };
+        let mut out = Vec::new();
+        write_frame(&mut out, &msg).unwrap();
+        let body = j(&msg);
+        // 4-byte LE prefix + body, prefix == body length.
+        assert_eq!(&out[..4], &(body.len() as u32).to_le_bytes());
+        assert_eq!(&out[4..], &body[..]);
+    }
+
+    #[test]
+    fn request_variants_round_trip() {
+        for msg in [
+            Request::Ping,
+            Request::ResolveVmId,
+            Request::EnsureRegistered { port_start: 10001, count: 100 },
+        ] {
+            let mut buf = Vec::new();
+            write_frame(&mut buf, &msg).unwrap();
+            let mut cur = Cursor::new(buf);
+            let decoded: Request = read_frame(&mut cur).unwrap();
+            assert_eq!(j(&decoded), j(&msg));
+        }
+    }
+
+    #[test]
+    fn response_variants_round_trip() {
+        for msg in [
+            Response::Pong,
+            Response::VmId("aabbccdd-eeff-0011-2233-445566778899".to_string()),
+            Response::Registered { added: 7 },
+            Response::Error("boom".to_string()),
+        ] {
+            let mut buf = Vec::new();
+            write_frame(&mut buf, &msg).unwrap();
+            let mut cur = Cursor::new(buf);
+            let decoded: Response = read_frame(&mut cur).unwrap();
+            assert_eq!(j(&decoded), j(&msg));
+        }
+    }
+
+    #[test]
+    fn read_frame_rejects_oversized_length_prefix() {
+        // A hostile/garbage length prefix beyond MAX_FRAME must be refused
+        // BEFORE any allocation/read of the body.
+        let mut framed = Vec::new();
+        framed.extend_from_slice(&(MAX_FRAME + 1).to_le_bytes());
+        // No body bytes — the length check must trip first.
+        let mut cur = Cursor::new(framed);
+        let err = read_frame::<_, Response>(&mut cur).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn read_frame_rejects_truncated_body() {
+        // Valid length prefix but a short body → read_exact errors (no hang).
+        let mut framed = Vec::new();
+        framed.extend_from_slice(&100u32.to_le_bytes());
+        framed.extend_from_slice(b"only a few bytes");
+        let mut cur = Cursor::new(framed);
+        assert!(read_frame::<_, Response>(&mut cur).is_err());
+    }
+}

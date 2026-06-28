@@ -1,7 +1,7 @@
 // LLM Repository database queries - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/database/queries/repositories.rs
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -173,8 +173,8 @@ pub async fn get_llm_repository_by_id(
             .unwrap_or_default(),
         enabled: r.enabled,
         built_in: r.built_in,
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         last_health_check_at: r
             .last_health_check_at
             .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -206,8 +206,8 @@ pub async fn list_llm_repositories(pool: &PgPool) -> Result<Vec<LlmRepository>, 
                 .unwrap_or_default(),
             enabled: r.enabled,
             built_in: r.built_in,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
             last_health_check_at: r
                 .last_health_check_at
                 .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -278,8 +278,8 @@ pub async fn create_llm_repository(
             .unwrap_or_default(),
         enabled: row.enabled,
         built_in: row.built_in,
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         last_health_check_at: row
             .last_health_check_at
             .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -461,8 +461,8 @@ pub async fn find_llm_repository_by_url(
             .unwrap_or_default(),
         enabled: r.enabled,
         built_in: r.built_in,
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         last_health_check_at: r
             .last_health_check_at
             .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -537,8 +537,8 @@ pub async fn list_enabled_for_health_check(
                 .unwrap_or_default(),
             enabled: r.enabled,
             built_in: r.built_in,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
             last_health_check_at: r
                 .last_health_check_at
                 .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),

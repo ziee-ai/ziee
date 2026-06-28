@@ -1,7 +1,7 @@
 // Assistant repository - copied from ziee-ref and adapted for ziee
 // Source: ziee-ref/src-tauri/src/database/queries/assistants.rs
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -176,8 +176,8 @@ fn row_to_assistant(
         is_template,
         is_default,
         enabled,
-        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
     }
 }
 

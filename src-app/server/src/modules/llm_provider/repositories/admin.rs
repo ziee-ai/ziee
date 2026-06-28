@@ -20,7 +20,7 @@ use crate::core::secrets::storage_key;
 /// Convert a `time::OffsetDateTime` (sqlx return type) to
 /// `chrono::DateTime<Utc>` with full nanosecond precision and without
 /// `unwrap()`. Closes 06-llm-provider F-11 (Medium): the previous
-/// `from_timestamp(.., 0).unwrap()` truncated sub-second precision
+/// `from_timestamp(.., 0).unwrap_or_else(Utc::now)` truncated sub-second precision
 /// AND panicked on out-of-range timestamps. Falls back to the unix
 /// epoch on the (currently-impossible) overflow path so the row still
 /// renders rather than 500-ing the whole response.

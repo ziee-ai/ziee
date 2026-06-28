@@ -6,6 +6,94 @@ use serde_json::Value as Json;
 
 use super::{FIXTURE_SKILL_NAME, admin_and_refresh, install_fixture_skill, server_with_skill_catalog};
 
+use super::{FIXTURE_REFERENCE_MD, FIXTURE_SKILL_MD, refresh_catalog};
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::common::{TestServer, TestServerOptions};
+use crate::hub::mock_release_server::{MockItem, MockVersion, spawn_mock_hub};
+
+/// The download → sha256-verify path must REJECT a bundle whose manifest
+/// advertises a sha256 that doesn't match the served bytes
+/// (bundle.rs:189-197 → `AppError::unprocessable_entity`), surfacing a 422
+/// through the install HTTP handler and creating no skill row. The mock
+/// serves the real tar.gz but the manifest's `bundle.sha256` is forged to
+/// all-zeros via `extra_json` (deep-merged over the computed sha).
+#[tokio::test]
+async fn install_rejects_bundle_with_sha256_mismatch() {
+    const NAME: &str = "io.github.test/corrupt-skill";
+    let catalog = vec![MockVersion {
+        version: "9.9.2-test",
+        prerelease: true,
+        items: vec![MockItem {
+            extra_json: Some(serde_json::json!({
+                "bundle": {
+                    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                }
+            })),
+            ..MockItem::bundle(
+                "skill",
+                NAME,
+                vec![
+                    ("SKILL.md", FIXTURE_SKILL_MD),
+                    ("references/provider-types.md", FIXTURE_REFERENCE_MD),
+                ],
+            )
+        }],
+    }];
+    let mock = spawn_mock_hub(catalog).await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "corrupt_skill_admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "skills::read",
+            "skills::install",
+            "skills::manage",
+        ],
+    )
+    .await;
+    refresh_catalog(&server, &admin.token).await;
+
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/skills/install-from-hub"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "hub_id": NAME }))
+        .send()
+        .await
+        .expect("install");
+    let status = resp.status();
+    let body: Json = resp.json().await.expect("parse install body");
+    assert_eq!(
+        status, 422,
+        "forged-sha install must be 422 Unprocessable; got {status}: {body}"
+    );
+    let body_str = body.to_string();
+    assert!(
+        body_str.contains("BUNDLE_SHA256_MISMATCH") || body_str.to_lowercase().contains("sha256"),
+        "error names the sha256 mismatch: {body}"
+    );
+
+    // The rejected install created no skill row.
+    let list: Json = reqwest::Client::new()
+        .get(server.api_url("/skills"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list skills")
+        .json()
+        .await
+        .expect("parse list");
+    assert!(
+        !list.to_string().contains(NAME),
+        "corrupt skill must not be installed: {list}"
+    );
+}
+
 #[tokio::test]
 async fn user_install_creates_row_extract_and_tracking() {
     let (server, _mock) = server_with_skill_catalog().await;

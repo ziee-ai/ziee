@@ -268,6 +268,54 @@ async fn assign_user_to_group_emits_session_to_the_affected_user_only() {
     uninvolved_probe.expect_silence(SILENCE_WINDOW).await;
 }
 
+/// An admin resetting a user's password fans BOTH a `session`/`update` and a
+/// `profile`/`update` to the AFFECTED user (Owner-scoped) so their devices
+/// re-bootstrap after the credential change (handlers/user.rs:450-465). An
+/// uninvolved user stays silent.
+#[tokio::test]
+async fn reset_password_emits_session_and_profile_to_the_affected_user_only() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = test_helpers::create_user_with_permissions(&server, "pwreset_admin", &[
+        "users::create",
+        "users::reset_password",
+    ])
+    .await;
+
+    let target =
+        test_helpers::create_test_user(&server, &admin.token, "pwresettarget", "password123").await;
+    let target_id = target["id"].as_str().expect("target user id").to_string();
+    let target_token = login_token(&server, "pwresettarget", "password123").await;
+
+    let uninvolved =
+        test_helpers::create_user_with_permissions(&server, "pwreset_uninvolved", &[]).await;
+
+    let mut target_probe = SyncProbe::open(&server, &target_token).await;
+    let mut uninvolved_probe = SyncProbe::open(&server, &uninvolved.token).await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/users/reset-password"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "user_id": target_id, "new_password": "NewStrongPass123!" }))
+        .send()
+        .await
+        .expect("reset-password request failed");
+    assert_eq!(res.status(), 204, "reset-password should return 204");
+
+    // Both owner-scoped frames are emitted; expect_event drains non-matching
+    // frames, so the two calls succeed regardless of arrival order.
+    let session = target_probe
+        .expect_event("session", "update", EVENT_TIMEOUT)
+        .await;
+    assert_eq!(session.id, target_id, "session frame id is the affected user");
+    let profile = target_probe
+        .expect_event("profile", "update", EVENT_TIMEOUT)
+        .await;
+    assert_eq!(profile.id, target_id, "profile frame id is the affected user");
+
+    uninvolved_probe.expect_silence(SILENCE_WINDOW).await;
+}
+
 /// When an admin removes a user from a group, the AFFECTED user receives a
 /// `session`/`update` signal (Owner-scoped). A different uninvolved user is
 /// silent.

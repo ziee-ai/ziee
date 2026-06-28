@@ -7,7 +7,10 @@
 //! `CITATIONS_*_ENDPOINT` seams — no network.
 
 use serde_json::{Value, json};
+use std::time::Duration;
+use uuid::Uuid;
 
+use crate::common::sync_probe::SyncProbe;
 use crate::common::test_helpers::{
     create_user_with_no_permissions, create_user_with_only_permissions, create_user_with_permissions,
 };
@@ -220,6 +223,31 @@ async fn test_add_real_doi_is_verified_and_stored() {
     assert_eq!(entries[0]["title"], "CRISPR interference in plant gene regulation");
     assert_eq!(entries[0]["citation_key"], "smith2021");
     assert_eq!(entries[0]["verification_status"], "verified");
+}
+
+/// Adding a citation publishes an owner-scoped `bibliography_entry`/`create`
+/// sync frame (handlers.rs:250 → emit_library_changed) so the user's other
+/// devices refetch `/api/citations`. A different user (not the owner audience)
+/// stays silent. add_citations is a batch op, so the wire id is `Uuid::nil`.
+#[tokio::test]
+async fn test_add_citation_emits_owner_scoped_sync() {
+    let server = server_with_mock_resolver().await;
+    let owner = create_user_with_permissions(&server, "cit_sync_owner", &[]).await;
+    let other = create_user_with_permissions(&server, "cit_sync_other", &[]).await;
+
+    let mut owner_probe = SyncProbe::open(&server, &owner.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    let r = add_one_item(&server, &owner.token, json!({ "id": "10.5555/known" })).await;
+    assert_eq!(r["dedup_outcome"], "inserted", "{r}");
+
+    let frame = owner_probe
+        .expect_event("bibliography_entry", "create", Duration::from_secs(5))
+        .await;
+    assert_eq!(frame.id, Uuid::nil().to_string(), "batch add carries nil id");
+
+    // Owner-scoped: an unrelated user is not in the audience.
+    other_probe.expect_silence(Duration::from_secs(1)).await;
 }
 
 #[tokio::test]

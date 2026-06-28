@@ -4,7 +4,7 @@
 // LLM Model database queries - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/database/queries/models.rs
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -232,8 +232,8 @@ pub async fn get_llm_model_by_id(
             .parameters
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         file_size_bytes: r.file_size_bytes,
         validation_status: r.validation_status,
         validation_issues: r
@@ -285,8 +285,8 @@ pub async fn list_all_llm_models(pool: &PgPool) -> Result<Vec<LlmModel>, sqlx::E
                 .parameters
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
             file_size_bytes: r.file_size_bytes,
             validation_status: r.validation_status,
             validation_issues: r
@@ -344,8 +344,8 @@ pub async fn list_llm_models_by_provider(
                 .parameters
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
             file_size_bytes: r.file_size_bytes,
             validation_status: r.validation_status,
             validation_issues: r
@@ -416,8 +416,8 @@ pub async fn create_llm_model(
             .parameters
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         file_size_bytes: row.file_size_bytes,
         validation_status: row.validation_status,
         validation_issues: row

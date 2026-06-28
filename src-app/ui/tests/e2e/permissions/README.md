@@ -17,22 +17,26 @@ See `.claude/PERMISSION_GATING.md` for the gating pattern.
 
 - **`fixtures.ts`** — helpers to create permission-scoped test users
   on the fly (admin creates them via API), then log in as them. The
-  fixtures used (the exported helpers in `fixtures.ts`):
-  - `root` — `is_admin: true` (the seeded admin). Verifies bypass.
-  - `member` — default `users` group only (no admin perms).
-  - `readonly_users` — only `users::read` + `groups::read`. Verifies
+  exported helpers in `fixtures.ts`:
+  - `loginAsAdmin` (imported) — the seeded admin (`is_admin: true`).
+    Verifies bypass.
+  - `loginAsMember` — default `users` group only (no admin perms).
+    Should be denied every admin surface.
+  - `loginAsUsersReadOnly` — `users::read` + `groups::read`. Verifies
     the read-vs-manage form-disable path.
-  - `hub_mcp_only` — only `hub::mcp_servers::read`. Verifies Hub's
-    partial-tab visibility.
-  - `auth-providers-reader` (`loginAsAuthProvidersReader`) — only
-    `auth_providers::read`. Verifies the auth-providers list renders
-    without Add/Edit/Switch/Delete/Test controls.
-  - `auth-providers-manager` (`loginAsAuthProvidersManager`) —
-    `auth_providers::read` + `auth_providers::manage`. Verifies all
-    auth-provider admin surfaces are visible.
-  - `loginWithPerms(...)` — generic helper to create + log in as a
-    user with an arbitrary explicit permission set (for one-off tests
-    the named fixtures above don't cover).
+  - `loginAsHubMcpOnly` — `hub::mcp_servers::read` +
+    `hub::mcp_servers::read_version` + `mcp_servers::read`. Verifies
+    Hub's per-tab visibility (MCP Servers tab, not Models/Assistants).
+  - `loginAsAuthProvidersReader` — only `auth_providers::read`.
+    Verifies the auth-providers list renders without
+    Add/Edit/Switch/Delete/Test controls.
+  - `loginAsAuthProvidersManager` — `auth_providers::read` +
+    `auth_providers::manage`. Verifies all auth-provider admin
+    surfaces are visible.
+  - `loginWithPerms(page, baseURL, apiURL, permissions, usernameSuffix?)`
+    — generic helper to create + log in as a user with an arbitrary
+    explicit permission set (for one-off tests the named fixtures
+    above don't cover).
 
 - **Per-module specs** — one file per module from the rollout
   checklist. Asserts what a permission-restricted user should NOT

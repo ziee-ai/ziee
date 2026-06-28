@@ -276,7 +276,17 @@ fn merge_into(base: &mut Json, extra: Json) {
         return;
     };
     for (k, v) in extra {
-        base.insert(k, v);
+        // Deep-merge when both sides hold an object at the same key, so a
+        // test can override a single nested field (e.g. `bundle.sha256` to
+        // forge a sha mismatch) without re-supplying the whole sub-object.
+        match (base.get_mut(&k), v) {
+            (Some(existing @ Json::Object(_)), v @ Json::Object(_)) => {
+                merge_into(existing, v);
+            }
+            (_, v) => {
+                base.insert(k, v);
+            }
+        }
     }
 }
 

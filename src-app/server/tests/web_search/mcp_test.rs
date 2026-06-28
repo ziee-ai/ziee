@@ -310,6 +310,50 @@ async fn test_search_chain_falls_back_to_second_provider() {
     );
 }
 
+/// fetch_url's Accept header requests HTML, but a server may still return
+/// JSON / CSV / XML. The readability extractor is HTML-oriented; this asserts
+/// the best-effort path still 200s and surfaces the body text (rather than
+/// erroring or returning an empty result) for non-HTML content types.
+#[tokio::test]
+async fn test_fetch_url_handles_non_html_content_types() {
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("WEB_SEARCH_FETCH_ALLOW_LOOPBACK".to_string(), "1".to_string())],
+        ..Default::default()
+    })
+    .await;
+    let user = create_user_with_permissions(&server, "ws_fetch_nonhtml", &["web_search::use"]).await;
+    let base = start_mock_html().await;
+
+    for (path, marker) in [
+        ("/data.json", "JSONBODYMARKER"),
+        ("/data.csv", "CSVBODYMARKER"),
+        ("/data.xml", "XMLBODYMARKER"),
+    ] {
+        let res = jsonrpc(
+            &server,
+            &user.token,
+            "tools/call",
+            json!({ "name": "fetch_url", "arguments": { "url": format!("{base}{path}") } }),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(res.status(), 200, "{path}: fetch_url should 200");
+        let body: serde_json::Value = res.json().await.unwrap();
+        assert!(
+            body["error"].is_null(),
+            "{path}: fetch_url must not error on non-HTML: {body}"
+        );
+        let content = body["result"]["structuredContent"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            content.contains(marker),
+            "{path}: non-HTML body must still surface its text ({marker}); got: {body}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn test_fetch_url_via_loopback_fixture() {
     // Page-fetch is locked to public IPs; the debug seam relaxes it to DEV_LOCAL

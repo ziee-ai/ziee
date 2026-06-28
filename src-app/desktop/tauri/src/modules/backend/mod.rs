@@ -155,11 +155,16 @@ impl DesktopModule for BackendModule {
         let bio_cfg = config.bio_mcp.get_or_insert_with(Default::default);
         bio_cfg.enabled = true;
 
-        // Web Search: force the deploy-level kill switch on. The module
-        // self-disables when no search providers are configured and degrades
-        // gracefully offline, so a desktop single-admin gets web search without
-        // hunting for a config flag, and an offline box simply sees the tools
-        // stay unavailable. Mirrors code_sandbox / bio_mcp above.
+        // Web Search: force the master config switch on so the built-in
+        // web_search MCP server registers on desktop. Like BioMCP it's
+        // connected-only and self-gates at attach time — the chat
+        // extension only attaches the tools when web search is enabled in
+        // admin settings AND at least one chain provider is configured, so
+        // an unconfigured / offline desktop user isn't broken; the tools
+        // simply stay unattached. The matching admin UI module
+        // (/settings/web-search) is NOT in CORE_MODULE_BLOCKLIST, so the
+        // desktop user can configure providers. (Mirrors lit_search, whose
+        // config switch also defaults on.)
         let web_search_cfg = config.web_search.get_or_insert_with(Default::default);
         web_search_cfg.enabled = true;
 
