@@ -120,9 +120,11 @@ pub async fn read_skill_file(
     // root (defense in depth: extract-time guards already reject `..`,
     // symlinks, and absolute paths; this catches any post-install
     // tampering OR a symlink someone planted out-of-band).
-    let canon_root = std::fs::canonicalize(&bundle_root)
+    let canon_root = tokio::fs::canonicalize(&bundle_root)
+        .await
         .map_err(|e| AppError::not_found(&format!("skill bundle missing: {e}")))?;
-    let canon_full = std::fs::canonicalize(&full)
+    let canon_full = tokio::fs::canonicalize(&full)
+        .await
         .map_err(|_| AppError::not_found("file not found in skill bundle"))?;
     if !canon_full.starts_with(&canon_root) {
         return Err(AppError::forbidden(
@@ -131,7 +133,8 @@ pub async fn read_skill_file(
         ));
     }
 
-    let meta = std::fs::symlink_metadata(&canon_full)
+    let meta = tokio::fs::symlink_metadata(&canon_full)
+        .await
         .map_err(|e| AppError::not_found(&format!("file metadata unavailable: {e}")))?;
     if meta.file_type().is_symlink() {
         return Err(AppError::forbidden(
@@ -162,7 +165,8 @@ pub async fn read_skill_file(
         return Ok(json!({ "name": skill.name, "path": args.path, "content": cached }));
     }
 
-    let bytes = std::fs::read(&canon_full)
+    let bytes = tokio::fs::read(&canon_full)
+        .await
         .map_err(|e| AppError::internal_error(&format!("read failed: {e}")))?;
     if is_binary(&bytes) {
         return Err(AppError::bad_request(
@@ -222,7 +226,8 @@ async fn read_skill_md_cached(
     skill: &crate::modules::skill::models::Skill,
 ) -> Result<String, AppError> {
     let path = PathBuf::from(&skill.extracted_path).join(&skill.entry_point);
-    let meta = std::fs::metadata(&path)
+    let meta = tokio::fs::metadata(&path)
+        .await
         .map_err(|e| AppError::not_found(&format!("skill bundle missing: {e}")))?;
     let mtime_nanos = meta
         .modified()
@@ -239,7 +244,8 @@ async fn read_skill_md_cached(
     if let Some(cached) = file_cache::get(&key) {
         return Ok(cached);
     }
-    let raw = std::fs::read_to_string(&path)
+    let raw = tokio::fs::read_to_string(&path)
+        .await
         .map_err(|e| AppError::internal_error(format!("read SKILL.md failed: {e}")))?;
     let (_frontmatter, body) = frontmatter::parse_skill_md_frontmatter(&raw)?;
     file_cache::put(key, body.clone());
