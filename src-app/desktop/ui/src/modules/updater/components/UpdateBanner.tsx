@@ -14,14 +14,11 @@
  * the bytes are ready; the buttons are replaced by a progress bar meanwhile.
  */
 
-import { Button, Progress, Space, Typography, theme } from 'antd'
-import { ArrowUpOutlined } from '@ant-design/icons'
+import { Button, Progress, Space, Text } from '@/components/ui'
+import { ArrowUp } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
-const { Text } = Typography
-
 export function UpdateBanner() {
-  const { token } = theme.useToken()
   const {
     available,
     dismissed,
@@ -37,22 +34,15 @@ export function UpdateBanner() {
   const installing = downloading || readyToInstall
 
   return (
-    <div style={{ padding: '4px 8px' }}>
-      <div
-        style={{
-          border: `1px solid ${token.colorBorderSecondary}`,
-          background: token.colorFillQuaternary,
-          borderRadius: token.borderRadius,
-          padding: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-          <ArrowUpOutlined style={{ color: token.colorPrimary }} />
-          <Text strong style={{ flex: 1 }}>
+    <div className="px-2 py-1">
+      <div className="border border-border bg-muted/40 rounded-md p-2.5">
+        <div className="flex items-center gap-1.5 mb-2">
+          <ArrowUp className="size-4 text-primary" aria-hidden />
+          <Text strong className="flex-1">
             Update available
           </Text>
           {version && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
+            <Text type="secondary" className="text-xs">
               v{version}
             </Text>
           )}
@@ -60,24 +50,23 @@ export function UpdateBanner() {
 
         {installing ? (
           <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>
+            <Text type="secondary" className="text-xs">
               {readyToInstall ? 'Installing…' : 'Downloading…'}
             </Text>
             <Progress
-              percent={Math.round(progress ?? 0)}
-              size="small"
-              status="active"
-              style={{ marginBottom: 0 }}
+              value={Math.round(progress ?? 0)}
+              size="sm"
+              tone="primary"
+              aria-label="Update download progress"
             />
           </div>
         ) : (
-          <Space size="small" style={{ width: '100%' }}>
-            <Button size="small" onClick={() => Stores.Updater.remindLater()}>
+          <Space size="small" className="w-full">
+            <Button size="sm" onClick={() => Stores.Updater.remindLater()}>
               Remind later
             </Button>
             <Button
-              size="small"
-              type="primary"
+              size="sm"
               onClick={() => Stores.Updater.installAndRestart()}
             >
               Install &amp; restart
@@ -86,7 +75,7 @@ export function UpdateBanner() {
         )}
 
         {error && (
-          <Text type="danger" style={{ fontSize: 12, display: 'block', marginTop: 6 }}>
+          <Text type="danger" className="text-xs block mt-1.5">
             {error}
           </Text>
         )}

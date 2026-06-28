@@ -16,13 +16,13 @@
 
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Result, Spin, theme } from 'antd'
+import { Button, Result, Spin } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { useTunnelAuthStore } from './TunnelAuth.store'
 
 /**
- * Match the page chrome to antd's theme-aware layout background so
- * the Result / Spin doesn't sit on browser-white when the antd theme
+ * Match the page chrome to the theme-aware layout background so
+ * the Result / Spin doesn't sit on browser-white when the theme
  * is dark.
  */
 function PageShell({
@@ -32,13 +32,11 @@ function PageShell({
   children: React.ReactNode
   centerColumn?: boolean
 }) {
-  const { token } = theme.useToken()
   return (
     <div
-      className={`min-h-screen flex items-center justify-center p-4 ${
+      className={`min-h-screen flex items-center justify-center p-4 bg-background ${
         centerColumn ? 'flex-col gap-3' : ''
       }`}
-      style={{ backgroundColor: token.colorBgLayout }}
     >
       {children}
     </div>
@@ -76,7 +74,7 @@ export function MagicLinkPage() {
         <Result
           status="warning"
           title="Missing token"
-          subTitle="This URL doesn't include a magic-link token. Open the desktop Remote Access page and scan a fresh QR."
+          subtitle="This URL doesn't include a magic-link token. Open the desktop Remote Access page and scan a fresh QR."
         />
       </PageShell>
     )
@@ -85,7 +83,7 @@ export function MagicLinkPage() {
   if (exchangingToken === token && !exchangeError) {
     return (
       <PageShell centerColumn>
-        <Spin size="large" />
+        <Spin size="lg" label="Logging you in" />
         <span className="text-sm text-gray-500">Logging you in…</span>
       </PageShell>
     )
@@ -106,7 +104,7 @@ export function MagicLinkPage() {
         <Result
           status="error"
           title="Link no longer valid"
-          subTitle={
+          subtitle={
             <>
               <div>{exchangeError}</div>
               <div className="text-xs text-gray-500 mt-2">
@@ -116,7 +114,7 @@ export function MagicLinkPage() {
             </>
           }
           extra={
-            <Button type="primary" onClick={() => navigate('/', { replace: true })}>
+            <Button onClick={() => navigate('/', { replace: true })}>
               Open login page
             </Button>
           }
@@ -129,7 +127,7 @@ export function MagicLinkPage() {
   // useEffect fires.
   return (
     <PageShell>
-      <Spin size="large" />
+      <Spin size="lg" label="Loading" />
     </PageShell>
   )
 }
