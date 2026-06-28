@@ -236,3 +236,112 @@ async fn run(
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    /// Drives the REAL `reembed_all` worker against an embedding model id that
+    /// does not resolve, so `dispatch::embed` returns `Err` for the seeded row
+    /// and the worker takes the embed-failure skip path (embedding_worker.rs:
+    /// 220-227): the row is logged + skipped, the loop continues, and the
+    /// worker returns normally. Asserts graceful degradation — the memory is
+    /// NOT lost and its `embedding` stays NULL (skipped, never written at the
+    /// wrong/zero dimension), and the worker does not panic.
+    ///
+    /// `target_dimensions` is pinned to the column's CURRENT dimension so the
+    /// destructive NULL+ALTER branch is skipped — keeping the test focused on
+    /// the failure-skip path and non-destructive to the shared test DB.
+    ///
+    /// DB-gated soft-skip (mirrors `reaper.rs`'s `run_once` test): no
+    /// `DATABASE_URL`/unreachable DB → returns green so `cargo test --lib`
+    /// without Postgres stays green; runs for real against a migrated DB.
+    #[tokio::test]
+    async fn reembed_all_skips_rows_whose_embedding_fails_and_does_not_lose_them() {
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skip: DATABASE_URL unset — no DB to exercise reembed_all against");
+                return;
+            }
+        };
+        let pool = match PgPoolOptions::new().max_connections(2).connect(&url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return;
+            }
+        };
+        // `dispatch::embed` resolves the model via the global `Repos`; init is
+        // idempotent (no-op if another lib test already initialized it).
+        crate::core::init_repositories(pool.clone());
+
+        let tag = Uuid::new_v4();
+        let user_id: Uuid =
+            sqlx::query_scalar("INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id")
+                .bind(format!("embfail_{tag}"))
+                .bind(format!("embfail_{tag}@example.com"))
+                .fetch_one(&pool)
+                .await
+                .expect("seed user");
+
+        // A memory row with content but no embedding — the worker will try to
+        // embed it and fail.
+        let mem_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO user_memories (user_id, content, source) VALUES ($1, $2, 'manual') RETURNING id",
+        )
+        .bind(user_id)
+        .bind("the user prefers metric units")
+        .fetch_one(&pool)
+        .await
+        .expect("seed memory");
+
+        // Pin target_dimensions to the live column dimension so the worker
+        // SKIPS the destructive NULL+ALTER branch (`current_dim == target`).
+        let current_dim: i32 = sqlx::query_scalar(
+            "SELECT embedding_dimensions FROM memory_admin_settings WHERE id = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read current embedding_dimensions");
+
+        // A model id that does not exist → `Repos.llm_model.get_by_id` returns
+        // None → `dispatch::embed` errs fast (no network) → the embed-failure
+        // skip path runs for our row.
+        let bogus_model_id = Uuid::new_v4();
+        // Must not panic; returns after skipping the unembeddable row(s).
+        reembed_all(
+            pool.clone(),
+            bogus_model_id,
+            "no-such-embedding-model".to_string(),
+            current_dim,
+        )
+        .await;
+
+        // Graceful degradation: the memory survives (not deleted) and its
+        // embedding stays NULL — it was skipped, never written at a wrong dim.
+        let (still_exists, embedding_is_null): (bool, bool) = sqlx::query_as(
+            "SELECT TRUE, embedding IS NULL FROM user_memories WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(mem_id)
+        .fetch_one(&pool)
+        .await
+        .expect("the skipped memory must still exist (not lost on embed failure)");
+        assert!(still_exists);
+        assert!(
+            embedding_is_null,
+            "an embed failure must leave the row's embedding NULL (skipped), not a bogus vector"
+        );
+
+        // Cleanup so the shared lib-test DB stays tidy.
+        let _ = sqlx::query("DELETE FROM user_memories WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&pool)
+            .await;
+    }
+}
