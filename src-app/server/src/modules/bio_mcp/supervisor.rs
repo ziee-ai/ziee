@@ -352,7 +352,39 @@ pub async fn shutdown() {
 
 #[cfg(test)]
 mod tests {
-    use super::fingerprint;
+    use super::{fingerprint, is_unsafe_env_name};
+
+    #[test]
+    fn is_unsafe_env_name_blocks_loader_and_whitelist_vars() {
+        // The env_clear whitelist vars must never be admin-injectable
+        // (case-insensitive) — overriding PATH/HOME would let biomcp exec
+        // arbitrary binaries.
+        for v in ["PATH", "HOME", "LANG", "LC_ALL", "TZ"] {
+            assert!(is_unsafe_env_name(v), "{v} must be protected");
+            assert!(
+                is_unsafe_env_name(&v.to_ascii_lowercase()),
+                "{v} must be protected case-insensitively"
+            );
+        }
+        // Dynamic-loader hijack prefixes (LD_*, DYLD_*).
+        assert!(is_unsafe_env_name("LD_PRELOAD"));
+        assert!(is_unsafe_env_name("LD_LIBRARY_PATH"));
+        assert!(is_unsafe_env_name("ld_preload"));
+        assert!(is_unsafe_env_name("DYLD_INSERT_LIBRARIES"));
+        assert!(is_unsafe_env_name("dyld_insert_libraries"));
+
+        // Legitimate upstream API-key vars (and other names) are allowed.
+        for v in [
+            "NCBI_API_KEY",
+            "S2_API_KEY",
+            "OPENFDA_API_KEY",
+            "ONCOKB_TOKEN",
+            "SOME_OTHER_VAR",
+            "PATHOLOGY", // starts with PATH but is NOT exactly PATH
+        ] {
+            assert!(!is_unsafe_env_name(v), "{v} must be allowed");
+        }
+    }
 
     #[test]
     fn fingerprint_is_stable_and_value_sensitive() {
