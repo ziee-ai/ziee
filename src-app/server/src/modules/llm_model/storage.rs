@@ -78,6 +78,13 @@ impl ModelStorage {
             .join(model_id.to_string())
     }
 
+    /// The directory holding ALL of a provider's model dirs
+    /// (`<app_data>/models/<provider_id>/`). Removed wholesale when a provider
+    /// is deleted so its models' on-disk files aren't orphaned by the DB cascade.
+    pub fn get_provider_dir(&self, provider_id: &Uuid) -> PathBuf {
+        self.base_path.join(provider_id.to_string())
+    }
+
     /// Create a new model directory
     pub async fn create_model_directory(
         &self,

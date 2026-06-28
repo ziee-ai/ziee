@@ -406,6 +406,23 @@ pub async fn delete_provider(
                 Audience::perm::<UserLlmProvidersRead>(),
                 origin.0,
             );
+            // Best-effort: remove the provider's on-disk model directory tree
+            // (`<app_data>/models/<provider_id>/`). The DB cascade dropped the
+            // model rows; without this their downloaded files are orphaned.
+            if let Ok(storage) =
+                crate::modules::llm_model::storage::ModelStorage::new().await
+            {
+                let dir = storage.get_provider_dir(&provider_id);
+                if dir.exists() {
+                    if let Err(e) = tokio::fs::remove_dir_all(&dir).await {
+                        tracing::warn!(
+                            "delete_provider: failed to remove model dir {}: {}",
+                            dir.display(),
+                            e
+                        );
+                    }
+                }
+            }
             Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
         }
         Ok(Ok(false)) => Err(AppError::not_found("Provider").into()),
