@@ -258,6 +258,24 @@ pub(crate) async fn run_ask_user_elicitation(
         .cloned()
         .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
 
+    // The schema is LLM-generated and arbitrary; the FE renders a form field
+    // per property, so a pathologically large/nested schema can hang the
+    // browser. Reject anything over the same 1 MB cap used for structured
+    // content rather than streaming it to the client. The model gets a clean
+    // tool-result error and can retry with a smaller schema.
+    let schema_bytes = serde_json::to_vec(&requested_schema)
+        .map(|v| v.len())
+        .unwrap_or(usize::MAX);
+    if schema_bytes > MAX_STRUCTURED_CONTENT_BYTES {
+        return ask_result(
+            format!(
+                "ask_user 'schema' is too large ({schema_bytes} bytes; limit \
+                 {MAX_STRUCTURED_CONTENT_BYTES}). Send a smaller schema."
+            ),
+            true,
+        );
+    }
+
     // No interactive stream (e.g. the before_llm_call no-SSE path) → nobody to ask.
     let Some(sse_tx) = sse_tx else {
         return ask_result(
