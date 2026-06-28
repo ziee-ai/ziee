@@ -189,4 +189,22 @@ test.describe('Citations library', () => {
     const download = await downloadPromise
     expect(download.suggestedFilename()).toContain('citations')
   })
+
+  test('shows the empty state when the library has no citations', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    // library.spec.ts always seeded entries; the no-citations branch
+    // (CitationsSettingsPage Empty + disabled Verify-all/Export) was untested.
+    const state: State = { entries: [] }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    await gotoCitations(page, baseURL)
+
+    await expect(
+      page.getByText('No citations yet — import some or run a literature search.'),
+    ).toBeVisible({ timeout: 15000 })
+    // The reference counter reads zero and the entry-gated actions are disabled.
+    await expect(page.getByText('0 reference(s)')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Verify all' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Export' })).toBeDisabled()
+  })
 })

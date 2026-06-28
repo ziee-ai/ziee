@@ -76,6 +76,43 @@ test.describe('Literature screening flow', () => {
     expect(csv).toContain('Base editing reduces off-target effects')
   })
 
+  test('screening decisions persist across a page reload (draft/flush snapshot)', async ({
+    page,
+    testInfra,
+  }) => {
+    // screening-flow only asserted export-after-fill; the panel snapshot
+    // persistence (decisions survive a reload via the serializable panel-tab
+    // data) was untested. Screen both rows, reload, and assert the decisions
+    // restore.
+    await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
+
+    await page.getByRole('button', { name: /Open in screening/ }).click()
+    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({
+      timeout: 10000,
+    })
+
+    // Include both rows → PRISMA "Included: 2".
+    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
+    await page.getByRole('button', { name: 'Include', exact: true }).click()
+    await expect(page.getByText('Included: 2')).toBeVisible()
+
+    // Reload — the conversation + panel snapshot restore from persistence.
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+
+    // The panel may auto-restore; if not, re-open it from the inline card.
+    const heading = page.getByRole('heading', { name: 'Screening' })
+    if (!(await heading.isVisible().catch(() => false))) {
+      await page
+        .getByRole('button', { name: /Open in screening/ })
+        .click({ timeout: 15000 })
+    }
+    await expect(heading).toBeVisible({ timeout: 15000 })
+
+    // The include decisions survived the reload.
+    await expect(page.getByText('Included: 2')).toBeVisible({ timeout: 15000 })
+  })
+
   test('inline tool-result card shows the dedup + saturation estimate', async ({
     page,
     testInfra,
