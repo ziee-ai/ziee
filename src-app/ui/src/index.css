@@ -13,8 +13,10 @@
   --card-foreground: 222.2 84% 4.9%;
   --popover: 0 0% 100%;
   --popover-foreground: 222.2 84% 4.9%;
-  --primary: 222.2 47.4% 11.2%;
-  --primary-foreground: 210 40% 98%;
+  /* Brand accent (default = neutral blue). ThemeProvider overrides --primary/--ring per the
+   * user's chosen accent preset; these defaults drive first paint before JS runs. */
+  --primary: 220 47% 43%;
+  --primary-foreground: 0 0% 100%;
   --secondary: 210 40% 96.1%;
   --secondary-foreground: 222.2 47.4% 11.2%;
   --muted: 210 40% 96.1%;
@@ -25,16 +27,16 @@
   --destructive-foreground: 210 40% 98%;
   --border: 214.3 31.8% 91.4%;
   --input: 214.3 31.8% 91.4%;
-  --ring: 222.2 84% 4.9%;
+  --ring: 220 47% 43%;
   --radius: 0.5rem;
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(240 5.3% 26.1%);
-  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary: hsl(220 47% 43%);
   --sidebar-primary-foreground: hsl(0 0% 98%);
   --sidebar-accent: hsl(240 4.8% 95.9%);
   --sidebar-accent-foreground: hsl(240 5.9% 10%);
   --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  --sidebar-ring: hsl(220 47% 43%);
 }
 html.dark {
   --background: 222.2 84% 4.9%;
@@ -43,7 +45,7 @@ html.dark {
   --card-foreground: 210 40% 98%;
   --popover: 222.2 84% 4.9%;
   --popover-foreground: 210 40% 98%;
-  --primary: 210 40% 98%;
+  --primary: 216 56% 64%;
   --primary-foreground: 222.2 47.4% 11.2%;
   --secondary: 217.2 32.6% 17.5%;
   --secondary-foreground: 210 40% 98%;
@@ -55,7 +57,7 @@ html.dark {
   --destructive-foreground: 210 40% 98%;
   --border: 217.2 32.6% 17.5%;
   --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
+  --ring: 216 56% 64%;
 }
 
 /* Custom base styles in Tailwind's base layer */
@@ -127,12 +129,13 @@ html.dark .os-theme-dark {
 .dark {
   --sidebar: hsl(240 5.9% 10%);
   --sidebar-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-primary: hsl(224.3 76.3% 48%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
+  /* Default dark accent (ThemeProvider overrides per preset); matches html.dark --primary. */
+  --sidebar-primary: hsl(216 56% 64%);
+  --sidebar-primary-foreground: hsl(222.2 47.4% 11.2%);
   --sidebar-accent: hsl(240 3.7% 15.9%);
   --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
   --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  --sidebar-ring: hsl(216 56% 64%);
 }
 
 @theme inline {

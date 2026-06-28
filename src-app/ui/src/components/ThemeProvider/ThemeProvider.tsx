@@ -4,6 +4,7 @@ import { ThemeContext } from '@/hooks/useTheme'
 import { resolveSystemTheme } from '@/components/ThemeProvider/resolveTheme'
 import { Stores } from '@/core/stores'
 import { Toaster, DialogHost } from '@/components/ui'
+import { applyAccent } from '@/components/ThemeProvider/accentPresets'
 
 interface ThemeProviderProps {
   children: React.ReactNode
@@ -16,7 +17,7 @@ interface ThemeProviderProps {
  * so module-level `message`/`dialog` work app-wide. No antd ConfigProvider/App.
  */
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const { themePreference: selectedTheme } = Stores.ConfigClient
+  const { themePreference: selectedTheme, accentPreset } = Stores.ConfigClient
 
   const resolvedTheme =
     selectedTheme === 'system' ? resolveSystemTheme() : selectedTheme
@@ -43,6 +44,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       root.classList.add('light')
       root.classList.remove('dark')
     }
+    // Apply the user's brand accent for the resolved theme (overrides --primary/--ring).
+    applyAccent(root, accentPreset, isDarkMode)
     let meta = document.querySelector('meta[name="theme-color"]')
     if (!meta) {
       meta = document.createElement('meta')
@@ -56,7 +59,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         /^(#|rgb|hsl|oklch)/.test(bg) ? bg : `hsl(${bg})`,
       )
     }
-  }, [isDarkMode])
+  }, [isDarkMode, accentPreset])
 
   return (
     <ThemeContext.Provider
