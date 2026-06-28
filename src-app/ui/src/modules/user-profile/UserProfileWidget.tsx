@@ -1,4 +1,4 @@
-import { Dropdown, Tooltip, theme } from 'antd'
+import { Dropdown, Skeleton, Tooltip, theme } from 'antd'
 import type { MenuProps } from 'antd'
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
@@ -74,12 +74,24 @@ function SidebarItem({
 }
 
 export function UserProfileWidget() {
-  const { user } = Stores.Auth
+  const { user, isInitializing, isLoading } = Stores.Auth
   const { isSidebarCollapsed } = Stores.AppLayout
   const canViewProfile = usePermission(Permissions.ProfileRead)
   const navigate = useNavigate()
 
-  if (!user) return null
+  if (!user) {
+    // While auth is still resolving show a placeholder so the sidebar footer
+    // doesn't pop in; once auth has settled with no user (logged out) render
+    // nothing.
+    if (isInitializing || isLoading) {
+      return (
+        <div data-testid="user-profile-widget-loading" className="px-2 py-1">
+          <Skeleton.Avatar active size="small" shape="circle" />
+        </div>
+      )
+    }
+    return null
+  }
 
   const item = (
     <Dropdown
