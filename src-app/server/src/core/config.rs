@@ -144,6 +144,7 @@ pub struct CodeSandboxConfig {
     /// configuration must opt in with `allow_wsl2_mirrored_mode: true`.
     /// No-op on Linux/macOS.
     #[serde(default)]
+    #[allow(dead_code)]
     pub allow_wsl2_mirrored_mode: bool,
     /// Audit H-4: refuse to register when the cloud instance metadata
     /// service (169.254.169.254) is reachable from the host AND `--share-net`
@@ -288,6 +289,7 @@ impl CodeSandboxConfig {
             .as_deref()
             .expect("rootfs_path filled by Config::resolve_paths")
     }
+    #[allow(dead_code)]
     pub fn workspace_root(&self) -> &str {
         self.workspace_root
             .as_deref()
@@ -319,6 +321,7 @@ impl CodeSandboxConfig {
 }
 
 impl CachesConfig {
+    #[allow(dead_code)]
     pub fn hf_models_dir(&self) -> &str {
         self.hf_models_dir
             .as_deref()
@@ -613,6 +616,7 @@ impl Config {
 
     /// Helper for code paths that have a resolved `Config` and need the
     /// installation_dir for the embedded postgres install.
+    #[allow(dead_code)]
     pub fn embedded_postgres_installation_dir(&self) -> Option<PathBuf> {
         self.postgresql
             .embedded

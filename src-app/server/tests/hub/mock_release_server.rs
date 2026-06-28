@@ -71,6 +71,7 @@ pub struct MockItem {
 impl MockItem {
     /// Convenience constructor for a non-bundle model/assistant/mcp item
     /// (the fields skill/workflow tests don't use default to `None`).
+    #[allow(dead_code)]
     pub fn simple(
         category: &'static str,
         name: &'static str,
