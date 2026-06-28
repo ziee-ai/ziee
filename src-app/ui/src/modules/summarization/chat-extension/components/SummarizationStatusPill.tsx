@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { App, Tooltip, Tag, Dropdown } from 'antd'
-import { CompressOutlined, FileTextOutlined, EyeInvisibleOutlined } from '@ant-design/icons'
+import { CompressOutlined, FileTextOutlined, EyeInvisibleOutlined, LoadingOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 
@@ -144,7 +144,13 @@ export function SummarizationStatusPill() {
         <Tag
           color={colorByMode[mode]}
           icon={
-            mode === 'off' ? <EyeInvisibleOutlined /> : <CompressOutlined />
+            loading ? (
+              <LoadingOutlined />
+            ) : mode === 'off' ? (
+              <EyeInvisibleOutlined />
+            ) : (
+              <CompressOutlined />
+            )
           }
           aria-label={`Summarization override: ${labelByMode[mode]}`}
           style={{ cursor: 'pointer', margin: 0 }}
