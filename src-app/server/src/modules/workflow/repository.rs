@@ -779,21 +779,45 @@ pub async fn fail_orphaned_runs(
     pool: &PgPool,
     cutoff: time::OffsetDateTime,
 ) -> Result<u64, AppError> {
-    let res = sqlx::query!(
-        r#"
-        UPDATE workflow_runs
-        SET status = 'failed',
-            error_message = 'server restart during execution',
-            updated_at = NOW()
-        WHERE status IN ('pending', 'running')
-          AND created_at < $1
-        "#,
-        cutoff,
-    )
-    .execute(pool)
-    .await
-    .map_err(AppError::database_error)?;
-    Ok(res.rows_affected())
+    // Sweep in bounded batches rather than one mass UPDATE: a single
+    // statement would take row locks on every matching orphan at once,
+    // which on a large backlog holds a long write-lock span and bloats the
+    // WAL in one transaction. Each batch commits independently (LIMIT via a
+    // CTE; `FOR UPDATE SKIP LOCKED` so we never wait on a row another
+    // connection already holds). Loop until a batch flips zero rows.
+    const BATCH: i64 = 1000;
+    let mut total: u64 = 0;
+    loop {
+        let res = sqlx::query!(
+            r#"
+            WITH batch AS (
+                SELECT id FROM workflow_runs
+                WHERE status IN ('pending', 'running')
+                  AND created_at < $1
+                ORDER BY created_at
+                LIMIT $2
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE workflow_runs r
+            SET status = 'failed',
+                error_message = 'server restart during execution',
+                updated_at = NOW()
+            FROM batch
+            WHERE r.id = batch.id
+            "#,
+            cutoff,
+            BATCH,
+        )
+        .execute(pool)
+        .await
+        .map_err(AppError::database_error)?;
+        let n = res.rows_affected();
+        total += n;
+        if n < BATCH as u64 {
+            break;
+        }
+    }
+    Ok(total)
 }
 
 pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>, AppError> {
