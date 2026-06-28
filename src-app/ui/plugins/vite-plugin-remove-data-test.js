@@ -37,16 +37,18 @@ export function removeDataTestPlugin() {
       let transformed = code
 
       // Pattern 1: Remove from object properties in createElement/jsx calls
-      // e.g., { "data-test-id": "foo", otherProp: "bar" } -> { otherProp: "bar" }
+      // e.g., { "data-testid": "foo", otherProp: "bar" } -> { otherProp: "bar" }
+      // NOTE: hyphen after "test" is OPTIONAL so this matches BOTH `data-testid`
+      // (Playwright's default attribute, the kit convention) and `data-test-*`.
       transformed = transformed.replace(
-        /["']data-test-[a-zA-Z0-9-_]*["']\s*:\s*["'][^"']*["']\s*,?\s*/g,
+        /["']data-test[a-zA-Z0-9-_]*["']\s*:\s*["'][^"']*["']\s*,?\s*/g,
         ''
       )
 
       // Pattern 2: Remove from JSX attribute syntax
-      // e.g., <div data-test-id="foo" /> -> <div />
+      // e.g., <div data-testid="foo" /> -> <div />
       transformed = transformed.replace(
-        /\s+data-test-[a-zA-Z0-9-_]*=(?:{[^}]*}|"[^"]*"|'[^']*')/g,
+        /\s+data-test[a-zA-Z0-9-_]*=(?:{[^}]*}|"[^"]*"|'[^']*')/g,
         ''
       )
 

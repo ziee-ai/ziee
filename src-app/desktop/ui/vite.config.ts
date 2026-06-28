@@ -5,6 +5,7 @@ import path from 'path'
 import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
 import { localOverridePlugin } from './plugins/vite-plugin-local-override.js'
+import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -26,6 +27,15 @@ export default defineConfig(async () => {
       // Detect duplicate form names
       formNamesPlugin({
         srcDir: 'src',
+      }),
+      // Fail the build on any duplicate data-testid literal. Desktop renders
+      // BOTH trees (core-ui fallback via localOverridePlugin), so scan both —
+      // core first (lowest priority), desktop last (an override shadows core).
+      testidUniquePlugin({
+        srcDirs: [
+          path.resolve(__dirname, '../../ui/src'),
+          path.resolve(__dirname, './src'),
+        ],
       }),
       // Remove data-test-* attributes in production builds
       ...(isDev || isTest ? [] : [removeDataTestPlugin()]),
