@@ -195,7 +195,7 @@ async fn run(
                 .await
             {
                 Ok(vec) => {
-                    if vec.len() as i32 != target_dimensions {
+                    if !embedding_dim_matches(vec.len(), target_dimensions) {
                         tracing::warn!(
                             "memory.embedding_worker: model returned {}-dim vector but column is {}-dim — skipping row {}",
                             vec.len(),
@@ -235,4 +235,28 @@ async fn run(
         target_dimensions
     );
     Ok(())
+}
+
+/// Whether an embedding vector fits the current `halfvec(N)` column — the
+/// per-row skip guard used by the memory rebuild loop. A mismatch (a model
+/// returning an unexpected dim, or a stale in-flight vector after a swap) is
+/// skipped rather than written (pgvector would reject a wrong-length vector).
+pub(crate) fn embedding_dim_matches(actual_len: usize, expected_dim: i32) -> bool {
+    actual_len as i32 == expected_dim
+}
+
+#[cfg(test)]
+mod embed_skip_tests {
+    use super::embedding_dim_matches;
+
+    /// Memory embedding skip path (gap 3cdb397a5069): a model returning a
+    /// wrong-dimension vector (e.g. after a model swap) is skipped, while a
+    /// correct-dimension vector is written. Guards the inline mismatch check
+    /// in the rebuild loop (embedding_worker.rs:198).
+    #[test]
+    fn mismatched_embedding_dim_is_skipped() {
+        assert!(embedding_dim_matches(768, 768));
+        assert!(!embedding_dim_matches(1536, 768), "wrong-dim vector skipped");
+        assert!(!embedding_dim_matches(0, 768), "empty vector skipped");
+    }
 }

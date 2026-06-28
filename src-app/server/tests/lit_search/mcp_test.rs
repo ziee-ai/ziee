@@ -640,3 +640,63 @@ async fn test_equal_year_range_passes_inversion_guard() {
     let body: serde_json::Value = res.json().await.unwrap();
     assert!(body["error"].is_null(), "from==to must NOT be rejected: {body}");
 }
+
+/// A loopback mock whose `/works` always 500s — stands in for a connector
+/// error/timeout. Returns its base url.
+async fn start_mock_error_crossref() -> String {
+    use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route(
+        "/works",
+        get(|| async { StatusCode::INTERNAL_SERVER_ERROR.into_response() }),
+    );
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app.into_make_service()).await;
+    });
+    format!("http://127.0.0.1:{port}")
+}
+
+/// Connector error/timeout handling (gap 39d243f86f22): when one enabled
+/// source fails (here crossref 500s), it lands in `degraded_sources` while the
+/// other source (europepmc) still returns results — aggregate_search is a UNION
+/// that tolerates a failing connector rather than failing the whole search.
+#[tokio::test]
+async fn test_failing_connector_is_degraded_others_still_return() {
+    let epmc = start_mock_europepmc().await;
+    let bad_crossref = start_mock_error_crossref().await;
+    let server = server_with_seams(vec![
+        ("LIT_SEARCH_EUROPEPMC_ENDPOINT".to_string(), format!("{epmc}/search")),
+        ("LIT_SEARCH_CROSSREF_ENDPOINT".to_string(), format!("{bad_crossref}/works")),
+    ])
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_degraded_admin", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc", "crossref"]).await;
+
+    let res = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "literature_search", "arguments": { "query": "crispr" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+
+    let degraded: Vec<&str> = sc["degraded_sources"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    assert!(
+        degraded.contains(&"crossref"),
+        "the failing connector must be reported degraded: {body}"
+    );
+    // The healthy source still contributed records — the search wasn't failed.
+    assert!(
+        !sc["records"].as_array().unwrap().is_empty(),
+        "the healthy connector's records must still return despite the failure: {body}"
+    );
+}

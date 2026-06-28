@@ -934,3 +934,55 @@ async fn chat_tool_turn_emits_mcp_tool_call_sync_to_owner() {
     // Owner-scoped: the unrelated user observes nothing.
     other_probe.expect_silence(Duration::from_secs(1)).await;
 }
+
+/// files_mcp + memory cross-subsystem co-attachment (gap cef7ec3387ce). Prior
+/// tests exercise memory OR files in isolation; this drives ONE turn with BOTH
+/// memory enabled AND a project knowledge file, and asserts the model's request
+/// carries BOTH built-in surfaces (the files manifest + read_file, and the
+/// memory `remember` tool) and that the file is actually read end-to-end.
+#[tokio::test]
+async fn files_and_memory_built_ins_coexist_in_one_turn() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_files_mem").await;
+    enable_memory(&server, &user).await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let project_id = create_project(&server, &user, "files-mem-project").await;
+    let file_id = upload_text(&server, &user, "notes.txt", "XSUBSYS_MARK shared facts").await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    let body = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file what's in my notes?",
+    )
+    .await;
+
+    // Files subsystem: manifest injected + read_file actually invoked → answer
+    // reflects the file content.
+    assert!(stub.any_manifest(), "files manifest must be injected");
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "read_file (files_mcp) must be attached + called; requests={:?}",
+        stub.requests()
+    );
+    assert!(body.contains("XSUBSYS_MARK"), "answer reflects the read file: {body}");
+
+    // Memory subsystem co-attached in the SAME turn: the `remember` tool is
+    // offered alongside the files tools (proves both built-ins coexist, not
+    // mutually exclusive).
+    assert!(
+        stub.requests_with_tool("remember") >= 1,
+        "memory `remember` tool must be co-attached with files tools; requests={:?}",
+        stub.requests()
+    );
+}
