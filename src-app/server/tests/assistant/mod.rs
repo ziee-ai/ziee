@@ -1057,3 +1057,33 @@ async fn test_concurrent_set_default_yields_exactly_one() {
     let default_count = assistants.iter().filter(|a| a["is_default"] == true).count();
     assert_eq!(default_count, 1, "exactly one default must remain after the race; got {default_count}");
 }
+
+/// A user POSTing /assistants with is_template:true must NOT create a template:
+/// the create handler force-overrides request.is_template = Some(false)
+/// (handlers.rs:127-128). Prevents a non-admin from minting a global template
+/// via the user endpoint.
+#[tokio::test]
+async fn test_user_cannot_create_template_via_assistants_endpoint() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tmpl_override_user",
+        &["assistants::create", "assistants::read"],
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Sneaky Template", "is_template": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        body["is_template"], false,
+        "the user endpoint must force is_template=false even when the client sends true: {body}"
+    );
+    assert_eq!(body["created_by"].is_null(), false, "a user assistant is owned by the creator");
+}

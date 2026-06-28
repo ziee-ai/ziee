@@ -36,6 +36,9 @@ pub use modules::memory::reaper::run_once as memory_reaper_run_once;
 // Re-exported so integration tests can exercise the REAL cross-tenant security
 // filter (the JOIN to `files` on `user_id`) instead of mirroring its SQL.
 pub use modules::llm_provider_files::repository::get_provider_file_mapping as llm_provider_file_mapping_for_user;
+// Re-exported so the integration test can assert the REAL anti-injection guard
+// text in the extraction prompt (replacing a no-op stub).
+pub use modules::memory::engine::prompts::EXTRACTION_PROMPT as memory_extraction_prompt;
 pub use modules::elicitation_mcp::elicitation_mcp_server_id;
 pub use modules::elicitation_mcp::repository::ElicitationMcpRepository;
 // Re-export the LLM repository connection-health entry points so the
