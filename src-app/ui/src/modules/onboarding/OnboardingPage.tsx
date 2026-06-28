@@ -106,7 +106,21 @@ export default function OnboardingPage() {
   }
 
   if (!guide) {
-    return <div className="p-8"><Text>No guides available.</Text></div>
+    return (
+      <div
+        className="flex flex-col items-center justify-center h-screen gap-4 p-8"
+        style={{ backgroundColor: token.colorBgLayout }}
+      >
+        <Title level={4}>No onboarding guides available</Title>
+        <Text type="secondary" className="text-center max-w-md">
+          The onboarding content has not been configured yet. Check back later or
+          contact your administrator.
+        </Text>
+        <Button type="primary" onClick={() => navigate('/chat')}>
+          Go to Chat
+        </Button>
+      </div>
+    )
   }
 
   const StepComponent = currentStep?.component

@@ -9,10 +9,16 @@
  */
 
 import { createModule, type AppModule } from '@ziee/ui-core'
-import { Stores } from '@/core/stores'
+import { Stores, type StoreProxy } from '@/core/stores'
 import { invoke } from '@tauri-apps/api/core'
 import type { AutoLoginResponse } from '@/modules/auth/Auth.store'
 import { useBootstrapStore } from '@ziee/desktop/modules/desktop-base/Bootstrap.store'
+
+declare module '@/core/stores' {
+  interface RegisteredStores {
+    Bootstrap: StoreProxy<ReturnType<typeof useBootstrapStore.getState>>
+  }
+}
 
 // Retry config — exponential with cap, hard deadline.
 const RETRY_BACKOFF_MS = [500, 1000, 2000, 4000, 5000]
@@ -45,7 +51,7 @@ function applyTokens(authData: AutoLoginResponse): void {
 }
 
 async function runAutoLoginWithRetry(): Promise<void> {
-  const bootstrap = useBootstrapStore.getState()
+  const bootstrap = Stores.Bootstrap.__state
   const startedAt = Date.now()
   let attempt = 0
 
@@ -66,7 +72,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
         attempt > 0 ? `(after ${attempt} retries)` : '',
       )
       applyTokens(authData)
-      useBootstrapStore.getState().setStatus('succeeded')
+      Stores.Bootstrap.__state.setStatus('succeeded')
       return
     } catch (error) {
       attempt += 1
@@ -81,7 +87,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
           'attempts. Last error:',
           msg,
         )
-        useBootstrapStore.getState().setStatus(
+        Stores.Bootstrap.__state.setStatus(
           'failed',
           'Backend failed to start. Try restarting Ziee.',
         )
@@ -92,7 +98,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
       console.warn(
         `[Desktop] Auto-login attempt ${attempt} failed (${msg}); retrying in ${wait}ms`,
       )
-      useBootstrapStore.getState().setAttempt(attempt)
+      Stores.Bootstrap.__state.setAttempt(attempt)
       await new Promise(resolve => setTimeout(resolve, wait))
     }
   }
@@ -138,7 +144,7 @@ const desktopBaseModule: AppModule = createModule({
       clearTimeout(refreshTimer)
       refreshTimer = null
     }
-    useBootstrapStore.getState().reset()
+    Stores.Bootstrap.__state.reset()
     console.log('[Desktop] Desktop base module cleaned up')
   },
 })

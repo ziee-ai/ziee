@@ -15,15 +15,34 @@ interface BootstrapState {
   attempt: number
   message: string | null
 
+  __init__: {
+    /** Fires on first property access through the store proxy. Bootstrap
+     *  init is driven by the module's `initialize` lifecycle, so this is
+     *  a no-op that satisfies the proxy's lifecycle contract. */
+    __store__: () => void
+  }
+  __destroy__: () => void
+
   setStatus: (status: BootstrapStatus, message?: string | null) => void
   setAttempt: (attempt: number) => void
   reset: () => void
 }
 
-export const useBootstrapStore = create<BootstrapState>(set => ({
+export const useBootstrapStore = create<BootstrapState>((set, get) => ({
   status: 'idle',
   attempt: 0,
   message: null,
+
+  __init__: {
+    __store__: () => {
+      // Bootstrap init is handled by the module's `initialize` lifecycle
+      // (auto-login retry loop), so no eager load is needed here.
+    },
+  },
+
+  __destroy__: () => {
+    get().reset()
+  },
 
   setStatus: (status, message = null) => set({ status, message }),
   setAttempt: attempt => set({ attempt }),

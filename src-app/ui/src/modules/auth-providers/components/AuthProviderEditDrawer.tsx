@@ -58,7 +58,7 @@ export function AuthProviderEditDrawer({
   existing,
   onClose,
 }: EditDrawerProps) {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [form] = Form.useForm<FormShape>()
   const { saving, error } = Stores.AuthProvidersAdmin
   const canManage = usePermission(Permissions.AuthProvidersManage)
@@ -260,6 +260,23 @@ export function AuthProviderEditDrawer({
     }
   }
 
+  // Unsaved-changes guard: if any form field has been touched, confirm
+  // before closing so the user doesn't lose their work.
+  const handleClose = () => {
+    if (form.isFieldsTouched()) {
+      modal.confirm({
+        title: 'Discard unsaved changes?',
+        content: 'You have unsaved changes in the form. Are you sure you want to discard them?',
+        okText: 'Discard changes',
+        okButtonProps: { danger: true },
+        cancelText: 'Keep editing',
+        onOk: onClose,
+      })
+      return
+    }
+    onClose()
+  }
+
   const titleText = existing
     ? `Edit ${existing.name}`
     : template
@@ -270,7 +287,7 @@ export function AuthProviderEditDrawer({
     <Drawer
       title={titleText}
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       size={600}
       maskClosable={false}
       destroyOnHidden
@@ -281,7 +298,7 @@ export function AuthProviderEditDrawer({
         // Read-only users get a "Close" button instead of "Cancel"
         // because there's nothing to cancel.
         <Flex className="justify-end gap-2">
-          <Button onClick={onClose} disabled={saving}>
+          <Button onClick={handleClose} disabled={saving}>
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           <Can permission={Permissions.AuthProvidersManage}>

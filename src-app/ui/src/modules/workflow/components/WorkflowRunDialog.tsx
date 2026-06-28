@@ -1,4 +1,5 @@
 import { Alert, App, Form, Input, Modal, Select, Switch, Typography } from 'antd'
+import { CheckCircleOutlined } from '@ant-design/icons'
 import { useEffect, useMemo, useState } from 'react'
 import type { Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -178,7 +179,7 @@ export function WorkflowRunDialog({
       </div>
       {conversationId && (
         <div className="mt-2 flex items-center gap-2">
-          <Switch checked disabled size="small" />
+          <CheckCircleOutlined style={{ color: '#52c41a' }} />
           <Text type="secondary" className="text-xs">
             Output posts back to the current conversation
           </Text>

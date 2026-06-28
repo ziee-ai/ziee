@@ -1,5 +1,5 @@
 import { Typography } from 'antd'
-import { ReactNode } from 'react'
+import { ReactNode, useId } from 'react'
 import { DivScrollY } from '@/components/common/DivScrollY'
 
 const { Title, Text } = Typography
@@ -15,6 +15,7 @@ export function SettingsPageContainer({
   subtitle,
   children,
 }: SettingsPageContainerProps) {
+  const titleId = useId()
   return (
     // Vertical spacing notes:
     //   pt-3 keeps the title close to the top header bar.
@@ -24,10 +25,10 @@ export function SettingsPageContainer({
     //   `<div class="flex flex-col">`, so any `gap-*` on DivScrollY
     //   itself lands on the OverlayScrollbars wrapper and never
     //   reaches the title/body siblings.
-    <DivScrollY className="h-full">
+    <DivScrollY className="h-full" role="region" aria-labelledby={titleId}>
       <div className="w-full flex justify-center pt-3">
         <div className={'max-w-4xl w-full flex flex-col gap-2 px-3'}>
-          <Title level={4} className="!m-0 !leading-tight">
+          <Title level={4} id={titleId} className="!m-0 !leading-tight">
             {title}
           </Title>
           {subtitle && (

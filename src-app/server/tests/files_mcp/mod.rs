@@ -17,9 +17,12 @@
 // continuation) lives in `tests/agentic_chat/mod.rs`.
 // ============================================================================
 
+use std::time::Duration;
+
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::common::sync_probe::SyncProbe;
 use crate::common::TestServer;
 use crate::common::test_helpers::{TestUser, create_user_with_permissions};
 
@@ -630,4 +633,66 @@ async fn test_unknown_tool_method_not_found() {
         METHOD_NOT_FOUND,
         "an unknown tool is method_not_found, not invalid_params; err={err}"
     );
+}
+
+// ── realtime-sync emission ──────────────────────────────────────────────────
+//
+// Verifies that `edit_file` (the files_mcp write tool that edits an existing
+// file) emits a `publish_file_changed` sync event that reaches the owner's SSE
+// stream and is isolated from other users.
+
+#[tokio::test]
+async fn test_edit_file_emits_sync_event_to_owner_only() {
+    let server = TestServer::start().await;
+    let alice = power_user(&server, "files_mcp_edit_sync_a").await;
+    let bob = power_user(&server, "files_mcp_edit_sync_b").await;
+
+    let mut alice_probe = SyncProbe::open(&server, &alice.token).await;
+    let mut bob_probe = SyncProbe::open(&server, &bob.token).await;
+
+    let conv_id = create_conversation(&server, &alice).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    // Create a file first so we have something to edit.
+    let create_body = call_tool(
+        &server,
+        &alice,
+        conv_uuid,
+        "create_file",
+        json!({ "filename": "editable.txt", "content": "original content\n" }),
+    )
+    .await;
+    assert!(create_body["error"].is_null(), "create_file should succeed; body={create_body}");
+    let file_id = create_body["result"]["structuredContent"]["file_id"]
+        .as_str()
+        .expect("file_id")
+        .to_string();
+
+    // Now edit the file using old_str/new_str.
+    let edit_body = call_tool(
+        &server,
+        &alice,
+        conv_uuid,
+        "edit_file",
+        json!({ "id": file_id, "old_str": "original content", "new_str": "edited content" }),
+    )
+    .await;
+    assert!(edit_body["error"].is_null(), "edit_file should succeed; body={edit_body}");
+    let edit_file_id = edit_body["result"]["structuredContent"]["file_id"]
+        .as_str()
+        .expect("file_id")
+        .to_string();
+    assert_eq!(edit_file_id, file_id, "edit must reference the same file id");
+
+    // Alice's tab receives the file/update sync event.
+    let frame = alice_probe
+        .expect_event("file", "update", Duration::from_secs(5))
+        .await;
+    assert_eq!(
+        frame.id, file_id,
+        "sync event must carry the edited file's id"
+    );
+
+    // Owner-scoped: Bob must NOT receive Alice's event.
+    bob_probe.expect_silence(Duration::from_secs(1)).await;
 }

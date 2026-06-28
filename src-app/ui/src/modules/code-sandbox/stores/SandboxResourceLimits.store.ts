@@ -4,10 +4,8 @@ import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
   type CodeSandboxResourceLimits,
-  Permissions,
   type UpdateCodeSandboxResourceLimits,
 } from '@/api-client/types'
-import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
 /**
@@ -78,9 +76,6 @@ export const useSandboxResourceLimitsStore =
         },
 
         loadLimits: async () => {
-          if (!hasPermissionNow(Permissions.CodeSandboxResourceLimitsRead)) {
-            return
-          }
           set(s => {
             s.loading = true
             s.error = null

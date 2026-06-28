@@ -28,7 +28,7 @@ export function SidebarToggleButton() {
       >
         <Button
           type="text"
-          onClick={Stores.AppLayout.toggleSidebar}
+          onClick={() => Stores.AppLayout.toggleSidebar()}
           className="flex items-center justify-center"
           style={{
             width: dimension,

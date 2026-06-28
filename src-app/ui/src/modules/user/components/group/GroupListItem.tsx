@@ -118,7 +118,7 @@ export function GroupListItem({
                 <Text className="font-medium">{group.name}</Text>
                 {group.is_system && <Tag color="orange">System</Tag>}
                 <Badge
-                  status={group.is_active ? 'success' : 'error'}
+                  status={group.is_active ? 'success' : 'default'}
                   text={group.is_active ? 'Active' : 'Inactive'}
                 />
               </Flex>

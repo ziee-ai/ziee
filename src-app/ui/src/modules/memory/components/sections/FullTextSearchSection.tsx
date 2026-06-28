@@ -194,6 +194,16 @@ export function FullTextSearchSection() {
         })
       }
       await Stores.MemoryAdmin.triggerFtsRebuild(newDictionary)
+      // Re-seed from the saved values and clear touched state so future
+      // settings refetches (sync-driven reload after rebuild completes,
+      // another admin's change) can update the form again. Without this,
+      // `isFieldsTouched()` latches `true` after the first dictionary-
+      // swap save and the form stops syncing.
+      form.setFields(
+        (Object.entries(values) as [keyof FormValues, unknown][]).map(
+          ([name, value]) => ({ name, value, touched: false }),
+        ),
+      )
       setPendingDictionary(null)
       message.info(
         'Full-text search rebuild started. New memories created during the rebuild are picked up automatically.',

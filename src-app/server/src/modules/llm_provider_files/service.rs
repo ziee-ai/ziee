@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use ai_providers::{AIProvider, FileUpload, FileUploadResponse};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -51,6 +52,17 @@ pub async fn get_or_upload_provider_file(
         ));
     }
 
+    // Extract API key early — needed for the key-rotation fingerprint
+    // comparison on cache hit AND for the upload path on cache miss.
+    let api_key = provider
+        .api_key
+        .as_ref()
+        .ok_or_else(|| {
+            AppError::bad_request("PROVIDER_NO_API_KEY", "Provider has no API key configured")
+        })?;
+
+    let current_key_fingerprint = api_key_fingerprint(api_key);
+
     // 2. Check for existing mapping. Scoped by user_id — closes
     // 06-llm-provider F-04 (defense-in-depth even though file_id is
     // globally unique, the JOIN to files makes cross-tenant access
@@ -61,7 +73,16 @@ pub async fn get_or_upload_provider_file(
         // 2a. Check if expired (Gemini 48h TTL)
         let is_expired = repository::is_file_expired(pool, file_id, provider.id, user_id).await?;
 
-        if !is_expired && mapping.upload_status == UploadStatus::Completed
+        // 2b. Detect API key rotation: if the stored fingerprint doesn't
+        //     match the current key, the cached provider_file_id belongs to
+        //     a different account and must be discarded.
+        let key_rotated = mapping
+            .provider_metadata
+            .get("api_key_fingerprint")
+            .and_then(|v| v.as_str())
+            != Some(&current_key_fingerprint);
+
+        if !is_expired && !key_rotated && mapping.upload_status == UploadStatus::Completed
             && let Some(provider_file_id) = mapping.provider_file_id {
                 // Valid mapping exists - return it
                 // Note: If provider returns "not found" error later, the caller
@@ -96,14 +117,7 @@ pub async fn get_or_upload_provider_file(
         }),
     };
 
-    // Get API key and base URL
-    let api_key = provider
-        .api_key
-        .as_ref()
-        .ok_or_else(|| {
-            AppError::bad_request("PROVIDER_NO_API_KEY", "Provider has no API key configured")
-        })?;
-
+    // Get base URL
     let base_url = provider.base_url.as_deref().unwrap_or({
         // Default base URLs for known providers
         match provider.provider_type.as_str() {
@@ -127,6 +141,7 @@ pub async fn get_or_upload_provider_file(
         file_id,
         provider.id,
         &file.filename,
+        api_key,
         upload_response,
     )
     .await?;
@@ -140,11 +155,13 @@ async fn save_upload_response(
     file_id: Uuid,
     provider_id: Uuid,
     filename: &str,
+    api_key: &str,
     upload_response: FileUploadResponse,
 ) -> Result<String, AppError> {
     let mut metadata = upload_response.metadata.unwrap_or_default();
     metadata["uploaded_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
     metadata["filename"] = serde_json::json!(filename);
+    metadata["api_key_fingerprint"] = serde_json::json!(api_key_fingerprint(api_key));
 
     if let Some(expires_at) = upload_response.expires_at {
         metadata["expires_at"] = serde_json::json!(expires_at.to_rfc3339());
@@ -160,6 +177,16 @@ async fn save_upload_response(
     .await?;
 
     Ok(upload_response.provider_file_id)
+}
+
+/// Compute a SHA-256 fingerprint of the API key for rotation detection.
+/// Stored in `provider_metadata` so cache lookups can detect that the
+/// admin has changed the provider's API key (which typically points to
+/// a different account whose file IDs are invalid with the new key).
+fn api_key_fingerprint(api_key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 /// Helper function to extract file extension. Delegates to the canonical

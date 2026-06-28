@@ -74,38 +74,7 @@ export const useWindowMinSize = (): MinSize => {
   const prevRef = useRef<MinSize | null>(null)
 
   const next = calculateMinSize(width)
-
-  // First call: no previous state, return the raw breakpoints.
-  if (!prevRef.current) {
-    prevRef.current = next
-    return next
-  }
-
-  // Apply hysteresis per breakpoint. A boolean flips only when
-  // width has moved PAST the threshold by HYSTERESIS_PX in the
-  // opposite direction from the current state.
-  //
-  //   - Was true (width was ≤ bp), stays true while width ≤ bp + HYSTERESIS_PX
-  //   - Was false (width was > bp), stays false while width > bp - HYSTERESIS_PX
-  //
-  // Anywhere in the buffer band [bp - HYSTERESIS_PX, bp + HYSTERESIS_PX]
-  // the previous value sticks.
-  const prev = prevRef.current
-  const resolved: MinSize = { ...next }
-  ;(Object.keys(breakpointValues) as Breakpoint[]).forEach(bp => {
-    const threshold = breakpointValues[bp]
-    if (prev[bp]) {
-      // Was "at or below" → only release when width > threshold + buffer
-      resolved[bp] = width <= threshold + HYSTERESIS_PX
-    } else {
-      // Was "above" → only engage when width <= threshold
-      // (no buffer needed to enter, only to exit — entering at the
-      // raw threshold matches user intuition: "I crossed 480, mobile
-      // mode should engage").
-      resolved[bp] = width <= threshold
-    }
-  })
-
+  const resolved = applyHysteresis(width, next, prevRef.current)
   prevRef.current = resolved
   return resolved
 }

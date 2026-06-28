@@ -379,17 +379,10 @@ fn is_cuda_available() -> bool {
 }
 
 fn is_cuda_available_uncached() -> bool {
-    // Try nvidia-smi command (absolute-path resolved, no PATH lookup).
-    // Closes 08-llm-local-runtime F-14 (Low). If the binary is not in
-    // any trusted dir we skip this probe and fall through to the
-    // library-existence check below.
-    if let Some(output) = probe_trusted("nvidia-smi", &[])
-        && output.status.success() {
-            tracing::debug!("nvidia-smi command succeeded");
-            return true;
-        }
-
-    // Try checking for CUDA libraries (Linux)
+    // Fast path: check for CUDA library files first (instant, no subprocess).
+    // The subprocess probe (nvidia-smi) is slower and blocks the async runtime
+    // on the init path, so it only runs as a fallback when no instant file check
+    // matches.
     #[cfg(target_os = "linux")]
     {
         if std::path::Path::new("/usr/local/cuda/lib64/libcudart.so").exists()
@@ -399,6 +392,15 @@ fn is_cuda_available_uncached() -> bool {
             return true;
         }
     }
+
+    // Fallback: try nvidia-smi command (absolute-path resolved, no PATH lookup).
+    // Closes 08-llm-local-runtime F-14 (Low). If the binary is not in
+    // any trusted dir we skip this probe.
+    if let Some(output) = probe_trusted("nvidia-smi", &[])
+        && output.status.success() {
+            tracing::debug!("nvidia-smi command succeeded");
+            return true;
+        }
 
     false
 }
@@ -451,14 +453,10 @@ fn is_rocm_available() -> bool {
 }
 
 fn is_rocm_available_uncached() -> bool {
-    // Try rocm-smi command (absolute-path resolved, no PATH lookup)
-    if let Some(output) = probe_trusted("rocm-smi", &[])
-        && output.status.success() {
-            tracing::debug!("rocm-smi command succeeded");
-            return true;
-        }
-
-    // Try checking for ROCm libraries (Linux)
+    // Fast path: check for ROCm library files first (instant, no subprocess).
+    // The subprocess probe (rocm-smi) is slower and blocks the async runtime
+    // on the init path, so it only runs as a fallback when no instant file check
+    // matches.
     #[cfg(target_os = "linux")]
     {
         if std::path::Path::new("/opt/rocm/lib/libamdhip64.so").exists()
@@ -468,6 +466,13 @@ fn is_rocm_available_uncached() -> bool {
             return true;
         }
     }
+
+    // Fallback: try rocm-smi command (absolute-path resolved, no PATH lookup)
+    if let Some(output) = probe_trusted("rocm-smi", &[])
+        && output.status.success() {
+            tracing::debug!("rocm-smi command succeeded");
+            return true;
+        }
 
     false
 }

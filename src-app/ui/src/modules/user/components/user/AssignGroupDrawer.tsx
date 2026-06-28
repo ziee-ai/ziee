@@ -1,10 +1,9 @@
-import { App, Button, Flex, Form, Select } from 'antd'
+import { App, Button, Checkbox, Flex, Form } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 
-const { Option } = Select
 
 export function AssignGroupDrawer() {
   const { message } = App.useApp()
@@ -16,14 +15,33 @@ export function AssignGroupDrawer() {
   const handleAssignGroup = async (values: any) => {
     if (!user) return
 
+    const { group_ids } = values
+    if (!group_ids || group_ids.length === 0) return
+
     try {
-      await Stores.UserGroups.assignUserToUserGroup(user.id, values.group_id)
-      message.success('User assigned to group successfully')
+      let successCount = 0
+      const errors: string[] = []
+
+      for (const groupId of group_ids) {
+        try {
+          await Stores.UserGroups.assignUserToUserGroup(user.id, groupId)
+          successCount++
+        } catch (error) {
+          const group = groups.find(g => g.id === groupId)
+          const name = group?.name ?? groupId
+          errors.push(`"${name}": ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
+      }
+
+      if (successCount > 0) {
+        message.success(`User assigned to ${successCount} group(s) successfully`)
+      }
+      errors.forEach(err => message.error(err))
+
       Stores.AssignGroupDrawer.closeAssignGroupDrawer()
       assignGroupForm.resetFields()
     } catch (error) {
       console.error('Failed to assign user to group:', error)
-      // Error is handled by the store
     }
   }
 
@@ -46,22 +64,26 @@ export function AssignGroupDrawer() {
         disabled={!canAssign}
       >
         <Form.Item
-          name="group_id"
+          name="group_ids"
           label="Select Group"
           rules={[
             {
-              required: true,
-              message: 'Please select a group',
+              validator: (_, value: string[]) => {
+                if (!value || value.length === 0) {
+                  return Promise.reject(new Error('Please select at least one group'))
+                }
+                return Promise.resolve()
+              },
             },
           ]}
         >
-          <Select placeholder="Select group to assign">
+          <Checkbox.Group className="flex flex-col gap-2">
             {groups.map(group => (
-              <Option key={group.id} value={group.id}>
+              <Checkbox key={group.id} value={group.id}>
                 {group.name}
-              </Option>
+              </Checkbox>
             ))}
-          </Select>
+          </Checkbox.Group>
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="justify-end gap-2">

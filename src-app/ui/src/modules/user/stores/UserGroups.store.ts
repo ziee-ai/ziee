@@ -17,6 +17,11 @@ import {
   emitGroupUpdated,
 } from '@/modules/user/events'
 
+// Tracks in-flight group-member fetch promises so concurrent requests for the
+// same group await the in-flight call instead of returning stale data (which
+// silently produces false negatives when a user belongs to 2+ groups).
+const pendingMemberRequests = new Map<string, Promise<void>>()
+
 interface GroupMember {
   id: string
   username: string
@@ -230,39 +235,37 @@ export const useUserGroupsStore = create<UserGroupsState>()(
       },
 
       loadUserGroupMembers: async (groupId: string) => {
+        // If a fetch for this group is already in flight, await it so the
+        // caller reads fresh data from currentGroupMembers rather than stale
+        // data that produces a false-negative membership check.
+        const inFlight = pendingMemberRequests.get(groupId)
+        if (inFlight) {
+          await inFlight
+          return
+        }
+
         try {
-          const currentState = get()
+          set({ loadingGroupMembers: true, error: null, currentGroupId: groupId })
 
-          // Skip if already loading members for the same group
-          if (
-            currentState.loadingGroupMembers &&
-            currentState.currentGroupId === groupId
-          ) {
-            return
-          }
-
-          set({
-            loadingGroupMembers: true,
-            error: null,
-            currentGroupId: groupId,
-          })
-
-          const response = await ApiClient.UserGroup.getMembers({
+          const promise = ApiClient.UserGroup.getMembers({
             group_id: groupId,
             page: 1,
             per_page: 50,
+          }).then(response => {
+            set({
+              currentGroupMembers: response.users.map(u => ({
+                id: u.id,
+                username: u.username,
+                email: u.email,
+                is_active: u.is_active,
+                joined_at: new Date().toISOString(),
+              })),
+              loadingGroupMembers: false,
+            })
           })
 
-          set({
-            currentGroupMembers: response.users.map(u => ({
-              id: u.id,
-              username: u.username,
-              email: u.email,
-              is_active: u.is_active,
-              joined_at: new Date().toISOString(),
-            })),
-            loadingGroupMembers: false,
-          })
+          pendingMemberRequests.set(groupId, promise)
+          await promise
         } catch (error) {
           set({
             error:
@@ -272,6 +275,8 @@ export const useUserGroupsStore = create<UserGroupsState>()(
             loadingGroupMembers: false,
           })
           throw error
+        } finally {
+          pendingMemberRequests.delete(groupId)
         }
       },
 

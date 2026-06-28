@@ -52,6 +52,16 @@ export function ChunkingSection() {
   const handleSubmit = async (values: FormValues) => {
     if (values.chunk_overlap_chars >= values.chunk_chars) {
       message.error('Overlap must be smaller than the chunk size.')
+      form.setFields([
+        {
+          name: 'chunk_chars',
+          errors: ['Must be larger than the overlap'],
+        },
+        {
+          name: 'chunk_overlap_chars',
+          errors: ['Must be smaller than the chunk size'],
+        },
+      ])
       return
     }
     try {

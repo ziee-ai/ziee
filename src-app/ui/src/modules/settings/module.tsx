@@ -1,5 +1,6 @@
 import { createModule } from '@/core'
 import { SettingOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
 import { SettingsLayoutDef } from './SettingsLayout'
 
 // Bare /settings renders no content of its own — SettingsPage (provided by the
@@ -37,6 +38,7 @@ export default createModule({
         label: 'Settings',
         path: '/settings',
         order: 100,
+        permission: Permissions.ProfileRead,
       },
     ],
   },

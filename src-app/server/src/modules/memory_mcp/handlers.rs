@@ -362,7 +362,7 @@ async fn remember(
                     .map(|m| m.name)
                     .unwrap_or_else(|| emb_model_id.to_string());
                 let v = HalfVector::from_f32_slice(&vec);
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
                 )
                 .bind(&v)
@@ -370,7 +370,14 @@ async fn remember(
                 .bind(row.id)
                 .bind(user_id)
                 .execute(&pool)
-                .await;
+                .await
+                {
+                    tracing::warn!(
+                        error = %e,
+                        memory_id = %row.id,
+                        "failed to write embedding back to user_memories (best-effort, memory was already stored)"
+                    );
+                }
             }
         }
     }

@@ -11,8 +11,9 @@
 // imports anything from `@/modules/file/`.
 
 import { useState } from 'react'
-import { Button, Typography } from 'antd'
+import { Button, Spin, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
+import { Stores } from '@/core/stores'
 import {
   DrawerOpenerProvider,
   ProjectExtensionSlot,
@@ -23,6 +24,12 @@ const { Text } = Typography
 export function ProjectKnowledgeSection() {
   const [open, setOpen] = useState(false)
   const openDrawer = () => setOpen(true)
+  const loading = Stores.ProjectDetail.loading
+  const project = Stores.ProjectDetail.project
+
+  // Don't render anything when no project is loaded and nothing is loading
+  // (defense-in-depth — the parent page typically gates on this already).
+  if (!project && !loading) return null
 
   return (
     <DrawerOpenerProvider open={openDrawer}>
@@ -43,12 +50,20 @@ export function ProjectKnowledgeSection() {
 
       {/* Inline preview surface — stacks all kinds' inlinePreview
           components top-to-bottom (file today; URLs/notes/etc. in
-          the future). */}
+          the future). Shows a loading spinner while the project is
+          being fetched (child inline-preview components return null
+          when the project data is not yet ready). */}
       <div className="flex flex-col gap-4">
-        <ProjectExtensionSlot
-          name="knowledge_kinds"
-          view="inlinePreview"
-        />
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Spin />
+          </div>
+        ) : (
+          <ProjectExtensionSlot
+            name="knowledge_kinds"
+            view="inlinePreview"
+          />
+        )}
       </div>
 
       {/* Management drawer — stacks all kinds' managePanel components

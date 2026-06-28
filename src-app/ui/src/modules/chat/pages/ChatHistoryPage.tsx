@@ -116,17 +116,16 @@ export default function ChatHistoryPage() {
 
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden items-center">
+        {/* Body search box — always rendered when narrow + opened via
+         * header button, so it works even in the empty state. */}
+        {isNarrow && searchOpenInNarrow && (
+          <div className="w-full max-w-4xl self-center px-3 pt-3">
+            <div ref={bodySearchRef} />
+          </div>
+        )}
         {/* Show ConversationList if there are conversations or loading */}
         {(conversations.length > 0 || loading) && (
           <div className="flex flex-1 flex-col w-full justify-center overflow-hidden">
-            {/* Body search box — only when narrow + opened via header
-              * button. In wide mode this slot is empty and the search
-              * input lives in the header instead. */}
-            {isNarrow && searchOpenInNarrow && (
-              <div className="w-full max-w-4xl self-center px-3 pt-3">
-                <div ref={bodySearchRef} />
-              </div>
-            )}
             <DivScrollY className="h-full flex flex-col">
               <ConversationList
                 getSearchBoxContainer={getSearchBoxContainer}

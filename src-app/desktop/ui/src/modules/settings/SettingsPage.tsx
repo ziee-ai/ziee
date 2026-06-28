@@ -9,12 +9,14 @@
  * What this file does differently:
  *   1. Collapses both `settingsUserPages` and `settingsAdminPages` into a
  *      single flat menu (no section divider, no "Admin Settings" header).
- *   2. Filters BOTH slot lists through `HIDDEN_ITEMS` — entries whose `id`
- *      is in the set never appear in the menu.
- *   3. Combined desktop modules (memory-desktop, llm-providers-desktop)
- *      register their own entry; HIDDEN_ITEMS removes the equivalent
- *      core entries so the user sees one combined "Memory" and one
- *      "LLM Providers" instead of duplicates.
+ *   2. Filters BOTH slot lists through a computed set — entries whose `id`
+ *      is hidden never appear in the menu. The set starts with a static
+ *      list of multi-user-only page IDs, then auto-derives desktop-
+ *      replacement entries from slot registrations: any core entry
+ *      whose id has a counterpart ending in `-desktop` is suppressed.
+ *   3. Combined desktop modules (e.g. memory-desktop) register their own
+ *      entry; the auto-derivation removes the equivalent core entries
+ *      so the user sees one combined "Memory" instead of duplicates.
  *
  * If core's SettingsPage gains a feature that ALL settings UIs need
  * (e.g. a new layout primitive), re-sync the layout shell below — keep
@@ -29,53 +31,42 @@ import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect, useRef } from 'react'
 import { Stores } from '@/core/stores'
 
-// Slot entries (in EITHER `settingsUserPages` or `settingsAdminPages`)
-// whose `id` is in this set are hidden from the desktop menu.
+// Settings page entries that are specific to multi-user SaaS features
+// with no equivalent on single-admin desktop. These are explicitly
+// listed because they have no desktop counterpart to auto-derive from.
 //
 //  - Multi-user RBAC surfaces (no role on a single-admin desktop):
 //    users, user-groups, auth-providers.
-//  - Core's user+admin pair for Memory (both register id='memory'):
-//    hidden so the combined `memory-desktop` slot is the only one shown.
-//  - `user-llm-providers`: lets a non-admin OVERRIDE the admin-set API
-//    key with their own. On single-admin desktop there's no admin/user
-//    split — the admin sets keys directly on the admin LLM Providers
-//    page. The user-side entry is therefore redundant.
-//  - `assistant-templates`: templates exist to seed a fleet of users
-//    with starter assistants. On a single-user device there's no fleet
-//    — just create personal assistants directly. The `assistants`
-//    (user "My Assistants") page is the one we keep visible.
-//  - `mcp-servers`: the personal/user MCP page. Hidden on desktop in
-//    favour of `mcp-admin` (System MCP). A desktop-only event handler
-//    `Desktop::AutoAssignMcpServer` auto-assigns every new system MCP
-//    server to every user group so the single admin sees them in chat
-//    without any manual assignment step. The mirror of the existing
-//    `Desktop::AutoAssignProvider` pattern for LLM providers.
-//  - `profile`: account display name + password page. The single
-//    desktop admin is auto-provisioned with a fixed username
-//    ("admin") and uses Tauri's auto-login; there is no profile to
-//    present or edit at the application layer.
+//  - `user-llm-providers`: lets a non-admin override the admin-set API
+//    key with their own. On single-admin desktop there's no split.
+//  - `assistant-templates`: templates seed a fleet. On single-user
+//    desktop there's no fleet — use `assistants` (kept visible).
+//  - `mcp-servers`: personal/user MCP. Hidden on desktop in favour of
+//    `mcp-admin` (System MCP, kept visible). The page's per-row group-
+//    assignment widget + user-policy card are hidden via
+//    `Stores.AppMode.multiUserMode` (false on desktop).
+//  - `profile`: account display name + password. The single desktop
+//    admin is auto-provisioned with a fixed username and uses Tauri's
+//    auto-login; no profile to present or edit.
 //
-// Note (2026-06): `mcp-admin` is SHOWN on desktop. The desktop user
-// IS the admin; the System MCP page is the single source of truth for
-// MCP installs. The page's per-row group-assignment widget + user-
-// policy card are individually hidden via `Stores.AppMode.multiUserMode`
-// (set to false by the desktop UI bootstrap).
-const HIDDEN_ITEMS = new Set([
+// Core entries that DO have a desktop counterpart (e.g. `memory` and
+// `memory-admin` replaced by `memory-desktop`) are NOT listed here.
+// They are auto-derived from slot registrations below — a desktop
+// module with id ending in `-desktop` automatically suppresses the
+// matching core `{base}` and `{base}-admin` entries.
+const DESKTOP_INAPPROPRIATE_IDS = new Set([
   'users',
   'user-groups',
   'assistant-templates',
   'auth-providers',
-  'memory',
-  'memory-admin',
   'user-llm-providers',
   'mcp-servers',
   'profile',
 ])
 
-// Re-export so the Remote Access desktop module (and any future
-// desktop-only module) can verify against the filter set during
-// tests without depending on the page component.
-export { HIDDEN_ITEMS as DESKTOP_HIDDEN_SETTING_IDS }
+// Re-export so desktop modules can verify against the static filter
+// set during tests without depending on the page component.
+export { DESKTOP_INAPPROPRIATE_IDS as DESKTOP_HIDDEN_SETTING_IDS }
 
 // Label remap applied to the desktop settings menu only. On desktop
 // the user MCP page is hidden, so the System MCP page is THE MCP
@@ -102,14 +93,31 @@ export default function SettingsPage() {
 
   const { slots } = Stores.ModuleSystem
 
-  // Apply HIDDEN_ITEMS to BOTH slot lists (single-admin desktop doesn't
+  // Compute the effective filter: start with multi-user-only IDs, then
+  // auto-hide any core entry whose id has a desktop counterpart
+  // (registered with id ending in `-desktop`). This decouples the
+  // desktop SettingsPage from knowing specific core settings page IDs:
+  // adding a new desktop module auto-suppresses its core counterpart.
+  const hiddenItems = new Set(DESKTOP_INAPPROPRIATE_IDS)
+  for (const entry of [
+    ...(slots.get('settingsUserPages') || []),
+    ...(slots.get('settingsAdminPages') || []),
+  ]) {
+    if (entry.id.endsWith('-desktop')) {
+      const base = entry.id.slice(0, -'-desktop'.length)
+      hiddenItems.add(base)
+      hiddenItems.add(`${base}-admin`)
+    }
+  }
+
+  // Apply hiddenItems to BOTH slot lists (single-admin desktop doesn't
   // care about the user/admin distinction; what matters is the id).
   const userSettingsItems = (slots.get('settingsUserPages') || [])
-    .filter(item => !HIDDEN_ITEMS.has(item.id))
+    .filter(item => !hiddenItems.has(item.id))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   const adminSettingsItems = (slots.get('settingsAdminPages') || [])
-    .filter(item => !HIDDEN_ITEMS.has(item.id))
+    .filter(item => !hiddenItems.has(item.id))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   // Build final menu (no sections in desktop app)

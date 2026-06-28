@@ -54,6 +54,7 @@ export function MaintenanceSection() {
       <Form layout="horizontal" disabled={!canManage}>
         <Form.Item label="Backfill existing files" colon={false}>
           <Button
+            data-testid="backfill-button"
             icon={<DatabaseOutlined />}
             loading={triggeringBackfill}
             disabled={!settings.enabled || !canManage}

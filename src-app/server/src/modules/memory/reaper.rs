@@ -42,7 +42,7 @@ pub async fn run_reaper_loop(pool: PgPool) {
     }
 }
 
-async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
+pub async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
     // Read the live grace window. On error (transient DB blip), fall
     // back to the previous default so a sweep is never silently
     // skipped — better to delete on the conservative 30d window than

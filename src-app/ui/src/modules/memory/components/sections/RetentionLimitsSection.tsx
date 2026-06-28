@@ -25,8 +25,10 @@ interface FormValues {
  * Retention + extraction quota. Own form.
  */
 export function RetentionLimitsSection() {
-  const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
-  const canManage = usePermission(MANAGE_PERM)
+  const readPermitted = usePermission(READ_PERM)
+  const managePermitted = usePermission(MANAGE_PERM)
+  const canRead = readPermitted || managePermitted
+  const canManage = managePermitted
   const { settings, saving } = Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
 
@@ -69,7 +71,7 @@ export function RetentionLimitsSection() {
   }
 
   return (
-    <Card title="Retention &amp; extraction limits">
+    <Card title="Retention & extraction limits">
       <Form
         name="memory-admin-retention-form"
         form={form}

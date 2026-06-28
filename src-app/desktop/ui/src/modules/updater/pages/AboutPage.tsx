@@ -24,7 +24,7 @@ import {
   RocketOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { SettingsPageContainer } from '@ziee/ui-core/modules/settings/components/SettingsPageContainer'
 
 const { Text, Paragraph } = Typography
 

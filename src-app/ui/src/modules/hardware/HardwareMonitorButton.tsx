@@ -30,7 +30,7 @@ export function HardwareMonitorButton() {
       const popup = window.open(
         window.location.origin + '/hardware-monitor',
         'hardware-monitor', // Same name → focuses existing popup
-        'width=800,height=600,scrollbars=yes,resizable=yes,menubar=no,toolbar=no',
+        'noopener=yes,noreferrer=yes,width=800,height=600,scrollbars=yes,resizable=yes,menubar=no,toolbar=no',
       )
       if (popup) {
         popup.focus()

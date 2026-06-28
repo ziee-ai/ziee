@@ -238,7 +238,13 @@ impl Drop for OrphanFileCleanup {
         };
         let file_id = self.file_id;
         let user_id = self.user_id;
-        handle.spawn(async move {
+        // block_in_place is required: Handle::block_on panics when called
+        // from an async context on a multi-thread runtime.  block_in_place
+        // yields the current worker thread so block_on can safely re-enter
+        // the runtime on this thread.  Mirrors the pattern in
+        // core/database/mod.rs::run_cleanup_blocking.
+        tokio::task::block_in_place(move || {
+            handle.block_on(async move {
             tracing::info!(
                 %file_id, %user_id,
                 "OrphanFileCleanup: deleting orphaned file (attach failed or future cancelled)"
@@ -272,6 +278,7 @@ impl Drop for OrphanFileCleanup {
                     "OrphanFileCleanup: orphaned file deleted successfully"
                 );
             }
+        });
         });
     }
 }

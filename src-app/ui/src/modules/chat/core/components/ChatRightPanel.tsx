@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button, Empty, Tabs, Typography, theme } from 'antd'
 import { CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
@@ -98,24 +98,67 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
   )
 }
 
+function handleDrawerKeyDown(
+  e: React.KeyboardEvent,
+  drawerRef: React.RefObject<HTMLDivElement | null>,
+  onClose: () => void,
+) {
+  if (e.key === 'Escape') {
+    e.stopPropagation()
+    onClose()
+    return
+  }
+  if (e.key === 'Tab' && drawerRef.current) {
+    const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )
+    if (focusable.length === 0) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+}
+
 export function ChatRightPanel() {
   const panelRef = useRef<HTMLDivElement>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
   const { token } = theme.useToken()
   const { rightPanel } = Stores.Chat
   const { sm: isMobile } = useWindowMinSize()
 
   const isOpen = rightPanel.tabs.length > 0 && rightPanel.activeId !== null
   const panelWidth = rightPanel.panelWidth
+  const showDrawer = rightPanel.mobileDrawerOpen && rightPanel.tabs.length > 0 && rightPanel.activeId !== null
+
+  // Mobile drawer: auto-focus the close button when opened for screen reader announcement
+  useEffect(() => {
+    if (showDrawer && drawerRef.current) {
+      const closeBtn = drawerRef.current.querySelector<HTMLElement>('[data-testid="chat-right-panel-close"]')
+      if (closeBtn) {
+        closeBtn.focus()
+      }
+    }
+  }, [showDrawer])
 
   // Mobile: full-screen fixed overlay so it covers the entire page including header
   if (isMobile) {
-    const showDrawer = rightPanel.mobileDrawerOpen && rightPanel.tabs.length > 0 && rightPanel.activeId !== null
     if (!showDrawer) return null
     return (
       <div
+        ref={drawerRef}
         className="fixed inset-0 z-[1000] flex flex-col"
         style={{ backgroundColor: token.colorBgLayout }}
         data-testid="chat-right-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Chat panel"
+        onKeyDown={e => handleDrawerKeyDown(e, drawerRef, Stores.Chat.closeMobileDrawer)}
       >
         <PanelTabs onCloseAll={Stores.Chat.closeMobileDrawer} />
         <div className="flex-1 overflow-hidden">

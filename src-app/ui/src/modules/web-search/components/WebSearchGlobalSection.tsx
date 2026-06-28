@@ -140,7 +140,7 @@ export function WebSearchGlobalSection() {
       >
         <Form.Item
           name="enabled"
-          label="Enabled"
+          label="Enable web search"
           valuePropName="checked"
           extra="Master switch. Even when on, web tools only attach to a chat once a provider in the chain is configured."
         >

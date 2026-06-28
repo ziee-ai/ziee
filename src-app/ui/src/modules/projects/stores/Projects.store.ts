@@ -248,6 +248,14 @@ export const useProjectsStore = create<ProjectsState>()(
         },
 
         attachConversation: async (projectId, conversationId) => {
+          // Query the conversation's current project BEFORE updating,
+          // so the event carries the correct `fromProjectId` (needed by
+          // listeners that track per-conversation project membership).
+          const currentProject = await ApiClient.Project.forConversation({
+            conversation_id: conversationId,
+          })
+          const fromProjectId = currentProject?.id ?? null
+
           // API call + event only. The chat extension at
           // `projects/chat-extension/` subscribes to the emitted
           // event and patches chat-side state — keeps this module
@@ -256,7 +264,11 @@ export const useProjectsStore = create<ProjectsState>()(
             id: projectId,
             conversation_id: conversationId,
           })
-          await emitProjectConversationAttached(projectId, conversationId, null)
+          await emitProjectConversationAttached(
+            projectId,
+            conversationId,
+            fromProjectId,
+          )
           return response
         },
 

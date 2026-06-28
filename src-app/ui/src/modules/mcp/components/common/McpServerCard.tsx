@@ -295,6 +295,7 @@ export function McpServerCard({
                       <Button
                         icon={<DeleteOutlined />}
                         danger
+                        disabled={server.enabled}
                         onClick={e => {
                           e.stopPropagation()
                           if (server.enabled) {

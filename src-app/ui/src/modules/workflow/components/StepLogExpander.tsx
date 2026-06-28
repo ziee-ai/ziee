@@ -1,4 +1,4 @@
-import { App, Button, Collapse, Spin, Typography } from 'antd'
+import { App, Collapse, Spin, Typography } from 'antd'
 import { useState } from 'react'
 import { ApiClient } from '@/api-client'
 
@@ -74,9 +74,9 @@ export function StepLogExpander({
         {
           key: kind,
           label: (
-            <Button type="link" size="small" className="!px-0">
+            <span className="text-xs text-[var(--ant-color-link)]">
               {label}
-            </Button>
+            </span>
           ),
           children: loading ? (
             <Spin size="small" />

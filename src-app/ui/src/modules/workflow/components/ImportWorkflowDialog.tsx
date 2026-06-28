@@ -92,6 +92,7 @@ export function ImportWorkflowDialog({
     <Modal
       open={open}
       title="Import Workflow"
+      closable={{ closeIcon: true }}
       onCancel={() => {
         reset()
         onClose()

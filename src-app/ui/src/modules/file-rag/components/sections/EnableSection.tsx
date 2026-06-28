@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Switch, message } from 'antd'
+import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Spin, Switch, message } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -45,7 +45,15 @@ export function EnableSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings) {
+    return (
+      <Card title="Document search">
+        <div className="flex justify-center py-16">
+          <Spin />
+        </div>
+      </Card>
+    )
+  }
 
   const handleSubmit = async (values: FormValues) => {
     try {

@@ -57,7 +57,17 @@ pub async fn read_mocks(
 ) -> std::collections::HashMap<String, Value> {
     let path = sandbox_workspace.join("mocks.json");
     match tokio::fs::read(&path).await {
-        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+        Ok(bytes) => match serde_json::from_slice(&bytes) {
+            Ok(map) => map,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "read_mocks: corrupt mocks.json; treating as empty"
+                );
+                std::collections::HashMap::new()
+            }
+        },
         Err(_) => std::collections::HashMap::new(),
     }
 }
@@ -181,10 +191,13 @@ pub async fn file_size(host_path: &PathBuf) -> Result<u64, AppError> {
 
 /// Drain an open AsyncRead into a Vec, capped at STEP_OUTPUT_CAP_BYTES.
 pub async fn drain_to_string(file: &mut tokio::fs::File) -> Result<String, AppError> {
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).await.map_err(|e| {
-        AppError::internal_error(format!("workflow file_io: read step output: {e}"))
-    })?;
+    let mut buf = Vec::with_capacity(STEP_OUTPUT_CAP_BYTES.min(8192) as usize);
+    file.take(STEP_OUTPUT_CAP_BYTES as u64)
+        .read_to_end(&mut buf)
+        .await
+        .map_err(|e| {
+            AppError::internal_error(format!("workflow file_io: read step output: {e}"))
+        })?;
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 

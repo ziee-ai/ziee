@@ -140,6 +140,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
                 disabled={installing}
                 menu={adminMenu}
                 onClick={handleInstallForMe}
+                data-testid="hub-workflow-install-btn"
               >
                 Install
               </Dropdown.Button>
@@ -150,6 +151,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
                 loading={installing}
                 disabled={state !== 'none'}
                 onClick={handleInstallForMe}
+                data-testid="hub-workflow-install-btn"
               >
                 Install for me
               </Button>

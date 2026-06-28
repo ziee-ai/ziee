@@ -1,4 +1,4 @@
-import { Alert, Modal, Statistic, Table, Typography } from 'antd'
+import { Alert, Modal, Spin, Statistic, Table, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import type { DryRunResult, DryRunStep, Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -56,6 +56,7 @@ export function DryRunPreviewDialog({
       footer={null}
       width={640}
     >
+      {loading && <Spin className="block my-8 mx-auto" />}
       {error && <Alert type="error" title={error} showIcon />}
       {result && (
         <div className="flex flex-col gap-3">

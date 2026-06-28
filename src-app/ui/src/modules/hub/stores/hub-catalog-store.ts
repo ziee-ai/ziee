@@ -104,7 +104,10 @@ export const useHubCatalogStore = create<HubCatalogState>()(
           // reads this store for ANY hub user, so a hub-but-not-models
           // user (e.g. MCP-only) would 403. Short-circuit; the catalog
           // stays null and consumers degrade.
-          if (!hasPermissionNow(Permissions.HubModelsRead)) return
+          if (!hasPermissionNow(Permissions.HubModelsRead)) {
+            set({ error: 'You do not have permission to view hub models.' })
+            return
+          }
           set({ loading: true, error: null })
           try {
             const catalog = await ApiClient.Hub.getCatalog()

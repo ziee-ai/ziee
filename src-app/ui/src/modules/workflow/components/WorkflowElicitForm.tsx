@@ -2,6 +2,7 @@ import { FormOutlined } from '@ant-design/icons'
 import {
   Alert,
   Button,
+  DatePicker,
   Form,
   Input,
   InputNumber,
@@ -10,6 +11,7 @@ import {
   Typography,
 } from 'antd'
 import type { FormInstance } from 'antd/es/form'
+import dayjs, { type Dayjs } from 'dayjs'
 import { useState } from 'react'
 import type { SSEElicitationRequiredData } from '@/api-client/types'
 import { EditableArrayTable } from './EditableArrayTable'
@@ -38,6 +40,7 @@ function renderField(
   disabled: boolean,
 ): React.ReactNode {
   const label = field.title || name
+  const testId = 'elicitation-field-' + name
   const rules = fieldRules(field, required, label)
 
   // Array-of-objects (or an explicit ui.widget==='table') → editable table.
@@ -67,6 +70,58 @@ function renderField(
     )
   }
 
+  // Multi-Select for primitive arrays with enum/anyOf/oneOf items
+  if (
+    field.type === 'array' &&
+    ((field.items as Record<string, unknown>)?.enum ||
+      (field.items as Record<string, unknown>)?.anyOf ||
+      (field.items as Record<string, unknown>)?.oneOf)
+  ) {
+    const items = field.items as Record<string, unknown>
+    const opts: Array<{ value: unknown; label: string }> = []
+    if (items.enum) {
+      const enumArr = items.enum as unknown[]
+      opts.push(...enumArr.map((v: unknown) => ({ value: v, label: String(v) })))
+    } else {
+      const choices = (items.anyOf ?? items.oneOf) as Array<{ const: string; title?: string }> | undefined
+      if (choices) {
+        opts.push(...choices.map(c => ({ value: c.const, label: c.title ?? c.const })))
+      }
+    }
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={rules.length > 0 ? rules : undefined}
+        extra={field.description}
+      >
+        <Select mode="multiple" options={opts} data-testid={testId} />
+      </Form.Item>
+    )
+  }
+
+  // Single Select with anyOf/oneOf titled choices
+  const anyOfArr = (field as Record<string, unknown>).anyOf as Array<{ const: string; title?: string }> | undefined
+  const oneOfArr = (field as Record<string, unknown>).oneOf as Array<{ const: string; title?: string }> | undefined
+  if (anyOfArr || oneOfArr) {
+    const choices = anyOfArr ?? oneOfArr!
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={rules.length > 0 ? rules : undefined}
+        extra={field.description}
+      >
+        <Select
+          options={choices.map(c => ({ value: c.const, label: c.title ?? c.const }))}
+          data-testid={testId}
+        />
+      </Form.Item>
+    )
+  }
+
   if (field.enum) {
     return (
       <Form.Item
@@ -78,6 +133,7 @@ function renderField(
       >
         <Select
           options={field.enum.map(v => ({ value: v, label: String(v) }))}
+          data-testid={testId}
         />
       </Form.Item>
     )
@@ -92,7 +148,7 @@ function renderField(
         extra={field.description}
         rules={rules.length > 0 ? rules : undefined}
       >
-        <Switch />
+        <Switch data-testid={testId} />
       </Form.Item>
     )
   }
@@ -110,10 +166,86 @@ function renderField(
           max={field.maximum}
           precision={field.type === 'integer' ? 0 : undefined}
           style={{ width: '100%' }}
+          data-testid={testId}
         />
       </Form.Item>
     )
   }
+
+  // Format-specific branches
+  const fmt = (field as Record<string, unknown>).format as string | undefined
+  if (fmt === 'date') {
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={rules.length > 0 ? rules : undefined}
+        extra={field.description}
+      >
+        <DatePicker format="YYYY-MM-DD" data-testid={testId} />
+      </Form.Item>
+    )
+  }
+  if (fmt === 'date-time') {
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={rules.length > 0 ? rules : undefined}
+        extra={field.description}
+      >
+        <DatePicker showTime format="YYYY-MM-DD HH:mm:ss" data-testid={testId} />
+      </Form.Item>
+    )
+  }
+  if (fmt === 'password') {
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={rules.length > 0 ? rules : undefined}
+        extra={field.description}
+      >
+        <Input.Password data-testid={testId} />
+      </Form.Item>
+    )
+  }
+  if (fmt === 'email') {
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={[
+          ...rules,
+          { type: 'email', message: `${label} must be a valid email address` },
+        ]}
+        extra={field.description}
+      >
+        <Input type="email" data-testid={testId} />
+      </Form.Item>
+    )
+  }
+  if (fmt === 'uri') {
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={[
+          ...rules,
+          { type: 'url', message: `${label} must be a valid URL` },
+        ]}
+        extra={field.description}
+      >
+        <Input type="url" data-testid={testId} />
+      </Form.Item>
+    )
+  }
+
   return (
     <Form.Item
       key={name}
@@ -122,7 +254,7 @@ function renderField(
       rules={rules.length > 0 ? rules : undefined}
       extra={field.description}
     >
-      <Input />
+      <Input type="text" data-testid={testId} />
     </Form.Item>
   )
 }
@@ -162,8 +294,18 @@ export function WorkflowElicitForm({
           }
         }
       }
+      // Convert Dayjs values to ISO strings before submitting
+      const submitValues: Record<string, unknown> = {}
+      for (const [key, val] of Object.entries(values)) {
+        if (val != null && dayjs.isDayjs(val)) {
+          const fmt = (properties[key] as Record<string, unknown>)?.format as string | undefined
+          submitValues[key] = fmt === 'date' ? (val as Dayjs).format('YYYY-MM-DD') : (val as Dayjs).toISOString()
+        } else {
+          submitValues[key] = val
+        }
+      }
       setError(null)
-      onSubmit(values)
+      onSubmit(submitValues)
     } catch {
       setError('Please fix the highlighted fields')
     }
@@ -215,6 +357,7 @@ export function WorkflowElicitForm({
             size="small"
             loading={submitting}
             onClick={handleSubmit}
+            data-testid="elicitation-submit"
           >
             Submit
           </Button>

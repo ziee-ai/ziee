@@ -36,7 +36,7 @@ export function AddProviderMenu({ onPick, existingNames, disabled }: Props) {
 
   return (
     <Dropdown menu={{ items }} disabled={isDisabled}>
-      <Tooltip title="Add authentication provider">
+      <Tooltip title={allTaken ? 'All providers taken' : 'Add authentication provider'}>
         <Button
           type="text"
           icon={<PlusOutlined />}

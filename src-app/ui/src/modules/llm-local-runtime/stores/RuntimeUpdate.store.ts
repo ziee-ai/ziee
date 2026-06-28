@@ -20,6 +20,9 @@ interface RuntimeUpdateState {
   __init__?: {
     __store__: () => void
   }
+  // Cleanup — removes the event listeners added by __init__.__store__
+  // so they don't accumulate across mount/unmount cycles.
+  __destroy__?: () => void
 }
 
 export const useRuntimeUpdateStore = create<RuntimeUpdateState>((set) => ({
@@ -120,5 +123,8 @@ export const useRuntimeUpdateStore = create<RuntimeUpdateState>((set) => ({
         'RuntimeUpdateStore',
       )
     },
+  },
+  __destroy__: () => {
+    Stores.EventBus.removeGroupListeners('RuntimeUpdateStore')
   },
 }))

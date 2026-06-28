@@ -27,7 +27,12 @@ export interface LayoutDefinition<TOptions = any> {
 export interface RouteConfig<
   TLayout extends LayoutDefinition<any> | undefined = undefined,
 > {
-  /** Route path (e.g., "/chat", "/settings") */
+  /**
+   * Route path (e.g., "/chat", "/settings").
+   * Supports React Router dynamic segments (":param") and optional
+   * segments (":param?"), e.g. "/chat/:conversationId",
+   * "/projects/:projectId", "/settings/llm-providers/:providerId?".
+   */
   path: string
 
   /** Route element - React component (lazy or eager) */

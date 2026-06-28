@@ -47,7 +47,11 @@ export function AdminSkillGroupAssignment({
   useEffect(() => {
     // Effect context → use `.__state` (the `Stores.X.*` proxy is
     // render-only; it calls hooks on access).
-    void Stores.SystemSkill.__state.loadGroups(skillId)
+    const state = Stores.SystemSkill.__state
+    const existing = state.groups[skillId]
+    // Skip re-fetch on re-mount if groups are already loaded or loading.
+    if (existing) return
+    void state.loadGroups(skillId)
   }, [skillId])
 
   const startEdit = async () => {

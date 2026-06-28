@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { message } from 'antd'
 import { createStoreProxy } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import type { ProviderWithModels } from '@/api-client/types'
@@ -72,11 +73,17 @@ export const useApiKeysStepStore = create<ApiKeysStepStore>()(
       },
 
       saveKey: async (providerId: string, apiKey: string) => {
-        await ApiClient.LlmProvider.saveUserApiKey(
-          { provider_id: providerId, api_key: apiKey },
-          undefined,
-        )
-        await get().loadProviders()
+        try {
+          await ApiClient.LlmProvider.saveUserApiKey(
+            { provider_id: providerId, api_key: apiKey },
+            undefined,
+          )
+          await get().loadProviders()
+          message.success('API key saved')
+        } catch (error: any) {
+          message.error(error.message || 'Failed to save API key')
+          throw error
+        }
       },
 
       reset: () => {

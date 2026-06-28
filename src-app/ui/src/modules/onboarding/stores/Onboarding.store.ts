@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { createStoreProxy } from '@/core/stores'
+import { createStoreProxy, Stores } from '@/core/stores'
+import type { BaseEvent } from '@/core/events'
 import { ApiClient } from '@/api-client'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 
@@ -97,6 +98,7 @@ export const useOnboardingStore = create<OnboardingStore>()(
           draft.completedGuideIds = progress.completed_guide_ids
           draft.completedStepIds = progress.completed_step_ids
         })
+        await Stores.EventBus.emit({ type: 'onboarding.guide_completed', data: { guideId } })
       },
 
       completeStep: async (guideId: string, stepId: string) => {
@@ -108,6 +110,7 @@ export const useOnboardingStore = create<OnboardingStore>()(
           draft.completedGuideIds = progress.completed_guide_ids
           draft.completedStepIds = progress.completed_step_ids
         })
+        await Stores.EventBus.emit({ type: 'onboarding.step_completed', data: { guideId, stepId } })
       },
 
       __init__: {
@@ -148,5 +151,23 @@ export const useOnboardingStore = create<OnboardingStore>()(
     })),
   ),
 )
+
+// Events
+export interface OnboardingGuideCompletedEvent extends BaseEvent {
+  type: 'onboarding.guide_completed'
+  data: { guideId: string }
+}
+
+export interface OnboardingStepCompletedEvent extends BaseEvent {
+  type: 'onboarding.step_completed'
+  data: { guideId: string; stepId: string }
+}
+
+declare module '@/core/events' {
+  interface AppEvents {
+    'onboarding.guide_completed': OnboardingGuideCompletedEvent
+    'onboarding.step_completed': OnboardingStepCompletedEvent
+  }
+}
 
 export const OnboardingStoreProxy = createStoreProxy(useOnboardingStore)

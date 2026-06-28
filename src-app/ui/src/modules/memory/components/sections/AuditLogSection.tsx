@@ -1,8 +1,9 @@
 import {
+  Button,
   Card,
   Empty,
+  Form,
   InputNumber,
-  Space,
   Spin,
   Table,
   Tag,
@@ -17,6 +18,10 @@ const { Text, Paragraph } = Typography
 
 const READ_PERM = Permissions.MemoryRead
 
+interface FormValues {
+  limit: number
+}
+
 /**
  * Append-only audit log of memory operations on the viewing user's
  * account. Read-only; hidden if no `memory::read`.
@@ -24,8 +29,13 @@ const READ_PERM = Permissions.MemoryRead
 export function AuditLogSection() {
   const canRead = usePermission(READ_PERM)
   const { entries, loading, limit } = Stores.MemoryAudit
+  const [form] = Form.useForm<FormValues>()
 
   if (!canRead) return null
+
+  const handleSubmit = (values: FormValues) => {
+    Stores.MemoryAudit.setLimit(values.limit)
+  }
 
   return (
     <Card title="Audit log">
@@ -35,18 +45,22 @@ export function AuditLogSection() {
         assistant&rsquo;s tools added, and what you deleted (and when).
       </Paragraph>
 
-      <Space className="mb-4" align="center">
-        <Text>Show last</Text>
-        <InputNumber
-          min={1}
-          max={500}
-          value={limit}
-          onChange={v =>
-            Stores.MemoryAudit.setLimit(typeof v === 'number' ? v : 100)
-          }
-        />
-        <Text>entries</Text>
-      </Space>
+      <Form
+        form={form}
+        layout="inline"
+        initialValues={{ limit }}
+        onFinish={handleSubmit}
+        className="mb-4"
+      >
+        <Form.Item name="limit" label="Show last">
+          <InputNumber min={1} max={500} />
+        </Form.Item>
+        <Form.Item>
+          <Button type="primary" htmlType="submit">
+            Apply
+          </Button>
+        </Form.Item>
+      </Form>
 
       {loading ? (
         <div className="flex justify-center py-6">

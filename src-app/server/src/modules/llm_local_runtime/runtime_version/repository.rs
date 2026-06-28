@@ -102,13 +102,14 @@ pub async fn get_by_engine_and_version(
     }))
 }
 
-/// List all runtime versions
+/// List all runtime versions (bounded at 200 to prevent unbounded queries)
 pub async fn list_all(pool: &PgPool) -> Result<Vec<RuntimeVersion>, sqlx::Error> {
     let records = sqlx::query!(
         r#"SELECT id, engine, version, platform, arch, backend, binary_path,
                   is_system_default, created_at
            FROM llm_runtime_versions
-           ORDER BY engine, created_at DESC"#
+           ORDER BY engine, created_at DESC
+           LIMIT 200"#
     )
     .fetch_all(pool)
     .await?;

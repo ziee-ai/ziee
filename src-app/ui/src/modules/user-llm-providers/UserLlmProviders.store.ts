@@ -1,3 +1,4 @@
+import { message } from 'antd'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -130,6 +131,7 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
             undefined,
           )
           await get().load()
+          message.success('API key saved')
         } finally {
           set(state => {
             state.saving = false

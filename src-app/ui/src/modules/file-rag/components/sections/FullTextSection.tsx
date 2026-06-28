@@ -20,8 +20,9 @@ interface FormValues {
  * fused with Reciprocal Rank Fusion (`fts_rrf_k`, `fts_candidate_multiplier`).
  */
 export function FullTextSection() {
-  const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
+  const canReadPerm = usePermission(READ_PERM)
   const canManage = usePermission(MANAGE_PERM)
+  const canRead = canReadPerm || canManage
   const { settings, saving } = Stores.FileRagAdmin
   const [form] = Form.useForm<FormValues>()
 

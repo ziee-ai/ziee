@@ -59,22 +59,21 @@ pub async fn get_preview(
     auth: RequirePermissions<(FilesPreview,)>,
     Path(file_id): Path<Uuid>,
     Query(query): Query<PreviewQuery>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     let user_id = auth.user.id;
 
     // Verify file ownership + resolve head blob.
     let file = Repos.file
         .get_by_id_and_user(file_id, user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
 
     // Load high-quality preview image
     let storage = get_file_storage();
     let image_data = storage
         .load_preview(user_id, file.blob_version_id, query.page)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| AppError::internal_with_id(&e).to_api_error())?;
 
     // Private, bounded cache (see FILE_CONTENT_CACHE_CONTROL) so reloads reuse
     // preview bytes without re-downloading every inline image — the main fix
@@ -85,29 +84,28 @@ pub async fn get_preview(
         (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
 
-    Ok((headers, image_data).into_response())
+    Ok((StatusCode::OK, (headers, image_data).into_response()))
 }
 
 /// Get file thumbnail (300px, single thumbnail from first page)
 pub async fn get_thumbnail(
     auth: RequirePermissions<(FilesPreview,)>,
     Path(file_id): Path<Uuid>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     let user_id = auth.user.id;
 
     // Verify file ownership + resolve head blob.
     let file = Repos.file
         .get_by_id_and_user(file_id, user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
 
     // Load thumbnail
     let storage = get_file_storage();
     let thumbnail_data = storage
         .load_thumbnail(user_id, file.blob_version_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| AppError::internal_with_id(&e).to_api_error())?;
 
     // Private, bounded cache (see FILE_CONTENT_CACHE_CONTROL) — reuse across
     // reloads without a round-trip.
@@ -117,7 +115,7 @@ pub async fn get_thumbnail(
         (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
 
-    Ok((headers, thumbnail_data).into_response())
+    Ok((StatusCode::OK, (headers, thumbnail_data).into_response()))
 }
 
 /// Get extracted text content
@@ -125,27 +123,29 @@ pub async fn get_text_content(
     auth: RequirePermissions<(FilesRead,)>,
     Path(file_id): Path<Uuid>,
     Query(query): Query<TextPageQuery>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     let user_id = auth.user.id;
 
     // Verify file ownership and get file info
     let file = Repos.file
         .get_by_id_and_user(file_id, user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
 
     let storage = get_file_storage();
     let text_content = match query.page {
         Some(page_num) => {
             // Return specific page
             if page_num < 1 || page_num > file.text_page_count as u32 {
-                return Err(StatusCode::BAD_REQUEST);
+                return Err(AppError::bad_request(
+                    "INVALID_PAGE",
+                    format!("Page {} is out of range. Valid range: 1-{}", page_num, file.text_page_count),
+                ).to_api_error());
             }
             storage
                 .load_text_page(user_id, file.blob_version_id, page_num)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .map_err(|e| AppError::internal_with_id(&e).to_api_error())?
         }
         None => {
             // Return all pages concatenated
@@ -154,7 +154,7 @@ pub async fn get_text_content(
                 let page_text = storage
                     .load_text_page(user_id, file.blob_version_id, page_num as u32)
                     .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                    .map_err(|e| AppError::internal_with_id(&e).to_api_error())?;
                 if page_num > 1 {
                     text_content.push_str("\n\n--- Page ");
                     text_content.push_str(&page_num.to_string());
@@ -174,7 +174,7 @@ pub async fn get_text_content(
         (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
 
-    Ok((headers, text_content).into_response())
+    Ok((StatusCode::OK, (headers, text_content).into_response()))
 }
 
 /// Delete file

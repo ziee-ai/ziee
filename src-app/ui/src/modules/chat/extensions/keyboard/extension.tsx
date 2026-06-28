@@ -29,7 +29,7 @@ const defaultShortcuts: KeyboardShortcut[] = [
     action: () => {
       // Trigger send message
       const sendButton = document.querySelector<HTMLButtonElement>(
-        '[data-testid="send-message-button"]',
+        'button[aria-label="Send message"]',
       )
       if (sendButton) {
         sendButton.click()

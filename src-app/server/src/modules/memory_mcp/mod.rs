@@ -91,6 +91,37 @@ impl AppModule for MemoryMcpModule {
         let pool = ctx.db_pool.clone();
         let upsert_url = loopback_url.clone();
         tokio::spawn(async move {
+            // Only register the built-in MCP server when memory is
+            // enabled in the runtime DB toggle.  This mirrors how
+            // lit_search / bio_mcp / code_sandbox gate on deploy-level
+            // Config entries, adapted for a DB-only toggle since
+            // there is no MemoryConfig in Config.
+            match sqlx::query_scalar::<_, Option<bool>>(
+                "SELECT enabled FROM memory_admin_settings"
+            )
+            .fetch_one(&*pool)
+            .await
+            {
+                Ok(Some(true)) => {
+                    // enabled — proceed with registration
+                }
+                Ok(_) => {
+                    tracing::info!(
+                        "memory_mcp: skipped registration — \
+                         memory_admin_settings.enabled is not true"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    // DB error — log and continue (fail-open so an
+                    // intermittent blip doesn't prevent registration).
+                    tracing::error!(
+                        "memory_mcp: failed to read memory_admin_settings: {e:?}; \
+                         proceeding with registration"
+                    );
+                }
+            }
+
             let repo = repository::MemoryMcpRepository::new((*pool).clone());
             match repo.upsert_builtin_server(server_id, &upsert_url).await {
                 Ok(()) => tracing::info!(

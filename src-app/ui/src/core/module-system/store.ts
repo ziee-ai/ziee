@@ -186,23 +186,26 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
     // Step 1: Run module initialize functions first (creates slot registries)
     for (const module of modules) {
       if (module.initialize) {
-        try {
-          const result = module.initialize()
-          // If initialize returns a promise, handle it but don't await
-          if (result instanceof Promise) {
-            result.catch(error =>
-              console.error(
-                `Failed to initialize module ${module.metadata.name}:`,
-                error,
-              ),
+        const initialize = module.initialize
+        Promise.resolve().then(() => {
+          try {
+            const result = initialize()
+            // If initialize returns a promise, handle it but don't await
+            if (result instanceof Promise) {
+              result.catch(error =>
+                console.error(
+                  `Failed to initialize module ${module.metadata.name}:`,
+                  error,
+                ),
+              )
+            }
+          } catch (error) {
+            console.error(
+              `Failed to initialize module ${module.metadata.name}:`,
+              error,
             )
           }
-        } catch (error) {
-          console.error(
-            `Failed to initialize module ${module.metadata.name}:`,
-            error,
-          )
-        }
+        })
       }
     }
 

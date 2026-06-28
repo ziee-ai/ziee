@@ -78,7 +78,7 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
       // after auth completes.
     }
     // Full-page navigation — OAuth is a top-level redirect, not fetch.
-    window.location.href = `/api/auth/oauth/${encodeURIComponent(name)}/authorize`
+    window.location.href = `/api/auth/oauth/${encodeURIComponent(name)}/authorize?return_to=${encodeURIComponent(target)}`
   }
 
   return (

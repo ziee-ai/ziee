@@ -151,23 +151,19 @@ pub async fn stop_model_instance(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(model_id): Path<Uuid>,
 ) -> ApiResult<Json<InstanceResponse>> {
-    // Check that instance exists
-    let _instance = Repos
+    // Update the DB status FIRST so that if this fails (e.g. the instance
+    // does not exist), we never attempt the external side-effect of killing
+    // the process.  This avoids the "multi-step write" hazard where the
+    // process is dead but the DB still says "running".
+    Repos
         .local_runtime
-        .get_instance_by_model(model_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Instance not found"))?;
+        .update_instance_status(model_id, "stopped", None)
+        .await?;
 
     // Get deployment strategy and stop (always local)
     let deployment_manager = get_deployment_manager();
     let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
     deployment.stop(model_id).await?;
-
-    // Update database status
-    Repos
-        .local_runtime
-        .update_instance_status(model_id, "stopped", None)
-        .await?;
 
     // Get and return the updated instance
     let instance = Repos

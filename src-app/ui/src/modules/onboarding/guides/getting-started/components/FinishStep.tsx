@@ -7,7 +7,7 @@ import { Stores } from '@/core/stores'
 const { Title, Paragraph, Text } = Typography
 
 export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) {
-  const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
+  const selectedMcpServerIds = Stores.McpServersStep.__state.selectedMcpServerIds
   const enteredApiKeys = Stores.ApiKeysStep.enteredApiKeys
 
   const apiKeysCount = Object.values(enteredApiKeys).filter(k => k.trim()).length

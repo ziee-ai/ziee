@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Input, Card, Button, Typography, Empty, Flex, Popconfirm, App } from 'antd'
+import { Alert, Input, Card, Button, Typography, Empty, Flex, Popconfirm, App } from 'antd'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { SearchOutlined, DeleteOutlined, CloseCircleOutlined } from '@ant-design/icons'
@@ -26,6 +26,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   const { message } = App.useApp()
   const [, forceRender] = useState({})
   const [localSearchQuery, setLocalSearchQuery] = useState('')
+  const [errorDismissed, setErrorDismissed] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
 
   const {
@@ -49,12 +50,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     }
   }, [getSearchBoxContainer])
 
-  // Show errors
+  // Reset dismiss state when a new error arrives
   useEffect(() => {
     if (error) {
-      message.error(error)
+      setErrorDismissed(false)
     }
-  }, [error, message])
+  }, [error])
 
   // Debounce search query
   useEffect(() => {
@@ -180,6 +181,18 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                 </Flex>
               </Flex>
             </Card>
+          </div>
+        )}
+
+        {/* Inline error display */}
+        {error && !errorDismissed && (
+          <div className="px-3">
+            <Alert
+              message={error}
+              type="error"
+              showIcon
+              closable={{ closeIcon: true, onClose: () => setErrorDismissed(true) }}
+            />
           </div>
         )}
 

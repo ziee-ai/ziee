@@ -80,7 +80,7 @@ export function EditUserDrawer() {
           <Input placeholder="Enter display name (optional)" />
         </Form.Item>
         <Form.Item name="is_active" label="Active" valuePropName="checked">
-          <Switch />
+          <Switch aria-label="Active" />
         </Form.Item>
         {/*
          * Email + Permissions removed from this form per security work:

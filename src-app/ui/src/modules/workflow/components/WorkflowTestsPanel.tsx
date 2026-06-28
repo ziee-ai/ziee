@@ -57,6 +57,7 @@ export function WorkflowTestsPanel({
     <Modal
       open={open}
       title="Workflow tests"
+      closable={{ closeIcon: true }}
       onCancel={onClose}
       footer={null}
       width={640}

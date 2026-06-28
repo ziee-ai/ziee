@@ -3,8 +3,29 @@ import { useAppStore } from '@/modules/app/App.store'
 import { useAppModeStore } from '@/modules/app/AppMode.store'
 import { BlankLayout } from '@/modules/layouts/blank'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 const SetupPage = lazyWithPreload(() => import('./SetupPage'))
+
+/**
+ * SetupRedirect — routes to /setup when the app needs first-time admin
+ * setup. Mounted inside <BrowserRouter> via the `routerEffects` slot so
+ * it can use `useNavigate` but renders nothing.
+ */
+function SetupRedirect() {
+  const needsSetup = Stores.App.needsSetup
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    if (needsSetup && location.pathname !== '/setup') {
+      navigate('/setup', { replace: true })
+    }
+  }, [needsSetup, navigate, location.pathname])
+
+  return null
+}
 
 export default createModule({
   metadata: {
@@ -33,12 +54,19 @@ export default createModule({
       store: useAppModeStore,
     },
   ],
+  slots: {
+    routerEffects: [
+      {
+        id: 'app-setup-redirect',
+        component: SetupRedirect,
+      },
+    ],
+  },
   initialize: async () => {
     // Check setup status on app initialization
     await Stores.App.checkSetupStatus()
     if (Stores.App.__state.needsSetup) {
       console.log('Application needs setup')
-      if (window.location.pathname !== '/setup') window.location.href = '/setup'
     } else {
       console.log('Application is already set up')
     }

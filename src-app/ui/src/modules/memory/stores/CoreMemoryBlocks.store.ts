@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type { CoreMemoryBlock } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 
 interface CoreMemoryBlocksStore {
   // Keyed by assistant_id so multiple editors (or tab-switching) don't
@@ -10,6 +11,11 @@ interface CoreMemoryBlocksStore {
   blocksByAssistant: Record<string, CoreMemoryBlock[]>
   loadingByAssistant: Record<string, boolean>
   error: string | null
+
+  __init__: {
+    __store__?: () => void
+  }
+  __destroy__?: () => void
 
   load: (assistantId: string) => Promise<void>
   upsert: (input: {
@@ -23,10 +29,30 @@ interface CoreMemoryBlocksStore {
 
 export const useCoreMemoryBlocksStore = create<CoreMemoryBlocksStore>()(
   subscribeWithSelector(
-    immer((set, _get) => ({
+    immer((set, get) => ({
       blocksByAssistant: {},
       loadingByAssistant: {},
       error: null,
+
+      __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+          const GROUP = 'CoreMemoryBlocks'
+          // No dedicated sync entity for core memory blocks. Subscribe to
+          // reconnect so data refreshes after the SSE stream re-establishes.
+          const reloadAll = () => {
+            const { blocksByAssistant } = get()
+            Object.keys(blocksByAssistant).forEach(assistantId => {
+              void get().load(assistantId)
+            })
+          }
+          eventBus.on('sync:reconnect', reloadAll, GROUP)
+        },
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('CoreMemoryBlocks')
+      },
 
       load: async (assistantId: string): Promise<void> => {
         set(s => {

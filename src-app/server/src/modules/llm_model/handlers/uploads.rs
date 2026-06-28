@@ -462,7 +462,16 @@ pub async fn upload_multiple_files_and_commit(
             ),
         )
     })? {
-        let field_name = field.name().unwrap_or("").to_string();
+        let field_name = field.name().ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "INVALID_INPUT",
+                    "Multipart field missing name attribute",
+                ),
+            )
+        })?
+        .to_string();
 
         match field_name.as_str() {
             "files" => {
@@ -1038,7 +1047,7 @@ pub async fn initiate_repository_download_internal(
         crate::utils::cancellation::create_cancellation_token(download_id).await;
 
     // Spawn background task to handle the download
-    tokio::spawn(async move {
+    let download_handle = tokio::spawn(async move {
         // Update status to downloading
         if let Err(e) = Repos.download_instance
             .update_status(
@@ -1439,6 +1448,19 @@ pub async fn initiate_repository_download_internal(
                     );
                 }
             }
+        }
+    });
+
+    // Spawn a watcher to log panics from the background download task
+    // (tokio::spawn panics are stored in the JoinHandle and silently
+    // swallowed if the handle is dropped without awaiting.)
+    tokio::spawn(async move {
+        if let Err(panic_err) = download_handle.await {
+            tracing::error!(
+                "Download background task panicked for download {}: {:?}",
+                download_id,
+                panic_err,
+            );
         }
     });
 

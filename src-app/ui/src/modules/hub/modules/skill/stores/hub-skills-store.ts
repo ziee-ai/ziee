@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import type { IndexItem } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
@@ -19,7 +18,6 @@ interface HubSkillsState {
   installing: Record<string, boolean>
   error: string | null
 
-  items: () => IndexItem[]
   /** Returns 'none' | 'user' | 'system' for a hub skill name. */
   installStateFor: (name: string) => 'none' | 'user' | 'system'
   installForMe: (hubId: string) => Promise<void>
@@ -38,8 +36,6 @@ export const useHubSkillsStore = create<HubSkillsState>()(
       (set, get): HubSkillsState => ({
         installing: {},
         error: null,
-
-        items: () => useHubCatalogStore.getState().itemsByCategory('skill'),
 
         installStateFor: (name: string) => {
           const rows = useHubInstalledStore

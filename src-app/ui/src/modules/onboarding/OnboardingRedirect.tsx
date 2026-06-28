@@ -28,7 +28,7 @@ import { Stores } from '@/core/stores'
 import type { OnboardingSlot } from './types/OnboardingSlot'
 
 export function OnboardingRedirect() {
-  const { isAuthenticated, user } = Stores.Auth
+  const { isAuthenticated, user, isInitializing } = Stores.Auth
   const { completedGuideIds, loaded } = Stores.Onboarding
   const guides = (Stores.ModuleSystem.slots.get('onboarding') as
     | OnboardingSlot[]
@@ -37,6 +37,12 @@ export function OnboardingRedirect() {
   const location = useLocation()
 
   useEffect(() => {
+    // Match AuthGuard's loading gate: don't redirect while auth is still
+    // initializing (e.g. AuthGuard remounts after login form navigation
+    // and calls initAuth() which sets isInitializing=true). OnboardingRedirect
+    // is rendered OUTSIDE AuthGuard (as a routerEffect sibling of <Routes>),
+    // so it must independently respect this guard.
+    if (isInitializing) return
     if (!isAuthenticated || !user) return
     if (user.is_admin === true) return
     // Wait until the onboarding store has fetched progress — without this
@@ -48,7 +54,7 @@ export function OnboardingRedirect() {
     if (firstIncomplete) {
       navigate(`/onboarding?id=${firstIncomplete.id}`, { replace: true })
     }
-  }, [isAuthenticated, user, completedGuideIds, loaded, guides, location.pathname, navigate])
+  }, [isAuthenticated, user, isInitializing, completedGuideIds, loaded, guides, location.pathname, navigate])
 
   return null
 }

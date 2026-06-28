@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Button,
   Card,
@@ -488,17 +488,7 @@ function EditMemoryDrawer({
   }>()
   const { saving } = Stores.Memories
 
-  useEffect(() => {
-    if (row) {
-      form.setFieldsValue({
-        content: row.content,
-        importance: row.importance,
-        kind: row.kind,
-      })
-    }
-  }, [row])
-
-  const handleSubmit = async (values: {
+const handleSubmit = async (values: {
     content: string
     importance: number
     kind: string
@@ -527,7 +517,20 @@ function EditMemoryDrawer({
         </Button>
       }
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form
+        form={form}
+        key={row?.id}
+        layout="vertical"
+        initialValues={
+          row
+            ? {
+                content: row.content,
+                importance: row.importance,
+                kind: row.kind,
+              }
+            : undefined
+        }
+        onFinish={handleSubmit}>
         <Form.Item
           name="content"
           label="Content"

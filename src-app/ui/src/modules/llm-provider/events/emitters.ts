@@ -1,4 +1,5 @@
 import { Stores } from '@/core/stores'
+import type { BaseEvent } from '@/core/events'
 import type { LlmProvider } from '@/api-client/types'
 
 export const emitLlmProviderCreated = async (provider: LlmProvider) => {
@@ -103,5 +104,48 @@ export const emitLlmModelDownloadFailed = async (
   await Stores.EventBus.emit({
     type: 'llm_model.download_failed',
     data: { downloadId, providerId, modelDisplayName, errorMessage },
+  })
+}
+
+// --- User API key events ---
+
+export interface ApiKeySavedEvent extends BaseEvent {
+  type: 'api_key.saved'
+  data: { providerId: string }
+}
+
+export interface ApiKeyDeletedEvent extends BaseEvent {
+  type: 'api_key.deleted'
+  data: { providerId: string }
+}
+
+declare module '@/core/events' {
+  interface AppEvents {
+    'api_key.saved': ApiKeySavedEvent
+    'api_key.deleted': ApiKeyDeletedEvent
+  }
+}
+
+/**
+ * Fired from `UserProviderKeys.store.ts` after a key is successfully
+ * saved. Also triggers a reload in `UserLlmProvidersStore` so both
+ * stores stay in sync.
+ */
+export const emitApiKeySaved = async (providerId: string) => {
+  await Stores.EventBus.emit({
+    type: 'api_key.saved',
+    data: { providerId },
+  })
+}
+
+/**
+ * Fired from `UserProviderKeys.store.ts` after a key is successfully
+ * deleted. Also triggers a reload in `UserLlmProvidersStore` so both
+ * stores stay in sync.
+ */
+export const emitApiKeyDeleted = async (providerId: string) => {
+  await Stores.EventBus.emit({
+    type: 'api_key.deleted',
+    data: { providerId },
   })
 }

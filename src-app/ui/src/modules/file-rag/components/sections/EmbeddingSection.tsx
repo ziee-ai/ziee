@@ -10,6 +10,7 @@ import {
   Modal,
   Select,
   Switch,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
@@ -198,14 +199,24 @@ export function EmbeddingSection() {
             label="Force re-embed all chunks"
             extra="Re-embeds every stored chunk with the current model. Useful after an embedder upgrade."
           >
-            <Button
-              icon={<ReloadOutlined />}
-              loading={triggeringReembed}
-              onClick={() => setReembedConfirmOpen(true)}
-              disabled={!settings.embedding_model_id || !canManage}
+            <Tooltip
+              title={
+                !settings.embedding_model_id
+                  ? 'Select an embedding model first'
+                  : !canManage
+                    ? "You don't have permission to manage file RAG settings."
+                    : undefined
+              }
             >
-              Re-embed now
-            </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                loading={triggeringReembed}
+                onClick={() => setReembedConfirmOpen(true)}
+                disabled={!settings.embedding_model_id || !canManage}
+              >
+                Re-embed now
+              </Button>
+            </Tooltip>
           </Form.Item>
 
           {canManage && (

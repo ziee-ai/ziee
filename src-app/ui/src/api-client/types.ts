@@ -833,7 +833,7 @@ export interface FileRagAdminSettings {
   cosine_threshold: number
   default_top_k: number
   embedding_dimensions: number
-  embedding_model_id?: string
+  embedding_model_id?: string | null
   enabled: boolean
   fts_candidate_multiplier: number
   fts_dictionary: string
@@ -1725,7 +1725,7 @@ export interface MemoryAdminSettings {
   default_extraction_model_id?: string
   default_top_k: number
   embedding_dimensions: number
-  embedding_model_id?: string
+  embedding_model_id?: string | null
   enabled: boolean
   fts_candidate_multiplier: number
   fts_dictionary: string
@@ -3022,7 +3022,7 @@ export interface UpdateFileRagAdminSettingsRequest {
   chunk_overlap_chars?: number
   cosine_threshold?: number
   default_top_k?: number
-  embedding_model_id?: string
+  embedding_model_id?: string | null
   enabled?: boolean
   fts_candidate_multiplier?: number
   fts_enabled?: boolean
@@ -3114,7 +3114,7 @@ export interface UpdateMemoryAdminSettingsRequest {
   daily_extraction_quota?: number
   default_extraction_model_id?: string
   default_top_k?: number
-  embedding_model_id?: string
+  embedding_model_id?: string | null
   enabled?: boolean
   fts_candidate_multiplier?: number
   fts_dictionary?: string

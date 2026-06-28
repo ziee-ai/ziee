@@ -53,6 +53,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
   const isSaving = savingConnector === entry.key
   const [form] = Form.useForm<FormValues>()
   const [dirty, setDirty] = useState(false)
+  const apiKeyValue = Form.useWatch('api_key', form)
 
   // Re-seed when the stored config changes too (e.g. after a sibling save), so a
   // value the server returns is reflected and round-trips on the next save.
@@ -215,7 +216,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
               type="primary"
               htmlType="submit"
               loading={isSaving}
-              disabled={!canManage || !dirty}
+              disabled={!canManage || !dirty || (needsKey && !apiKeyValue?.trim())}
             >
               Save
             </Button>

@@ -12,6 +12,8 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import { type StoreProxy } from '@/core/stores'
 
+const DISMISSED_VERSION_KEY = 'ziee:server-update:dismissed-version'
+
 interface ServerUpdateState {
   currentVersion: string | null
   latestVersion: string | null
@@ -81,6 +83,8 @@ export const useServerUpdateStore = create<ServerUpdateState>()(
             st.notes = s.notes ?? null
             st.enabled = s.enabled
             st.checkedAt = s.checked_at ?? null
+            const dismissedVersion = localStorage.getItem(DISMISSED_VERSION_KEY)
+            st.dismissed = s.update_available && !!dismissedVersion && dismissedVersion === (s.latest_version ?? null)
             st.loading = false
           })
         } catch (e) {
@@ -92,6 +96,8 @@ export const useServerUpdateStore = create<ServerUpdateState>()(
       },
 
       dismiss: () => {
+        const v = get().latestVersion
+        if (v) { localStorage.setItem(DISMISSED_VERSION_KEY, v) }
         set((st) => {
           st.dismissed = true
         })

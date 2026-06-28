@@ -79,10 +79,20 @@ export const useMcpServersStepStore = create<McpServersStepStore>()(
 
       installSelectedMcpServers: async () => {
         const { selectedMcpServerIds } = get()
+        const errors: string[] = []
         for (const hubId of selectedMcpServerIds) {
-          await ApiClient.Hub.createMcpServerFromHub(
-            { hub_id: hubId, enabled: true },
-            undefined,
+          try {
+            await ApiClient.Hub.createMcpServerFromHub(
+              { hub_id: hubId, enabled: true },
+              undefined,
+            )
+          } catch (err: any) {
+            errors.push(`"${hubId}": ${err.message || 'Unknown error'}`)
+          }
+        }
+        if (errors.length > 0) {
+          throw new Error(
+            `Failed to install MCP server(s): ${errors.join('; ')}`,
           )
         }
       },

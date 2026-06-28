@@ -79,9 +79,16 @@ pub async fn respond_to_elicitation(
             && let Some(values) = content {
                 patch["response_content"] = values;
             }
-        let _ = crate::core::Repos.chat.core
+        if let Err(err) = crate::core::Repos.chat.core
             .update_content_json(content_id, patch)
-            .await;
+            .await
+        {
+            tracing::error!(
+                error = %err,
+                content_id = %content_id,
+                "Failed to persist elicitation response to DB"
+            );
+        }
     }
 
     Ok((

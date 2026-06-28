@@ -318,3 +318,101 @@ async fn tool_call_create_is_delivered_to_owner_not_to_other_users() {
     // Owner-scoped: an unrelated user observes nothing.
     other_probe.expect_silence(SILENCE_WINDOW).await;
 }
+
+// =====================================================
+// file — OWNER audience (workflow tool-step resource_link → persist → publish_file_changed)
+// =====================================================
+
+#[tokio::test]
+async fn tool_call_resource_link_persists_file_and_emits_sync() {
+    // A workflow with a `tool` step whose mock returns a `resource_link
+    // is_saved:false` → persist_links → ingest_bytes → publish_file_changed
+    // → the owner observes `file`/`update` on their sync stream.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::workflow::workflow_tool_user(&server, "sync_rl_file_owner").await;
+    let (_stub, model_id) = crate::workflow::stub_model_for(&server, &user.user_id).await;
+
+    let other = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_rl_file_other",
+        &[],
+    )
+    .await;
+
+    let mock = MockMcpServer::start().await;
+    mock.on_download("result.csv", "text/csv", b"a,b\n1,2\n");
+    let dl_url = mock.download_url("result.csv");
+    mock.on_method(
+        "tools/call",
+        MockResponse::JsonOk(json!({
+            "content": [
+                { "type": "text", "text": "produced data" },
+                {
+                    "type": "resource_link",
+                    "uri": dl_url,
+                    "name": "result.csv",
+                    "mimeType": "text/csv",
+                    "is_saved": false,
+                }
+            ],
+            "isError": false,
+        })),
+    );
+    let (_sid, sname) = crate::workflow::register_mock_as_user_server(
+        &server,
+        &user.token,
+        "sync_rl_mock",
+        &mock.base_url(),
+    )
+    .await;
+
+    // Import a dev workflow with a single tool step that calls the mock.
+    let yaml = format!(
+        r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs: []
+steps:
+  - id: call
+    kind: tool
+    server: {sname}
+    tool: produce
+    arguments: {{}}
+outputs:
+  - name: result
+    from: "{{{{ call.output }}}}"
+    expose: full
+"#
+    );
+    let wf = crate::workflow::import_dev_workflow(&server, &user.token, "sync-rl-file", &yaml).await;
+    let wf_id = wf["id"].as_str().unwrap();
+
+    // Open probes BEFORE the run so the file-create sync frame isn't missed.
+    let mut owner_probe = SyncProbe::open(&server, &user.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    let run = crate::workflow::run_workflow(
+        &server,
+        &user.token,
+        wf_id,
+        json!({ "inputs": {}, "model_id": model_id.to_string() }),
+    )
+    .await;
+    let run_id = uuid::Uuid::parse_str(run["run_id"].as_str().unwrap()).unwrap();
+    let final_run = crate::workflow::poll_run(&server, &user.token, run_id).await;
+    assert_eq!(
+        final_run["status"], "completed",
+        "resource_link tool step should complete: {final_run}"
+    );
+
+    // The owner observes the `file`/`update` sync frame (from publish_file_changed).
+    let frame = owner_probe
+        .expect_event("file", "update", EVENT_TIMEOUT)
+        .await;
+    assert!(
+        uuid::Uuid::parse_str(&frame.id).is_ok() && frame.id != uuid::Uuid::nil().to_string(),
+        "frame must carry the new file's id, got {:?}",
+        frame.id
+    );
+
+    // Owner-scoped: an unrelated user observes nothing.
+    other_probe.expect_silence(SILENCE_WINDOW).await;
+}

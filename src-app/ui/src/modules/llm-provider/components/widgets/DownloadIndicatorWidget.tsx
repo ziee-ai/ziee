@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { App, Badge, Button, Flex, Popover, Tooltip, Typography } from 'antd'
 import {
   CloseOutlined,
@@ -78,6 +79,7 @@ export function DownloadIndicatorWidget() {
   // / Cannot Connect modals the user would see clicking Retry from the
   // hub page — failure-recovery UX stays consistent across surfaces.
   const { runGates } = useHubModelDownloadGate()
+  const [popoverOpen, setPopoverOpen] = useState(false)
 
   // Filter for active downloads
   const activeDownloads = downloads.filter(
@@ -277,6 +279,8 @@ export function DownloadIndicatorWidget() {
       title="Downloads"
       trigger="click"
       placement="rightBottom"
+      open={popoverOpen}
+      onOpenChange={setPopoverOpen}
     >
       <div
         style={{

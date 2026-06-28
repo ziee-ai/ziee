@@ -36,6 +36,10 @@ interface ProjectMcpSettingsState {
   saving: boolean
   error: string | null
 
+  /** Unsubscribe from the ProjectDetail store subscription (cleaned up
+   *  in __destroy__ so subscriptions don't accumulate on re-init). */
+  __unsubProjectDetail?: () => void
+
   __init__: {
     __store__: () => void
   }
@@ -65,7 +69,7 @@ export const useProjectMcpSettingsStore = create<ProjectMcpSettingsState>()(
             const eventBus = Stores.EventBus
 
             // Mirror ProjectDetail's active project. Reload on change.
-            useProjectDetailStore.subscribe(
+            const unsubProjectDetail = useProjectDetailStore.subscribe(
               state => state.project?.id ?? null,
               newProjectId => {
                 set(state => {
@@ -78,6 +82,11 @@ export const useProjectMcpSettingsStore = create<ProjectMcpSettingsState>()(
               },
               { fireImmediately: true },
             )
+
+            // Persist the unsubscribe so __destroy__ can clean it up.
+            set(state => {
+              state.__unsubProjectDetail = unsubProjectDetail
+            })
 
             // Other subscribers can trigger a refresh by emitting
             // project.mcp_updated (e.g. cross-tab sync).
@@ -154,6 +163,9 @@ export const useProjectMcpSettingsStore = create<ProjectMcpSettingsState>()(
         clearError: () => set({ error: null }),
 
         __destroy__: () => {
+          // Tear down the cross-module zustand subscription so it doesn't
+          // leak if the store is re-initialized.
+          get().__unsubProjectDetail?.()
           Stores.EventBus.removeGroupListeners('ProjectMcpSettingsStore')
         },
       }),

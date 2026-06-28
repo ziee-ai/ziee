@@ -144,6 +144,7 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           scroll={{ x: scrollX, y: bodyHeight }}
           pagination={false}
           virtual
+          locale={{ emptyText: 'No data to display' }}
         />
       </div>
     </div>

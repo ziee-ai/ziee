@@ -15,6 +15,10 @@ import { Stores } from '@/core/stores'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment } from '@/api-client/types'
 
+// Module-level vars so cleanup can tear down subscriptions created in initialize.
+let unsubConversation: (() => void) | null = null
+let unsubEditingMessage: (() => void) | null = null
+
 // Augment the central PanelRendererMap so `displayInRightPanel({ type: 'file',
 // data: ... })` and `registerPanelRenderer('file', ...)` are type-checked.
 declare module '@/modules/chat/core/stores/Chat.store' {
@@ -132,14 +136,14 @@ const fileExtension: ChatExtension = createExtension({
     // it explicitly because the store lives in the file module.
     // messageFilesCache and thumbnailUrls survive (they're keyed by
     // message/file id and used across conversations).
-    useChatStore.subscribe(
+    unsubConversation = useChatStore.subscribe(
       state => state.conversation?.id,
       () => {
         Stores.File.clearFiles()
       },
     )
 
-    useChatStore.subscribe(
+    unsubEditingMessage = useChatStore.subscribe(
       state => state.editingMessage,
       async (editingMessage) => {
         const fileStore = Stores.File
@@ -198,6 +202,17 @@ const fileExtension: ChatExtension = createExtension({
         }
       }
     )
+  },
+
+  /**
+   * Tear down subscriptions created in initialize to avoid leaking
+   * zustand store listeners when the extension is unregistered.
+   */
+  cleanup: async () => {
+    unsubConversation?.()
+    unsubConversation = null
+    unsubEditingMessage?.()
+    unsubEditingMessage = null
   },
 
   /**

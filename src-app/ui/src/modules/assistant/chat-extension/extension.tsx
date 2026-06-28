@@ -46,6 +46,10 @@ const assistantExtension: ChatExtension = createExtension({
     )
 
     // 2. Editing-message → restore the originally-attributed assistant.
+    //    Save the pre-edit selection so we can restore it when the edit
+    //    completes or is cancelled — never clear the user's choice.
+    let preEditAssistantId: string | null = null
+
     useChatStore.subscribe(
       state => state.editingMessage,
       async (editingMessage) => {
@@ -53,6 +57,10 @@ const assistantExtension: ChatExtension = createExtension({
         if (!picker) return
 
         if (editingMessage) {
+          // Save the assistant the user had selected before initiating
+          // the edit, so we can restore it afterwards.
+          preEditAssistantId = picker.__state.selectedAssistantId
+
           // Per-message assistant attribution moved off the Message
           // row into the assistant bridge's own message_assistant
           // table (backend migration 75). Fetch via the assistant-
@@ -71,14 +79,21 @@ const assistantExtension: ChatExtension = createExtension({
             // Soft-fail: no attribution recorded (pre-migration
             // message or write hook failed at send-time) → keep
             // current assistant selection.
+            preEditAssistantId = null
             console.warn(
               '[Assistant Extension] Failed to load message assistant attribution:',
               err,
             )
           }
         } else {
-          // Edit cancelled or sent — clear assistant selection.
-          picker.clearAssistant()
+          // Edit cancelled or sent — restore the pre-edit selection
+          // instead of blindly clearing.
+          if (preEditAssistantId) {
+            picker.selectAssistant(preEditAssistantId)
+          } else {
+            picker.clearAssistant()
+          }
+          preEditAssistantId = null
         }
       },
     )

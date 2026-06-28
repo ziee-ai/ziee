@@ -24,6 +24,17 @@ const memoryExtension: ChatExtension = createExtension({
   slots: {
     toolbar_status: { component: MemoryStatusPill, order: 30 },
   },
+
+  // After the stream completes, refresh the Memories store so any
+  // auto-extracted memories from the backend's after_llm_call hook
+  // become visible on the Memories page without a manual reload.
+  // Best-effort: if extraction hasn't finished server-side, the
+  // sync:memory event subscription handles eventual consistency.
+  afterStreamComplete: async (_message) => {
+    const { Stores } = await import('@/core/stores')
+    Stores.Memories.load()
+    return {}
+  },
 })
 
 export default memoryExtension

@@ -30,7 +30,7 @@ interface FormValues {
 export function MemorySection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.MemoryAdmin
+  const { settings, saving, error } = Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
@@ -49,6 +49,23 @@ export function MemorySection() {
           type="warning"
           showIcon
           title="You don't have permission to view memory admin settings."
+        />
+      </Card>
+    )
+  }
+  if (!settings && error) {
+    return (
+      <Card title="Memory">
+        <Alert
+          type="error"
+          showIcon
+          message="Failed to load memory settings"
+          description={error}
+          action={
+            <Button size="small" onClick={() => Stores.MemoryAdmin.load()}>
+              Retry
+            </Button>
+          }
         />
       </Card>
     )

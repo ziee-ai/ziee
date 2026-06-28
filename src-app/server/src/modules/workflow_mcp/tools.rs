@@ -658,9 +658,13 @@ pub async fn format_outputs_for_mcp(
         "metadata": metadata.clone(),
     });
 
+    let body_text = serde_json::to_string_pretty(&body).unwrap_or_else(|e| {
+        tracing::error!(error = %e, "workflow_mcp: serde_json serialization of inline body failed, returning empty fallback");
+        "{}".to_string()
+    });
     let mut content: Vec<Value> = vec![json!({
         "type": "text",
-        "text": serde_json::to_string_pretty(&body).unwrap_or_else(|_| "{}".to_string()),
+        "text": body_text,
     })];
     content.extend(resource_entries);
 
@@ -732,10 +736,14 @@ async fn build_error_result(
         }
     }
 
+    let error_text = serde_json::to_string_pretty(&body).unwrap_or_else(|e| {
+        tracing::error!(error = %e, "workflow_mcp: serde_json serialization of error body failed, returning empty fallback");
+        "{}".to_string()
+    });
     json!({
         "content": [{
             "type": "text",
-            "text": serde_json::to_string_pretty(&body).unwrap_or_else(|_| "{}".to_string()),
+            "text": error_text,
         }],
         "isError": true,
         "structuredContent": body,
@@ -829,7 +837,10 @@ pub(crate) fn step_id_from_template(from: &str) -> Option<String> {
 /// Serialized byte length of a JSON value as it will appear inline in the
 /// MCP text body (H5 — account the ACTUAL inlined size, not raw size_bytes).
 fn serialized_len(v: &Value) -> usize {
-    serde_json::to_string(v).map(|s| s.len()).unwrap_or(0)
+    serde_json::to_string(v).map(|s| s.len()).unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "workflow_mcp: serde_json serialization failed");
+        0
+    })
 }
 
 #[cfg(test)]
@@ -1132,6 +1143,34 @@ mod tests {
             "inline body {} exceeds the 50 KiB cap (+slack)",
             text.len()
         );
+    }
+
+    // ── H6: cancel-on-drop guard ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn cancel_guard_armed_drop_does_not_panic() {
+        // Dropping an armed RunCancelOnDrop must not panic even when the
+        // registry is empty and the pool is lazy (no real connection).
+        let guard = RunCancelOnDrop {
+            pool: test_pool().await,
+            run_id: Uuid::new_v4(),
+            armed: true,
+        };
+        // Drop while armed — exercises registry::cancel + tokio::spawn.
+        drop(guard);
+    }
+
+    #[tokio::test]
+    async fn cancel_guard_disarm_prevents_cancel_on_drop() {
+        // After disarm(), drop must not call registry::cancel or spawn
+        // a cancel task. disarm takes self by value, so the guard is
+        // consumed and dropped with armed=false — no side effects.
+        let guard = RunCancelOnDrop {
+            pool: test_pool().await,
+            run_id: Uuid::new_v4(),
+            armed: true,
+        };
+        guard.disarm(); // consumes self, drops with armed=false, no cancel
     }
 
     // A connectionless pool for tests that don't actually query. The

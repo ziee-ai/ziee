@@ -16,7 +16,6 @@ import type { ProgressTrack } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import type { StepProgress } from '@/modules/workflow/stores/WorkflowRun.store'
 import { StepArtifacts } from './StepArtifacts'
-import { StepLogExpander } from './StepLogExpander'
 import { StepOutputExpander } from './StepOutputExpander'
 import { WorkflowElicitForm } from './WorkflowElicitForm'
 
@@ -92,6 +91,86 @@ function TrackWidget({ track }: { track: ProgressTrack }) {
     default:
       return null
   }
+}
+
+/**
+ * Local replacement for StepLogExpander that avoids the antd Collapse
+ * nested-interactive-element bug (Collapse ignores clicks on inner
+ * buttons). Uses a simple Button with onClick to toggle inline content
+ * visibility and lazy-fetches log content from the API.
+ */
+function StepLogExpanderLocal({
+  runId,
+  stepId,
+  kind,
+  label,
+}: {
+  runId: string
+  stepId: string
+  kind: string
+  label: string
+}) {
+  const { message } = App.useApp()
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [content, setContent] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+
+  const doFetch = async () => {
+    setLoading(true)
+    setError(false)
+    try {
+      const res = await ApiClient.Workflow.readLog({
+        run_id: runId,
+        step_id: stepId,
+        kind,
+      })
+      setContent(typeof res === 'string' ? res : JSON.stringify(res, null, 2))
+    } catch (e) {
+      setError(true)
+      const status =
+        typeof e === 'object' && e !== null
+          ? (e as { status?: number }).status
+          : undefined
+      if (status !== 404) {
+        message.error(
+          e instanceof Error ? e.message : `Failed to load ${label}`,
+        )
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggle = () => {
+    if (!open && content === null && !loading) {
+      void doFetch()
+    }
+    setOpen(!open)
+  }
+
+  return (
+    <div>
+      <Button type="link" size="small" className="!px-0" onClick={handleToggle}>
+        {label}
+      </Button>
+      {open && (
+        <div className="pl-2">
+          {loading ? (
+            <Spin size="small" />
+          ) : error ? (
+            <Text type="secondary" className="text-xs">
+              Log not available
+            </Text>
+          ) : (
+            <Typography.Paragraph className="text-xs whitespace-pre-wrap !mb-0">
+              {content}
+            </Typography.Paragraph>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -282,13 +361,13 @@ export function WorkflowRunProgressView({
               )}
               {(s.status === 'completed' || s.status === 'failed') && (
                 <Space size={4} wrap>
-                  <StepLogExpander
+                  <StepLogExpanderLocal
                     runId={runId}
                     stepId={s.stepId}
                     kind="prompt"
                     label="Show prompt"
                   />
-                  <StepLogExpander
+                  <StepLogExpanderLocal
                     runId={runId}
                     stepId={s.stepId}
                     kind="raw_output"
@@ -296,7 +375,7 @@ export function WorkflowRunProgressView({
                   />
                   {/* stderr is only produced by sandbox steps. */}
                   {s.stepKind === 'sandbox' && (
-                    <StepLogExpander
+                    <StepLogExpanderLocal
                       runId={runId}
                       stepId={s.stepId}
                       kind="stderr"
@@ -305,7 +384,7 @@ export function WorkflowRunProgressView({
                   )}
                   {/* trace.json is written only on completion, never on failure. */}
                   {s.status === 'completed' && (
-                    <StepLogExpander
+                    <StepLogExpanderLocal
                       runId={runId}
                       stepId={s.stepId}
                       kind="trace"

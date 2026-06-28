@@ -102,6 +102,7 @@ function EditableCell({
       <Form.Item
         name={[rowName, col.key]}
         valuePropName="checked"
+        rules={rules}
         className="!mb-0"
       >
         <Switch size="small" disabled={disabled} />
@@ -167,7 +168,7 @@ export function EditableArrayTable({
   // non-zero default so the first paint is already virtualized; the
   // observer refines the exact height once layout settles.
   const wrapRef = useRef<HTMLDivElement>(null)
-  const [bodyHeight, setBodyHeight] = useState<number>(360)
+  const [bodyHeight, setBodyHeight] = useState<number>(360 - TABLE_HEADER_PX)
   useEffect(() => {
     if (!wrapRef.current) return
     const ro = new ResizeObserver(entries => {
@@ -282,7 +283,10 @@ export function EditableArrayTable({
               icon={<DeleteOutlined />}
               disabled={disabled || !canRemoveBelowMin}
               aria-label="Remove row"
-              onClick={() => remove(row.field.name)}
+              onClick={() => {
+                remove(row.field.name)
+                setSelectedKeys(prev => prev.filter(k => k !== row.key))
+              }}
             />
           ),
         }

@@ -186,7 +186,7 @@ export function WorkflowDetailDrawer() {
                     {s.kind && <Tag className="text-xs !m-0">{s.kind}</Tag>}
                   </Space>
                 ),
-                description:
+                content:
                   s.dependsOn && s.dependsOn.length > 0 ? (
                     <Text type="secondary" className="text-xs">
                       depends on: {s.dependsOn.join(', ')}

@@ -14,7 +14,7 @@ export function ProviderGroupAssignmentCard() {
   const { providerId } = useParams<{ providerId?: string }>()
 
   // ✅ CORRECT: Destructure all needed values at top level
-  const { providerGroups, loadGroupsForProvider } =
+  const { providerGroups } =
     Stores.ProviderGroupAssignmentCard
   const { openDrawer } = Stores.LlmProviderGroupsAssignment
 
@@ -23,9 +23,9 @@ export function ProviderGroupAssignmentCard() {
   // Load groups for this provider on mount
   useEffect(() => {
     if (providerId) {
-      loadGroupsForProvider(providerId)
+      Stores.ProviderGroupAssignmentCard.loadGroupsForProvider(providerId)
     }
-  }, [providerId, loadGroupsForProvider])
+  }, [providerId])
 
   if (!providerId) {
     return null

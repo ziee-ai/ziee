@@ -157,12 +157,13 @@ function BlockFormModal({
   existing?: CoreMemoryBlock
   onClose: () => void
 }) {
+  const { loadingByAssistant } = Stores.CoreMemoryBlocks
+  const saving = loadingByAssistant[assistantId] ?? false
   const [form] = Form.useForm<{
     block_label: string
     content: string
     char_limit: number
   }>()
-  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -177,7 +178,6 @@ function BlockFormModal({
     content: string
     char_limit: number
   }) => {
-    setSaving(true)
     try {
       await Stores.CoreMemoryBlocks.upsert({
         assistant_id: assistantId,
@@ -189,8 +189,6 @@ function BlockFormModal({
       onClose()
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Save failed')
-    } finally {
-      setSaving(false)
     }
   }
 

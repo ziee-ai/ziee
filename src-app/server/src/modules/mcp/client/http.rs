@@ -119,6 +119,34 @@ pub fn parse_header_map(
                 continue;
             }
         };
+        // Reject HTTP transport-level headers whose injection could allow
+        // request smuggling, connection hijacking, or SSRF bypass via Host
+        // override. These are set automatically by reqwest/hyper from the
+        // URL and body — user-supplied values would conflict silently or
+        // enable transport-layer attacks.
+        const FORBIDDEN: &[&str] = &[
+            "content-length",
+            "transfer-encoding",
+            "host",
+            "connection",
+            "keep-alive",
+            "te",
+            "trailer",
+            "upgrade",
+            "proxy-connection",
+            "proxy-authorization",
+            "proxy-authenticate",
+        ];
+        if FORBIDDEN.contains(&name.as_str()) {
+            errors.push(HeaderParseError {
+                name: key.clone(),
+                reason: format!(
+                    "\"{}\" is a reserved HTTP header and cannot be set via custom headers",
+                    name.as_str(),
+                ),
+            });
+            continue;
+        }
         match HeaderValue::from_str(trimmed) {
             Ok(v) => {
                 map.insert(name, v);

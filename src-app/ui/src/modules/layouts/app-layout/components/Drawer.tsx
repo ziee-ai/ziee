@@ -163,7 +163,9 @@ export const Drawer: React.FC<DrawerProps> = props => {
             onWheel={e => e.stopPropagation()}
           >
             <div className={'w-full h-full'}>{node}</div>
-            <ResizeHandle placement={'left'} parentLevel={[1]} />
+            <div data-testid="drawer-resize-handle">
+              <ResizeHandle placement={'left'} parentLevel={[1]} />
+            </div>
           </div>
         )
       }}

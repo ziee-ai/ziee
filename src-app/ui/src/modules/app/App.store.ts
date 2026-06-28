@@ -45,9 +45,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
     } catch (error) {
       console.error('Failed to check setup status:', error)
-      // If we can't check setup status, assume it's not needed
+      // If we can't check setup status, assume setup is needed (safe default)
       set({
-        needsSetup: false,
+        needsSetup: true,
         isCheckingSetup: false,
       })
     }

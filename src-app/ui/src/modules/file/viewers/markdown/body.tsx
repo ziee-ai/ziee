@@ -1,13 +1,95 @@
 import { Spin } from 'antd'
 import { Streamdown } from 'streamdown'
-import type { ComponentProps } from 'react'
+import { Component, createElement, type ComponentProps, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { useResourceLinkContent } from '../../hooks/useResourceLinkContent'
 import { RawCodeView } from '../shared/RawCodeView'
 import { getSource } from '../shared/source'
-import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
-import { streamdownUrlTransform, SafeImg } from '@/modules/chat/core/utils/streamdownUrlTransform'
+// ----- Inlined from @/modules/chat/core/utils/ (generic utilities, no chat deps) -----
+
+function isLocalImageUrl(url: string): boolean {
+  if (!url) return false
+  if (url.startsWith('/')) return true
+  if (url.startsWith('data:')) return false
+  try {
+    const u = new URL(url, window.location.origin)
+    return u.origin === window.location.origin
+  } catch {
+    return false
+  }
+}
+
+export function streamdownUrlTransform(url: string, key: string): string {
+  if (key !== 'src') return url
+  return isLocalImageUrl(url) ? url : ''
+}
+
+export function SafeImg(props: JSX.IntrinsicElements['img']) {
+  const src = typeof props.src === 'string' ? props.src : ''
+  if (!isLocalImageUrl(src)) return null
+  return createElement('img', props)
+}
+
+const isDynamicImportError = (err: unknown): boolean => {
+  if (!(err instanceof Error)) return false
+  const m = err.message ?? ''
+  return (
+    m.includes('Failed to fetch dynamically imported module') ||
+    m.includes('Importing a module script failed') ||
+    m.includes('Outdated Optimize Dep')
+  )
+}
+
+interface StreamdownErrorBoundaryProps {
+  fallbackText: string
+  children: ReactNode
+}
+
+interface StreamdownErrorBoundaryState {
+  error: Error | null
+  retryAttempt: number
+}
+
+export class StreamdownErrorBoundary extends Component<StreamdownErrorBoundaryProps, StreamdownErrorBoundaryState> {
+  state: StreamdownErrorBoundaryState = { error: null, retryAttempt: 0 }
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
+
+  static getDerivedStateFromError(error: Error): Partial<StreamdownErrorBoundaryState> {
+    return { error }
+  }
+
+  componentDidUpdate(_prevProps: StreamdownErrorBoundaryProps, prevState: StreamdownErrorBoundaryState) {
+    if (
+      this.state.error &&
+      !prevState.error &&
+      this.state.retryAttempt === 0 &&
+      isDynamicImportError(this.state.error)
+    ) {
+      this.retryTimer = setTimeout(() => {
+        this.setState({ error: null, retryAttempt: 1 })
+      }, 1500)
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.retryTimer) clearTimeout(this.retryTimer)
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <pre
+          className="whitespace-pre-wrap break-words p-2 text-sm opacity-80"
+          data-testid="streamdown-fallback"
+        >
+          {this.props.fallbackText}
+        </pre>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // Stable identity so Streamdown's prop-equality avoids re-renders.
 const SAFE_IMG_COMPONENTS = { img: SafeImg }
