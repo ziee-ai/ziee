@@ -184,3 +184,43 @@ pub struct PermissionInfo {
     /// The action being performed
     pub action: String,
 }
+
+#[cfg(test)]
+mod permission_check_tests {
+    use super::{PermissionCheck, PermissionInfo};
+
+    struct TwoSeg;
+    impl PermissionCheck for TwoSeg {
+        const NAME: &'static str = "UsersRead";
+        const PERMISSION: &'static str = "users::read";
+        const DESCRIPTION: &'static str = "Read users";
+        const MODULE: &'static str = "users";
+    }
+
+    struct ThreeSeg;
+    impl PermissionCheck for ThreeSeg {
+        const NAME: &'static str = "CodeSandboxResourceLimitsManage";
+        const PERMISSION: &'static str = "code_sandbox::resource_limits::manage";
+        const DESCRIPTION: &'static str = "Manage limits";
+        const MODULE: &'static str = "code_sandbox";
+    }
+
+    #[test]
+    fn resource_is_first_segment_action_is_last() {
+        assert_eq!(TwoSeg::resource(), "users");
+        assert_eq!(TwoSeg::action(), "read");
+        // For a 3-segment permission, resource = first, action = last.
+        assert_eq!(ThreeSeg::resource(), "code_sandbox");
+        assert_eq!(ThreeSeg::action(), "manage");
+    }
+
+    #[test]
+    fn to_info_projects_all_fields() {
+        let info: PermissionInfo = TwoSeg::to_info();
+        assert_eq!(info.permission, "users::read");
+        assert_eq!(info.description, "Read users");
+        assert_eq!(info.module, "users");
+        assert_eq!(info.resource, "users");
+        assert_eq!(info.action, "read");
+    }
+}
