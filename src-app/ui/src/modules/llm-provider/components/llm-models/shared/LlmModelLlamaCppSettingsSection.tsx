@@ -48,7 +48,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Device Type"
               className="m-0 w-[120px]"
             >
-              <Select
+              <Select data-testid="llm-llamacpp-device-type"
                 placeholder="Auto"
                 className="w-full"
                 options={[
@@ -76,7 +76,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Context Size"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-ctx-size"
                 min={512}
                 max={131072}
                 placeholder="8192"
@@ -96,7 +96,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Batch Size"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-batch-size"
                 min={1}
                 max={8192}
                 placeholder="2048"
@@ -116,7 +116,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Physical Batch Size"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-ubatch-size"
                 min={1}
                 max={2048}
                 placeholder="512"
@@ -136,7 +136,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Parallel Sequences"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-parallel"
                 min={1}
                 max={64}
                 placeholder="1"
@@ -156,7 +156,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Keep Tokens"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-keep"
                 min={0}
                 max={4096}
                 placeholder="0"
@@ -177,7 +177,7 @@ export function LlmModelLlamaCppSettingsSection() {
               valuePropName="checked"
               className="m-0"
             >
-              <Switch />
+              <Switch data-testid="llm-llamacpp-mlock" />
             </FormField>
           </ResponsiveConfigItem>
 
@@ -193,7 +193,7 @@ export function LlmModelLlamaCppSettingsSection() {
               valuePropName="checked"
               className="m-0"
             >
-              <Switch />
+              <Switch data-testid="llm-llamacpp-no-mmap" />
             </FormField>
           </ResponsiveConfigItem>
         </Flex>
@@ -211,7 +211,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Generation Threads"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-threads"
                 min={-1}
                 max={64}
                 placeholder="-1"
@@ -231,7 +231,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Batch Processing Threads"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-threads-batch"
                 min={1}
                 max={64}
                 placeholder="Auto"
@@ -252,7 +252,7 @@ export function LlmModelLlamaCppSettingsSection() {
               valuePropName="checked"
               className="m-0"
             >
-              <Switch />
+              <Switch data-testid="llm-llamacpp-cont-batching" />
             </FormField>
           </ResponsiveConfigItem>
 
@@ -268,7 +268,7 @@ export function LlmModelLlamaCppSettingsSection() {
               valuePropName="checked"
               className="m-0"
             >
-              <Switch />
+              <Switch data-testid="llm-llamacpp-flash-attn" />
             </FormField>
           </ResponsiveConfigItem>
 
@@ -284,7 +284,7 @@ export function LlmModelLlamaCppSettingsSection() {
               valuePropName="checked"
               className="m-0"
             >
-              <Switch />
+              <Switch data-testid="llm-llamacpp-no-kv-offload" />
             </FormField>
           </ResponsiveConfigItem>
         </Flex>
@@ -302,7 +302,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="GPU Layers"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-n-gpu-layers"
                 min={0}
                 max={128}
                 placeholder="0"
@@ -322,7 +322,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Main GPU"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-main-gpu"
                 min={0}
                 max={16}
                 placeholder="0"
@@ -342,7 +342,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Split Mode"
               className="m-0 w-[120px]"
             >
-              <Select
+              <Select data-testid="llm-llamacpp-split-mode"
                 placeholder="none"
                 className="w-full"
                 options={[
@@ -365,7 +365,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Tensor Split"
               className="m-0 w-[120px]"
             >
-              <Input placeholder="3,1" className="w-full" />
+              <Input data-testid="llm-llamacpp-tensor-split" placeholder="3,1" className="w-full" />
             </FormField>
           </ResponsiveConfigItem>
         </Flex>
@@ -383,7 +383,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="RoPE Base Frequency"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-rope-freq-base"
                 min={1000}
                 max={1000000}
                 placeholder="Auto"
@@ -403,7 +403,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="RoPE Frequency Scale"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-rope-freq-scale"
                 min={0.1}
                 max={10.0}
                 step={0.1}
@@ -424,7 +424,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="RoPE Scaling"
               className="m-0 w-[120px]"
             >
-              <Select
+              <Select data-testid="llm-llamacpp-rope-scaling"
                 placeholder="none"
                 className="w-full"
                 options={[
@@ -447,7 +447,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="KV Cache Type (K)"
               className="m-0 w-[120px]"
             >
-              <Select
+              <Select data-testid="llm-llamacpp-cache-type-k"
                 placeholder="f16"
                 className="w-full"
                 options={[
@@ -471,7 +471,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="KV Cache Type (V)"
               className="m-0 w-[120px]"
             >
-              <Select
+              <Select data-testid="llm-llamacpp-cache-type-v"
                 placeholder="f16"
                 className="w-full"
                 options={[
@@ -498,7 +498,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="Random Seed"
               className="m-0 w-[120px]"
             >
-              <InputNumber
+              <InputNumber data-testid="llm-llamacpp-seed"
                 min={-1}
                 max={4294967295}
                 placeholder="-1"
@@ -518,7 +518,7 @@ export function LlmModelLlamaCppSettingsSection() {
               aria-label="NUMA Optimization"
               className="m-0 w-[120px]"
             >
-              <Select
+              <Select data-testid="llm-llamacpp-numa"
                 placeholder="None"
                 className="w-full"
                 options={[

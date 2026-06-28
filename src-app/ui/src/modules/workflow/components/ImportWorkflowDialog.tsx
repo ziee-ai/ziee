@@ -85,6 +85,7 @@ export function ImportWorkflowDialog({
 
   return (
     <Dialog
+      data-testid="wf-import-dialog"
       open={open}
       title="Import Workflow"
       onOpenChange={o => {
@@ -95,10 +96,10 @@ export function ImportWorkflowDialog({
       }}
       footer={
         <>
-          <Button variant="outline" loading={validating} onClick={handleValidate}>
+          <Button data-testid="wf-import-validate-btn" variant="outline" loading={validating} onClick={handleValidate}>
             Validate
           </Button>
-          <Button loading={submitting} onClick={handleImport}>
+          <Button data-testid="wf-import-submit-btn" loading={submitting} onClick={handleImport}>
             Import
           </Button>
         </>
@@ -106,6 +107,7 @@ export function ImportWorkflowDialog({
     >
       <Space direction="vertical" className="w-full" size="middle">
         <Upload
+          data-testid="wf-import-upload"
           label="Drop a workflow bundle or workflow.yaml"
           multiple={false}
           onFiles={fs => {
@@ -129,6 +131,7 @@ export function ImportWorkflowDialog({
 
         {validation && (
           <Alert
+            data-testid="wf-import-validation-alert"
             tone={validation.valid ? 'success' : 'error'}
             title={
               validation.valid

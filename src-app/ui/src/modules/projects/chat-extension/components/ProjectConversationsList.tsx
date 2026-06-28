@@ -43,7 +43,7 @@ export function ProjectConversationsList({
 
   if (conversations.length === 0) {
     return (
-      <Empty description="No conversations in this project yet">
+      <Empty data-testid="project-conversations-empty" description="No conversations in this project yet">
         <Text type="secondary">
           Start a new chat here and it will inherit this project's
           instructions + knowledge.
@@ -80,6 +80,7 @@ export function ProjectConversationsList({
       {conversationsHasMore && (
         <div className="flex justify-center pt-1">
           <Button
+            data-testid="project-conversations-load-more-button"
             onClick={handleLoadMore}
             loading={conversationsLoadingMore}
           >
@@ -124,6 +125,7 @@ function RemoveFromProjectButton({
   return (
     <>
       <Dialog
+        data-testid="project-conv-remove-dialog"
         open={open}
         onOpenChange={(v) => { if (!v) setOpen(false) }}
         title="Remove from project?"
@@ -133,12 +135,14 @@ function RemoveFromProjectButton({
         </p>
         <div className="flex justify-end gap-2 mt-6">
           <Button
+            data-testid="project-conv-remove-cancel-button"
             onClick={() => setOpen(false)}
             variant="outline"
           >
             Cancel
           </Button>
           <Button
+            data-testid="project-conv-remove-confirm-button"
             onClick={handleRemove}
             variant="destructive"
             disabled={loading}
@@ -149,6 +153,7 @@ function RemoveFromProjectButton({
       </Dialog>
       <Tooltip content="Remove from project">
         <Button
+          data-testid="project-conv-remove-trigger-button"
           className={`transition-opacity bg-card ${
             open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}

@@ -76,7 +76,7 @@ export function AddRemoteLlmModelDrawer() {
       open={open}
       onClose={handleCancel}
       footer={[
-        <Button key="cancel" variant="outline" onClick={handleCancel}>
+        <Button key="cancel" variant="outline" onClick={handleCancel} data-testid="llm-add-remote-cancel-btn">
           {canCreate ? 'Cancel' : 'Close'}
         </Button>,
         canCreate && (
@@ -84,6 +84,7 @@ export function AddRemoteLlmModelDrawer() {
             key="submit"
             loading={loading}
             onClick={() => form.handleSubmit(onValid)()}
+            data-testid="llm-add-remote-submit-btn"
           >
             Add
           </Button>
@@ -96,6 +97,7 @@ export function AddRemoteLlmModelDrawer() {
         form={form}
         onSubmit={onValid}
         layout="vertical"
+        data-testid="llm-add-remote-model-form"
       >
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />
       </Form>

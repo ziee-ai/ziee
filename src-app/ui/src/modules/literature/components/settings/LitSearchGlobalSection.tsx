@@ -49,7 +49,7 @@ export function LitSearchGlobalSection() {
 
   if (loading && !settings) {
     return (
-      <Card title="General">
+      <Card title="General" data-testid="lit-global-card">
         <Spin label="Loading" />
       </Card>
     )
@@ -73,13 +73,14 @@ export function LitSearchGlobalSection() {
   }
 
   return (
-    <Card title="General">
+    <Card title="General" data-testid="lit-global-card">
       {!canManage && (
         <Alert
           tone="info"
           title="Read-only view"
           description="You can view literature search settings but not change them."
           className="mb-3"
+          data-testid="lit-global-readonly-alert"
         />
       )}
       <Flex align="center" gap="small" className="mb-3">
@@ -88,6 +89,7 @@ export function LitSearchGlobalSection() {
           checked={settings.enabled}
           disabled={!canManage}
           onChange={v => save({ enabled: v }, v ? 'Literature search enabled' : 'Disabled')}
+          data-testid="lit-global-enable-switch"
         />
         <Text>Enable literature search</Text>
       </Flex>
@@ -98,6 +100,7 @@ export function LitSearchGlobalSection() {
           checked={settings.completeness_estimate_enabled}
           disabled={!canManage}
           onChange={v => save({ completeness_estimate_enabled: v }, 'Completeness estimate updated')}
+          data-testid="lit-global-completeness-switch"
         />
         <Text>Show completeness (saturation) estimate</Text>
       </Flex>
@@ -118,21 +121,23 @@ export function LitSearchGlobalSection() {
         labelWidth="42%"
         disabled={!canManage}
         onSubmit={handleCapsSubmit}
+        data-testid="lit-global-caps-form"
       >
         <FormField label="Max deduped results" name="max_results">
-          <InputNumber min={1} max={200} className="w-full" />
+          <InputNumber min={1} max={200} className="w-full" data-testid="lit-global-max-results-input" />
         </FormField>
         <FormField label="Per-source limit" name="per_source_limit">
-          <InputNumber min={1} max={100} className="w-full" />
+          <InputNumber min={1} max={100} className="w-full" data-testid="lit-global-per-source-limit-input" />
         </FormField>
         <FormField label="Request timeout (s)" name="request_timeout_secs">
-          <InputNumber min={1} max={120} className="w-full" />
+          <InputNumber min={1} max={120} className="w-full" data-testid="lit-global-request-timeout-input" />
         </FormField>
         <Flex justify="end">
           <Button
             type="submit"
             loading={savingSettings}
             disabled={!canManage || !form.formState.isDirty}
+            data-testid="lit-global-save-caps-button"
           >
             Save caps
           </Button>

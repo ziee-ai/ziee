@@ -165,6 +165,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               Multiple quantization options available. Please select one:
             </Text>
             <Select
+              data-testid="hub-model-quant-select"
               options={sourceQuants.map(option => ({
                 label: (
                   <div className="flex flex-col">
@@ -215,6 +216,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               the model:
             </Text>
             <Select
+              data-testid="hub-model-provider-select"
               options={localProviders.map(p => ({
                 label: p.name,
                 value: p.id,
@@ -285,19 +287,19 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   </Text>
                   {/* v2 per-entry version — see AssistantHubCard. */}
                   {model.version && (
-                    <Tag className="text-xs !m-0">v{model.version}</Tag>
+                    <Tag className="text-xs !m-0" data-testid={`hub-model-version-tag-${model.name}`}>v{model.version}</Tag>
                   )}
                   {/* Top status tag — minimal, no percent (the
                       full-width bar at the bottom carries that).
                       Precedence: active > downloaded > failed. */}
                   {isModelBeingDownloaded ? (
-                    <Tag tone="info" icon={<Download />}>
+                    <Tag tone="info" icon={<Download />} data-testid={`hub-model-status-tag-${model.name}`}>
                       Downloading
                     </Tag>
                   ) : isModelDownloaded ? (
-                    <Tag tone="info" variant="solid">Downloaded</Tag>
+                    <Tag tone="info" variant="solid" data-testid={`hub-model-status-tag-${model.name}`}>Downloaded</Tag>
                   ) : failedDownload ? (
-                    <Tag tone="error" icon={<CircleAlert />}>
+                    <Tag tone="error" icon={<CircleAlert />} data-testid={`hub-model-status-tag-${model.name}`}>
                       Download Failed
                     </Tag>
                   ) : null}
@@ -310,6 +312,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       }
                     >
                       <Tag
+                        data-testid={`hub-model-auth-tag-${model.name}`}
                         tone={model.source_auth_configured ? 'warning' : 'error'}
                         icon={
                           model.source_auth_configured ? (
@@ -337,6 +340,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   <Button
                     variant="outline"
                     icon={<FileText />}
+                    data-testid={`hub-model-readme-btn-${model.name}`}
                     onClick={e => {
                       e.stopPropagation()
                       const fallback =
@@ -356,6 +360,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                 {canDownload && !failedDownload && (
                   <Button
                     icon={<Download />}
+                    data-testid={`hub-model-download-btn-${model.name}`}
                     onClick={e => {
                       e.stopPropagation()
                       handleDownload()
@@ -395,6 +400,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                         tone="info"
                         icon={<Eye />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-vision-tag-${model.name}`}
                       >
                         Vision
                       </Tag>
@@ -404,6 +410,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                         tone="info"
                         icon={<Wrench />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-tools-tag-${model.name}`}
                       >
                         Tools
                       </Tag>
@@ -413,6 +420,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                         tone="warning"
                         icon={<LayoutGrid />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-code-tag-${model.name}`}
                       >
                         Code
                       </Tag>
@@ -422,6 +430,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                         tone="success"
                         icon={<MessageSquare />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-chat-tag-${model.name}`}
                       >
                         Chat
                       </Tag>
@@ -431,6 +440,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                         tone="info"
                         icon={<Search />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-embedding-tag-${model.name}`}
                       >
                         Embedding
                       </Tag>
@@ -440,6 +450,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                         tone="error"
                         icon={<Image />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-image-tag-${model.name}`}
                       >
                         Image Gen
                       </Tag>
@@ -456,7 +467,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   </Text>
                   <Flex wrap inline className="gap-1">
                     {model.tags.map(tag => (
-                      <Tag key={tag} className="text-xs">
+                      <Tag key={tag} className="text-xs" data-testid={`hub-model-card-tag-${model.name}-${tag}`}>
                         {tag}
                       </Tag>
                     ))}
@@ -529,6 +540,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
             }}
           >
             <Progress
+              data-testid={`hub-model-progress-${model.name}`}
               aria-label="Download progress"
               value={
                 activeDownload.progress_data?.total
@@ -581,6 +593,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               title={failedDownload.error_message ?? 'Download failed'}
             >
               <Progress
+                data-testid={`hub-model-failed-progress-${model.name}`}
                 aria-label="Download progress"
                 value={
                   failedDownload.progress_data?.total
@@ -613,6 +626,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   variant="outline"
                   size="sm"
                   icon={<RotateCw />}
+                  data-testid={`hub-model-retry-btn-${model.name}`}
                   onClick={e => {
                     e.stopPropagation()
                     // Reuse the existing gates-and-probe pre-flight

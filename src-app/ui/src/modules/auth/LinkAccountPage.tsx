@@ -67,7 +67,7 @@ export const LinkAccountPage: React.FC = () => {
     <BlankLayoutComponent>
       <div className="min-h-screen">
         <div className="flex items-center justify-center p-4">
-          <Card className="w-full max-w-md">
+          <Card data-testid="auth-link-account-card" className="w-full max-w-md">
             <Title level={3}>Link your accounts</Title>
             <Paragraph type="secondary">
               An existing account uses this email. Enter your password to
@@ -75,6 +75,7 @@ export const LinkAccountPage: React.FC = () => {
             </Paragraph>
             {error && (
               <Alert
+                data-testid="auth-link-account-error"
                 title={error}
                 tone="error"
                 onClose={() => setError(null)}
@@ -83,6 +84,7 @@ export const LinkAccountPage: React.FC = () => {
               />
             )}
             <Form
+              data-testid="auth-link-account-form"
               form={form}
               layout="vertical"
               onSubmit={onFinish}
@@ -92,6 +94,7 @@ export const LinkAccountPage: React.FC = () => {
                 label="Password"
               >
                 <PasswordInput
+                  data-testid="auth-link-account-password"
                   prefix={<Lock />}
                   placeholder="Your existing password"
                   autoComplete="current-password"
@@ -101,6 +104,7 @@ export const LinkAccountPage: React.FC = () => {
                 />
               </FormField>
               <Button
+                data-testid="auth-link-account-submit"
                 block
                 loading={loading}
                 disabled={!linkToken}

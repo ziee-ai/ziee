@@ -50,11 +50,13 @@ export function AssignGroupDrawer() {
         layout="vertical"
         onSubmit={handleAssignGroup}
         disabled={!canAssign}
+        data-testid="user-assign-group-form"
       >
         <FormField name="group_id" label="Select Group" required>
           <Select
             placeholder="Select group to assign"
             options={groups.map(group => ({ value: group.id, label: group.name }))}
+            data-testid="user-assign-group-select"
           />
         </FormField>
         <Flex className="justify-end gap-2">
@@ -64,11 +66,12 @@ export function AssignGroupDrawer() {
               Stores.AssignGroupDrawer.closeAssignGroupDrawer()
               assignGroupForm.reset()
             }}
+            data-testid="user-assign-group-cancel-button"
           >
             {canAssign ? 'Cancel' : 'Close'}
           </Button>
           {canAssign && (
-            <Button type="submit">
+            <Button type="submit" data-testid="user-assign-group-submit-button">
               Assign
             </Button>
           )}

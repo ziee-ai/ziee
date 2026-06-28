@@ -88,6 +88,7 @@ export function ImportSkillDialog({
   return (
     <Dialog
       open={open}
+      data-testid="skill-import-dialog"
       title="Import Skill"
       onOpenChange={o => {
         if (!o) {
@@ -97,10 +98,10 @@ export function ImportSkillDialog({
       }}
       footer={
         <>
-          <Button variant="outline" loading={validating} onClick={handleValidate}>
+          <Button variant="outline" loading={validating} data-testid="skill-import-validate-button" onClick={handleValidate}>
             Validate
           </Button>
-          <Button loading={submitting} onClick={handleImport}>
+          <Button loading={submitting} data-testid="skill-import-submit-button" onClick={handleImport}>
             Import
           </Button>
         </>
@@ -109,6 +110,7 @@ export function ImportSkillDialog({
       <Space direction="vertical" className="w-full" size="middle">
         <Upload
           label="Skill bundle"
+          data-testid="skill-import-upload"
           onFiles={files => {
             setFile(files[0] ?? null)
             setValidation(null)
@@ -126,6 +128,7 @@ export function ImportSkillDialog({
 
         {validation && (
           <Alert
+            data-testid="skill-import-validation-alert"
             tone={validation.valid ? 'success' : 'error'}
             title={validation.valid ? 'Valid skill' : 'Validation failed'}
             description={

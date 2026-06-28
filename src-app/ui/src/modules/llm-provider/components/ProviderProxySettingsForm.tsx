@@ -90,13 +90,14 @@ export function ProviderProxySettingsForm({
   }
 
   return (
-    <Card title={'Proxy Settings'}>
+    <Card title={'Proxy Settings'} data-testid="llm-proxy-settings-card">
       <Form
         name="provider-proxy-form"
         form={form}
         layout="vertical"
         onSubmit={handleSave}
         disabled={disabled}
+        data-testid="llm-proxy-form"
       >
         <Flex className={'flex-col'}>
           <Flex className={'flex-col gap-3'}>
@@ -117,6 +118,7 @@ export function ProviderProxySettingsForm({
                 >
                   <Switch
                     aria-label="Enable or disable proxy settings"
+                    data-testid="llm-proxy-enabled-switch"
                   />
                 </FormField>
               </div>
@@ -137,6 +139,7 @@ export function ProviderProxySettingsForm({
                 >
                   <Input
                     placeholder={'http://proxy.example.com:8080'}
+                    data-testid="llm-proxy-url-input"
                   />
                 </FormField>
               </div>
@@ -153,6 +156,7 @@ export function ProviderProxySettingsForm({
                 <FormField name="username" aria-label="Proxy username">
                   <Input
                     placeholder={'Username (optional)'}
+                    data-testid="llm-proxy-username-input"
                   />
                 </FormField>
                 <FormField name="password" aria-label="Proxy password">
@@ -160,6 +164,7 @@ export function ProviderProxySettingsForm({
                     placeholder={'Password (optional)'}
                     showLabel="Show"
                     hideLabel="Hide"
+                    data-testid="llm-proxy-password-input"
                   />
                 </FormField>
               </div>
@@ -176,6 +181,7 @@ export function ProviderProxySettingsForm({
                 <FormField name="no_proxy" aria-label="No-proxy hosts">
                   <Input
                     placeholder={'localhost,127.0.0.1,.example.com'}
+                    data-testid="llm-proxy-no-proxy-input"
                   />
                 </FormField>
               </div>
@@ -197,6 +203,7 @@ export function ProviderProxySettingsForm({
               >
                 <Switch
                   aria-label="Ignore SSL certificate errors"
+                  data-testid="llm-proxy-ignore-ssl-switch"
                 />
               </FormField>
             </div>
@@ -207,12 +214,13 @@ export function ProviderProxySettingsForm({
 
         <div className={'flex justify-end'}>
           <Flex className="gap-2">
-            <Button variant="outline" onClick={handleReset}>
+            <Button variant="outline" onClick={handleReset} data-testid="llm-proxy-reset-btn">
               Reset
             </Button>
             <Button
               type="submit"
               loading={loading}
+              data-testid="llm-proxy-save-btn"
             >
               Save
             </Button>

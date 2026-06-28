@@ -88,6 +88,7 @@ export function ProjectsNavWidget() {
       {projects.length === 0 ? (
         <div className="px-2 py-3">
           <Empty
+            data-testid="project-nav-empty"
             image={<Folder className="text-2xl text-gray-400" />}
             description={
               <Text type="secondary" className="text-xs">
@@ -138,6 +139,7 @@ export function ProjectsNavWidget() {
                   </div>
                   {showPlus && (
                     <Button
+                      data-testid={`project-nav-new-chat-button-${project.id}`}
                       variant="ghost"
                       size="sm"
                       icon={<Plus />}
@@ -162,6 +164,7 @@ export function ProjectsNavWidget() {
       <Separator className="!my-1" />
       <div className="px-2 pb-1">
         <Button
+          data-testid="project-nav-all-projects-button"
           variant="ghost"
           icon={<Folder />}
           block

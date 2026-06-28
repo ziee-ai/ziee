@@ -51,6 +51,7 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
   if (error) {
     return (
       <Alert
+        data-testid="auth-providers-error"
         tone="warning"
         title="Unable to load sign-in options"
         description={error}
@@ -84,6 +85,7 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
         {providers.map(p => (
           <Button
             key={p.name}
+            data-testid={`auth-provider-btn-${p.name}`}
             block
             size="lg"
             icon={iconFor(p)}

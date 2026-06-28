@@ -10,12 +10,13 @@ export function LlmModelCapabilitiesSection() {
   const grayed = Boolean(isEmbedding)
 
   return (
-    <Card title="Capabilities">
+    <Card title="Capabilities" data-testid="llm-capabilities-card">
       <Flex vertical className="gap-2 w-full">
         {grayed && (
           <Alert
             tone="info"
             className="!mb-1"
+            data-testid="llm-capabilities-embedder-alert"
             title="This model is flagged as an embedder; chat capabilities are hidden because they don't apply."
           />
         )}
@@ -72,7 +73,7 @@ function CapabilityRow({
         valuePropName="checked"
         className="mb-0"
       >
-        <Switch />
+        <Switch data-testid={`llm-capability-switch-${name}`} />
       </FormField>
     </div>
   )

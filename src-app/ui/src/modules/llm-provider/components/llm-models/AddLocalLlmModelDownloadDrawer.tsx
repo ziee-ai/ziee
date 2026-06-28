@@ -345,7 +345,7 @@ export function AddLocalLlmModelDownloadDrawer() {
       footer={
         viewMode
           ? [
-              <Button key="close" variant="outline" onClick={handleCloseModal}>
+              <Button key="close" variant="outline" onClick={handleCloseModal} data-testid="llm-download-drawer-close-btn">
                 Close
               </Button>,
               canCancelDownload &&
@@ -355,6 +355,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                   <Button
                     key="cancel-download"
                     variant="destructive"
+                    data-testid="llm-download-drawer-cancel-download-btn"
                     onClick={async () => {
                       try {
                         await Stores.LlmModelDownload.cancelLlmModelDownload(
@@ -374,7 +375,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                 ),
             ].filter(Boolean)
           : [
-              <Button key="cancel" variant="outline" onClick={handleCancel}>
+              <Button key="cancel" variant="outline" onClick={handleCancel} data-testid="llm-download-drawer-cancel-btn">
                 {canCreate ? 'Cancel' : 'Close'}
               </Button>,
               canCreate && (
@@ -382,6 +383,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                   key="submit"
                   loading={loading}
                   onClick={() => form.handleSubmit(onValid)()}
+                  data-testid="llm-download-drawer-submit-btn"
                 >
                   Download
                 </Button>
@@ -393,7 +395,7 @@ export function AddLocalLlmModelDownloadDrawer() {
     >
       <div>
         {viewDownload && (
-          <Card title="Download Progress" className="mb-4">
+          <Card title="Download Progress" className="mb-4" data-testid="llm-download-progress-card">
             {viewDownload.status === 'failed' && viewDownload.error_message ? (
               <Text type="danger">{viewDownload.error_message}</Text>
             ) : (
@@ -420,6 +422,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                   }
                   format={percent => `${percent}%`}
                   aria-label="Download progress"
+                  data-testid="llm-download-detail-progress"
                 />
                 {viewDownload.progress_data && (
                   <Text type="secondary" className="text-xs">
@@ -459,6 +462,7 @@ export function AddLocalLlmModelDownloadDrawer() {
           onSubmit={onValid}
           layout="vertical"
           disabled={viewMode}
+          data-testid="llm-model-download-form"
         >
           <LocalLlmModelCommonFields />
 
@@ -469,6 +473,7 @@ export function AddLocalLlmModelDownloadDrawer() {
           >
             <Select
               placeholder="Select repository"
+              data-testid="llm-download-repository-select"
               loading={loadingRepositories}
               options={repositories.map(repo => ({
                 value: repo.id,
@@ -484,6 +489,7 @@ export function AddLocalLlmModelDownloadDrawer() {
           >
             <Input
               placeholder="microsoft/DialoGPT-medium"
+              data-testid="llm-download-repository-path-input"
               prefix={
                 selectedRepository
                   ? repositories.find(r => r.id === selectedRepository)?.url ||
@@ -495,7 +501,7 @@ export function AddLocalLlmModelDownloadDrawer() {
 
           {!viewMode && (
             <div className="mb-4">
-              <Button variant="outline" onClick={handleDetectFiles} loading={detecting}>
+              <Button variant="outline" onClick={handleDetectFiles} loading={detecting} data-testid="llm-download-detect-files-btn">
                 Detect files
               </Button>
             </div>
@@ -507,11 +513,11 @@ export function AddLocalLlmModelDownloadDrawer() {
             required
             description={viewMode ? undefined : detectHelp}
           >
-            <Input placeholder="model.safetensors" />
+            <Input placeholder="model.safetensors" data-testid="llm-download-main-filename-input" />
           </FormField>
 
           <FormField name="repository_branch" label="Branch">
-            <Input placeholder="main" />
+            <Input placeholder="main" data-testid="llm-download-branch-input" />
           </FormField>
 
           {/*

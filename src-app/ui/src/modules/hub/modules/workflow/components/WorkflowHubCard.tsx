@@ -115,10 +115,10 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
             <Flex gap="small" align="center" wrap>
               <Text className="font-medium">{title}</Text>
               {item.version && (
-                <Tag className="text-xs !m-0">v{item.version}</Tag>
+                <Tag className="text-xs !m-0" data-testid={`hub-workflow-version-tag-${item.name}`}>v{item.version}</Tag>
               )}
-              {state === 'user' && <Tag tone="success">Installed</Tag>}
-              {state === 'system' && <Tag tone="info">System installed</Tag>}
+              {state === 'user' && <Tag tone="success" data-testid={`hub-workflow-installed-tag-${item.name}`}>Installed</Tag>}
+              {state === 'system' && <Tag tone="info" data-testid={`hub-workflow-system-tag-${item.name}`}>System installed</Tag>}
             </Flex>
             {item.summary && (
               <Text type="secondary" className="text-sm mt-1 block">
@@ -128,13 +128,14 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
           </div>
           <div onClick={e => e.stopPropagation()}>
             {canManageSystem ? (
-              <Dropdown items={adminMenuItems} onSelect={handleInstallAction}>
+              <Dropdown data-testid={`hub-workflow-admin-dropdown-${item.name}`} items={adminMenuItems} onSelect={handleInstallAction}>
                 <Button
                   variant="default"
                   icon={<Download />}
                   loading={installing}
                   disabled={installing}
                   onClick={handleInstallForMe}
+                  data-testid={`hub-workflow-install-dropdown-btn-${item.name}`}
                 >
                   Install
                 </Button>
@@ -146,6 +147,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
                 loading={installing}
                 disabled={state !== 'none'}
                 onClick={handleInstallForMe}
+                data-testid={`hub-workflow-install-btn-${item.name}`}
               >
                 Install for me
               </Button>
@@ -161,6 +163,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
       />
 
       <Dialog
+        data-testid={`hub-workflow-groups-dialog-${item.name}`}
         open={groupsOpen}
         title="Install for groups"
         onOpenChange={(open) => {
@@ -168,13 +171,14 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
         }}
         footer={
           <>
-            <Button variant="outline" onClick={() => setGroupsOpen(false)}>
+            <Button variant="outline" onClick={() => setGroupsOpen(false)} data-testid={`hub-workflow-groups-cancel-btn-${item.name}`}>
               Cancel
             </Button>
             <Button
               variant="default"
               loading={submittingGroups}
               onClick={handleInstallForGroups}
+              data-testid={`hub-workflow-groups-install-btn-${item.name}`}
             >
               Install
             </Button>
@@ -182,6 +186,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
         }
       >
         <MultiSelect
+          data-testid={`hub-workflow-groups-multiselect-${item.name}`}
           className="w-full"
           aria-label="Restrict to groups"
           placeholder="Select groups (empty = all users)"

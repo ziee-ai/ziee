@@ -112,10 +112,10 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
             <Flex gap="small" align="center" wrap>
               <Text className="font-medium">{title}</Text>
               {item.version && (
-                <Tag className="text-xs !m-0">v{item.version}</Tag>
+                <Tag className="text-xs !m-0" data-testid={`hub-skill-version-tag-${item.name}`}>v{item.version}</Tag>
               )}
-              {state === 'user' && <Tag tone="success">Installed</Tag>}
-              {state === 'system' && <Tag tone="info">System installed</Tag>}
+              {state === 'user' && <Tag tone="success" data-testid={`hub-skill-installed-tag-${item.name}`}>Installed</Tag>}
+              {state === 'system' && <Tag tone="info" data-testid={`hub-skill-system-tag-${item.name}`}>System installed</Tag>}
             </Flex>
             {item.summary && (
               <Text type="secondary" className="text-sm mt-1 block">
@@ -126,6 +126,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
           <div onClick={e => e.stopPropagation()}>
             {canManageSystem ? (
               <Dropdown
+                data-testid={`hub-skill-admin-dropdown-${item.name}`}
                 items={adminMenu as any}
                 onSelect={handleAdminSelect}
               >
@@ -135,6 +136,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
                   loading={installing}
                   disabled={installing}
                   onClick={handleInstallForMe}
+                  data-testid={`hub-skill-install-dropdown-btn-${item.name}`}
                 >
                   Install
                 </Button>
@@ -146,6 +148,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
                 loading={installing}
                 disabled={state !== 'none'}
                 onClick={handleInstallForMe}
+                data-testid={`hub-skill-install-btn-${item.name}`}
               >
                 Install for me
               </Button>
@@ -161,16 +164,18 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
       />
 
       <Dialog
+        data-testid={`hub-skill-groups-dialog-${item.name}`}
         open={groupsOpen}
         onOpenChange={(open) => { if (!open) setGroupsOpen(false) }}
         title="Install for groups"
         footer={
           <>
-            <Button variant="outline" onClick={() => setGroupsOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setGroupsOpen(false)} data-testid={`hub-skill-groups-cancel-btn-${item.name}`}>Cancel</Button>
             <Button
               variant="default"
               loading={submittingGroups}
               onClick={handleInstallForGroups}
+              data-testid={`hub-skill-groups-install-btn-${item.name}`}
             >
               Install
             </Button>
@@ -178,6 +183,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
         }
       >
         <MultiSelect
+          data-testid={`hub-skill-groups-multiselect-${item.name}`}
           className="w-full"
           aria-label="Restrict to groups"
           placeholder="Select groups (empty = all users)"

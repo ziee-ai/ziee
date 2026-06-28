@@ -79,7 +79,7 @@ export function UserProfileWidget() {
   ]
 
   const item = (
-    <Dropdown items={items} side="top" align="start">
+    <Dropdown data-testid="userprofile-menu-dropdown" items={items} side="top" align="start">
       <div data-testid="user-profile-widget">
         <SidebarItem
           icon={<User />}

@@ -103,6 +103,7 @@ export function ModelSelector() {
   return (
     <div data-testid="model-selector">
       <Select
+        data-testid="ullm-model-select"
         value={selectedModelId ?? undefined}
         onChange={handleChange}
         popupMatchSelectWidth={false}

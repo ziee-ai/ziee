@@ -89,7 +89,7 @@ export default function SetupPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center  p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md" data-testid="app-setup-card">
         <div className="mb-6">
           <Title level={2}>Welcome to Ziee Chat</Title>
           <Paragraph>
@@ -101,6 +101,7 @@ export default function SetupPage() {
         {setupError && (
           <Alert
             tone="error"
+            data-testid="app-setup-error-alert"
             title={setupError}
             className="mb-4"
             onClose={Stores.App.clearSetupError}
@@ -110,6 +111,7 @@ export default function SetupPage() {
 
         <Form
           name="setup-form"
+          data-testid="app-setup-form"
           form={form}
           layout="vertical"
           onSubmit={onSubmit}
@@ -119,7 +121,7 @@ export default function SetupPage() {
             name="username"
             required
           >
-            <Input placeholder="admin" autoComplete="username" />
+            <Input data-testid="app-setup-username-input" placeholder="admin" autoComplete="username" />
           </FormField>
 
           <FormField
@@ -128,6 +130,7 @@ export default function SetupPage() {
             required
           >
             <Input
+              data-testid="app-setup-email-input"
               placeholder="admin@example.com"
               type="email"
               autoComplete="email"
@@ -141,6 +144,7 @@ export default function SetupPage() {
             description="Must be at least 8 characters"
           >
             <Input
+              data-testid="app-setup-password-input"
               type="password"
               placeholder="Enter a strong password"
               autoComplete="new-password"
@@ -153,6 +157,7 @@ export default function SetupPage() {
             required
           >
             <Input
+              data-testid="app-setup-confirm-password-input"
               type="password"
               placeholder="Confirm your password"
               autoComplete="new-password"
@@ -160,11 +165,12 @@ export default function SetupPage() {
           </FormField>
 
           <FormField label="Display Name (Optional)" name="display_name">
-            <Input placeholder="System Administrator" />
+            <Input data-testid="app-setup-display-name-input" placeholder="System Administrator" />
           </FormField>
 
           <Button
             type="submit"
+            data-testid="app-setup-submit-button"
             block
             loading={isSettingUpAdmin}
             size="lg"

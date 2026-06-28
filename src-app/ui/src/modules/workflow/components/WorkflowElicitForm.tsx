@@ -152,6 +152,7 @@ function renderField(
         description={description}
       >
         <Select
+          data-testid={`wf-elicit-select-${name}`}
           options={field.enum.map(v => ({ value: String(v), label: String(v) }))}
         />
       </FormField>
@@ -167,7 +168,7 @@ function renderField(
         description={description}
         valuePropName="checked"
       >
-        <Switch />
+        <Switch data-testid={`wf-elicit-switch-${name}`} />
       </FormField>
     )
   }
@@ -181,6 +182,7 @@ function renderField(
         description={description}
       >
         <InputNumber
+          data-testid={`wf-elicit-number-${name}`}
           min={field.minimum}
           max={field.maximum}
           precision={field.type === 'integer' ? 0 : undefined}
@@ -197,7 +199,7 @@ function renderField(
       required={required}
       description={description}
     >
-      <Input />
+      <Input data-testid={`wf-elicit-input-${name}`} />
     </FormField>
   )
 }
@@ -270,6 +272,7 @@ export function WorkflowElicitForm({
 
   return (
     <Alert
+      data-testid="wf-elicit-alert"
       tone="info"
       icon={<PenLine className="size-4" />}
       title="Input required"
@@ -277,6 +280,7 @@ export function WorkflowElicitForm({
         <div className="mt-2">
           <Text className="text-sm">{elicitation.message}</Text>
           <Form
+            data-testid="wf-elicit-form"
             form={form}
             layout="vertical"
             className="mt-3"
@@ -292,9 +296,10 @@ export function WorkflowElicitForm({
             )}
           </Form>
           {error && (
-            <Alert tone="error" title={error} className="!mb-2 mt-2" />
+            <Alert data-testid="wf-elicit-error-alert" tone="error" title={error} className="!mb-2 mt-2" />
           )}
           <Button
+            data-testid="wf-elicit-submit-btn"
             type="button"
             size="sm"
             loading={submitting}

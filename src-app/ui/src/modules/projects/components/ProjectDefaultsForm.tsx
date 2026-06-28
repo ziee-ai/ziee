@@ -180,6 +180,7 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
         >
           <label className="text-sm font-medium leading-none">Default assistant</label>
           <Combobox
+            data-testid="project-default-assistant-combobox"
             placeholder="No default"
             searchPlaceholder="Search assistants…"
             emptyText="No assistants found"
@@ -199,6 +200,7 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
         >
           <label className="text-sm font-medium leading-none">Default model</label>
           <Combobox
+            data-testid="project-default-model-combobox"
             placeholder="No default"
             searchPlaceholder="Search models…"
             emptyText="No models found"

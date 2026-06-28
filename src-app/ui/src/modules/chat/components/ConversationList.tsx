@@ -108,6 +108,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // Search box component
   const searchBox = (
     <Input
+      data-testid="chat-conversation-search-input"
       placeholder="Search conversations..."
       allowClear
       prefix={<SearchIcon />}
@@ -135,7 +136,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
         {/* Bulk actions bar */}
         {selectedIds.size > 0 && (
           <div className="max-w-4xl w-full self-center px-3 pt-3">
-            <Card className="[&_[data-part='body']]:!p-3">
+            <Card data-testid="chat-bulk-actions-card" className="[&_[data-part='body']]:!p-3">
               <Flex
                 justify="between"
                 align="center"
@@ -146,16 +147,21 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                 </Text>
                 <Flex className="gap-2">
                   <Button
+                    data-testid="chat-bulk-deselect-btn"
                     icon={<CircleX />}
                     onClick={() => Stores.ChatHistory.__state.deselectAll()}
                   >
                     Deselect All
                   </Button>
-                  <Button onClick={() => Stores.ChatHistory.__state.selectAll()}>
+                  <Button
+                    data-testid="chat-bulk-select-all-btn"
+                    onClick={() => Stores.ChatHistory.__state.selectAll()}
+                  >
                     Select All
                   </Button>
                   {canDelete && (
                     <Confirm
+                      data-testid="chat-bulk-delete-confirm"
                       title="Delete selected conversations"
                       description={`Are you sure you want to delete ${selectedIds.size} conversation${selectedIds.size > 1 ? 's' : ''}?`}
                       onConfirm={handleDeleteSelected}
@@ -163,7 +169,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                       cancelText="Cancel"
                       okButtonProps={{ danger: true, disabled: deleting }}
                     >
-                      <Button variant="destructive" icon={<Trash2 />} loading={deleting}>
+                      <Button data-testid="chat-bulk-delete-btn" variant="destructive" icon={<Trash2 />} loading={deleting}>
                         Delete Selected
                       </Button>
                     </Confirm>
@@ -178,8 +184,9 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
         <DivScrollY className="flex-1 w-full flex-col !py-3 overflow-x-visible">
           <div className="gap-2 max-w-4xl w-full self-center overflow-x-visible">
             {visibleConversations.length === 0 && !loading ? (
-              <Card className="!mx-3">
+              <Card data-testid="chat-history-empty-card" className="!mx-3">
                 <Empty
+                  data-testid="chat-history-empty"
                   description={
                     searchQuery
                       ? 'No conversations found matching your search'
@@ -215,12 +222,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
 
                     {/* Pagination info */}
                     {visibleConversations.length > 0 && (
-                      <Card className="text-center !mx-3 [&_[data-part='body']]:!p-2">
+                      <Card data-testid="chat-history-pagination-card" className="text-center !mx-3 [&_[data-part='body']]:!p-2">
                         <Text type="secondary">
                           Showing {visibleConversations.length} of {total} conversations
                         </Text>
                         {hasMore && !searchQuery && (
-                          <Button onClick={handleLoadMore} loading={loadingMore}>
+                          <Button data-testid="chat-history-load-more-btn" onClick={handleLoadMore} loading={loadingMore}>
                             Load More
                           </Button>
                         )}

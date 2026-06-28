@@ -71,6 +71,7 @@ export function RecentConversationsWidget() {
         {headerOnly}
         <div className="px-2 py-4">
           <Empty
+            data-testid="chat-recent-empty"
             image={<MessageSquare className="size-9 text-gray-400" />}
             description={
               <Text type="secondary" className="text-xs">
@@ -110,6 +111,7 @@ export function RecentConversationsWidget() {
     <div className="flex flex-col h-full min-h-0 text-foreground">
       <DivScrollY className="flex-col flex-1 min-h-0">
         <Menu
+          data-testid="chat-recent-conversations-menu"
           mode="vertical"
           aria-label="Recent conversations"
           items={items}
@@ -210,6 +212,7 @@ function ConversationRowLabel({
         onClick={e => e.stopPropagation()}
       >
         <Dropdown
+          data-testid={`chat-recent-row-menu-${conversation.id}`}
           items={menuItems}
           side="bottom"
           align="end"
@@ -220,6 +223,7 @@ function ConversationRowLabel({
           }}
         >
           <Button
+            data-testid={`chat-recent-row-actions-btn-${conversation.id}`}
             variant="ghost"
             size="icon"
             icon={<MoreHorizontal />}

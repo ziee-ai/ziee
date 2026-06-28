@@ -93,14 +93,15 @@ export function UsersSettings() {
     if (canToggleStatus && !isSelf && !isRootAdmin) {
       actions.push(
         <div key="active-confirm" className="inline-flex items-center">
-          <Switch className={'mr-2!'} checked={user.is_active} />
+          <Switch className={'mr-2!'} checked={user.is_active} data-testid={`user-active-switch-${user.id}`} />
           <Confirm
             title={`${user.is_active ? 'Deactivate' : 'Activate'} this user?`}
             onConfirm={() => handleToggleActive(user.id)}
             okText="OK"
             cancelText="Cancel"
+            data-testid={`user-toggle-active-confirm-${user.id}`}
           >
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" data-testid={`user-toggle-active-button-${user.id}`}>
               {user.is_active ? 'Deactivate' : 'Activate'}
             </Button>
           </Confirm>
@@ -115,6 +116,7 @@ export function UsersSettings() {
           variant="ghost"
           icon={<Pencil />}
           onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
+          data-testid={`user-edit-button-${user.id}`}
         >
           Edit
         </Button>,
@@ -130,6 +132,7 @@ export function UsersSettings() {
           onClick={() =>
             Stores.ResetPasswordDrawer.openResetPasswordDrawer(user)
           }
+          data-testid={`user-reset-password-button-${user.id}`}
         >
           Reset Password
         </Button>,
@@ -143,6 +146,7 @@ export function UsersSettings() {
           variant="ghost"
           icon={<Users />}
           onClick={() => Stores.UserGroupsDrawer.openUserGroupsDrawer(user)}
+          data-testid={`user-groups-button-${user.id}`}
         >
           Groups
         </Button>,
@@ -157,11 +161,13 @@ export function UsersSettings() {
             onConfirm={() => handleDelete(user.id)}
             okText="OK"
             cancelText="Cancel"
+            data-testid={`user-delete-confirm-${user.id}`}
           >
             <Button
               variant="destructive"
               icon={<Trash2 aria-hidden="true" />}
               aria-label={`Delete ${user.username}`}
+              data-testid={`user-delete-button-${user.id}`}
             >
               Delete
             </Button>
@@ -195,6 +201,7 @@ export function UsersSettings() {
 
           <Card
             title="Users"
+            data-testid="user-list-card"
             extra={
               <Can permission={Permissions.UsersCreate}>
                 <Tooltip content="Create user">
@@ -205,6 +212,7 @@ export function UsersSettings() {
                       Stores.CreateUserDrawer.openCreateUserDrawer()
                     }
                     aria-label="Create user"
+                    data-testid="user-create-open-button"
                   />
                 </Tooltip>
               </Can>
@@ -214,7 +222,7 @@ export function UsersSettings() {
               <Loading label="Loading users" />
             ) : users.length === 0 ? (
               <div>
-                <Empty description="No users yet" />
+                <Empty description="No users yet" data-testid="user-list-empty" />
               </div>
             ) : (
               <div>
@@ -230,7 +238,7 @@ export function UsersSettings() {
                               <Text className="font-medium">
                                 {user.username}
                               </Text>
-                              <Badge tone={user.is_active ? 'success' : 'error'}>{user.is_active ? 'Active' : 'Inactive'}</Badge>
+                              <Badge tone={user.is_active ? 'success' : 'error'} data-testid={`user-status-badge-${user.id}`}>{user.is_active ? 'Active' : 'Inactive'}</Badge>
                             </Flex>
                           </div>
                           <div
@@ -243,6 +251,7 @@ export function UsersSettings() {
                         <Descriptions
                           size="sm"
                           column={3}
+                          data-testid={`user-descriptions-${user.id}`}
                           items={[
                             { key: 'email', label: 'Email', children: user.email },
                             { key: 'last_login', label: 'Last Login', children: user.last_login_at ? new Date(user.last_login_at).toLocaleDateString() : 'Never' },
@@ -262,6 +271,7 @@ export function UsersSettings() {
                 <Separator className="mb-4" />
                 <div className="flex justify-end">
                   <Pagination
+              data-testid="user-list-pagination"
               previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
                     current={storePage}
                     total={totalUsers}

@@ -55,6 +55,7 @@ export function WorkflowsHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-workflows-search-input"
             placeholder="Search workflows..."
             prefix={<Search />}
             value={searchTerm}
@@ -64,6 +65,7 @@ export function WorkflowsHubTab() {
             aria-label="Search workflows"
           />
           <MultiSelect
+            data-testid="hub-workflows-tags-multiselect"
             placeholder="Filter by tags"
             value={selectedTags}
             onChange={(values: string[]) => {

@@ -19,6 +19,7 @@ export function WorkflowDetailsDrawer({
 }: WorkflowDetailsDrawerProps) {
   return (
     <Sheet
+      data-testid="hub-workflow-detail-sheet"
       open={open}
       onOpenChange={(v) => { if (!v) onClose() }}
       side="right"
@@ -28,13 +29,14 @@ export function WorkflowDetailsDrawer({
           <Title level={5} className="!m-0">
             {item.title ?? item.name}
           </Title>
-          {item.verified && <Tag tone="success">Verified</Tag>}
+          {item.verified && <Tag tone="success" data-testid="hub-workflow-detail-verified-tag">Verified</Tag>}
         </Space>
       }
     >
       <div className="flex flex-col gap-4">
         {item.summary && <Paragraph>{item.summary}</Paragraph>}
         <Descriptions size="sm" column={1} bordered
+          data-testid="hub-workflow-detail-descriptions"
           items={[
             { key: 'name', label: 'Name', children: item.name },
             ...(item.version ? [{ key: 'version', label: 'Version', children: item.version }] : []),
@@ -44,7 +46,7 @@ export function WorkflowDetailsDrawer({
               children: (
                 <Space wrap size={4}>
                   {item.tags.map(t => (
-                    <Tag key={t}>{t}</Tag>
+                    <Tag key={t} data-testid={`hub-workflow-detail-tag-${t}`}>{t}</Tag>
                   ))}
                 </Space>
               )

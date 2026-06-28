@@ -98,6 +98,7 @@ export function StepOutputExpander({
 
   return (
     <Accordion
+      data-testid={`wf-step-output-accordion-${stepId}`}
       type="multiple"
       value={open ? ['output'] : []}
       onValueChange={(keys: string[]) => {

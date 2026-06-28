@@ -128,13 +128,14 @@ export function ProviderHeader() {
           form={form}
           layout="inline"
           onSubmit={handleSaveName}
+          data-testid="llm-provider-header-name-form"
         >
           <div className={'flex items-center gap-2 w-full flex-wrap'}>
             <FormField name="name" aria-label="Provider name">
-              <Input className={'!text-lg'} />
+              <Input className={'!text-lg'} data-testid="llm-provider-header-name-input" />
             </FormField>
             <div className={'flex items-center gap-2'}>
-              <Button type="submit" aria-label="Save provider name">
+              <Button type="submit" aria-label="Save provider name" data-testid="llm-provider-header-save-name-btn">
                 <Check aria-hidden="true" />
               </Button>
               <Button
@@ -142,6 +143,7 @@ export function ProviderHeader() {
                 variant="outline"
                 onClick={() => setIsEditingName(false)}
                 aria-label="Cancel editing provider name"
+                data-testid="llm-provider-header-cancel-name-btn"
               >
                 <X aria-hidden="true" />
               </Button>
@@ -168,6 +170,7 @@ export function ProviderHeader() {
                   setIsEditingName(!isEditingName)
                 }}
                 aria-label="Edit provider name"
+                data-testid="llm-provider-header-edit-name-btn"
               >
                 <Pencil aria-hidden="true" />
               </Button>
@@ -180,10 +183,12 @@ export function ProviderHeader() {
                 cancelText="Cancel"
                 okButtonProps={{ danger: true }}
                 onConfirm={handleDeleteProvider}
+                data-testid="llm-provider-delete-confirm"
               >
                 <Button
                   variant="ghost"
                   aria-label="Delete provider"
+                  data-testid="llm-provider-delete-btn"
                 >
                   <Trash2 aria-hidden="true" />
                 </Button>
@@ -204,6 +209,7 @@ export function ProviderHeader() {
               handleProviderToggle(currentProvider.id, enabled)
             }
             aria-label={`${currentProvider.enabled ? 'Disable' : 'Enable'} ${currentProvider.name} provider`}
+            data-testid="llm-provider-header-enabled-switch"
           />
         )
 

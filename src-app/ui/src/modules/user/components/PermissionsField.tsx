@@ -176,6 +176,7 @@ export function PermissionsField({
             prefix={<Search aria-hidden="true" />}
             placeholder="Search permissions"
             aria-label="Search permissions"
+            data-testid="user-permissions-search-input"
             value={search}
             onChange={e => {
               setSearch(e.target.value)
@@ -192,6 +193,7 @@ export function PermissionsField({
             checked={advanced}
             disabled={disabled}
             aria-label="Advanced JSON"
+            data-testid="user-permissions-advanced-switch"
             onChange={checked => (checked ? enterAdvanced() : setAdvanced(false))}
           />
         </span>
@@ -201,6 +203,7 @@ export function PermissionsField({
         <>
           <Textarea
             aria-label="Permissions (JSON Array)"
+            data-testid="user-permissions-json-textarea"
             className="font-mono"
             rows={8}
             disabled={disabled}
@@ -221,6 +224,7 @@ export function PermissionsField({
               <Tree
                 checkable
                 aria-label="Permissions tree"
+                data-testid="user-permissions-tree"
                 treeData={treeData}
                 checkedKeys={knownChecked}
                 onCheck={disabled ? undefined : handleCheck}

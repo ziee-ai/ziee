@@ -163,6 +163,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
         <Menu
           mode="vertical"
           aria-label="Primary actions"
+          data-testid="layout-sidebar-primary-actions-menu"
           selectedKey={primarySelectedKey}
           items={primaryItems}
           onSelect={handlePrimaryMenuClick}
@@ -177,6 +178,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
           <Menu
             mode="vertical"
             aria-label="Primary navigation"
+            data-testid="layout-sidebar-nav-menu"
             selectedKey={navSelectedKey}
             items={[
               {
@@ -213,6 +215,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
           <Menu
             mode="vertical"
             aria-label="Tools navigation"
+            data-testid="layout-sidebar-tools-menu"
             selectedKey={toolsSelectedKey}
             items={[
               {

@@ -43,7 +43,7 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
   }
 
   return (
-    <Card title="Downloading Models">
+    <Card title="Downloading Models" data-testid="llm-downloads-section-card">
       {/* flex gap on the body wrapper (kit Card className lands on the root, not the body). */}
       <div className="flex flex-col gap-3">
         {providerDownloads.map(download => (

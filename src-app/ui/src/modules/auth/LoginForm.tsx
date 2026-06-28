@@ -47,10 +47,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card data-testid="auth-login-card" className="w-full max-w-md mx-auto">
       {error && (
         <div className="py-4">
           <Alert
+            data-testid="auth-login-error"
             title={error}
             tone="error"
             onClose={Stores.Auth.clearAuthenticationError}
@@ -59,9 +60,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
         </div>
       )}
 
-      <Form form={form} name="login" onSubmit={onSubmit} layout="vertical" size="lg">
+      <Form data-testid="auth-login-form" form={form} name="login" onSubmit={onSubmit} layout="vertical" size="lg">
         <FormField label="Username or Email" name="username">
           <Input
+            data-testid="auth-login-username"
             prefix={<User />}
             placeholder="Enter your username or email"
             autoComplete="username"
@@ -70,6 +72,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
         <FormField label="Password" name="password">
           <PasswordInput
+            data-testid="auth-login-password"
             prefix={<Lock />}
             placeholder="Enter your password"
             autoComplete="current-password"
@@ -78,7 +81,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
           />
         </FormField>
 
-        <Button type="submit" loading={isLoading} className="w-full">
+        <Button data-testid="auth-login-submit" type="submit" loading={isLoading} className="w-full">
           Sign In
         </Button>
 
@@ -86,7 +89,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
           <div className="text-center">
             <Text type="secondary">
               Don't have an account?{' '}
-              <Button variant="link" onClick={onSwitchToRegister} className="p-0">
+              <Button data-testid="auth-login-switch-to-register" variant="link" onClick={onSwitchToRegister} className="p-0">
                 Sign Up
               </Button>
             </Text>

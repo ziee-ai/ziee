@@ -37,8 +37,8 @@ export function UserRegistrationSettings() {
   }
 
   return (
-    <Card title="User Registration">
-      <Form form={form} onSubmit={() => {}}>
+    <Card title="User Registration" data-testid="user-registration-card">
+      <Form form={form} onSubmit={() => {}} data-testid="user-registration-form">
         <div className="flex justify-between items-center">
           <div>
             <Text strong>Enable User Registration</Text>
@@ -57,6 +57,7 @@ export function UserRegistrationSettings() {
             <Switch
               loading={loadingRegistrationSettings}
               onChange={handleToggle}
+              data-testid="user-registration-enabled-switch"
             />
           </FormField>
         </div>

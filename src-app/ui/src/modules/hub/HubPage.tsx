@@ -161,6 +161,7 @@ export function HubPage() {
           {!windowMinSize.xs && (
             <div className="flex-1 flex h-full justify-center items-center">
               <Segmented
+                data-testid="hub-tabs-segmented"
                 value={activeTab}
                 onChange={(value: string) => {
                   navigate(`/hub/${value}`)
@@ -175,12 +176,13 @@ export function HubPage() {
             <div className="flex flex-1 items-center px-2">
               <IoIosArrowForward />
               <Dropdown
+                data-testid="hub-tabs-dropdown"
                 items={dropdownItems}
                 onSelect={(key: string) => {
                   navigate(`/hub/${key}`)
                 }}
               >
-                <Button variant="ghost" className="!pt-1">
+                <Button variant="ghost" className="!pt-1" data-testid="hub-tabs-dropdown-btn">
                   {currentTabLabel} <IoIosArrowDown />
                 </Button>
               </Dropdown>
@@ -200,7 +202,7 @@ export function HubPage() {
                     : 'Installed catalog from ziee-ai/hub'
                 }
               >
-                <Tag>v{hubVersion}</Tag>
+                <Tag data-testid="hub-version-tag">v{hubVersion}</Tag>
               </Tooltip>
             )}
             {canRefresh && (
@@ -209,6 +211,7 @@ export function HubPage() {
                 onClick={handleRefresh}
                 loading={refreshing}
                 variant="ghost"
+                data-testid="hub-refresh-btn"
               >
                 {windowMinSize.xs ? null : 'Refresh'}
               </Button>
@@ -224,6 +227,7 @@ export function HubPage() {
               <div className="flex flex-col py-3 w-full">
                 {urlSegmentIsForbidden ? (
                   <Result
+                    data-testid="hub-forbidden-result"
                     status="403"
                     title="Not authorized"
                     subtitle="You don't have permission to view this Hub tab."

@@ -49,7 +49,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
   }
 
   return (
-    <Card size="sm" className="my-2">
+    <Card size="sm" className="my-2" data-testid="lit-tool-result-card">
       <Text strong>
         <FileSearch /> Literature search
       </Text>
@@ -81,7 +81,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
               </li>
             ))}
           </ul>
-          <Button size="sm" onClick={open}>
+          <Button size="sm" onClick={open} data-testid="lit-tool-result-open-button">
             Open in screening ({sc.records.length})
           </Button>
         </>

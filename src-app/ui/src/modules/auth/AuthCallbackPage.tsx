@@ -150,13 +150,13 @@ export const AuthCallbackPage: React.FC = () => {
 
   return (
     <BlankLayoutComponent>
-      <Layout className="min-h-screen">
-        <Content className="flex items-center justify-center p-4">
-          <Card className="w-full max-w-md text-center">
+      <Layout data-testid="auth-callback-layout" className="min-h-screen">
+        <Content data-testid="auth-callback-content" className="flex items-center justify-center p-4">
+          <Card data-testid="auth-callback-card" className="w-full max-w-md text-center">
             {error ? (
               <>
                 <Title level={4}>Sign-in failed</Title>
-                <Alert tone="error" title={error} className="my-3" />
+                <Alert data-testid="auth-callback-error" tone="error" title={error} className="my-3" />
                 <a href="/auth">Return to login</a>
               </>
             ) : (

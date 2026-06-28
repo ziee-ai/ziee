@@ -171,6 +171,7 @@ export default function SettingsPage() {
 
   const SettingsMenu = () => (
     <Menu
+      data-testid="settings-nav-menu"
       className="w-fit h-full p-1"
       items={kitMenuItems}
       selectedKey={currentSection ?? validSections[0]}
@@ -194,6 +195,7 @@ export default function SettingsPage() {
           {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
+                data-testid="settings-mobile-dropdown"
                 items={dropdownItems.map((item: any) => {
                   if ('type' in item && item.type === 'divider') {
                     return { type: 'divider' as const }
@@ -210,7 +212,7 @@ export default function SettingsPage() {
                   handleMenuClick(key)
                 }}
               >
-                <Button variant="ghost" className={'mt-[2px]'}>
+                <Button variant="ghost" data-testid="settings-mobile-dropdown-trigger" className={'mt-[2px]'}>
                   {getCurrentSectionInfo().icon} {getCurrentSectionInfo().label}{' '}
                   <IoIosArrowDown />
                 </Button>
@@ -237,6 +239,7 @@ export default function SettingsPage() {
         <div className="flex-1 overflow-hidden">
           {forbiddenSection ? (
             <Result
+              data-testid="settings-forbidden-result"
               status="403"
               title="Not authorized"
               subtitle={`You don't have permission to view "${forbiddenSection.label}".`}

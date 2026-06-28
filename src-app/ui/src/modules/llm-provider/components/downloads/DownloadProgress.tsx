@@ -37,6 +37,7 @@ export function DownloadProgress({
       size={size === 'small' ? 'sm' : undefined}
       showInfo={size !== 'small'}
       aria-label={`Download progress: ${percentage}%`}
+      data-testid="llm-download-progress"
     />
   )
 }

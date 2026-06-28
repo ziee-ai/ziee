@@ -83,6 +83,7 @@ export function AdminSkillGroupAssignment({
         <Button
           variant="ghost"
           size="sm"
+          data-testid="skill-group-toggle-button"
           onClick={() => setOpen(o => !o)}
           aria-expanded={open}
           aria-label={open ? 'Collapse user groups' : 'Expand user groups'}
@@ -95,6 +96,7 @@ export function AdminSkillGroupAssignment({
             <Button
               variant="ghost"
               size="sm"
+              data-testid="skill-group-assign-button"
               icon={<Pencil aria-hidden="true" />}
               onClick={() => { setOpen(true); void startEdit() }}
               aria-label="Manage user groups"
@@ -112,6 +114,7 @@ export function AdminSkillGroupAssignment({
               <Space direction="vertical" className="w-full">
                 <MultiSelect
                   className="w-full"
+                  data-testid="skill-group-multiselect"
                   placeholder="Restrict to specific groups (empty = all users)"
                   searchPlaceholder="Search groups"
                   emptyText="No groups found"
@@ -125,12 +128,13 @@ export function AdminSkillGroupAssignment({
                   aria-label="Select groups"
                 />
                 <Flex gap="small" justify="end">
-                  <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+                  <Button size="sm" variant="outline" data-testid="skill-group-cancel-button" onClick={() => setEditing(false)}>
                     Cancel
                   </Button>
                   <Button
                     size="sm"
                     loading={saving}
+                    data-testid="skill-group-save-button"
                     onClick={save}
                   >
                     Save
@@ -141,11 +145,12 @@ export function AdminSkillGroupAssignment({
               <Empty
                 description="Available to all users"
                 className="!my-2"
+                data-testid="skill-group-empty"
               />
             ) : (
               <Space wrap size="small">
                 {assignedIds.map(id => (
-                  <Tag key={id} tone="info">
+                  <Tag key={id} tone="info" data-testid={`skill-group-tag-${id}`}>
                     {nameFor(id)}
                   </Tag>
                 ))}

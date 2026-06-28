@@ -154,6 +154,7 @@ function ProjectChipForConversationHeader() {
   return (
     <div className="px-4 pt-2">
       <Tag
+        data-testid="project-header-chip-tag"
         tone="info"
         className="cursor-pointer"
         onClick={() => navigate(`/projects/${project.id}`)}
@@ -293,6 +294,7 @@ function ProjectTagWithRemove({
       }`}
     >
       <Confirm
+        data-testid="project-trailing-remove-confirm"
         title="Remove from project?"
         description="The conversation becomes unfiled. It is NOT deleted."
         onConfirm={handleRemove}
@@ -317,6 +319,7 @@ function ProjectTagWithRemove({
           }}
         >
           <Tag
+            data-testid="project-trailing-membership-tag"
             tone="info"
             icon={<FolderOpen />}
             className="!mr-0"
@@ -452,6 +455,7 @@ function ProjectMembershipTrailing({
       >
         <Tooltip title="Add to project">
           <Button
+            data-testid="project-trailing-add-button"
             variant="ghost"
             size="sm"
             icon={<CirclePlus />}

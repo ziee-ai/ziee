@@ -34,6 +34,7 @@ function TrackWidget({ track }: { track: ProgressTrack }) {
     case 'bar':
       return (
         <Progress
+          data-testid={`wf-track-progress-${track.id}`}
           size="sm"
           value={Math.round(k.fraction * 100)}
           format={label ? () => label : undefined}
@@ -44,6 +45,7 @@ function TrackWidget({ track }: { track: ProgressTrack }) {
       const pct = k.total > 0 ? Math.round((k.current / k.total) * 100) : 0
       return (
         <Progress
+          data-testid={`wf-track-progress-${track.id}`}
           size="sm"
           value={pct}
           format={() =>
@@ -123,7 +125,7 @@ export function WorkflowRunProgressView({
   return (
     <div className="flex flex-col gap-3">
       <Space direction="horizontal" align="center" wrap>
-        <Tag tone={tone}>{run.status}</Tag>
+        <Tag data-testid="wf-progress-status-tag" tone={tone}>{run.status}</Tag>
         <Text type="secondary" className="text-xs">
           {run.totalTokens.toLocaleString()} tokens
         </Text>
@@ -134,6 +136,7 @@ export function WorkflowRunProgressView({
         )}
         {!terminal && (
           <Button
+            data-testid="wf-progress-cancel-btn"
             variant="destructive"
             size="sm"
             icon={<Ban />}
@@ -147,6 +150,7 @@ export function WorkflowRunProgressView({
             own machine). The per-run token/byte caps still apply. */}
         {!terminal && (
           <Button
+            data-testid="wf-progress-remove-timeout-btn"
             size="sm"
             loading={removingTimeout}
             disabled={removingTimeout}
@@ -171,7 +175,7 @@ export function WorkflowRunProgressView({
         )}
       </Space>
 
-      {run.error && <Alert tone="error" title={run.error} />}
+      {run.error && <Alert data-testid="wf-progress-error-alert" tone="error" title={run.error} />}
 
       {run.pendingElicitation && (
         <WorkflowElicitForm
@@ -192,7 +196,7 @@ export function WorkflowRunProgressView({
           <div key={s.stepId} className="flex flex-col gap-2 py-2">
             <Space direction="horizontal" size={8}>
               <Text>{s.description || s.message || s.stepId}</Text>
-              {s.stepKind && <Tag className="text-xs !m-0">{s.stepKind}</Tag>}
+              {s.stepKind && <Tag data-testid={`wf-progress-step-kind-tag-${s.stepId}`} className="text-xs !m-0">{s.stepKind}</Tag>}
             </Space>
             <div className="flex flex-col gap-1 ml-4">
               {s.tracks && Object.keys(s.tracks).length > 0 && (
@@ -211,6 +215,7 @@ export function WorkflowRunProgressView({
               )}
               {s.itemProgress && s.itemProgress.total > 0 && (
                 <Progress
+                  data-testid={`wf-progress-item-${s.stepId}`}
                   size="sm"
                   value={Math.round(
                     ((s.itemProgress.completed + s.itemProgress.failed) /

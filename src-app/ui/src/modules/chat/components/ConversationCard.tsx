@@ -90,6 +90,7 @@ export function ConversationCard({
 
   return (
     <Card
+      data-testid={`chat-conversation-card-${conversation.id}`}
       key={conversation.id}
       onClick={handleCardClick}
       onMouseEnter={() => {
@@ -145,6 +146,7 @@ export function ConversationCard({
             the toolbar replaces per-row deletes). */}
         {canDelete && !isInSelectionMode && (
           <Confirm
+            data-testid={`chat-conversation-delete-confirm-${conversation.id}`}
             title="Delete conversation?"
             description="This will permanently delete the conversation and all its messages."
             onConfirm={async () => {
@@ -156,6 +158,7 @@ export function ConversationCard({
             cancelText="Cancel"
           >
             <Button
+              data-testid={`chat-conversation-delete-btn-${conversation.id}`}
               className={`transition-opacity bg-card ${
                 popconfirmOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
               }`}
@@ -179,6 +182,7 @@ export function ConversationCard({
             onClick={e => e.stopPropagation()}
           >
             <Checkbox
+              data-testid={`chat-conversation-select-${conversation.id}`}
               checked={isSelected}
               onChange={handleSelectChange}
             />

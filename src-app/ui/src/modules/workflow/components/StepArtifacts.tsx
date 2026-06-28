@@ -163,6 +163,7 @@ function ArtifactBlock({
         </div>
       </Space>
       <Button
+        data-testid={`wf-artifact-download-btn-${artifact.filename}`}
         size="sm"
         variant="ghost"
         icon={<DownloadIcon aria-hidden="true" />}

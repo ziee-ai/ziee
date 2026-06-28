@@ -34,13 +34,13 @@ export function LitSearchConnectorsSection() {
   const { connectors, loading } = Stores.LitSearchAdmin
   if (loading && connectors.length === 0) {
     return (
-      <Card title="Sources">
+      <Card title="Sources" data-testid="lit-connectors-card">
         <Spin label="Loading" />
       </Card>
     )
   }
   return (
-    <Card title="Sources">
+    <Card title="Sources" data-testid="lit-connectors-card">
       <Paragraph type="secondary" className="text-xs">
         Every default source works without a key. Optional keys only raise rate
         limits; CORE requires a free key. Keys are stored encrypted and never shown.
@@ -156,8 +156,8 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
         <Text className="text-sm">{entry.display_name}</Text>
       </Separator>
       <Paragraph type="secondary" className="text-xs !mb-1">
-        {isEnabled && <Tag tone="success">Active</Tag>}
-        {needsKey && <Tag tone="warning">Needs key</Tag>}
+        {isEnabled && <Tag tone="success" data-testid={`lit-connector-active-tag-${entry.key}`}>Active</Tag>}
+        {needsKey && <Tag tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>Needs key</Tag>}
       </Paragraph>
       <Paragraph type="secondary" className="text-xs !mb-2">
         {entry.keyless_note}
@@ -171,6 +171,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
           loading={savingSettings}
           // Disabled while a settings save is in flight → no double-toggle race.
           disabled={!canManage || !settings || savingSettings}
+          data-testid={`lit-connector-enable-switch-${entry.key}`}
         />
         <Text className="text-xs">{isEnabled ? 'Enabled' : 'Disabled'}</Text>
       </Flex>
@@ -182,6 +183,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
           layout="horizontal"
           onSubmit={onSubmit}
           disabled={!canManage}
+          data-testid={`lit-connector-form-${entry.key}`}
         >
           {entry.config_fields.map(f => (
             <FormField
@@ -191,7 +193,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
               description={f.help ?? undefined}
               required={f.required}
             >
-              <Input placeholder={f.placeholder} />
+              <Input placeholder={f.placeholder} data-testid={`lit-connector-config-input-${entry.key}-${f.key}`} />
             </FormField>
           ))}
 
@@ -220,6 +222,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
                 showLabel="Show key"
                 hideLabel="Hide key"
                 placeholder={entry.api_key_set ? '•••••••• (stored)' : 'Enter API key'}
+                data-testid={`lit-connector-api-key-input-${entry.key}`}
               />
             </FormField>
           )}
@@ -230,6 +233,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
                 variant="destructive"
                 onClick={clearKey}
                 disabled={!canManage || isSaving}
+                data-testid={`lit-connector-clear-key-button-${entry.key}`}
               >
                 Clear key
               </Button>
@@ -238,6 +242,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
               type="submit"
               loading={isSaving}
               disabled={!canManage || !dirty}
+              data-testid={`lit-connector-save-button-${entry.key}`}
             >
               Save
             </Button>

@@ -23,6 +23,7 @@ export function SkillConversationDrawer({
     <>
       <Dialog
         open={open}
+        data-testid="skill-conversation-dialog"
         onOpenChange={(v) => {
           if (!v) Stores.SkillConversationDrawer.closeDrawer()
         }}

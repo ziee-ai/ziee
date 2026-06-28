@@ -134,11 +134,11 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
 
       {/* PRISMA-style counts */}
       <Space wrap size="small">
-        <Tag>Identified: {identifiedTotal}</Tag>
-        <Tag>After dedup: {afterDedup}</Tag>
-        <Tag tone="info">Screened: {screened}</Tag>
-        <Tag tone="success">Included: {counts.include}</Tag>
-        <Tag tone="error">Excluded: {counts.exclude}</Tag>
+        <Tag data-testid="lit-screening-tag-identified">Identified: {identifiedTotal}</Tag>
+        <Tag data-testid="lit-screening-tag-after-dedup">After dedup: {afterDedup}</Tag>
+        <Tag tone="info" data-testid="lit-screening-tag-screened">Screened: {screened}</Tag>
+        <Tag tone="success" data-testid="lit-screening-tag-included">Included: {counts.include}</Tag>
+        <Tag tone="error" data-testid="lit-screening-tag-excluded">Excluded: {counts.exclude}</Tag>
       </Space>
 
       {degradedSources.length > 0 && (
@@ -162,14 +162,15 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           indeterminate={someSelected}
           onChange={(checked: boolean) => toggleSelectAll(checked)}
           label={selected.size > 0 ? `${selected.size} selected` : 'Select all'}
+          data-testid="lit-screening-select-all-checkbox"
         />
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('include')}>
+        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
           Include
         </Button>
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')}>
+        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
           Exclude
         </Button>
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')}>
+        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
           Unscreen
         </Button>
         <Dropdown
@@ -179,8 +180,9 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
             { key: 'csv', label: 'Export CSV' },
           ]}
           onSelect={(key: string) => doExport(key as 'ris' | 'bibtex' | 'csv')}
+          data-testid="lit-screening-export-dropdown"
         >
-          <Button icon={<Download />} size="sm" disabled={records.length === 0}>
+          <Button icon={<Download />} size="sm" disabled={records.length === 0} data-testid="lit-screening-export-button">
             Export {counts.include > 0 ? 'included' : 'all'}
           </Button>
         </Dropdown>
@@ -189,6 +191,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       <List
         size="sm"
         dataSource={records}
+        data-testid="lit-screening-records-list"
         empty={
           degradedSources.length > 0
             ? `No records — all sources errored or were skipped (${degradedSources.join(', ')}). Try again or ask the model to re-search.`
@@ -207,6 +210,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                   aria-label={`Select "${record.title ?? ''}"`}
                   checked={selected.has(key)}
                   onChange={(checked: boolean) => toggleSelect(key, checked)}
+                  data-testid={`lit-screening-record-checkbox-${key}`}
                 />
               </div>
               <div className="flex-1 min-w-0">
@@ -244,6 +248,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                     { label: 'Include', value: 'include' },
                     { label: 'Exclude', value: 'exclude' },
                   ]}
+                  data-testid={`lit-screening-record-decision-${key}`}
                 />
                 {decision === 'exclude' && (
                   <Input
@@ -255,6 +260,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                       setReasonDrafts(d => ({ ...d, [key]: e.target.value }))
                     }
                     onBlur={() => flushReason(key)}
+                    data-testid={`lit-screening-record-reason-${key}`}
                   />
                 )}
               </div>

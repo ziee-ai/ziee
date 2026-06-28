@@ -30,6 +30,7 @@ export function SkillsList() {
           <Can permission={Permissions.SkillsInstall}>
             <Button
               icon={<ImportIcon />}
+              data-testid="skill-list-import-button"
               onClick={() => setImportOpen(true)}
             >
               Import
@@ -47,6 +48,7 @@ export function SkillsList() {
               size="sm"
               onClick={() => Stores.SkillDrawer.open(skill)}
               data-skill-id={skill.id}
+              data-testid={`skill-list-card-${skill.id}`}
               className="cursor-pointer"
             >
               <Flex justify="between" align="start" className="gap-3">
@@ -71,6 +73,7 @@ export function SkillsList() {
           <Empty
             description="No skills installed yet — browse the Hub to install one"
             className="!mt-12"
+            data-testid="skill-list-empty"
           />
         )}
 

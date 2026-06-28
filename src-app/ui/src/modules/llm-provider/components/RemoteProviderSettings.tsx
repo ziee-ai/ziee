@@ -133,8 +133,9 @@ export function RemoteProviderSettings() {
         form={form}
         layout="vertical"
         onSubmit={handleSaveSettings}
+        data-testid="llm-remote-settings-form"
       >
-        <Card title={'API Configuration'}>
+        <Card title={'API Configuration'} data-testid="llm-remote-api-config-card">
           <Flex className={'flex-col gap-3'}>
             <div>
               <Title level={5}>API Key</Title>
@@ -163,6 +164,7 @@ export function RemoteProviderSettings() {
                   }
                   showLabel="Show API key"
                   hideLabel="Hide API key"
+                  data-testid="llm-remote-api-key-input"
                 />
               </FormField>
             </div>
@@ -178,7 +180,7 @@ export function RemoteProviderSettings() {
                 for more information.
               </Text>
               <FormField name="base_url" aria-label="Base URL" className="mt-4">
-                <Input placeholder={'Base URL'} />
+                <Input placeholder={'Base URL'} data-testid="llm-remote-base-url-input" />
               </FormField>
             </div>
           </Flex>
@@ -187,7 +189,7 @@ export function RemoteProviderSettings() {
             <>
               <Separator className="!my-3" />
               <Flex justify="end">
-                <Button type="submit" disabled={!isDirty}>
+                <Button type="submit" disabled={!isDirty} data-testid="llm-remote-save-btn">
                   Save
                 </Button>
               </Flex>

@@ -74,6 +74,7 @@ export function AssistantDetailsDrawer({
 
   return (
     <Sheet
+      data-testid="hub-assistant-detail-sheet"
       title={assistant.display_name}
       open={open}
       onOpenChange={(v) => { if (!v) onClose() }}
@@ -98,7 +99,7 @@ export function AssistantDetailsDrawer({
         {/* Instructions */}
         <div>
           <Title level={5}>Instructions</Title>
-          <Card size="sm" className="bg-gray-50">
+          <Card size="sm" className="bg-gray-50" data-testid="hub-assistant-detail-instructions-card">
             <Text className="text-sm whitespace-pre-wrap">
               {assistant.instructions}
             </Text>
@@ -117,6 +118,7 @@ export function AssistantDetailsDrawer({
                 return (
                   <Tag
                     key={`${dep.kind}-${dep.name}`}
+                    data-testid={`hub-assistant-detail-dep-tag-${dep.kind}-${dep.name}`}
                     tone={dep.kind === 'model' ? 'success' : 'info'}
                   >
                     {leaf} {dep.versionRange}
@@ -146,7 +148,7 @@ export function AssistantDetailsDrawer({
             <Title level={5}>Tags</Title>
             <Flex wrap className="gap-1">
               {assistant.tags.map(tag => (
-                <Tag key={tag}>
+                <Tag key={tag} data-testid={`hub-assistant-detail-tag-${tag}`}>
                   {tag}
                 </Tag>
               ))}
@@ -159,7 +161,7 @@ export function AssistantDetailsDrawer({
           Object.keys(assistant.parameters).length > 0 && (
             <div>
               <Title level={5}>Parameters</Title>
-              <Card size="sm">
+              <Card size="sm" data-testid="hub-assistant-detail-parameters-card">
                 <pre className="text-xs overflow-auto m-0">
                   {JSON.stringify(assistant.parameters, null, 2)}
                 </pre>

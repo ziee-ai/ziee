@@ -117,6 +117,7 @@ export function UserGroupsDrawer() {
               }}
               className={'mr-2'}
               aria-label="Assign group"
+              data-testid="user-groups-drawer-assign-button"
             />
           </Tooltip>
         )
@@ -125,11 +126,12 @@ export function UserGroupsDrawer() {
       {loadingUserGroups ? (
         <Loading tip="Loading group memberships..." />
       ) : groups.length === 0 ? (
-        <Empty description="No groups yet" />
+        <Empty description="No groups yet" data-testid="user-groups-drawer-empty" />
       ) : (
         <List
           dataSource={groups}
           rowKey="id"
+          data-testid="user-groups-drawer-list"
           renderItem={group => {
             const isMember = userGroupIds.has(group.id)
             const action = canAssign ? (
@@ -139,8 +141,9 @@ export function UserGroupsDrawer() {
                   onConfirm={() => handleRemoveFromGroup(group.id)}
                   okText="OK"
                   cancelText="Cancel"
+                  data-testid={`user-groups-drawer-remove-confirm-${group.id}`}
                 >
-                  <Button variant="link" size="sm">
+                  <Button variant="link" size="sm" data-testid={`user-groups-drawer-remove-button-${group.id}`}>
                     Remove
                   </Button>
                 </Confirm>
@@ -149,6 +152,7 @@ export function UserGroupsDrawer() {
                   variant="link"
                   size="sm"
                   onClick={() => handleAssignToGroup(group.id)}
+                  data-testid={`user-groups-drawer-assign-row-button-${group.id}`}
                 >
                   Assign
                 </Button>
@@ -160,8 +164,8 @@ export function UserGroupsDrawer() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     {group.name}
-                    {isMember && <Tag tone="success">Member</Tag>}
-                    {group.is_system && <Tag tone="warning">System</Tag>}
+                    {isMember && <Tag tone="success" data-testid={`user-groups-drawer-member-tag-${group.id}`}>Member</Tag>}
+                    {group.is_system && <Tag tone="warning" data-testid={`user-groups-drawer-system-tag-${group.id}`}>System</Tag>}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     {group.description || 'No description'}

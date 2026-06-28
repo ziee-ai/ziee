@@ -60,18 +60,19 @@ export function ResetPasswordDrawer() {
         layout="vertical"
         onSubmit={handleResetPassword}
         disabled={!canReset}
+        data-testid="user-reset-password-form"
       >
         <FormField
           name="new_password"
           label="New Password"
         >
-          <PasswordInput placeholder="Enter new password" showLabel="Show password" hideLabel="Hide password" />
+          <PasswordInput placeholder="Enter new password" showLabel="Show password" hideLabel="Hide password" data-testid="user-reset-new-password-input" />
         </FormField>
         <FormField
           name="confirm_password"
           label="Confirm Password"
         >
-          <PasswordInput placeholder="Confirm new password" showLabel="Show password" hideLabel="Hide password" />
+          <PasswordInput placeholder="Confirm new password" showLabel="Show password" hideLabel="Hide password" data-testid="user-reset-confirm-password-input" />
         </FormField>
         <div className="mb-0">
           <Flex className="justify-end gap-2">
@@ -81,11 +82,12 @@ export function ResetPasswordDrawer() {
                 Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
                 form.reset()
               }}
+              data-testid="user-reset-password-cancel-button"
             >
               {canReset ? 'Cancel' : 'Close'}
             </Button>
             {canReset && (
-              <Button type="submit">
+              <Button type="submit" data-testid="user-reset-password-submit-button">
                 Reset
               </Button>
             )}

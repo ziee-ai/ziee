@@ -30,7 +30,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   }
 
   return (
-    <Card data-widget="llm-providers" data-group-id={group.id}>
+    <Card data-widget="llm-providers" data-group-id={group.id} data-testid={`llm-provider-group-widget-card-${group.id}`}>
       <Flex vertical gap="small" className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -49,6 +49,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
             icon={<Pencil aria-hidden="true" />}
             onClick={handleEdit}
             aria-label={`Edit LLM Providers for ${group.name}`}
+            data-testid={`llm-provider-group-widget-edit-btn-${group.id}`}
           >
             Edit
           </Button>
@@ -74,6 +75,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
                 key={provider.id}
                 tone={provider.enabled ? 'info' : undefined}
                 className="text-xs"
+                data-testid={`llm-provider-group-widget-tag-${provider.id}`}
               >
                 {provider.name}
                 {provider.built_in && ' (Built-in)'}

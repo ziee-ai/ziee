@@ -27,6 +27,7 @@ export function WorkflowsList() {
         <Flex justify="end">
           <Can permission={Permissions.WorkflowsInstall}>
             <Button
+              data-testid="wf-list-import-btn"
               icon={<ImportIcon />}
               onClick={() => setImportOpen(true)}
             >
@@ -41,6 +42,7 @@ export function WorkflowsList() {
           {workflows.map(workflow => (
             <Card
               key={workflow.id}
+              data-testid={`wf-list-card-${workflow.id}`}
               hoverable
               size="sm"
               onClick={() => Stores.WorkflowDrawer.open(workflow)}
@@ -67,6 +69,7 @@ export function WorkflowsList() {
 
         {!loading && workflows.length === 0 && (
           <Empty
+            data-testid="wf-list-empty"
             description="No workflows installed yet — browse the Hub to install one"
             className="!mt-12"
           />

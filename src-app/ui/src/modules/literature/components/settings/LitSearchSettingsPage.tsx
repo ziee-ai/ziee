@@ -23,6 +23,7 @@ export function LitSearchSettingsPage() {
           title="Failed to load literature search settings"
           description={error}
           className="mb-3"
+          data-testid="lit-settings-error-alert"
         />
       )}
       <LitSearchGlobalSection />

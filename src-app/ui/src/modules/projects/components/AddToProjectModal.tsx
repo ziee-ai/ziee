@@ -65,13 +65,15 @@ export function AddToProjectModal({
 
   return (
     <Dialog
+      data-testid="project-add-to-project-dialog"
       title="Add to project"
       open={open}
       onOpenChange={(v) => { if (!v) onClose() }}
       footer={
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button data-testid="project-add-to-project-cancel-button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button
+            data-testid="project-add-to-project-confirm-button"
             onClick={handleOk}
             disabled={!selectedId}
             loading={submitting}
@@ -88,6 +90,7 @@ export function AddToProjectModal({
           MCP defaults on subsequent sends.
         </Text>
         <Combobox
+          data-testid="project-add-to-project-combobox"
           placeholder="Pick a project…"
           searchPlaceholder="Search projects…"
           options={options}

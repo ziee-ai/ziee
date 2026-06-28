@@ -50,6 +50,7 @@ export function WorkflowTestsPanel({
 
   return (
     <Dialog
+      data-testid="wf-tests-dialog"
       open={open}
       title="Workflow tests"
       onOpenChange={(v) => { if (!v) onClose() }}
@@ -57,17 +58,18 @@ export function WorkflowTestsPanel({
       className="!max-w-[640px]"
     >
       {loading && <Spin label="Loading" />}
-      {error && <Alert tone="error" title={error} />}
+      {error && <Alert data-testid="wf-tests-error-alert" tone="error" title={error} />}
       {result && (
         <div className="flex flex-col gap-3">
           <Space>
-            <Tag tone="success">{result.passed} passed</Tag>
-            {result.failed > 0 && <Tag tone="error">{result.failed} failed</Tag>}
+            <Tag data-testid="wf-tests-passed-tag" tone="success">{result.passed} passed</Tag>
+            {result.failed > 0 && <Tag data-testid="wf-tests-failed-tag" tone="error">{result.failed} failed</Tag>}
             {result.skipped > 0 && (
-              <Tag>{result.skipped} skipped</Tag>
+              <Tag data-testid="wf-tests-skipped-tag">{result.skipped} skipped</Tag>
             )}
           </Space>
           <List
+            data-testid="wf-tests-list"
             size="sm"
             rowKey="name"
             dataSource={result.results}

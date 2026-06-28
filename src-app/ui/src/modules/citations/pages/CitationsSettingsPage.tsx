@@ -60,7 +60,7 @@ export function CitationsSettingsPage() {
       title="Citations"
       subtitle="Your verified bibliography library. Import references, verify they resolve to real records, and export in a citation style."
     >
-      <Card>
+      <Card data-testid="cite-settings-card">
         <Space className="mb-3" wrap>
           {canManage && (
             <Button
@@ -68,6 +68,7 @@ export function CitationsSettingsPage() {
               icon={<Import />}
               loading={importing}
               onClick={() => setImportOpen(true)}
+              data-testid="cite-settings-import-button"
             >
               Import
             </Button>
@@ -77,6 +78,7 @@ export function CitationsSettingsPage() {
             loading={verifying}
             disabled={entries.length === 0 || !canManage}
             onClick={handleVerifyAll}
+            data-testid="cite-settings-verify-all-button"
           >
             Verify all
           </Button>
@@ -84,8 +86,9 @@ export function CitationsSettingsPage() {
             disabled={entries.length === 0}
             items={EXPORT_FORMATS.map(f => ({ key: f.key, label: f.label }))}
             onSelect={(key) => void handleExport(key)}
+            data-testid="cite-settings-export-dropdown"
           >
-            <Button icon={<Download />}>Export</Button>
+            <Button icon={<Download />} data-testid="cite-settings-export-button">Export</Button>
           </Dropdown>
           <Text type="secondary">{entries.length} reference(s)</Text>
         </Space>
@@ -93,7 +96,7 @@ export function CitationsSettingsPage() {
         {loading ? (
           <Spin label="Loading" />
         ) : entries.length === 0 ? (
-          <Empty />
+          <Empty data-testid="cite-settings-empty" />
         ) : (
           <div>
             {entries.map(e => (

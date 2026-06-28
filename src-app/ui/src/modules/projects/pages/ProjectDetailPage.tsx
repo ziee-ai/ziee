@@ -239,6 +239,7 @@ export function ProjectDetailPage() {
         <div className="h-full flex items-center justify-between w-full gap-2">
           <div className="flex items-center min-w-0 gap-2">
             <Button
+              data-testid="project-detail-back-button"
               variant="ghost"
               icon={<ArrowLeft />}
               onClick={() => navigate('/projects')}
@@ -254,7 +255,7 @@ export function ProjectDetailPage() {
           </div>
           <div className="flex items-center gap-1">
             <Can permission={Permissions.ProjectsEdit}>
-              <Button variant="ghost" icon={<Pencil />} onClick={handleEdit}>
+              <Button data-testid="project-detail-edit-button" variant="ghost" icon={<Pencil />} onClick={handleEdit}>
                 Edit
               </Button>
             </Can>
@@ -272,6 +273,7 @@ export function ProjectDetailPage() {
               }}
             >
               <Button
+                data-testid="project-detail-duplicate-button"
                 variant="ghost"
                 icon={<Copy />}
                 onClick={handleDuplicate}
@@ -318,6 +320,7 @@ export function ProjectDetailPage() {
               <Flex align="center" className="gap-2 flex-wrap">
                 <Text strong>{selectedIds.size} selected</Text>
                 <Button
+                  data-testid="project-detail-bulk-clear-button"
                   variant="ghost"
                   size="sm"
                   icon={<CircleX />}
@@ -326,6 +329,7 @@ export function ProjectDetailPage() {
                   Clear
                 </Button>
                 <Button
+                  data-testid="project-detail-bulk-select-all-button"
                   variant="ghost"
                   size="sm"
                   onClick={handleSelectAll}
@@ -336,18 +340,20 @@ export function ProjectDetailPage() {
                   Select all
                 </Button>
                 <Confirm
+                  data-testid="project-detail-bulk-remove-confirm"
                   title="Remove from project?"
                   description={`Detach ${selectedIds.size} conversation${selectedIds.size === 1 ? '' : 's'} from this project? They become unfiled (not deleted).`}
                   onConfirm={handleBulkRemoveFromProject}
                   okText="Remove"
                   cancelText="Cancel"
                 >
-                  <Button variant="ghost" size="sm" loading={bulkDeleting}>
+                  <Button data-testid="project-detail-bulk-remove-button" variant="ghost" size="sm" loading={bulkDeleting}>
                     Remove from project
                   </Button>
                 </Confirm>
                 {canDeleteConversations && (
                   <Confirm
+                    data-testid="project-detail-bulk-delete-confirm"
                     title="Delete conversations?"
                     description={`Permanently delete ${selectedIds.size} conversation${selectedIds.size === 1 ? '' : 's'} and all messages.`}
                     onConfirm={handleBulkDelete}
@@ -355,6 +361,7 @@ export function ProjectDetailPage() {
                     cancelText="Cancel"
                   >
                     <Button
+                      data-testid="project-detail-bulk-delete-button"
                       variant="ghost"
                       size="sm"
                       icon={<Trash2 />}
@@ -369,6 +376,7 @@ export function ProjectDetailPage() {
 
             return (
               <Card
+                data-testid="project-detail-conversations-card"
                 title="Conversations"
                 data-test-section="conversations"
                 extra={!toolbarInCardBody ? bulkToolbar : null}
@@ -400,11 +408,13 @@ export function ProjectDetailPage() {
               as a card-extra than a per-section button on Instructions
               alone. */}
           <Card
+            data-testid="project-detail-meta-card"
             title="Project details"
             data-test-section="project-meta"
             extra={
               <Can permission={Permissions.ProjectsEdit}>
                 <Button
+                  data-testid="project-detail-meta-edit-button"
                   variant="ghost"
                   icon={<Pencil />}
                   onClick={handleEdit}
@@ -468,7 +478,7 @@ export function ProjectDetailPage() {
                 future per-project rate limits etc.) via the
                 advanced_settings slot. The MCP panel ships its own
                 Configure button + modal. */}
-          <Card title="Advanced" data-test-section="advanced">
+          <Card data-testid="project-detail-advanced-card" title="Advanced" data-test-section="advanced">
             {/* Default assistant + default model — inline auto-save
                 selects (one PATCH per change). These used to live in
                 the ProjectFormDrawer with the content fields, but

@@ -55,6 +55,7 @@ export function StepLogExpander({
 
   return (
     <Accordion
+      data-testid={`wf-step-log-accordion-${stepId}-${kind}`}
       ghost
       collapsible
       value={open ? kind : ''}
@@ -67,7 +68,7 @@ export function StepLogExpander({
         {
           key: kind,
           label: (
-            <Button variant="link" size="sm" className="!px-0">
+            <Button data-testid={`wf-step-log-btn-${stepId}-${kind}`} variant="link" size="sm" className="!px-0">
               {label}
             </Button>
           ),

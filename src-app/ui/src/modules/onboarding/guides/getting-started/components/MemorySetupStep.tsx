@@ -129,7 +129,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
       </Paragraph>
 
       {error && (
-        <Alert tone="error" title={error} className="mb-4" />
+        <Alert data-testid="onboarding-memory-enable-error-alert" tone="error" title={error} className="mb-4" />
       )}
 
       <div className="border rounded-lg p-4 mb-4">
@@ -144,6 +144,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
             </div>
           </div>
           <Switch
+            data-testid="onboarding-memory-enable-switch"
             checked={enableMemory}
             onChange={(checked) => Stores.MemorySetupStep.setEnableMemory(checked)}
           />
@@ -179,6 +180,7 @@ function PickModelScreen({
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
         <Button
+          data-testid="onboarding-memory-pick-back-button"
           icon={<ArrowLeft />}
           size="sm"
           onClick={onBack}
@@ -198,18 +200,19 @@ function PickModelScreen({
       </Paragraph>
 
       {error && (
-        <Alert tone="error" title={error} className="mb-4" />
+        <Alert data-testid="onboarding-memory-pick-error-alert" tone="error" title={error} className="mb-4" />
       )}
 
       <div className="mb-2 flex items-center gap-2">
         <Text strong>Embedding model</Text>
         {noModelsAvailable && (
-          <Tag tone="warning">No embedding-capable models</Tag>
+          <Tag data-testid="onboarding-memory-pick-no-models-tag" tone="warning">No embedding-capable models</Tag>
         )}
       </div>
 
       {noModelsAvailable ? (
         <Alert
+          data-testid="onboarding-memory-no-models-alert"
           tone="info"
           icon={<Info />}
           title="No embedding-capable models found."
@@ -226,6 +229,7 @@ function PickModelScreen({
               </Text>
               <Space>
                 <Button
+                  data-testid="onboarding-memory-add-model-button"
                   variant="default"
                   icon={<Plus />}
                   onClick={() => {
@@ -238,6 +242,7 @@ function PickModelScreen({
                   Add embedding model
                 </Button>
                 <Button
+                  data-testid="onboarding-memory-refresh-button"
                   icon={<RotateCw />}
                   loading={refreshing}
                   onClick={async () => {
@@ -258,6 +263,7 @@ function PickModelScreen({
         />
       ) : (
         <Select
+          data-testid="onboarding-memory-model-select"
           className="w-full mb-4"
           placeholder="Select an embedding model"
           value={embeddingModelId ?? undefined}

@@ -31,6 +31,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
       <div className="flex items-center justify-between px-3 py-1 text-xs rounded-t">
         <span>{language || 'code'}</span>
         <Button
+          data-testid="chat-code-copy-btn"
           size="sm"
           variant="ghost"
           icon={copied ? <Check /> : <CopyIcon />}

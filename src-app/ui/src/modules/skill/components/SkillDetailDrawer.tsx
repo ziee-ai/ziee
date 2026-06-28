@@ -113,6 +113,7 @@ export function SkillDetailDrawer() {
     return (
       <Sheet
         open={isOpen}
+        data-testid="skill-detail-sheet"
         onOpenChange={open => {
           if (!open) Stores.SkillDrawer.close()
         }}
@@ -162,6 +163,7 @@ export function SkillDetailDrawer() {
   return (
     <Sheet
       open={isOpen}
+      data-testid="skill-detail-sheet-loaded"
       onOpenChange={open => {
         if (!open) Stores.SkillDrawer.close()
       }}
@@ -177,6 +179,7 @@ export function SkillDetailDrawer() {
       footer={
         editable ? (
           <Confirm
+            data-testid="skill-delete-confirm"
             title="Delete this skill?"
             description="This removes the skill and its extracted files."
             onConfirm={handleDelete}
@@ -184,7 +187,7 @@ export function SkillDetailDrawer() {
             cancelText="Cancel"
             okButtonProps={{ danger: true }}
           >
-            <Button variant="destructive" size="sm" icon={<Trash2 />}>
+            <Button variant="destructive" size="sm" data-testid="skill-delete-button" icon={<Trash2 />}>
               Delete
             </Button>
           </Confirm>
@@ -196,6 +199,7 @@ export function SkillDetailDrawer() {
           size="sm"
           column={1}
           bordered
+          data-testid="skill-detail-descriptions"
           items={[
             { key: 'name', label: 'Name', children: skill.name },
             ...(skill.version
@@ -213,6 +217,7 @@ export function SkillDetailDrawer() {
         {conversationId && (
           <Checkbox
             checked={hidden}
+            data-testid="skill-detail-hide-checkbox"
             onChange={(next: boolean) => void handleToggleHidden(next)}
             label="Hide in this conversation"
           />

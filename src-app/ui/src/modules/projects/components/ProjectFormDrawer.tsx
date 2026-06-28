@@ -176,11 +176,12 @@ export function ProjectFormDrawer() {
         // canSave; Submit is GATED (not just disabled) so it doesn't
         // appear at all in read-only mode.
         <Flex className="justify-end gap-2">
-          <Button variant="outline" onClick={handleClose} disabled={loading}>
+          <Button data-testid="project-form-cancel-button" variant="outline" onClick={handleClose} disabled={loading}>
             {canSave ? 'Cancel' : 'Close'}
           </Button>
           {canSave && (
             <Button
+              data-testid="project-form-submit-button"
               type="submit"
               onClick={form.handleSubmit(handleSubmit)}
               loading={loading}
@@ -192,6 +193,7 @@ export function ProjectFormDrawer() {
       }
     >
       <Form
+        data-testid="project-form"
         form={form}
         layout="vertical"
         disabled={!canSave}
@@ -204,6 +206,7 @@ export function ProjectFormDrawer() {
               are preserved.{' '}
             </Text>
             <Button
+              data-testid="project-form-discard-edits-button"
               variant="link"
               size="sm"
               onClick={handleDiscardLocalEdits}
@@ -214,7 +217,7 @@ export function ProjectFormDrawer() {
           </div>
         )}
         <FormField name="name" label="Name" required>
-          <Input placeholder="My project" autoFocus />
+          <Input data-testid="project-form-name-input" placeholder="My project" autoFocus />
         </FormField>
 
         <FormField
@@ -223,6 +226,7 @@ export function ProjectFormDrawer() {
           description="For your reference only — shown on the project card and detail page. NOT sent to the LLM. To shape the model's behavior in this project, use the Instructions field below instead."
         >
           <Textarea
+            data-testid="project-form-description-textarea"
             rows={3}
             placeholder="Optional short description"
             maxLength={4096}
@@ -235,6 +239,7 @@ export function ProjectFormDrawer() {
           description="System instructions injected into every conversation in this project. Capped at 64 KiB."
         >
           <Textarea
+            data-testid="project-form-instructions-textarea"
             rows={10}
             placeholder="e.g. 'You are helping me build a Rust sandbox. Focus on correctness over cleverness.'"
             maxLength={65_536}
