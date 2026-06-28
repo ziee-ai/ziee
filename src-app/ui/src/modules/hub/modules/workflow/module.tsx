@@ -1,4 +1,4 @@
-import { NodeIndexOutlined } from '@ant-design/icons'
+import { Workflow } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { useHubWorkflowsStore } from '@/modules/hub/modules/workflow/stores/hub-workflows-store'
@@ -24,7 +24,7 @@ export default createModule({
       {
         id: 'workflows',
         label: 'Workflows',
-        icon: <NodeIndexOutlined />,
+        icon: <Workflow />,
         component: WorkflowsHubTab,
         order: 45,
         permissions: {

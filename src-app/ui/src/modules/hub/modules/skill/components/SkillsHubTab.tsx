@@ -1,6 +1,6 @@
+import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Text, MultiSelect, Input } from '@/components/ui'
-import { SearchOutlined } from '@ant-design/icons'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
@@ -58,7 +58,7 @@ export function SkillsHubTab() {
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Search skills..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             allowClear

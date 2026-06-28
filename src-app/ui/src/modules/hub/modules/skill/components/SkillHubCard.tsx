@@ -1,4 +1,4 @@
-import { DownloadOutlined } from '@ant-design/icons'
+import { Download } from 'lucide-react'
 import type { MenuProps } from '@/components/ui'
 import {
   Button,
@@ -131,7 +131,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
               >
                 <Button
                   variant="default"
-                  icon={<DownloadOutlined />}
+                  icon={<Download />}
                   loading={installing}
                   disabled={installing}
                   onClick={handleInstallForMe}
@@ -142,7 +142,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
             ) : canInstall ? (
               <Button
                 variant="default"
-                icon={<DownloadOutlined />}
+                icon={<Download />}
                 loading={installing}
                 disabled={state !== 'none'}
                 onClick={handleInstallForMe}

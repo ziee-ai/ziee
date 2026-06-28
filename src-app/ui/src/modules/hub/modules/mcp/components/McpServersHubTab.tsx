@@ -1,7 +1,7 @@
 import { useState, useMemo, ChangeEvent } from 'react'
 import { Button, Input, MultiSelect, Combobox, Text } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
+import { Search, Eraser } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
@@ -104,7 +104,7 @@ export function McpServersHubTab() {
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Search MCP servers..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
             allowClear
@@ -156,7 +156,7 @@ export function McpServersHubTab() {
             <Button
               size="sm"
               variant="ghost"
-              icon={<ClearOutlined />}
+              icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
             >

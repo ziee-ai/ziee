@@ -1,4 +1,4 @@
-import { DownloadOutlined } from '@ant-design/icons'
+import { Download } from 'lucide-react'
 import {
   Button,
   Card,
@@ -131,7 +131,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
               <Dropdown items={adminMenuItems} onSelect={handleInstallAction}>
                 <Button
                   variant="default"
-                  icon={<DownloadOutlined />}
+                  icon={<Download />}
                   loading={installing}
                   disabled={installing}
                   onClick={handleInstallForMe}
@@ -142,7 +142,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
             ) : canInstall ? (
               <Button
                 variant="default"
-                icon={<DownloadOutlined />}
+                icon={<Download />}
                 loading={installing}
                 disabled={state !== 'none'}
                 onClick={handleInstallForMe}

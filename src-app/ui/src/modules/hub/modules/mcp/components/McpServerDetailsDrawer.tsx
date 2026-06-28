@@ -1,6 +1,6 @@
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Flex, Tag, Card, Text, Title } from '@/components/ui'
-import { LinkOutlined } from '@ant-design/icons'
+import { Link } from 'lucide-react'
 import type { HubMCPServer } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 
@@ -75,7 +75,7 @@ export function McpServerDetailsDrawer({
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs break-all"
               >
-                <LinkOutlined /> {firstRemote.url}
+                <Link /> {firstRemote.url}
               </a>
               <div className="mt-1">
                 <Tag tone="info" className="text-xs">
@@ -179,7 +179,7 @@ export function McpServerDetailsDrawer({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2"
                 >
-                  <LinkOutlined /> Repository
+                  <Link /> Repository
                 </a>
               )}
               {server.websiteUrl && (
@@ -189,7 +189,7 @@ export function McpServerDetailsDrawer({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2"
                 >
-                  <LinkOutlined /> Website
+                  <Link /> Website
                 </a>
               )}
             </Flex>

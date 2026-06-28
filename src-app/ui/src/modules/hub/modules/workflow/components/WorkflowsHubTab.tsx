@@ -1,4 +1,4 @@
-import { SearchOutlined } from '@ant-design/icons'
+import { Search } from 'lucide-react'
 import { Input, MultiSelect, Text } from '@/components/ui'
 import { useMemo, useState } from 'react'
 import { Loading } from '@/core/components/Loading'
@@ -56,7 +56,7 @@ export function WorkflowsHubTab() {
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Search workflows..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             allowClear

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { DownloadOutlined } from '@ant-design/icons'
+import { Download } from 'lucide-react'
 import { Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Text, Title, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import {
@@ -180,7 +180,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           ]}
           onSelect={(key: string) => doExport(key as 'ris' | 'bibtex' | 'csv')}
         >
-          <Button icon={<DownloadOutlined />} size="sm" disabled={records.length === 0}>
+          <Button icon={<Download />} size="sm" disabled={records.length === 0}>
             Export {counts.include > 0 ? 'included' : 'all'}
           </Button>
         </Dropdown>

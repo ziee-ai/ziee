@@ -1,11 +1,5 @@
 import { Card, Tag, Tooltip, Text, Button, Flex, message } from '@/components/ui'
-import {
-  DownloadOutlined,
-  GlobalOutlined,
-  GithubOutlined,
-  EyeOutlined,
-  CopyOutlined,
-} from '@ant-design/icons'
+import { Download, Globe, GitBranch, Eye, Copy } from 'lucide-react'
 import {
   Permissions,
   type HubMCPServer,
@@ -224,7 +218,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
               <div className="flex gap-1 items-center justify-end">
                 {homepageUrl && (
                   <Button
-                    icon={<GlobalOutlined />}
+                    icon={<Globe />}
                     onClick={e => {
                       e.stopPropagation()
                       window.open(homepageUrl, '_blank')
@@ -233,7 +227,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 )}
                 {repoUrl && (
                   <Button
-                    icon={<GithubOutlined />}
+                    icon={<GitBranch />}
                     onClick={e => {
                       e.stopPropagation()
                       window.open(repoUrl, '_blank')
@@ -243,7 +237,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 {multiUserMode &&
                   (isAlreadyInstalled ? (
                     <Button
-                      icon={<EyeOutlined />}
+                      icon={<Eye />}
                       onClick={e => {
                         e.stopPropagation()
                         navigate('/settings/mcp-servers')
@@ -254,7 +248,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     </Button>
                   ) : canInstall ? (
                     <Button
-                      icon={<DownloadOutlined />}
+                      icon={<Download />}
                       onClick={e => {
                         e.stopPropagation()
                         handleInstall()
@@ -268,7 +262,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   ) : null)}
                 {canInstallSystem && (
                   <Button
-                    icon={<CopyOutlined />}
+                    icon={<Copy />}
                     onClick={e => {
                       e.stopPropagation()
                       handleInstallAsSystem()
