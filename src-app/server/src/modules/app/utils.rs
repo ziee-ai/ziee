@@ -144,7 +144,3 @@ pub fn is_valid_email(email: &str) -> bool {
 
     true
 }
-
-pub fn is_strong_password(password: &str) -> bool {
-    password.len() >= 8
-}

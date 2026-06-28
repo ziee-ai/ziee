@@ -29,6 +29,7 @@ pub fn get_app_handle() -> &'static AppHandle {
 }
 
 /// Check if AppHandle has been initialized
+#[allow(dead_code)]
 pub fn is_app_handle_set() -> bool {
     APP_HANDLE.get().is_some()
 }

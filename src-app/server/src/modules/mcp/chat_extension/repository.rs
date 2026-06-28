@@ -56,6 +56,11 @@ impl McpChatRepository {
     // ===== Tool Use Approvals =====
 
     /// Create a pending tool use approval
+    ///
+    /// NOTE: dead_code allowed — production uses the batch
+    /// `create_tool_approvals` path. This singular wrapper exists
+    /// for symmetry / future callers that need exactly one approval.
+    #[allow(dead_code)]
     pub async fn create_tool_approval(
         &self,
         conversation_id: Uuid,

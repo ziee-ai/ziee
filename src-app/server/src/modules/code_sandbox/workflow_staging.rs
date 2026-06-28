@@ -72,6 +72,10 @@ pub struct StagedMount {
 /// boundary at the workspace root (the existing
 /// `workspace_reaper` + per-conversation chmod machinery already
 /// covers it).
+///
+/// NOTE: Written for the B2→B4 handoff. Currently only defines the
+/// staging contract; the caller (B4 `SandboxDispatcher`) is deferred.
+#[allow(dead_code)]
 pub fn stage_workspace_subdir(
     ctx: &SandboxContext,
     subdir_name: &str,
@@ -130,6 +134,10 @@ pub fn stage_workspace_subdir(
 /// Plain recursive copy. Rejects symlinks defensively (defense-in-depth
 /// behind `hub::bundle`'s extractor, which already rejects them at the
 /// tar layer).
+///
+/// NOTE: Only reachable from `stage_workspace_subdir` (same B2 deferred
+/// phase); once that caller is wired, remove this allow.
+#[allow(dead_code)]
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), AppError> {
     let metadata = fs::symlink_metadata(src).map_err(|e| {
         AppError::internal_error(format!(

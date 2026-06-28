@@ -376,7 +376,7 @@ async fn test_list_conversations_message_count() {
     )
     .await;
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, Some("Test")).await;
+    let _conversation = super::helpers::create_conversation(&server, &user.token, None, Some("Test")).await;
 
     let response = reqwest::Client::new()
         .get(server.api_url("/conversations"))

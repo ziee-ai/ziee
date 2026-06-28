@@ -26,12 +26,6 @@ impl Drop for StubEngine {
 
 impl StubEngine {
     /// Spawn on a free port; resolves once `/health` returns 200.
-    pub async fn start() -> StubEngine {
-        Self::start_with_chunk_delay(0).await
-    }
-
-    /// Spawn with a per-delta delay (ms) so streaming is slow enough to cancel
-    /// or to subscribe mid-generation.
     pub async fn start_with_chunk_delay(chunk_delay_ms: u64) -> StubEngine {
         let port = free_port();
         let mut cmd = std::process::Command::new(stub_engine_binary());

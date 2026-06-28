@@ -162,6 +162,10 @@ pub fn host_arch() -> String {
 pub enum GpuBackend {
     Cpu,
     Cuda,
+    /// Metal is only constructed on macOS (behind `#[cfg(target_os =
+    /// "macos")]`). The `allow(dead_code)` prevents a false positive on
+    /// Linux builds.
+    #[allow(dead_code)]
     Metal,
     Rocm,
 }
@@ -176,6 +180,10 @@ impl GpuBackend {
         }
     }
 
+    /// Parse a backend name to its enum variant.
+    /// Only used from test code. The allow is because dead_code does not
+    /// count `#[cfg(test)]` usage as live.
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "cpu" => Some(GpuBackend::Cpu),

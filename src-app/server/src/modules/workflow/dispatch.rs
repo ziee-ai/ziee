@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ai_providers::{
-    ChatMessage, ChatRequest, ContentBlock as AiBlock, ContentBlockDelta, Provider,
+    ChatMessage, ChatRequest, ContentBlockDelta, Provider,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -37,10 +37,10 @@ use crate::modules::workflow::log_io;
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{
-    ItemProgress, OutputMeta, ParsedAs, RunContext, StepKindTag, StepResult,
+    ItemProgress, ParsedAs, RunContext, StepKindTag, StepResult,
 };
 use crate::modules::workflow::validate::{
-    LogCapture, OnError, OutputFormat, StepConfig, StepDef,
+    OnError, OutputFormat, StepConfig, StepDef,
 };
 
 /// Per-call LLM token cap (plan §4.5).
@@ -413,7 +413,7 @@ impl StepDispatcher for LlmMapDispatcher {
                 } else {
                     1
                 };
-                let mut last_err = String::new();
+                let mut last_err: String;
                 let mut total_tokens: u64 = 0;
                 loop {
                     attempts += 1;

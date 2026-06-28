@@ -1,7 +1,7 @@
 //! bio_mcp routes — the streamable-HTTP MCP proxy at /api/bio/mcp.
 
 use aide::axum::ApiRouter;
-use axum::routing::{delete, get, post};
+use axum::routing::post;
 
 use super::handlers;
 

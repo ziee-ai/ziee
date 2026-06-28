@@ -61,6 +61,7 @@ pub fn probe_rootfs_dependent(
 /// Convenience: probe both host-only and rootfs-dependent halves in one
 /// call. Used by Tier-4 tests and the bootstrap script, NOT by the
 /// production boot path (which only calls `probe_host_only`).
+#[allow(dead_code)]
 pub fn probe_all(config: &CodeSandboxConfig) -> HardeningCapabilities {
     let host = match probe_host_only(config) {
         Some(h) => h,

@@ -23,6 +23,11 @@ pub struct BinaryManager {
 
 impl BinaryManager {
     /// Create a new binary manager with default cache directory
+    ///
+    /// NOTE: dead_code allowed — only `with_cache_dir` is used in
+    /// production (the config-driven path). `new()` exists for
+    /// convenience in tests / future callers that want the default.
+    #[allow(dead_code)]
     pub fn new(pool: PgPool) -> Result<Self, Box<dyn std::error::Error>> {
         let downloader = BinaryDownloader::new()?;
         Ok(Self { downloader, pool })
@@ -40,6 +45,10 @@ impl BinaryManager {
     /// Download and register a new runtime version (no progress
     /// reporting). Thin wrapper around
     /// [`Self::download_and_register_with_progress`].
+    ///
+    /// NOTE: dead_code allowed — production callers use
+    /// `download_and_register_with_progress` directly for progress.
+    #[allow(dead_code)]
     pub async fn download_and_register(
         &self,
         engine: EngineType,
@@ -154,6 +163,10 @@ impl BinaryManager {
     }
 
     /// Get binary path by engine and version string
+    ///
+    /// NOTE: dead_code allowed — callers use `get_binary_path(version_id)`
+    /// after resolving the version through other means.
+    #[allow(dead_code)]
     pub async fn get_binary_path_by_version(
         &self,
         engine: &str,
@@ -387,6 +400,10 @@ impl BinaryManager {
     }
 
     /// Get the cache directory path
+    ///
+    /// NOTE: dead_code allowed — the downloader owns the cache dir;
+    /// callers that need it coordinate via config, not this accessor.
+    #[allow(dead_code)]
     pub fn cache_dir(&self) -> &std::path::Path {
         self.downloader.binaries_dir()
     }

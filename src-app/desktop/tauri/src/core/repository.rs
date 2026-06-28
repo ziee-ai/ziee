@@ -51,6 +51,7 @@ macro_rules! declare_desktop_repositories {
                 }
             }
 
+            #[allow(dead_code)]
             pub fn pool(&self) -> &PgPool {
                 &self.pool
             }
@@ -84,6 +85,7 @@ macro_rules! declare_desktop_repositories {
         }
 
         /// Check if desktop repositories are initialized
+        #[allow(dead_code)]
         pub fn is_desktop_repos_initialized() -> bool {
             DESKTOP_FACTORY.get().is_some()
         }
@@ -117,6 +119,7 @@ macro_rules! declare_desktop_repositories {
 
         impl DesktopReposAccessor {
             /// Get the underlying database pool
+            #[allow(dead_code)]
             pub fn pool(&self) -> &PgPool {
                 get_desktop_factory().pool()
             }
