@@ -516,12 +516,26 @@ impl StreamingService {
                                     }
                                 }
                                 Err(e) => {
+                                    // Persist whatever streamed so far before
+                                    // surfacing the error — `finalize()` is
+                                    // idempotent, so this mirrors the
+                                    // receiver-dropped path and stops a
+                                    // mid-stream failure from discarding the
+                                    // partial assistant message.
+                                    let _ = acc.finalize().await;
                                     let _ = tx.send(Err(e));
                                     return;
                                 }
                             }
                         }
                         Err(e) => {
+                            // Provider stream errored mid-generation: persist
+                            // the partial message (idempotent finalize) before
+                            // reporting the error, same as the cancel path.
+                            {
+                                let mut acc = accumulator.lock().await;
+                                let _ = acc.finalize().await;
+                            }
                             let _ = tx.send(Err(AppError::internal_error(format!(
                                 "Stream error: {}",
                                 e
