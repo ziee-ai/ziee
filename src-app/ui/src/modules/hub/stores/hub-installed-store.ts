@@ -44,10 +44,11 @@ export const useHubInstalledStore = create<HubInstalledState>()(
               loading: false,
             })
           } catch (error: any) {
+            // Keep any previously-loaded items on a transient reload error so
+            // a refresh failure doesn't wipe the list to an empty state.
             set({
               error: error?.message || 'Failed to load installed hub items',
               loading: false,
-              items: [],
             })
           }
         },
