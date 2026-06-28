@@ -872,3 +872,85 @@ async fn third_party_mcp_server_excluded_when_enable_mcp_false() {
         "the third-party MCP server must record ZERO hits during a disabled-MCP send"
     );
 }
+
+/// 5453123 — a single conversation that chains every agentic surface end-to-end:
+/// upload a file → analyze it (the model calls the files_mcp `read_file` tool) →
+/// edit persistent state via MCP (the model calls the memory `remember` tool) →
+/// a plain follow-up turn. Proves the multi-step flow holds together in ONE
+/// conversation (deterministic via the stub model + STUB_PLAN scripting; the
+/// individual surfaces are tested in isolation elsewhere, this pins the chain).
+#[tokio::test]
+async fn multi_step_upload_analyze_mcp_edit_then_followup() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_multistep").await;
+    enable_memory(&server, &user).await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "report.txt",
+        "ANALYZE_MARKER_5453 the quarterly total is 100 units",
+    )
+    .await;
+
+    // Turn 1 — upload + analyze: the model calls files_mcp `read_file` and echoes
+    // the file's content back (the read_first_file plan).
+    let turn1 = send_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "STUB_PLAN=read_first_file analyze the attached report",
+        &[file_id.clone()],
+        Some(true),
+    )
+    .await;
+    assert!(
+        turn1.contains("ANALYZE_MARKER_5453"),
+        "turn 1 should round-trip the file content via read_file; got: {turn1}"
+    );
+    assert!(stub.requests_with_tool("read_file") >= 1, "read_file must have been called");
+
+    // Turn 2 — MCP edit: the model calls the memory `remember` tool to persist a
+    // durable fact (a real built-in MCP write in the same conversation).
+    let turn2 = send_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "STUB_PLAN=remember The quarterly total is 100 units.",
+        &[],
+        Some(true),
+    )
+    .await;
+    assert!(turn2.contains("remember that"), "turn 2 should acknowledge the save; got: {turn2}");
+    assert!(stub.requests_with_tool("remember") >= 1, "remember must have been called");
+
+    // Turn 3 — plain follow-up completes in the same conversation.
+    let turn3 = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "thanks, that's all for now",
+    )
+    .await;
+    assert!(!turn3.is_empty(), "follow-up turn should produce a reply");
+
+    // The MCP edit persisted: a conversation-scoped memory row exists.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT content, scope FROM user_memories WHERE user_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(user_uuid)
+    .fetch_all(&pool)
+    .await
+    .expect("query memories");
+    pool.close().await;
+    assert!(
+        rows.iter().any(|(content, _)| content.contains("100 units")),
+        "the MCP remember edit should have persisted a memory row; rows={rows:?}"
+    );
+}
