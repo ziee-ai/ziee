@@ -24,6 +24,7 @@ mod real_stack;
 mod resume;
 mod run_history_and_delete;
 mod run_mocked;
+mod sync_emit_test;
 mod run_model;
 mod sandbox_progress;
 mod sandbox_run;
