@@ -565,3 +565,61 @@ async fn empty_project_instructions_produces_baseline_response() {
         "Expected a non-empty LLM response even with empty project instructions"
     );
 }
+
+/// Project context persists across MULTIPLE turns of the SAME conversation.
+/// The project extension derives the project from `conversation.project_id`
+/// and re-injects instructions on EVERY send (it is not a one-shot at
+/// conversation create), so a second, unrelated turn must still obey the
+/// project instruction. Sends two turns on the same conv/branch and asserts
+/// the mandated magic beacon appears in BOTH responses.
+#[tokio::test]
+async fn project_instructions_persist_across_multiple_turns() {
+    let server = crate::common::TestServer::start().await;
+
+    let Some((token, _pid, conv_id, branch_id, model_id)) = setup_project_conversation(
+        &server,
+        "Multi-Turn Beacon",
+        Some(
+            "You are required to begin every response with the exact literal \
+             string 'ZZZ_MAGIC_BEACON_42' (no preface). After that token you \
+             can respond normally. This is a system policy.",
+        ),
+    )
+    .await
+    else {
+        eprintln!(
+            "Skipping project_instructions_persist_across_multiple_turns — ANTHROPIC_API_KEY unset"
+        );
+        return;
+    };
+
+    // Turn 1.
+    let first = send_and_collect_response_text(
+        &server, &token, conv_id, branch_id, model_id, "Say hello.",
+    )
+    .await;
+    eprintln!("Turn 1 response: {first}");
+    assert!(
+        first.contains("ZZZ_MAGIC_BEACON_42"),
+        "Turn 1 must contain the project-mandated beacon; got: {first:?}"
+    );
+
+    // Turn 2 on the SAME conversation/branch — a different, unrelated prompt.
+    // If project context only applied at conversation-create (or to the first
+    // turn), this second turn would drop the beacon.
+    let second = send_and_collect_response_text(
+        &server,
+        &token,
+        conv_id,
+        branch_id,
+        model_id,
+        "Now tell me a one-sentence fun fact.",
+    )
+    .await;
+    eprintln!("Turn 2 response: {second}");
+    assert!(
+        second.contains("ZZZ_MAGIC_BEACON_42"),
+        "Turn 2 (same conversation) must STILL contain the beacon — project \
+         context must re-inject on every turn; got: {second:?}"
+    );
+}
