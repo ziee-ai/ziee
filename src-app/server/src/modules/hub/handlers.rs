@@ -1216,71 +1216,66 @@ pub async fn create_system_mcp_server_from_hub(
     // `hub_entities` row. There is NO FK cascade between
     // `hub_entities.entity_id` and `mcp_servers.id`; cleanup is
     // event-driven.
-    if let Some(existing_id) = existing_id {
-        // Tolerate "already deleted" — racy with the admin MCP page
-        // deleting the same row in another tab. Any other DB error
-        // still surfaces.
-        match Repos.mcp.delete_system_server(existing_id).await {
-            Ok(()) => {
-                event_bus
-                    .emit(crate::modules::mcp::events::McpServerEvent::system_server_deleted(
-                        existing_id,
-                    ))
-                    .await;
-            }
-            Err(e) if e.status_code() == 404 => (),
-            Err(e) => return Err(e.into()),
-        }
-    }
-
     // Same tiered command + flavor validation the native create path runs.
-    // Runs AFTER the re-install run_in_sandbox carry-over above, so a
-    // re-installed sandboxed server is correctly treated as sandbox-tier.
+    // Done before the transaction so a validation failure never touches the DB.
     crate::modules::mcp::handlers::validate_sandbox_fields_create(
         true,
         &plan.create_request,
     )?;
 
-    let server = Repos.mcp.create_system_server(plan.create_request).await?;
+    // Wrap delete-prior + create + track in ONE transaction. The track-409
+    // backstop (uniq_hub_system_mcp_install, migration 80) now rolls back the
+    // whole install automatically — no manual orphan-delete needed. Events are
+    // deferred until after commit.
+    let pool = Repos.pool();
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
 
-    // Track with `created_by: None` so /hub/installed surfaces this as
-    // a system-wide install (the `is_system_mcp_install` flag on the
-    // outdated row then routes the Re-install UI through this
-    // endpoint).
-    //
-    // Partial unique index `uniq_hub_system_mcp_install` (migration
-    // 80) is the last-line backstop against the TOCTOU race where
-    // two admins both passed the `find_system_mcp_install` check
-    // above concurrently. If the insert hits that index, we delete
-    // the orphan mcp_servers row we just created (rolling back the
-    // partial state) and return 409 — matches the fast-path error
-    // code so clients see a consistent contract regardless of which
-    // serialization layer caught the dup.
-    let hub_tracking = match Repos
-        .hub
-        .track_hub_entity(
-            HubEntityType::McpServer,
-            server.id,
-            &request.hub_id,
-            HubCategory::McpServer,
-            None,
-            plan.hub_version.as_deref(),
-        )
-        .await
+    let mut deleted_id: Option<Uuid> = None;
+    if let Some(existing_id) = existing_id {
+        // Tolerate "already deleted" — racy with the admin MCP page deleting
+        // the same row in another tab. Any other DB error rolls back.
+        match Repos.mcp.delete_system_server_in_tx(&mut tx, existing_id).await {
+            Ok(()) => deleted_id = Some(existing_id),
+            Err(e) if e.status_code() == 404 => (),
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    let server = Repos
+        .mcp
+        .create_system_server_in_tx(&mut tx, plan.create_request)
+        .await?;
+
+    // `created_by: None` → /hub/installed surfaces this as a system-wide
+    // install. On the unique-index (uniq_hub_system_mcp_install) backstop the
+    // transaction rolls back the just-created server and we return 409 — same
+    // contract as the fast-path check.
+    let hub_tracking = match crate::modules::hub::repository::track_hub_entity_in_tx(
+        &mut tx,
+        HubEntityType::McpServer,
+        server.id,
+        &request.hub_id,
+        HubCategory::McpServer,
+        None,
+        plan.hub_version.as_deref(),
+    )
+    .await
     {
         Ok(t) => t,
         Err(e) if e.status_code() == 409 => {
-            let _ = Repos.mcp.delete_system_server(server.id).await;
-            event_bus
-                .emit(crate::modules::mcp::events::McpServerEvent::system_server_deleted(
-                    server.id,
-                ))
-                .await;
             return Err(AppError::conflict("Hub MCP system server").into());
         }
         Err(e) => return Err(e.into()),
     };
 
+    tx.commit().await.map_err(AppError::database_error)?;
+
+    // Emit events only after the commit succeeds.
+    if let Some(id) = deleted_id {
+        event_bus
+            .emit(crate::modules::mcp::events::McpServerEvent::system_server_deleted(id))
+            .await;
+    }
     event_bus.emit_async(
         HubEvent::mcp_server_created_from_hub(
             server.id,

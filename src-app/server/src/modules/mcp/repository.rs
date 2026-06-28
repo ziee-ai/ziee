@@ -464,6 +464,24 @@ impl McpRepository {
         create_system_mcp_server(&self.pool, request).await
     }
 
+    /// Tx-aware system create for the atomic hub-install flow.
+    pub async fn create_system_server_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        request: CreateMcpServerRequest,
+    ) -> Result<McpServer, AppError> {
+        create_system_mcp_server_in_tx(tx, &self.pool, request).await
+    }
+
+    /// Tx-aware system delete for the atomic hub-install replace flow.
+    pub async fn delete_system_server_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        id: Uuid,
+    ) -> Result<(), AppError> {
+        delete_system_mcp_server_in_tx(tx, id).await
+    }
+
     pub async fn get_any_server(&self, id: Uuid) -> Result<Option<McpServer>, AppError> {
         get_any_mcp_server(&self.pool, id).await
     }
@@ -1268,6 +1286,18 @@ pub async fn create_system_mcp_server(
     pool: &PgPool,
     request: CreateMcpServerRequest,
 ) -> Result<McpServer, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+    let server = create_system_mcp_server_in_tx(&mut tx, pool, request).await?;
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(server)
+}
+
+/// Tx-aware variant for the atomic hub system-MCP install flow.
+pub async fn create_system_mcp_server_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    pool: &PgPool,
+    request: CreateMcpServerRequest,
+) -> Result<McpServer, AppError> {
     // Validate transport-specific fields
     validate_transport_config(&request.transport_type, &request)?;
 
@@ -1336,7 +1366,7 @@ pub async fn create_system_mcp_server(
         request.run_in_sandbox.unwrap_or(false),
         request.sandbox_flavor.as_deref(),
     )
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await
     .map_err(|e| {
         if let sqlx::Error::Database(db_err) = &e
@@ -1963,11 +1993,22 @@ pub async fn update_system_mcp_server(
 
 /// Delete system MCP server
 pub async fn delete_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+    delete_system_mcp_server_in_tx(&mut tx, id).await?;
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Tx-aware variant for the atomic hub system-MCP replace flow.
+pub async fn delete_system_mcp_server_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    id: Uuid,
+) -> Result<(), AppError> {
     let server = sqlx::query!(
         "SELECT is_built_in FROM mcp_servers WHERE id = $1 AND is_system = true",
         id
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| AppError::not_found("Server"))?;
 
@@ -1979,7 +2020,7 @@ pub async fn delete_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<(), App
         "DELETE FROM mcp_servers WHERE id = $1 AND is_system = true",
         id
     )
-    .execute(pool)
+    .execute(&mut **tx)
     .await?;
 
     Ok(())
