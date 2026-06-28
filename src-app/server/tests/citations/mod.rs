@@ -814,3 +814,68 @@ async fn test_delete_citation_cascades_project_bibliography_link() {
         "deleted entry must be gone from the library"
     );
 }
+
+// audit id all-a7891dc5f3b3 — cross-subsystem: memory combined with citations
+// (memory has only ever been tested in isolation). One user, one conversation:
+// remember a research fact via memory_mcp AND add a CSL citation via
+// citations_mcp; both per-user subsystems must persist and read back
+// independently under the same conversation scope.
+#[tokio::test]
+async fn memory_and_citations_compose_for_one_user() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(
+        &server,
+        "mem_cit_user",
+        &["citations::use", "citations::manage", "memory::read", "memory::write"],
+    )
+    .await;
+    let conv = Uuid::new_v4().to_string();
+
+    // Memory: remember + recall.
+    let remember = reqwest::Client::new()
+        .post(server.api_url("/memories/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("x-conversation-id", &conv)
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "remember", "arguments": { "content": "User writes about base editing safety", "kind": "fact" } } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(remember.status(), 200);
+    let recall: Value = reqwest::Client::new()
+        .post(server.api_url("/memories/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("x-conversation-id", &conv)
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "recall", "arguments": { "query": "what does the user write about", "top_k": 5 } } }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        recall["result"]["structuredContent"]["memories"].as_array().cloned().unwrap_or_default()
+            .iter().filter_map(|m| m["content"].as_str()).any(|c| c.contains("base editing safety")),
+        "memory must recall the fact alongside citations: {recall}"
+    );
+
+    // Citations: add a CSL-only citation (no network resolve) + list it back.
+    let added = add_one_item(
+        &server,
+        &user.token,
+        json!({ "csl": { "type": "article-journal", "title": "Base Editing Safety Review",
+                          "author": [{ "family": "Roe" }], "issued": { "date-parts": [[2022]] } } }),
+    )
+    .await;
+    assert!(!added.is_null(), "add_citations returned a result: {added}");
+    let titles: Vec<String> = list_entries(&server, &user.token)
+        .await
+        .iter()
+        .filter_map(|e| e["title"].as_str().map(String::from))
+        .collect();
+    assert!(
+        titles.iter().any(|t| t.contains("Base Editing Safety Review")),
+        "the citation must persist in the same user's library: {titles:?}"
+    );
+}
