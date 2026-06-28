@@ -2598,3 +2598,72 @@ async fn test_ssrf_provider_rejects_rfc1918_base_url() {
     let res = create_provider_with_base_url(&server, &admin.token, "http://192.168.1.1/v1").await;
     assert_eq!(res.status(), 400, "RFC 1918 base_url must be rejected");
 }
+
+// audit id all-f676bb31f850 — the discover_models endpoint
+// (GET /llm-providers/{id}/discover-models) was completely untested. It returns
+// the curated catalog (source="catalog") for a remote provider and, with no
+// base_url, notes the skipped live /v1/models call; a local provider returns no
+// models and a note pointing at /api/llm-models. No network needed for either.
+#[tokio::test]
+async fn test_discover_models_catalog_and_local_paths() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "discover_user",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
+
+    // (a) openai provider, NO base_url → catalog models + skipped-live note.
+    let provider = create_test_provider(&server, &user.token).await;
+    let pid = provider["id"].as_str().unwrap();
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{pid}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["provider_type"], "openai");
+    let models = body["models"].as_array().expect("models array");
+    assert!(!models.is_empty(), "openai catalog must surface known models: {body}");
+    assert!(
+        models.iter().all(|m| m["source"] == "catalog"),
+        "with no base_url every model comes from the catalog: {body}"
+    );
+    let notes = body["notes"].as_array().unwrap();
+    assert!(
+        notes.iter().any(|n| n.as_str().unwrap_or("").contains("base_url")),
+        "must note the skipped live /v1/models call: {body}"
+    );
+
+    // (b) local provider → no models + a note pointing at /api/llm-models.
+    let local: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Local P", "provider_type": "local", "enabled": false }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let lid = local["id"].as_str().unwrap();
+    let lbody: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{lid}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(lbody["provider_type"], "local");
+    assert!(lbody["models"].as_array().unwrap().is_empty(), "local: no discovered models: {lbody}");
+    assert!(
+        lbody["notes"].as_array().unwrap().iter().any(|n| n.as_str().unwrap_or("").contains("llm-models")),
+        "local must point at /api/llm-models: {lbody}"
+    );
+}
