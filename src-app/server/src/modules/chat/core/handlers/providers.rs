@@ -2,10 +2,10 @@
 
 use crate::core::Repos;
 use aide::transform::TransformOperation;
-use axum::{debug_handler, http::StatusCode, Json};
+use axum::{debug_handler, extract::Query, http::StatusCode, Json};
 
 use crate::{
-    common::{ApiResult, AppError},
+    common::{ApiResult, AppError, DEFAULT_PAGE_SIZE, PAGINATION_MAX_PER_PAGE},
     modules::{
         chat::core::{
             permissions::ConversationsRead, types::GetUserProvidersResponse,
@@ -19,14 +19,27 @@ use crate::{
 ///
 /// Returns all enabled LLM providers assigned to the user's active groups,
 /// with their enabled and active models included.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ChatUserProvidersQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 #[debug_handler]
 pub async fn get_user_llm_providers(
     auth: RequirePermissions<(ConversationsRead,)>,
+    Query(q): Query<ChatUserProvidersQuery>,
 ) -> ApiResult<Json<GetUserProvidersResponse>> {
+    let limit = q
+        .limit
+        .unwrap_or(DEFAULT_PAGE_SIZE as i64)
+        .clamp(1, PAGINATION_MAX_PER_PAGE as i64);
+    let offset = q.offset.unwrap_or(0).max(0);
+
     // Get providers accessible to the user based on group assignments
     let providers = Repos
         .user_group_llm_provider
-        .get_for_user(auth.user.id)
+        .get_for_user(auth.user.id, limit, offset)
         .await
         .map_err(AppError::from)?;
 

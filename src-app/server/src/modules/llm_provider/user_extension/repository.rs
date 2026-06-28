@@ -161,6 +161,8 @@ impl UserGroupLlmProviderRepository {
     pub async fn get_for_user(
         &self,
         user_id: Uuid,
+        limit: i64,
+        offset: i64,
     ) -> Result<Vec<LlmProvider>, sqlx::Error> {
         let rows = sqlx::query!(
             r#"SELECT DISTINCT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.api_key_encrypted, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
@@ -172,8 +174,11 @@ impl UserGroupLlmProviderRepository {
              WHERE ug.user_id = $1
                AND g.is_active = true
                AND p.enabled = true
-             ORDER BY p.built_in DESC, p.name ASC"#,
-            user_id
+             ORDER BY p.built_in DESC, p.name ASC
+             LIMIT $2 OFFSET $3"#,
+            user_id,
+            limit,
+            offset
         )
         .fetch_all(&self.pool)
         .await?;

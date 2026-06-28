@@ -1,11 +1,11 @@
 // User-facing LLM provider handlers
 
 use aide::transform::TransformOperation;
-use axum::{debug_handler, extract::Path, http::StatusCode, Json};
+use axum::{debug_handler, extract::Path, extract::Query, http::StatusCode, Json};
 use uuid::Uuid;
 
 use crate::{
-    common::{ApiResult, AppError},
+    common::{ApiResult, AppError, DEFAULT_PAGE_SIZE, PAGINATION_MAX_PER_PAGE},
     core::Repos,
     modules::{
         permissions::{extractors::RequirePermissions, with_permission},
@@ -21,16 +21,31 @@ use super::super::{
     },
 };
 
+/// Optional offset pagination for the user provider list. Defaults bound an
+/// un-paginated caller to the first `DEFAULT_PAGE_SIZE` providers.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct UserProvidersQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 /// Get LLM providers accessible to the authenticated user
 #[debug_handler]
 pub async fn get_user_llm_providers(
     auth: RequirePermissions<(UserLlmProvidersRead,)>,
+    Query(q): Query<UserProvidersQuery>,
 ) -> ApiResult<Json<GetUserProvidersResponse>> {
     let user_id = auth.user.id;
 
+    let limit = q
+        .limit
+        .unwrap_or(DEFAULT_PAGE_SIZE as i64)
+        .clamp(1, PAGINATION_MAX_PER_PAGE as i64);
+    let offset = q.offset.unwrap_or(0).max(0);
+
     let providers = Repos
         .user_group_llm_provider
-        .get_for_user(user_id)
+        .get_for_user(user_id, limit, offset)
         .await
         .map_err(AppError::from)?;
 
