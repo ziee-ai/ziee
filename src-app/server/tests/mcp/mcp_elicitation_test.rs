@@ -355,7 +355,7 @@ async fn test_elicitation_chat_accept_full_flow() {
     })
     .await;
 
-    let (events, eids, mock, _conv_id) = run_elicit_scenario(
+    let (events, eids, mock, conv_id) = run_elicit_scenario(
         &server,
         mock,
         "Use the request_user_confirmation tool to confirm that I want to delete the production database.",
@@ -382,6 +382,46 @@ async fn test_elicitation_chat_accept_full_flow() {
     assert_eq!(responses.len(), 1, "mock should receive 1 accept response");
     assert_eq!(responses[0]["result"]["action"], "accept");
     assert_eq!(responses[0]["result"]["content"]["approve"], true);
+
+    // DB PERSISTENCE (handlers.rs respond path: update_content_json): the respond
+    // handler writes status + response_content onto the `elicitation_request`
+    // message_contents row created when the elicitation surfaced. The handler
+    // awaits this write inline before 200, so by now it's durable. Assert it.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let content: Value = sqlx::query_scalar::<_, Value>(
+        r#"
+        SELECT mc.content
+        FROM message_contents mc
+        WHERE mc.content_type = 'elicitation_request'
+          AND mc.message_id IN (
+              SELECT bm.message_id
+              FROM branch_messages bm
+              JOIN branches b ON b.id = bm.branch_id
+              WHERE b.conversation_id = $1
+          )
+        ORDER BY mc.created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(conv_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the elicitation_request content row must exist + be persisted");
+
+    assert_eq!(
+        content["status"],
+        json!("accepted"),
+        "respond(accept) must persist status='accepted' on the content row; got: {content}"
+    );
+    assert_eq!(
+        content["response_content"]["approve"],
+        json!(true),
+        "respond(accept) must persist the user's response_content; got: {content}"
+    );
 }
 
 /// Test B: decline path — the chat stream must still complete, the mock

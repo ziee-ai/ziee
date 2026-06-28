@@ -24,9 +24,13 @@ export function ServerUpdateBanner() {
 
 function ServerUpdateBannerInner() {
   const navigate = useNavigate()
-  const { updateAvailable, dismissed, latestVersion, releaseUrl } = Stores.ServerUpdate
+  const { enabled, updateAvailable, dismissed, latestVersion, releaseUrl } =
+    Stores.ServerUpdate
 
-  if (!updateAvailable || dismissed) return null
+  // Never surface an update prompt when update checks are disabled in server
+  // config (air-gapped deployments) — guard against a stale `updateAvailable`
+  // outliving an `enabled: false` flip.
+  if (!enabled || !updateAvailable || dismissed) return null
 
   return (
     <Alert

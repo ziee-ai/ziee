@@ -798,7 +798,7 @@ Cross-cutting on the chat module:
 ProjectDrawer), pages (ProjectsListPage, ProjectDetailPage), components
 (ProjectFormDrawer, ProjectFilesPanel, ProjectConversationsList,
 ProjectMcpSettingsPanel, ConversationProjectChip), sidebar widget
-(`ProjectsNavWidget` in `sidebarNavigation` at order 5, above
+(`ProjectsNavWidget` in `sidebarContent` at order 5, above
 `RecentConversationsWidget`).
 
 The chat module's `RecentConversationsWidget` is wrapped at the slot

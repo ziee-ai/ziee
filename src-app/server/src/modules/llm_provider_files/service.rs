@@ -302,4 +302,128 @@ mod tests {
         // matches how `upload` wrote it — NOT "".
         assert_eq!(get_extension("noext"), "noext");
     }
+
+    // ── get_or_upload_provider_file early-guard error paths ──────────────
+    //
+    // These two guards return BEFORE any DB / storage access, so they're unit-
+    // testable with a lazy pool + a minimal mock AIProvider. The mock only needs
+    // to control `supports_file_api`; its stream/embeddings stubs are never
+    // called on these paths.
+    use crate::modules::llm_provider::models::{LlmProvider, ProxySettings};
+    use ai_providers::{
+        ChatRequest, EmbeddingsRequest, EmbeddingsResponse, ProviderError, StreamChatChunk,
+    };
+    use async_trait::async_trait;
+    use futures::Stream;
+    use std::pin::Pin;
+
+    struct MockProvider {
+        supports_file_api: bool,
+    }
+
+    #[async_trait]
+    impl AIProvider for MockProvider {
+        fn name(&self) -> &str {
+            "mock"
+        }
+        async fn stream_chat(
+            &self,
+            _api_key: &str,
+            _base_url: &str,
+            _request: ChatRequest,
+        ) -> Result<
+            Pin<Box<dyn Stream<Item = Result<StreamChatChunk, ProviderError>> + Send>>,
+            ProviderError,
+        > {
+            unimplemented!("not exercised by the early-guard tests")
+        }
+        async fn embeddings(
+            &self,
+            _api_key: &str,
+            _base_url: &str,
+            _request: EmbeddingsRequest,
+        ) -> Result<EmbeddingsResponse, ProviderError> {
+            unimplemented!("not exercised by the early-guard tests")
+        }
+        fn supports_file_api(&self) -> bool {
+            self.supports_file_api
+        }
+    }
+
+    fn provider(api_key: Option<&str>) -> LlmProvider {
+        LlmProvider {
+            id: Uuid::new_v4(),
+            name: "Test Provider".into(),
+            provider_type: "anthropic".into(),
+            enabled: true,
+            api_key: api_key.map(|s| s.to_string()),
+            base_url: None,
+            built_in: false,
+            proxy_settings: ProxySettings::default(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            default_runtime_version_id: None,
+        }
+    }
+
+    async fn unused_deps() -> (PgPool, FileRepository, Arc<dyn FileStorage>) {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgresql://postgres:password@127.0.0.1:54321/unused")
+            .expect("lazy pool");
+        let repo = FileRepository::new(pool.clone());
+        let storage: Arc<dyn FileStorage> = Arc::new(
+            crate::modules::file::storage::filesystem::FilesystemStorage::new(
+                std::env::temp_dir(),
+            ),
+        );
+        (pool, repo, storage)
+    }
+
+    #[tokio::test]
+    async fn upload_rejects_provider_without_file_api() {
+        let (pool, repo, storage) = unused_deps().await;
+        let prov = provider(Some("sk-real-key"));
+        let ai = MockProvider {
+            supports_file_api: false,
+        };
+
+        let err = get_or_upload_provider_file(
+            &pool,
+            &repo,
+            &storage,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &prov,
+            &ai,
+        )
+        .await
+        .expect_err("a provider without file API must be rejected");
+        assert_eq!(err.error_code(), "PROVIDER_NO_FILE_API");
+        assert_eq!(err.status_code(), 400);
+    }
+
+    #[tokio::test]
+    async fn upload_rejects_provider_with_no_api_key() {
+        let (pool, repo, storage) = unused_deps().await;
+        // supports the file API, but the provider has no key configured.
+        let prov = provider(None);
+        let ai = MockProvider {
+            supports_file_api: true,
+        };
+
+        let err = get_or_upload_provider_file(
+            &pool,
+            &repo,
+            &storage,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &prov,
+            &ai,
+        )
+        .await
+        .expect_err("a provider with no API key must be rejected before any upload");
+        assert_eq!(err.error_code(), "PROVIDER_NO_API_KEY");
+        assert_eq!(err.status_code(), 400);
+    }
 }

@@ -191,4 +191,64 @@ test.describe('Workflows - elicit rich editable table (real LLM snapshot)', () =
       page.getByText('completed', { exact: true }).first(),
     ).toBeVisible({ timeout: 30000 })
   })
+
+  test('add row + remove row mutate the editable array before submit', async ({
+    page,
+    request,
+    testInfra,
+  }) => {
+    // The first test covers edit-cell / bulk-toggle / expand; the array
+    // table's ADD-ROW (Form.List `add`) and per-row REMOVE-ROW ("Remove row")
+    // affordances were untested. Seed the same paused elicit run and exercise
+    // them.
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    const providerId = await createProviderViaAPI(apiURL, adminToken, 'Anthropic', 'anthropic')
+    await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
+    const modelId = await createModelViaAPI(
+      apiURL,
+      adminToken,
+      providerId,
+      'claude-haiku-4-5-20251001',
+      'Claude Haiku 4.5',
+      'anthropic',
+    )
+    const workflowId = await seedDevWorkflow(
+      request,
+      apiURL,
+      adminToken,
+      'e2e-elicit-table-rows',
+      TABLE_WORKFLOW_YAML,
+    )
+    const runResp = await request.post(`${apiURL}/api/workflows/${workflowId}/run`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      data: { inputs: { topic: 'x' }, model_id: modelId, mocks: { screen: SEEDED_ROWS } },
+    })
+    expect(runResp.status(), `run should 202: ${await runResp.text()}`).toBe(202)
+
+    await goToWorkflowsSettingsPage(page, baseURL)
+    await openWorkflowCard(page, 'e2e-elicit-table-rows')
+    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
+    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(page.getByText(/input required/i)).toBeVisible({ timeout: 15000 })
+
+    // 3 seeded rows render.
+    const dataRows = page.locator('.ant-table-tbody .ant-table-row')
+    await expect.poll(async () => await dataRows.count(), { timeout: 15000 }).toBe(3)
+
+    // Add row → a 4th editable row appears.
+    await page.getByRole('button', { name: /Add row/ }).click()
+    await expect.poll(async () => await dataRows.count(), { timeout: 10000 }).toBe(4)
+
+    // Remove a row → back to 3.
+    await page.getByRole('button', { name: 'Remove row' }).first().click()
+    await expect.poll(async () => await dataRows.count(), { timeout: 10000 }).toBe(3)
+
+    // Submit → the run resumes and completes.
+    await page.getByRole('button', { name: 'Submit', exact: true }).click()
+    await expect(
+      page.getByText('completed', { exact: true }).first(),
+    ).toBeVisible({ timeout: 30000 })
+  })
 })

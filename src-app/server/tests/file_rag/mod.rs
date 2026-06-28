@@ -1281,6 +1281,149 @@ async fn embed_dispatch_absent_keeps_chunks_null_embedded_yet_fts_searchable() {
             "mito.txt",
             "The mitochondrion is the powerhouse of the cell; oxidative phosphorylation \
              on the cristae membrane drives ATP synthase to produce uniquemarkerzeta.",
+/// Concurrent re-ingest of the SAME file must not corrupt the chunk set: the
+/// reindex transaction takes a per-file `pg_advisory_xact_lock(file_rag_reindex:$1)`,
+/// so two simultaneous re-index passes serialize and each leaves a consistent
+/// DELETE+INSERT swap (no doubled rows, no lost index). Drives the real
+/// `reindex_file` entrypoint twice concurrently.
+#[tokio::test]
+async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_concurrent_ingest").await;
+    let pool = db_pool(&server).await;
+
+    set_rag_settings(&server, &user, json!({ "enabled": true })).await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "concurrent.txt",
+        "alpha beta gamma delta epsilon\nsecond line of content here\nthird line too\n",
+    )
+    .await;
+    let n = wait_for_chunks(&pool, &file_id, 1).await;
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let file_uuid = Uuid::parse_str(&file_id).unwrap();
+
+    // Two concurrent re-index passes on the same file.
+    let (r1, r2) = tokio::join!(
+        ziee::file_rag_ingest::reindex_file(user_uuid, file_uuid),
+        ziee::file_rag_ingest::reindex_file(user_uuid, file_uuid),
+    );
+    r1.expect("first concurrent reindex must succeed");
+    r2.expect("second concurrent reindex must succeed");
+
+    // The advisory lock serialized the two swaps → the chunk count is the same
+    // single index, not doubled or wiped.
+    assert_eq!(
+        chunk_count(&pool, &file_id).await,
+        n,
+        "concurrent reindex must leave exactly one consistent chunk set"
+    );
+}
+
+/// Concurrent search during an embed rebuild (the half-dimensions race): while a
+/// re-embed is in flight the `file_chunks.embedding` column is NULL for affected
+/// rows. A search MUST stay safe — the vector arm's `embedding IS NOT NULL`
+/// filter excludes those rows (so a stale/wrong-dimension query vector can't hit
+/// a half-migrated row and error), while FTS keeps serving from `content_tsv`.
+/// With NO embedding model configured, freshly-indexed chunks have NULL
+/// embeddings — exactly the mid-rebuild state — so this reproduces it directly.
+#[tokio::test]
+async fn search_during_embed_rebuild_vector_arm_excludes_null_embeddings_fts_still_serves() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_embed_race").await;
+    let pool = db_pool(&server).await;
+
+    // FTS-only deployment (no embedding model) → chunks land with NULL embeddings.
+    set_rag_settings(&server, &user, json!({ "enabled": true })).await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "race.txt",
+        "ZEBRAFISH genomics quarterly report with distinctive searchable tokens\n",
+    )
+    .await;
+    let _ = wait_for_chunks(&pool, &file_id, 1).await;
+
+    // Confirm the rows really are in the NULL-embedding (mid-rebuild) state.
+    let with_embedding: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM file_chunks WHERE file_id = $1 AND embedding IS NOT NULL",
+    )
+    .bind(Uuid::parse_str(&file_id).unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(with_embedding, 0, "precondition: embeddings are NULL (mid-rebuild)");
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let scope = vec![Uuid::parse_str(&file_id).unwrap()];
+
+    // Vector arm with an arbitrary query vector → ZERO hits (NULL rows excluded),
+    // and crucially NO dimension-mismatch error.
+    let vec_hits = ziee::file_rag_search::vector_search_hit_count_for_test(
+        &scope,
+        user_uuid,
+        &vec![0.05f32; 768],
+        1.0,
+        10,
+    )
+    .await
+    .expect("vector search must not error on NULL-embedding rows");
+    assert_eq!(vec_hits, 0, "the vector arm must exclude NULL-embedding rows");
+
+    // FTS arm still serves the content during the rebuild window.
+    let fts_hits = ziee::file_rag_search::fts_search_hit_count_for_test(
+        &scope,
+        user_uuid,
+        "ZEBRAFISH",
+        10,
+        "simple",
+        0.0,
+    )
+    .await
+    .expect("fts search must succeed");
+    assert!(fts_hits >= 1, "FTS must still return results while embeddings are NULL");
+}
+
+/// Cross-module recovery (file_rag retrieval ↔ memory embed-dispatch): when the
+/// deployment WANTS semantic search but the embedding dispatch can't be
+/// provisioned — the memory `embed_batch` capability check REJECTS a non-embedder
+/// (`INVALID_EMBEDDING_MODEL`), so `embedding_model_id` never persists — file_rag
+/// must still serve queries end-to-end via the FTS arm rather than erroring. This
+/// joins the two modules' failure-recovery contract that no single-module test
+/// exercised together.
+#[tokio::test]
+async fn semantic_requested_but_embed_dispatch_unavailable_recovers_to_fts() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_dispatch_recover").await;
+    let pool = db_pool(&server).await;
+
+    // Ask for semantic search, then try to wire a NON-embedder model. The
+    // memory embed-dispatch capability check rejects it (400) — the dispatch is
+    // effectively unavailable.
+    set_rag_settings(&server, &user, json!({ "enabled": true, "semantic_enabled": true })).await;
+    let bad_model = create_chat_model(&server, &user).await;
+    let resp = put_settings_raw(&server, &user, json!({ "embedding_model_id": bad_model })).await;
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "non-embedder must be rejected by the embed-dispatch capability check"
+    );
+    let settings = get_settings(&server, &user).await;
+    assert!(
+        settings["embedding_model_id"].is_null(),
+        "no usable embedder is configured after the rejection"
+    );
+
+    // Upload + attach a file and search: retrieval must RECOVER to FTS, not error.
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-dispatch-recover",
+        &[(
+            "doc.txt",
+            "The MITOCHONDRION is the powerhouse with distinctive searchable tokens.",
         )],
     )
     .await;
@@ -1311,6 +1454,10 @@ async fn embed_dispatch_absent_keeps_chunks_null_embedded_yet_fts_searchable() {
     // the retrieval mode is FTS (retrieval.rs degrade path), with provenance.
     let body = semantic_search(&server, &user, conv_uuid, "uniquemarkerzeta").await;
     assert!(body["error"].is_null(), "semantic_search must not error; body={body}");
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+
+    let body = semantic_search(&server, &user, conv_uuid, "mitochondrion powerhouse").await;
+    assert!(body["error"].is_null(), "search must not error; body={body}");
     let sc = &body["result"]["structuredContent"];
     assert_eq!(
         sc["mode"].as_str().unwrap(),
@@ -1499,5 +1646,10 @@ async fn admin_read_permission_grant_takes_effect_mid_session() {
         after.status(),
         reqwest::StatusCode::OK,
         "after the grant is added, the same token must be re-checked and admitted (200), proving mid-session escalation takes effect"
+        "embed dispatch unavailable → retrieval recovers to FTS-only"
+    );
+    assert!(
+        !sc["results"].as_array().unwrap().is_empty(),
+        "FTS must still return results during embed-dispatch unavailability"
     );
 }

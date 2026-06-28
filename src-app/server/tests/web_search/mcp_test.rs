@@ -603,6 +603,23 @@ async fn test_search_chain_falls_back_on_rate_limit_429() {
         &admin.token,
         "tools/call",
         json!({ "name": "web_search", "arguments": { "query": "x" } }),
+/// SSRF guard: the model-supplied page-fetch URL is locked to PUBLIC http/https.
+/// WITHOUT the debug loopback seam, a `127.0.0.1` (loopback) target must be
+/// refused — the fetch never leaves the box to hit a private/loopback service.
+/// Mirrors `test_fetch_url_via_loopback_fixture` but asserts the *negative*: no
+/// seam → in-band error, NOT a successful fetch.
+#[tokio::test]
+async fn test_fetch_url_rejects_loopback_ssrf() {
+    // No WEB_SEARCH_FETCH_ALLOW_LOOPBACK env → policy stays PUBLIC_HTTP_OR_HTTPS.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ws_ssrf", &["web_search::use"]).await;
+
+    // A loopback URL the SSRF validator must reject before any socket opens.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "fetch_url", "arguments": { "url": "http://127.0.0.1:9/secret" } }),
     )
     .send()
     .await
@@ -615,5 +632,10 @@ async fn test_search_chain_falls_back_on_rate_limit_429() {
         searxng_hits.load(std::sync::atomic::Ordering::SeqCst),
         1,
         "searxng must be attempted exactly once (429) before falling back"
+    assert_eq!(res.status(), 200); // JSON-RPC carries the error in-band
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        body["result"].is_null() && body["error"].is_object(),
+        "fetch_url against a loopback URL must be refused by the SSRF guard, not fetched: {body}"
     );
 }

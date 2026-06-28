@@ -249,6 +249,35 @@ async fn skill_mcp_rejects_user_without_skills_read_with_403() {
     pool.close().await;
 
     // The token itself is still valid; only the live permission check should fail.
+/// Auth boundary on the skill_mcp JSON-RPC handler (handlers.rs:29-33,
+/// `RequirePermissions<(SkillsRead,)>`). All other tests use valid admin tokens;
+/// these assert the gate: NO token → 401, a token WITHOUT skills::read → 403.
+#[tokio::test]
+async fn jsonrpc_requires_authentication() {
+    let (server, _mock) = server_with_skill_catalog().await;
+
+    // No Authorization header → 401.
+    let res = reqwest::Client::new()
+        .post(server.api_url("/skills/mcp"))
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }))
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(res.status(), 401, "missing token must be 401");
+}
+
+#[tokio::test]
+async fn jsonrpc_requires_skills_read_permission() {
+    let (server, _mock) = server_with_skill_catalog().await;
+
+    // A user WITHOUT skills::read.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "skillmcp_noperm",
+        &[],
+    )
+    .await;
+
     let res = jsonrpc(&server, &user.token, "tools/list", json!({}))
         .send()
         .await
@@ -347,4 +376,5 @@ async fn tools_call_error_branches_surface_as_jsonrpc_errors() {
         unknown["error"]["code"], -32601,
         "unknown tool → JSON-RPC method-not-found code (-32601): {unknown}"
     );
+    assert_eq!(res.status(), 403, "a token lacking skills::read must be 403");
 }

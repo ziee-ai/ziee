@@ -355,6 +355,17 @@ async fn output_read_cross_user_is_forbidden() {
     let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-xuser").await;
 
     let other = intruder(&server, "wf_out_xuser_intruder").await;
+// ── output_stream (read_output) error paths — fd22d822 ───────────────────────
+
+#[tokio::test]
+async fn output_stream_cross_user_is_forbidden() {
+    // read_output checks ownership (output_stream.rs:27) before the per-step
+    // output lookup, so a cross-user caller on user A's real run gets 403.
+    let server = plain_server().await;
+    let owner = workflow_user(&server, "wf_out_owner").await;
+    let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-cross").await;
+
+    let other = intruder(&server, "wf_out_intruder").await;
     let resp = reqwest::Client::new()
         .get(server.api_url(&format!("/workflow-runs/{run_id}/output/gen")))
         .header("Authorization", format!("Bearer {}", other.token))
@@ -391,4 +402,46 @@ async fn output_read_unknown_step_is_404() {
         body.contains("step output"),
         "step-not-found message surfaced (distinct from missing-run): {body}"
     );
+        .expect("output stream cross-user");
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    assert_eq!(status, 403, "cross-user output read must 403: {body}");
+    assert!(body.contains("WORKFLOW_RUN_FORBIDDEN"), "code surfaced: {body}");
+}
+
+#[tokio::test]
+async fn output_stream_missing_run_is_404() {
+    // A valid user requesting an output for a run that doesn't exist → 404
+    // (the find_run guard at output_stream.rs:24-26).
+    let server = plain_server().await;
+    let user = workflow_user(&server, "wf_out_missing").await;
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!(
+            "/workflow-runs/{}/output/gen",
+            uuid::Uuid::new_v4()
+        )))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("output stream missing run");
+    assert_eq!(resp.status(), 404, "a nonexistent run's output must 404");
+}
+
+#[tokio::test]
+async fn output_stream_unknown_step_is_404() {
+    // An existing, owned run but a step name with no recorded output → 404
+    // (the step_outputs_json lookup at output_stream.rs:34-37).
+    let server = plain_server().await;
+    let owner = workflow_user(&server, "wf_out_badstep").await;
+    let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-badstep").await;
+
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!(
+            "/workflow-runs/{run_id}/output/no_such_step"
+        )))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .expect("output stream unknown step");
+    assert_eq!(resp.status(), 404, "an unknown step's output must 404");
 }

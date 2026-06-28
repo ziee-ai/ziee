@@ -36,6 +36,29 @@ test.describe('Projects - Duplicate', () => {
     await assertProjectExists(page, 'Dup Source')
   })
 
+  test('duplicating twice disambiguates with a "(copy 2)" suffix', async ({
+    page,
+  }) => {
+    // Seed the source.
+    await openCreateProjectDrawer(page)
+    await fillProjectForm(page, { name: 'Collide Source' })
+    await submitProjectForm(page)
+    await assertProjectExists(page, 'Collide Source')
+
+    // First duplicate → "Collide Source (copy)".
+    await clickCardAction(page, 'Collide Source', 'Duplicate')
+    await assertProjectExists(page, 'Collide Source (copy)')
+
+    // Second duplicate of the SAME source → "(copy)" is taken, so the server
+    // picks the next free "(copy N)" suffix → "Collide Source (copy 2)".
+    await clickCardAction(page, 'Collide Source', 'Duplicate')
+    await assertProjectExists(page, 'Collide Source (copy 2)')
+
+    // All three coexist.
+    await assertProjectExists(page, 'Collide Source')
+    await assertProjectExists(page, 'Collide Source (copy)')
+  })
+
   test('duplicates from the detail-page header button', async ({ page }) => {
     await openCreateProjectDrawer(page)
     await fillProjectForm(page, { name: 'Header Dup' })

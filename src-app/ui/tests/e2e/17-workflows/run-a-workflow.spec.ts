@@ -167,5 +167,19 @@ test.describe('Workflows - run a standalone workflow (real LLM)', () => {
     await expect(page.getByText(/summarize/).first()).toBeVisible({
       timeout: 15000,
     })
+    // Expander INTERACTION (StepLogExpander): clicking "Show prompt" must
+    // lazily fetch + render the step's prompt log inline — NOT the
+    // "Log not available" fallback. The prompt interpolates the `topic` input,
+    // so the rendered content contains "quantum entanglement".
+    await page.getByText('Show prompt').first().click()
+    await expect(page.getByText(/quantum entanglement/i).first()).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(page.getByText('Log not available')).toHaveCount(0)
+
+    // The trace expander likewise loads its content (trace.json) on click,
+    // not the unavailable note.
+    await page.getByText('Show trace').first().click()
+    await expect(page.getByText('Log not available')).toHaveCount(0)
   })
 })

@@ -377,3 +377,38 @@ async fn invariant_no_calls_when_not_connected() {
     assert_eq!(mock.received().len(), 0,
                "no network calls should be issued when not connected");
 }
+
+/// MCP server CRASH then RESTART/RESUME. No test exercised the client's behavior
+/// when the upstream MCP server process goes away mid-session: a call against a
+/// crashed server must FAIL cleanly (connection refused, bounded — not an
+/// infinite hang), and the client subsystem must RECOVER when a fresh server
+/// comes back (no permanently-poisoned state). Crash is modeled by dropping the
+/// in-process MockMcpServer (its axum task is aborted → the port closes).
+#[tokio::test]
+async fn client_fails_cleanly_on_crash_and_recovers_after_restart() {
+    // Live server → connect + list_tools succeed.
+    let mock = MockMcpServer::start().await;
+    let mut client = HttpMcpClient::new(server_config(mock.base_url())).unwrap();
+    client.connect().await.expect("connect to a live server");
+    client.list_tools().await.expect("list_tools on a live server");
+
+    // CRASH — drop the mock; its server task is aborted and the port closes.
+    drop(mock);
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+    // A call to the crashed server must ERROR (connection refused), not hang.
+    let after_crash = client.list_tools().await;
+    assert!(
+        after_crash.is_err(),
+        "a tool call against a crashed MCP server must surface an error, not hang"
+    );
+    client.disconnect().await.ok();
+
+    // RESTART / RESUME — a fresh server + client recovers end-to-end, proving the
+    // crash did not leave the client layer permanently broken.
+    let mock2 = MockMcpServer::start().await;
+    let mut client2 = HttpMcpClient::new(server_config(mock2.base_url())).unwrap();
+    client2.connect().await.expect("reconnect to the restarted server");
+    client2.list_tools().await.expect("list_tools must succeed after restart");
+    client2.disconnect().await.ok();
+}

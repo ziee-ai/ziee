@@ -28,6 +28,22 @@ pub use modules::user::models::User;
 pub use modules::llm_provider::events::LlmProviderEvent;
 pub use modules::llm_provider::UserKeyRepository;
 pub use modules::mcp::events::McpServerEvent;
+// Re-exported so integration tests can drive the REAL retention reaper tick
+// (`memory::reaper::run_once`) instead of mirroring its SQL.
+pub use modules::memory::reaper::run_once as memory_reaper_run_once;
+// Re-exported so integration tests can drive the REAL elicitation_mcp built-in
+// upsert (idempotency / url re-assertion) instead of mirroring its SQL.
+// Re-exported so integration tests can exercise the REAL cross-tenant security
+// filter (the JOIN to `files` on `user_id`) instead of mirroring its SQL.
+pub use modules::llm_provider_files::repository::get_provider_file_mapping as llm_provider_file_mapping_for_user;
+// Re-exported so the integration test can assert the REAL anti-injection guard
+// text in the extraction prompt (replacing a no-op stub).
+pub use modules::memory::engine::prompts::EXTRACTION_PROMPT as memory_extraction_prompt;
+// Re-exported so an integration test can drive the REAL OAuth username-collision
+// retry loop (base → base2 → base3 …) instead of going through the full OAuth flow.
+pub use modules::auth::handlers::ensure_unique_username as auth_ensure_unique_username;
+pub use modules::elicitation_mcp::elicitation_mcp_server_id;
+pub use modules::elicitation_mcp::repository::ElicitationMcpRepository;
 // Re-export the LLM repository connection-health entry points so the
 // integration tests can drive the boot path directly without going
 // through the module's `init` hook.
@@ -188,6 +204,49 @@ pub mod llm_provider_files_test_api {
     pub use crate::modules::llm_provider::models::{LlmProvider, ProxySettings};
     pub use crate::modules::llm_provider_files::repository::get_provider_file_mapping;
     pub use crate::modules::llm_provider_files::service::get_or_upload_provider_file;
+// Re-export the memory chat-extension retrieval+injection entrypoint for the
+// integration test that exercises the combined recall + core-memory injection
+// flow against a real assistant.
+#[doc(hidden)]
+pub mod memory {
+    pub use crate::modules::memory::chat_extension::retriever::retrieve_and_inject;
+}
+
+// Re-export the available-files resolver + type for the integration test that
+// exercises checksum dedup through the REAL upload+attach flow.
+#[doc(hidden)]
+pub mod file_available {
+    pub use crate::modules::file::available_files::{resolve_available_files, AvailableFile};
+}
+
+// Re-export the provider file-routing entrypoint for the integration test that
+// exercises its ownership re-validation + routing dispatch.
+#[doc(hidden)]
+pub mod file_routing {
+    pub use crate::modules::file::provider_routing::process_file_blocks;
+}
+
+// Re-export the file_rag reindex entrypoint for the integration test that
+// exercises the per-file advisory-lock under concurrent re-ingest.
+#[doc(hidden)]
+pub mod file_rag_ingest {
+    pub use crate::modules::file_rag::ingest::reindex_file;
+}
+
+// Re-export the workflow_mcp await-terminal loop for the crashed-runner
+// (no-progress guard) integration test.
+#[doc(hidden)]
+pub mod workflow_mcp_internal {
+    pub use crate::modules::workflow_mcp::tools::await_terminal_for_test;
+}
+
+// Re-export file_rag search arms for the concurrent-search-during-embed race
+// test (NULL embeddings mid-rebuild → vector arm excludes them, FTS still serves).
+#[doc(hidden)]
+pub mod file_rag_search {
+    pub use crate::modules::file_rag::retrieval::{
+        fts_search_hit_count_for_test, vector_search_hit_count_for_test,
+    };
 }
 
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
@@ -199,8 +258,9 @@ pub mod llm_provider_files_test_api {
 pub mod workflow {
     pub use crate::modules::workflow::models::WorkflowRunStatus;
     pub use crate::modules::workflow::repository::{
-        cancel_cas, heartbeat, mark_running, mark_status, persist_step_meta,
+        cancel_cas, heartbeat, insert_run, mark_running, mark_status, persist_step_meta,
     };
+    pub use crate::modules::workflow::models::CreateWorkflowRun;
     // The run staging root, so a test can delete a run's on-disk logs to
     // exercise read_log's durable step_logs_json fallback (A7 GC recovery).
     pub use crate::modules::workflow::runner::workflow_workspace_root;

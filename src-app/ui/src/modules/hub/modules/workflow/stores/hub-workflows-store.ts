@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import type { IndexItem } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
@@ -19,7 +18,6 @@ interface HubWorkflowsState {
   installing: Record<string, boolean>
   error: string | null
 
-  items: () => IndexItem[]
   installStateFor: (name: string) => 'none' | 'user' | 'system'
   installForMe: (hubId: string) => Promise<void>
   installForEveryone: (hubId: string) => Promise<void>
@@ -37,8 +35,6 @@ export const useHubWorkflowsStore = create<HubWorkflowsState>()(
       (set, get): HubWorkflowsState => ({
         installing: {},
         error: null,
-
-        items: () => useHubCatalogStore.getState().itemsByCategory('workflow'),
 
         installStateFor: (name: string) => {
           const rows = useHubInstalledStore

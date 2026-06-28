@@ -899,3 +899,93 @@ async fn r10_explicit_reembed_endpoint_resumes_stale_rows() {
     assert_eq!(status["pending_count"], 0);
     assert_eq!(status["in_progress"], false);
 }
+
+/// Multi-turn PROGRESSIVE extraction: the other real-LLM extraction test drives a
+/// single user/assistant exchange. This drives the extractor across TWO sequential
+/// conversation steps with DISTINCT facts and asserts the memory store ACCUMULATES
+/// both (the second turn doesn't overwrite the first) — the progressive
+/// memory-building scenario that was untested.
+#[tokio::test]
+async fn r3_multi_turn_progressively_accumulates_memories() {
+    if h::skip_if_no_keys("r3_multi_turn") {
+        return;
+    }
+    let server = crate::common::TestServer::start().await;
+    let _ids = h::setup_real_providers(&server).await;
+    let user = h::memory_user(&server, "r3_multiturn").await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/memory/settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "extraction_enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success(), "enable extraction → {}", res.status());
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "r3_mt_admin",
+        &["memory::admin::manage"],
+    )
+    .await;
+
+    let extract = |um: &'static str, am: &'static str| {
+        let url = server.api_url("/_test/memory/extract");
+        let token = admin.token.clone();
+        async move {
+            let res = reqwest::Client::new()
+                .post(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "user_id": user_id,
+                    "user_message": um,
+                    "assistant_message": am,
+                }))
+                .send()
+                .await
+                .unwrap();
+            assert!(res.status().is_success(), "extract → {}", res.status());
+        }
+    };
+
+    // Turn 1 — establishes one fact.
+    extract(
+        "I'm vegetarian and have been for 10 years.",
+        "Got it — I'll keep your vegetarian diet in mind.",
+    )
+    .await;
+    // Turn 2 — a DIFFERENT fact, later in the same user's history.
+    extract(
+        "Also, I'm allergic to peanuts — please avoid them.",
+        "Understood, I'll avoid peanuts in any suggestions.",
+    )
+    .await;
+
+    // Both facts must be present — the store accumulated across turns.
+    let body: Value = reqwest::Client::new()
+        .get(server.api_url("/memories?limit=50"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let contents: Vec<String> = body["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| r["content"].as_str().map(|c| c.to_lowercase()))
+        .collect();
+    assert!(
+        contents.iter().any(|c| c.contains("vegetarian")),
+        "turn-1 fact (vegetarian) must persist; got: {contents:?}"
+    );
+    assert!(
+        contents.iter().any(|c| c.contains("peanut") || c.contains("allerg")),
+        "turn-2 fact (peanut allergy) must ALSO persist (progressive accumulation); got: {contents:?}"
+    );
+}

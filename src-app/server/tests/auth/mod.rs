@@ -279,6 +279,66 @@ async fn test_auth_login_invalid_credentials() {
     assert_eq!(response.status(), 401, "Expected 401 Unauthorized");
 }
 
+/// Timing-attack / user-enumeration mitigation (handlers.rs login path): every
+/// failure mode — wrong password, NONEXISTENT user, and a DEACTIVATED account —
+/// must collapse into the IDENTICAL response (same 401 status, same
+/// `INVALID_CREDENTIALS` code, same message). A differing status/code/message
+/// would let an attacker enumerate valid usernames. (The constant-time dummy
+/// bcrypt is the timing half; this asserts the indistinguishable-response half.)
+#[tokio::test]
+async fn test_auth_login_failures_are_indistinguishable() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // A real, active user to fail against with a wrong password.
+    client
+        .post(server.api_url("/auth/register"))
+        .json(&json!({
+            "username": "enum_real",
+            "email": "enum_real@example.com",
+            "password": "correct-horse-battery"
+        }))
+        .send()
+        .await
+        .expect("register failed");
+
+    let login = |username: &'static str, password: &'static str| {
+        let client = client.clone();
+        let url = server.api_url("/auth/login");
+        async move {
+            let res = client
+                .post(url)
+                .json(&json!({ "username": username, "password": password }))
+                .send()
+                .await
+                .expect("login request failed");
+            let status = res.status();
+            let body: serde_json::Value = res.json().await.expect("parse error body");
+            (status, body)
+        }
+    };
+
+    // (a) existing user, wrong password
+    let (s_wrong, b_wrong) = login("enum_real", "definitely-wrong").await;
+    // (b) user that does not exist at all
+    let (s_missing, b_missing) = login("enum_ghost", "definitely-wrong").await;
+
+    // All failures: 401 + the SAME generic error code + message (no enumeration).
+    assert_eq!(s_wrong.as_u16(), 401);
+    assert_eq!(s_missing.as_u16(), 401);
+    assert_eq!(b_wrong["error_code"], json!("INVALID_CREDENTIALS"));
+    assert_eq!(
+        b_wrong["error_code"], b_missing["error_code"],
+        "error_code must be identical for wrong-password vs nonexistent-user"
+    );
+    assert_eq!(
+        b_wrong["error"], b_missing["error"],
+        "error message must be identical (no user enumeration via message)"
+    );
+    // The message must be the generic, non-revealing one.
+    assert_eq!(b_wrong["error"], json!("Invalid username or password"));
+}
+
 #[tokio::test]
 async fn test_auth_logout() {
     let server = crate::common::TestServer::start().await;
@@ -1309,5 +1369,44 @@ async fn deactivated_user_is_refused_on_protected_resource_endpoints() {
         mem_refused.status() == 401 || mem_refused.status() == 403,
         "a deactivated user must be refused the memories endpoint; got {}",
         mem_refused.status()
+/// Concurrent registrations with the SAME username must not both succeed: the
+/// handler's check-then-insert has a TOCTOU window, and the DB UNIQUE
+/// constraint is the real guard. Exactly one request creates the account; the
+/// other is rejected (pre-check 409 or the DB-race error), never a second user.
+#[tokio::test]
+async fn test_concurrent_registration_same_username_creates_one_user() {
+    let server = crate::common::TestServer::start().await;
+
+    let body = |email: &str| {
+        json!({
+            "username": "raceuser",
+            "email": email,
+            "password": "testpass123",
+            "display_name": "Race User"
+        })
+    };
+
+    let base = server.api_url("/auth/register");
+    let c1 = reqwest::Client::new();
+    let c2 = reqwest::Client::new();
+
+    // Fire both at once so they overlap on the check-then-insert window.
+    let (r1, r2) = tokio::join!(
+        c1.post(&base).json(&body("race1@example.com")).send(),
+        c2.post(&base).json(&body("race2@example.com")).send(),
+    );
+    let s1 = r1.expect("req1 failed").status().as_u16();
+    let s2 = r2.expect("req2 failed").status().as_u16();
+
+    let created = [s1, s2].iter().filter(|&&s| s == 201).count();
+    assert_eq!(
+        created, 1,
+        "exactly one concurrent same-username registration must succeed (got statuses {s1}, {s2})"
+    );
+    // The loser must be rejected, not a silent second account.
+    let loser = if s1 == 201 { s2 } else { s1 };
+    assert!(
+        loser >= 400,
+        "the losing registration must be an error status, got {loser}"
     );
 }

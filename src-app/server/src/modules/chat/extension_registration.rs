@@ -104,5 +104,37 @@ mod tests {
             summ < mem,
             "summarization order ({summ}) must be < memory order ({mem})",
         );
+    use super::*;
+
+    /// The summarization (order 24) and memory (order 25) chat extensions have
+    /// a load-bearing ordering: summarization MUST run before memory so the
+    /// condensed prefix is in place before memory's hooks shift message indices
+    /// (see summarization/chat_extension/extension.rs METADATA doc). This asserts
+    /// the REAL sorted registration order over the live `CHAT_EXTENSIONS`
+    /// distributed slice — the same collect+sort the production registrar does —
+    /// rather than re-stating the constants. No DB needed (reads slice metadata).
+    #[test]
+    fn summarization_registers_before_memory() {
+        let mut entries: Vec<_> = CHAT_EXTENSIONS.iter().collect();
+        entries.sort_by_key(|e| e.order);
+
+        let summ = entries
+            .iter()
+            .position(|e| e.name == "summarization")
+            .expect("summarization extension must be registered");
+        let mem = entries
+            .iter()
+            .position(|e| e.name == "memory")
+            .expect("memory extension must be registered");
+
+        assert!(
+            summ < mem,
+            "summarization (order {}) must sort BEFORE memory (order {}) — \
+             load-bearing for the condensed-prefix index math",
+            entries[summ].order,
+            entries[mem].order,
+        );
+        assert_eq!(entries[summ].order, 24, "summarization order is the documented 24");
+        assert_eq!(entries[mem].order, 25, "memory order is the documented 25");
     }
 }

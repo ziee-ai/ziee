@@ -75,4 +75,81 @@ test.describe('Literature screening flow', () => {
     expect(csv).toContain('out of scope')
     expect(csv).toContain('Base editing reduces off-target effects')
   })
+
+  test('screening decisions persist across a page reload (draft/flush snapshot)', async ({
+    page,
+    testInfra,
+  }) => {
+    // screening-flow only asserted export-after-fill; the panel snapshot
+    // persistence (decisions survive a reload via the serializable panel-tab
+    // data) was untested. Screen both rows, reload, and assert the decisions
+    // restore.
+    await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
+
+    await page.getByRole('button', { name: /Open in screening/ }).click()
+    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({
+      timeout: 10000,
+    })
+
+    // Include both rows → PRISMA "Included: 2".
+    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
+    await page.getByRole('button', { name: 'Include', exact: true }).click()
+    await expect(page.getByText('Included: 2')).toBeVisible()
+
+    // Reload — the conversation + panel snapshot restore from persistence.
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+
+    // The panel may auto-restore; if not, re-open it from the inline card.
+    const heading = page.getByRole('heading', { name: 'Screening' })
+    if (!(await heading.isVisible().catch(() => false))) {
+      await page
+        .getByRole('button', { name: /Open in screening/ })
+        .click({ timeout: 15000 })
+    }
+    await expect(heading).toBeVisible({ timeout: 15000 })
+
+    // The include decisions survived the reload.
+    await expect(page.getByText('Included: 2')).toBeVisible({ timeout: 15000 })
+  })
+
+  test('per-row Segmented control sets an individual screening decision', async ({
+    page,
+    testInfra,
+  }) => {
+    // The other tests use the BULK Include/Exclude buttons; the per-row
+    // Segmented decision control (LiteratureScreeningPanel.tsx:243-251) was
+    // untested. Set ONE row to Include + ONE to Exclude via their Segmented.
+    await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
+    await page.getByRole('button', { name: /Open in screening/ }).click()
+    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({ timeout: 10000 })
+
+    const segmenteds = page.locator('[aria-label="Screening decision"]')
+    await expect.poll(async () => await segmenteds.count(), { timeout: 10000 }).toBeGreaterThanOrEqual(2)
+
+    // Row 1 → Include, Row 2 → Exclude, each via its own Segmented control.
+    await segmenteds.nth(0).getByText('Include', { exact: true }).click()
+    await expect(page.getByText('Included: 1')).toBeVisible({ timeout: 10000 })
+
+    await segmenteds.nth(1).getByText('Exclude', { exact: true }).click()
+    await expect(page.getByText('Excluded: 1')).toBeVisible({ timeout: 10000 })
+    // The exclusion-reason input appears for the per-row Exclude decision.
+    await expect(page.getByPlaceholder('Exclusion reason (optional)').first()).toBeVisible()
+  })
+
+  test('inline tool-result card shows the dedup + saturation estimate', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
+
+    // The INLINE LiteratureToolResultCard (before opening screening) summarizes
+    // the search as "<total> identified, <n> after dedup · saturation: <EST>".
+    // The existing flow test only asserts the screening-PANEL banner; this
+    // covers the inline card's own completeness/saturation line.
+    await expect(page.getByText(/identified,\s*\d+\s*after dedup/i)).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(page.getByText(/saturation:\s*MODERATE/i)).toBeVisible()
+  })
 })

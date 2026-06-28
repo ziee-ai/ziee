@@ -39,6 +39,19 @@ fn is_valid_onboarding_id(s: &str) -> bool {
 }
 
 /// Parse the user id out of the JWT claims.
+/// Owner-scoped notify so the user's other devices refetch onboarding
+/// progress (a guide/step completed on one device shouldn't keep showing on
+/// another). Shared by `complete_guide` and `complete_guide_step`.
+fn notify_onboarding_updated(user_id: Uuid, origin: Option<Uuid>) {
+    crate::modules::sync::publish(
+        crate::modules::sync::SyncEntity::Onboarding,
+        crate::modules::sync::SyncAction::Update,
+        user_id,
+        crate::modules::sync::Audience::owner(user_id),
+        origin,
+    );
+}
+
 fn user_id_from_claims(auth: &JwtAuth) -> Result<Uuid, AppError> {
     Uuid::parse_str(&auth.claims.sub)
         .map_err(|e| AppError::internal_error(format!("Invalid user ID in token: {}", e)))
@@ -94,16 +107,7 @@ pub async fn complete_guide(
         .complete_guide(auth.user.id, &guide_id, MAX_ONBOARDING_COMPLETIONS as i32)
         .await?;
 
-    // Owner-scoped notify so the user's other devices refetch onboarding
-    // progress (a guide completed on one device shouldn't keep showing on
-    // another).
-    crate::modules::sync::publish(
-        crate::modules::sync::SyncEntity::Onboarding,
-        crate::modules::sync::SyncAction::Update,
-        auth.user.id,
-        crate::modules::sync::Audience::owner(auth.user.id),
-        origin.0,
-    );
+    notify_onboarding_updated(auth.user.id, origin.0);
 
     Ok((StatusCode::OK, Json(progress)))
 }
@@ -122,6 +126,7 @@ pub fn complete_guide_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn complete_guide_step(
     auth: RequirePermissions<(ProfileEdit,)>,
+    origin: crate::modules::sync::SyncOrigin,
     Path((guide_id, step_id)): Path<(String, String)>,
 ) -> ApiResult<Json<OnboardingProgress>> {
     let gid = guide_id.trim().to_string();
@@ -153,6 +158,8 @@ pub async fn complete_guide_step(
         .complete_guide_step(auth.user.id, &step_key, MAX_ONBOARDING_COMPLETIONS as i32)
         .await?;
 
+    notify_onboarding_updated(auth.user.id, origin.0);
+
     Ok((StatusCode::OK, Json(progress)))
 }
 
@@ -164,4 +171,47 @@ pub fn complete_guide_step_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<OnboardingProgress>>()
         .response_with::<400, (), _>(|res| res.description("Validation error"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_valid_onboarding_id, MAX_ONBOARDING_ID_LEN};
+
+    #[test]
+    fn valid_slug_ids_are_accepted() {
+        for id in ["getting-started", "memory-setup", "step_1", "a", "abc-123_xyz"] {
+            assert!(is_valid_onboarding_id(id), "{id} should be valid");
+        }
+    }
+
+    #[test]
+    fn empty_id_is_rejected() {
+        assert!(!is_valid_onboarding_id(""));
+    }
+
+    #[test]
+    fn id_at_max_len_ok_one_over_rejected() {
+        let at_max = "a".repeat(MAX_ONBOARDING_ID_LEN);
+        let over = "a".repeat(MAX_ONBOARDING_ID_LEN + 1);
+        assert!(is_valid_onboarding_id(&at_max), "len==MAX must be accepted");
+        assert!(!is_valid_onboarding_id(&over), "len>MAX must be rejected");
+    }
+
+    #[test]
+    fn disallowed_chars_are_rejected() {
+        // uppercase, slash (step_key separator collision), spaces, dots, NUL,
+        // control chars, and non-ascii must all be refused.
+        for bad in [
+            "Getting-Started", // uppercase
+            "a/b",             // slash separator collision
+            "a b",             // space
+            "a.b",             // dot
+            "a\0b",            // NUL byte
+            "a\nb",            // control char
+            "café",            // non-ascii
+            "guide!",          // punctuation
+        ] {
+            assert!(!is_valid_onboarding_id(bad), "{bad:?} should be rejected");
+        }
+    }
 }

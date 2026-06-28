@@ -81,6 +81,41 @@ test.describe('Local Runtime — permission gating (engine-free)', () => {
       page.getByRole('button', { name: /Check for updates/i }),
     ).toBeVisible()
   })
+
+  test('settings_manage gates the Runtime configuration Save control', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+
+    // settings_read (no settings_manage): the Runtime configuration card renders
+    // but its Save button is hidden + the form is disabled (RuntimeConfigCard
+    // canManage gate).
+    await loginWithPerms(page, baseURL, apiURL, BASE_READS, 'lrt-cfg-nomanage')
+    await gotoRuntimeSettings(page, baseURL)
+    await expect(
+      page.getByText('Runtime configuration').first(),
+    ).toBeVisible({ timeout: 30000 })
+    await expect(
+      page.getByRole('button', { name: 'Save', exact: true }),
+    ).toHaveCount(0)
+
+    // + settings_manage: the Save control appears.
+    await loginWithPerms(
+      page,
+      baseURL,
+      apiURL,
+      [...BASE_READS, Permissions.RuntimeSettingsManage],
+      'lrt-cfg-manage',
+    )
+    await gotoRuntimeSettings(page, baseURL)
+    await expect(
+      page.getByText('Runtime configuration').first(),
+    ).toBeVisible({ timeout: 30000 })
+    await expect(
+      page.getByRole('button', { name: 'Save', exact: true }),
+    ).toBeVisible()
+  })
 })
 
 // ── engine-backed: manage gates Start; logs gates Logs independently ──────

@@ -29,6 +29,22 @@ const MAX_PAGE_BYTES: usize = 5_000_000;
 /// Files scanned per backfill batch.
 const BACKFILL_BATCH: i64 = 200;
 
+/// Truncate an over-large page in place to at most `MAX_PAGE_BYTES`, cutting on
+/// a UTF-8 char boundary so the result is never invalid UTF-8 (a naive byte cut
+/// could land mid-codepoint and panic on `String::truncate`). Returns whether a
+/// truncation occurred.
+fn truncate_to_max_page_bytes(text: &mut String) -> bool {
+    if text.len() <= MAX_PAGE_BYTES {
+        return false;
+    }
+    let mut cut = MAX_PAGE_BYTES;
+    while cut > 0 && !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    text.truncate(cut);
+    true
+}
+
 /// Resolve the backfill batch size. A debug-only env override
 /// (`FILE_RAG_BACKFILL_BATCH`, compiled out of release builds via
 /// `cfg!(debug_assertions)` — same testability-seam pattern as
@@ -140,12 +156,7 @@ pub async fn index_file_version(
                 continue;
             }
         };
-        if text.len() > MAX_PAGE_BYTES {
-            let mut cut = MAX_PAGE_BYTES;
-            while cut > 0 && !text.is_char_boundary(cut) {
-                cut -= 1;
-            }
-            text.truncate(cut);
+        if truncate_to_max_page_bytes(&mut text) {
             tracing::warn!(
                 "file_rag: page {page} of {file_id} exceeds {MAX_PAGE_BYTES} bytes; truncated for indexing"
             );
@@ -227,6 +238,7 @@ async fn embed_file_chunks(file_id: Uuid, model_id: Uuid, expected_dim: i32) {
             Ok(vecs) => {
                 for ((id, uid, _), vec) in batch.iter().zip(vecs.iter()) {
                     if !super::embed_worker::embedding_dim_matches(vec.len(), expected_dim) {
+                    if !embedding_dim_ok(vec.len(), expected_dim) {
                         tracing::warn!(
                             "file_rag: model returned {}-dim vector but column is {}-dim — skipping chunk {}",
                             vec.len(),
@@ -403,5 +415,67 @@ mod backfill_single_flight_tests {
 
         // Restore shared state so other in-source tests aren't poisoned.
         BACKFILL_IN_PROGRESS.store(false, Ordering::Release);
+mod ingest_tests {
+    use super::{truncate_to_max_page_bytes, MAX_PAGE_BYTES};
+
+    #[test]
+    fn under_cap_is_untouched() {
+        let mut s = "short text".to_string();
+        assert!(!truncate_to_max_page_bytes(&mut s));
+        assert_eq!(s, "short text");
+    }
+
+    #[test]
+    fn at_cap_is_untouched() {
+        let mut s = "a".repeat(MAX_PAGE_BYTES);
+        assert!(!truncate_to_max_page_bytes(&mut s));
+        assert_eq!(s.len(), MAX_PAGE_BYTES);
+    }
+
+    #[test]
+    fn oversized_ascii_truncates_to_cap() {
+        let mut s = "a".repeat(MAX_PAGE_BYTES + 1234);
+        assert!(truncate_to_max_page_bytes(&mut s));
+        assert_eq!(s.len(), MAX_PAGE_BYTES, "ASCII cuts exactly at the cap");
+    }
+
+    #[test]
+    fn oversized_multibyte_truncates_on_char_boundary_no_panic() {
+        // '€' is 3 bytes; build a string whose byte length exceeds the cap and
+        // whose codepoints do NOT line up with MAX_PAGE_BYTES, so a naive byte
+        // cut would split a codepoint. The helper must back up to a boundary.
+        let mut s = "€".repeat(MAX_PAGE_BYTES / 3 + 100);
+        assert!(s.len() > MAX_PAGE_BYTES);
+        assert!(truncate_to_max_page_bytes(&mut s));
+        assert!(s.len() <= MAX_PAGE_BYTES, "never exceeds the cap");
+        assert!(s.len() > MAX_PAGE_BYTES - 3, "backs up at most one codepoint");
+        // The result is still valid UTF-8 (it is a String, so this also proves
+        // no mid-codepoint truncation panicked).
+        assert!(s.chars().all(|c| c == '€'));
+    }
+}
+
+/// After an embedding-model swap, a re-embed pass can receive a vector whose
+/// dimension no longer matches the `file_chunks.embedding` column (e.g. a 1024-d
+/// model while the column is halfvec(768)). Storing it would error/corrupt the
+/// index, so both `ingest` and `embed_worker` SKIP such chunks (left NULL →
+/// FTS-only until a full column rebuild). This is the shared guard predicate.
+pub(crate) fn embedding_dim_ok(vec_len: usize, expected_dim: i32) -> bool {
+    vec_len as i32 == expected_dim
+}
+
+#[cfg(test)]
+mod dim_guard_tests {
+    use super::embedding_dim_ok;
+
+    #[test]
+    fn matching_dimension_is_stored_mismatch_is_skipped() {
+        // Same dim → keep.
+        assert!(embedding_dim_ok(768, 768));
+        // Post-swap larger model → mismatch → skip (NOT stored as corrupt).
+        assert!(!embedding_dim_ok(1024, 768));
+        // Smaller / zero-length degenerate vectors are also skipped.
+        assert!(!embedding_dim_ok(384, 768));
+        assert!(!embedding_dim_ok(0, 768));
     }
 }

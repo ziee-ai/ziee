@@ -15,7 +15,7 @@ import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import type { DownloadSnapshot } from '@/api-client/types'
+import type { DownloadSnapshot, GpuDetectionResponse } from '@/api-client/types'
 import type { RuntimeAvailableVersion, RuntimeEngine } from '../types'
 import { HoverRow, formatBytes } from './_engineVersionsShared'
 
@@ -191,7 +191,7 @@ function PlatformRow({
   gpu,
   loadingGpu,
 }: {
-  gpu: ReturnType<typeof useGpu>
+  gpu: GpuDetectionResponse | null
   loadingGpu: boolean
 }) {
   if (loadingGpu && !gpu) {
@@ -217,7 +217,7 @@ function BackendsRow({
   gpu,
   loadingGpu,
 }: {
-  gpu: ReturnType<typeof useGpu>
+  gpu: GpuDetectionResponse | null
   loadingGpu: boolean
 }) {
   if (loadingGpu && !gpu) {
@@ -245,10 +245,6 @@ function BackendsRow({
       </Space>
     </Flex>
   )
-}
-
-function useGpu() {
-  return Stores.RuntimeConfig.gpu
 }
 
 function AvailableVersionRow({
@@ -314,7 +310,12 @@ function DownloadProgressLine({ progress }: { progress: DownloadSnapshot }) {
   const total = progress.total_bytes ?? 0
   const recv = progress.bytes_received
   const pct =
-    progress.percent != null
+    // A completed download (incl. cached/skipped, which complete before any
+    // byte-progress SSE arrives) is 100% — otherwise it renders a stuck 0% bar
+    // with a "success" colour until the first event lands.
+    progress.status === 'completed'
+      ? 100
+      : progress.percent != null
       ? Math.round(progress.percent)
       : total > 0
       ? Math.round((recv / total) * 100)

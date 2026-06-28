@@ -8,6 +8,7 @@ import {
   clearAuthState,
   login,
 } from '../../common/auth-helpers'
+import { waitForSettingsPageLoad } from './helpers/navigation-helpers'
 
 /**
  * Self-service profile page (`/settings/profile`).
@@ -234,5 +235,40 @@ test.describe('Settings - Profile (self-service)', () => {
     await page.getByLabel('Confirm new password').fill('DifferentPass123!')
     await page.getByRole('button', { name: 'Change password' }).click()
     await expect(page.getByText('Passwords do not match')).toBeVisible()
+  })
+
+  /// UserProfileWidget logout (UserProfileWidget.tsx:109-112). The widget
+  /// dropdown's "Profile" item is tested; "Logout" → Stores.Auth.logoutUser was
+  /// not. Clicking it must clear auth and return to the login page.
+  test('the user-profile widget Logout returns to the login page', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsFreshUser(page, baseURL, apiURL, 'logout')
+
+    await page.getByTestId('user-profile-widget').click()
+    await page.getByRole('menuitem', { name: 'Logout' }).click()
+
+    // Logged out → redirected to /auth; the widget is gone.
+    await expect(page).toHaveURL(/\/auth(\b|\/|$)/, { timeout: 15000 })
+    await expect(page.getByTestId('user-profile-widget')).toHaveCount(0)
+  })
+
+  /// /settings/general is gated only by `requiresAuth` (no permission), so a
+  /// NON-admin user must be able to open it. Every other settings spec logs in
+  /// as admin; this asserts the unprivileged access path renders (no 403).
+  test('a non-admin user can open /settings/general', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsFreshUser(page, baseURL, apiURL, 'genaccess')
+
+    await page.goto(`${baseURL}/settings/general`)
+    await waitForSettingsPageLoad(page, 'General')
+    await expect(page.getByText(/Not authorized/i)).toHaveCount(0)
+    // The Appearance theme card (always on the General page) renders.
+    await expect(page.getByLabel('Theme')).toBeVisible({ timeout: 15000 })
   })
 })

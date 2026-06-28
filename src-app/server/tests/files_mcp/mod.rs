@@ -904,6 +904,68 @@ async fn upload_bytes(
             .file_name(filename.to_string())
             .mime_str(mime)
             .unwrap(),
+/// Multi-turn model-authored-file workflow: the model AUTHORS a file via
+/// `create_file`, and that file is then available to LATER tool calls in the
+/// SAME conversation — `list_files` enumerates it and `read_file` returns its
+/// authored content. Exercises the production files_mcp write→read loop the
+/// model drives across turns (deterministic via call_tool, no LLM).
+#[tokio::test]
+async fn test_model_authored_file_is_readable_in_later_turn() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_authored").await;
+    let conv_id = create_conversation(&server, &user).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    // Turn 1 — the model authors a file.
+    let created = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "create_file",
+        json!({ "filename": "authored.md", "content": "AUTHORED_MARKER first line\nsecond line\n" }),
+    )
+    .await;
+    assert!(created["error"].is_null(), "create_file should succeed; body={created}");
+    let file_id = created["result"]["structuredContent"]["file_id"]
+        .as_str()
+        .expect("file_id")
+        .to_string();
+
+    // Turn 2 — the authored file is now in the conversation's manifest.
+    let listed = call_tool(&server, &user, conv_uuid, "list_files", json!({})).await;
+    assert!(listed["error"].is_null(), "list_files should succeed; body={listed}");
+    let files = listed["result"]["structuredContent"]["files"]
+        .as_array()
+        .expect("files array");
+    assert!(
+        files.iter().any(|f| f["id"].as_str() == Some(file_id.as_str())
+            && f["name"].as_str() == Some("authored.md")),
+        "the model-authored file must appear in a later turn's manifest; files={files:?}"
+    );
+
+    // Turn 3 — read the authored content back by id.
+    let read = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "read_file",
+        json!({ "id": file_id }),
+    )
+    .await;
+    assert!(read["error"].is_null(), "read_file should succeed; body={read}");
+    let text = read["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("AUTHORED_MARKER"),
+        "read_file must return the model-authored content; got: {text}"
+    );
+}
+
+/// Upload raw BYTES with an explicit mime type; returns the new file id.
+async fn upload_bytes(server: &TestServer, user: &TestUser, filename: &str, bytes: Vec<u8>, mime: &str) -> String {
+    use reqwest::multipart;
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(bytes).file_name(filename.to_string()).mime_str(mime).unwrap(),
     );
     let resp = reqwest::Client::new()
         .post(server.api_url("/files/upload"))
@@ -1196,4 +1258,66 @@ async fn test_convert_document_emits_persisted_resource_link() {
         "the downloaded artifact is a real rendered PDF (magic %PDF); len={}",
         bytes.len()
     );
+    assert_eq!(resp.status(), reqwest::StatusCode::CREATED, "upload: {}", resp.text().await.unwrap_or_default());
+    resp.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string()
+}
+
+/// read_file on an IMAGE returns an image content block (handlers.rs:545-560);
+/// on a BINARY (no text layer) returns a "[… no extractable text]" note
+/// (handlers.rs:561-575). Prior read_file tests only covered text line-slicing.
+#[tokio::test]
+async fn test_read_file_image_and_binary_branches() {
+    use base64::Engine;
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_types").await;
+    let project_id = create_project(&server, &user, "types-project").await;
+    let conv_id = create_conversation(&server, &user).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    // A 1x1 PNG → FileType::Image.
+    let png = base64::engine::general_purpose::STANDARD
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+        .unwrap();
+    let img_id = upload_bytes(&server, &user, "dot.png", png, "image/png").await;
+    attach_file_to_project(&server, &user, &project_id, &img_id).await;
+
+    let img = call_tool(&server, &user, conv_uuid, "read_file", json!({ "id": img_id })).await;
+    assert!(img["error"].is_null(), "read_file(image) should succeed; body={img}");
+    let block = &img["result"]["content"][0];
+    assert_eq!(block["type"], "image", "an image file must read back as an image block; got {img}");
+    assert_eq!(block["mimeType"], "image/png");
+    assert!(block["data"].as_str().is_some_and(|d| !d.is_empty()), "image data must be base64");
+
+    // A non-UTF8 binary blob → FileType::Binary (no extractable text).
+    let bin_id = upload_bytes(&server, &user, "blob.bin", vec![0u8, 159, 146, 150, 1, 2, 3], "application/octet-stream").await;
+    attach_file_to_project(&server, &user, &project_id, &bin_id).await;
+    let bin = call_tool(&server, &user, conv_uuid, "read_file", json!({ "id": bin_id })).await;
+    assert!(bin["error"].is_null(), "read_file(binary) should succeed; body={bin}");
+    let text = bin["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("no extractable text"),
+        "a binary file must read back as a no-text note; got: {text}"
+    );
+}
+
+/// grep_files caps results at GREP_MAX_MATCHES (200) and sets truncated=true when
+/// scanning stops early. A file with >200 matching lines exercises the cap +
+/// byte-budget/truncation path (handlers.rs grep_files), previously untested.
+#[tokio::test]
+async fn test_grep_files_truncates_at_match_cap() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_grep_cap").await;
+    // 300 lines each containing the marker → exceeds the 200-match cap.
+    let body = (0..300).map(|i| format!("MATCHME line {i}")).collect::<Vec<_>>().join("\n");
+    let (conv_id, _ids) =
+        project_conversation_with_files(&server, &user, "grep-cap", &[("many.txt", &body)]).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let res = call_tool(&server, &user, conv_uuid, "grep_files", json!({ "pattern": "MATCHME" })).await;
+    assert!(res["error"].is_null(), "grep_files should succeed; body={res}");
+    let sc = &res["result"]["structuredContent"];
+    assert_eq!(sc["truncated"], true, "grep over 300 matches must report truncated; got {sc}");
+    let matches = sc["matches"].as_array().expect("matches array");
+    assert!(matches.len() <= 200, "matches must be capped at GREP_MAX_MATCHES; got {}", matches.len());
 }

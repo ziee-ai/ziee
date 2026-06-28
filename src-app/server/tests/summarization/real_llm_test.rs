@@ -369,3 +369,58 @@ async fn r6_incremental_falls_back_to_full_on_anchor_loss() {
         "the Full fallback re-summarize should fold an older prefix; got {after:?}"
     );
 }
+
+/// Custom prompt is actually USED in the summarization LLM call (summarizer.rs
+/// :413-433 prompt resolution → the LLM message). admin_settings_test only
+/// covers the override round-trip (stored+read). Here a custom full_summary_prompt
+/// with a unique marker is set, a StubChat is the summarization model, and after
+/// a refresh the stub's recorded request must contain that marker — proving the
+/// override reaches the model, not just the DB. Deterministic (no real key).
+#[tokio::test]
+async fn custom_full_summary_prompt_is_sent_to_the_model() {
+    use crate::common::stub_chat::{register_stub_model, StubChat};
+
+    let server = crate::common::TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_custom_prompt",
+        &[
+            "conversations::create", "conversations::read", "conversations::edit",
+            "messages::create", "messages::read",
+            "llm_models::read", "summarization::settings::read", "summarization::settings::manage",
+        ],
+    )
+    .await;
+    let model_id_str = register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+    let model_id = Uuid::parse_str(&model_id_str).unwrap();
+
+    // Set a CUSTOM full-summary prompt (must contain {transcript}) + a low
+    // trigger so the 60 seeded turns cross it and a FULL summary fires.
+    let r = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "summarize_after_tokens": 500,
+            "summarizer_keep_recent_tokens": 100,
+            "full_summary_prompt": "CUSTOM_SUMMARY_MARKER_42 — condense the conversation below:\n{transcript}"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status().is_success(), "set custom prompt: {}", r.status());
+
+    let (branch_id, _ids) = seed_branch_with_messages(&server, &user.token, 60).await;
+    trigger_refresh_via_test_hook(&server, branch_id, model_id).await;
+
+    // The summarizer sent the CUSTOM prompt to the (stub) model.
+    let reqs = stub.requests();
+    assert!(
+        reqs.iter().any(|r| r.all_text.contains("CUSTOM_SUMMARY_MARKER_42")),
+        "the custom full_summary_prompt must reach the LLM call; requests={:?}",
+        reqs.iter().map(|r| r.all_text.len()).collect::<Vec<_>>()
+    );
+}

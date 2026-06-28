@@ -3,6 +3,7 @@ import { DatabaseOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const { Paragraph } = Typography
 
@@ -30,24 +31,14 @@ export function MaintenanceSection() {
       </Card>
     )
   }
-  if (!settings) {
+  if (!settings)
     return (
-      <Card title="Maintenance">
-        {error ? (
-          <Alert
-            type="error"
-            showIcon
-            title="Failed to load maintenance settings"
-            description={error}
-          />
-        ) : (
-          <div className="flex justify-center py-16">
-            <Spin />
-          </div>
-        )}
-      </Card>
+      <SettingsSectionStatus
+        title="Maintenance"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
     )
-  }
 
   const handleBackfill = async () => {
     try {

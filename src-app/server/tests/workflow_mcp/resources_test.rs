@@ -640,5 +640,129 @@ async fn resources_list_omits_deleted_run_and_read_errors() {
     assert!(
         body["error"].is_object() || body["result"]["isError"] == json!(true),
         "reading a deleted run's resource must surface an error, not crash: {body}"
+/// A minimal SANDBOX workflow (no llm/tool/elicit steps, so `tools/call` runs to
+/// terminal without blocking): one `kind: sandbox` step writes an artifact and
+/// emits a byte count, surfaced as an `expose: artifact` output.
+const SANDBOX_WORKFLOW_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+sandbox:
+  flavor: minimal
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: process
+    kind: sandbox
+    run: >-
+      echo "SANDBOX_RAN {{ inputs.topic }}" | tee artifacts/process/out.txt | wc -c
+outputs:
+  - name: size
+    from: "{{ process.output }}"
+    expose: artifact
+"#;
+
+/// f7915c78 — workflow MCP + sandbox combined over the PRODUCTION MCP path.
+/// `resources_test`'s other cases run llm-only workflows (no rootfs), and
+/// `workflow::real_stack` runs a sandbox workflow but via the direct runner,
+/// NOT `/api/workflows/mcp`. This pins the missing combination: a real sandbox
+/// step, dispatched by `tools/call wf_<slug>`, whose artifact output is then
+/// enumerated through the SAME workflow_mcp `resources/list`. Rootfs-gated
+/// (clean skip) exactly like every other Tier-6 sandbox test.
+///
+/// (Note: "memory" is not a workflow step kind, so the faithful combined
+/// coverage here is workflow_mcp + sandbox; the memory built-in's own
+/// recall/inject + recording paths are covered by the memory + mcp suites.)
+#[tokio::test]
+async fn workflow_mcp_sandbox_run_artifact_listed_over_mcp() {
+    let Some(server) = crate::code_sandbox::harness::enabled_test_server().await else {
+        eprintln!(
+            "workflow_mcp_sandbox: skipping — sandbox backend/rootfs unavailable on this host"
+        );
+        return;
+    };
+
+    let user = mcp_user(&server, "wf_mcp_sandbox").await;
+    let (run_id, _result, _conv) =
+        run_via_tools_call(&server, &user, "wfmcp-sandbox", SANDBOX_WORKFLOW_YAML).await;
+
+    let final_run = crate::workflow::poll_run(&server, &user.token, run_id).await;
+    assert_eq!(
+        final_run["status"], "completed",
+        "the sandbox workflow run must complete: {final_run}"
+    );
+
+    // The sandbox step's `expose: artifact` output is enumerated over the same
+    // workflow_mcp JSON-RPC endpoint the chat MCP client uses.
+    let resp = jsonrpc(&server, &user.token, None, "resources/list", json!({})).await;
+    assert_eq!(resp.status(), 200, "resources/list should 200");
+    let body: Json = resp.json().await.unwrap();
+    assert!(body["error"].is_null(), "resources/list had no error: {body}");
+    let resources = body["result"]["resources"]
+        .as_array()
+        .unwrap_or_else(|| panic!("resources array: {body}"));
+    let expected_uri = format!("ziee://workflow-runs/{run_id}/outputs/size");
+    assert!(
+        resources
+            .iter()
+            .any(|r| r["uri"].as_str() == Some(expected_uri.as_str())),
+        "the sandbox run's `size` artifact output must be listed over workflow_mcp ({expected_uri}); got: {body}"
+    );
+}
+
+/// 130d696 — await_terminal's no-progress guard (M5 crashed-runner detection):
+/// a run stuck in `running` whose `updated_at` never advances (the runner task
+/// died without marking it terminal) must fail the tool call rather than hang.
+/// We insert a run, mark it running, then NEVER touch it (no runner), and drive
+/// the real await loop with the debug-only WORKFLOW_MCP_NO_PROGRESS_SECS=1 seam
+/// so the 5-minute guard reproduces in ~1-2s.
+#[tokio::test]
+async fn await_terminal_fails_a_stalled_run_via_no_progress_guard() {
+    let server = crate::common::TestServer::start().await;
+    let user = mcp_user(&server, "noprog_user").await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+
+    let wf = crate::workflow::import_dev_workflow(
+        &server,
+        &user.token,
+        "noprog-wf",
+        REAL_LOGGED_WORKFLOW_YAML,
+    )
+    .await;
+    let wf_id = Uuid::parse_str(wf["id"].as_str().unwrap()).unwrap();
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+
+    // A run that never gets a live runner: insert + mark running, then leave it.
+    let run = ziee::workflow::insert_run(
+        &pool,
+        ziee::workflow::CreateWorkflowRun {
+            workflow_id: wf_id,
+            conversation_id: None,
+            user_id,
+            model_id: None,
+            sandbox_flavor: None,
+            run_kind: "normal".into(),
+            invocation_source: "manual".into(),
+            inputs_json: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("insert run");
+    ziee::workflow::mark_running(&pool, run.id).await.expect("mark running");
+
+    // Shrink the no-progress limit so the guard fires in ~1-2s, not 5 minutes.
+    unsafe { std::env::set_var("WORKFLOW_MCP_NO_PROGRESS_SECS", "1") };
+    let result = ziee::workflow_mcp_internal::await_terminal_for_test(&pool, run.id).await;
+    unsafe { std::env::remove_var("WORKFLOW_MCP_NO_PROGRESS_SECS") };
+    pool.close().await;
+
+    let err = result.expect_err("a stalled running run must fail, not hang");
+    let msg = format!("{err}").to_lowercase();
+    assert!(
+        msg.contains("no progress") || msg.contains("crashed"),
+        "the failure must cite the no-progress/crashed-runner reason; got: {err}"
     );
 }

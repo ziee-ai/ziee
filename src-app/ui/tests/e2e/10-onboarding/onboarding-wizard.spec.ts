@@ -107,6 +107,14 @@ test.describe('Onboarding wizard', () => {
 
     // Finish → chat
     await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible()
+
+    // FinishStep summary (FinishStep.tsx): with no keys entered and no MCP
+    // servers selected during this walk-through, both summary lines render their
+    // empty-path text. This verifies the finish-step summary that the wizard
+    // tests never asserted.
+    await expect(page.getByText(/No API keys added/i)).toBeVisible()
+    await expect(page.getByText(/No MCP servers selected/i)).toBeVisible()
+
     await page.getByRole('button', { name: 'Start Chatting' }).click()
 
     await expect(page).toHaveURL(new RegExp(`/chat`), { timeout: 15000 })
@@ -219,6 +227,64 @@ test.describe('Onboarding wizard', () => {
     // list has loaded); the local one is filtered out entirely.
     await expect(page.getByText(remoteName).first()).toBeVisible({ timeout: 15000 })
     await expect(page.getByText(localName, { exact: true })).toHaveCount(0)
+  })
+
+  test('entering an API key in the AI Providers step saves it', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    const adminToken = await getAdminToken(apiURL)
+    const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` }
+
+    const groupsRes = await fetch(`${apiURL}/api/groups?page=1&per_page=100`, { headers: auth })
+    const { groups } = await groupsRes.json()
+    const defaultGroup =
+      groups.find((g: any) => g.is_default) ?? groups.find((g: any) => g.name === 'Users')
+
+    // A remote provider with NO admin key → the user enters their own ("sk-..."
+    // placeholder), exercising the onboarding key-save path.
+    const remoteName = `KeySave ${Date.now().toString(36)}`
+    const created = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: remoteName, provider_type: 'openai', enabled: true }),
+    })
+    const provider = await created.json()
+    await fetch(`${apiURL}/api/llm-providers/${provider.id}/groups`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ group_id: defaultGroup.id }),
+    })
+
+    const { username } = await freshUser(apiURL, 'keysave')
+    await loginExpectingOnboarding(page, baseURL, username, 'password123')
+
+    // Welcome → AI Providers.
+    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    await expect(page.getByText(remoteName).first()).toBeVisible({ timeout: 15000 })
+
+    // Enter a key, advance → the step's onNext saves it (saveUserApiKey) and the
+    // store surfaces an "API key saved" success toast.
+    await page.getByPlaceholder('sk-...').fill('sk-onboarding-user-key-123')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByText('API key saved')).toBeVisible({ timeout: 15000 })
+  })
+
+  // Negative coverage for OnboardingRedirect's `if (user.is_admin === true)
+  // return` bypass (OnboardingRedirect.tsx:41): an admin is NEVER forced into
+  // the wizard. Contrast the "fresh user is redirected into the wizard" test
+  // above — a non-admin with incomplete onboarding bounces to /onboarding,
+  // while the admin (logged in via the beforeEach) lands on the app shell.
+  test('admin is not redirected into the onboarding wizard', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+
+    // Navigate to a normal in-app route; the redirect, if it fired, would
+    // replace the URL with /onboarding before the shell renders.
+    await page.goto(`${baseURL}/`)
+    await expect(page.getByRole('menuitem', { name: /New Chat/ })).toBeVisible({
+      timeout: 20000,
+    })
+    await expect(page).not.toHaveURL(/\/onboarding/)
   })
 })
 

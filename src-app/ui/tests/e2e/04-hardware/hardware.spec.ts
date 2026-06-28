@@ -85,4 +85,32 @@ test.describe('Hardware Settings', () => {
     const cards = await page.locator('.ant-card').count()
     expect(cards).toBeGreaterThan(0)
   })
+
+  // The "Monitor" button (HardwareMonitorButton) opens the live monitoring
+  // surface. On web/embedded it opens `/hardware-monitor` as a separate window;
+  // the desktop build swaps in a Tauri window via the same affordance. This
+  // exercises the web/embedded path: an admin sees the button and clicking it
+  // opens the monitor at /hardware-monitor.
+  test('Monitor button opens the live hardware-monitor window', async ({
+    page,
+    context,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/hardware`)
+    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+
+    const monitorButton = page.getByRole('button', { name: /Monitor/ })
+    await expect(monitorButton).toBeVisible({ timeout: 15000 })
+
+    // window.open → a new page in the same browser context.
+    const [popup] = await Promise.all([
+      context.waitForEvent('page'),
+      monitorButton.click(),
+    ])
+    await popup.waitForLoadState('domcontentloaded')
+    expect(popup.url()).toContain('/hardware-monitor')
+    await popup.close()
+  })
 })

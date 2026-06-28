@@ -27,6 +27,10 @@ export const ResizeHandle = ({
 }) => {
   const ref = useRef<HTMLDivElement>(null)
   const parentRefs = useRef<HTMLElement[]>([])
+  // Teardown for an in-flight drag (set on mousedown, cleared on mouseup). Lets
+  // the unmount effect below detach the window mousemove/mouseup listeners if
+  // the handle unmounts mid-drag — otherwise those closures would leak.
+  const dragCleanupRef = useRef<(() => void) | null>(null)
 
   const parentLevels = Array.isArray(parentLevel)
     ? parentLevel
@@ -123,6 +127,10 @@ export const ResizeHandle = ({
           const targets = parentRefs.current
           if (!targets.length) return
 
+          // Per-target listener removers, aggregated so the unmount effect can
+          // detach ALL of them if the handle disappears mid-drag.
+          const dragCleanups: Array<() => void> = []
+
           for (const target of targets) {
             //disable css transition to prevent flickering
             const currentTransition = target.style.transition
@@ -216,13 +224,23 @@ export const ResizeHandle = ({
               targetWindow.removeEventListener('mousemove', moveHandler)
               targetWindow.removeEventListener('mouseup', upHandler)
               target.style.transition = currentTransition
+              dragCleanupRef.current = null
 
               if (onEnd) onEnd()
             }
 
             targetWindow.addEventListener('mousemove', moveHandler)
             targetWindow.addEventListener('mouseup', upHandler)
+            dragCleanups.push(() => {
+              targetWindow.removeEventListener('mousemove', moveHandler)
+              targetWindow.removeEventListener('mouseup', upHandler)
+              target.style.transition = currentTransition
+            })
           }
+
+          // Expose an aggregate teardown for the unmount effect; the (shared)
+          // mouseup clears it once the drag completes normally.
+          dragCleanupRef.current = () => dragCleanups.forEach(c => c())
         }}
       >
         {isHorizontal && (

@@ -597,3 +597,50 @@ pub fn get_default_template_assistant_docs(op: TransformOperation) -> TransformO
         .response::<200, Json<Assistant>>()
         .response_with::<404, (), _>(|res| res.description("Default template assistant not found"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ASSISTANT_MAX_DESCRIPTION_BYTES, ASSISTANT_MAX_INSTRUCTIONS_BYTES,
+        validate_assistant_text_lengths,
+    };
+
+    // First inline unit coverage for the assistant module: the shared
+    // create/update text-length validator (the F-02 token-cost amplification
+    // guard). Pure function — no DB, no async.
+    #[test]
+    fn text_length_validator_accepts_none_and_boundary_sizes() {
+        // Both absent → ok.
+        assert!(validate_assistant_text_lengths(None, None).is_ok());
+
+        // Exactly at the byte caps → ok (boundary is inclusive: rejects `>` only).
+        let max_desc = "d".repeat(ASSISTANT_MAX_DESCRIPTION_BYTES);
+        let max_instr = "i".repeat(ASSISTANT_MAX_INSTRUCTIONS_BYTES);
+        assert!(
+            validate_assistant_text_lengths(Some(&max_desc), Some(&max_instr)).is_ok(),
+            "exactly-at-cap text must be accepted"
+        );
+    }
+
+    #[test]
+    fn text_length_validator_rejects_oversized_description() {
+        // Only the description is over-cap (instructions None) → the
+        // description check is what fires.
+        let too_long = "d".repeat(ASSISTANT_MAX_DESCRIPTION_BYTES + 1);
+        let err = validate_assistant_text_lengths(Some(&too_long), None)
+            .expect_err("over-cap description must be rejected");
+        assert_eq!(err.error_code(), "VALIDATION_ERROR");
+        assert_eq!(err.status_code(), 400);
+    }
+
+    #[test]
+    fn text_length_validator_rejects_oversized_instructions() {
+        // Only the instructions are over-cap (description None) → the
+        // instructions check is what fires.
+        let too_long = "i".repeat(ASSISTANT_MAX_INSTRUCTIONS_BYTES + 1);
+        let err = validate_assistant_text_lengths(None, Some(&too_long))
+            .expect_err("over-cap instructions must be rejected");
+        assert_eq!(err.error_code(), "VALIDATION_ERROR");
+        assert_eq!(err.status_code(), 400);
+    }
+}

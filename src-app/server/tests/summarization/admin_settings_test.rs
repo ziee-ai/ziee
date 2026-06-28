@@ -495,6 +495,11 @@ async fn test_read_only_user_can_get_but_not_put() {
 /// `Audience::perm::<SummarizationSettingsRead>()`), and must NOT reach a user
 /// without that read perm. Closes the SyncEntity::SummarizationAdminSettings
 /// emit-coverage gap.
+/// SummarizationAdminSettings realtime-sync emission (handlers.rs:195-199). A
+/// settings update must publish a `summarization_admin_settings`/`update` frame
+/// to holders of `summarization::settings::read`, and a user WITHOUT that perm
+/// must stay silent (Audience::perm::<SummarizationSettingsRead>). No sync test
+/// existed for this module.
 #[tokio::test]
 async fn test_summarization_settings_update_emits_sync_to_admins_only() {
     use crate::common::sync_probe::SyncProbe;
@@ -503,6 +508,15 @@ async fn test_summarization_settings_update_emits_sync_to_admins_only() {
 
     let (server, admin) = admin_user("summ_sync_admin").await;
     // Plain user: subscribes, but lacks summarization::settings::read.
+
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_sync_admin",
+        &["summarization::settings::read", "summarization::settings::manage"],
+    )
+    .await;
+    // A plain user (default group only) without summarization::settings::read.
     let plain =
         crate::common::test_helpers::create_user_with_permissions(&server, "summ_sync_plain", &[])
             .await;
@@ -514,6 +528,7 @@ async fn test_summarization_settings_update_emits_sync_to_admins_only() {
         .put(server.api_url("/summarization/settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({ "enabled": false }))
+        .json(&json!({ "summarize_after_tokens": 12345 }))
         .send()
         .await
         .unwrap();
@@ -525,5 +540,8 @@ async fn test_summarization_settings_update_emits_sync_to_admins_only() {
     // Singleton row → nil wire id (notify-and-refetch).
     assert_eq!(frame.id, Uuid::nil().to_string());
 
+    admin_probe
+        .expect_event("summarization_admin_settings", "update", Duration::from_secs(5))
+        .await;
     plain_probe.expect_silence(Duration::from_secs(1)).await;
 }

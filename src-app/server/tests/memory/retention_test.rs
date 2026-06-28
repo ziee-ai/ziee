@@ -287,3 +287,70 @@ async fn test_max_memories_cap_enforcement() {
     let rows = body["items"].as_array().cloned().unwrap_or_default();
     assert_eq!(rows.len(), 3, "max_memories=3 should leave exactly 3 live rows");
 }
+
+// ── REAL reaper tick (production `run_once`, not mirrored SQL) ───────────
+
+/// The other retention tests mirror `reaper.rs::run_once`'s SQL inline; this
+/// one calls the ACTUAL production function (`ziee::memory_reaper_run_once`)
+/// so a future drift between the reaper and the mirrored SQL is caught. Seeds
+/// 3 memories, soft-deletes them, backdates `deleted_at` past the 30-day grace
+/// window, runs one real reaper tick, and asserts they are hard-deleted.
+#[tokio::test]
+async fn test_real_reaper_run_once_hard_deletes_grace_expired() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "ret_realreaper",
+        &["memory::read", "memory::write"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let token = &user.token;
+
+    let mut ids: Vec<String> = Vec::new();
+    for i in 0..3 {
+        let res = client
+            .post(server.api_url("/memories"))
+            .header("Authorization", format!("Bearer {token}"))
+            .json(&json!({ "content": format!("real reaper mem {i}") }))
+            .send()
+            .await
+            .unwrap();
+        ids.push(res.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string());
+    }
+    for id in &ids {
+        client
+            .delete(server.api_url(&format!("/memories/{id}")))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap();
+    }
+
+    let pool = open_pool(&server).await;
+    sqlx::query("UPDATE user_memories SET deleted_at = NOW() - INTERVAL '40 days' WHERE deleted_at IS NOT NULL")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // One REAL reaper tick (reads admin settings, hard-deletes grace-expired).
+    ziee::memory_reaper_run_once(&pool)
+        .await
+        .expect("reaper run_once should succeed");
+
+    // The grace-expired soft-deletes are gone from the live list.
+    let body: Value = client
+        .get(server.api_url("/memories"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        body["items"].as_array().map(|a| a.len()).unwrap_or(0),
+        0,
+        "real reaper tick must hard-delete the grace-expired rows"
+    );
+}

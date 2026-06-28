@@ -1086,6 +1086,16 @@ async fn test_delete_group_system_group_protection() {
     .await;
 
     // Find a system group (seeded "Users"/"Administrators").
+/// A system group's core attributes (name, is_active, permissions) cannot be
+/// modified even by a holder of `groups::edit` — guards the wildcard-escalation
+/// path in `update_group` (02-permissions F-02).
+#[tokio::test]
+async fn test_update_system_group_core_attrs_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let admin =
+        helpers::create_user_with_permissions(&server, "sysgrp_admin", &["groups::read", "groups::edit"]).await;
+
+    // Find a seeded system group (e.g. Administrators / Users).
     let list: serde_json::Value = reqwest::Client::new()
         .get(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -1146,6 +1156,52 @@ async fn test_permission_denied_response_body_format() {
         &["profile::read"],
     )
     .await;
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    let groups = list["groups"].as_array().expect("groups array");
+    let system_group = groups
+        .iter()
+        .find(|g| g["is_system"].as_bool() == Some(true))
+        .expect("at least one seeded system group must exist");
+    let group_id = system_group["id"].as_str().expect("group id");
+
+    let url = server.api_url(&format!("/groups/{}", group_id));
+
+    // Renaming a system group must be refused with 400 SYSTEM_GROUP.
+    let rename = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "name": "hacked-system-group" }))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(rename.status(), 400, "renaming a system group must be rejected");
+    let body: serde_json::Value = rename.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"].as_str(), Some("SYSTEM_GROUP"));
+
+    // Rewriting a system group's permissions to wildcard must also be refused.
+    let escalate = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "permissions": ["*"] }))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(escalate.status(), 400, "rewriting system-group permissions must be rejected");
+    let body: serde_json::Value = escalate.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"].as_str(), Some("SYSTEM_GROUP"));
+}
+
+/// Permission-denied RESPONSE BODY format — the SINGLE-missing-permission branch
+/// (extractors.rs:147-153). Existing 403 tests only assert `error_code`; the
+/// human-readable `message` ("Missing required permission: <perm>") was never
+/// checked. GET /groups requires the single `groups::read` perm.
+#[tokio::test]
+async fn test_permission_denied_body_single_message() {
+    let server = crate::common::TestServer::start().await;
+    let user = helpers::create_user_with_permissions(&server, "denybody_single", &[]).await;
 
     let resp = reqwest::Client::new()
         .get(server.api_url("/groups"))
@@ -1249,5 +1305,38 @@ async fn test_permission_denied_response_body_format() {
         response.status(),
         204,
         "An ordinary group must delete successfully"
+        .expect("request");
+    assert_eq!(resp.status(), 403);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+    assert_eq!(
+        body["message"], "Missing required permission: groups::read",
+        "single-missing-perm message format; body={body}"
+    );
+}
+
+/// Permission-denied RESPONSE BODY format — the MULTI-missing-permission branch
+/// (extractors.rs:147-153, "Missing required permissions: a, b"). POST
+/// /projects/{id}/duplicate requires (ProjectsCreate, ProjectsRead); both are
+/// granted only to Administrators (migration 54), so a default-group user lacks
+/// BOTH → the plural message lists them in declaration order.
+#[tokio::test]
+async fn test_permission_denied_body_multi_message() {
+    let server = crate::common::TestServer::start().await;
+    let user = helpers::create_user_with_permissions(&server, "denybody_multi", &[]).await;
+
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/projects/{}/duplicate", Uuid::new_v4())))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(resp.status(), 403);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+    assert_eq!(
+        body["message"], "Missing required permissions: projects::create, projects::read",
+        "multi-missing-perm message format; body={body}"
     );
 }

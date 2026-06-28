@@ -394,6 +394,43 @@ mod tests {
     }
 
     #[test]
+    fn build_record_carries_is_built_in_for_builtin_servers() {
+        // A built-in MCP server's tool call (e.g. files_mcp's read_file) must be
+        // recorded into mcp_tool_calls with is_built_in=true so the history
+        // surface can distinguish built-ins from user/external servers.
+        let mut ctx = ctx_with_owner();
+        ctx.is_built_in = true;
+        ctx.server_name = "files".into();
+        let rec = build_record(
+            Uuid::nil(),
+            &ctx,
+            "read_file",
+            &json!({ "file_id": "abc" }),
+            &ok_result(vec![block(json!({"type":"text","text":"contents"}))], false),
+            time::OffsetDateTime::UNIX_EPOCH,
+            1,
+        )
+        .expect("an owner-stamped session must record");
+        assert!(rec.is_built_in, "built-in server tool call must set is_built_in=true");
+        assert_eq!(rec.tool_name, "read_file");
+        assert_eq!(rec.server_name, "files");
+
+        // Contrast: a non-built-in (user/external) context records is_built_in=false.
+        let ext = ctx_with_owner(); // is_built_in defaults to false
+        let rec2 = build_record(
+            Uuid::nil(),
+            &ext,
+            "do_thing",
+            &json!({}),
+            &ok_result(vec![], false),
+            time::OffsetDateTime::UNIX_EPOCH,
+            1,
+        )
+        .unwrap();
+        assert!(!rec2.is_built_in, "external server tool call must set is_built_in=false");
+    }
+
+    #[test]
     fn build_record_skips_unstamped_session() {
         let ctx = McpCallContext::default(); // user_id = None
         let started = time::OffsetDateTime::UNIX_EPOCH;

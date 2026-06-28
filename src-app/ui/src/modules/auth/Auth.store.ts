@@ -153,6 +153,10 @@ export const useAuthStore = create<AuthState>()(
             set({
               user: me.user,
               permissions: me.permissions,
+              // Carry hasPassword from /me (initAuth + the visibility-refetch
+              // both set it; a fresh login/register must too, else OAuth-only
+              // accounts see a stale value and the "set a password" UI misfires).
+              hasPassword: me.has_password,
               isAuthenticated: true,
               isLoading: false,
               isInitializing: false,
@@ -242,6 +246,10 @@ export const useAuthStore = create<AuthState>()(
             set({
               user: me.user,
               permissions: me.permissions,
+              // Carry hasPassword from /me (initAuth + the visibility-refetch
+              // both set it; a fresh login/register must too, else OAuth-only
+              // accounts see a stale value and the "set a password" UI misfires).
+              hasPassword: me.has_password,
               isAuthenticated: true,
               isLoading: false,
               isInitializing: false,

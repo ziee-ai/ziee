@@ -145,6 +145,7 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
         let mut updated = 0usize;
         for ((id, uid, _), vec) in batch.iter().zip(vecs.iter()) {
             if !embedding_dim_matches(vec.len(), target_dimensions) {
+            if !super::ingest::embedding_dim_ok(vec.len(), target_dimensions) {
                 tracing::warn!(
                     "file_rag.embed_worker: model returned {}-dim vector but column is {}-dim — skipping chunk {}",
                     vec.len(),

@@ -7,6 +7,7 @@ mod crud_test;
 mod extraction_injection_test;
 mod extraction_model_validation_test;
 mod extraction_test;
+mod fts_rebuild_test;
 mod memory_off_test;
 mod onboarding_settings_init_test;
 mod per_conversation_toggle_test;

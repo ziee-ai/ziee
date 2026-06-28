@@ -853,6 +853,44 @@ async fn test_provider_file_mapping_is_user_scoped() {
 
     // Owner A resolves the mapping.
     let owner = get_provider_file_mapping(&pool, file_id, provider_id, a_id)
+/// Cross-tenant security (repository.rs:31-33, service.rs:54-58 — the JOIN to
+/// `files` on `f.user_id = $3`). A provider-file mapping created for user A's
+/// file must NOT be retrievable by user B via get_provider_file_mapping, even
+/// though file_id is globally unique. The owner still gets it. Drives the REAL
+/// repository function (re-exported as ziee::llm_provider_file_mapping_for_user),
+/// not a mirrored query.
+#[tokio::test]
+async fn test_get_provider_file_mapping_is_cross_tenant_scoped() {
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect test db");
+
+    let user_a =
+        crate::common::test_helpers::create_user_with_permissions(&server, "tenant_a", &[]).await;
+    let user_b =
+        crate::common::test_helpers::create_user_with_permissions(&server, "tenant_b", &[]).await;
+    let a_id = Uuid::parse_str(&user_a.user_id).unwrap();
+    let b_id = Uuid::parse_str(&user_b.user_id).unwrap();
+
+    let file_id = create_test_file(&pool, a_id, "secret.pdf").await;
+    let provider_id = create_test_provider(&pool, "Tenant Provider", "gemini").await;
+
+    sqlx::query!(
+        r#"INSERT INTO llm_provider_files
+            (file_id, provider_id, provider_file_id, provider_metadata, upload_status)
+            VALUES ($1, $2, $3, $4, 'completed')"#,
+        file_id,
+        provider_id,
+        "file_secret",
+        json!({})
+    )
+    .execute(&pool)
+    .await
+    .expect("create mapping");
+
+    // The OWNER (user A) resolves the mapping.
+    let owner = ziee::llm_provider_file_mapping_for_user(&pool, file_id, provider_id, a_id)
         .await
         .expect("query ok");
     assert!(owner.is_some(), "owner must resolve their own provider-file mapping");
@@ -953,4 +991,9 @@ async fn test_provider_file_mapping_is_user_scoped() {
         "surviving provider_file_id {:?} must be one of the concurrent proposals",
         row.provider_file_id
     );
+    // A DIFFERENT tenant (user B) must NOT — the files JOIN filters by user_id.
+    let intruder = ziee::llm_provider_file_mapping_for_user(&pool, file_id, provider_id, b_id)
+        .await
+        .expect("query ok");
+    assert!(intruder.is_none(), "cross-tenant access to another user's provider-file mapping must be blocked");
 }

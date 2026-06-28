@@ -290,6 +290,14 @@ async fn real_llm_multi_turn_citations() {
 async fn real_llm_add_persists_then_lookup_does_not() {
     let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
         eprintln!("skipping citations::real_llm_add_persists_then_lookup_does_not — ANTHROPIC_API_KEY unset");
+/// Real-LLM coverage for `lookup_citations` specifically (verify + add + list
+/// are covered above; lookup — resolve a reference WITHOUT persisting — was not).
+/// The model is told to look up DOI 10.5555/known; we assert a citations tool
+/// fired AND that lookup did NOT persist a library entry (lookup ≠ add).
+#[tokio::test]
+async fn real_llm_invokes_lookup_citations() {
+    let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
+        eprintln!("skipping citations::real_llm_lookup — ANTHROPIC_API_KEY unset");
         return;
     };
 
@@ -311,6 +319,7 @@ async fn real_llm_add_persists_then_lookup_does_not() {
     let user = create_user_with_permissions(
         &server,
         "cit_real_llm_add_lookup",
+        "cit_real_llm_lookup",
         &[
             "conversations::create", "conversations::read", "conversations::edit",
             "messages::create", "messages::read", "llm_models::read",
@@ -442,4 +451,30 @@ async fn list_citation_dois(server: &TestServer, token: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+    let payload = json!({
+        "content": "Use ONLY the lookup_citations tool to look up DOI 10.5555/known. \
+                    Do NOT add or save it — just look it up. You MUST call the tool.",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string(),
+        "enable_mcp": true,
+        "mcp_config": { "mcp_servers": [ { "server_id": cit_id.to_string(), "tools": [] } ] }
+    });
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server, &user.token, conversation_id, payload, &["complete"],
+    )
+    .await;
+    assert!(
+        events.iter().any(|e| e.event == "mcpToolStart"),
+        "the model should have called the lookup_citations tool"
+    );
+
+    // lookup must NOT persist a library entry (it only resolves).
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM bibliography_entries WHERE user_id = $1")
+            .bind(Uuid::parse_str(&user.user_id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    pool.close().await;
+    assert_eq!(count, 0, "lookup_citations must not persist an entry; found {count}");
 }

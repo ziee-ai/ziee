@@ -3,6 +3,7 @@ import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Spin, Switch, me
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -49,24 +50,14 @@ export function FullTextSection() {
       </Card>
     )
   }
-  if (!settings) {
+  if (!settings)
     return (
-      <Card title="Full-text search">
-        {error ? (
-          <Alert
-            type="error"
-            showIcon
-            title="Failed to load full-text search settings"
-            description={error}
-          />
-        ) : (
-          <div className="flex justify-center py-16">
-            <Spin />
-          </div>
-        )}
-      </Card>
+      <SettingsSectionStatus
+        title="Full-text search"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
     )
-  }
 
   const handleSubmit = async (values: FormValues) => {
     try {

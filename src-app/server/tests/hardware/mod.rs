@@ -384,11 +384,22 @@ async fn test_hardware_usage_stream_emits_real_snapshot_frames() {
     let admin = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "hw_stream_content",
+/// SSE STREAM CONTENT (not just the content-type header): read the first
+/// hardware-usage frame off the stream within a bounded timeout and assert it's
+/// a real `data:` SSE frame whose payload parses as JSON carrying the expected
+/// usage fields. The stream is endless, so we stop at the first complete frame.
+#[tokio::test]
+async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hw_sse_content",
         &["hardware::monitor"],
     )
     .await;
 
     let response = reqwest::Client::new()
+    let mut response = reqwest::Client::new()
         .get(server.api_url("/hardware/usage-stream"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .header("Accept", "text/event-stream")
@@ -496,5 +507,35 @@ async fn test_hardware_usage_stream_emits_real_snapshot_frames() {
     assert!(
         update.get("gpu_devices").map(|g| g.is_array()).unwrap_or(false),
         "update must include a gpu_devices array, got: {update}"
+        .expect("Request failed");
+    assert_eq!(response.status(), 200);
+
+    // Accumulate chunks until we have a complete `data: {...}` line (or time out).
+    let mut buf = String::new();
+    let data_line = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        loop {
+            match response.chunk().await.expect("stream chunk") {
+                Some(bytes) => {
+                    buf.push_str(&String::from_utf8_lossy(&bytes));
+                    if let Some(line) = buf
+                        .lines()
+                        .find(|l| l.starts_with("data:") && l.contains('{'))
+                    {
+                        return line.trim_start_matches("data:").trim().to_string();
+                    }
+                }
+                None => panic!("stream ended before any data frame; buf={buf}"),
+            }
+        }
+    })
+    .await
+    .expect("no SSE data frame within 20s");
+
+    let json: serde_json::Value =
+        serde_json::from_str(&data_line).unwrap_or_else(|e| panic!("data frame must be JSON ({e}): {data_line}"));
+    // The hardware usage payload reports CPU + memory utilization.
+    assert!(
+        json.get("cpu").is_some() || json.get("memory").is_some() || json.get("timestamp").is_some(),
+        "usage frame should carry hardware usage fields; got: {json}"
     );
 }

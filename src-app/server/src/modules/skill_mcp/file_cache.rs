@@ -209,5 +209,43 @@ mod tests {
             Some("after"),
             "put must recover from a poisoned cache mutex"
         );
+    /// Resilience: an entry older than the 5-minute TTL is treated as a MISS and
+    /// dropped on access (Inner::get TTL branch). Tested against a LOCAL Inner so
+    /// it can't race the process-global CACHE the other tests use. Backdates
+    /// `inserted_at` instead of sleeping 5 minutes.
+    #[test]
+    fn expired_entries_are_evicted_on_get() {
+        let mut inner = Inner::new();
+        let k = key(Uuid::new_v4(), "SKILL.md");
+        inner.put(k.clone(), "hello".to_string());
+        assert_eq!(inner.get(&k).as_deref(), Some("hello"), "fresh entry hits");
+
+        // Make the entry older than TTL.
+        inner.map.get_mut(&k).unwrap().inserted_at =
+            Instant::now().checked_sub(TTL + Duration::from_secs(1)).unwrap();
+
+        assert!(inner.get(&k).is_none(), "expired entry must be a miss");
+        assert_eq!(inner.total_bytes, 0, "expired entry must be dropped from accounting");
+    }
+
+    /// Resilience: FIFO capacity eviction — putting past CAPACITY_BYTES evicts the
+    /// OLDEST entry first (Inner::put eviction loop). Local Inner; ~40 MiB strings
+    /// so two entries exceed the 64 MiB cap.
+    #[test]
+    fn fifo_eviction_drops_oldest_past_capacity() {
+        let mut inner = Inner::new();
+        let id = Uuid::new_v4();
+        let big = "x".repeat(40 * 1024 * 1024); // 40 MiB each → two exceed 64 MiB
+
+        inner.put(key(id, "older"), big.clone());
+        inner.put(key(id, "newer"), big.clone()); // forces eviction of "older"
+
+        assert!(inner.get(&key(id, "older")).is_none(), "oldest entry must be evicted (FIFO)");
+        assert_eq!(
+            inner.get(&key(id, "newer")).map(|s| s.len()),
+            Some(40 * 1024 * 1024),
+            "the most-recent entry survives"
+        );
+        assert!(inner.total_bytes <= CAPACITY_BYTES, "pool must stay within the cap");
     }
 }

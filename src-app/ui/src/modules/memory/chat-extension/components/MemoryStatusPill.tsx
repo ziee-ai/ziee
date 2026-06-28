@@ -109,6 +109,10 @@ export function MemoryStatusPill() {
           selectedKeys: [mode],
           onClick: ({ key }) => setRemote(key as Mode),
         }}
+        // Click trigger (not the default hover) so the focusable Tag opens the
+        // menu via keyboard (Enter/Space/ArrowDown) — hover-only is not
+        // keyboard accessible. Mirrors SummarizationStatusPill.
+        trigger={['click']}
         disabled={loading}
       >
         <Tag

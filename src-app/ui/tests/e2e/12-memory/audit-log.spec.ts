@@ -63,4 +63,49 @@ test.describe('Memory — audit log', () => {
     expect(ops).toContain('UPDATE')
     expect(ops).toContain('DELETE')
   })
+
+  test('audit log table displays entries and the limit filter narrows them', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    const username = await memoryUser(apiURL, 'auditui')
+    await login(page, baseURL, username, 'password123')
+    const userToken = await getCurrentUserToken(page)
+    const authHeader = { Authorization: `Bearer ${userToken}` }
+
+    // Seed ≥3 audit entries (add + update + delete on one memory).
+    const create = await page.request.post(`${apiURL}/api/memories`, {
+      headers: authHeader,
+      data: { content: 'Audit UI memory' },
+    })
+    const row = await create.json()
+    await page.request.patch(`${apiURL}/api/memories/${row.id}`, {
+      headers: authHeader,
+      data: { content: 'Audit UI memory v2' },
+    })
+    await page.request.delete(`${apiURL}/api/memories/${row.id}`, {
+      headers: authHeader,
+    })
+
+    await page.goto(`${baseURL}/settings/memory`)
+    const card = page.locator(
+      '.ant-card:has(.ant-card-head-title:has-text("Audit log"))',
+    )
+    await expect(card).toBeVisible({ timeout: 30000 })
+
+    // The table renders the seeded entries (≥3 data rows).
+    const rows = card.locator('.ant-table-tbody .ant-table-row')
+    await expect
+      .poll(async () => await rows.count(), { timeout: 15000 })
+      .toBeGreaterThanOrEqual(3)
+
+    // Apply the "Show last" limit = 1 → the table narrows to a single row.
+    const limit = card.getByLabel('Show last')
+    await limit.click()
+    await limit.press('ControlOrMeta+a')
+    await limit.fill('1')
+    await card.getByRole('button', { name: 'Apply' }).click()
+    await expect.poll(async () => await rows.count(), { timeout: 15000 }).toBe(1)
+  })
 })

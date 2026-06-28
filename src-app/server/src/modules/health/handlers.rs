@@ -45,6 +45,10 @@ mod tests {
     /// the in-source unit the module previously lacked entirely.
     #[tokio::test]
     async fn health_check_returns_200_and_ok_status() {
+    /// The health endpoint handler returns 200 with a static `{"status":"ok"}`
+    /// body. The health module had zero unit tests.
+    #[tokio::test]
+    async fn health_check_returns_ok_status() {
         let (status, Json(body)) = health_check().await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body.status, "ok");
@@ -64,5 +68,11 @@ mod tests {
         let back: HealthResponse =
             serde_json::from_value(json).expect("deserialize HealthResponse");
         assert_eq!(back.status, "ok");
+    /// HealthResponse serializes to the documented JSON shape.
+    #[test]
+    fn health_response_serializes_to_status_field() {
+        let body = HealthResponse { status: "ok".to_string() };
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["status"], "ok");
     }
 }

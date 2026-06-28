@@ -636,6 +636,19 @@ async fn ask_user_elicitation_works_with_an_attached_file() {
 
     // Accept → the turn resumes and completes with the answer echoed.
     let r = respond(
+/// DB PERSISTENCE path of the respond handler (mcp/elicitation/handlers.rs:60-91):
+/// accepting an elicitation must flip the persisted `elicitation` message_content
+/// row's status to "accepted" AND store the submitted values under
+/// `response_content` — not just unblock the in-memory registry. The other tests
+/// assert the in-band flow (the model receives the answer); this pins the durable
+/// write so a reload/history surface reflects the user's choice.
+#[tokio::test]
+async fn ask_user_accept_persists_status_and_response_content_to_db() {
+    let mut fx = setup().await;
+    let data = drive_to_elicitation(&mut fx).await;
+    let elicitation_id = data["elicitation_id"].as_str().expect("elicitation_id").to_string();
+
+    let resp = respond(
         &fx.server,
         &fx.user.token,
         &elicitation_id,
@@ -647,4 +660,81 @@ async fn ask_user_elicitation_works_with_an_attached_file() {
     let frames = fx.probe.collect_until_terminal(fx.conv_id, TURN_TIMEOUT).await;
     let terminal = frames.last().expect("terminal frame");
     assert_eq!(terminal.event_type, "complete", "turn completes after the elicitation");
+    assert_eq!(resp.status(), 200, "accept respond must succeed");
+
+    // Drain the turn so the persistence has certainly run.
+    let _ = fx.probe.collect_until_terminal(fx.conv_id, TURN_TIMEOUT).await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&fx.server.database_url)
+        .await
+        .expect("connect test db");
+    let row: (serde_json::Value,) = sqlx::query_as(
+        "SELECT mc.content
+         FROM message_contents mc
+         JOIN branch_messages bm ON bm.message_id = mc.message_id
+         JOIN branches b ON b.id = bm.branch_id
+         WHERE b.conversation_id = $1 AND mc.content_type = 'elicitation'
+         ORDER BY mc.created_at DESC
+         LIMIT 1",
+    )
+    .bind(fx.conv_id)
+    .fetch_one(&pool)
+    .await
+    .expect("an elicitation content row must exist");
+    pool.close().await;
+
+    let content = row.0;
+    assert_eq!(
+        content["status"].as_str(),
+        Some("accepted"),
+        "respond(accept) must persist status='accepted'; row={content}"
+    );
+    assert_eq!(
+        content["response_content"]["color"].as_str(),
+        Some("green"),
+        "the submitted values must be persisted under response_content; row={content}"
+    );
+}
+
+/// elicitation_mcp repository upsert IDEMPOTENCY (repository.rs:24-61). The
+/// built-in row is upserted at boot; calling `upsert_builtin_server` again with
+/// a DIFFERENT loopback url must (a) not create a duplicate row (ON CONFLICT (id)
+/// is idempotent) and (b) re-assert the url (its port changes across restarts).
+/// Drives the REAL repository function, not a mirrored SQL string.
+#[tokio::test]
+async fn elicitation_builtin_upsert_is_idempotent_and_reasserts_url() {
+    let server = crate::common::TestServer::start().await;
+    let pool = ziee::Repos.pool().clone();
+    let repo = ziee::ElicitationMcpRepository::new(pool.clone());
+    let id = ziee::elicitation_mcp_server_id();
+
+    // Re-run the upsert twice with distinct loopback urls.
+    repo.upsert_builtin_server(id, "http://127.0.0.1:11111/elicitation/mcp")
+        .await
+        .expect("first upsert");
+    repo.upsert_builtin_server(id, "http://127.0.0.1:22222/elicitation/mcp")
+        .await
+        .expect("second upsert");
+
+    // Exactly one row for the deterministic id (no duplicate).
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_servers WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "upsert must be idempotent — exactly one row");
+
+    // The url was re-asserted to the latest value, and identity columns hold.
+    let row = sqlx::query!(
+        "SELECT url, is_built_in, is_system, transport_type FROM mcp_servers WHERE id = $1",
+        id
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.url.as_deref(), Some("http://127.0.0.1:22222/elicitation/mcp"));
+    assert!(row.is_built_in && row.is_system);
+    assert_eq!(row.transport_type, "http");
 }

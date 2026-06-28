@@ -114,6 +114,45 @@ test.describe('Summarization — admin thresholds', () => {
     await expect(page.getByText(SUCCESS_TOAST)).toHaveCount(0)
   })
 
+  test('toggling the "Enable summarization" Switch persists across reload', async ({
+    page,
+    testInfra,
+  }) => {
+    const card = summarizationCard(page)
+    const toggle = card.getByRole('switch', {
+      name: 'Enable summarization deployment-wide',
+    })
+    await expect(toggle).toBeVisible({ timeout: 10000 })
+
+    const before = await toggle.getAttribute('aria-checked')
+    await toggle.click()
+    const after = await toggle.getAttribute('aria-checked')
+    expect(after).not.toBe(before)
+
+    await card.locator('.ant-btn-primary[type="submit"]').click()
+    await expect(page.getByText(SUCCESS_TOAST).first()).toBeVisible({
+      timeout: 10000,
+    })
+
+    // Reload — the persisted value must come back (the PUT actually fired).
+    await page.goto(`${testInfra.baseURL}/settings/summarization-admin`)
+    const reloaded = summarizationCard(page).getByRole('switch', {
+      name: 'Enable summarization deployment-wide',
+    })
+    await expect(reloaded).toHaveAttribute('aria-checked', after!, {
+      timeout: 10000,
+    })
+
+    // Restore the original state so re-runs start from a known baseline.
+    await reloaded.click()
+    await summarizationCard(page)
+      .locator('.ant-btn-primary[type="submit"]')
+      .click()
+    await expect(page.getByText(SUCCESS_TOAST).first()).toBeVisible({
+      timeout: 10000,
+    })
+  })
+
   test('saves valid prompt overrides', async ({ page }) => {
     const card = summarizationCard(page)
     const fullPrompt = card.getByLabel('Full-summary prompt')

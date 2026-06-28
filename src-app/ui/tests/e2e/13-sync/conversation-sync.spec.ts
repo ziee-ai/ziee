@@ -1,6 +1,12 @@
+import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { goToNewChatPage } from '../09-chat/helpers/chat-helpers'
+import {
+  createProviderViaAPI,
+  createModelViaAPI,
+  assignProviderToAdministratorsGroup,
+} from '../../common/provider-helpers'
 
 // Cross-window realtime sync for CONVERSATIONS (the chat *list* dimension).
 //
@@ -179,6 +185,143 @@ test.describe('Realtime sync (conversations, cross-window)', () => {
       // B's view must not keep pointing at the dead conversation: the sidebar
       // drops it (the Chat store also `reset()`s the open view on a remote
       // delete — see Chat.store `sync:conversation` handler).
+      await expect(pageB.getByText(title)).toHaveCount(0, { timeout: 15_000 })
+    } finally {
+      await ctxB.close()
+    }
+  })
+})
+
+// ── Sidebar sync driven by the REAL chat INPUT (not an API mutation) ──────────
+//
+// The tests above issue mutations over REST. This block closes the gap where
+// the conversation is born from the UI itself: a user types a first message on
+// the New-chat page (device A), which creates the conversation server-side and
+// streams a reply. Device B's recent-conversations sidebar must list the new
+// conversation live (the `sync:conversation` Create notify→refetch path), WITHOUT
+// device B reloading. Needs a real model, so soft-skipped without ANTHROPIC_API_KEY.
+
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY ?? ''
+
+test.describe('Realtime sync — conversation born from chat input (cross-window)', () => {
+  test.skip(
+    ANTHROPIC_KEY.length === 0,
+    'ANTHROPIC_API_KEY not set — real-LLM new-chat sidebar sync skipped',
+  )
+
+  test('sending a first message on device A surfaces the conversation in device B sidebar', async ({
+    page,
+    browser,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    const providerId = await createProviderViaAPI(
+      apiURL,
+      adminToken,
+      'Anthropic',
+      'anthropic',
+    )
+    await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
+    await createModelViaAPI(
+      apiURL,
+      adminToken,
+      providerId,
+      'claude-haiku-4-5-20251001',
+      'Claude Haiku 4.5',
+      'anthropic',
+    )
+
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    try {
+      await loginAsAdmin(pageB, baseURL)
+      await goToNewChatPage(pageB, baseURL)
+
+      // Device A: the conversation does not exist yet — it is created by the
+      // act of sending the first message from the New-chat page.
+      await goToNewChatPage(page, baseURL)
+      const marker = `XSync FromInput ${Date.now()}`
+      const textarea = page.locator('textarea[placeholder*="Type your message"]')
+      await textarea.fill(`Please acknowledge the phrase ${marker}.`)
+      const sendButton = page.getByRole('button', { name: 'Send message' })
+      await expect(sendButton).toBeEnabled({ timeout: 15_000 })
+      await sendButton.click()
+
+      // A navigates to the freshly created conversation.
+      await page.waitForURL(/\/chat\/[a-f0-9-]+/, { timeout: 30_000 })
+
+      // Device B's sidebar lists the new conversation live (notify→refetch),
+      // matched by the auto-derived title (first user message text).
+      await expect(pageB.getByText(marker).first()).toBeVisible({
+        timeout: 30_000,
+      })
+    } finally {
+      await ctxB.close()
+    }
+  })
+})
+
+// ── UI-driven delete (Popconfirm) propagates the removal cross-window ─────────
+//
+// The earlier "rename and delete" test deletes over REST. This closes the gap
+// where the DELETE is issued through the real UI affordance — the per-card
+// "Delete conversation?" Popconfirm on the /chats list — and asserts BOTH that
+// device A's card disappears AND device B's sidebar drops it via sync. No LLM:
+// the conversation is API-seeded (title only), only the delete goes through UI.
+
+function cardByTitle(p: Page, title: string) {
+  return p.locator('.ant-card').filter({ hasText: title })
+}
+
+test.describe('Realtime sync — UI delete with confirmation (cross-window)', () => {
+  test('deleting via the card Popconfirm on device A drops it from device B sidebar', async ({
+    page,
+    browser,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const token = await getAdminToken(apiURL)
+
+    const title = `XSync UIDelete ${Date.now()}`
+    const res = await fetch(`${apiURL}/api/conversations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ title }),
+    })
+    expect(res.ok).toBeTruthy()
+
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    try {
+      await loginAsAdmin(pageB, baseURL)
+      await goToNewChatPage(pageB, baseURL)
+      await expect(pageB.getByText(title).first()).toBeVisible({
+        timeout: 15_000,
+      })
+
+      // Device A opens the chat list and deletes via the Popconfirm.
+      await page.goto(`${baseURL}/chats`)
+      await page.waitForLoadState('domcontentloaded')
+      const target = cardByTitle(page, title)
+      await expect(target).toBeVisible({ timeout: 15_000 })
+      await target.hover()
+      await target.locator('button:has(.anticon-delete)').click()
+      const popconfirm = page
+        .locator('.ant-popover')
+        .filter({ hasText: 'Delete conversation?' })
+      await expect(popconfirm).toBeVisible()
+      await popconfirm.getByRole('button', { name: 'Delete', exact: true }).click()
+
+      // Device A's card is gone…
+      await expect(cardByTitle(page, title)).toHaveCount(0, { timeout: 10_000 })
+      // …and device B's sidebar drops it live via sync (no reload).
       await expect(pageB.getByText(title)).toHaveCount(0, { timeout: 15_000 })
     } finally {
       await ctxB.close()

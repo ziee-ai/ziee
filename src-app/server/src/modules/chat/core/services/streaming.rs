@@ -1389,6 +1389,16 @@ impl DeltaAccumulator {
         .await
         .map_err(AppError::database_error)?;
 
+        // Assign sequence_order from a single running counter rather than
+        // `base + block.index`: the per-block `index` values come from
+        // independent sources (the streamed content blocks AND each extension's
+        // own accumulator), so they can overlap and would collide on
+        // (message_id, sequence_order). Insertion order here already reflects
+        // the intended render order (content blocks first, then extension
+        // content), so a monotonic counter preserves order while guaranteeing
+        // the UNIQUE constraint (migration 124) is never tripped.
+        let mut next_seq = base;
+
         for accumulated in &self.content_blocks {
             // Skip empty content blocks
             if accumulated.content_type.is_empty() {
@@ -1430,11 +1440,12 @@ impl DeltaAccumulator {
                 self.assistant_message_id,
                 accumulated.content_type,
                 content_json,
-                base + accumulated.index as i32
+                next_seq
             )
             .execute(&mut *tx)
             .await
             .map_err(AppError::database_error)?;
+            next_seq += 1;
         }
 
         // Get accumulated content from extensions and persist to database
@@ -1449,14 +1460,14 @@ impl DeltaAccumulator {
                 self.assistant_message_id
             );
 
-            for (index, content_data) in extension_content {
+            for (_index, content_data) in extension_content {
                 let content_type = content_data.content_type();
                 // Use to_api_content() to flatten Extension variants
                 let content_json = content_data.to_api_content();
 
                 tracing::info!(
                     "Persisting extension content at index {}: type={}",
-                    index,
+                    _index,
                     content_type
                 );
 
@@ -1468,11 +1479,12 @@ impl DeltaAccumulator {
                     self.assistant_message_id,
                     content_type,
                     content_json,
-                    base + index as i32
+                    next_seq
                 )
                 .execute(&mut *tx)
                 .await
                 .map_err(AppError::database_error)?;
+                next_seq += 1;
             }
         }
 
@@ -2182,6 +2194,32 @@ mod trim_tests {
         assert!(
             text.contains(&needle),
             "placeholder must carry the recall pointer for its own tool_use_id: {text}"
+    /// Recall-roundtrip linkage: a CLEARED older result's placeholder must carry
+    /// the EXACT `tool_use_id` inside a `get_tool_result(...)` hint, so the model
+    /// can recover the full result via the tool_result_mcp recall path (whose own
+    /// retrieval is covered by tests/tool_result_mcp). Without the right id in the
+    /// placeholder the roundtrip is impossible.
+    #[test]
+    fn cleared_placeholder_carries_tool_use_id_for_recall() {
+        let big = "x".repeat(400);
+        let mut msgs: Vec<ChatMessage> = (0..5)
+            .map(|i| tool_result_msg(&format!("tu{i}"), &big))
+            .collect();
+        clear_old_tool_results(&mut msgs, 100, 1);
+
+        // The oldest result (tu0) is cleared and its placeholder names tu0 in a
+        // get_tool_result hint.
+        let txt = match &msgs[0].content[0] {
+            ContentBlock::ToolResult { content, .. } => match &content[0] {
+                ContentBlock::Text { text } => text.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        };
+        assert!(txt.contains("get_tool_result"), "placeholder must point at get_tool_result: {txt}");
+        assert!(
+            txt.contains("tool_use_id=\"tu0\""),
+            "placeholder must carry the cleared result's exact tool_use_id for recall: {txt}"
         );
     }
 }

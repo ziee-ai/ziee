@@ -426,4 +426,37 @@ async fn test_complete_step_invalid_step_id_rejected() {
         .await
         .expect("Request failed");
     assert_eq!(response.status(), 400, "invalid step_id should be rejected");
+/// The per-user completion cardinality cap (MAX_ONBOARDING_COMPLETIONS) is
+/// enforced ATOMICALLY in the repository via `cardinality(...) < $3` inside the
+/// upsert — not just by the handler's pre-check. Drives the real repo fn with a
+/// small cap so the test is cheap: the (cap+1)-th distinct guide is NOT appended.
+#[tokio::test]
+async fn completion_cardinality_cap_is_enforced_in_the_repository() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "onb_cap", &[]).await;
+    let uid = uuid::Uuid::parse_str(&user.user_id).unwrap();
+
+    // Cap = 2: the first two distinct guides land, the third is refused by the
+    // atomic `cardinality < $3` guard (no error — the append simply no-ops).
+    ziee::Repos.onboarding.complete_guide(uid, "guide-a", 2).await.expect("a");
+    ziee::Repos.onboarding.complete_guide(uid, "guide-b", 2).await.expect("b");
+    let progress = ziee::Repos.onboarding.complete_guide(uid, "guide-c", 2).await.expect("c");
+
+    assert_eq!(
+        progress.completed_guide_ids.len(),
+        2,
+        "the cap must block the 3rd completion; got {:?}",
+        progress.completed_guide_ids
+    );
+    assert!(progress.completed_guide_ids.contains(&"guide-a".to_string()));
+    assert!(progress.completed_guide_ids.contains(&"guide-b".to_string()));
+    assert!(
+        !progress.completed_guide_ids.contains(&"guide-c".to_string()),
+        "the over-cap guide must NOT be appended"
+    );
+
+    // Idempotent re-completion of an already-present guide stays at the cap.
+    let again = ziee::Repos.onboarding.complete_guide(uid, "guide-a", 2).await.expect("re-a");
+    assert_eq!(again.completed_guide_ids.len(), 2, "re-completing an existing guide is a no-op");
 }

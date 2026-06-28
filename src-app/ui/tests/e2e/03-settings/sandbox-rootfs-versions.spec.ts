@@ -241,6 +241,28 @@ test.describe('Sandbox rootfs versions admin', () => {
     ).toBeVisible()
   })
 
+  test('the DEFAULT version cannot be deleted (no delete button); non-default can', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await mockVersions(page, () => versionStatus())
+    await mockInstallSse(page)
+    await gotoSandbox(page, baseURL)
+
+    // 0.0.3 is the current default → it carries the default tag and exposes
+    // NEITHER a "Set as Default" nor a Delete control (RootfsVersionGroup gates
+    // both on `!group.isDefault`). This guards the "can't delete the default"
+    // invariant the prior test only half-asserted (it checked Set-as-Default).
+    await expect(dlGroup(page, '0.0.3').getByTestId('default-tag')).toBeVisible()
+    await expect(page.getByTestId('rootfs-delete-0.0.3')).toHaveCount(0)
+
+    // A non-default downloaded version DOES expose the delete control
+    // (positive control so the assertion above isn't vacuously true).
+    await expect(page.getByTestId('rootfs-delete-0.0.5')).toBeVisible()
+  })
+
   test('Download fetches ALL flavors of a version at once', async ({
     page,
     testInfra,

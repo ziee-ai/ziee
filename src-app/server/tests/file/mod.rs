@@ -1795,6 +1795,276 @@ async fn test_upload_unprocessable_pdf_degrades_gracefully() {
     let url = server.api_url("/files/upload");
     let response = reqwest::Client::new()
         .post(&url)
+/// File content-dedup through the REAL upload+attach flow: two uploads of the
+/// SAME bytes get the same checksum, so when both are attached to a project the
+/// `resolve_available_files` resolver (used by the chat replay) collapses them
+/// into ONE entry whose `aka` carries the other filename — the production
+/// behavior the `dedup_by_checksum` unit tests only cover in isolation.
+#[tokio::test]
+async fn dedup_collapses_identical_uploads_in_resolve_available_files() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "dedup_upload",
+        &[
+            "files::upload",
+            "files::read",
+            "projects::create",
+            "projects::edit",
+            "conversations::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Two uploads, IDENTICAL bytes → identical checksum, different filenames.
+    let bytes = b"DEDUP_CONTENT_MARKER identical content for both uploads".to_vec();
+    let upload = |name: &'static str| {
+        let client = client.clone();
+        let token = user.token.clone();
+        let url = server.api_url("/files/upload");
+        let bytes = bytes.clone();
+        async move {
+            let form = multipart::Form::new().part(
+                "file",
+                multipart::Part::bytes(bytes)
+                    .file_name(name)
+                    .mime_str("text/plain")
+                    .unwrap(),
+            );
+            let resp = client
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .multipart(form)
+                .send()
+                .await
+                .expect("upload");
+            assert_eq!(resp.status(), 201, "upload {name} should 201");
+            let v: serde_json::Value = resp.json().await.unwrap();
+            v["id"].as_str().unwrap().to_string()
+        }
+    };
+    let id_a = upload("alpha.txt").await;
+    let id_b = upload("beta.txt").await;
+    assert_ne!(id_a, id_b, "two uploads are two distinct file rows");
+
+    // A project, both files attached.
+    let project: serde_json::Value = client
+        .post(server.api_url("/projects"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "name": "Dedup Project" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let project_id = project["id"].as_str().unwrap().to_string();
+    for fid in [&id_a, &id_b] {
+        let resp = client
+            .post(server.api_url(&format!("/projects/{project_id}/files")))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&serde_json::json!({ "file_id": fid }))
+            .send()
+            .await
+            .unwrap();
+        assert!(resp.status().is_success(), "attach {fid}: {}", resp.status());
+    }
+
+    // A conversation in the project so the resolver unions the project files.
+    let conv: serde_json::Value = client
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "title": "dedup conv", "project_id": project_id }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let conv_id = uuid::Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
+    let user_uuid = uuid::Uuid::parse_str(&user.user_id).unwrap();
+
+    let resolved = ziee::file_available::resolve_available_files(conv_id, user_uuid)
+        .await
+        .expect("resolve_available_files");
+
+    // The two identical-content uploads collapse to ONE available file, with the
+    // second filename surfaced as an alias.
+    let our = resolved
+        .iter()
+        .filter(|f| f.name == "alpha.txt" || f.aka.contains(&"alpha.txt".to_string())
+            || f.name == "beta.txt" || f.aka.contains(&"beta.txt".to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        our.len(),
+        1,
+        "identical-checksum uploads must dedup to one available file; got {our:?}"
+    );
+    let f = our[0];
+    let names: std::collections::HashSet<&str> =
+        std::iter::once(f.name.as_str()).chain(f.aka.iter().map(|s| s.as_str())).collect();
+    assert!(
+        names.contains("alpha.txt") && names.contains("beta.txt"),
+        "both filenames must be reachable on the deduped entry; got name={} aka={:?}",
+        f.name, f.aka
+    );
+}
+
+/// provider_routing dispatch + its defense-in-depth ownership re-validation.
+/// (1) Calling the resolver with a DIFFERENT user's id than the file owner is
+/// refused (FILE_ACCESS_DENIED) even though callers already gate it.
+/// (2) For the owner, a real text file routes to content block(s) (the
+/// extracted-text / base64 dispatch arms), not an empty result.
+#[tokio::test]
+async fn provider_routing_enforces_ownership_and_routes_text_file() {
+    let server = crate::common::TestServer::start().await;
+    let owner = test_helpers::create_user_with_permissions(
+        &server,
+        "routing_owner",
+        &["files::upload", "files::read"],
+    )
+    .await;
+    let other = test_helpers::create_user_with_permissions(
+        &server,
+        "routing_other",
+        &["files::read"],
+    )
+    .await;
+
+    // Upload a text file as the owner.
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(b"ROUTING_CONTENT hello provider routing".to_vec())
+            .file_name("route.txt")
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+    let up: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload")
+        .json()
+        .await
+        .unwrap();
+    let file_id = uuid::Uuid::parse_str(up["id"].as_str().unwrap()).unwrap();
+    let owner_id = uuid::Uuid::parse_str(&owner.user_id).unwrap();
+    let other_id = uuid::Uuid::parse_str(&other.user_id).unwrap();
+
+    let pool = ziee::Repos.pool();
+    // provider_id is unused on the text dispatch arm — a random id is fine.
+    let provider_id = uuid::Uuid::new_v4();
+
+    // (1) Foreign user → forbidden, regardless of provider.
+    let denied =
+        ziee::file_routing::process_file_blocks(pool, file_id, provider_id, "anthropic", other_id)
+            .await;
+    let err = denied.expect_err("a foreign user must be refused");
+    assert!(
+        format!("{err}").to_lowercase().contains("access"),
+        "ownership refusal should surface an access error; got: {err}"
+    );
+
+    // (2) Owner → routes the text file to at least one content block.
+    let blocks =
+        ziee::file_routing::process_file_blocks(pool, file_id, provider_id, "anthropic", owner_id)
+            .await
+            .expect("owner routing should succeed");
+    assert!(
+        !blocks.is_empty(),
+        "a text file must route to at least one content block"
+    );
+}
+
+/// provider_routing IMAGE arm: an image file routed through a non-native
+/// provider (`openai`) takes the base64 image branch of `process_via_base64`
+/// (provider_routing.rs:213-221) → a `ContentBlock::Image{ Base64 }`. The
+/// existing routing test only covered the TEXT arm; the image/base64 arm was
+/// untested.
+#[tokio::test]
+async fn provider_routing_image_file_routes_to_base64_image_block() {
+    use base64::Engine;
+
+    let server = crate::common::TestServer::start().await;
+    let owner = test_helpers::create_user_with_permissions(
+        &server,
+        "routing_img_owner",
+        &["files::upload", "files::read"],
+    )
+    .await;
+
+    // A 1x1 PNG (valid image bytes for the upload pipeline).
+    let png = base64::engine::general_purpose::STANDARD
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+        .unwrap();
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(png)
+            .file_name("dot.png")
+            .mime_str("image/png")
+            .unwrap(),
+    );
+    let up: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload")
+        .json()
+        .await
+        .unwrap();
+    let file_id = uuid::Uuid::parse_str(up["id"].as_str().unwrap()).unwrap();
+    let owner_id = uuid::Uuid::parse_str(&owner.user_id).unwrap();
+
+    let pool = ziee::Repos.pool();
+    // "openai" provider_type → an image is NOT routed to a provider Files API
+    // (anthropic/gemini only), so it falls to the base64 image branch. The
+    // provider_id is unused on that branch — a random id is fine.
+    let blocks = ziee::file_routing::process_file_blocks(
+        pool,
+        file_id,
+        uuid::Uuid::new_v4(),
+        "openai",
+        owner_id,
+    )
+    .await
+    .expect("owner image routing should succeed");
+
+    assert!(
+        matches!(blocks.first(), Some(ai_providers::ContentBlock::Image { .. })),
+        "an image file must route to a ContentBlock::Image; got: {blocks:?}"
+    );
+}
+
+/// GET /files/{id}/versions/{version}/preview (`preview_version`): a pinned
+/// version's preview image is served, and a non-existent version 404s. The
+/// versioning suite covers download_version + text_version but never the
+/// preview_version handler.
+#[tokio::test]
+async fn versioned_preview_endpoint_serves_image_and_404s_unknown_version() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "ver_preview",
+        &["files::upload", "files::read", "files::preview"],
+    )
+    .await;
+
+    // Upload a PDF (the processing pipeline renders preview images for it).
+    let bytes = std::fs::read(test_data_path("test.pdf")).expect("read test.pdf");
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(bytes)
+            .file_name("doc.pdf")
+            .mime_str("application/pdf")
+            .unwrap(),
+    );
+    let up: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form)
         .send()
@@ -1839,4 +2109,35 @@ async fn test_upload_unprocessable_pdf_degrades_gracefully() {
         corrupt_pdf,
         "the stored original is returned byte-for-byte"
     );
+        .expect("upload")
+        .json()
+        .await
+        .unwrap();
+    assert!(up["preview_page_count"].as_i64().unwrap_or(0) >= 1, "PDF must have a preview");
+    let file_id = up["id"].as_str().unwrap().to_string();
+
+    // v1 preview is served as a JPEG image.
+    let ok = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/versions/1/preview")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("preview request");
+    assert_eq!(ok.status(), 200, "v1 preview should be served");
+    assert_eq!(
+        ok.headers().get("content-type").and_then(|v| v.to_str().ok()),
+        Some("image/jpeg"),
+        "preview is a JPEG"
+    );
+    let img = ok.bytes().await.unwrap();
+    assert!(!img.is_empty(), "preview image bytes must be non-empty");
+
+    // A non-existent version → 404 (the version_and_file guard).
+    let missing = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/versions/999/preview")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("preview request");
+    assert_eq!(missing.status(), 404, "unknown version preview must 404");
 }

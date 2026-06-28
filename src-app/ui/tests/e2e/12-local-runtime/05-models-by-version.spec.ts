@@ -206,4 +206,38 @@ test.describe('Local Runtime — version management (needs HUGGINGFACE_API_KEY)'
       timeout: 15000
     })
   })
+
+  test('delete a non-default, unused version with "Also remove cached files" checked', async ({
+    page,
+    testInfra,
+  }) => {
+    // The guard test only covers the REFUSED path (default+in-use) and asserts
+    // the checkbox is visible. The SUCCESSFUL delete with the "Also remove
+    // cached files from disk" Checkbox CHECKED (removeBinary=true) was untested.
+    const token = await getCurrentUserToken(page)
+    // A is default; B is a second, non-default, unused version → deletable.
+    await downloadEngineViaApi(testInfra.baseURL, token, 'mistralrs', SWAP_VERSION_A, true)
+    await downloadEngineViaApi(testInfra.baseURL, token, 'mistralrs', SWAP_VERSION_B, false)
+
+    await gotoRuntimeSettings(page, testInfra.baseURL)
+    await page.getByRole('tab', { name: 'Mistral.rs' }).click()
+    const card = installedCard(page)
+    await expect(card.getByText(SWAP_VERSION_B, { exact: false })).toBeVisible({
+      timeout: 15000,
+    })
+
+    // Open version B's delete Popconfirm, CHECK the cached-files box, confirm.
+    await card.getByRole('button', { name: `Delete version ${SWAP_VERSION_B}` }).click()
+    const popover = page.locator('.ant-popover:visible')
+    await popover
+      .getByRole('checkbox', { name: 'Also remove cached files from disk' })
+      .check()
+    await popover.getByRole('button', { name: 'Delete' }).click()
+
+    // The version row disappears (successful delete), default version A remains.
+    await expect(card.getByText(SWAP_VERSION_B, { exact: false })).toHaveCount(0, {
+      timeout: 15000,
+    })
+    await expect(card.getByText(SWAP_VERSION_A, { exact: false })).toBeVisible()
+  })
 })

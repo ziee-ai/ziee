@@ -92,4 +92,92 @@ test.describe('Local Runtime — model engine settings form', () => {
     await expect(drawer.getByText('Prompt Chunk Size')).toHaveCount(0)
     await expect(drawer.getByText('Max Sequence Length')).toHaveCount(0)
   })
+
+  test('llamacpp persists a COMBINATION of engine fields together', async ({
+    page,
+    testInfra,
+  }) => {
+    // The existing test persists a single field (ctx_size). This exercises a
+    // per-engine field COMBINATION (ctx_size + batch_size) round-tripping in one
+    // save — guarding against only the last-edited field reaching the backend.
+    await loginAsAdmin(page, testInfra.baseURL)
+    const token = await getCurrentUserToken(page)
+    const providerId = await seedLocalProvider(testInfra.baseURL, token)
+    const name = `e2e-lc-combo-${Date.now()}`
+    const modelId = await seedLocalModel(
+      testInfra.baseURL,
+      token,
+      providerId,
+      name,
+      'llamacpp',
+    )
+
+    await page.goto(`${testInfra.baseURL}/settings/llm-providers/${providerId}`)
+    await page.waitForLoadState('load')
+    await openEditModelDrawer(page, `E2E ${name}`)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+
+    // Unique placeholders: ctx_size → "8192", batch_size → "2048".
+    const ctx = drawer.locator('input[placeholder="8192"]')
+    await ctx.fill('4096')
+    await ctx.blur()
+    const batch = drawer.locator('input[placeholder="2048"]')
+    await batch.fill('1024')
+    await batch.blur()
+
+    await drawer
+      .locator('.ant-btn-primary[type="submit"], .ant-btn-primary')
+      .last()
+      .click()
+    await page.getByText('Model updated successfully').waitFor({ timeout: 15000 })
+
+    // BOTH fields must persist (not just the last-edited one).
+    const res = await page.request.get(
+      `${testInfra.baseURL}/api/llm-models/${modelId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    expect(res.ok()).toBeTruthy()
+    const model = await res.json()
+    expect(model.engine_settings?.llamacpp?.ctx_size).toBe(4096)
+    expect(model.engine_settings?.llamacpp?.batch_size).toBe(1024)
+  })
+
+  test('llamacpp persists n_gpu_layers from the GPU Configuration card', async ({
+    page,
+    testInfra,
+  }) => {
+    // ctx_size / batch_size are covered above; the GPU Configuration card's
+    // n_gpu_layers field (placeholder "0", non-unique → addressed via its
+    // "GPU Layers" label) was untested.
+    await loginAsAdmin(page, testInfra.baseURL)
+    const token = await getCurrentUserToken(page)
+    const providerId = await seedLocalProvider(testInfra.baseURL, token)
+    const name = `e2e-lc-gpu-${Date.now()}`
+    const modelId = await seedLocalModel(testInfra.baseURL, token, providerId, name, 'llamacpp')
+
+    await page.goto(`${testInfra.baseURL}/settings/llm-providers/${providerId}`)
+    await page.waitForLoadState('load')
+    await openEditModelDrawer(page, `E2E ${name}`)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+
+    // The n_gpu_layers InputNumber lives in the "GPU Layers" ResponsiveConfigItem
+    // (placeholder "0" is shared, so scope by the label's ancestor Flex).
+    const gpu = drawer
+      .getByText('GPU Layers', { exact: true })
+      .locator('xpath=../..')
+      .getByRole('spinbutton')
+    await gpu.fill('24')
+    await gpu.blur()
+
+    await drawer.locator('.ant-btn-primary[type="submit"], .ant-btn-primary').last().click()
+    await page.getByText('Model updated successfully').waitFor({ timeout: 15000 })
+
+    const res = await page.request.get(
+      `${testInfra.baseURL}/api/llm-models/${modelId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    expect(res.ok()).toBeTruthy()
+    const model = await res.json()
+    expect(model.engine_settings?.llamacpp?.n_gpu_layers).toBe(24)
+  })
 })

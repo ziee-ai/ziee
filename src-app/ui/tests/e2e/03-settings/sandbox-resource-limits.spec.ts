@@ -205,6 +205,12 @@ test.describe('Sandbox resource limits admin settings', () => {
       current: defaults(),
       lastPatch: null,
     }
+  test('Reset reverts an edited field and clears the dirty state', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const state = { current: defaults(), lastPatch: null as Partial<Row> | null }
     await loginAsAdmin(page, baseURL)
     await mockLimits(page, state)
     await gotoResourceLimits(page, baseURL)
@@ -213,6 +219,71 @@ test.describe('Sandbox resource limits admin settings', () => {
     await page.getByLabel('Wall-clock per-exec timeout').fill('300')
     await page.getByLabel('rlimit --nofile').fill('2048')
     await page.getByLabel('Idle-evict timeout').fill('600')
+    const mem = page.getByLabel('memory.max')
+    await expect(mem).toHaveValue('512')
+
+    // Reset is disabled until the form is dirty.
+    const reset = page.getByRole('button', { name: 'Reset' })
+    await expect(reset).toBeDisabled()
+
+    // Edit a field → the form becomes dirty and Reset enables.
+    await mem.fill('256')
+    await expect(reset).toBeEnabled()
+
+    // Reset → the field reverts to the loaded value, Reset disables again,
+    // and no PUT was issued.
+    await reset.click()
+    await expect(mem).toHaveValue('512')
+    await expect(reset).toBeDisabled()
+    expect(state.lastPatch).toBeNull()
+  })
+
+  test('a failed save surfaces an error message', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const state = { current: defaults(), lastPatch: null as Partial<Row> | null }
+    await loginAsAdmin(page, baseURL)
+    await mockLimits(page, state)
+    // Override the PUT to fail (registered after mockLimits → takes precedence).
+    await page.route(/\/api\/code-sandbox\/resource-limits$/, async (route, req) => {
+      if (req.method() === 'PUT') {
+        return route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { message: 'boom' } }),
+        })
+      }
+      return route.fallback()
+    })
+    await gotoResourceLimits(page, baseURL)
+
+    // Make a valid edit, then Save → the 500 surfaces an error message.
+    await page.getByLabel('memory.max').fill('256')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.locator('.ant-message-error').first()).toBeVisible({
+      timeout: 10000,
+    })
+  })
+
+  // The earlier edit→Save test only touches the core cgroup fields; the VM-tuning
+  // half of the form (SandboxResourceLimitsSection.tsx:333-424 — idle-evict,
+  // per-VM concurrency, mac vCPUs/RAM) was never exercised through the UI.
+  test('edits the VM-tuning fields and the Save PATCH carries them', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const state = { current: defaults(), lastPatch: null as Partial<Row> | null }
+    await loginAsAdmin(page, baseURL)
+    await mockLimits(page, state)
+    await gotoResourceLimits(page, baseURL)
+
+    await page.getByLabel('Idle-evict timeout').fill('1200')
+    await page.getByLabel('Concurrent execs per VM / distro').fill('4')
+    await page.getByLabel('vCPUs').fill('8')
+    await page.getByLabel('RAM ceiling').fill('8192')
 
     await page.getByRole('button', { name: 'Save' }).click()
     await expect(page.getByText('Resource limits saved')).toBeVisible({ timeout: 5000 })
@@ -222,5 +293,14 @@ test.describe('Sandbox resource limits admin settings', () => {
     expect(state.lastPatch?.timeout_secs).toBe(300)
     expect(state.lastPatch?.nofile_max).toBe(2048)
     expect(state.lastPatch?.vm_idle_evict_secs).toBe(600)
+    expect(state.lastPatch?.vm_idle_evict_secs).toBe(1200)
+    expect(state.lastPatch?.vm_max_concurrent_execs).toBe(4)
+    expect(state.lastPatch?.mac_vm_vcpus).toBe(8)
+    expect(state.lastPatch?.mac_vm_ram_mib).toBe(8192)
+
+    // Reload → fresh GET → the VM-tuning values persisted in the form.
+    await gotoResourceLimits(page, baseURL)
+    await expect(page.getByLabel('Idle-evict timeout')).toHaveValue('1200')
+    await expect(page.getByLabel('vCPUs')).toHaveValue('8')
   })
 })

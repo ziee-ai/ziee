@@ -268,6 +268,11 @@ test.describe('Citations library', () => {
     const state: State = {
       entries: [entry({ title: 'Doomed paper', citation_key: 'doomed2021' })],
     }
+  test('shows the empty state when the library has no citations', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    // library.spec.ts always seeded entries; the no-citations branch
+    // (CitationsSettingsPage Empty + disabled Verify-all/Export) was untested.
+    const state: State = { entries: [] }
     await loginAsAdmin(page, baseURL)
     await mockApi(page, state)
     await gotoCitations(page, baseURL)
@@ -283,5 +288,12 @@ test.describe('Citations library', () => {
 
     // The card is removed (DELETE fired → state empty → refetch shows none).
     await expect(page.getByText('Doomed paper')).toHaveCount(0, { timeout: 10000 })
+    await expect(
+      page.getByText('No citations yet — import some or run a literature search.'),
+    ).toBeVisible({ timeout: 15000 })
+    // The reference counter reads zero and the entry-gated actions are disabled.
+    await expect(page.getByText('0 reference(s)')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Verify all' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Export' })).toBeDisabled()
   })
 })

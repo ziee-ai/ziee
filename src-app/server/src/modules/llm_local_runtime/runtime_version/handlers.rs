@@ -465,11 +465,16 @@ pub async fn delete_runtime_version(
 
     let remove_binary = params.remove_binary.unwrap_or(false);
 
-    // Get version info before deletion for event
-    let version_record = crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
+    // Get version info before deletion for event. If it's already gone (e.g. a
+    // concurrent DELETE won the race), DELETE is idempotent — return 204 rather
+    // than a spurious 404.
+    let version_record = match crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
         .await
         .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
-        .ok_or_else(|| AppError::not_found("Runtime version"))?;
+    {
+        Some(v) => v,
+        None => return Ok((StatusCode::NO_CONTENT, ())),
+    };
 
     // In-use guard. The runtime_version FKs are ON DELETE SET NULL, so the DB
     // would silently orphan dependents (breaking auto-start) rather than
@@ -540,17 +545,19 @@ pub async fn delete_runtime_version(
         ));
     }
 
-    binary_manager
-        .delete_version(version_id, remove_binary)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete runtime version: {}", e);
-            if e.to_string().contains("not found") {
-                AppError::not_found("Runtime version")
-            } else {
-                AppError::internal_error(format!("Failed to delete runtime version: {}", e))
-            }
-        })?;
+    if let Err(e) = binary_manager.delete_version(version_id, remove_binary).await {
+        // A concurrent DELETE removed the row between our in-use check and here.
+        // DELETE is idempotent: treat "already gone" as success (204).
+        if e.to_string().contains("not found") {
+            return Ok((StatusCode::NO_CONTENT, ()));
+        }
+        tracing::error!("Failed to delete runtime version: {}", e);
+        return Err(AppError::internal_error(format!(
+            "Failed to delete runtime version: {}",
+            e
+        ))
+        .into());
+    }
 
     // Emit event for cache invalidation
     event_bus.emit_async(

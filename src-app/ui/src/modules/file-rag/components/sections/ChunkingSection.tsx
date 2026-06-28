@@ -3,6 +3,7 @@ import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Spin, Typography
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -47,24 +48,14 @@ export function ChunkingSection() {
       </Card>
     )
   }
-  if (!settings) {
+  if (!settings)
     return (
-      <Card title="Chunking">
-        {error ? (
-          <Alert
-            type="error"
-            showIcon
-            title="Failed to load chunking settings"
-            description={error}
-          />
-        ) : (
-          <div className="flex justify-center py-16">
-            <Spin />
-          </div>
-        )}
-      </Card>
+      <SettingsSectionStatus
+        title="Chunking"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
     )
-  }
 
   const handleSubmit = async (values: FormValues) => {
     if (values.chunk_overlap_chars >= values.chunk_chars) {

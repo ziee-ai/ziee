@@ -183,4 +183,42 @@ mod tests {
         assert!(json.contains("<redacted>"));
         assert!(json.contains("OpenAI"));
     }
+
+    // encrypt_secret's two pre-DB branches — the encryption-FAILURE path that
+    // repository write paths (e.g. llm_repository) propagate as
+    // "secret encryption failed", and the encryption-DISABLED (no key) path.
+    // Both return before touching the pool, so a lazy pool suffices.
+    fn lazy_pool() -> PgPool {
+        sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgresql://postgres:password@127.0.0.1:54321/unused")
+            .expect("lazy pool")
+    }
+
+    #[tokio::test]
+    async fn encrypt_secret_errors_when_key_is_too_short() {
+        let pool = lazy_pool();
+        // A storage key shorter than 32 chars is a misconfiguration → Err. This
+        // is exactly the failure the repository create/update paths surface as
+        // "secret encryption failed" instead of silently storing plaintext.
+        let err = encrypt_secret(&pool, "my-secret", Some("too-short-key"))
+            .await
+            .expect_err("a sub-32-char storage key must fail encryption");
+        assert!(
+            err.to_string().to_lowercase().contains("storage key")
+                || err.to_string().to_lowercase().contains("32"),
+            "error must cite the bad storage key; got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn encrypt_secret_returns_none_when_encryption_disabled() {
+        let pool = lazy_pool();
+        // No storage key configured → encryption is disabled, caller stores the
+        // value as plaintext JSON (Ok(None)), never an error.
+        let out = encrypt_secret(&pool, "my-secret", None)
+            .await
+            .expect("disabled encryption must not error");
+        assert!(out.is_none(), "no key → Ok(None) (plaintext fallback)");
+    }
 }

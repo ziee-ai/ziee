@@ -989,6 +989,25 @@ async fn test_orphaned_downloading_row_survives_restart_unreconciled() {
         &server,
         "dl_orphan_restart",
         &["llm_models::downloads_read"],
+// =====================================================
+// Cancel download — real mid-flight cancellation (downloading → cancelled)
+// =====================================================
+
+/// REAL-PATH cancellation of an IN-FLIGHT download: the E2E mocks the list +
+/// cancel endpoints, and the only backend cancel test exercises the
+/// cancel-AFTER-complete (400) path. Here a genuine `downloading` row is seeded
+/// via SQL and POSTed to the real /cancel endpoint, asserting 204 + the row
+/// transitions to `cancelled` (the `can_cancel()` → mark-cancelled handler path,
+/// downloads.rs:189-281).
+#[tokio::test]
+async fn test_cancel_active_download_marks_cancelled() {
+    use uuid::Uuid;
+
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "dl_cancel_active",
+        &["llm_models::downloads_cancel", "llm_models::downloads_read"],
     )
     .await;
 
@@ -1003,6 +1022,10 @@ async fn test_orphaned_downloading_row_survives_restart_unreconciled() {
     sqlx::query(
         "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in)
          VALUES ($1, 'Orphan Restart Provider', 'huggingface', true, false)",
+    let provider_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in)
+         VALUES ($1, 'DL Cancel Provider', 'huggingface', true, false)",
     )
     .bind(provider_id)
     .execute(&pool)
@@ -1013,6 +1036,7 @@ async fn test_orphaned_downloading_row_survives_restart_unreconciled() {
     sqlx::query(
         "INSERT INTO llm_repositories (id, name, url, auth_type, enabled, built_in)
          VALUES ($1, 'Orphan Restart Repo', 'https://huggingface.co', 'none', true, false)",
+         VALUES ($1, 'DL Cancel Repo', 'https://huggingface.co', 'none', true, false)",
     )
     .bind(repository_id)
     .execute(&pool)
@@ -1071,4 +1095,24 @@ async fn test_orphaned_downloading_row_survives_restart_unreconciled() {
         serde_json::json!("downloading"),
         "single-fetch confirms the persisted non-terminal status survives restart"
     );
+    .expect("insert downloading download");
+
+    // Real cancel endpoint → 204 No Content.
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-models/downloads/{download_id}/cancel")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("cancel request failed");
+    assert_eq!(resp.status(), 204, "cancelling an in-flight download must be 204");
+
+    // The row transitioned to `cancelled` in the DB (the real handler updated it).
+    let status: String =
+        sqlx::query_scalar("SELECT status::text FROM download_instances WHERE id = $1")
+            .bind(download_id)
+            .fetch_one(&pool)
+            .await
+            .expect("row still present pre-reap");
+    pool.close().await;
+    assert_eq!(status, "cancelled", "the in-flight download must be marked cancelled");
 }

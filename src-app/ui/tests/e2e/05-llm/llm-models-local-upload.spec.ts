@@ -11,6 +11,7 @@ import {
   openUploadDrawer,
   uploadModelFolder,
   assertModelExists,
+  assertModelNotExists,
   deleteModel,
 } from './helpers/model-helpers'
 import { submitUploadForm } from './helpers/form-helpers'
@@ -79,6 +80,37 @@ async function createTestModelFolder(format: 'safetensors' | 'gguf' | 'pytorch')
     fs.writeFileSync(path.join(tempDir, file.name), file.content)
   }
 
+  return tempDir
+}
+
+/**
+ * A model folder with a deliberately LARGE weight file so the upload takes long
+ * enough to be cancelled mid-transfer (the standard 2KB fixture completes in
+ * <1s, which is why mid-transfer cancel was previously untestable). `sizeMb`
+ * MB of weight chunked through the multipart upload gives a wide cancel window.
+ */
+function createLargeTestModelFolder(sizeMb: number): string {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-model-large-'))
+  const validJsonContent = JSON.stringify({
+    model_type: 'test',
+    architectures: ['TestModel'],
+    hidden_size: 4,
+    num_attention_heads: 1,
+    num_hidden_layers: 1,
+  })
+  const validTokenizerJson = JSON.stringify({
+    version: '1.0',
+    truncation: null,
+    padding: null,
+    added_tokens: [],
+    model: { type: 'BPE', vocab: { '<unk>': 0 }, merges: [] },
+  })
+  fs.writeFileSync(
+    path.join(tempDir, 'model.safetensors'),
+    Buffer.alloc(sizeMb * 1024 * 1024, 'A'),
+  )
+  fs.writeFileSync(path.join(tempDir, 'config.json'), validJsonContent)
+  fs.writeFileSync(path.join(tempDir, 'tokenizer.json'), validTokenizerJson)
   return tempDir
 }
 
@@ -556,6 +588,42 @@ test.describe('LLM Models - Local Upload - Progress Tracking', () => {
 
     // Assert: Model appears in list
     await assertModelExists(page, 'Test Upload Progress')
+  })
+
+  test('cancels a real in-flight upload via "Cancel Upload" and creates no model', async ({
+    page,
+  }) => {
+    // A large weight file keeps the transfer in-flight long enough to cancel.
+    testModelFolder = createLargeTestModelFolder(120)
+    const modelName = 'Test Cancel Mid Transfer'
+
+    await openUploadDrawer(page)
+    await page.fill('#llm-model-upload_display_name', modelName)
+    await uploadModelFolder(page, testModelFolder)
+    await page.waitForTimeout(500)
+
+    await submitUploadForm(page)
+
+    // The Upload Progress card appears while transferring; its "Cancel Upload"
+    // link aborts the in-flight request mid-transfer.
+    const cancelUpload = page.getByRole('button', { name: 'Cancel Upload' })
+    await expect(cancelUpload).toBeVisible({ timeout: 15000 })
+    await cancelUpload.click()
+
+    // The upload must NOT report success and the model must NOT be created.
+    await expect(page.locator('text=Model uploaded successfully')).toHaveCount(0)
+    // The uploading state clears (the progress card is gone).
+    await expect(cancelUpload).toBeHidden({ timeout: 15000 })
+
+    // Close the drawer (now allowed — no longer uploading) and confirm the
+    // model never landed in the list.
+    await page
+      .locator('.ant-drawer.ant-drawer-open')
+      .last()
+      .locator('button:has-text("Cancel"), button:has-text("Close")')
+      .first()
+      .click()
+    await assertModelNotExists(page, modelName)
   })
 
   test('should prevent drawer from closing during upload', async ({ page }) => {

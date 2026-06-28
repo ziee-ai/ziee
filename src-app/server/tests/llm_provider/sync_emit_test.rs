@@ -152,6 +152,65 @@ async fn provider_create_and_update_emit_llm_provider_to_read_holder_and_user_vi
     no_read_probe.expect_silence(SILENCE_WINDOW).await;
 }
 
+/// DELETE /llm-providers/{id} must dual-emit llm_provider/delete (to
+/// llm_providers::read holders) AND user_llm_provider/delete (to
+/// user_llm_providers::read holders) — the create/update test covered both
+/// dual-emits but not the delete action.
+#[tokio::test]
+async fn provider_delete_dual_emits_llm_provider_and_user_view_delete() {
+    let server = crate::common::TestServer::start().await;
+
+    let actor = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "del_actor",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::delete",
+        ],
+    )
+    .await;
+    let user_view = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "del_user_view",
+        &["user_llm_providers::read"],
+    )
+    .await;
+
+    let mut actor_probe = SyncProbe::open(&server, &actor.token).await;
+    let mut user_view_probe = SyncProbe::open(&server, &user_view.token).await;
+
+    let provider = create_custom_provider(&server, &actor.token, "Delete Me Provider").await;
+    let id = provider["id"].as_str().unwrap().to_string();
+    // Drain the create frames so the delete assertions can't race them.
+    actor_probe
+        .expect_event("llm_provider", "create", EVENT_TIMEOUT)
+        .await;
+    user_view_probe
+        .expect_event("user_llm_provider", "create", EVENT_TIMEOUT)
+        .await;
+
+    let del = reqwest::Client::new()
+        .delete(server.api_url(&format!("/llm-providers/{}", id)))
+        .header("Authorization", format!("Bearer {}", actor.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(del.status().is_success(), "provider delete should succeed");
+
+    let deleted = actor_probe
+        .expect_event("llm_provider", "delete", EVENT_TIMEOUT)
+        .await;
+    assert_eq!(deleted.id, id, "llm_provider/delete must carry the provider id");
+    let user_deleted = user_view_probe
+        .expect_event("user_llm_provider", "delete", EVENT_TIMEOUT)
+        .await;
+    assert_eq!(
+        user_deleted.id, id,
+        "user_llm_provider/delete must carry the provider id"
+    );
+}
+
 // =====================================================
 // api_key — Owner audience
 // =====================================================

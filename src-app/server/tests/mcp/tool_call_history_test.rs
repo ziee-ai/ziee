@@ -704,3 +704,49 @@ async fn create_tool_capable_model(
     crate::chat::helpers::ensure_user_has_model_access(server, user_id, &model).await;
     model
 }
+
+/// Recording for a BUILT-IN MCP server (`is_built_in=true`). All prior history
+/// tests use an external user server (is_built_in=false); the built-in branch
+/// of the `McpSession::call_tool` chokepoint was untested. Drives the
+/// deterministic `files.ziee.internal` built-in via the same REST tool-call
+/// endpoint (admin-bypass user) and asserts the recorded row carries
+/// is_built_in=true. (The list_files call itself may complete or fail depending
+/// on conversation scope — recording fires either way, which is the point.)
+#[tokio::test]
+async fn builtin_files_mcp_tool_call_records_is_built_in_true() {
+    let server = crate::common::TestServer::start().await;
+    // mcp_servers_admin::read flips `has_admin_access`, bypassing per-server
+    // access control so the built-in is REST-callable; mcp_servers::read passes
+    // the route extractor.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "builtin_rec_admin",
+        &["mcp_servers::read", "mcp_servers_admin::read"],
+    )
+    .await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+
+    // Deterministic built-in server id (files_mcp/mod.rs:35).
+    let files_mcp_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, b"files.ziee.internal");
+
+    let status = call_tool(
+        &server,
+        &user.token,
+        &files_mcp_id.to_string(),
+        "list_files",
+        json!({}),
+    )
+    .await;
+    // Whatever the tool's own outcome, the call must have reached the recording
+    // chokepoint (not a 403/404 access failure).
+    assert_ne!(status, reqwest::StatusCode::FORBIDDEN, "built-in must be callable by admin");
+    assert_ne!(status, reqwest::StatusCode::NOT_FOUND, "built-in server must exist");
+
+    let pool = pool(&server).await;
+    let row = wait_for_latest_row(&pool, user_id).await;
+    assert!(
+        row.get::<bool, _>("is_built_in"),
+        "a built-in MCP tool call must record is_built_in=true"
+    );
+    assert_eq!(row.get::<String, _>("tool_name"), "list_files");
+}

@@ -191,4 +191,53 @@ async fn duplicate_requires_all_of_a_two_permission_and_tuple() {
         StatusCode::OK,
         "holding BOTH projects::create AND projects::read must satisfy the gate"
     );
+async fn attach_conversation_requires_edit_permissions() {
+    // POST /projects/{id}/conversations/{conv_id} is gated on
+    // (ProjectsEdit, ConversationsEdit). A user holding neither (the perm
+    // extractor runs before the handler, so concrete ids aren't needed) is 403.
+    let server = crate::common::TestServer::start().await;
+    let reader = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "attach_reader",
+        &["projects::read"],
+    )
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!(
+            "/projects/{}/conversations/{}",
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4()
+        )))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn detach_conversation_requires_edit_permissions() {
+    // DELETE /projects/{id}/conversations/{conv_id} is gated the same way.
+    let server = crate::common::TestServer::start().await;
+    let reader = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "detach_reader",
+        &["projects::read"],
+    )
+    .await;
+
+    let resp = reqwest::Client::new()
+        .delete(server.api_url(&format!(
+            "/projects/{}/conversations/{}",
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4()
+        )))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }

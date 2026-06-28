@@ -1670,4 +1670,52 @@ async fn test_group_crud_lifecycle_through_real_handlers() {
         .await
         .expect("get after delete failed");
     assert_eq!(after.status(), 404, "deleted group must be gone (404)");
+/// Cross-subsystem: a user created through the ADMIN handler (POST /api/users,
+/// user/handlers/user.rs:183-191) is auto-assigned to the default group, so they
+/// inherit the deployment's baseline permissions without an explicit grant.
+#[tokio::test]
+async fn test_admin_created_user_is_auto_assigned_to_default_group() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "dg_admin",
+        &["users::create", "users::read"],
+    )
+    .await;
+
+    // Admin creates a fresh user via the real handler.
+    let uname = format!("dguser_{}", &Uuid::new_v4().to_string()[..8]);
+    let res = reqwest::Client::new()
+        .post(server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({
+            "username": uname,
+            "email": format!("{uname}@ex.com"),
+            "password": "password123",
+        }))
+        .send()
+        .await
+        .expect("create user");
+    assert_eq!(res.status(), 201, "admin user-create should 201");
+    let body: serde_json::Value = res.json().await.unwrap();
+    let new_user_id = Uuid::parse_str(body["user"]["id"].as_str().unwrap()).unwrap();
+
+    // The new user is a member of the default group (the auto-assignment).
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test DB");
+    let in_default: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM user_groups ug
+            JOIN groups g ON g.id = ug.group_id
+            WHERE ug.user_id = $1 AND g.is_default = true
+        )",
+    )
+    .bind(new_user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(in_default, "admin-created user must be auto-assigned to the default group");
 }

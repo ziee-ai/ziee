@@ -157,6 +157,7 @@ mod tests {
     use super::*;
 
     fn req(username: &str, email: &str, password: &str, display: Option<&str>) -> SetupAdminRequest {
+    fn req(username: &str, email: &str, password: &str, display_name: Option<&str>) -> SetupAdminRequest {
         SetupAdminRequest {
             username: username.to_string(),
             email: email.to_string(),
@@ -227,5 +228,44 @@ mod tests {
     fn is_strong_password_enforces_min_length() {
         assert!(!is_strong_password("short"));
         assert!(is_strong_password("longenough"));
+            display_name: display_name.map(String::from),
+        }
+    }
+
+    const GOOD_PW: &str = "ComplexPass1!";
+
+    #[test]
+    fn validate_setup_accepts_a_well_formed_request() {
+        assert!(validate_setup_request(&req("rootadmin", "root@example.com", GOOD_PW, Some("Root"))).is_ok());
+    }
+
+    #[test]
+    fn validate_setup_rejects_bad_usernames() {
+        // Too short / too long.
+        assert!(validate_setup_request(&req("ab", "a@b.co", GOOD_PW, None)).is_err());
+        assert!(validate_setup_request(&req(&"x".repeat(101), "a@b.co", GOOD_PW, None)).is_err());
+        // Whitespace + control chars (incl. RTL override U+202E spoofing).
+        assert!(validate_setup_request(&req("root admin", "a@b.co", GOOD_PW, None)).is_err());
+        assert!(validate_setup_request(&req("root\u{202E}admin", "a@b.co", GOOD_PW, None)).is_err());
+    }
+
+    #[test]
+    fn validate_setup_rejects_long_display_name_and_bad_email_and_weak_password() {
+        assert!(validate_setup_request(&req("rootadmin", "a@b.co", GOOD_PW, Some(&"d".repeat(201)))).is_err());
+        assert!(validate_setup_request(&req("rootadmin", "not-an-email", GOOD_PW, None)).is_err());
+        assert!(validate_setup_request(&req("rootadmin", "a@b.co", "weak", None)).is_err());
+    }
+
+    #[test]
+    fn is_valid_email_edge_cases() {
+        assert!(is_valid_email("user@example.com"));
+        assert!(!is_valid_email("noatsign"));
+        assert!(!is_valid_email("a@@b.com"));
+        assert!(!is_valid_email("a@.com")); // leading dot in domain
+        assert!(!is_valid_email("a@b..com")); // consecutive dots
+        assert!(!is_valid_email("a@bcom")); // no dot in domain
+        assert!(!is_valid_email("a@b.c")); // TLD < 2 chars
+        assert!(!is_valid_email("a b@c.com")); // whitespace
+        assert!(!is_valid_email("a@-b.com")); // label starts with hyphen
     }
 }
