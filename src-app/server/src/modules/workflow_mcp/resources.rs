@@ -285,8 +285,16 @@ pub async fn resources_read(
         ));
     }
 
-    // Text mimes return as text; everything else base64.
-    let content = if is_text_mime(&mime) {
+    let content = encode_resource_content(uri, bytes, &mime);
+    Ok(json!({ "contents": [content] }))
+}
+
+/// Encode a resource's bytes for an MCP `resources/read` content entry: text
+/// mimes carrying valid UTF-8 return a `text` field; binary mimes (or text mimes
+/// whose bytes aren't valid UTF-8) return a base64 `blob`. Extracted as a pure
+/// fn so the binary-vs-text encoding is unit-testable without a real run.
+fn encode_resource_content(uri: &str, bytes: Vec<u8>, mime: &str) -> Value {
+    if is_text_mime(mime) {
         match String::from_utf8(bytes) {
             Ok(text) => json!({ "uri": uri, "mimeType": mime, "text": text }),
             Err(e) => {
@@ -297,9 +305,7 @@ pub async fn resources_read(
     } else {
         let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
         json!({ "uri": uri, "mimeType": mime, "blob": b64 })
-    };
-
-    Ok(json!({ "contents": [content] }))
+    }
 }
 
 // ── on-disk readers ───────────────────────────────────────────────────
@@ -684,6 +690,34 @@ mod tests {
         assert!(is_text_mime("application/json"));
         assert!(!is_text_mime("image/png"));
         assert!(!is_text_mime("application/octet-stream"));
+    }
+
+    // audit id all-ea63e06d3326 — binary output read in resources/read returns a
+    // base64 `blob` (vs `text` for UTF-8 text mimes). The blob-emitting branch
+    // was untested; this pins all three cases of the encoding decision.
+    #[test]
+    fn binary_output_encodes_as_base64_blob() {
+        use base64::Engine;
+        // (a) binary mime → blob (PNG magic bytes).
+        let png = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        let v = encode_resource_content("ziee://r/outputs/img", png.clone(), "image/png");
+        assert!(v["text"].is_null(), "binary must not use the text channel: {v}");
+        assert_eq!(
+            v["blob"].as_str().unwrap(),
+            base64::engine::general_purpose::STANDARD.encode(&png),
+            "binary bytes returned as base64 blob"
+        );
+        assert_eq!(v["mimeType"], "image/png");
+
+        // (b) text mime + valid UTF-8 → text channel.
+        let t = encode_resource_content("ziee://r/outputs/md", b"# hi".to_vec(), "text/markdown");
+        assert_eq!(t["text"].as_str().unwrap(), "# hi");
+        assert!(t["blob"].is_null());
+
+        // (c) text mime but NON-UTF8 bytes → falls back to blob.
+        let bad = encode_resource_content("ziee://r/outputs/x", vec![0xff, 0xfe, 0x00], "text/plain");
+        assert!(bad["text"].is_null(), "invalid UTF-8 must fall back to blob: {bad}");
+        assert!(bad["blob"].is_string());
     }
 
     // ── SEC-1: path traversal in step_id / filename / output name ─────
