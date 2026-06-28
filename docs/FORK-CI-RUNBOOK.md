@@ -130,8 +130,11 @@ Once a release ships:
 
 ## See also
 
-- `src-app/llm-runtime/PRE-STAGE-RUNBOOK.md` — operator manual for
-  when fork CI hasn't shipped yet.
-- `src-app/llm-runtime/known_revisions.toml` — versions catalog
-  (auto-updated by the receiver).
 - `.github/workflows/code_sandbox.yml` — the exact pattern to copy.
+
+> Note: earlier revisions of this runbook pointed at
+> `src-app/llm-runtime/PRE-STAGE-RUNBOOK.md` and
+> `src-app/llm-runtime/known_revisions.toml`. The standalone `llm-runtime`
+> crate was folded into `server` and the file-based `known_revisions.toml`
+> resolver was replaced by the DB-backed version manager
+> (`code_sandbox/version_manager.rs`), so those paths no longer exist.
