@@ -473,6 +473,52 @@ async fn test_convert_document_empty_markdown_errors() {
     );
 }
 
+// audit id all-8ec3cefdf061 — the convert_document real render+save path was
+// flagged untested, but it is in fact covered downstream by
+// test_convert_document_persists_file_and_emits_saved_resource_link (below).
+// We additionally pin that the SAVED bytes are a genuine PDF (the existing test
+// only proves the file is fetchable metadata, not that pandoc actually produced
+// a valid PDF) by downloading and checking the `%PDF` magic.
+#[tokio::test]
+async fn test_convert_document_saved_bytes_are_a_real_pdf() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_convert_pdf").await;
+    let conv_uuid = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "convert_document",
+        json!({ "markdown": "# Title\n\nHello **world**.\n\n- one\n- two\n", "filename": "report" }),
+    )
+    .await;
+
+    assert!(
+        body["error"].is_null(),
+        "convert_document should succeed (real pandoc+typst present): {body}"
+    );
+    let file_id = body["result"]["structuredContent"]["file_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("convert returns a saved file_id: {body}"));
+
+    // The persisted file is downloadable and its bytes carry the %PDF magic —
+    // proving the pandoc subprocess produced a real PDF, not a placeholder.
+    let dl = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/download")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("download");
+    assert_eq!(dl.status(), 200, "rendered PDF must be downloadable");
+    let bytes = dl.bytes().await.unwrap();
+    assert!(
+        bytes.starts_with(b"%PDF"),
+        "downloaded bytes must carry the %PDF magic (len={})",
+        bytes.len()
+    );
+}
+
 /// (4a) `grep_files` returns matching lines with file/page/line references.
 #[tokio::test]
 async fn test_grep_files_hits() {
