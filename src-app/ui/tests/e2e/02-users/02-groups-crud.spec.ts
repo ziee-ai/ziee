@@ -237,6 +237,40 @@ test.describe('User Groups CRUD Operations', () => {
     await assertGroupNotExists(page, groupData.name)
   })
 
+  test('cancelling the delete popconfirm keeps the group', async ({ page }) => {
+    // Create a group to (not) delete.
+    await openCreateGroupDrawer(page)
+    const groupData = {
+      name: `CancelDel${Date.now()}`,
+      description: 'Should survive a cancelled delete',
+    }
+    await createGroup(page, groupData)
+    await assertGroupExists(page, groupData.name)
+
+    // Open the delete popconfirm, then CANCEL instead of confirming.
+    const deleteButton = page
+      .getByRole('button', {
+        name: new RegExp(`delete.*${groupData.name}`, 'i'),
+      })
+      .or(
+        page
+          .locator(`text="${groupData.name}"`)
+          .first()
+          .locator('../..')
+          .getByRole('button', { name: /delete/i }),
+      )
+    await deleteButton.first().click()
+
+    const popconfirm = page.locator('.ant-popconfirm:visible')
+    await expect(popconfirm).toBeVisible()
+    // The cancel/secondary button (NOT the primary confirm).
+    await popconfirm.locator('.ant-btn:not(.ant-btn-primary)').first().click()
+
+    // The popconfirm closes and the group is still present (no deletion).
+    await expect(page.locator('.ant-popconfirm:visible')).toHaveCount(0)
+    await assertGroupExists(page, groupData.name)
+  })
+
   test('should show system tag for system groups', async ({ page }) => {
     // Check if there are any system groups in the list
     const systemTag = page.locator('.ant-tag', { hasText: /system/i }).first()
