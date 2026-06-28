@@ -16,9 +16,35 @@
  * `social-login-navikt.spec.ts` (parity test against real navikt).
  */
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 const ADD_PROVIDER = 'Add authentication provider'
+
+async function createProvider(
+  apiURL: string,
+  token: string,
+  name: string,
+  providerType: 'oidc' | 'oauth2',
+) {
+  const res = await fetch(`${apiURL}/api/admin/auth-providers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      name,
+      provider_type: providerType,
+      enabled: false,
+      config: {
+        client_id: 'x',
+        client_secret: 'y',
+        issuer_url: 'https://idp.invalid/oidc',
+        authorization_url: 'https://idp.invalid/authorize',
+        token_url: 'https://idp.invalid/token',
+        scopes: ['openid'],
+      },
+    }),
+  })
+  if (!res.ok) throw new Error(`create ${name}: ${res.status} ${await res.text()}`)
+}
 
 test.describe('Auth providers — admin CRUD UI', () => {
   test('pre-seeded providers (google/microsoft/apple) show as disabled', async ({
@@ -276,5 +302,26 @@ test.describe('Auth providers — admin CRUD UI', () => {
     await expect(page.getByRole('button', { name: /^Create$/ })).toBeVisible()
 
     await page.getByRole('button', { name: /^Cancel$/ }).click()
+  })
+
+  // audit id all-e452a4f689b8 — when EVERY provider template is already present
+  // the "Add provider" button is disabled with an "All providers taken" tooltip
+  // (AddProviderMenu.tsx:34-35). google/microsoft/apple are seeded; creating the
+  // two generic-named providers takes the remaining templates → all 5 taken.
+  test('Add provider button is disabled when every template is taken', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const token = await getAdminToken(apiURL)
+    // Occupy the two generic template keys (google/microsoft/apple are seeded).
+    await createProvider(apiURL, token, 'oidc-generic', 'oidc')
+    await createProvider(apiURL, token, 'oauth2-generic', 'oauth2')
+
+    await page.goto(`${baseURL}/settings/auth-providers`)
+    const addBtn = page.getByRole('button', { name: ADD_PROVIDER })
+    await expect(addBtn).toBeVisible({ timeout: 30000 })
+    await expect(addBtn).toBeDisabled()
   })
 })
