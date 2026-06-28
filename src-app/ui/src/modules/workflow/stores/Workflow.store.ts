@@ -50,6 +50,10 @@ interface WorkflowState {
   getWorkflow: (id: string) => Promise<Workflow>
 }
 
+// Tracks a reload requested while one is already in flight (singleton store,
+// so a module-scoped flag is sufficient and avoids polluting render state).
+let pendingReload = false
+
 export const useWorkflowStore = create<WorkflowState>()(
   subscribeWithSelector(
     immer(
@@ -74,7 +78,14 @@ export const useWorkflowStore = create<WorkflowState>()(
 
         loadWorkflows: async () => {
           if (!hasPermissionNow(Permissions.WorkflowsRead)) return
-          if (get().loading) return
+          // A sync event (or reconnect) can fire while a load is already in
+          // flight. Rather than silently dropping it — which would leave the
+          // list stale until the *next* event — remember that a reload was
+          // requested and run one more pass after the current load settles.
+          if (get().loading) {
+            pendingReload = true
+            return
+          }
           try {
             set(draft => {
               draft.loading = true
@@ -94,6 +105,11 @@ export const useWorkflowStore = create<WorkflowState>()(
                   ? error.message
                   : 'Failed to load workflows'
             })
+          } finally {
+            if (pendingReload) {
+              pendingReload = false
+              void get().loadWorkflows()
+            }
           }
         },
 
