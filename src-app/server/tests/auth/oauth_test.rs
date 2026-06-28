@@ -1164,3 +1164,68 @@ async fn test_oauth_token_exchange_failure_is_handled() {
         status
     );
 }
+
+// audit id all-1c6ce6d8c014 — ensure_unique_username (handlers.rs:1350) dedups a
+// derived username against existing rows by appending 2..=999, returning 500
+// only if all are taken. Auto-provisioning covers the no-collision path; nothing
+// exercised the COLLISION → suffix branch (the loop's actual behavior; the
+// 999-exhaustion 500 is a degenerate tail that would need ~1000 colliding
+// users). Here a pre-existing local user OCCUPIES the username the OAuth claims
+// derive, so the auto-provisioned SSO user must get the deduped "<name>2".
+#[tokio::test]
+async fn test_oauth_auto_provision_dedups_colliding_username() {
+    let test_server = crate::common::TestServer::start().await;
+    let oauth_server = OAuthMockServer::start()
+        .await
+        .expect("Failed to start OAuth mock server");
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+    let provider_id = seed_oidc_provider(&pool, "test-oauth", &oauth_server, json!({})).await;
+
+    // Pre-occupy the username "takenname" with a LOCAL user whose email differs
+    // from the OAuth claim (so the flow takes auto-provision, not First-Broker-
+    // Link on an email collision).
+    sqlx::query!(
+        r#"INSERT INTO users (id, username, email, is_active, is_admin, created_at, updated_at)
+           VALUES ($1, 'takenname', 'taken-local@example.com', true, false, NOW(), NOW())"#,
+        uuid::Uuid::new_v4(),
+    )
+    .execute(&pool)
+    .await
+    .expect("seed colliding local user");
+
+    let (status, _location) = drive_oauth_flow(
+        &test_server,
+        "test-oauth",
+        "dedup-external-sub",
+        json!({
+            "email": "dedup-newcomer@example.com",
+            "email_verified": true,
+            "preferred_username": "takenname",
+            "name": "Dedup Newcomer"
+        }),
+        None,
+    )
+    .await;
+    assert!(status.is_redirection(), "auto-provision should redirect, got {status}");
+
+    // The newly auto-provisioned SSO user must carry a DEDUPED username, never
+    // the already-taken "takenname".
+    let row = sqlx::query!(
+        r#"SELECT u.username
+           FROM users u JOIN user_auth_links l ON l.user_id = u.id
+           WHERE l.provider_id = $1 AND l.external_id = $2"#,
+        provider_id,
+        "dedup-external-sub",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("auto-provisioned user must exist");
+    assert_ne!(row.username, "takenname", "collision must be deduped, not reused");
+    assert_eq!(
+        row.username, "takenname2",
+        "ensure_unique_username must append the first free suffix; got {}",
+        row.username
+    );
+}
