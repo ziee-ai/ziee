@@ -160,4 +160,90 @@ test.describe('Auth providers — admin CRUD UI', () => {
     // Cleanup: close without saving.
     await page.getByRole('button', { name: /^Cancel$/ }).click()
   })
+
+  // audit id c922bb2133d9 — the delete Popconfirm's cascade warning
+  // ("Linked users lose this sign-in method; their accounts remain.",
+  // AuthProvidersListSection.tsx:134-150) was never asserted; the existing
+  // delete test confirms blindly without surfacing the cascade affordance.
+  test('delete Popconfirm surfaces the user-link cascade warning', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/auth-providers`)
+
+    const providerName = `e2e-cascade-${Date.now()}`
+
+    // Create a fresh provider to delete.
+    await page.getByRole('button', { name: ADD_PROVIDER }).click()
+    await page.getByRole('menuitem', { name: /Generic OIDC/i }).click()
+    await expect(page.getByRole('button', { name: /^Create$/ })).toBeVisible({
+      timeout: 10_000,
+    })
+    await page.getByLabel(/Name \(URL slug\)/i).fill(providerName)
+    await page.getByLabel(/Client ID/i).fill('e2e-client-id')
+    await page.locator('input[type="password"]').first().fill('e2e-secret-value')
+    await page.getByLabel(/Issuer URL/i).fill('https://nonexistent.invalid/oidc')
+    await page.getByRole('button', { name: /^Create$/ }).click()
+    await expect(
+      page.getByRole('switch', { name: `Toggle ${providerName}` }),
+    ).toBeVisible({ timeout: 10_000 })
+
+    // Open the per-row delete Popconfirm and assert the cascade-warning copy.
+    await page.getByRole('button', { name: `Delete ${providerName}` }).click()
+    const popover = page.locator('.ant-popover:visible').last()
+    await expect(popover).toBeVisible({ timeout: 5_000 })
+    await expect(
+      popover.getByText(
+        'Linked users lose this sign-in method; their accounts remain.',
+      ),
+    ).toBeVisible()
+
+    // Confirm → the real delete (cascade of user_auth_links) runs and the row
+    // disappears.
+    await popover.locator('.ant-btn-primary').click()
+    await expect(
+      page.getByRole('switch', { name: `Toggle ${providerName}` }),
+    ).toHaveCount(0, { timeout: 30_000 })
+  })
+
+  // audit id 60e73a973f45 — provider name collision: the backend enforces a
+  // UNIQUE auth_providers.name (initial_schema). Creating a Generic OIDC whose
+  // slug duplicates a seeded provider ("google") must surface an error to the
+  // user (the catch → message.error path), not silently create a second row.
+  test('creating a provider with a duplicate name shows an error', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/auth-providers`)
+
+    // The seeded "google" row exists (migration 47).
+    await expect(
+      page.getByRole('switch', { name: 'Toggle google' }),
+    ).toBeVisible({ timeout: 10_000 })
+
+    // Add a Generic OIDC and type the colliding slug "google".
+    await page.getByRole('button', { name: ADD_PROVIDER }).click()
+    await page.getByRole('menuitem', { name: /Generic OIDC/i }).click()
+    await expect(page.getByRole('button', { name: /^Create$/ })).toBeVisible({
+      timeout: 10_000,
+    })
+    await page.getByLabel(/Name \(URL slug\)/i).fill('google')
+    await page.getByLabel(/Client ID/i).fill('e2e-client-id')
+    await page.locator('input[type="password"]').first().fill('e2e-secret-value')
+    await page.getByLabel(/Issuer URL/i).fill('https://nonexistent.invalid/oidc')
+    await page.getByRole('button', { name: /^Create$/ }).click()
+
+    // A duplicate-name error toast surfaces and the drawer stays open (create
+    // did not succeed).
+    await expect(page.locator('.ant-message-error')).toBeVisible({
+      timeout: 10_000,
+    })
+    await expect(page.getByRole('button', { name: /^Create$/ })).toBeVisible()
+
+    await page.getByRole('button', { name: /^Cancel$/ }).click()
+  })
 })
