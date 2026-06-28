@@ -240,7 +240,7 @@ function PickModelScreen({
                     // Open the LLM Providers page in a NEW tab so the
                     // wizard state is preserved. The admin adds the
                     // model, comes back, hits Refresh.
-                    window.open('/llm-providers', '_blank', 'noopener')
+                    window.open('/settings/llm-providers', '_blank', 'noopener')
                   }}
                 >
                   Add embedding model
