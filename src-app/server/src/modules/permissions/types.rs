@@ -184,3 +184,45 @@ pub struct PermissionInfo {
     /// The action being performed
     pub action: String,
 }
+
+#[cfg(test)]
+mod format_description_tests {
+    use super::{PermissionCheck, PermissionList};
+
+    struct A;
+    impl PermissionCheck for A {
+        const NAME: &'static str = "A";
+        const MODULE: &'static str = "alpha";
+        const PERMISSION: &'static str = "alpha::read";
+        const DESCRIPTION: &'static str = "Read alpha";
+    }
+    struct B;
+    impl PermissionCheck for B {
+        const NAME: &'static str = "B";
+        const MODULE: &'static str = "beta";
+        const PERMISSION: &'static str = "beta::write";
+        const DESCRIPTION: &'static str = "Write beta";
+    }
+
+    // audit id all-f0874266c44a — format_description's MULTI-permission branch
+    // (types.rs:66-83) was untested; only the single-permission shape is hit by
+    // production single-tuple gates. A 2-permission list must render the
+    // "Required Permissions (ALL)" bullet list with each perm + its description.
+    #[test]
+    fn multi_permission_format_lists_all_with_descriptions() {
+        let out = <(A, B)>::format_description();
+        assert!(out.contains("**Required Permissions (ALL):**"), "multi header: {out}");
+        assert!(out.contains("`alpha::read` - Read alpha"), "first perm bullet: {out}");
+        assert!(out.contains("`beta::write` - Write beta"), "second perm bullet: {out}");
+        // It must NOT use the single-permission phrasing.
+        assert!(!out.contains("**Required Permission:**"), "must not use single header: {out}");
+    }
+
+    #[test]
+    fn single_permission_format_uses_singular_header() {
+        let out = <(A,)>::format_description();
+        assert!(out.contains("**Required Permission:**"), "single header: {out}");
+        assert!(out.contains("alpha::read"), "names the perm: {out}");
+        assert!(!out.contains("Required Permissions (ALL)"), "not the multi header: {out}");
+    }
+}
