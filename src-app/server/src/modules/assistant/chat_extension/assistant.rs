@@ -136,3 +136,51 @@ impl ChatExtension for AssistantExtension {
         router.merge(super::message_assistant_routes::message_assistant_router())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use uuid::Uuid;
+
+    fn lazy_pool() -> PgPool {
+        sqlx::PgPool::connect_lazy("postgres://u:p@127.0.0.1:1/none").expect("lazy pool")
+    }
+
+    /// Negative path of the assistant injection (assistant.rs before_llm_call):
+    /// when the send carries NO `assistant_id`, the extension must inject no
+    /// system message and leave the request untouched. Resolved without any DB
+    /// access, so a lazy (never-connected) pool is fine.
+    #[tokio::test]
+    async fn before_llm_call_no_assistant_id_injects_nothing() {
+        let ext = AssistantExtension::new(lazy_pool());
+        let mut context = StreamContext {
+            conversation_id: Uuid::new_v4(),
+            branch_id: Uuid::new_v4(),
+            message_id: None,
+            user_id: Uuid::new_v4(),
+            pool: lazy_pool(),
+            metadata: HashMap::new(),
+            iteration: 1,
+        };
+        let mut request = ChatRequest::default();
+        // SendMessageRequest with no assistant_id (omitted from the JSON).
+        let send: SendMessageRequest = serde_json::from_value(serde_json::json!({
+            "content": "hello",
+            "model_id": Uuid::new_v4().to_string(),
+            "branch_id": Uuid::new_v4().to_string(),
+        }))
+        .expect("construct SendMessageRequest");
+
+        let action = ext
+            .before_llm_call(&mut context, &mut request, &send, None)
+            .await
+            .expect("before_llm_call must not error without an assistant_id");
+
+        assert!(matches!(action, BeforeLlmAction::Continue));
+        assert!(
+            request.messages.is_empty(),
+            "no assistant_id => no system-instruction injection"
+        );
+    }
+}
