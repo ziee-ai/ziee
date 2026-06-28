@@ -1296,3 +1296,72 @@ async fn test_update_group_prevents_self_escalation_on_custom_group() {
         res.status()
     );
 }
+
+/// delete_group must refuse to delete a SYSTEM group (400 SYSTEM_GROUP) — the
+/// built-in Users/Administrators groups are load-bearing and deleting one
+/// would brick auth/permission resolution. A non-system group deletes fine.
+#[tokio::test]
+async fn test_delete_group_refuses_system_group() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "group_deleter",
+        &["groups::delete", "groups::read", "groups::create"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", admin.token);
+
+    // Find a system group from the list.
+    let groups: serde_json::Value = client
+        .get(server.api_url("/groups"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let system_group_id = groups["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["is_system"].as_bool() == Some(true))
+        .and_then(|g| g["id"].as_str())
+        .expect("a system group must exist")
+        .to_string();
+
+    let res = client
+        .delete(server.api_url(&format!("/groups/{system_group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400, "deleting a system group must be rejected");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("SYSTEM_GROUP"),
+        "must be the SYSTEM_GROUP error: {body}"
+    );
+
+    // A freshly created non-system group deletes cleanly (204).
+    let created: serde_json::Value = client
+        .post(server.api_url("/groups"))
+        .header("Authorization", &bearer)
+        .json(&serde_json::json!({ "name": "deletable-grp", "permissions": [] }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let new_id = created["id"].as_str().expect("new group id");
+    let del = client
+        .delete(server.api_url(&format!("/groups/{new_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del.status(), 204, "a non-system group must delete cleanly");
+}
