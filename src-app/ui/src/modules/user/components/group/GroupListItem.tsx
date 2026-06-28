@@ -157,7 +157,7 @@ export function GroupListItem({
           <Descriptions
             size="sm"
             column={2}
-            className="[&_.ant-descriptions-item-label]:text-[12px] [&_.ant-descriptions-item-content]:text-[12px]"
+            className="text-[12px]"
             items={descriptionItems}
           />
         </div>
