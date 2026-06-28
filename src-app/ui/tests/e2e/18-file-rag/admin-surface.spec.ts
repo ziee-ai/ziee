@@ -70,6 +70,36 @@ test.describe('Document RAG — admin settings surface', () => {
     await expect(page.getByText(/Embedding model/)).toBeVisible()
   })
 
+  test('embedding section: no-model state + cosine threshold save', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    const embedCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Embedding (semantic search)' })
+    await expect(embedCard).toBeVisible({ timeout: 20000 })
+
+    // Fresh deploy has no embedding-capable models → the info Alert shows, the
+    // model picker is disabled, and Re-embed is disabled (no current model).
+    await expect(
+      embedCard.getByText('No embedding-capable models found.'),
+    ).toBeVisible()
+    await expect(
+      embedCard.getByRole('button', { name: 'Re-embed now' }),
+    ).toBeDisabled()
+
+    // The cosine threshold knob still saves (no model required).
+    await embedCard
+      .getByRole('spinbutton', { name: /Cosine distance threshold/i })
+      .fill('0.35')
+    await embedCard.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Embedding settings saved.')).toBeVisible()
+  })
+
   test('chunking rejects overlap >= chunk size with a validation error', async ({
     page,
     testInfra,
