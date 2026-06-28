@@ -284,6 +284,58 @@ mod tests {
         );
     }
 
+    /// A field value containing CR/LF must NOT corrupt the line-oriented RIS
+    /// structure: a newline in the title could otherwise split into a bogus
+    /// second line or inject a premature `ER  -` terminator (record-smuggling).
+    /// `ris_sanitize` collapses CR/LF to a space; assert the value stays on its
+    /// own single tag line and the record carries exactly one terminator.
+    #[test]
+    fn ris_writer_sanitizes_newlines_and_resists_injection() {
+        let items = vec![json!({
+            "type": "article-journal",
+            // Injected CR/LF + a forged terminator + a forged second record.
+            "title": "Sneaky\r\nER  - \r\nTY  - BOOK\nTI  - Forged",
+            "author": [{ "family": "Mc\nEvil", "given": "A." }],
+            "DOI": "10.1/x",
+        })];
+        let ris = to_ris(&items);
+
+        // The whole forged title lands on ONE `TI  -` line: no newline survives
+        // inside the value, so the forged `ER  -`/`TY  -` fragments stay inert
+        // text rather than becoming real RIS lines. (Exact run-length of the
+        // collapsed whitespace is unimportant — the single-line invariant is.)
+        let ti_line = ris
+            .lines()
+            .find(|l| l.starts_with("TI  - "))
+            .expect("a TI line");
+        assert!(
+            ti_line.contains("Sneaky") && ti_line.contains("Forged"),
+            "the entire CR/LF title must collapse onto one TI line, got: {ti_line:?}"
+        );
+        // The author CR/LF is likewise collapsed onto a single AU line.
+        let au_line = ris
+            .lines()
+            .find(|l| l.starts_with("AU  - "))
+            .expect("an AU line");
+        assert!(
+            au_line.contains("Mc") && au_line.contains("Evil"),
+            "author CR/LF must collapse onto one AU line, got: {au_line:?}"
+        );
+        // Exactly one REAL record terminator line — the forged `ER  - ` did not
+        // smuggle a premature record boundary.
+        assert_eq!(
+            ris.lines().filter(|l| *l == "ER  - ").count(),
+            1,
+            "exactly one record terminator; forged ER must not split the record:\n{ris}"
+        );
+        // Exactly one REAL record-type line — the forged `TY  - BOOK` is inert.
+        assert_eq!(
+            ris.lines().filter(|l| l.starts_with("TY  - ")).count(),
+            1,
+            "exactly one TY line; forged TY must not become a real line:\n{ris}"
+        );
+    }
+
     /// The CslJson + Ris export branches are pure-Rust (no pandoc) and must
     /// round-trip deterministically through the public `export` dispatch.
     #[tokio::test]
