@@ -974,3 +974,61 @@ async fn search_during_embed_rebuild_vector_arm_excludes_null_embeddings_fts_sti
     .expect("fts search must succeed");
     assert!(fts_hits >= 1, "FTS must still return results while embeddings are NULL");
 }
+
+/// Cross-module recovery (file_rag retrieval ↔ memory embed-dispatch): when the
+/// deployment WANTS semantic search but the embedding dispatch can't be
+/// provisioned — the memory `embed_batch` capability check REJECTS a non-embedder
+/// (`INVALID_EMBEDDING_MODEL`), so `embedding_model_id` never persists — file_rag
+/// must still serve queries end-to-end via the FTS arm rather than erroring. This
+/// joins the two modules' failure-recovery contract that no single-module test
+/// exercised together.
+#[tokio::test]
+async fn semantic_requested_but_embed_dispatch_unavailable_recovers_to_fts() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_dispatch_recover").await;
+    let pool = db_pool(&server).await;
+
+    // Ask for semantic search, then try to wire a NON-embedder model. The
+    // memory embed-dispatch capability check rejects it (400) — the dispatch is
+    // effectively unavailable.
+    set_rag_settings(&server, &user, json!({ "enabled": true, "semantic_enabled": true })).await;
+    let bad_model = create_chat_model(&server, &user).await;
+    let resp = put_settings_raw(&server, &user, json!({ "embedding_model_id": bad_model })).await;
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "non-embedder must be rejected by the embed-dispatch capability check"
+    );
+    let settings = get_settings(&server, &user).await;
+    assert!(
+        settings["embedding_model_id"].is_null(),
+        "no usable embedder is configured after the rejection"
+    );
+
+    // Upload + attach a file and search: retrieval must RECOVER to FTS, not error.
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-dispatch-recover",
+        &[(
+            "doc.txt",
+            "The MITOCHONDRION is the powerhouse with distinctive searchable tokens.",
+        )],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+
+    let body = semantic_search(&server, &user, conv_uuid, "mitochondrion powerhouse").await;
+    assert!(body["error"].is_null(), "search must not error; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(
+        sc["mode"].as_str().unwrap(),
+        "fts",
+        "embed dispatch unavailable → retrieval recovers to FTS-only"
+    );
+    assert!(
+        !sc["results"].as_array().unwrap().is_empty(),
+        "FTS must still return results during embed-dispatch unavailability"
+    );
+}

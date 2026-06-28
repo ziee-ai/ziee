@@ -2861,3 +2861,87 @@ async fn configure_hf_repo_credential(server: &crate::common::TestServer) {
         "configuring the Hugging Face repo credential should succeed"
     );
 }
+
+/// USER-scoped replace_existing (create_assistant_from_hub, hub/handlers.rs:511-535
+/// — `find_user_assistant_installs` cleanup loop). The existing replace_existing
+/// tests cover the TEMPLATE path (/hub/assistant-templates/create); the user
+/// install path (/hub/assistants/create, is_template=false, owned by the caller)
+/// was untested. Install once, re-install with replace_existing, and assert the
+/// prior user install is deleted (created_ids holds ONLY the new id — no
+/// orphaned duplicate).
+#[tokio::test]
+async fn test_user_assistant_replace_existing_deletes_prior_install() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_replace_user",
+        &["hub::assistants::create", "hub::assistants::read"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Pick a real hub assistant from the seed catalog.
+    let listing: serde_json::Value = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let hub_id = listing.as_array().unwrap()[0]["name"].as_str().unwrap().to_string();
+
+    // First install.
+    let first: serde_json::Value = client
+        .post(server.api_url("/hub/assistants/create"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "hub_id": hub_id, "enabled": true }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let first_id = first["assistant"]["id"].as_str().unwrap().to_string();
+
+    // Re-install with replace_existing → deletes the prior, creates afresh.
+    let second: serde_json::Value = client
+        .post(server.api_url("/hub/assistants/create"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "hub_id": hub_id, "replace_existing": true }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let second_id = second["assistant"]["id"].as_str().unwrap().to_string();
+    assert_ne!(first_id, second_id, "replace must produce a new uuid");
+
+    // The listing's created_ids for this hub_id holds ONLY the new id — the
+    // prior user install was deleted, not left orphaned/duplicated.
+    let after: serde_json::Value = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let row = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"].as_str() == Some(hub_id.as_str()))
+        .expect("hub_id still in listing");
+    let ids: Vec<String> = row["created_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(ids, vec![second_id.clone()], "only the NEW user install should remain");
+    assert!(!ids.contains(&first_id), "the prior user install must be deleted");
+}
