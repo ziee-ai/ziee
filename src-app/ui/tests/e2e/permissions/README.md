@@ -17,13 +17,17 @@ See `.claude/PERMISSION_GATING.md` for the gating pattern.
 
 - **`fixtures.ts`** — helpers to create permission-scoped test users
   on the fly (admin creates them via API), then log in as them. The
-  fixtures used:
+  fixtures used (the exported helpers in `fixtures.ts`):
   - `root` — `is_admin: true` (the seeded admin). Verifies bypass.
-  - `member` — default `users` group only (no admin perms).
-  - `readonly_users` — only `users::read` + `groups::read`. Verifies
-    the read-vs-manage form-disable path.
-  - `hub_mcp_only` — only `hub::mcp_servers::read`. Verifies Hub's
-    partial-tab visibility.
+  - `loginAsMember` — default `users` group only (no admin perms).
+  - `loginAsUsersReadOnly` — only `users::read` + `groups::read`.
+    Verifies the read-vs-manage form-disable path.
+  - `loginAsHubMcpOnly` — only `hub::mcp_servers::read`. Verifies
+    Hub's partial-tab visibility.
+  - `loginAsAuthProvidersReader` — auth-providers read-only.
+  - `loginAsAuthProvidersManager` — full auth-providers manage.
+  - `loginWithPerms` — generic helper to log in as a user with an
+    arbitrary set of permissions.
 
 - **Per-module specs** — one file per module from the rollout
   checklist. Asserts what a permission-restricted user should NOT
