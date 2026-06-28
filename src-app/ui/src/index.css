@@ -86,18 +86,12 @@ html.dark {
 
 /* Custom component styles */
 @layer components {
-  .ant-app {
+  #root {
     height: 100dvh;
     width: 100dvw;
   }
 }
 
-/* WCAG AA color contrast overrides for legacy preset Tag colors.
- * Default `color="orange"` renders #d46b08 on #fff7e6 = 3.33:1 (FAIL).
- * Use a darker orange to meet 4.5:1. */
-.ant-tag.ant-tag-orange {
-  color: #873800 !important;
-}
 
 /* OverlayScrollbars default-theme handle colors. The library applies
  * `os-theme-dark` automatically (per the package CSS, .os-theme-dark
