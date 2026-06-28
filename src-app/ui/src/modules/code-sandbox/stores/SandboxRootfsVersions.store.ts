@@ -80,8 +80,8 @@ interface SandboxRootfsVersionsStore {
     flavor: string,
     pkg: string,
   ) => Promise<void>
-  setPin: (version: string) => Promise<void>
-  deleteArtifact: (id: string) => Promise<void>
+  setPin: (version: string) => Promise<boolean>
+  deleteArtifact: (id: string) => Promise<boolean>
   /** Open the SSE channel to receive install progress events. */
   subscribeToInstallProgress: () => Promise<void>
 }
@@ -292,10 +292,12 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
             s.hostPackage = res.status.host_package ?? null
             s.lastSwap = res.swap
           })
+          return true
         } catch (e: any) {
           set(s => {
             s.error = e?.message ?? `Failed to set pin to ${version}`
           })
+          return false
         } finally {
           set(s => {
             clearAction(s, key)
@@ -322,10 +324,12 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
             s.hostArch = res.host_arch ?? null
             s.hostPackage = res.host_package ?? null
           })
+          return true
         } catch (e: any) {
           set(s => {
             s.error = e?.message ?? 'Failed to delete artifact'
           })
+          return false
         } finally {
           set(s => {
             clearAction(s, key)

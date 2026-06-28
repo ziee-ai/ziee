@@ -18,7 +18,7 @@ import {
 const { Text } = Typography
 
 export function SandboxRootfsVersionsSection() {
-  const { modal } = App.useApp()
+  const { modal, message } = App.useApp()
   // Hook-safety: every `Stores.X.field` read is a `useStore` hook under the
   // hood, so ALL needed fields are read at the TOP before any early return.
   // `conversationCount` / `mcpServerWorkspaceCount` are only consumed inside
@@ -107,6 +107,12 @@ export function SandboxRootfsVersionsSection() {
     )
   }
 
+  const doSetPin = async (version: string) => {
+    const ok = await Stores.SandboxRootfsVersions.setPin(version)
+    if (ok) message.success(`Default rootfs set to v${version}`)
+    else message.error(`Failed to set default rootfs to v${version}`)
+  }
+
   const handleSetPin = (version: string) => {
     if (isMajorBump(pinnedVersion, version)) {
       const convCount = conversationCount ?? 0
@@ -157,11 +163,11 @@ export function SandboxRootfsVersionsSection() {
         okText: 'Set as default and wipe caches',
         okButtonProps: { danger: true },
         cancelText: 'Cancel',
-        onOk: () => Stores.SandboxRootfsVersions.setPin(version),
+        onOk: () => doSetPin(version),
         width: 600,
       })
     } else {
-      Stores.SandboxRootfsVersions.setPin(version)
+      void doSetPin(version)
     }
   }
 
@@ -180,12 +186,21 @@ export function SandboxRootfsVersionsSection() {
     }
   }
 
-  const handleDelete = (group: VersionGroup) => {
+  const handleDelete = async (group: VersionGroup) => {
     // Version-level delete: remove every downloaded flavor of this version.
-    for (const f of group.flavors) {
-      if (f.artifact) {
-        void Stores.SandboxRootfsVersions.deleteArtifact(f.artifact.id)
-      }
+    const ids = group.flavors
+      .map(f => f.artifact?.id)
+      .filter((id): id is string => !!id)
+    const results = await Promise.all(
+      ids.map(id => Stores.SandboxRootfsVersions.deleteArtifact(id)),
+    )
+    const failed = results.filter(ok => !ok).length
+    if (failed === 0) {
+      message.success(`Deleted rootfs v${group.version}`)
+    } else {
+      message.error(
+        `Failed to delete ${failed} of ${results.length} flavor(s) of v${group.version}`,
+      )
     }
   }
 
