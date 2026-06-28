@@ -120,22 +120,23 @@ export function WorkflowRunDialog({
 
   return (
     <Dialog
+      data-testid="wf-run-dialog"
       open={open}
       onOpenChange={v => { if (!v) onClose() }}
       title={`Run ${workflow.display_name || workflow.name}`}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
+          <Button data-testid="wf-run-cancel-btn" variant="outline" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={handleRun} loading={submitting}>
+          <Button data-testid="wf-run-submit-btn" onClick={handleRun} loading={submitting}>
             Run
           </Button>
         </>
       }
     >
       {structured ? (
-        <Form form={form} onSubmit={() => { void handleRun() }}>
+        <Form data-testid="wf-run-form" form={form} onSubmit={() => { void handleRun() }}>
           {inputs.map(input => (
             <FormField
               key={input.name}
@@ -144,7 +145,7 @@ export function WorkflowRunDialog({
               description={input.description}
               required={input.required}
             >
-              <Input placeholder={input.description} />
+              <Input data-testid={`wf-run-input-${input.name}`} placeholder={input.description} />
             </FormField>
           ))}
         </Form>
@@ -154,12 +155,13 @@ export function WorkflowRunDialog({
             Provide inputs as a JSON object.
           </Text>
           <Textarea
+            data-testid="wf-run-json-textarea"
             rows={6}
             value={jsonInputs}
             onChange={e => setJsonInputs(e.target.value)}
             placeholder='{ "topic": "quantum entanglement" }'
           />
-          {jsonError && <Alert tone="error" title={jsonError} />}
+          {jsonError && <Alert data-testid="wf-run-json-error-alert" tone="error" title={jsonError} />}
         </div>
       )}
       {!conversationId && (
@@ -168,6 +170,7 @@ export function WorkflowRunDialog({
             Model
           </Text>
           <Select
+            data-testid="wf-run-model-select"
             aria-label="Model"
             value={modelId}
             onChange={setModelId}
@@ -178,14 +181,14 @@ export function WorkflowRunDialog({
         </div>
       )}
       <div className="mt-2 flex items-center gap-2">
-        <Switch checked={captureLogs} onChange={setCaptureLogs} size="sm" />
+        <Switch data-testid="wf-run-capture-logs-switch" checked={captureLogs} onChange={setCaptureLogs} size="sm" />
         <Text type="secondary" className="text-xs">
           Capture debug logs (prompts + raw output) for this run
         </Text>
       </div>
       {conversationId && (
         <div className="mt-2 flex items-center gap-2">
-          <Switch checked disabled size="sm" />
+          <Switch data-testid="wf-run-conversation-output-switch" checked disabled size="sm" />
           <Text type="secondary" className="text-xs">
             Output posts back to the current conversation
           </Text>

@@ -54,6 +54,7 @@ export function WorkflowDetailDrawer() {
   if (!workflow) {
     return (
       <Dialog
+        data-testid="wf-detail-dialog-empty"
         open={isOpen}
         onOpenChange={(open) => { if (!open) Stores.WorkflowDrawer.close() }}
         className="!max-w-[480px]"
@@ -82,6 +83,7 @@ export function WorkflowDetailDrawer() {
 
   return (
     <Dialog
+      data-testid="wf-detail-dialog"
       open={isOpen}
       onOpenChange={(open) => {
         if (!open) {
@@ -101,10 +103,11 @@ export function WorkflowDetailDrawer() {
       footer={
         editable ? (
           <>
-            <Button onClick={() => setDeleteDialogOpen(true)} variant="destructive" size="sm" icon={<Trash2 />}>
+            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="destructive" size="sm" icon={<Trash2 />}>
               Delete
             </Button>
             <Dialog
+              data-testid="wf-detail-delete-dialog"
               open={deleteDialogOpen}
               onOpenChange={(open) => {
                 if (!open) setDeleteDialogOpen(false)
@@ -113,10 +116,10 @@ export function WorkflowDetailDrawer() {
               description="This removes the workflow and its extracted files."
               footer={
                 <div className="flex justify-end gap-2">
-                  <Button onClick={() => setDeleteDialogOpen(false)} variant="outline">
+                  <Button data-testid="wf-detail-delete-cancel-btn" onClick={() => setDeleteDialogOpen(false)} variant="outline">
                     Cancel
                   </Button>
-                  <Button onClick={handleDelete} variant="destructive">
+                  <Button data-testid="wf-detail-delete-confirm-btn" onClick={handleDelete} variant="destructive">
                     Delete
                   </Button>
                 </div>
@@ -131,7 +134,7 @@ export function WorkflowDetailDrawer() {
       <div className="flex flex-col gap-4">
         {workflow.description && <Text>{workflow.description}</Text>}
 
-        <Descriptions size="sm" column={1} bordered
+        <Descriptions data-testid="wf-detail-descriptions" size="sm" column={1} bordered
           items={[
             { key: 'name', label: 'Name', children: workflow.name },
             ...(workflow.version ? [{ key: 'version', label: 'Version', children: workflow.version }] : []),
@@ -142,6 +145,7 @@ export function WorkflowDetailDrawer() {
         <Space wrap>
           {canExecute && (
             <Button
+              data-testid="wf-detail-run-btn"
               variant="default"
               icon={<CirclePlay />}
               onClick={() => setRunDialogOpen(true)}
@@ -150,6 +154,7 @@ export function WorkflowDetailDrawer() {
             </Button>
           )}
           <Button
+            data-testid="wf-detail-dry-run-btn"
             variant="outline"
             icon={<Calculator />}
             onClick={() => setDryRunOpen(true)}
@@ -158,6 +163,7 @@ export function WorkflowDetailDrawer() {
           </Button>
           {workflow.is_dev && (
             <Button
+              data-testid="wf-detail-run-tests-btn"
               variant="outline"
               icon={<FlaskConical />}
               onClick={() => setTestsOpen(true)}
@@ -186,7 +192,7 @@ export function WorkflowDetailDrawer() {
                 <div key={i} className="flex flex-col gap-1">
                   <Space size={8}>
                     <Text>{s.message || s.id}</Text>
-                    {s.kind && <Tag className="text-xs !m-0" tone="info">{s.kind}</Tag>}
+                    {s.kind && <Tag data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
                   </Space>
                   {s.dependsOn && s.dependsOn.length > 0 && (
                     <Text type="secondary" className="text-xs">
@@ -197,7 +203,7 @@ export function WorkflowDetailDrawer() {
               ))}
             </div>
           ) : (
-            <Empty description="Step details available after running" />
+            <Empty data-testid="wf-detail-steps-empty" description="Step details available after running" />
           )}
         </div>
 

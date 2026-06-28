@@ -58,12 +58,13 @@ export function WorkflowRunsList({
 
   if (!loading[workflowId] && items.length === 0) {
     return (
-      <Empty description="No runs yet" />
+      <Empty data-testid="wf-runs-empty" description="No runs yet" />
     )
   }
 
   return (
     <List
+      data-testid="wf-runs-list"
       size="sm"
       loading={!!loading[workflowId] && items.length === 0}
       dataSource={items}
@@ -75,7 +76,7 @@ export function WorkflowRunsList({
         >
           <div className="flex justify-between items-center">
             <Space size={8} wrap>
-              <Tag tone={STATUS_COLOR[run.status] === 'green' ? 'success' : STATUS_COLOR[run.status] === 'red' ? 'error' : STATUS_COLOR[run.status] === 'blue' ? 'info' : STATUS_COLOR[run.status] === 'gold' ? 'warning' : undefined} className="!m-0">
+              <Tag data-testid={`wf-run-status-tag-${run.id}`} tone={STATUS_COLOR[run.status] === 'green' ? 'success' : STATUS_COLOR[run.status] === 'red' ? 'error' : STATUS_COLOR[run.status] === 'blue' ? 'info' : STATUS_COLOR[run.status] === 'gold' ? 'warning' : undefined} className="!m-0">
                 {run.status}
               </Tag>
               {run.invocation_source === 'conversation' && run.conversation_id ? (
@@ -84,7 +85,7 @@ export function WorkflowRunsList({
                 // DownloadItem) inside the badge opens the originating
                 // conversation. stopPropagation so the click navigates instead of
                 // firing the div's open-progress onClick.
-                <Tag className="!m-0 text-xs">
+                <Tag data-testid={`wf-run-source-tag-${run.id}`} className="!m-0 text-xs">
                   <Link
                     href="#"
                     className="text-xs"
@@ -98,7 +99,7 @@ export function WorkflowRunsList({
                   </Link>
                 </Tag>
               ) : (
-                <Tag className="!m-0 text-xs">
+                <Tag data-testid={`wf-run-source-tag-${run.id}`} className="!m-0 text-xs">
                   {INVOCATION_SOURCE_LABEL[run.invocation_source] ?? 'Workflow page'}
                 </Tag>
               )}
@@ -114,6 +115,7 @@ export function WorkflowRunsList({
             {canExecute && (
               <Confirm
                 key="del"
+                data-testid={`wf-run-delete-confirm-${run.id}`}
                 title="Delete this run?"
                 description="Artifacts are removed too unless the run is tied to a conversation."
                 onConfirm={() => {
@@ -125,6 +127,7 @@ export function WorkflowRunsList({
                 okButtonProps={{ danger: true }}
               >
                 <Button
+                  data-testid={`wf-run-delete-btn-${run.id}`}
                   variant="destructive"
                   size="sm"
                   icon={<Trash2 />}

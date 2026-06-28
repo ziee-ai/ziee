@@ -72,6 +72,7 @@ export function AdminWorkflowGroupAssignment({
   return (
     <div className="pb-3" data-workflow-id={workflowId}>
       <Accordion
+        data-testid="wf-group-assign-accordion"
         collapsible
         items={[
           {
@@ -82,6 +83,7 @@ export function AdminWorkflowGroupAssignment({
             ) : editing ? (
               <Space direction="vertical" className="w-full">
                 <MultiSelect
+                  data-testid="wf-group-assign-multiselect"
                   className="w-full"
                   aria-label="Restrict to groups"
                   placeholder="Restrict to specific groups (empty = all users)"
@@ -96,10 +98,11 @@ export function AdminWorkflowGroupAssignment({
                   emptyText="No groups found"
                 />
                 <Flex gap="sm" justify="end">
-                  <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+                  <Button data-testid="wf-group-assign-cancel-btn" size="sm" variant="outline" onClick={() => setEditing(false)}>
                     Cancel
                   </Button>
                   <Button
+                    data-testid="wf-group-assign-save-btn"
                     size="sm"
                     loading={saving}
                     onClick={save}
@@ -110,13 +113,14 @@ export function AdminWorkflowGroupAssignment({
               </Space>
             ) : assignedIds.length === 0 ? (
               <Empty
+                data-testid="wf-group-assign-empty"
                 description="Available to all users"
                 className="!my-2"
               />
             ) : (
               <Space wrap size="middle">
                 {assignedIds.map(id => (
-                  <Tag key={id} tone="info">
+                  <Tag key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
                     {nameFor(id)}
                   </Tag>
                 ))}
@@ -128,6 +132,7 @@ export function AdminWorkflowGroupAssignment({
       {canAssign && !editing && assignedIds.length > 0 && (
         <div className="flex justify-end px-4 pb-2">
           <Button
+            data-testid="wf-group-assign-edit-btn"
             variant="ghost"
             size="sm"
             icon={<Pencil aria-hidden="true" />}

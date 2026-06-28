@@ -48,20 +48,22 @@ export function DryRunPreviewDialog({
 
   return (
     <Dialog
+      data-testid="wf-dry-run-dialog"
       open={open}
       title="Dry-run preview"
       onOpenChange={(v) => { if (!v) onClose() }}
       footer={null}
       className="!max-w-[640px]"
     >
-      {error && <Alert tone="error" title={error} />}
+      {error && <Alert data-testid="wf-dry-run-error-alert" tone="error" title={error} />}
       {result && (
         <div className="flex flex-col gap-3">
           <div className="flex gap-6">
-            <Statistic title="Est. calls" value={result.total_est_calls} />
-            <Statistic title="Est. tokens" value={result.total_est_tokens} />
+            <Statistic data-testid="wf-dry-run-stat-calls" title="Est. calls" value={result.total_est_calls} />
+            <Statistic data-testid="wf-dry-run-stat-tokens" title="Est. tokens" value={result.total_est_tokens} />
             {result.est_cost_usd != null && (
               <Statistic
+                data-testid="wf-dry-run-stat-cost"
                 title="Est. cost"
                 value={result.est_cost_usd}
                 precision={4}
@@ -70,6 +72,7 @@ export function DryRunPreviewDialog({
             )}
           </div>
           <Table<DryRunStep>
+            data-testid="wf-dry-run-steps-table"
             rowKey="step_id"
             loading={loading}
             dataSource={result.steps}

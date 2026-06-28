@@ -12,16 +12,16 @@ export function WorkflowScopeBadge({ scope, isDev }: WorkflowScopeBadgeProps) {
   return (
     <>
       {scope === 'system' ? (
-        <Tag tone="info" className="text-[#2c0a6b]">
+        <Tag data-testid="wf-scope-badge-system" tone="info" className="text-[#2c0a6b]">
           System
         </Tag>
       ) : (
-        <Tag tone="info" className="text-[#001a4d]">
+        <Tag data-testid="wf-scope-badge-mine" tone="info" className="text-[#001a4d]">
           Mine
         </Tag>
       )}
       {isDev && (
-        <Tag tone="warning" className="text-[#612500]">
+        <Tag data-testid="wf-scope-badge-dev" tone="warning" className="text-[#612500]">
           Dev
         </Tag>
       )}

@@ -29,6 +29,7 @@ export function AdminWorkflowsPage() {
         <Flex justify="end">
           <Can permission={Permissions.WorkflowsManageSystem}>
             <Button
+              data-testid="wf-admin-import-btn"
               icon={<ImportIcon />}
               onClick={() => setImportOpen(true)}
             >
@@ -76,6 +77,7 @@ export function AdminWorkflowsPage() {
 
         {!loading && systemWorkflows.length === 0 && (
           <Empty
+            data-testid="wf-admin-empty"
             description="No system workflows installed"
             className="!mt-12"
           />
