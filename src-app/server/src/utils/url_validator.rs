@@ -236,13 +236,18 @@ fn is_blocked_v6(ip: &Ipv6Addr, policy: &OutboundUrlPolicy) -> bool {
 /// [`validate_outbound_url`], which rejects any URL embedding `username:password@`
 /// before the fetch begins — this builder does not itself strip credentials.
 pub fn build_validated_client(policy: OutboundUrlPolicy) -> reqwest::Result<reqwest::Client> {
+    validated_client_builder(policy).build()
+}
+
+/// SSRF-guarded [`reqwest::ClientBuilder`] for callers that need to layer extra
+/// options on top of the DNS-rebinding guard — e.g. a credential-carrying
+/// request that wants `.no_proxy()` + `.redirect(Policy::none())` while still
+/// pinning every resolved address at connect time. The returned builder has the
+/// connect-time [`GuardingResolver`] + per-hop redirect policy installed;
+/// callers may override `.redirect(...)` (the last call wins) and add
+/// `.timeout(...)`/`.no_proxy()` before `.build()`.
+pub fn validated_client_builder(policy: OutboundUrlPolicy) -> reqwest::ClientBuilder {
     reqwest::Client::builder()
-        // Filter EVERY resolved address through the policy at CONNECT time. This
-        // closes the DNS-rebinding TOCTOU window that a one-shot pre-flight
-        // `validate_outbound_url` leaves open: even if a hostname resolves to a
-        // public IP during the pre-flight and rebinds to 169.254.169.254 /
-        // loopback / RFC1918 before the socket connects, the connection is
-        // refused here. Applies to the initial connect AND every redirect hop.
         .dns_resolver(Arc::new(GuardingResolver { policy }))
         .redirect(Policy::custom(move |attempt| {
             // Hard cap on hops to avoid infinite-redirect DoS, in addition
@@ -263,7 +268,6 @@ pub fn build_validated_client(policy: OutboundUrlPolicy) -> reqwest::Result<reqw
                 None => attempt.follow(),
             }
         }))
-        .build()
 }
 
 /// Decide whether a redirect target is blocked under `policy`. Returns

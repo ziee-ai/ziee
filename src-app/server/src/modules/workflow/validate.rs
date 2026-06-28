@@ -384,7 +384,7 @@ impl ValidationError {
 /// `/validate` REST surface (B6), use `validate_yaml_collecting` which
 /// returns all errors.
 pub fn parse_workflow_yaml(yaml: &str) -> Result<WorkflowDef, AppError> {
-    serde_yaml::from_str::<WorkflowDef>(yaml).map_err(|e| {
+    serde_norway::from_str::<WorkflowDef>(yaml).map_err(|e| {
         AppError::bad_request(
             "WORKFLOW_INVALID_YAML",
             format!("workflow.yaml deserialization failed: {e}"),

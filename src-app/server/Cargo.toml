@@ -34,7 +34,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 async-trait.workspace = true
 async-stream.workspace = true
-serde_yaml.workspace = true
+serde_norway.workspace = true
 sqlx.workspace = true
 postgresql_embedded.workspace = true
 portpicker.workspace = true
@@ -54,7 +54,6 @@ http.workspace = true
 tempfile.workspace = true
 mime_guess.workspace = true
 which.workspace = true
-include-flate.workspace = true
 tar.workspace = true
 # Engine-binary archive extraction (folded in from the llm-runtime crate's
 # binary downloader): tar.gz via flate2 + zip for the Windows path. Also
@@ -258,7 +257,7 @@ flate2.workspace = true
 reqwest = { workspace = true, features = ["json", "cookies", "multipart", "blocking"] }
 uuid.workspace = true
 rand.workspace = true
-serde_yaml.workspace = true
+serde_norway.workspace = true
 sqlx.workspace = true
 postgresql_embedded.workspace = true
 testcontainers = "0.25.2"

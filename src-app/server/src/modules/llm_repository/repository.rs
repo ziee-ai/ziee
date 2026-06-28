@@ -299,6 +299,13 @@ pub async fn update_llm_repository(
     // avoids re-reading + re-decrypting the row inside the auth_config branch.
     let existing = get_llm_repository_by_id(pool, repository_id).await?;
 
+    // Apply all column updates atomically so a mid-update failure (e.g. after
+    // auth_type is written but before auth_config) can't leave the row in an
+    // inconsistent half-updated state. The independent secret-encryption call
+    // below stays on `pool` — it's a stateless pgcrypto computation that doesn't
+    // read the row under update, so it needn't share this transaction.
+    let mut tx = pool.begin().await?;
+
     // Replace COALESCE with separate conditional updates
     if let Some(name) = &request.name {
         sqlx::query!(
@@ -306,7 +313,7 @@ pub async fn update_llm_repository(
             name,
             repository_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -316,7 +323,7 @@ pub async fn update_llm_repository(
             url,
             repository_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -326,7 +333,7 @@ pub async fn update_llm_repository(
             auth_type,
             repository_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -378,7 +385,7 @@ pub async fn update_llm_repository(
             encrypted_value.as_deref(),
             repository_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -388,9 +395,11 @@ pub async fn update_llm_repository(
             enabled,
             repository_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
+
+    tx.commit().await?;
 
     // Fetch and return the updated repository
     get_llm_repository_by_id(pool, repository_id).await

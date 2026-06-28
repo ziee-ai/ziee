@@ -525,7 +525,7 @@ impl Config {
             .map_err(|e| format!("Failed to read config file '{}': {}", config_path, e))?;
 
         // Parse YAML
-        let mut config: Config = serde_yaml::from_str(&config_content)
+        let mut config: Config = serde_norway::from_str(&config_content)
             .map_err(|e| format!("Failed to parse config file '{}': {}", config_path, e))?;
 
         // Validate configuration
@@ -788,7 +788,7 @@ mod packaging_config_tests {
         );
         let content = std::fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("read {path}: {e}"));
-        serde_yaml::from_str::<Config>(&content).unwrap_or_else(|e| {
+        serde_norway::from_str::<Config>(&content).unwrap_or_else(|e| {
             panic!(
                 "packaging/config.default.yaml must parse as Config (a clean \
                  package install boots from it): {e}"

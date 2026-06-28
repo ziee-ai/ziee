@@ -45,9 +45,10 @@ See `.claude/PERMISSION_GATING.md` for the gating pattern.
 // Sidebar / menu hiding
 await expect(page.getByRole('link', { name: 'Users' })).toHaveCount(0)
 
-// Deep-link 403
+// Deep-link 403 — the router-level RoutePermissionGate renders an inline
+// antd Result whose visible title is "Not authorized" (URL is preserved).
 await page.goto('/settings/users')
-await expect(page.getByText('403')).toBeVisible()
+await expect(page.getByText(/Not authorized/i)).toBeVisible()
 
 // Button absence
 await expect(page.getByRole('button', { name: /create user/i })).toHaveCount(0)

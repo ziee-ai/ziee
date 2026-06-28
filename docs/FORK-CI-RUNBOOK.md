@@ -139,3 +139,10 @@ Once a release ships:
   standalone `llm-runtime` crate, along with its `PRE-STAGE-RUNBOOK.md`
   and `known_revisions.toml`, was folded into the server module).
 - `.github/workflows/code_sandbox.yml` — the exact pattern to copy.
+
+> Note: earlier revisions of this runbook pointed at
+> `src-app/llm-runtime/PRE-STAGE-RUNBOOK.md` and
+> `src-app/llm-runtime/known_revisions.toml`. The standalone `llm-runtime`
+> crate was folded into `server` and the file-based `known_revisions.toml`
+> resolver was replaced by the DB-backed version manager
+> (`code_sandbox/version_manager.rs`), so those paths no longer exist.

@@ -83,6 +83,19 @@ impl CancellationTracker {
         let mut senders = self.cancellation_senders.write().await;
         senders.remove(&download_id);
     }
+
+    /// Signal cancellation to EVERY tracked download and clear the registry.
+    /// Used on graceful shutdown so in-flight downloads observe the cancel
+    /// and run their own teardown (mark interrupted, stop writing) instead of
+    /// being abruptly aborted with the runtime. Returns the number cancelled.
+    pub async fn cancel_all(&self) -> usize {
+        let mut senders = self.cancellation_senders.write().await;
+        let count = senders.len();
+        for (_id, sender) in senders.drain() {
+            let _ = sender.send(());
+        }
+        count
+    }
 }
 
 // Global instance

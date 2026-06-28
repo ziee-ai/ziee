@@ -96,6 +96,13 @@ pub async fn start_hardware_monitoring() {
         loop {
             interval.tick().await;
 
+            // Stop promptly on graceful shutdown — `stop_hardware_monitoring()`
+            // (called from main.rs::shutdown_signal) clears this flag so the
+            // task exits within one tick instead of being abruptly aborted.
+            if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
+                break;
+            }
+
             // Check if we have any connected clients
             let client_count = {
                 let clients = SSE_CLIENTS.lock().unwrap();
@@ -134,6 +141,13 @@ pub async fn start_hardware_monitoring() {
             broadcast_usage_update(usage_update).await;
         }
     });
+}
+
+/// Stop the hardware-monitoring background task on graceful shutdown.
+/// Clears the active flag; the spawned loop checks it each tick and exits.
+/// Idempotent — a no-op if monitoring isn't running.
+pub fn stop_hardware_monitoring() {
+    MONITORING_ACTIVE.store(false, Ordering::SeqCst);
 }
 
 /// Collect current hardware usage

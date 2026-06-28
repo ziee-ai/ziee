@@ -94,7 +94,7 @@ pub fn parse_skill_md_frontmatter(
     let yaml_block = &rest[..yaml_end];
     let body = rest[body_start..].to_string();
 
-    let parsed: serde_yaml::Value = serde_yaml::from_str(yaml_block).map_err(|e| {
+    let parsed: serde_norway::Value = serde_norway::from_str(yaml_block).map_err(|e| {
         AppError::bad_request(
             "SKILL_FRONTMATTER_INVALID_YAML",
             format!("SKILL.md frontmatter is not valid YAML: {e}"),

@@ -592,7 +592,7 @@ logging:
 "#
     );
 
-    let mut config: ziee::Config = serde_yaml::from_str(&yaml)?;
+    let mut config: ziee::Config = serde_norway::from_str(&yaml)?;
 
     // CRITICAL: `Config::load_from` normally calls `resolve_paths()` at
     // the end (it's what fills optional path fields like

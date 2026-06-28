@@ -39,20 +39,30 @@ impl ProjectChatRepository {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<ConversationResponse>, AppError> {
+        // Page the conversations FIRST, then count messages only for that page
+        // — the message_count subquery touches branches/branch_messages for the
+        // ≤LIMIT rows on this page instead of joining + grouping every
+        // conversation in the project before applying the LIMIT.
         let rows = sqlx::query!(
             r#"
+            WITH page AS (
+                SELECT c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
+                       c.created_at, c.updated_at
+                FROM project_conversations pc
+                JOIN conversations c ON c.id = pc.conversation_id
+                WHERE pc.project_id = $1 AND c.user_id = $2
+                ORDER BY c.updated_at DESC
+                LIMIT $3 OFFSET $4
+            )
             SELECT
-                c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
-                c.created_at, c.updated_at,
-                COUNT(bm.message_id) as message_count
-            FROM project_conversations pc
-            JOIN conversations c ON c.id = pc.conversation_id
-            LEFT JOIN branches b ON b.conversation_id = c.id
-            LEFT JOIN branch_messages bm ON bm.branch_id = b.id
-            WHERE pc.project_id = $1 AND c.user_id = $2
-            GROUP BY c.id
-            ORDER BY c.updated_at DESC
-            LIMIT $3 OFFSET $4
+                p.id, p.user_id, p.model_id, p.title, p.active_branch_id,
+                p.created_at, p.updated_at,
+                (SELECT COUNT(bm.message_id)
+                   FROM branches b
+                   JOIN branch_messages bm ON bm.branch_id = b.id
+                  WHERE b.conversation_id = p.id) AS message_count
+            FROM page p
+            ORDER BY p.updated_at DESC
             "#,
             project_id,
             user_id,

@@ -924,7 +924,7 @@ Each module's Zustand store subscribes DIRECTLY in its `__init__.__store__` to
 
 ## MCP Tool-Call History
 
-Every MCP tool-call invocation is recorded to `mcp_tool_calls` (migration 103) —
+Every MCP tool-call invocation is recorded to `mcp_tool_calls` (migration 105) —
 the MCP analog of `workflow_runs`. Owner-scoped, surfaced per-server in the
 McpServerDrawer "Calls" tab, with realtime refresh + time-based auto-pruning.
 

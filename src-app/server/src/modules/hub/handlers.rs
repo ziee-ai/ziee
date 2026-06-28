@@ -2675,7 +2675,7 @@ pub fn get_hub_local_providers_docs(op: TransformOperation) -> TransformOperatio
 /// existing three tabs.
 #[debug_handler]
 pub async fn get_hub_catalog(
-    _auth: RequirePermissions<(HubModelsRead,)>,
+    _auth: RequirePermissions<(HubCatalogRead,)>,
 ) -> ApiResult<Json<Catalog>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -2684,7 +2684,7 @@ pub async fn get_hub_catalog(
 }
 
 pub fn get_hub_catalog_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubModelsRead,)>(op)
+    with_permission::<(HubCatalogRead,)>(op)
         .id("Hub.getCatalog")
         .tag("Hub")
         .summary("Get the unified hub catalog (index.json)")
@@ -2696,7 +2696,7 @@ pub fn get_hub_catalog_docs(op: TransformOperation) -> TransformOperation {
 /// own semver (for client-side compat filtering), per-category counts.
 #[debug_handler]
 pub async fn get_hub_catalog_version(
-    _auth: RequirePermissions<(HubModelsRead,)>,
+    _auth: RequirePermissions<(HubCatalogRead,)>,
 ) -> ApiResult<Json<HubCatalogVersionResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -2730,7 +2730,7 @@ pub async fn get_hub_catalog_version(
 }
 
 pub fn get_hub_catalog_version_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubModelsRead,)>(op)
+    with_permission::<(HubCatalogRead,)>(op)
         .id("Hub.getCatalogVersion")
         .tag("Hub")
         .summary("Current hub catalog version + server version + counts")
@@ -2892,7 +2892,7 @@ pub fn get_hub_installed_docs(op: TransformOperation) -> TransformOperation {
 /// list view can stay small (just the index entries).
 #[debug_handler]
 pub async fn get_hub_manifest(
-    _auth: RequirePermissions<(HubModelsRead,)>,
+    _auth: RequirePermissions<(HubCatalogRead,)>,
     AxumPath(id): AxumPath<String>,
     Query(q): Query<HubManifestQuery>,
 ) -> ApiResult<Json<HubManifest>> {
@@ -2903,7 +2903,7 @@ pub async fn get_hub_manifest(
 }
 
 pub fn get_hub_manifest_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubModelsRead,)>(op)
+    with_permission::<(HubCatalogRead,)>(op)
         .id("Hub.getManifest")
         .tag("Hub")
         .summary("Full manifest for one hub item (model / assistant / mcp-server)")

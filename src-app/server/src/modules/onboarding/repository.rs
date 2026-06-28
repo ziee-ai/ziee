@@ -48,7 +48,12 @@ impl OnboardingRepository {
         &self,
         user_id: Uuid,
         guide_id: &str,
+        max_completions: i32,
     ) -> Result<OnboardingProgress, AppError> {
+        // The `cardinality(...) < $3` guard enforces the completion cap
+        // ATOMICALLY inside the upsert, closing the check-then-insert TOCTOU in
+        // the handler: two concurrent requests can both pass the handler's
+        // pre-check, but only appends that keep the array under the cap commit.
         sqlx::query!(
             r#"
             INSERT INTO user_onboarding (user_id, completed_guide_ids)
@@ -57,9 +62,11 @@ impl OnboardingRepository {
             SET completed_guide_ids = array_append(user_onboarding.completed_guide_ids, $2::TEXT),
                 updated_at = NOW()
             WHERE NOT ($2 = ANY(user_onboarding.completed_guide_ids))
+              AND cardinality(user_onboarding.completed_guide_ids) < $3
             "#,
             user_id,
-            guide_id
+            guide_id,
+            max_completions
         )
         .execute(&self.pool)
         .await
@@ -74,7 +81,10 @@ impl OnboardingRepository {
         &self,
         user_id: Uuid,
         step_key: &str,
+        max_completions: i32,
     ) -> Result<OnboardingProgress, AppError> {
+        // Atomic cap guard (see complete_guide) — closes the handler's
+        // check-then-insert TOCTOU on the step-completion cardinality cap.
         sqlx::query!(
             r#"
             INSERT INTO user_onboarding (user_id, completed_step_ids)
@@ -83,9 +93,11 @@ impl OnboardingRepository {
             SET completed_step_ids = array_append(user_onboarding.completed_step_ids, $2::TEXT),
                 updated_at = NOW()
             WHERE NOT ($2 = ANY(user_onboarding.completed_step_ids))
+              AND cardinality(user_onboarding.completed_step_ids) < $3
             "#,
             user_id,
-            step_key
+            step_key,
+            max_completions
         )
         .execute(&self.pool)
         .await

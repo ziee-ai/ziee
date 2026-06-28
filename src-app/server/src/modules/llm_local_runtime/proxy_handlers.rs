@@ -369,10 +369,18 @@ async fn forward_get(
 }
 
 async fn list_provider_models(pool: &PgPool, provider_id: Uuid) -> Response {
+    // Bound the otherwise-unbounded models list. This is an OpenAI-compatible
+    // `/v1/models` proxy endpoint (consumed by OpenAI SDK clients that don't
+    // send limit/offset), so the cap is applied server-side via the shared
+    // DEFAULT_PAGE_SIZE rather than exposed as query params. A provider's
+    // configured model count is far below this in practice.
     let rows = match sqlx::query!(
         "SELECT name, created_at FROM llm_models
-         WHERE provider_id = $1 AND enabled = TRUE",
+         WHERE provider_id = $1 AND enabled = TRUE
+         ORDER BY created_at DESC
+         LIMIT $2",
         provider_id,
+        crate::common::DEFAULT_PAGE_SIZE as i64,
     )
     .fetch_all(pool)
     .await

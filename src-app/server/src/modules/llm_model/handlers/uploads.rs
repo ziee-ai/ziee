@@ -1467,16 +1467,41 @@ pub async fn initiate_repository_download_internal(
         }
     });
 
-    // Spawn a watcher to log panics from the background download task
-    // (tokio::spawn panics are stored in the JoinHandle and silently
-    // swallowed if the handle is dropped without awaiting.)
+    // Spawn a watcher to log + RECONCILE panics from the background download
+    // task (tokio::spawn panics are stored in the JoinHandle and silently
+    // swallowed if the handle is dropped without awaiting). A panicked task
+    // never reaches its own failure path, so the row would be stuck in
+    // 'downloading' forever — mark it failed so the UI and any retry logic see
+    // a terminal state.
     tokio::spawn(async move {
-        if let Err(panic_err) = download_handle.await {
+        if let Err(join_err) = download_handle.await {
             tracing::error!(
                 "Download background task panicked for download {}: {:?}",
                 download_id,
-                panic_err,
+                join_err,
             );
+            if join_err.is_panic() {
+                if let Err(e) = Repos
+                    .download_instance
+                    .update_status(
+                        download_id,
+                        types::UpdateDownloadStatusRequest {
+                            status: DownloadStatus::Failed,
+                            error_message: Some(
+                                "download task aborted unexpectedly (panic)".to_string(),
+                            ),
+                            model_id: None,
+                        },
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to mark panicked download {} as failed: {}",
+                        download_id,
+                        e
+                    );
+                }
+            }
         }
     });
 

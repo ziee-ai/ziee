@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::common::{ApiResult, AppError};
+use crate::common::{ApiResult, AppError, DEFAULT_PAGE_SIZE, PAGINATION_MAX_PER_PAGE};
 use crate::core::Repos;
 use crate::modules::file::handlers::download::{content_disposition, FILE_CONTENT_CACHE_CONTROL};
 use crate::modules::file::models::{File, FileVersion};
@@ -27,10 +27,20 @@ pub struct RestoreVersionRequest {
     pub version: i32,
 }
 
-/// List all versions of a file (newest first).
+/// Optional pagination for the versions list. Defaults bound an
+/// un-paginated caller to the most recent `DEFAULT_PAGE_SIZE` versions
+/// (newest first) instead of returning an unbounded set.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListVersionsQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// List versions of a file (newest first), paginated.
 pub async fn list_versions(
     auth: RequirePermissions<(FilesRead,)>,
     Path(file_id): Path<Uuid>,
+    Query(q): Query<ListVersionsQuery>,
 ) -> ApiResult<Json<Vec<FileVersion>>> {
     let user_id = auth.user.id;
     // 404 if the file isn't the user's (don't leak existence).
@@ -39,7 +49,15 @@ pub async fn list_versions(
         .get_by_id_and_user(file_id, user_id)
         .await?
         .ok_or_else(|| AppError::not_found("File"))?;
-    let versions = Repos.file.list_versions(file_id, user_id).await?;
+    let limit = q
+        .limit
+        .unwrap_or(DEFAULT_PAGE_SIZE as i64)
+        .clamp(1, PAGINATION_MAX_PER_PAGE as i64);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let versions = Repos
+        .file
+        .list_versions(file_id, user_id, limit, offset)
+        .await?;
     Ok((StatusCode::OK, Json(versions)))
 }
 

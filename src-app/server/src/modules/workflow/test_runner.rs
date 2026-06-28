@@ -342,7 +342,7 @@ expected_outputs:
     contains: "Bullet"
     min_length: 5
 "#;
-        let f: TestFixture = serde_yaml::from_str(yaml).expect("parse fixture");
+        let f: TestFixture = serde_norway::from_str(yaml).expect("parse fixture");
         assert_eq!(f.mode, FixtureMode::Ci);
         assert_eq!(f.inputs.get("topic").and_then(|v| v.as_str()), Some("quantum entanglement"));
         assert!(f.mocks.contains_key("summarize"));
