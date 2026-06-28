@@ -366,5 +366,30 @@ async fn tools_list_is_empty_when_user_has_no_workflows() {
     assert!(
         tools.is_empty(),
         "a user with no accessible workflows must get an empty tools list, got: {body}"
+#[tokio::test]
+async fn tools_list_with_zero_accessible_workflows_returns_empty_array() {
+    // A user who has `workflows::execute` (so the JSON-RPC auth gate at
+    // workflow_mcp/tools.rs passes) but has installed NO workflows, on a fresh
+    // deployment whose `workflows` table is empty (no migration/boot seed of
+    // system workflows). `repository::list_for_user` returns nothing, so
+    // `tool_list` (tools.rs:142-205) must yield a VALID success result carrying
+    // an EMPTY `tools` array — not an error, not `null`, not a missing field.
+    let server = TestServer::start().await;
+    let user = mcp_user(&server, "wf_mcp_empty").await;
+
+    let resp = jsonrpc(&server, &user.token, None, "tools/list", json!({})).await;
+    assert_eq!(resp.status(), 200, "tools/list with no workflows is a 200, not an error");
+
+    let body: Json = resp.json().await.unwrap();
+    assert!(
+        body.get("error").is_none(),
+        "tools/list must be a success result, not a JSON-RPC error: {body}"
+    );
+    let tools = body["result"]["tools"]
+        .as_array()
+        .unwrap_or_else(|| panic!("result.tools must be an array (not null/missing): {body}"));
+    assert!(
+        tools.is_empty(),
+        "a user with zero accessible workflows must get an empty tools array, got: {tools:?}"
     );
 }

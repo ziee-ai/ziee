@@ -179,4 +179,58 @@ test.describe('Realtime sync — profile (owner-scoped)', () => {
       await ctxB.close()
     }
   })
+
+  test('two devices of the SAME user converge on bidirectional profile edits', async ({
+    page,
+    browser,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    const ts = Date.now()
+    const username = `concur${ts}`
+    const password = 'password123'
+    await createTestUser(
+      apiURL,
+      adminToken,
+      username,
+      `${username}@example.com`,
+      password,
+      ['profile::read', 'profile::edit'],
+    )
+
+    // The same user opens TWO devices, both on the profile page.
+    const ctxA = await browser.newContext()
+    const ctxB = await browser.newContext()
+    const a = await ctxA.newPage()
+    const b = await ctxB.newPage()
+    try {
+      await login(a, baseURL, username, password, { completeOnboarding: true })
+      await gotoProfile(a, baseURL)
+      await login(b, baseURL, username, password, { completeOnboarding: true })
+      await gotoProfile(b, baseURL)
+
+      const inputA = a.getByLabel(/^display name$/i)
+      const inputB = b.getByLabel(/^display name$/i)
+
+      // Device A edits + saves → device B reflects it via sync (no reload).
+      const nameFromA = `From A ${ts}`
+      await inputA.fill(nameFromA)
+      await a.getByRole('button', { name: 'Save' }).click()
+      await expect(a.getByText('Profile saved.')).toBeVisible()
+      await expect(inputB).toHaveValue(nameFromA, { timeout: 20_000 })
+
+      // Now device B edits + saves → device A converges on B's value.
+      const nameFromB = `From B ${ts}`
+      await inputB.fill(nameFromB)
+      await b.getByRole('button', { name: 'Save' }).click()
+      await expect(b.getByText('Profile saved.')).toBeVisible()
+      await expect(inputA).toHaveValue(nameFromB, { timeout: 20_000 })
+    } finally {
+      await ctxA.close()
+      await ctxB.close()
+    }
+  })
 })

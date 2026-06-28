@@ -244,6 +244,65 @@ async fn test_create_user_duplicate_email() {
     assert_eq!(response.status(), 409, "Should conflict");
 }
 
+/// TOCTOU race: the create-user handler (user.rs:144-157) does a
+/// check-then-insert — `get_by_username`/`get_by_email` then `create`. Two
+/// concurrent requests for the SAME username+email can both pass the
+/// app-level pre-check before either inserts. The DB UNIQUE constraint on
+/// users(username)/users(email) is what actually closes the window, and the
+/// repo's `create` maps the unique-violation into a 409 (repository.rs).
+///
+/// This fires both requests concurrently against the same live server (two
+/// independent reqwest clients → two real connections, so they race at the
+/// DB, not in a serialized single connection) and asserts EXACTLY ONE wins:
+/// one 2xx, one 409. A regression that dropped the unique constraint (or
+/// surfaced the race as a 500) would make this fail.
+#[tokio::test]
+async fn test_create_user_concurrent_duplicate_is_race_safe() {
+    let server = crate::common::TestServer::start().await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
+
+    let url = server.api_url("/users");
+    let token = admin.token.clone();
+
+    // Same username AND email on both requests — either field's unique
+    // constraint is sufficient to reject the loser.
+    let payload = json!({
+        "username": "raceuser",
+        "email": "race@example.com",
+        "password": "SecurePass123!"
+    });
+
+    let fire = |url: String, token: String, payload: serde_json::Value| async move {
+        // A fresh client per task = a distinct connection, so the two inserts
+        // genuinely contend at the database rather than being serialized.
+        reqwest::Client::new()
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&payload)
+            .send()
+            .await
+            .expect("Request failed")
+            .status()
+            .as_u16()
+    };
+
+    let (s1, s2) = tokio::join!(
+        fire(url.clone(), token.clone(), payload.clone()),
+        fire(url.clone(), token.clone(), payload.clone()),
+    );
+
+    let mut statuses = [s1, s2];
+    statuses.sort_unstable();
+    assert_eq!(
+        statuses,
+        [201, 409],
+        "exactly one concurrent create must succeed (201) and the other must \
+         lose to the unique constraint (409); got {:?}",
+        statuses
+    );
+}
+
 #[tokio::test]
 async fn test_create_user_validation() {
     let server = crate::common::TestServer::start().await;
@@ -1422,4 +1481,193 @@ async fn test_concurrent_user_creation_same_username_yields_one() {
         .await
         .unwrap();
     assert_eq!(count, 1, "exactly one user row must persist");
+// ============================================================================
+// Cross-subsystem: default-group auto-assignment on user creation
+// (user/handlers/user.rs:183-191) — a newly created user is auto-joined to
+// the deployment's default group, so they inherit its baseline permissions
+// without any explicit group assignment.
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_user_auto_assigned_to_default_group() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "groups::read"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Resolve the deployment's default group (the seeded "Users" group:
+    // is_default = true) — the group the handler auto-assigns into.
+    let groups_body: serde_json::Value = client
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list groups failed")
+        .json()
+        .await
+        .expect("parse groups");
+    let default_group = groups_body["groups"]
+        .as_array()
+        .expect("groups array")
+        .iter()
+        .find(|g| g["is_default"].as_bool() == Some(true))
+        .expect("a default group must exist for auto-assignment");
+    let default_group_id = default_group["id"].as_str().expect("group id").to_string();
+
+    // Create a brand-new user WITHOUT specifying any groups.
+    let create_body: serde_json::Value = client
+        .post(server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "username": "autojoiner",
+            "email": "autojoiner@example.com",
+            "password": "SecurePass123!",
+            "display_name": "Auto Joiner"
+        }))
+        .send()
+        .await
+        .expect("create user failed")
+        .json()
+        .await
+        .expect("parse created user");
+    let new_user_id = create_body["id"].as_str().expect("new user id").to_string();
+
+    // The new user must appear in the default group's member list — proving
+    // the create handler auto-joined them (no explicit assignment was made).
+    let members_body: serde_json::Value = client
+        .get(server.api_url(&format!("/groups/{}/members", default_group_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list members failed")
+        .json()
+        .await
+        .expect("parse members");
+    let is_member = members_body["users"]
+        .as_array()
+        .expect("members array")
+        .iter()
+        .any(|u| u["id"].as_str() == Some(new_user_id.as_str()));
+    assert!(
+        is_member,
+        "newly created user {new_user_id} must be auto-assigned to the default group {default_group_id}"
+    );
+}
+
+// Group CRUD lifecycle (audit r2-f1c1391cf89d). The happy-path group
+// create→list→get→update→delete coverage lives only in the ORPHANED
+// `tests/user_group/mod.rs` (never declared in integration_tests.rs, so it
+// never compiles or runs — see /tmp discovered note). The registered group
+// tests here only exercise the system-protection / self-escalation EDGES;
+// this drives the basic lifecycle through the real handlers so it actually
+// runs in the suite.
+#[tokio::test]
+async fn test_group_crud_lifecycle_through_real_handlers() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "grp_crud_admin",
+        &["groups::read", "groups::create", "groups::edit", "groups::delete"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", admin.token);
+
+    // CREATE
+    let name = format!("crud-grp-{}", Uuid::new_v4());
+    let created: serde_json::Value = client
+        .post(server.api_url("/groups"))
+        .header("Authorization", &bearer)
+        .json(&serde_json::json!({
+            "name": name,
+            "description": "original description",
+            "permissions": ["profile::read"]
+        }))
+        .send()
+        .await
+        .expect("create group request failed")
+        .json()
+        .await
+        .expect("parse created group");
+    let group_id = created
+        .get("id")
+        .and_then(|v| v.as_str())
+        .expect("created group must carry an id")
+        .to_string();
+
+    // READ — appears in the list AND GET /groups/{id} returns it
+    let listed: serde_json::Value = client
+        .get(server.api_url("/groups"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("list groups failed")
+        .json()
+        .await
+        .expect("parse list");
+    let in_list = listed
+        .get("groups")
+        .and_then(|g| g.as_array())
+        .map(|arr| {
+            arr.iter()
+                .any(|g| g.get("id").and_then(|v| v.as_str()) == Some(group_id.as_str()))
+        })
+        .unwrap_or(false);
+    assert!(in_list, "created group must appear in GET /groups");
+
+    let got = client
+        .get(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("get group failed");
+    assert_eq!(got.status(), 200, "GET /groups/{{id}} must return the created group");
+
+    // UPDATE — change the description (POST /groups/{id})
+    let upd = client
+        .post(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .json(&serde_json::json!({ "description": "updated description" }))
+        .send()
+        .await
+        .expect("update group failed");
+    assert_eq!(upd.status(), 200, "update of a custom group must succeed");
+    let refetched: serde_json::Value = client
+        .get(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("refetch group failed")
+        .json()
+        .await
+        .expect("parse refetched group");
+    assert_eq!(
+        refetched.get("description").and_then(|v| v.as_str()),
+        Some("updated description"),
+        "updated description must persist"
+    );
+
+    // DELETE — DELETE /groups/{id}, then it is gone
+    let del = client
+        .delete(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("delete group failed");
+    assert!(
+        del.status().is_success(),
+        "delete of a custom group must succeed, got {}",
+        del.status()
+    );
+    let after = client
+        .get(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("get after delete failed");
+    assert_eq!(after.status(), 404, "deleted group must be gone (404)");
 }

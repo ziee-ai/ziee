@@ -1844,4 +1844,112 @@ mod tests {
             "subsequent good file must still stage"
         );
     }
+
+    // ----------------------------------------------------------------
+    // CONVERSATION_LOCKS — the real per-conversation serialization gate
+    // (handlers.rs:42-56). Exercises the production `conv_lock` /
+    // `prune_conversation_lock` directly (they're module-private, so this
+    // must be an in-source test — an integration test can't reach them).
+    // No bwrap / rootfs needed: this is the concurrency-control layer that
+    // sits IN FRONT of every execute_command, guarding multi-user /
+    // multi-conversation contention.
+    // ----------------------------------------------------------------
+
+    #[test]
+    fn conv_lock_is_stable_per_id_and_distinct_across_ids() {
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        // Same conversation → same underlying Mutex (so concurrent calls
+        // to ONE conversation share a lock and serialize).
+        assert!(Arc::ptr_eq(&conv_lock(a), &conv_lock(a)));
+        // Different conversations (e.g. different users) → different
+        // Mutexes, so they never contend with each other.
+        assert!(!Arc::ptr_eq(&conv_lock(a), &conv_lock(b)));
+        prune_conversation_lock(a);
+        prune_conversation_lock(b);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn same_conversation_calls_serialize_under_concurrency() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let conv = Uuid::new_v4();
+        // `inside` counts tasks currently holding the conversation lock;
+        // `max_seen` records the high-water mark. If `conv_lock` truly
+        // serializes same-conversation access, the critical section is
+        // mutually exclusive and max_seen must never exceed 1.
+        let inside = Arc::new(AtomicUsize::new(0));
+        let max_seen = Arc::new(AtomicUsize::new(0));
+
+        let mut handles = Vec::new();
+        for _ in 0..16 {
+            let inside = inside.clone();
+            let max_seen = max_seen.clone();
+            handles.push(tokio::spawn(async move {
+                // EACH task independently resolves the lock for the SAME
+                // conversation id — exactly what concurrent execute_command
+                // calls on one conversation do.
+                let lock = conv_lock(conv);
+                let _guard = lock.lock().await;
+                let now = inside.fetch_add(1, Ordering::SeqCst) + 1;
+                max_seen.fetch_max(now, Ordering::SeqCst);
+                // Force overlap if the lock failed to serialize.
+                tokio::task::yield_now().await;
+                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+                inside.fetch_sub(1, Ordering::SeqCst);
+            }));
+        }
+        for h in handles {
+            h.await.unwrap();
+        }
+        assert_eq!(
+            max_seen.load(Ordering::SeqCst),
+            1,
+            "conv_lock must serialize concurrent same-conversation access"
+        );
+        prune_conversation_lock(conv);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn different_conversations_do_not_block_each_other() {
+        // A holds its lock for the whole test; B must still acquire its
+        // own lock immediately (no cross-conversation contention).
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let a_lock = conv_lock(a);
+        let a_held = a_lock.lock().await;
+
+        // B acquiring while A is held must not deadlock/block — bound it
+        // with a timeout so a regression (e.g. a shared global lock)
+        // fails loudly instead of hanging.
+        let b_acquired = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let b_lock = conv_lock(b);
+            let _g = b_lock.lock().await;
+            true
+        })
+        .await;
+        assert_eq!(
+            b_acquired,
+            Ok(true),
+            "a second conversation must lock independently while another is held"
+        );
+
+        drop(a_held);
+        prune_conversation_lock(a);
+        prune_conversation_lock(b);
+    }
+
+    #[test]
+    fn prune_conversation_lock_drops_the_entry() {
+        let id = Uuid::new_v4();
+        let first = conv_lock(id);
+        assert!(CONVERSATION_LOCKS.contains_key(&id));
+        prune_conversation_lock(id);
+        assert!(!CONVERSATION_LOCKS.contains_key(&id));
+        // A fresh acquire after prune mints a brand-new Mutex (not the
+        // stale one) — the reaper genuinely reclaimed the slot.
+        let second = conv_lock(id);
+        assert!(!Arc::ptr_eq(&first, &second));
+        prune_conversation_lock(id);
+    }
 }

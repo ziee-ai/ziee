@@ -348,3 +348,293 @@ async fn process_via_base64(
         }])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Edge-case coverage for the file → provider ContentBlock routing decision.
+    //!
+    //! `tests/file/file_attachments_real_providers_test.rs` constructs
+    //! `ContentBlock`s by hand and calls the provider API directly — it never
+    //! drives `process_file_blocks_with_file`, so the routing branches below
+    //! (ownership guard, text-like inline, image→base64, unsupported-binary /
+    //! non-UTF8 / missing-mime placeholders, office-doc extracted-text inline)
+    //! had no coverage.
+    //!
+    //! These exercise the REAL routing fn with `provider_type = "openai"` (a
+    //! non-real-OpenAI mapped type), whose non-PDF paths never touch the DB pool
+    //! or a provider upstream — only the global file store — so the tests are
+    //! deterministic and DB-free. The pool is a never-connected lazy handle
+    //! because these branches never read it.
+
+    // `use super::*` already brings the parent's imports (ContentBlock,
+    // ImageSource, DocumentSource, AppError, Uuid) into scope — re-importing
+    // them here would be an E0252 duplicate-import error.
+    use super::*;
+    use crate::modules::file::models::File;
+    use base64::Engine;
+    use chrono::Utc;
+    use std::sync::{Arc, OnceLock};
+    use tempfile::TempDir;
+
+    // One process-stable temp dir for the whole module: `init_file_storage`
+    // wins the global `OnceCell` only once, so a per-test dir that drops at fn
+    // exit would leave `get_file_storage()` pointing at a deleted path. A
+    // single static dir kept for the test process avoids that.
+    static STORAGE_DIR: OnceLock<TempDir> = OnceLock::new();
+
+    fn storage() -> Arc<dyn crate::modules::file::storage::FileStorage> {
+        let dir = STORAGE_DIR.get_or_init(|| tempfile::tempdir().unwrap());
+        crate::modules::file::storage::manager::init_file_storage(dir.path());
+        crate::modules::file::storage::manager::get_file_storage()
+    }
+
+    fn lazy_pool() -> sqlx::PgPool {
+        // Never connects: these routing branches don't read the pool. A valid
+        // URL is all `connect_lazy` needs (it parses, it does not dial).
+        sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://u:p@127.0.0.1:1/never")
+            .unwrap()
+    }
+
+    fn make_file(user_id: Uuid, filename: &str, mime: Option<&str>, text_pages: i32) -> File {
+        let blob = Uuid::new_v4();
+        File {
+            id: Uuid::new_v4(),
+            user_id,
+            filename: filename.to_string(),
+            file_size: 0,
+            mime_type: mime.map(|m| m.to_string()),
+            checksum: None,
+            has_thumbnail: false,
+            preview_page_count: 0,
+            text_page_count: text_pages,
+            processing_metadata: serde_json::json!({}),
+            created_by: "user".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            version: 1,
+            current_version_id: blob,
+            blob_version_id: blob,
+        }
+    }
+
+    async fn route(file: &File, user_id: Uuid) -> Result<Vec<ContentBlock>, AppError> {
+        process_file_blocks_with_file(&lazy_pool(), file, Uuid::new_v4(), "openai", user_id).await
+    }
+
+    #[tokio::test]
+    async fn ownership_mismatch_is_forbidden() {
+        let owner = Uuid::new_v4();
+        let file = make_file(owner, "secret.txt", Some("text/plain"), 0);
+        // A different user must be denied before any storage read.
+        let err = route(&file, Uuid::new_v4()).await.unwrap_err();
+        assert_eq!(err.status_code(), 403);
+        assert_eq!(err.error_code(), "FILE_ACCESS_DENIED");
+    }
+
+    #[tokio::test]
+    async fn text_like_json_inlines_verbatim_text() {
+        let user = Uuid::new_v4();
+        let file = make_file(user, "data.json", Some("application/json"), 0);
+        let body = b"{\"k\":\"v\"}";
+        storage()
+            .save_original(user, file.blob_version_id, "json", body)
+            .await
+            .unwrap();
+
+        let blocks = route(&file, user).await.unwrap();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(text, "[File: data.json]\n{\"k\":\"v\"}");
+            }
+            other => panic!("expected verbatim Text, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn image_on_non_native_provider_routes_to_base64_image() {
+        let user = Uuid::new_v4();
+        let file = make_file(user, "pic.png", Some("image/png"), 0);
+        let bytes = b"\x89PNG\r\n\x1a\nIMG";
+        storage()
+            .save_original(user, file.blob_version_id, "png", bytes)
+            .await
+            .unwrap();
+
+        let blocks = route(&file, user).await.unwrap();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ContentBlock::Image {
+                source: ImageSource::Base64 { media_type, data },
+            } => {
+                assert_eq!(media_type, "image/png");
+                assert_eq!(
+                    data,
+                    &base64::engine::general_purpose::STANDARD.encode(bytes)
+                );
+            }
+            other => panic!("expected base64 Image, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn unsupported_binary_routes_to_labeled_placeholder() {
+        let user = Uuid::new_v4();
+        let file = make_file(user, "blob.bin", Some("application/octet-stream"), 0);
+        storage()
+            .save_original(user, file.blob_version_id, "bin", &[0u8, 1, 2, 3])
+            .await
+            .unwrap();
+
+        let blocks = route(&file, user).await.unwrap();
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(text, "[File: blob.bin (application/octet-stream)]");
+            }
+            other => panic!("expected placeholder Text, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_mime_defaults_to_octet_stream_placeholder() {
+        let user = Uuid::new_v4();
+        // mime_type None → defaults to application/octet-stream → placeholder.
+        let file = make_file(user, "mystery.dat", None, 0);
+        storage()
+            .save_original(user, file.blob_version_id, "dat", &[9u8, 9, 9])
+            .await
+            .unwrap();
+
+        let blocks = route(&file, user).await.unwrap();
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(text, "[File: mystery.dat (application/octet-stream)]");
+            }
+            other => panic!("expected placeholder Text, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn non_utf8_text_routes_to_omitted_placeholder() {
+        let user = Uuid::new_v4();
+        let file = make_file(user, "bad.txt", Some("text/plain"), 0);
+        // Invalid UTF-8 → the verbatim-text branch's from_utf8 fallback fires.
+        storage()
+            .save_original(user, file.blob_version_id, "txt", &[0xFFu8, 0xFE, 0x00])
+            .await
+            .unwrap();
+
+        let blocks = route(&file, user).await.unwrap();
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(
+                    text,
+                    "[File: bad.txt (text/plain) — non-UTF8 content omitted]"
+                );
+            }
+            other => panic!("expected non-UTF8 placeholder Text, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn office_doc_with_extracted_text_inlines_pages() {
+        let user = Uuid::new_v4();
+        // A docx (not image/text/text-like) with extracted pages → inline them
+        // rather than dropping to a useless `[File: x]` placeholder.
+        let file = make_file(
+            user,
+            "report.docx",
+            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            2,
+        );
+        let st = storage();
+        st.save_text_page(user, file.blob_version_id, 1, "PAGE ONE\n")
+            .await
+            .unwrap();
+        st.save_text_page(user, file.blob_version_id, 2, "PAGE TWO\n")
+            .await
+            .unwrap();
+
+        let blocks = route(&file, user).await.unwrap();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(text, "[File: report.docx]\nPAGE ONE\nPAGE TWO\n");
+            }
+            other => panic!("expected inlined extracted Text, got {other:?}"),
+        }
+    }
+
+    // ---- Provider-SPECIFIC routing branches (lines 76-77 / 82-87) ----------
+    // The tests above all pin `provider_type = "openai"`, so the
+    // `matches!(provider_type, "anthropic" | "gemini")` native-branch guard at
+    // line 76 is only ever evaluated FALSE. These drive the same routing fn
+    // with the native-capable provider types so that guard is evaluated TRUE,
+    // proving it is correctly *mime-gated*: a non-image/non-PDF file on
+    // anthropic/gemini is NOT diverted to the native provider-API path — it
+    // falls through to the exact same extracted-text / verbatim-text handling
+    // as openai. (The native image/PDF divergence at line 79 →
+    // `process_via_provider_api` reads `Repos.llm_provider` + uploads, so it is
+    // integration-tier — `tests/file/file_attachments_real_providers_test.rs`;
+    // these stay DB-free.)
+    async fn route_as(
+        provider_type: &str,
+        file: &File,
+        user_id: Uuid,
+    ) -> Result<Vec<ContentBlock>, AppError> {
+        process_file_blocks_with_file(&lazy_pool(), file, Uuid::new_v4(), provider_type, user_id)
+            .await
+    }
+
+    #[tokio::test]
+    async fn anthropic_non_native_doc_falls_through_to_extracted_text() {
+        let user = Uuid::new_v4();
+        // A docx is neither image nor PDF, so even on anthropic the native
+        // guard (line 76-77) does NOT capture it → extracted-text inline,
+        // identical to the openai path. Exercises the guard evaluated TRUE for
+        // the provider but FALSE on the mime sub-condition.
+        let file = make_file(
+            user,
+            "brief.docx",
+            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            1,
+        );
+        storage()
+            .save_text_page(user, file.blob_version_id, 1, "ANTHROPIC PAGE\n")
+            .await
+            .unwrap();
+
+        let blocks = route_as("anthropic", &file, user).await.unwrap();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(text, "[File: brief.docx]\nANTHROPIC PAGE\n");
+            }
+            other => panic!("expected inlined extracted Text on anthropic, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn gemini_text_like_falls_through_to_verbatim_text() {
+        let user = Uuid::new_v4();
+        // A text-like (JSON) file on gemini skips the native image/PDF guard and
+        // is inlined verbatim — same as openai — proving the gemini arm of the
+        // native-branch guard is mime-gated, not a blanket provider divert.
+        let file = make_file(user, "cfg.json", Some("application/json"), 0);
+        let body = b"{\"provider\":\"gemini\"}";
+        storage()
+            .save_original(user, file.blob_version_id, "json", body)
+            .await
+            .unwrap();
+
+        let blocks = route_as("gemini", &file, user).await.unwrap();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(text, "[File: cfg.json]\n{\"provider\":\"gemini\"}");
+            }
+            other => panic!("expected verbatim Text on gemini, got {other:?}"),
+        }
+    }
+}

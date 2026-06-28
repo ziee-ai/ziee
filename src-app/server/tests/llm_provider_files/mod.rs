@@ -578,6 +578,24 @@ async fn test_reupload_after_provider_failure() {
         ProxySettings,
     };
 
+// Concurrency — race condition on the idempotent upsert
+// ============================================================================
+
+/// `upsert_provider_file_mapping` documents itself as "idempotent and safe for
+/// concurrent calls" (repository.rs:46). The safety is delegated to Postgres:
+/// the `UNIQUE(file_id, provider_id)` constraint (migration 15) plus the
+/// `ON CONFLICT (file_id, provider_id) DO UPDATE` clause must collapse a burst
+/// of simultaneous upserts on the SAME key into a single row — no duplicate-key
+/// error leaking out, no second row, and a consistent terminal value (one of
+/// the racers wins, last-writer-wins on the row).
+///
+/// This fires N upserts concurrently, each on the same (file_id, provider_id)
+/// but with a DISTINCT provider_file_id, from independent pool connections so
+/// they genuinely contend at the database (not serialized in one task). It runs
+/// the EXACT SQL the repository issues (this integration tier tests the DB
+/// operations directly, mirroring the other tests in this file).
+#[tokio::test]
+async fn test_concurrent_upsert_same_key_is_race_safe() {
     let server = crate::common::TestServer::start().await;
     let pool = sqlx::PgPool::connect(&server.database_url)
         .await
@@ -845,4 +863,94 @@ async fn test_provider_file_mapping_is_user_scoped() {
         .await
         .expect("query ok");
     assert!(cross.is_none(), "a different user must NOT resolve user A's provider-file mapping");
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "concurrent_upsert_user",
+        &[],
+    )
+    .await;
+    let user_id = Uuid::parse_str(&user.user_id).expect("Invalid user ID");
+
+    let file_id = create_test_file(&pool, user_id, "race.pdf").await;
+    let provider_id = create_test_provider(&pool, "Race Provider", "openai").await;
+
+    // Fire N concurrent upserts on the SAME key, each proposing a different
+    // provider_file_id. Each task takes its own connection from the pool.
+    const N: usize = 8;
+    let candidates: Vec<String> = (0..N).map(|i| format!("file_race_{i}")).collect();
+
+    let mut handles = Vec::with_capacity(N);
+    for pfid in candidates.iter().cloned() {
+        let pool = pool.clone();
+        handles.push(tokio::spawn(async move {
+            sqlx::query!(
+                r#"
+                INSERT INTO llm_provider_files (
+                    file_id, provider_id, provider_file_id,
+                    provider_metadata, upload_status
+                )
+                VALUES ($1, $2, $3, $4, 'completed')
+                ON CONFLICT (file_id, provider_id) DO UPDATE SET
+                    provider_file_id = EXCLUDED.provider_file_id,
+                    provider_metadata = EXCLUDED.provider_metadata,
+                    upload_status = 'completed',
+                    updated_at = NOW()
+                RETURNING id, provider_file_id
+                "#,
+                file_id,
+                provider_id,
+                pfid,
+                json!({ "filename": "race.pdf" })
+            )
+            .fetch_one(&pool)
+            .await
+        }));
+    }
+
+    // Every concurrent upsert must SUCCEED — the idempotency claim means none
+    // returns a unique-violation; the ON CONFLICT swallows the race.
+    let mut returned_ids = std::collections::HashSet::new();
+    for h in handles {
+        let row = h
+            .await
+            .expect("upsert task panicked")
+            .expect("concurrent upsert returned a DB error (race not handled)");
+        returned_ids.insert(row.id);
+    }
+
+    // Exactly ONE row must exist for the key — the constraint collapsed the burst.
+    let rows = sqlx::query!(
+        "SELECT id, provider_file_id, upload_status
+         FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
+        file_id,
+        provider_id
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("Failed to query mappings");
+
+    assert_eq!(
+        rows.len(),
+        1,
+        "concurrent upserts must collapse to a single row, found {}",
+        rows.len()
+    );
+
+    // All upserts returned the SAME row id (the one canonical row), and its
+    // terminal value is one of the racers' proposals (a consistent winner, not
+    // a corrupted/partial write).
+    assert_eq!(
+        returned_ids.len(),
+        1,
+        "all concurrent upserts must resolve to one row id, saw {:?}",
+        returned_ids
+    );
+    let row = &rows[0];
+    assert_eq!(row.id, *returned_ids.iter().next().unwrap());
+    assert_eq!(row.upload_status, "completed");
+    assert!(
+        candidates.contains(row.provider_file_id.as_ref().expect("provider_file_id set")),
+        "surviving provider_file_id {:?} must be one of the concurrent proposals",
+        row.provider_file_id
+    );
 }

@@ -137,6 +137,35 @@ mod tests {
                 assert_eq!(cap, MAX_COMPRESSION_RATIO);
             }
             other => panic!("a high-ratio zip must be rejected as RatioExceeded, got {other:?}"),
+    use std::io::{Cursor, Write};
+    use zip::write::SimpleFileOptions;
+    use zip::{CompressionMethod, ZipWriter};
+
+    /// Build an in-memory ZIP with a single entry. We construct real
+    /// archives (not hand-rolled bytes) so `validate` walks a genuine
+    /// central directory exactly as it does for an uploaded OOXML file.
+    fn make_zip(name: &str, method: CompressionMethod, data: &[u8]) -> Vec<u8> {
+        let mut zw = ZipWriter::new(Cursor::new(Vec::new()));
+        let opts = SimpleFileOptions::default().compression_method(method);
+        zw.start_file(name, opts).unwrap();
+        zw.write_all(data).unwrap();
+        zw.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn rejects_high_ratio_entry_as_zip_bomb() {
+        // 4 MiB of zeros deflates to a few hundred bytes → ratio well over
+        // the 200:1 cap: the classic decompression bomb the guard exists for.
+        let bytes = make_zip("bomb.bin", CompressionMethod::Deflated, &vec![0u8; 4 * 1024 * 1024]);
+        match validate(&bytes) {
+            Err(ZipBombError::RatioExceeded { ratio, cap }) => {
+                assert_eq!(cap, MAX_COMPRESSION_RATIO);
+                assert!(
+                    ratio > MAX_COMPRESSION_RATIO,
+                    "reported ratio {ratio} must exceed the cap {cap}"
+                );
+            }
+            other => panic!("expected RatioExceeded, got {other:?}"),
         }
     }
 
@@ -145,6 +174,27 @@ mod tests {
         match validate(b"this is plainly not a zip archive at all") {
             Err(ZipBombError::OpenFailed(_)) => {}
             other => panic!("non-zip bytes must fail to open, got {other:?}"),
+    fn accepts_legitimate_low_ratio_archive() {
+        // Stored (uncompressed) → ratio 1:1, total tiny: a real DOCX-shaped
+        // archive that must pass the guard untouched.
+        let bytes = make_zip(
+            "document.xml",
+            CompressionMethod::Stored,
+            b"<?xml version=\"1.0\"?><document>hello</document>",
+        );
+        assert!(
+            validate(&bytes).is_ok(),
+            "a normal low-ratio archive must validate"
+        );
+    }
+
+    #[test]
+    fn non_zip_bytes_fail_to_open() {
+        // A non-archive upload that slipped past the mime check must error
+        // cleanly (OpenFailed), never panic.
+        match validate(b"this is plainly not a zip archive at all") {
+            Err(ZipBombError::OpenFailed(_)) => {}
+            other => panic!("expected OpenFailed, got {other:?}"),
         }
     }
 
@@ -156,5 +206,20 @@ mod tests {
         ));
         assert!(!is_ooxml_or_odf("text/plain"));
         assert!(!is_ooxml_or_odf("image/png"));
+    fn is_ooxml_or_odf_matches_zip_family_only() {
+        // The processor only runs `validate` for these container mimes.
+        for m in [
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.oasis.opendocument.text",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            "application/zip",
+        ] {
+            assert!(is_ooxml_or_odf(m), "{m} must be treated as a zip-family container");
+        }
+        for m in ["image/png", "text/plain", "application/pdf", ""] {
+            assert!(!is_ooxml_or_odf(m), "{m} must NOT trigger zip-bomb validation");
+        }
     }
 }

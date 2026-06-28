@@ -6,6 +6,7 @@ import {
   createTestUser,
   loginExpectingOnboarding,
 } from '../../common/auth-helpers'
+import { createProviderViaAPI } from '../../common/provider-helpers'
 
 /**
  * E2E for the first-run onboarding wizard.
@@ -46,6 +47,40 @@ test.describe('Onboarding wizard', () => {
     await expect(page.getByRole('heading', { name: 'Getting Started' })).toBeVisible()
     // First step renders.
     await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+  })
+
+  test('onboarding with a configured provider lands on a functional chat', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    // A provider is configured deployment-wide BEFORE the user onboards, so the
+    // chat they land on is functional (a composer + model selection surface),
+    // not an empty no-provider state.
+    const adminToken = await getAdminToken(apiURL)
+    await createProviderViaAPI(apiURL, adminToken, 'Onboarding Provider', 'local')
+
+    const { username } = await freshUser(apiURL, 'functional')
+    await loginExpectingOnboarding(page, baseURL, username, 'password123')
+
+    // Click straight through the skippable guide to chat.
+    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByRole('heading', { name: 'Persistent Memory' })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible()
+    await page.getByRole('button', { name: 'Start Chatting' }).click()
+
+    // Functional chat: the composer's send affordance is present and the
+    // AuthGuard no longer bounces back to onboarding.
+    await expect(page).toHaveURL(new RegExp(`/chat`), { timeout: 15000 })
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible({
+      timeout: 15000,
+    })
+    await page.goto(`${baseURL}/`)
+    await page.waitForLoadState('load')
+    expect(page.url()).not.toContain('/onboarding')
   })
 
   test('stepping through the wizard completes onboarding and lands on chat', async ({ page, testInfra }) => {

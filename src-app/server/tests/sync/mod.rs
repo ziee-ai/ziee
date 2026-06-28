@@ -4,4 +4,5 @@
 //! `modules/sync/{registry,event}.rs`.
 
 mod delivery_test;
+mod file_delivery_test;
 mod subscribe_test;

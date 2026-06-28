@@ -32,6 +32,45 @@ async fn test_proxy_requires_auth() {
     assert_eq!(res.status(), 401);
 }
 
+/// The /bio/mcp route is registered for POST + GET (standalone SSE) + DELETE
+/// (session teardown), all forwarding through the same proxy_handler behind the
+/// same JWT + bio::query boundary. The existing tests only exercise POST; assert
+/// GET and DELETE are also wired and auth-gated (401 without a token).
+#[tokio::test]
+async fn test_proxy_get_and_delete_methods_are_auth_gated() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // GET (standalone SSE open) without auth → 401.
+    let get_res = client
+        .get(server.api_url("/bio/mcp"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_res.status(), 401, "GET /bio/mcp must require auth");
+
+    // DELETE (session teardown) without auth → 401.
+    let del_res = client
+        .delete(server.api_url("/bio/mcp"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_res.status(), 401, "DELETE /bio/mcp must require auth");
+
+    // An unsupported method on the same path is NOT routed to the proxy
+    // (405 Method Not Allowed), proving only the three intended verbs are wired.
+    let put_res = client
+        .put(server.api_url("/bio/mcp"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        put_res.status(),
+        405,
+        "PUT /bio/mcp is not a registered method"
+    );
+}
+
 #[tokio::test]
 async fn test_proxy_requires_bio_query_permission() {
     let server = crate::common::TestServer::start().await;

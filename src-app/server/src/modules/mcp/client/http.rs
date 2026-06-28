@@ -707,7 +707,9 @@ async fn handle_get_stream_elicitation(
         .and_then(|m| m.as_str())
         .unwrap_or("")
         .to_string();
-    let requested_schema = params.get("requestedSchema").cloned().unwrap_or(Value::Null);
+    let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
+        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
+    );
 
     // POST a JSON-RPC result back to the server with the spec-required headers.
     let post_result = |result_value: Value| {
@@ -991,6 +993,19 @@ impl HttpMcpClient {
         let base_url = server.url.clone()
             .ok_or_else(|| AppError::bad_request("MISSING_URL", "Missing URL for HTTP transport"))?;
 
+        // SSRF: validate the configured URL up-front under the MCP policy
+        // (localhost + RFC1918 LAN allowed for built-in/self-hosted servers,
+        // but link-local / cloud-metadata 169.254.169.254 blocked). The clients
+        // built below additionally re-validate every connect + redirect hop via
+        // the GuardingResolver, so a 302 to an internal address can't bypass it.
+        let mcp_policy = crate::utils::url_validator::OutboundUrlPolicy::MCP_USER;
+        if let Err(e) = crate::utils::url_validator::validate_outbound_url(&base_url, &mcp_policy) {
+            return Err(AppError::bad_request(
+                "MCP_URL_BLOCKED",
+                format!("MCP server URL rejected by SSRF policy: {e}"),
+            ));
+        }
+
         // Configured headers are attached to BOTH clients below via
         // `default_headers`, so they ride on every request to the remote server
         // (initialize, tools/list, tools/call, SSE GETs, DELETE). Values are
@@ -1036,8 +1051,10 @@ impl HttpMcpClient {
         // Cost is one extra handshake per request — negligible here (sessions are
         // ephemeral per tool call; built-in servers are localhost).
 
-        // Regular client has an overall timeout
-        let client = Client::builder()
+        // Regular client has an overall timeout. Built via the SSRF-guarded
+        // builder so every connect + redirect hop is re-validated against
+        // `mcp_policy` (DNS-rebinding + redirect-to-internal protection).
+        let client = crate::utils::url_validator::validated_client_builder(mcp_policy)
             .timeout(Duration::from_secs(timeout_secs))
             .pool_max_idle_per_host(0)
             .default_headers(headers.clone())
@@ -1045,7 +1062,7 @@ impl HttpMcpClient {
             .map_err(|e| AppError::internal_error(format!("Failed to create HTTP client: {}", e)))?;
 
         // Streaming client: only connect timeout (no overall timeout — SSE streams can be long)
-        let stream_client = Client::builder()
+        let stream_client = crate::utils::url_validator::validated_client_builder(mcp_policy)
             .connect_timeout(Duration::from_secs(timeout_secs))
             .pool_max_idle_per_host(0)
             .default_headers(headers)
@@ -1838,7 +1855,9 @@ impl HttpMcpClient {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
                                 let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                                let requested_schema = params.get("requestedSchema").cloned().unwrap_or(Value::Null);
+                                let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
+        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
+    );
 
                                 tracing::info!(
                                     "[elicitation] received elicitation/create id={:?} from '{}'",
@@ -2232,7 +2251,9 @@ impl HttpMcpClient {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
                                 let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                                let requested_schema = params.get("requestedSchema").cloned().unwrap_or(Value::Null);
+                                let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
+        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
+    );
 
                                 tracing::info!(
                                     "[elicitation] received elicitation/create id={:?} from '{}'",

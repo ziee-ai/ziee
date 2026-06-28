@@ -102,14 +102,27 @@ pub async fn get_by_engine_and_version(
     }))
 }
 
-/// List all runtime versions (bounded at 200 to prevent unbounded queries)
-pub async fn list_all(pool: &PgPool) -> Result<Vec<RuntimeVersion>, sqlx::Error> {
+/// Default page size for paginated list queries
+const DEFAULT_PAGE_SIZE: i64 = 50;
+/// Maximum page size — acts as a safety cap.
+const MAX_PAGE_SIZE: i64 = 500;
+
+/// List all runtime versions with pagination.
+pub async fn list_all(
+    pool: &PgPool,
+    page: i64,
+    per_page: i64,
+) -> Result<Vec<RuntimeVersion>, sqlx::Error> {
+    let offset = (page.max(1) - 1) * per_page.min(MAX_PAGE_SIZE);
+    let limit = per_page.clamp(1, MAX_PAGE_SIZE);
     let records = sqlx::query!(
         r#"SELECT id, engine, version, platform, arch, backend, binary_path,
                   is_system_default, created_at
            FROM llm_runtime_versions
            ORDER BY engine, created_at DESC
-           LIMIT 200"#
+           LIMIT $1 OFFSET $2"#,
+        limit,
+        offset
     )
     .fetch_all(pool)
     .await?;
@@ -130,18 +143,25 @@ pub async fn list_all(pool: &PgPool) -> Result<Vec<RuntimeVersion>, sqlx::Error>
         .collect())
 }
 
-/// List runtime versions for a specific engine
+/// List runtime versions for a specific engine with pagination.
 pub async fn list_by_engine(
     pool: &PgPool,
     engine: &str,
+    page: i64,
+    per_page: i64,
 ) -> Result<Vec<RuntimeVersion>, sqlx::Error> {
+    let offset = (page.max(1) - 1) * per_page.min(MAX_PAGE_SIZE);
+    let limit = per_page.clamp(1, MAX_PAGE_SIZE);
     let records = sqlx::query!(
         r#"SELECT id, engine, version, platform, arch, backend, binary_path,
                   is_system_default, created_at
            FROM llm_runtime_versions
            WHERE engine = $1
-           ORDER BY created_at DESC"#,
-        engine
+           ORDER BY created_at DESC
+           LIMIT $2 OFFSET $3"#,
+        engine,
+        limit,
+        offset
     )
     .fetch_all(pool)
     .await?;
@@ -160,6 +180,25 @@ pub async fn list_by_engine(
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
         })
         .collect())
+}
+
+/// Count all runtime versions (for pagination metadata).
+pub async fn count_all(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    let row = sqlx::query!("SELECT COUNT(*) AS \"count!\" FROM llm_runtime_versions")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.count)
+}
+
+/// Count runtime versions for a specific engine (for pagination metadata).
+pub async fn count_by_engine(pool: &PgPool, engine: &str) -> Result<i64, sqlx::Error> {
+    let row = sqlx::query!(
+        "SELECT COUNT(*) AS \"count!\" FROM llm_runtime_versions WHERE engine = $1",
+        engine
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(row.count)
 }
 
 /// Get the latest runtime version for an engine
@@ -292,6 +331,12 @@ pub struct LocalModelRow {
     pub running: bool,
 }
 
+/// Degenerate-case backstop for the unfiltered local-models scan. This view
+/// must return *all* local models (the usage grouping has no natural page), so
+/// the cap only guards against a pathological/OOM result set, far above any
+/// realistic count of local-provider models in a deployment.
+const LOCAL_MODELS_HARD_CAP: i64 = 5000;
+
 /// List local-provider models (optionally filtered by engine), each with its
 /// provider name and whether a runtime instance is currently `running`.
 pub async fn list_local_models_with_status(
@@ -312,8 +357,10 @@ pub async fn list_local_models_with_status(
           ON i.model_id = m.id AND i.status = 'running'
         WHERE ($1::text IS NULL OR m.engine_type = $1)
         ORDER BY p.name, m.display_name
+        LIMIT $2
         "#,
         engine,
+        LOCAL_MODELS_HARD_CAP,
     )
     .fetch_all(pool)
     .await?;
@@ -331,6 +378,121 @@ pub async fn list_local_models_with_status(
             running: r.running,
         })
         .collect())
+}
+
+/// Batched effective-runtime-version resolution for many models at once.
+///
+/// Mirrors the precedence in `BinaryManager::select_runtime_version`
+/// (model-required → provider-default → system-default → latest) but resolves
+/// the entire set in a constant number of queries instead of ~4 queries per
+/// model. Returns a map `model_id -> effective_version_id` (absent/`None` when
+/// no version resolves). Used by the version-usage view, which previously
+/// issued an N+1 storm of `select_runtime_version` calls.
+pub async fn resolve_effective_versions(
+    pool: &PgPool,
+    models: &[LocalModelRow],
+) -> Result<std::collections::HashMap<Uuid, Option<Uuid>>, sqlx::Error> {
+    use std::collections::{HashMap, HashSet};
+
+    if models.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let provider_ids: Vec<Uuid> = models
+        .iter()
+        .map(|m| m.provider_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let engines: Vec<String> = models
+        .iter()
+        .map(|m| m.engine.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    // Provider default version ids (one query).
+    let provider_default: HashMap<Uuid, Option<Uuid>> = sqlx::query!(
+        "SELECT id, default_runtime_version_id FROM llm_providers WHERE id = ANY($1)",
+        &provider_ids
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| (r.id, r.default_runtime_version_id))
+    .collect();
+
+    // System default per engine (one query).
+    let system_default: HashMap<String, Uuid> = sqlx::query!(
+        r#"SELECT DISTINCT ON (engine) engine, id
+           FROM llm_runtime_versions
+           WHERE engine = ANY($1) AND is_system_default = true"#,
+        &engines
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| (r.engine, r.id))
+    .collect();
+
+    // Latest version per engine (one query).
+    let latest: HashMap<String, Uuid> = sqlx::query!(
+        r#"SELECT DISTINCT ON (engine) engine, id
+           FROM llm_runtime_versions
+           WHERE engine = ANY($1)
+           ORDER BY engine, created_at DESC"#,
+        &engines
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| (r.engine, r.id))
+    .collect();
+
+    // Which referenced version ids (model-required + provider-default) actually
+    // exist — `select_runtime_version` only honors them when the row resolves.
+    let mut candidate_ids: HashSet<Uuid> = HashSet::new();
+    for m in models {
+        if let Some(v) = m.required_runtime_version_id {
+            candidate_ids.insert(v);
+        }
+        if let Some(Some(v)) = provider_default.get(&m.provider_id) {
+            candidate_ids.insert(*v);
+        }
+    }
+    let candidate_vec: Vec<Uuid> = candidate_ids.into_iter().collect();
+    let existing: HashSet<Uuid> = if candidate_vec.is_empty() {
+        HashSet::new()
+    } else {
+        sqlx::query!(
+            "SELECT id FROM llm_runtime_versions WHERE id = ANY($1)",
+            &candidate_vec
+        )
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .map(|r| r.id)
+        .collect()
+    };
+
+    let mut out: HashMap<Uuid, Option<Uuid>> = HashMap::with_capacity(models.len());
+    for m in models {
+        let resolved = m
+            .required_runtime_version_id
+            .filter(|v| existing.contains(v))
+            .or_else(|| {
+                provider_default
+                    .get(&m.provider_id)
+                    .copied()
+                    .flatten()
+                    .filter(|v| existing.contains(v))
+            })
+            .or_else(|| system_default.get(&m.engine).copied())
+            .or_else(|| latest.get(&m.engine).copied());
+        out.insert(m.id, resolved);
+    }
+
+    Ok(out)
 }
 
 /// Set (or clear) a model's pinned runtime version.

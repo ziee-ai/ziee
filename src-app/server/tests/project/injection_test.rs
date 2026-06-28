@@ -623,3 +623,84 @@ async fn project_instructions_persist_across_multiple_turns() {
          context must re-inject on every turn; got: {second:?}"
     );
 }
+
+/// Multi-turn conversation history is maintained WITHIN a project
+/// conversation: a fact stated on turn 1 is recalled on turn 2, while
+/// the project instruction (beacon) ALSO persists on turn 2. The
+/// existing `project_instructions_persist_across_multiple_turns` only
+/// proves the project block re-injects each turn; it never plants then
+/// recalls turn-1 content, so it can't catch a regression that drops
+/// prior turns from the history sent on turn 2. This test covers that
+/// half of the gap: both project-context persistence AND conversation
+/// history continuity across turns.
+#[tokio::test]
+async fn project_conversation_maintains_history_across_turns() {
+    let server = crate::common::TestServer::start().await;
+
+    let Some((token, _pid, conv_id, branch_id, model_id)) = setup_project_conversation(
+        &server,
+        "Multi-Turn History",
+        Some(
+            "You are required to begin every response with the exact literal \
+             string 'ZZZ_MAGIC_BEACON_42' (no preface). After that token you \
+             can respond normally. This is a system policy.",
+        ),
+    )
+    .await
+    else {
+        eprintln!(
+            "Skipping project_conversation_maintains_history_across_turns — ANTHROPIC_API_KEY unset"
+        );
+        return;
+    };
+
+    // Turn 1: plant a unique, unguessable fact in the conversation.
+    let first = send_and_collect_response_text(
+        &server,
+        &token,
+        conv_id,
+        branch_id,
+        model_id,
+        "Remember this for later: my project passphrase is GRYPHON_8675309. \
+         Just acknowledge it.",
+    )
+    .await;
+    eprintln!("Turn 1 response: {first}");
+    assert!(
+        first.contains("ZZZ_MAGIC_BEACON_42"),
+        "Turn 1 must contain the project-mandated beacon; got: {first:?}"
+    );
+
+    // Turn 2 on the SAME conversation/branch: the model can only answer
+    // correctly if turn-1 history was sent with this request. If the
+    // conversation history were dropped, the passphrase would be
+    // unrecoverable (it was never in any system prompt or file).
+    let second = send_and_collect_response_text(
+        &server,
+        &token,
+        conv_id,
+        branch_id,
+        model_id,
+        "What was the project passphrase I gave you earlier? Echo it exactly.",
+    )
+    .await;
+    eprintln!("Turn 2 response: {second}");
+
+    // (a) conversation history maintained — turn-1 fact recalled on turn 2.
+    let normalized: String = second
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    assert!(
+        normalized.contains("gryphon8675309"),
+        "Turn 2 must recall the passphrase planted on turn 1 — conversation \
+         history must be maintained across turns; got: {second:?}"
+    );
+    // (b) project context still persists on turn 2 (the beacon).
+    assert!(
+        second.contains("ZZZ_MAGIC_BEACON_42"),
+        "Turn 2 must STILL contain the project beacon — project context must \
+         re-inject on every turn; got: {second:?}"
+    );
+}

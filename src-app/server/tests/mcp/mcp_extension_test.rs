@@ -687,3 +687,107 @@ async fn test_mcp_disabled_servers_ignored() {
 
     // Disabled server should be filtered out during validation
 }
+
+// ============================================================================
+// Permission revocation during execution (all-f44bdb26e811)
+// ============================================================================
+
+/// A user's access to a group-assigned system MCP server must be re-evaluated
+/// on every request through the SAME `list_accessible` path the chat extension
+/// uses (`helpers::get_all_accessible_config` → `Repos.mcp.list_accessible`).
+/// This proves the allow is NOT cached: after the group assignment is revoked,
+/// the very next accessible-servers fetch for that user no longer includes the
+/// server, so a subsequent tool request would skip it as inaccessible
+/// (`validate_and_build_config` drops servers not in the freshly-resolved set).
+#[tokio::test]
+async fn test_mcp_access_revocation_is_reevaluated_per_request() {
+    let server = TestServer::start().await;
+
+    // Admin creates the system server; regular user only reads accessible ones.
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "revoke_admin",
+        &["mcp_servers_admin::create", "mcp_servers_admin::read"],
+    )
+    .await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "revoke_user",
+        &["mcp_servers::read"],
+    )
+    .await;
+
+    let mcp_server = create_test_mcp_server(&server, &admin, true).await;
+    let server_id =
+        Uuid::parse_str(mcp_server["id"].as_str().expect("server id")).expect("uuid");
+
+    // Assign the system server to the default group (the new user is a member).
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(3)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let default_group = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("default group");
+    sqlx::query!(
+        "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id, assigned_at)
+         VALUES ($1, $2, NOW())",
+        default_group.id,
+        server_id
+    )
+    .execute(&pool)
+    .await
+    .expect("assign server to default group");
+
+    let accessible_ids = |body: &serde_json::Value| -> Vec<String> {
+        body["servers"]
+            .as_array()
+            .expect("servers array")
+            .iter()
+            .map(|s| s["id"].as_str().unwrap_or_default().to_string())
+            .collect()
+    };
+
+    // Before revocation: the user can access the server.
+    let url = server.api_url("/mcp/servers?page=1&per_page=1000");
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("list accessible (granted)");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("parse granted list");
+    assert!(
+        accessible_ids(&body).contains(&server_id.to_string()),
+        "server must be accessible while the group grant exists"
+    );
+
+    // Revoke the grant (group assignment removed).
+    sqlx::query!(
+        "DELETE FROM user_group_mcp_servers WHERE group_id = $1 AND mcp_server_id = $2",
+        default_group.id,
+        server_id
+    )
+    .execute(&pool)
+    .await
+    .expect("revoke group assignment");
+    pool.close().await;
+
+    // After revocation: the SAME token's next request no longer sees it —
+    // enforcement is re-resolved, not cached from the earlier allow.
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("list accessible (revoked)");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("parse revoked list");
+    assert!(
+        !accessible_ids(&body).contains(&server_id.to_string()),
+        "server must be DENIED immediately after the grant is revoked (no cached allow)"
+    );
+}

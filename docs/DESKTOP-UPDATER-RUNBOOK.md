@@ -36,13 +36,15 @@ npx tauri signer generate -w ~/.tauri/ziee_updater.key   # prompts for a passwor
 This writes the private key (`~/.tauri/ziee_updater.key`, **keep secret**) and
 the public key (`~/.tauri/ziee_updater.key.pub`).
 
-> A throwaway **dev** keypair is already generated under
-> `src-app/desktop/tauri/.tauri-keys/` (gitignored) and its public key is baked
-> into `tauri.conf.json`. For production you SHOULD generate your own and
-> replace the `plugins.updater.pubkey` value with your new public key — or, if
-> you keep the dev key, add its private key (in `.tauri-keys/updater.key`) as
-> the secret below. The public key in `tauri.conf.json` and the private key in
-> CI MUST be a matching pair, or installs fail signature verification.
+> The `plugins.updater.pubkey` value baked into `tauri.conf.json` is the public
+> half of a throwaway **dev** keypair. Its **private** half is NOT committed:
+> `src-app/desktop/tauri/.tauri-keys/` is gitignored and is absent from a fresh
+> checkout, so you cannot reuse the dev private key — there is nothing to copy.
+> Generate your own keypair with the command above (it writes to
+> `~/.tauri/ziee_updater.key`), then replace the `plugins.updater.pubkey` value
+> with your new public key and register the matching private key as the CI
+> secret below. The public key in `tauri.conf.json` and the private key in CI
+> MUST be a matching pair, or installs fail signature verification.
 
 ### 2. Add the repository secrets
 

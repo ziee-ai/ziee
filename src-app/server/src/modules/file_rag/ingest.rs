@@ -373,5 +373,35 @@ mod backfill_guard_tests {
 
         // Leave the static clean for any other test in this binary.
         end_backfill();
+mod backfill_single_flight_tests {
+    use super::*;
+
+    /// The single-flight guard: while a backfill is in flight
+    /// (`BACKFILL_IN_PROGRESS == true`), a second `run_backfill()` caller
+    /// must short-circuit on the failed `compare_exchange` and return WITHOUT
+    /// entering `run_backfill_inner` (which would touch the DB) and WITHOUT
+    /// clearing the in-progress flag out from under the first caller.
+    ///
+    /// This needs no database precisely because a correctly-working guard never
+    /// reaches `run_backfill_inner` — if the guard were broken and the inner
+    /// path ran, it would try to use the uninitialized global `Repos` and the
+    /// test would fail loudly instead of silently passing.
+    #[tokio::test]
+    async fn second_concurrent_backfill_is_a_noop_while_one_is_in_progress() {
+        // Simulate a backfill already running (the first caller owns the flag).
+        BACKFILL_IN_PROGRESS.store(true, Ordering::Release);
+
+        // A second caller must take the early-return branch promptly.
+        run_backfill().await;
+
+        // The flag is still set: the no-op caller neither ran the inner backfill
+        // nor reset the first caller's flag.
+        assert!(
+            BACKFILL_IN_PROGRESS.load(Ordering::Acquire),
+            "concurrent run_backfill() must not clear the in-progress flag"
+        );
+
+        // Restore shared state so other in-source tests aren't poisoned.
+        BACKFILL_IN_PROGRESS.store(false, Ordering::Release);
     }
 }

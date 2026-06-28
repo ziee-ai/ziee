@@ -1508,13 +1508,20 @@ impl ChatExtension for McpChatExtension {
             context.iteration
         );
 
-        // === STEP 0: Check loop settings ===
-        // Get loop settings from conversation MCP settings (or use defaults)
-        let loop_settings = crate::core::Repos
+        // Fetch this conversation's MCP settings ONCE for the whole call; both
+        // the loop-settings check (STEP 0) and the approval check below derive
+        // from it (previously two separate get_conversation_settings round-trips
+        // per after_llm_call iteration).
+        let conv_settings = crate::core::Repos
             .chat
             .mcp
             .get_conversation_settings(context.conversation_id)
-            .await?
+            .await?;
+
+        // === STEP 0: Check loop settings ===
+        // Get loop settings from conversation MCP settings (or use defaults)
+        let loop_settings = conv_settings
+            .as_ref()
             .map(|s| s.get_loop_settings())
             .unwrap_or_default();
 
@@ -1740,12 +1747,9 @@ impl ChatExtension for McpChatExtension {
             }
         }
 
-        // Check MCP approval settings for this conversation
-        let settings = crate::core::Repos
-            .chat
-            .mcp
-            .get_conversation_settings(context.conversation_id)
-            .await?;
+        // Check MCP approval settings for this conversation (reuses the single
+        // fetch from the top of after_llm_call).
+        let settings = conv_settings;
 
         // Load user defaults — used both as fallback when this conversation
         // has no per-conversation settings AND as an additional source of
@@ -2966,6 +2970,59 @@ mod builtin_tests {
         assert!(always_on.iter().all(|id| only_base.contains(id)));
     }
 
+    /// The three life-science built-ins (`bio_mcp`, `lit_search`, `citations`)
+    /// must all attach TOGETHER when their flags are co-set on one tool-capable
+    /// request, independently of the file/memory/web built-ins. `auto_attach_*`
+    /// was only ever asserted cumulatively-on-top-of-everything before; this
+    /// isolates the bio+lit+citations combination so a regression that made one
+    /// flag clobber another (or that coupled bio/citations to web_search being
+    /// on) would be caught. Mirrors mcp.rs:144-163.
+    #[test]
+    fn auto_attach_collects_bio_lit_citations_together() {
+        let elicit = crate::modules::elicitation_mcp::elicitation_mcp_server_id();
+        let tool_result = crate::modules::tool_result_mcp::tool_result_mcp_server_id();
+        let bio = crate::modules::bio_mcp::bio_mcp_server_id();
+        let lit = crate::modules::lit_search::lit_search_server_id();
+        let citations = crate::modules::citations::citations_server_id();
+        // Built-ins that are deliberately NOT flagged on this request.
+        let files = crate::modules::files_mcp::files_mcp_server_id();
+        let memory = crate::modules::memory_mcp::memory_mcp_server_id();
+        let web = crate::modules::web_search::web_search_server_id();
+
+        // Tool-capable model with ONLY the bio + lit_search + citations flags
+        // set — no files/memory/web.
+        let mut m: HashMap<String, serde_json::Value> = HashMap::new();
+        m.insert("model_tools_capable".into(), json!(true));
+        m.insert("attach_bio_mcp".into(), json!("true"));
+        m.insert(
+            crate::modules::lit_search::chat_extension::ATTACH_FLAG.into(),
+            json!("true"),
+        );
+        m.insert(
+            crate::modules::citations::chat_extension::ATTACH_FLAG.into(),
+            json!("true"),
+        );
+
+        let ids = auto_attach_builtin_ids(&m);
+
+        // All three life-science servers attach concurrently …
+        assert!(ids.contains(&bio), "bio_mcp must attach");
+        assert!(ids.contains(&lit), "lit_search must attach");
+        assert!(ids.contains(&citations), "citations must attach");
+        // … alongside the always-on pair …
+        assert!(ids.contains(&elicit) && ids.contains(&tool_result));
+        // … and the un-flagged built-ins stay OFF (no coupling / clobber).
+        assert!(!ids.contains(&files));
+        assert!(!ids.contains(&memory));
+        assert!(!ids.contains(&web));
+        // Exactly the 3 flagged + 2 always-on, no duplicates.
+        assert_eq!(ids.len(), 5, "got {ids:?}");
+        let mut deduped = ids.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(deduped.len(), ids.len(), "no server id should appear twice");
+    }
+
     #[test]
     fn elicitation_is_builtin_and_auto_approved() {
         // ask_user must be treated as a built-in so its tool skips the manual
@@ -3010,5 +3067,55 @@ mod builtin_tests {
         ));
         // A third-party server id is NOT a privileged built-in.
         assert!(!is_builtin_server_id(Uuid::new_v4()));
+    }
+
+    /// Cross-subsystem integration of the built-in MCP servers through the
+    /// SHARED approval-bypass seam (`is_builtin_server_id`). This asserts the
+    /// full matrix in one place — web_search + memory + lit_search + citations +
+    /// elicitation + files + tool_result + bio + skill are all approval-bypassed
+    /// together — and that the EXECUTION subsystems (code_sandbox, workflow) are
+    /// deliberately NOT approval-bypassed (they run code / mutate, so a
+    /// tool-capable chat that enables everything still gates them behind manual
+    /// approval). Covers the "never tested together" cross-subsystem gaps.
+    #[test]
+    fn all_readonly_builtins_share_approval_bypass_but_execution_ones_do_not() {
+        // Read-only / save-only / user-prompting built-ins: approval-bypassed.
+        let bypassed = [
+            crate::modules::memory_mcp::memory_mcp_server_id(),
+            crate::modules::web_search::web_search_server_id(),
+            crate::modules::lit_search::lit_search_server_id(),
+            crate::modules::citations::citations_server_id(),
+            crate::modules::elicitation_mcp::elicitation_mcp_server_id(),
+            crate::modules::files_mcp::files_mcp_server_id(),
+            crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
+            crate::modules::bio_mcp::bio_mcp_server_id(),
+            crate::modules::skill_mcp::skill_mcp_server_id(),
+        ];
+        for id in bypassed {
+            assert!(
+                is_builtin_server_id(id),
+                "read-only built-in {id} must be approval-bypassed"
+            );
+        }
+
+        // Execution subsystems are NOT approval-bypassed — they mutate / run code
+        // and must stay behind manual approval even when auto-attached.
+        let needs_approval = [
+            crate::modules::code_sandbox::code_sandbox_server_id(),
+            crate::modules::workflow_mcp::workflow_mcp_server_id(),
+        ];
+        for id in needs_approval {
+            assert!(
+                !is_builtin_server_id(id),
+                "execution built-in {id} must NOT be approval-bypassed"
+            );
+        }
+
+        // And every id here is distinct (no accidental v5-namespace collision
+        // between two subsystems that would conflate their privileges).
+        let mut all: Vec<Uuid> = bypassed.to_vec();
+        all.extend_from_slice(&needs_approval);
+        let unique: std::collections::HashSet<_> = all.iter().collect();
+        assert_eq!(unique.len(), all.len(), "built-in server ids must be unique");
     }
 }

@@ -301,19 +301,30 @@ async fn pdf_to_text(client: &reqwest::Client, url: &str, timeout: Duration) -> 
         return None;
     }
 
-    let pdfium = crate::modules::file::utils::pdfium::init_pdfium().ok()?;
-    let document = pdfium.load_pdf_from_byte_slice(&bytes, None).ok()?;
-    let mut out = String::new();
-    let pages = document.pages();
-    for i in 0..pages.len() {
-        if let Ok(page) = pages.get(i)
-            && let Ok(text) = page.text()
-        {
-            out.push_str(&text.all());
-            out.push('\n');
-        }
-    }
-    let out = out.trim().to_string();
+    // PDFium work runs on the single dedicated worker thread; `with_pdfium`
+    // blocks on it, so hop onto a blocking thread to avoid stalling the async
+    // runtime. `bytes` is moved into the closure (Send + 'static).
+    let out = tokio::task::spawn_blocking(move || {
+        crate::modules::file::utils::pdfium::with_pdfium(move |pdfium| {
+            let document = pdfium
+                .load_pdf_from_byte_slice(&bytes, None)
+                .map_err(|e| AppError::internal_error(format!("Failed to load PDF: {e}")))?;
+            let mut out = String::new();
+            let pages = document.pages();
+            for i in 0..pages.len() {
+                if let Ok(page) = pages.get(i)
+                    && let Ok(text) = page.text()
+                {
+                    out.push_str(&text.all());
+                    out.push('\n');
+                }
+            }
+            Ok(out.trim().to_string())
+        })
+    })
+    .await
+    .ok()?
+    .ok()?;
     (!out.is_empty()).then_some(out)
 }
 

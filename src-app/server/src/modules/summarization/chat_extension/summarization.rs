@@ -50,6 +50,16 @@ fn conversation_model_id(metadata: &HashMap<String, serde_json::Value>) -> Optio
         .and_then(|s| uuid::Uuid::parse_str(s).ok())
 }
 
+/// Minimum branch history length before the after_llm_call summarization spawn
+/// does any DB/LLM work — brand-new branches are skipped cheaply.
+const MIN_HISTORY_TO_SUMMARIZE: usize = 4;
+
+/// The cheap pre-filter guard in the after_llm_call spawn: a branch with fewer
+/// than [`MIN_HISTORY_TO_SUMMARIZE`] messages is too new to summarize.
+fn branch_too_new_to_summarize(history_len: usize) -> bool {
+    history_len < MIN_HISTORY_TO_SUMMARIZE
+}
+
 /// Resolve the effective enabled state for one conversation:
 ///   per-conversation `on`  → true
 ///   per-conversation `off` → false
@@ -164,7 +174,7 @@ impl ChatExtension for SummarizationExtension {
                 Ok(h) => h.len(),
                 Err(_) => return,
             };
-            if history_count < 4 {
+            if branch_too_new_to_summarize(history_count) {
                 return;
             }
 
@@ -235,6 +245,17 @@ mod tests {
         let mut m = HashMap::new();
         m.insert("model_id".to_string(), serde_json::json!("not-a-uuid"));
         assert_eq!(conversation_model_id(&m), None);
+    }
+
+    /// The after_llm_call spawn's cheap "skip brand-new branches" guard: fewer
+    /// than MIN_HISTORY_TO_SUMMARIZE (4) messages → skip; 4+ → proceed.
+    #[test]
+    fn branch_too_new_guard_skips_short_histories() {
+        assert!(branch_too_new_to_summarize(0));
+        assert!(branch_too_new_to_summarize(1));
+        assert!(branch_too_new_to_summarize(3));
+        assert!(!branch_too_new_to_summarize(4));
+        assert!(!branch_too_new_to_summarize(10));
     }
 
     #[test]

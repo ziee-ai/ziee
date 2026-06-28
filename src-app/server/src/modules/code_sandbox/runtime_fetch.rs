@@ -526,4 +526,49 @@ mod tests {
         let _ga = la.lock().await;
         assert!(lb.try_lock().is_ok());
     }
+
+    /// Download-failure handling: an unreachable host (connection refused on a
+    /// closed loopback port) must surface a download error after exhausting the
+    /// attempts, never silently succeed or panic — and no partial dest is left
+    /// reported as success.
+    #[test]
+    fn download_blob_blocking_errors_on_unreachable_host() {
+        let dir = std::env::temp_dir()
+            .join(format!("ziee-rootfs-dl-fail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("blob.squashfs");
+
+        // Port 1 refuses connections → all attempts fail → Err.
+        let res = download_blob_blocking("http://127.0.0.1:1/rootfs.squashfs", &dest, 1);
+        assert!(
+            res.is_err(),
+            "an unreachable host must surface a download error, got {res:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `FetchError` Display strings are actionable (the verification/download
+    /// failure modes the install path maps upstream errors into).
+    #[test]
+    fn fetch_error_display_is_actionable() {
+        assert!(
+            FetchError::Sha256Mismatch {
+                expected: "aa".into(),
+                got: "bb".into(),
+            }
+            .to_string()
+            .contains("sha256 mismatch")
+        );
+        assert!(
+            FetchError::CosignFailed("bad cert".into())
+                .to_string()
+                .contains("cosign")
+        );
+        assert!(
+            FetchError::Download("boom".into())
+                .to_string()
+                .contains("download failed")
+        );
+    }
 }

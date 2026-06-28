@@ -609,6 +609,111 @@ async fn non_admin_rejected_from_admin_endpoints() {
     assert_eq!(backfill.status(), reqwest::StatusCode::FORBIDDEN, "backfill must 403");
 }
 
+/// Dimension-mismatch after a model swap (the guards at
+/// `embed_worker.rs:137-145` and `ingest.rs:229-236`, which skip a chunk whose
+/// freshly-embedded vector dimension != the column dimension).
+///
+/// Those guards exist because `file_chunks.embedding` is a fixed-width
+/// `halfvec(768)` column: if a swapped-in model emits a vector of a different
+/// dimension, writing it would be rejected by Postgres and would corrupt the
+/// HNSW index. The guards therefore SKIP such chunks (leaving them NULL =
+/// FTS-only) instead of writing them at the wrong width.
+///
+/// This pins that contract end-to-end against the REAL schema + the REAL
+/// production write (`set_chunk_embedding`'s exact untyped
+/// `UPDATE file_chunks SET embedding = $1` bind): a real ingest-produced chunk
+/// rejects a wrong-dimension `halfvec` write but accepts a matching 768-dim one.
+/// So a model returning a mismatched dimension can NEVER be silently stored —
+/// it can only be skipped, which is precisely the guarded behavior.
+#[tokio::test]
+async fn embedding_dimension_mismatch_on_model_swap_is_rejected_not_silently_stored() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_dimswap").await;
+    let pool = db_pool(&server).await;
+
+    // Real ingest path produces a chunk (embedding NULL, FTS-only — no embedder).
+    let file_id = upload_text(
+        &server,
+        &user,
+        "swap.txt",
+        "Mitochondria are the powerhouse of the cell; the electron transport chain \
+         pumps protons across the inner membrane.",
+    )
+    .await;
+    wait_for_chunks(&pool, &file_id, 1).await;
+
+    let fid = Uuid::parse_str(&file_id).unwrap();
+    let (chunk_id, chunk_uid): (Uuid, Uuid) = sqlx::query_as(
+        "SELECT id, user_id FROM file_chunks WHERE file_id = $1 ORDER BY id LIMIT 1",
+    )
+    .bind(fid)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch a chunk");
+
+    // The production write verbatim (repository::set_chunk_embedding):
+    //   UPDATE file_chunks SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4
+    let write_embedding = |dims: usize, model: &'static str| {
+        let pool = pool.clone();
+        let hv = pgvector::HalfVector::from_f32_slice(&vec![0.0123_f32; dims]);
+        async move {
+            sqlx::query(
+                "UPDATE file_chunks SET embedding = $1, embedding_model = $2 \
+                 WHERE id = $3 AND user_id = $4",
+            )
+            .bind(hv)
+            .bind(model)
+            .bind(chunk_id)
+            .bind(chunk_uid)
+            .execute(&pool)
+            .await
+        }
+    };
+
+    // A swapped model emitting the WRONG dimension (4 != 768) must be rejected
+    // by the column — this is the failure the in-loop guards short-circuit.
+    let mismatch = write_embedding(4, "swapped-model-4dim").await;
+    assert!(
+        mismatch.is_err(),
+        "writing a 4-dim vector into halfvec(768) must be rejected by Postgres, \
+         not silently stored at the wrong width",
+    );
+
+    // The stale chunk is still untouched: embedding NULL, model NULL (the guard
+    // left it FTS-only rather than corrupting it).
+    let (emb_is_null, model_is_null): (bool, bool) = sqlx::query_as(
+        "SELECT embedding IS NULL, embedding_model IS NULL FROM file_chunks WHERE id = $1",
+    )
+    .bind(chunk_id)
+    .fetch_one(&pool)
+    .await
+    .expect("re-read chunk after rejected write");
+    assert!(
+        emb_is_null && model_is_null,
+        "a rejected wrong-dim write must leave the chunk NULL (skipped/FTS-only), \
+         got embedding_null={emb_is_null} model_null={model_is_null}",
+    );
+
+    // A model emitting the MATCHING 768 dimension writes cleanly and is tagged —
+    // the post-swap re-embed of a same-dimension model fills the corpus.
+    let ok = write_embedding(768, "swapped-model-768dim").await;
+    assert!(ok.is_ok(), "a 768-dim vector must store into halfvec(768): {ok:?}");
+
+    let (has_embedding, model_tag): (bool, Option<String>) = sqlx::query_as(
+        "SELECT embedding IS NOT NULL, embedding_model FROM file_chunks WHERE id = $1",
+    )
+    .bind(chunk_id)
+    .fetch_one(&pool)
+    .await
+    .expect("re-read chunk after matching write");
+    assert!(has_embedding, "matching-dim embedding should now be present");
+    assert_eq!(
+        model_tag.as_deref(),
+        Some("swapped-model-768dim"),
+        "the chunk should be tagged with the swapped-in model",
+    );
+}
+
 /// Setting a non-embedding model is rejected (400) and does not persist.
 #[tokio::test]
 async fn non_embedder_model_rejected() {
@@ -961,5 +1066,438 @@ async fn admin_settings_validation_rejects_bad_values() {
     assert_eq!(
         resp.json::<Value>().await.unwrap_or_default()["error_code"],
         "VALIDATION_ERROR"
+/// Permission revocation is re-resolved per request, not cached on the token.
+///
+/// A user granted `file_rag::admin::read` can GET the admin settings (200).
+/// When that grant is removed from their group mid-flow, the *same* bearer
+/// token's next GET must be refused with 403 — proving the read gate
+/// (`RequirePermissions<(FileRagAdminRead,)>`) resolves group permissions live
+/// on every request rather than trusting a stale snapshot from issue time.
+/// (Existing `non_admin_rejected_from_admin_endpoints` only covers a user who
+/// never had the permission.)
+#[tokio::test]
+async fn admin_read_permission_revocation_is_enforced_per_request() {
+    let server = TestServer::start().await;
+    // Granted exactly the admin-read permission (plus profile::read so the
+    // account is otherwise normal). create_user_with_permissions puts these on
+    // a dedicated, non-default group we can later empty out.
+    let user = create_user_with_permissions(
+        &server,
+        "file_rag_revoke",
+        &["file_rag::admin::read", "profile::read"],
+    )
+    .await;
+
+    // Before revocation: the read gate admits the request.
+    let before = reqwest::Client::new()
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get settings (granted)");
+    assert_eq!(
+        before.status(),
+        reqwest::StatusCode::OK,
+        "user holding file_rag::admin::read must read admin settings"
+    );
+
+    // Revoke mid-flow: strip every permission from the user's custom group.
+    // (The default group never carried file_rag::admin::read, so this fully
+    // removes the grant.)
+    let pool = db_pool(&server).await;
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let affected = sqlx::query(
+        "UPDATE groups SET permissions = '{}', updated_at = NOW() \
+         WHERE is_default = false AND id IN \
+           (SELECT group_id FROM user_groups WHERE user_id = $1)",
+    )
+    .bind(user_uuid)
+    .execute(&pool)
+    .await
+    .expect("revoke custom-group permissions")
+    .rows_affected();
+    assert!(affected >= 1, "expected to clear at least the custom permissions group");
+
+    // After revocation: the SAME token is now refused — perms re-resolved live.
+    let after = reqwest::Client::new()
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get settings (revoked)");
+    assert_eq!(
+        after.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "after the grant is removed, the same token must be re-checked and refused (403), not served from a cached allow"
+    );
+}
+
+/// Concurrent re-index of the SAME file serializes on the per-file advisory
+/// xact lock (`pg_advisory_xact_lock(hashtext('file_rag_reindex:' || file_id))`
+/// in `FileRagRepository::reindex_chunks`), so two simultaneous rewrites can
+/// never interleave their DELETE-then-INSERT into mixed or duplicate chunks.
+///
+/// This drives the REAL production path (rewrite_file → commit_new_version →
+/// spawn_reindex → reindex_chunks) twice CONCURRENTLY against one file, then —
+/// once the dust settles — asserts the invariants that can only hold if the
+/// lock truly serialized the two transactions:
+///   - no duplicate `chunk_index` (a half-interleaved insert would dupe),
+///   - all surviving chunks share ONE `blob_version_id` (no two-version blend),
+///   - exactly one rewrite's marker is present (not both, not neither),
+///   - the original content is fully gone.
+/// A broken/missing lock would let the two DELETE/INSERTs interleave and leave
+/// duplicate indices or a mix of both markers. Nothing is mocked.
+#[tokio::test]
+async fn concurrent_rewrite_same_file_serializes_via_advisory_lock() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_advlock").await;
+    let pool = db_pool(&server).await;
+
+    // Original content carries a unique marker; long enough to be a real body.
+    let original = format!("origmarker {}", "lorem ipsum dolor sit amet ".repeat(40));
+    let (conv, ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-advlock",
+        &[("notes.md", original.as_str())],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    let fid = Uuid::parse_str(&ids[0]).unwrap();
+    wait_for_chunks(&pool, &ids[0], 1).await;
+    wait_for_chunk_text(&pool, &ids[0], "origmarker").await;
+
+    // Two DISTINCT rewrites of the SAME file, fired CONCURRENTLY → two
+    // spawn_reindex tasks that race on the per-file advisory lock.
+    let alpha = format!("alphamarker {}", "alpha body content words ".repeat(60));
+    let beta = format!("betamarker {}", "beta body content words ".repeat(60));
+    let (ra, rb) = tokio::join!(
+        call_tool(&server, &user, conv_uuid, "rewrite_file", json!({ "id": ids[0], "content": alpha })),
+        call_tool(&server, &user, conv_uuid, "rewrite_file", json!({ "id": ids[0], "content": beta })),
+    );
+    assert!(ra["error"].is_null(), "rewrite A should succeed; body={ra}");
+    assert!(rb["error"].is_null(), "rewrite B should succeed; body={rb}");
+
+    // Wait for re-index to settle: the original marker is gone AND the chunk
+    // count is stable across two consecutive reads (no in-flight reindex).
+    let mut last = -1i64;
+    let mut settled = false;
+    for _ in 0..80 {
+        let orig_present: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM file_chunks WHERE file_id = $1 AND content ILIKE '%origmarker%' LIMIT 1",
+        )
+        .bind(fid)
+        .fetch_optional(&pool)
+        .await
+        .expect("scan orig");
+        let n = chunk_count(&pool, &ids[0]).await;
+        if orig_present.is_none() && n > 0 && n == last {
+            settled = true;
+            break;
+        }
+        last = n;
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(settled, "re-index did not settle to a stable, original-free state");
+
+    // Invariants that hold IFF the advisory lock serialized the two reindexes.
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(fid)
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    let distinct_idx: i64 =
+        sqlx::query_scalar("SELECT COUNT(DISTINCT chunk_index) FROM file_chunks WHERE file_id = $1")
+            .bind(fid)
+            .fetch_one(&pool)
+            .await
+            .expect("distinct idx");
+    let distinct_ver: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT blob_version_id) FROM file_chunks WHERE file_id = $1",
+    )
+    .bind(fid)
+    .fetch_one(&pool)
+    .await
+    .expect("distinct ver");
+    let has_alpha: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM file_chunks WHERE file_id = $1 AND content ILIKE '%alphamarker%' LIMIT 1",
+    )
+    .bind(fid)
+    .fetch_optional(&pool)
+    .await
+    .expect("scan alpha");
+    let has_beta: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM file_chunks WHERE file_id = $1 AND content ILIKE '%betamarker%' LIMIT 1",
+    )
+    .bind(fid)
+    .fetch_optional(&pool)
+    .await
+    .expect("scan beta");
+
+    assert!(total > 0, "file must have chunks after the concurrent rewrites");
+    assert_eq!(
+        distinct_idx, total,
+        "duplicate chunk_index rows => the two reindex transactions interleaved (lock failed)"
+    );
+    assert_eq!(
+        distinct_ver, 1,
+        "chunks span >1 blob_version_id => a mixed/blended index (lock failed); got {distinct_ver}"
+    );
+    assert_ne!(
+        has_alpha.is_some(),
+        has_beta.is_some(),
+        "exactly one rewrite must win; both markers present => corrupt interleave, neither => lost write"
+    );
+}
+
+// ── embed-dispatch failure recovery (cross-module: file_rag ↔ memory) ────────
+//
+// file_rag delegates embedding to `memory::engine::dispatch::embed_batch`
+// (ingest.rs `embed_file_chunks`) and to `dispatch::embed` (retrieval-time
+// query embed + the admin-settings probe). These two tests pin the documented
+// recovery contract when that cross-module dispatch is unavailable / fails:
+//   1. with NO embedder, ingest stores chunks with a NULL embedding yet they
+//      stay fully FTS-searchable (degrade, don't error); and
+//   2. configuring an embedding model whose provider dispatch FAILS is rejected
+//      gracefully (4xx, not a 5xx/panic) — embed_batch's error is handled.
+
+/// Cross-module recovery, ingest+search: a fresh deployment has no embedding
+/// model, so the `file_rag → memory::embed_batch` dispatch never populates
+/// `file_chunks.embedding` (it stays NULL) — yet the chunks are stored and
+/// `semantic_search` still answers via the FTS fallback. Asserts the DB-level
+/// degradation invariant (embedding IS NULL) that the existing FTS tests omit,
+/// tying the ingest-side dispatch outcome to the search-side FTS result.
+#[tokio::test]
+async fn embed_dispatch_absent_keeps_chunks_null_embedded_yet_fts_searchable() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_embedfail").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-embedfail",
+        &[(
+            "mito.txt",
+            "The mitochondrion is the powerhouse of the cell; oxidative phosphorylation \
+             on the cristae membrane drives ATP synthase to produce uniquemarkerzeta.",
+        )],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    let file_uuid = Uuid::parse_str(&file_ids[0]).unwrap();
+
+    // Background ingest produced chunks.
+    let total = wait_for_chunks(&pool, &file_ids[0], 1).await;
+    assert!(total >= 1, "ingest must produce at least one chunk");
+
+    // The cross-module embed dispatch was skipped (no model) → EVERY chunk has a
+    // NULL embedding. This is the ingest-side degradation: chunks are stored
+    // FTS-ready, never blocked on the unavailable embedder.
+    let embedded: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM file_chunks WHERE file_id = $1 AND embedding IS NOT NULL",
+    )
+    .bind(file_uuid)
+    .fetch_one(&pool)
+    .await
+    .expect("count embedded chunks");
+    assert_eq!(
+        embedded, 0,
+        "with no embedder configured the file_rag→memory embed dispatch must leave \
+         embedding NULL (degrade to FTS), not block or partially embed; got {embedded}"
+    );
+
+    // The search-side fallback: despite NULL embeddings, the term is found and
+    // the retrieval mode is FTS (retrieval.rs degrade path), with provenance.
+    let body = semantic_search(&server, &user, conv_uuid, "uniquemarkerzeta").await;
+    assert!(body["error"].is_null(), "semantic_search must not error; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(
+        sc["mode"].as_str().unwrap(),
+        "fts",
+        "no usable embedder → retrieval falls back to FTS mode"
+    );
+    let results = sc["results"].as_array().expect("results array");
+    assert!(
+        !results.is_empty(),
+        "FTS fallback must still return the matching chunk; results={results:?}"
+    );
+    assert_eq!(results[0]["file_id"].as_str().unwrap(), file_ids[0].as_str());
+}
+
+/// Cross-module recovery, configure path: setting an embedding model whose
+/// provider dispatch FAILS must be handled gracefully. The admin-settings
+/// handler probe-embeds via `memory::dispatch::embed` → `embed_batch` →
+/// `embed_remote`; pointing the provider at a closed loopback port makes that
+/// dispatch return `Err` (connection refused). The endpoint must answer a clean
+/// `400 INVALID_EMBEDDING_MODEL`, NOT a 500 / panic — and Document RAG keeps
+/// working in FTS mode (the embedder was never accepted).
+#[tokio::test]
+async fn configured_embedder_with_dead_provider_is_rejected_not_5xx() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_deadembed").await;
+    let http = reqwest::Client::new();
+
+    // A provider whose base_url is a closed loopback port → embed dispatch gets
+    // an instant connection-refused (deterministic, no real network egress).
+    let prov: Value = http
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "Dead Embed Provider",
+            "provider_type": "openai",
+            "enabled": true,
+            "api_key": "sk-test-unused",
+            "base_url": "http://127.0.0.1:1/v1",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let provider_id = prov["id"].as_str().expect("created provider id").to_string();
+
+    // A model FLAGGED embedding-capable (passes the capability check in
+    // embed_batch) but whose provider can't be reached.
+    let model: Value = http
+        .post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "provider_id": provider_id,
+            "name": "dead-embed-model",
+            "display_name": "Dead Embed Model",
+            "description": "embedding-capable but provider is unreachable",
+            "enabled": true,
+            "engine_type": "none",
+            "file_format": "gguf",
+            "capabilities": { "text_embedding": true },
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let model_id = model["id"].as_str().expect("created model id").to_string();
+
+    // Selecting it as the embedding model triggers the server-side probe embed,
+    // which fails at the dead provider. The handler must convert embed_batch's
+    // Err into a clean 400 (provider error logged, not leaked), not a 5xx.
+    let resp = http
+        .put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "embedding_model_id": model_id,
+            "semantic_enabled": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    assert_eq!(
+        status,
+        reqwest::StatusCode::BAD_REQUEST,
+        "a configured-but-unreachable embedder must be rejected with 400, not a 5xx/panic; \
+         got {status}: {body}"
+    );
+    assert!(
+        body.contains("INVALID_EMBEDDING_MODEL"),
+        "rejection should carry the INVALID_EMBEDDING_MODEL code; body={body}"
+    );
+
+    // And the deployment is unharmed: with no embedder accepted, semantic_search
+    // still works in FTS mode on a freshly uploaded file.
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-deadembed",
+        &[("note.txt", "a recoverymarkeromega term that FTS can still locate")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    let pool = db_pool(&server).await;
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+    let search = semantic_search(&server, &user, conv_uuid, "recoverymarkeromega").await;
+    assert!(search["error"].is_null(), "search must succeed post-rejection; body={search}");
+    assert_eq!(
+        search["result"]["structuredContent"]["mode"].as_str().unwrap(),
+        "fts",
+        "rejected embedder leaves retrieval in FTS mode"
+    );
+    assert!(
+        !search["result"]["structuredContent"]["results"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "FTS must still find the term after the embedder was rejected"
+    );
+}
+
+/// Mid-session permission ESCALATION takes effect on the next request — the
+/// grant complement of `admin_read_permission_revocation_is_enforced_per_request`.
+///
+/// `RequirePermissions` re-resolves the caller's group permissions live on every
+/// request (`extractors.rs:130-151` → `Repos.user.get_user_groups`), so a
+/// permission added to the user's group AFTER their token was minted must be
+/// honored without a re-login. A regression that cached the initial (denied)
+/// permission set would keep returning 403 and fail this test.
+#[tokio::test]
+async fn admin_read_permission_grant_takes_effect_mid_session() {
+    let server = TestServer::start().await;
+    // Start WITHOUT file_rag::admin::read — only a normal profile permission.
+    // create_user_with_permissions seeds these onto a dedicated, non-default
+    // group we can later widen.
+    let user = create_user_with_permissions(
+        &server,
+        "file_rag_grant",
+        &["profile::read"],
+    )
+    .await;
+
+    // Before the grant: the admin-read gate refuses (the user genuinely lacks it).
+    let before = reqwest::Client::new()
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get settings (pre-grant)");
+    assert_eq!(
+        before.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "a user lacking file_rag::admin::read must be refused before the grant"
+    );
+
+    // Grant mid-flow: add file_rag::admin::read to the user's custom group.
+    // No re-login, same token — the next request must re-resolve and admit it.
+    let pool = db_pool(&server).await;
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let affected = sqlx::query(
+        "UPDATE groups \
+         SET permissions = ARRAY['profile::read','file_rag::admin::read']::text[], \
+             updated_at = NOW() \
+         WHERE is_default = false AND id IN \
+           (SELECT group_id FROM user_groups WHERE user_id = $1)",
+    )
+    .bind(user_uuid)
+    .execute(&pool)
+    .await
+    .expect("grant file_rag::admin::read to custom group")
+    .rows_affected();
+    assert!(affected >= 1, "expected to widen at least the custom permissions group");
+
+    // After the grant: the SAME token now succeeds — perms re-resolved live,
+    // not served from a cached deny.
+    let after = reqwest::Client::new()
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get settings (post-grant)");
+    assert_eq!(
+        after.status(),
+        reqwest::StatusCode::OK,
+        "after the grant is added, the same token must be re-checked and admitted (200), proving mid-session escalation takes effect"
     );
 }

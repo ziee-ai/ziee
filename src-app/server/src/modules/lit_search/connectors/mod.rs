@@ -455,4 +455,38 @@ mod tests {
         assert!(attach_gate_open(&settings(true)));
         assert!(!attach_gate_open(&settings(false)));
     }
+
+    /// Every one of the six catalog connectors must resolve to a configured
+    /// state when set up as documented: the five keyless sources are configured
+    /// with no key; CORE is configured once a key is present. This pins the
+    /// "all six connectors configured" invariant (the union search fans out only
+    /// over connectors that pass `is_configured`).
+    #[test]
+    fn all_six_connectors_reach_a_configured_state() {
+        let empty = serde_json::json!({});
+        for key in ["europepmc", "crossref", "semanticscholar", "pubmed", "arxiv"] {
+            let d = descriptor(key).unwrap_or_else(|| panic!("missing descriptor {key}"));
+            assert!(
+                is_configured(&d, None, &empty),
+                "keyless connector {key} must be configured with no key"
+            );
+        }
+        // CORE is the one key-required source.
+        let core = descriptor("core").unwrap();
+        assert!(!is_configured(&core, None, &empty), "core needs a key");
+        assert!(
+            is_configured(&core, Some("CORE_KEY"), &empty),
+            "core is configured once keyed"
+        );
+
+        // So with a CORE key configured, ALL SIX are simultaneously configured.
+        let configured_count = catalog()
+            .iter()
+            .filter(|d| {
+                let key = if d.key == "core" { Some("CORE_KEY") } else { None };
+                is_configured(d, key, &empty)
+            })
+            .count();
+        assert_eq!(configured_count, 6, "all six connectors configurable together");
+    }
 }

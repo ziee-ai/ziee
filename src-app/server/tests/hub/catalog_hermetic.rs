@@ -1828,3 +1828,85 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
 // placeholder-seeding + replace-existing-merging behavior are deleted (not
 // ignored — the feature is gone, see memory note
 // `feedback_no_ignore_unless_platform`).
+
+/// Asserts the `/hub/refresh` RESPONSE CONTRACT — the
+/// `HubCatalogRefreshResponse { updated, previous_version, new_version }`
+/// fields that `refresh_picks_up_publisher_catalog_changes` never inspects
+/// (it only reads the post-refresh `/hub/index` + `/hub/version`).
+///
+/// Three real transitions through the actual handler + HubManager::refresh
+/// (handlers.rs:2748-2776, hub_manager.rs:783 `updated = prev != new`),
+/// over the loopback mock Pages server (no network):
+///   1. seed → 9.9.1-test          : updated=true,  new=9.9.1-test, prev≠new
+///   2. 9.9.1-test → 9.9.1-test     : updated=false (IDEMPOTENT no-op),
+///                                    prev==new==9.9.1-test  ← the swap doesn't
+///                                    churn when the published catalog is
+///                                    unchanged (the event-emit branch is
+///                                    skipped on this path)
+///   3. 9.9.1-test → 9.9.2-test     : updated=true,  prev=9.9.1-test,
+///                                    new=9.9.2-test
+async fn post_refresh(server: &TestServer, admin_token: &str) -> Json {
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/hub/refresh"))
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("refresh");
+    assert_eq!(
+        resp.status(),
+        200,
+        "/hub/refresh must 200; got {}",
+        resp.status()
+    );
+    resp.json().await.expect("parse refresh response")
+}
+
+#[tokio::test]
+async fn refresh_response_reports_updated_previous_and_new_version() {
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "refresh_resp_admin",
+        &["hub::catalog::read", "hub::catalog::manage"],
+    )
+    .await;
+
+    // 1. First pull: seed → 9.9.1-test. Must report updated + the new
+    //    version, and previous_version must differ from new_version.
+    mock.switch_to("9.9.1-test");
+    let r1 = post_refresh(&server, &admin.token).await;
+    assert_eq!(r1["updated"], true, "first pull changes the catalog: {r1}");
+    assert_eq!(r1["new_version"], "9.9.1-test", "new_version: {r1}");
+    assert_ne!(
+        r1["previous_version"], r1["new_version"],
+        "previous (seed) must differ from the freshly-pulled version: {r1}"
+    );
+
+    // 2. Idempotent no-op: the publisher hasn't changed the catalog, so a
+    //    second identical refresh reports updated=false and prev==new ==
+    //    the same version — the atomic swap does not churn an unchanged
+    //    index (and the per-category refresh events are NOT emitted).
+    let r2 = post_refresh(&server, &admin.token).await;
+    assert_eq!(
+        r2["updated"], false,
+        "re-refresh of an unchanged catalog is a no-op: {r2}"
+    );
+    assert_eq!(r2["new_version"], "9.9.1-test", "new_version unchanged: {r2}");
+    assert_eq!(
+        r2["previous_version"], "9.9.1-test",
+        "previous_version == new_version on a no-op: {r2}"
+    );
+
+    // 3. Publisher pushes a newer catalog: updated=true and the response
+    //    reports the exact previous→new transition.
+    mock.switch_to("9.9.2-test");
+    let r3 = post_refresh(&server, &admin.token).await;
+    assert_eq!(r3["updated"], true, "newer catalog changes things: {r3}");
+    assert_eq!(r3["previous_version"], "9.9.1-test", "previous: {r3}");
+    assert_eq!(r3["new_version"], "9.9.2-test", "new: {r3}");
+}

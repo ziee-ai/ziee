@@ -1382,6 +1382,158 @@ async fn test_multiple_creations_from_same_hub_item() {
     }
 }
 
+/// `replace_existing=true` on the USER assistant install path (the
+/// Updates-tab "Re-install" flow) must delete ALL prior user installs of
+/// the same hub entity and leave exactly ONE fresh install — never a
+/// duplicate or an orphan at the stale version. The TEMPLATE path is
+/// covered elsewhere; this exercises `create_assistant_from_hub`'s
+/// `replace_existing` cleanup loop (handlers.rs:511-535) end-to-end.
+#[tokio::test]
+async fn test_user_assistant_install_replace_existing_collapses_to_one() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_replace_user",
+        &["hub::assistants::create", "hub::assistants::read"],
+    )
+    .await;
+
+    // Pick a hub assistant to install.
+    let url = server.api_url("/hub/assistants?lang=en");
+    let assistants: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    let hub_id = assistants.as_array().unwrap()[0]
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap()
+        .to_string();
+
+    let create_url = server.api_url("/hub/assistants/create");
+    let install = |replace: bool, tag: &str| {
+        let body = serde_json::json!({
+            "hub_id": hub_id,
+            "name": format!("Replace Assistant {tag}"),
+            "is_default": false,
+            "enabled": true,
+            "replace_existing": replace,
+        });
+        reqwest::Client::new()
+            .post(&create_url)
+            .header("Authorization", format!("Bearer {}", user.token))
+            .header("Content-Type", "application/json")
+            .json(&body)
+    };
+
+    // Accumulate TWO plain installs (no replace) → two tracked rows. This
+    // mirrors a user who installed before the replace_existing path existed.
+    let first: serde_json::Value = install(false, "first")
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("parse first");
+    let first_id = first["assistant"]["id"].as_str().unwrap().to_string();
+
+    let second: serde_json::Value = install(false, "second")
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("parse second");
+    let second_id = second["assistant"]["id"].as_str().unwrap().to_string();
+    assert_ne!(first_id, second_id, "two distinct plain installs");
+
+    // created_ids from the hub listing = this user's tracked installs of the entity.
+    let created_ids = |assistants: &serde_json::Value| -> Vec<String> {
+        assistants
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id.as_str()))
+            .and_then(|a| a.get("created_ids"))
+            .and_then(|v| v.as_array())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| id.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let before: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("parse list before");
+    let ids_before = created_ids(&before);
+    assert_eq!(
+        ids_before.len(),
+        2,
+        "two plain installs should both be tracked, got {ids_before:?}"
+    );
+
+    // Now Re-install WITH replace_existing → the cleanup loop must delete
+    // BOTH prior installs and leave exactly the one new row.
+    let replaced: serde_json::Value = install(true, "replacement")
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("parse replacement");
+    assert_eq!(
+        replaced["assistant"]["is_template"].as_bool(),
+        Some(false),
+        "replacement is a user assistant, not a template"
+    );
+    let replacement_id = replaced["assistant"]["id"].as_str().unwrap().to_string();
+
+    let after: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("parse list after");
+    let ids_after = created_ids(&after);
+
+    assert_eq!(
+        ids_after,
+        vec![replacement_id.clone()],
+        "replace_existing must collapse to exactly the single fresh install \
+         (old installs {first_id}/{second_id} deleted), got {ids_after:?}"
+    );
+    assert!(
+        !ids_after.contains(&first_id) && !ids_after.contains(&second_id),
+        "both prior installs must be gone after replace_existing"
+    );
+
+    // The replacement is a real, retrievable assistant owned by the user.
+    let got = reqwest::Client::new()
+        .get(server.api_url(&format!("/assistants/{replacement_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(got.status(), 200, "replacement assistant is retrievable");
+}
+
 // ============================================================================
 // Event Bus Integration Tests - Hub Entity Cleanup on Deletion
 // ============================================================================
@@ -2892,6 +3044,114 @@ async fn test_create_model_from_hub_requires_llm_models_create() {
     let request_body = serde_json::json!({
         "hub_id": "io.github.phibya/llama-3-1-8b-instruct",
         "provider_id": uuid::Uuid::new_v4(),
+/// Cross-subsystem: install an assistant FROM THE HUB, then confirm it is
+/// available for chat — i.e. it lands in the user's assistant list, where the
+/// chat path looks it up by `assistant_id`. Closes the untested hub-install →
+/// chat-usage flow (no LLM needed: availability is the integration point).
+#[tokio::test]
+async fn hub_install_assistant_then_available_for_chat() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_install_chat",
+        &[
+            "hub::assistants::read",
+            "hub::assistants::create",
+            "assistants::read",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {}", user.token);
+
+    // Discover a hub assistant; its reverse-DNS `name` is the catalog hub_id.
+    let hub: serde_json::Value = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let hub_id = hub
+        .as_array()
+        .unwrap()
+        .first()
+        .expect("seed catalog has >=1 hub assistant")
+        .get("name")
+        .and_then(|v| v.as_str())
+        .expect("hub assistant name")
+        .to_string();
+
+    // Install it into the user's own assistants.
+    let created_res = client
+        .post(server.api_url("/hub/assistants/create"))
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "hub_id": hub_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        created_res.status(),
+        reqwest::StatusCode::CREATED,
+        "installing a hub assistant must succeed"
+    );
+    let created: serde_json::Value = created_res.json().await.unwrap();
+    let assistant_id = created["assistant"]["id"]
+        .as_str()
+        .expect("created assistant id")
+        .to_string();
+
+    // It is now in the user's assistant list — the chat path resolves an
+    // assistant by id from exactly this surface.
+    let list: serde_json::Value = client
+        .get(server.api_url("/assistants"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let items = list["assistants"].as_array().expect("assistants array");
+    assert!(
+        items
+            .iter()
+            .any(|a| a["id"].as_str() == Some(assistant_id.as_str())),
+        "the installed hub assistant must be available (in the chat-usable assistant list)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Install-from-nonexistent-hub-id 404 (audit r2-bae4741a21a7).
+//
+// `test_create_model_from_hub_invalid_hub_id` covers the MODEL install path's
+// catalog-miss 404, but the equivalent branches for the ASSISTANT and
+// MCP-SERVER install handlers (`create_assistant_from_hub` /
+// `create_mcp_server_from_hub`, both documented `404 "... not found"`) had no
+// test — an unknown `hub_id` that isn't in the seed catalog must surface a
+// clean 404, not a 500 / a partially-created row.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_create_assistant_from_hub_nonexistent_hub_id_404() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::create", "hub::assistants::read"],
+    )
+    .await;
+
+    // A well-formed-but-unknown reverse-DNS hub id that is not in the seed
+    // catalog → the handler's manifest lookup must 404 (not 500), and nothing
+    // is created.
+    let url = server.api_url("/hub/assistants/create");
+    let request_body = serde_json::json!({
+        "hub_id": "io.github.test/nonexistent-hub-assistant",
+        "is_default": false,
         "enabled": true
     });
 
@@ -2910,5 +3170,58 @@ async fn test_create_model_from_hub_requires_llm_models_create() {
         response.status(),
         403,
         "user without llm_models::create must be forbidden from hub model download"
+    assert_eq!(
+        response.status(),
+        404,
+        "installing an assistant from a hub_id not in the catalog must 404"
+    );
+
+    // The catalog miss must not have created any assistant for the user.
+    let list = reqwest::Client::new()
+        .get(&server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    let assistants: serde_json::Value = list.json().await.expect("parse hub assistants");
+    for a in assistants.as_array().unwrap() {
+        let created = a.get("created_ids").and_then(|v| v.as_array());
+        assert!(
+            created.is_none() || created.unwrap().is_empty(),
+            "no assistant should have been created by the failed install"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_create_mcp_server_from_hub_nonexistent_hub_id_404() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::mcp_servers::create", "hub::mcp_servers::read"],
+    )
+    .await;
+
+    let url = server.api_url("/hub/mcp-servers/create");
+    let request_body = serde_json::json!({
+        "hub_id": "io.github.test/nonexistent-hub-mcp-server",
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        404,
+        "installing an MCP server from a hub_id not in the catalog must 404"
     );
 }

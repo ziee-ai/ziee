@@ -1,4 +1,3 @@
-import { message } from 'antd'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -131,7 +130,9 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
             undefined,
           )
           await get().load()
-          message.success('API key saved')
+          // Success/error feedback is shown by the calling page via the
+          // contextual `App.useApp()` message — keep UI toasts out of the store
+          // (showing both here and at the page produced a double toast on save).
         } finally {
           set(state => {
             state.saving = false

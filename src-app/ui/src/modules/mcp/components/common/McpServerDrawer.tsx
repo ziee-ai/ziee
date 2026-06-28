@@ -17,7 +17,6 @@ import { McpToolCallsTab } from '@/modules/mcp/components/common/McpToolCallsTab
 import { useEffect, useMemo, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import { useMcpServerDrawerStore } from '@/modules/mcp/stores'
 import {
   showConnectionTestResult,
   showConnectionTestError,
@@ -74,8 +73,11 @@ export function McpServerDrawer() {
   const [form] = Form.useForm()
   const { message } = App.useApp()
 
+  // Read the drawer state via the Stores proxy (not the raw zustand hook) so
+  // render subscribes through the meta-framework's per-field proxy, matching
+  // how the rest of this component drives the store (Stores.McpServerDrawer.*).
   const { open, loading, mode, editingServer, prefillData } =
-    useMcpServerDrawerStore()
+    Stores.McpServerDrawer
   // Read the policy state property (not the function accessors) so
   // the React proxy installs a useStore subscription — without this
   // the drawer's transport dropdown + user-mode sandbox info Alert

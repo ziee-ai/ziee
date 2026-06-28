@@ -879,6 +879,20 @@ async fn test_concurrent_download_initiations_are_distinct() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "cc_downloader",
+/// Concurrency-safety: the partial unique index `uq_download_instances_in_progress`
+/// (migration 119) is the TOCTOU guard for two simultaneous identical downloads.
+/// Two concurrent requests can both pass the handler's find-existing check and
+/// both attempt an insert; the index makes the loser fail at the DB level so the
+/// handler can return the in-flight winner instead of spawning a duplicate task.
+/// This exercises that guard directly (no network): a second in-progress row for
+/// the same (repo, provider, path, filename) must be rejected, while a fresh
+/// in-progress insert is allowed once the prior row reaches a terminal status.
+#[tokio::test]
+async fn concurrent_identical_downloads_dedup_via_unique_index() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "dl_dedup",
         &[
             "llm_models::create",
             "llm_models::read",
@@ -1019,4 +1033,64 @@ async fn test_cancel_real_download() {
             );
         }
     }
+    let hf_repo = get_huggingface_repository(&server, &user.token, false).await;
+    let repo_id =
+        uuid::Uuid::parse_str(hf_repo["id"].as_str().unwrap()).unwrap();
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id =
+        uuid::Uuid::parse_str(provider["id"].as_str().unwrap()).unwrap();
+
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let request_data = serde_json::json!({
+        "repository_path": "org/model",
+        "main_filename": "model.safetensors"
+    });
+
+    let insert_in_progress = |status: &'static str| {
+        let pool = pool.clone();
+        let rd = request_data.clone();
+        async move {
+            sqlx::query(
+                r#"INSERT INTO download_instances
+                       (provider_id, repository_id, request_data, status)
+                   VALUES ($1, $2, $3, $4)"#,
+            )
+            .bind(provider_id)
+            .bind(repo_id)
+            .bind(&rd)
+            .bind(status)
+            .execute(&pool)
+            .await
+        }
+    };
+
+    // First in-progress download row inserts cleanly.
+    insert_in_progress("downloading")
+        .await
+        .expect("first in-progress download should insert");
+
+    // A second identical in-progress row violates the partial unique index —
+    // this is exactly what makes the concurrent-duplicate insert lose the race.
+    let dup = insert_in_progress("pending").await;
+    let err = dup.expect_err("second identical in-progress download must be rejected");
+    match err {
+        sqlx::Error::Database(db) => assert!(
+            db.is_unique_violation(),
+            "expected a unique-violation, got: {db}"
+        ),
+        other => panic!("expected a database unique violation, got: {other}"),
+    }
+
+    // Once the in-flight row reaches a terminal status, the partial index no
+    // longer covers it, so a brand-new download of the same file is allowed.
+    sqlx::query("UPDATE download_instances SET status = 'completed' WHERE provider_id = $1")
+        .bind(provider_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    insert_in_progress("downloading")
+        .await
+        .expect("a fresh download is allowed once the prior one is terminal");
+
+    pool.close().await;
 }

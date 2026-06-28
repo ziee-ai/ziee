@@ -1,5 +1,6 @@
 // Integration tests for Assistant module
 
+mod message_attribution_test;
 mod sync_emit_test;
 
 use reqwest::StatusCode;
@@ -263,6 +264,65 @@ async fn test_delete_user_assistant() {
 // =====================================================
 // Template Assistant CRUD Tests
 // =====================================================
+
+/// Admin visibility: the template LIST must include DISABLED templates so an
+/// admin can see and re-enable them (repository::list passes no `enabled`
+/// filter for templates — assistant/repository.rs). Chat resolution filters
+/// `enabled = true` separately; this is the management surface.
+#[tokio::test]
+async fn test_list_templates_includes_disabled_templates() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tmpl_admin",
+        &[
+            "assistant_templates::create",
+            "assistant_templates::read",
+            "assistant_templates::edit",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {}", admin.token);
+
+    // Create a template, then disable it.
+    let created = client
+        .post(server.api_url("/assistant-templates"))
+        .header("Authorization", &auth)
+        .json(&json!({ "name": "Disabled Template", "description": "d" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let tmpl: serde_json::Value = created.json().await.unwrap();
+    let tmpl_id = tmpl["id"].as_str().unwrap().to_string();
+
+    let disabled = client
+        .put(server.api_url(&format!("/assistant-templates/{}", tmpl_id)))
+        .header("Authorization", &auth)
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(disabled.status(), StatusCode::OK);
+    assert_eq!(disabled.json::<serde_json::Value>().await.unwrap()["enabled"], false);
+
+    // The admin template list must still surface the disabled template.
+    let list = client
+        .get(server.api_url("/assistant-templates"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let body: serde_json::Value = list.json().await.unwrap();
+    let items = body["assistants"].as_array().expect("assistants array");
+    let found = items
+        .iter()
+        .find(|a| a["id"].as_str() == Some(tmpl_id.as_str()))
+        .expect("disabled template must appear in the admin template list");
+    assert_eq!(found["enabled"], false, "and it is shown as disabled");
+}
 
 #[tokio::test]
 async fn test_create_template_assistant_success() {
@@ -1026,6 +1086,17 @@ async fn test_user_cannot_create_template_via_assistants_endpoint() {
 /// clear-defaults UPDATE serializes them) — never zero, never two.
 #[tokio::test]
 async fn test_concurrent_set_default_assistant_leaves_exactly_one() {
+// =====================================================
+// Concurrency: only-one-default invariant under a race
+// =====================================================
+
+// Two admins/devices concurrently set DIFFERENT assistants as the user's
+// default. `update_assistant` clears every other default for the same user
+// inside the same transaction before setting this one (repository.rs:563,620),
+// so the two transactions must serialize on the overlapping rows and converge
+// to EXACTLY ONE default — never two (torn clear-then-set) and never zero.
+#[tokio::test]
+async fn test_concurrent_set_default_converges_to_exactly_one() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -1215,4 +1286,65 @@ async fn test_template_edit_and_delete_require_template_permissions() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN, "template delete must require template permission");
+}
+    // Two fresh user assistants, both is_default = false.
+    let a = create_user_assistant(&server, &user.token, "Assistant A").await;
+    let b = create_user_assistant(&server, &user.token, "Assistant B").await;
+    let a_id = a["id"].as_str().unwrap().to_string();
+    let b_id = b["id"].as_str().unwrap().to_string();
+
+    // Fire the two "set me as default" requests concurrently, each on its own
+    // reqwest::Client (independent connections → a genuine DB-level race), one
+    // making A the default and the other making B the default.
+    let set_default = |id: String, token: String, base: String| async move {
+        reqwest::Client::new()
+            .put(format!("{base}/assistants/{id}"))
+            .header("Authorization", format!("Bearer {token}"))
+            .json(&json!({ "is_default": true }))
+            .send()
+            .await
+            .unwrap()
+    };
+    let base = server.api_url("");
+    let (ra, rb) = tokio::join!(
+        set_default(a_id.clone(), user.token.clone(), base.clone()),
+        set_default(b_id.clone(), user.token.clone(), base.clone()),
+    );
+
+    // Neither request may 5xx/panic on the race; the upsert resolves it.
+    assert!(
+        ra.status().is_success(),
+        "set-A-default must succeed under the race, got {}",
+        ra.status()
+    );
+    assert!(
+        rb.status().is_success(),
+        "set-B-default must succeed under the race, got {}",
+        rb.status()
+    );
+
+    // Re-read both assistants and assert EXACTLY ONE is the default — the
+    // atomic clear-then-set inside the update transaction prevents both rows
+    // ending up default (a broken clear) and prevents zero defaults.
+    let read_is_default = |id: String, token: String, base: String| async move {
+        let body: serde_json::Value = reqwest::Client::new()
+            .get(format!("{base}/assistants/{id}"))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        body["is_default"].as_bool().unwrap()
+    };
+    let a_default = read_is_default(a_id, user.token.clone(), base.clone()).await;
+    let b_default = read_is_default(b_id, user.token.clone(), base.clone()).await;
+
+    let default_count = [a_default, b_default].iter().filter(|d| **d).count();
+    assert_eq!(
+        default_count, 1,
+        "exactly one of the two assistants must be the default after a \
+         concurrent set-default race (A={a_default}, B={b_default})"
+    );
 }

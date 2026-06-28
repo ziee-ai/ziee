@@ -152,5 +152,20 @@ test.describe('Workflows - run a standalone workflow (real LLM)', () => {
       timeout: 10000,
     })
     await expect(page.getByText('Show trace').first()).toBeVisible()
+
+    // A7 (expander interaction): clicking "Show prompt" lazily fetches the
+    // captured prompt log and renders it inline — assert the rendered prompt
+    // body appears (it embeds the step's prompt text). This exercises the
+    // StepLogExpander fetch+expand path, not just the affordance's presence.
+    await page.getByText('Show prompt').first().click()
+    await expect(page.getByText(/say something about/i).first()).toBeVisible({
+      timeout: 15000,
+    })
+
+    // Likewise "Show trace" fetches + renders trace.json content.
+    await page.getByText('Show trace').first().click()
+    await expect(page.getByText(/summarize/).first()).toBeVisible({
+      timeout: 15000,
+    })
   })
 })

@@ -36,6 +36,15 @@ pub enum GitError {
     Cancelled,
     #[error("Invalid repository URL: {0}")]
     InvalidUrl(String),
+    /// The remote rejected the request with 401/403 (auth failed or
+    /// insufficient permissions). A typed variant so callers can classify the
+    /// failure without string-matching the Display message.
+    #[error("Access denied (401/403): {0}")]
+    AccessDenied(String),
+    /// The remote responded with a non-success HTTP status during an LFS
+    /// transfer. Carries the status code so callers classify by value.
+    #[error("Remote HTTP error {status}: {message}")]
+    HttpStatus { status: u16, message: String },
 }
 
 /// Per-cache-key serialization to prevent two concurrent clones of the
@@ -798,6 +807,11 @@ impl GitService {
             .map_err(|e| match e {
                 LfsError::Cancelled => GitError::Cancelled,
                 LfsError::Io(io_err) => GitError::Io(io_err),
+                LfsError::AccessDenied => GitError::AccessDenied(e.to_string()),
+                LfsError::ResponseNotOkay(status) => GitError::HttpStatus {
+                    status,
+                    message: e.to_string(),
+                },
                 _ => GitError::Git(git2::Error::from_str(&e.to_string())),
             });
 

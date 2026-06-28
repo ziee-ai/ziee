@@ -282,3 +282,88 @@ fn test_resource_link_version_omitted_when_none() {
     assert!(json.get("version_id").is_none(), "version_id omitted when None: {json}");
     assert!(json.get("version").is_none(), "version omitted when None: {json}");
 }
+
+/// An ERROR tool_result block — the shape `execute_tool` produces on its
+/// `Ok(Err(e))` (transport/tool error) and `Err(_)` (timeout) branches
+/// (`mcp/chat_extension/helpers.rs:586,611`): `is_error: Some(true)` with a
+/// "Tool execution failed: …" content. Every existing tool_result test uses
+/// `is_error: Some(false)`, so the error variant's two production round-trips
+/// were untested:
+///   1. PERSISTENCE — what `message_contents` stores and re-reads
+///      (`to_message_content` → `from_message_content`). The error flag and the
+///      diagnostic text MUST survive verbatim (a regression that dropped/forced
+///      `is_error` would silently turn a failed tool call into a "successful"
+///      one the model trusts).
+///   2. LLM SURFACING — `to_content_block` must hand the model an
+///      `ai_providers::ContentBlock::ToolResult { is_error: Some(true) }` so the
+///      assistant sees the failure (and can retry), and `from_content_block`
+///      must read it back unchanged.
+#[test]
+fn test_error_tool_result_block_roundtrips_and_surfaces_to_llm() {
+    let err_block = McpContentData::ToolResult {
+        tool_use_id: "toolu_err_01".to_string(),
+        name: Some("flaky_search".to_string()),
+        server_id: None,
+        content: "Tool execution failed: upstream returned 503".to_string(),
+        is_error: Some(true),
+        attachment: None,
+        images: None,
+        resource_links: None,
+        hidden_content: None,
+        structured_content: None,
+    };
+
+    // (1) Persistence round-trip: the error flag + content survive verbatim.
+    let stored = err_block.to_message_content();
+    let recovered = McpContentData::from_message_content(&stored)
+        .expect("error tool_result must deserialize from a persisted message_content");
+    match recovered {
+        McpContentData::ToolResult { content, is_error, name, .. } => {
+            assert_eq!(
+                is_error,
+                Some(true),
+                "is_error=true must survive the persistence round-trip (not be dropped/coerced)"
+            );
+            assert_eq!(content, "Tool execution failed: upstream returned 503");
+            assert_eq!(name.as_deref(), Some("flaky_search"));
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+
+    // (2) LLM-surfacing round-trip: the model receives is_error=Some(true) with
+    // the diagnostic text, and reading the block back preserves the flag.
+    let block = err_block
+        .to_content_block()
+        .expect("error tool_result must convert to an ai-providers content block");
+    match &block {
+        ai_providers::ContentBlock::ToolResult { is_error, content, .. } => {
+            assert_eq!(
+                *is_error,
+                Some(true),
+                "the LLM-facing ToolResult must carry is_error=true so the model sees the failure"
+            );
+            let text = content
+                .iter()
+                .filter_map(|b| match b {
+                    ai_providers::ContentBlock::Text { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("");
+            assert!(
+                text.contains("Tool execution failed"),
+                "the error diagnostic must reach the model, got: {text}"
+            );
+        }
+        _ => panic!("expected ContentBlock::ToolResult"),
+    }
+
+    let back = McpContentData::from_content_block(&block)
+        .expect("error content block must convert back to McpContentData");
+    match back {
+        McpContentData::ToolResult { is_error, .. } => {
+            assert_eq!(is_error, Some(true), "is_error=true must survive the content-block round-trip");
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}

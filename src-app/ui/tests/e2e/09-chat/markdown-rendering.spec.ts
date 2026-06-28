@@ -153,25 +153,34 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
   test(
     'renders fenced code with Shiki highlighting',
     async ({ page, testInfra }) => {
-    // FIXME: same vite cold-start + streamdown lazy-chunk issue as
-    // the mermaid test above. The Shiki output structure IS valid
-    // in production (shikiTheme is wired into TextContent), but
-    // testing it in isolation hits a 504 on the dynamically-imported
-    // `highlighted-body-*.js` chunk during the very first chat
-    // render. Re-enable once the test infra can either pre-warm the
-    // chunk or absorb the 504 → retry cycle without crashing the
-    // React tree.
+    // A fenced ```rust block is routed through Streamdown's shikiTheme
+    // (wired in TextContent.tsx). Assert the SAME proven structure the
+    // mermaid test relies on — the streamdown code-block wrapper tagged
+    // with the fence language — then assert GENUINE Shiki highlighting:
+    // the highlighted body carries token <span>s with INLINE `color:`
+    // styles (Shiki's hallmark). Plain, unhighlighted text would have
+    // zero inline-colored spans, so this catches a silent regression of
+    // highlighting back to a bare <pre>.
     await seedAssistantWithText(
       page,
       testInfra.baseURL,
       '```rust\nfn foo() -> u32 { 42 }\n```',
     )
     const bubble = assistantBubble(page)
-    // Shiki output: <pre><code><span style="color:...">fn</span> ...</code></pre>.
-    // The exact class names depend on the theme — assert structural shape.
-    await expect(bubble.locator('pre code').first()).toBeVisible({ timeout: 5000 })
-    const spanCount = await bubble.locator('pre code span').count()
-    expect(spanCount).toBeGreaterThan(0)
+    const codeBlock = bubble.locator(
+      '[data-streamdown="code-block"][data-language="rust"]',
+    )
+    await expect(codeBlock).toBeVisible({ timeout: 15000 })
+    const body = codeBlock.locator('[data-streamdown="code-block-body"]')
+    // The code text survived into the rendered block.
+    await expect(body).toContainText('fn foo')
+    // Shiki applies per-token colors via inline `style="color:..."` on
+    // <span>s inside the <pre>. At least one such colored token must
+    // exist — its absence means highlighting silently regressed to
+    // plain text.
+    const coloredTokens = body.locator('pre span[style*="color"]')
+    await expect(coloredTokens.first()).toBeVisible({ timeout: 10000 })
+    expect(await coloredTokens.count()).toBeGreaterThan(0)
   },
   )
 

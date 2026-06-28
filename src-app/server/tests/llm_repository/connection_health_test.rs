@@ -757,4 +757,197 @@ async fn create_enabled_huggingface_repo_probes_live_and_persists_healthy() {
     assert!(enabled, "valid live credentials must leave the repo enabled");
     assert_eq!(status, "healthy", "live HF probe must persist healthy (reason: {reason:?})");
     assert!(at.is_some(), "last_health_check_at must be stamped by the live probe");
+#[tokio::test]
+async fn test_by_id_concurrent_probes_same_repo_are_race_safe() {
+    // Concurrency / TOCTOU: the test-by-id handler probes the upstream
+    // and then writes the outcome to the row's `last_health_check_*`
+    // columns (via `record_test_outcome`) + refetches the row to emit
+    // an `updated` event. Firing many probes for the SAME repository
+    // at once exercises that shared per-row write path under contention.
+    // A race that corrupted the shared state would surface as a 5xx /
+    // panic / deadlock, or as a final row left in an inconsistent
+    // (non-healthy / unstamped) state. None of the existing test-by-id
+    // specs fire concurrently.
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    // All probes hit a working mock, so every individual probe MUST
+    // succeed — any failure is a genuine race artifact, not an
+    // upstream flip.
+    let upstream = mock_ok().await;
+    let repo_id =
+        seed_disabled_row(&server, &admin.token, "byid-concurrent", &upstream.uri()).await;
+
+    // Fire N genuinely-parallel probes (each its own spawned task +
+    // its own reqwest client → independent connections racing at the
+    // DB), then join them all.
+    const N: usize = 8;
+    let url = server.api_url(&format!("/llm-repositories/{repo_id}/test"));
+    let token = admin.token.clone();
+    let mut handles = Vec::with_capacity(N);
+    for _ in 0..N {
+        let url = url.clone();
+        let token = token.clone();
+        handles.push(tokio::spawn(async move {
+            let resp = reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({}))
+                .send()
+                .await
+                .expect("probe request failed");
+            let status = resp.status();
+            let body: Value = resp.json().await.expect("probe body json");
+            (status, body)
+        }));
+    }
+
+    // Every concurrent probe completes with 200 + success:true — no
+    // 5xx, no panic, no deadlock under contention on the shared row.
+    for h in handles {
+        let (status, body) = h.await.expect("probe task panicked");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "every concurrent probe must return 200 (no race-induced 5xx): {body}"
+        );
+        assert_eq!(
+            body["success"], true,
+            "every concurrent probe against the OK mock must succeed: {body}"
+        );
+    }
+
+    // The shared per-row state converged to a single consistent
+    // outcome: healthy + stamped, and the test button never flipped
+    // `enabled` (it stays at the seeded `false`). A lost-update /
+    // torn-write race would leave a stale or missing health record.
+    let pool = pool_for(&server).await;
+    let (enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
+    assert!(!enabled, "test-by-id never mutates `enabled`, even under concurrency");
+    assert_eq!(status, "healthy", "concurrent probes converge to healthy");
+    assert_eq!(reason, None, "healthy outcome carries no reason");
+    assert!(at.is_some(), "last_health_check_at stamped by the winning write");
+}
+
+/// Tier-3 LIVE-credential connectivity test (the existing suite uses wiremock).
+/// Exercises the real `test_repository_connectivity` path against Hugging Face's
+/// `whoami-v2` endpoint with the real `HUGGINGFACE_API_KEY` (shipped in
+/// `tests/.env.test`). Soft-skips when the key is unset (mirrors the other
+/// real-credential tests' pattern).
+#[tokio::test]
+async fn live_huggingface_connection_test_with_real_credentials() {
+    let hf_key = match std::env::var("HUGGINGFACE_API_KEY") {
+        Ok(k) if !k.trim().is_empty() => k,
+        _ => {
+            eprintln!(
+                "Skipping live_huggingface_connection_test_with_real_credentials — HUGGINGFACE_API_KEY unset"
+            );
+            return;
+        }
+    };
+
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "repo_live", &["llm_repositories::read"]).await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/llm-repositories/test"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "HF Live",
+            "url": "https://huggingface.co",
+            "auth_type": "api_key",
+            "auth_config": {
+                "api_key": hf_key,
+                "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(
+        body["success"], true,
+        "live Hugging Face connection test with a real token must succeed: {body}"
+    );
+}
+
+// ─── Tier-3 real-credential probe (HuggingFace, key-gated) ──────────────────
+
+/// Tier-3: the test-connection-by-id probe SUCCEEDS against the LIVE
+/// HuggingFace API with a real token — the path the wiremock tests
+/// above can only simulate. Soft-skips when `HUGGINGFACE_API_KEY` is
+/// unset (matching the suite's real-credential gating); `tests/.env.test`
+/// ships a working key so this runs in the normal suite.
+///
+/// Shape mirrors the production HuggingFace repository: `auth_type:
+/// "api_key"`, `url` containing `huggingface.co` (so the probe sends
+/// `Authorization: Bearer <key>`), and `auth_test_api_endpoint` pointed
+/// at the real `whoami-v2` endpoint, which returns HTTP 200 for a valid
+/// token (the only status `test_repository_connectivity` treats as a pass).
+#[tokio::test]
+async fn test_by_id_real_huggingface_credentials_probe_succeeds() {
+    let api_key = match std::env::var("HUGGINGFACE_API_KEY") {
+        Ok(k) if !k.trim().is_empty() => k,
+        _ => {
+            eprintln!(
+                "skipping test_by_id_real_huggingface_credentials_probe_succeeds: \
+                 HUGGINGFACE_API_KEY not set"
+            );
+            return;
+        }
+    };
+
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+
+    // Create the repo DISABLED so the create-flow probe is skipped; the
+    // real live probe is exercised explicitly via test-by-id below. The
+    // api_key persists encrypted and is read back decrypted by the
+    // by-id handler exactly as the runtime spawn path reads it.
+    let created: Value = reqwest::Client::new()
+        .post(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "hf-live",
+            "url": "https://huggingface.co",
+            "auth_type": "api_key",
+            "enabled": false,
+            "auth_config": {
+                "api_key": api_key,
+                "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2",
+            },
+        }))
+        .send()
+        .await
+        .expect("create request failed")
+        .json()
+        .await
+        .expect("create response not json");
+    let repo_id = Uuid::parse_str(created["id"].as_str().expect("id")).expect("uuid");
+
+    // Probe the persisted config against the LIVE HuggingFace endpoint.
+    let resp: Value = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{repo_id}/test")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("test-by-id request failed")
+        .json()
+        .await
+        .expect("test-by-id response not json");
+
+    assert_eq!(
+        resp["success"], true,
+        "live HuggingFace probe with a real token must succeed: {resp}"
+    );
+
+    // The live pass persists a `healthy` health record (and stamps the
+    // probe time); the row stays disabled (the test button never enables).
+    let pool = pool_for(&server).await;
+    let (enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
+    assert!(!enabled, "test-by-id does not change `enabled`");
+    assert_eq!(status, "healthy", "live HF probe recorded as healthy");
+    assert_eq!(reason, None);
+    assert!(at.is_some(), "last_health_check_at stamped after the live probe");
 }

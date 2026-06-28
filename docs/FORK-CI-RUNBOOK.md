@@ -100,11 +100,16 @@ jobs:
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sig
 
+  # ──────────────────────────────────────────────────────────────────
+  # ILLUSTRATIVE ONLY — NOT SHIPPED. No cross-repo `receiver` dispatch
+  # workflow exists in this tree for the engine/server-release pipeline.
+  # The pattern that IS shipped is an in-workflow auto-PR job that edits
+  # known_revisions.toml in the same run — see the `auto-PR
+  # known_revisions.toml` job in `.github/workflows/code_sandbox.yml`.
+  # The block below is a sketch of a future cross-repo follow-up; do not
+  # treat it as operational.
   receiver:
-    # Optional: trigger a `repository_dispatch` to the main ziee-chat
-    # repo so its receiver workflow (Layer 2) opens an auto-PR
-    # updating known_revisions.toml. See ziee-chat/.github/workflows
-    # for the receiver shape (not yet shipped — Layer 2 follow-up).
+    if: false # disabled: Layer-2 cross-repo receiver is not implemented
     needs: release
     runs-on: ubuntu-22.04
     steps:
@@ -133,6 +138,17 @@ Once a release ships:
    the revision is marked available.
 4. With `allow_unsigned_downloads = false`, only the now-signed,
    sha256-verified release is downloadable.
+2. `known_revisions.toml` is updated with the new sha256s. For the
+   engine/server-release fork pipeline this is **manual** today —
+   there is no cross-repo Layer-2 receiver workflow in this tree (the
+   `receiver:` job above is an illustrative, disabled sketch). The
+   shipped auto-PR pattern lives in `code_sandbox.yml` (its `auto-PR
+   known_revisions.toml` job edits the file in the same run); replicate
+   that in-workflow approach if/when you automate this pipeline. Until
+   then, update `known_revisions.toml` manually from the release page.
+3. PR review confirms the hashes against the release page.
+4. Merge — `allow_unsigned_downloads = false` continues to work
+   for the now-signed release.
 
 ## See also
 

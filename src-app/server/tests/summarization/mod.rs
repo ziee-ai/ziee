@@ -8,6 +8,7 @@
 
 mod admin_settings_test;
 mod debug_refresh_stub_test;
+mod concurrent_upsert_test;
 mod migration_seed_test;
 mod per_conversation_mode_test;
 mod real_llm_helpers;

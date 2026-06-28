@@ -236,4 +236,48 @@ mod tests {
         assert!(!looks_like_text(b"has\0nul"));
         assert!(!looks_like_text(&[0xff, 0xfe, 0xfd, 0x00]));
     }
+
+    // ----- Graceful degradation for failed processing (audit all-f2c43a4939b6) -----
+    //
+    // The upload handler (file/handlers/upload.rs:165-168) maps a `process_file`
+    // Err to `ProcessingResult::default()` so an unprocessable file still uploads
+    // (with an empty/degraded result) instead of failing the whole request. Prior
+    // processing tests only covered happy paths; these cover the error path the
+    // handler relies on and the safe-empty value it degrades to.
+
+    #[tokio::test]
+    async fn corrupt_spreadsheet_surfaces_processing_error() {
+        // Bytes that claim to be an .xlsx but are not a valid OOXML/zip
+        // workbook: the spreadsheet image generator's Calamine
+        // `open_workbook_from_rs` fails and `process_file` propagates the Err.
+        // Calamine is pure-Rust (no external binary / runtime dylib), so the
+        // failure is deterministic — this is exactly the Err the upload handler
+        // catches and degrades to `ProcessingResult::default()`.
+        const XLSX: &str =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        // Leading NUL keeps the text-fallback heuristic from claiming it as text;
+        // the bytes are not a zip, so the workbook open fails.
+        let not_a_workbook = b"\x00\x01 corrupted, not a real xlsx workbook \x00";
+        let result = ProcessingManager::new()
+            .process_file(not_a_workbook, XLSX)
+            .await;
+        assert!(
+            result.is_err(),
+            "a corrupt spreadsheet must surface a processing error for the upload \
+             handler to map to a degraded ProcessingResult::default()"
+        );
+    }
+
+    #[test]
+    fn processing_result_default_is_safe_empty_degradation() {
+        // The value the upload handler falls back to on a processing error:
+        // graceful degradation == a valid-but-empty result (file still stored,
+        // just nothing extracted), never partial/garbage content.
+        let degraded = ProcessingResult::default();
+        assert!(degraded.text_pages.is_empty(), "no text pages");
+        assert!(degraded.thumbnails.is_empty(), "no thumbnails");
+        assert!(degraded.images.is_empty(), "no preview images");
+        assert_eq!(degraded.metadata.has_text, None, "has_text unset");
+        assert_eq!(degraded.metadata.text_length, None, "text_length unset");
+    }
 }

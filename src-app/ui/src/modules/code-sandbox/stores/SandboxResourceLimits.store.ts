@@ -3,10 +3,12 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
+  Permissions,
   type CodeSandboxResourceLimits,
   type UpdateCodeSandboxResourceLimits,
   Permissions,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { hasPermissionNow } from '@/core/permissions'
 
@@ -56,6 +58,11 @@ export const useSandboxResourceLimitsStore =
             // a user lacking resource-limits read would 403 on reconnect (the
             // no-403-reconnect rule). The perm checked MUST equal the read-perm
             // the GET endpoint enforces. Mirrors SandboxRootfsVersions.store.
+            // SSE reconnect.
+            // Self-gate the refetch (the no-403 reconnect rule): sync:reconnect
+            // fires for every store regardless of audience, so a user without
+            // resource-limits read must not refetch (the GET would 403).
+            // Mirrors SandboxRootfsVersions.store's reload gate.
             const reload = () => {
               if (!hasPermissionNow(Permissions.CodeSandboxResourceLimitsRead))
                 return

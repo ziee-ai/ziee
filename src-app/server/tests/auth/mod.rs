@@ -777,6 +777,67 @@ async fn test_setup_admin_invalid_email() {
     assert_eq!(error_body.get("error_code").unwrap(), "INVALID_EMAIL");
 }
 
+/// Error recovery in the setup flow: a FAILED setup attempt (invalid input)
+/// must NOT leave the system half-initialized. The deployment must still report
+/// `needs_setup: true` afterward, and a subsequent VALID setup must succeed and
+/// flip the status — i.e. the first error is fully recoverable with a retry.
+#[tokio::test]
+async fn test_setup_recovers_after_failed_attempt() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // 1. A bad setup attempt fails with 400 (invalid email).
+    let bad = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "admin",
+            "email": "not-an-email",
+            "password": "SecurePass123!"
+        }))
+        .send()
+        .await
+        .expect("setup request failed");
+    assert_eq!(bad.status(), 400, "invalid setup must be rejected");
+
+    // 2. The failed attempt left NO partial admin → setup is still needed.
+    let status = client
+        .get(server.api_url("/app/setup/status"))
+        .send()
+        .await
+        .expect("status request failed");
+    let body: serde_json::Value = status.json().await.unwrap();
+    assert_eq!(
+        body.get("needs_setup").unwrap(),
+        true,
+        "a failed setup attempt must not create a partial admin"
+    );
+
+    // 3. A subsequent VALID setup succeeds — the flow recovered.
+    let good = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "admin",
+            "email": "admin@example.com",
+            "password": "SecurePass123!",
+            "display_name": "Administrator"
+        }))
+        .send()
+        .await
+        .expect("setup request failed");
+    assert_eq!(good.status(), 201, "retry after a failed attempt must succeed");
+
+    // 4. Status now reflects the completed setup.
+    let after: serde_json::Value = client
+        .get(server.api_url("/app/setup/status"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after.get("needs_setup").unwrap(), false);
+}
+
 #[tokio::test]
 async fn test_setup_admin_invalid_username() {
     let server = crate::common::TestServer::start().await;
@@ -1035,4 +1096,218 @@ async fn deactivated_user_with_valid_jwt_is_rejected_at_me() {
     assert_eq!(me_dead.status(), 401, "deactivated account must be 401 even with a valid JWT");
     let body: serde_json::Value = me_dead.json().await.unwrap();
     assert_eq!(body["error_code"], "ACCOUNT_DEACTIVATED");
+/// Refresh-token jti lifecycle + persistence (the whitelist lives in
+/// `refresh_tokens`, so it survives a server restart — modeled here by
+/// re-querying through a FRESH connection that shares no in-process state).
+/// Exercises the re-exported `ziee::refresh_tokens` primitives directly.
+#[tokio::test]
+async fn refresh_token_jti_lifecycle_persists_across_connections() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "rt_user", &[]).await;
+    let user_id = uuid::Uuid::parse_str(&user.user_id).unwrap();
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+
+    let jti = uuid::Uuid::new_v4();
+    let expires = chrono::Utc::now() + chrono::Duration::hours(1);
+    ziee::refresh_tokens::register(&pool, jti, user_id, expires)
+        .await
+        .unwrap();
+
+    // Active immediately after registration.
+    assert!(ziee::refresh_tokens::is_active(&pool, jti).await.unwrap());
+
+    // "Across restart": a brand-new connection (no shared process state) still
+    // sees the jti as active because the whitelist is persisted in Postgres.
+    let pool2 = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    assert!(
+        ziee::refresh_tokens::is_active(&pool2, jti).await.unwrap(),
+        "a registered jti survives a fresh connection (server restart)"
+    );
+    pool2.close().await;
+
+    // Revoke → no longer active (rotation), and the revocation persists.
+    ziee::refresh_tokens::revoke(&pool, jti).await.unwrap();
+    assert!(!ziee::refresh_tokens::is_active(&pool, jti).await.unwrap());
+
+    // An already-expired jti is never active.
+    let jti_expired = uuid::Uuid::new_v4();
+    let past = chrono::Utc::now() - chrono::Duration::hours(1);
+    ziee::refresh_tokens::register(&pool, jti_expired, user_id, past)
+        .await
+        .unwrap();
+    assert!(
+        !ziee::refresh_tokens::is_active(&pool, jti_expired)
+            .await
+            .unwrap(),
+        "an expired jti is inactive"
+    );
+
+    pool.close().await;
+}
+
+/// Cross-subsystem effect of admin creation: the bootstrapped admin is assigned
+/// to BOTH the `Administrators` AND the `Users` groups (app/repository.rs
+/// create_admin), so it inherits default Users-group resource access — not just
+/// admin powers. Asserts the membership in both groups via the members API.
+#[tokio::test]
+async fn test_setup_admin_is_member_of_administrators_and_users_groups() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    let setup: serde_json::Value = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "admin",
+            "email": "admin@example.com",
+            "password": "SecurePass123!"
+        }))
+        .send()
+        .await
+        .expect("setup admin")
+        .json()
+        .await
+        .expect("setup body");
+    let admin_id = setup["user"]["id"].as_str().expect("admin id").to_string();
+    let token = setup["access_token"].as_str().expect("token").to_string();
+
+    // Resolve the two system group ids.
+    let groups: serde_json::Value = client
+        .get(server.api_url("/groups?page=1&per_page=100"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .expect("list groups")
+        .json()
+        .await
+        .expect("groups body");
+    let arr = groups["groups"].as_array().or(groups.as_array()).expect("groups array");
+    let id_of = |name: &str| {
+        arr.iter()
+            .find(|g| g["name"] == name)
+            .and_then(|g| g["id"].as_str())
+            .map(String::from)
+            .unwrap_or_else(|| panic!("group {name} not found"))
+    };
+    let admins_gid = id_of("Administrators");
+    let users_gid = id_of("Users");
+
+    let is_member = |gid: String, token: String, admin_id: String| {
+        let url = server.api_url(&format!("/groups/{gid}/members?page=1&per_page=100"));
+        async move {
+            let body: serde_json::Value = reqwest::Client::new()
+                .get(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .expect("members")
+                .json()
+                .await
+                .expect("members body");
+            body["users"]
+                .as_array()
+                .expect("users array")
+                .iter()
+                .any(|u| u["id"].as_str() == Some(admin_id.as_str()))
+        }
+    };
+
+    assert!(
+        is_member(admins_gid, token.clone(), admin_id.clone()).await,
+        "admin must be in the Administrators group"
+    );
+    assert!(
+        is_member(users_gid, token, admin_id).await,
+        "admin must ALSO be in the Users group (default-resource access)"
+    );
+}
+
+/// Account deactivation cuts off access to protected RESOURCE endpoints — not
+/// just the sync stream. The `RequirePermissions` extractor (permissions/
+/// extractors.rs) re-resolves `is_active` from the DB on EVERY request and
+/// returns 403 USER_INACTIVE the moment a user is disabled, even though their
+/// JWT is still cryptographically valid and unexpired. This proves the gate
+/// holds across two representative protected surfaces (chat conversations +
+/// memory) so a disabled account can't keep reading data it could a moment ago.
+#[tokio::test]
+async fn deactivated_user_is_refused_on_protected_resource_endpoints() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "deact_resource",
+        &["profile::read", "conversations::read", "memory::read"],
+    )
+    .await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "deact_resource_admin",
+        &["users::edit"],
+    )
+    .await;
+
+    let client = reqwest::Client::new();
+
+    // While ACTIVE: both resource endpoints are reachable with the user's token.
+    let convs_ok = client
+        .get(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        convs_ok.status(),
+        200,
+        "an active user with conversations::read must list conversations"
+    );
+
+    let mem_ok = client
+        .get(server.api_url("/memories"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        mem_ok.status(),
+        200,
+        "an active user with memory::read must list memories"
+    );
+
+    // Admin deactivates the user.
+    let deact = client
+        .post(server.api_url(&format!("/users/{}", user.user_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "is_active": false }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        deact.status().is_success(),
+        "deactivation should succeed; got {}",
+        deact.status()
+    );
+
+    // Same still-valid token → BOTH endpoints now refuse via the is_active gate.
+    let convs_refused = client
+        .get(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        convs_refused.status() == 401 || convs_refused.status() == 403,
+        "a deactivated user must be refused the conversations endpoint; got {}",
+        convs_refused.status()
+    );
+
+    let mem_refused = client
+        .get(server.api_url("/memories"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        mem_refused.status() == 401 || mem_refused.status() == 403,
+        "a deactivated user must be refused the memories endpoint; got {}",
+        mem_refused.status()
+    );
 }

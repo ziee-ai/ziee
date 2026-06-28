@@ -153,6 +153,32 @@ impl SyncProbe {
         }
     }
 
+    /// Like `expect_event`, but matches the FIRST frame whose entity is in
+    /// `entities` (and whose action matches) — for a dual-audience mutation
+    /// that emits two distinct entities in an unspecified order, so a fixed
+    /// single-entity `expect_event` could drop the sibling frame.
+    pub async fn expect_event_any(
+        &mut self,
+        entities: &[&str],
+        action: &str,
+        timeout: Duration,
+    ) -> SyncFrame {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match tokio::time::timeout(remaining, self.rx.recv()).await {
+                Ok(Some(f)) if entities.contains(&f.entity.as_str()) && f.action == action => {
+                    return f;
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    panic!("sync stream closed while waiting for {entities:?}/{action}")
+                }
+                Err(_) => panic!("timed out waiting for sync event {entities:?}/{action}"),
+            }
+        }
+    }
+
     /// Assert NO sync frame at all arrives within `dur` (cross-user isolation
     /// / origin-skip). A closed stream also counts as silence.
     pub async fn expect_silence(&mut self, dur: Duration) {

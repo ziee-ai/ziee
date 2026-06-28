@@ -396,6 +396,24 @@ pub fn apply_summary_block(summary: &ConversationSummary, chat_request: &mut Cha
     );
 }
 
+/// Resolve the effective `(trigger, keep_recent)` after the fraction-of-window
+/// override. The trigger is the SMALLER of the admin cap and the override (when
+/// set); keep_recent is then re-clamped below the trigger so a small-context
+/// override can't leave keep_recent >= trigger (which silently disables
+/// summarization — see the regression note in `refresh_summary`).
+pub(crate) fn effective_thresholds(
+    admin_trigger: usize,
+    admin_keep_recent: usize,
+    trigger_override: Option<usize>,
+) -> (usize, usize) {
+    let trigger = match trigger_override {
+        Some(o) => admin_trigger.min(o),
+        None => admin_trigger,
+    };
+    let keep_recent = admin_keep_recent.min(trigger.saturating_sub(1));
+    (trigger, keep_recent)
+}
+
 /// Generate / refresh the persisted summary for this branch. Picks
 /// FULL or INCREMENTAL path based on `decide_summarize_action`.
 /// Idempotent at the row level via `ON CONFLICT (branch_id) DO UPDATE`.
@@ -441,18 +459,11 @@ pub async fn refresh_summary(
             }
         };
 
-    // Apply the fraction-of-window override: summarize at the SMALLER of the
-    // admin cap and 0.75× the model's context window.
-    let trigger = match trigger_override {
-        Some(o) => trigger.min(o),
-        None => trigger,
-    };
-    // Preserve keep_recent < trigger after the override. The DB CHECK only
-    // guards the admin row; a fraction-of-window override below keep_recent
-    // (small-context models) would otherwise leave keep_recent >= trigger and
-    // silently disable summarization (the keep-recent loop never breaks and
-    // cutoff walks to 0 → Noop). Re-clamp so summarization still fires.
-    let keep_recent = keep_recent.min(trigger.saturating_sub(1));
+    // Apply the fraction-of-window override (summarize at the SMALLER of the
+    // admin cap and 0.75× the model's context window) + the keep_recent
+    // re-clamp. Extracted to `effective_thresholds` so the selection + clamp
+    // are unit-testable as one unit.
+    let (trigger, keep_recent) = effective_thresholds(trigger, keep_recent, trigger_override);
 
     let pool = Repos.summarization.pool_clone();
     let existing = fetch_summary(&pool, branch_id).await?;
@@ -707,6 +718,26 @@ mod tests {
             ),
             "large-token messages must trigger even at a small message count"
         );
+    }
+
+    #[test]
+    fn fraction_of_window_override_selects_smaller_trigger_and_reclamps() {
+        // No override → admin values pass through (keep_recent still re-clamped
+        // below the trigger, but here 3000 < 8000-1 so it is unchanged).
+        assert_eq!(effective_thresholds(8000, 3000, None), (8000, 3000));
+
+        // A SMALL override (e.g. 0.75 × a tiny context window) wins over the
+        // larger admin cap, and keep_recent is re-clamped to trigger - 1 so
+        // summarization still fires.
+        assert_eq!(effective_thresholds(8000, 3000, Some(200)), (200, 199));
+
+        // A LARGE override does NOT raise the admin cap (min keeps the admin
+        // value); keep_recent stays below it.
+        assert_eq!(effective_thresholds(8000, 3000, Some(20000)), (8000, 3000));
+
+        // Override equal to admin trigger → keep_recent clamps to trigger - 1
+        // only when it would otherwise exceed it.
+        assert_eq!(effective_thresholds(500, 1000, Some(500)), (500, 499));
     }
 
     #[test]
@@ -989,6 +1020,72 @@ mod tests {
         assert_eq!(build_transcript(&m), "");
     }
 
+    // ---- message_to_summarizable (content-block text extraction) ----
+
+    fn content_block(
+        content: serde_json::Value,
+    ) -> crate::modules::chat::core::models::content::MessageContent {
+        let ty = content
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("text")
+            .to_string();
+        crate::modules::chat::core::models::content::MessageContent {
+            id: Uuid::new_v4(),
+            message_id: Uuid::new_v4(),
+            content_type: ty,
+            content,
+            sequence_order: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    fn message_with(
+        role: &str,
+        blocks: Vec<serde_json::Value>,
+    ) -> crate::modules::chat::core::types::MessageWithContent {
+        crate::modules::chat::core::types::MessageWithContent {
+            message: crate::modules::chat::core::models::message::Message {
+                id: Uuid::new_v4(),
+                role: role.to_string(),
+                originated_from_id: Uuid::new_v4(),
+                edit_count: 0,
+                model_id: None,
+                created_at: chrono::Utc::now(),
+            },
+            contents: blocks.into_iter().map(content_block).collect(),
+        }
+    }
+
+    #[test]
+    fn message_to_summarizable_extracts_only_text_blocks() {
+        // A turn mixing a text block with a NON-text (thinking) block — only the
+        // text contributes to the summarizable text.
+        let m = message_with(
+            "assistant",
+            vec![
+                serde_json::json!({ "type": "text", "text": "the answer is 42" }),
+                serde_json::json!({ "type": "thinking", "thinking": "internal reasoning" }),
+            ],
+        );
+        let s = message_to_summarizable(&m);
+        assert_eq!(s.role, "assistant");
+        assert_eq!(s.text, "the answer is 42", "only the text block contributes");
+    }
+
+    #[test]
+    fn message_to_summarizable_non_text_only_turn_yields_empty_text() {
+        // A turn with NO text block (thinking-only) → empty text, so the
+        // downstream transcript/decide logic correctly skips it (no crash).
+        let m = message_with(
+            "user",
+            vec![serde_json::json!({ "type": "thinking", "thinking": "just reasoning" })],
+        );
+        let s = message_to_summarizable(&m);
+        assert_eq!(s.text, "", "a non-text-only turn must produce empty text");
+    }
+
     // ---- apply_summary_block ----
 
     fn user_msg(text: &str) -> ChatMessage {
@@ -1225,5 +1322,98 @@ mod tests {
             SummarizeAction::Noop,
             "all-non-text branch must not trigger summarization"
         );
+
+    /// Concurrent-refresh race (summarizer.rs:27-32 comment) on the per-branch
+    /// `ON CONFLICT (branch_id) DO UPDATE` upsert (summarizer.rs:645-). Two
+    /// background refreshes for the SAME branch can run at once; the upsert must
+    /// converge them to exactly ONE row (no duplicate, no error), the surviving
+    /// row carrying one racer's coherent (text, count) pair — never a torn mix.
+    ///
+    /// DB-gated soft-skip (mirrors `memory::reaper`'s in-source DB test): no
+    /// `DATABASE_URL` / unreachable DB → green; runs for real against a migrated
+    /// DB. Uses runtime sqlx (no compile-time DB needed).
+    #[tokio::test]
+    async fn concurrent_upsert_summary_for_same_branch_converges_to_one_row() {
+        use sqlx::postgres::PgPoolOptions;
+
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skip: DATABASE_URL unset — no DB to exercise the upsert race");
+                return;
+            }
+        };
+        let pool = match PgPoolOptions::new().max_connections(4).connect(&url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return;
+            }
+        };
+
+        // Seed the FK chain: users -> conversations -> branches (the upsert's
+        // branch_id is a PK + FK to branches ON DELETE CASCADE).
+        let tag = Uuid::new_v4();
+        let user_id: Uuid =
+            sqlx::query_scalar("INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id")
+                .bind(format!("sumrace_{tag}"))
+                .bind(format!("sumrace_{tag}@example.com"))
+                .fetch_one(&pool)
+                .await
+                .expect("seed user");
+        let conversation_id: Uuid =
+            sqlx::query_scalar("INSERT INTO conversations (user_id) VALUES ($1) RETURNING id")
+                .bind(user_id)
+                .fetch_one(&pool)
+                .await
+                .expect("seed conversation");
+        let branch_id: Uuid =
+            sqlx::query_scalar("INSERT INTO branches (conversation_id) VALUES ($1) RETURNING id")
+                .bind(conversation_id)
+                .fetch_one(&pool)
+                .await
+                .expect("seed branch");
+
+        // Two concurrent refreshes for the SAME branch with DISTINCT payloads —
+        // genuinely racing at the partial-PK ON CONFLICT (each its own pool conn).
+        let (p1, p2) = (pool.clone(), pool.clone());
+        let (r1, r2) = tokio::join!(
+            upsert_summary(&p1, branch_id, "SUMMARY_ALPHA", None, 5, "model-a"),
+            upsert_summary(&p2, branch_id, "SUMMARY_BETA", None, 7, "model-b"),
+        );
+        r1.expect("first concurrent upsert must succeed (ON CONFLICT resolves the race, not error)");
+        r2.expect("second concurrent upsert must succeed (ON CONFLICT resolves the race, not error)");
+
+        // Exactly ONE row for the branch (PK + ON CONFLICT collapse the race).
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM conversation_summaries WHERE branch_id = $1")
+                .bind(branch_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count summary rows");
+        assert_eq!(
+            count, 1,
+            "concurrent refresh must converge to exactly one summary row, never a duplicate"
+        );
+
+        // The surviving row is one racer's COHERENT (text, count) pair — the
+        // upsert sets all columns from EXCLUDED, so no torn mix of the two.
+        let (text, mc): (String, i32) = sqlx::query_as(
+            "SELECT summary_text, message_count FROM conversation_summaries WHERE branch_id = $1",
+        )
+        .bind(branch_id)
+        .fetch_one(&pool)
+        .await
+        .expect("fetch surviving summary row");
+        assert!(
+            (text == "SUMMARY_ALPHA" && mc == 5) || (text == "SUMMARY_BETA" && mc == 7),
+            "surviving summary must be one racer's coherent (text,count) pair, got ({text}, {mc})"
+        );
+
+        // Cleanup (cascades to conversation/branch/summary).
+        let _ = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&pool)
+            .await;
     }
 }

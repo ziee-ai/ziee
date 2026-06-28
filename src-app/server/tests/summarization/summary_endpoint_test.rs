@@ -186,6 +186,30 @@ async fn test_summary_endpoint_requires_conversations_read() {
     let user = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "summ_endpoint_noperm",
+#[tokio::test]
+async fn test_summary_endpoint_requires_conversations_read_permission() {
+    // The endpoint is gated by `ConversationsRead` (handlers.rs:232). The
+    // existing tests cover ownership (404) but never the permission gate:
+    // a user WITHOUT `conversations::read` must be refused 403 by the
+    // RequirePermissions extractor BEFORE the ownership/existence check
+    // runs — so even a valid, real conversation id owned by someone else
+    // yields 403 (perm gate), not 404 (ownership).
+    let server = crate::common::TestServer::start().await;
+
+    // Owner has read+edit and creates a real conversation (valid id).
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_perm_owner",
+        &["conversations::read", "conversations::edit"],
+    )
+    .await;
+    let conv_id = create_conversation(&server, &owner.token).await;
+
+    // This user is intentionally missing `conversations::read` (only a
+    // profile perm so the account is valid/active).
+    let no_read = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_perm_no_read",
         &["profile::read"],
     )
     .await;
@@ -197,4 +221,111 @@ async fn test_summary_endpoint_requires_conversations_read() {
         .await
         .unwrap();
     assert_eq!(res.status(), 403, "missing conversations::read must be 403");
+        .get(server.api_url(&format!("/conversations/{conv_id}/summary")))
+        .header("Authorization", format!("Bearer {}", no_read.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        403,
+        "a user lacking conversations::read must get 403 (perm gate fires before ownership)"
+    );
+}
+
+// ============================================================================
+// POST /_test/summarization/refresh — the debug-only synchronous refresh hook
+// (handlers.rs:`test_refresh`, registered in routes.rs only under
+// `#[cfg(debug_assertions)]`, which `cargo test` builds with).
+//
+// The full LLM-driven summarization is exercised key-gated in
+// `real_llm_test.rs::trigger_refresh_via_test_hook`; these two tests cover the
+// endpoint's DETERMINISTIC surface that runs in every CI with no provider key:
+//   - it is permission-gated (`summarization::settings::manage`), and
+//   - on a branch with nothing to summarize it drives the real handler →
+//     `refresh_summary` Noop early-return → 200 `{ "ok": true }` (no LLM call:
+//     the model is loaded only AFTER the Noop check, so the model id is never
+//     dereferenced on this path).
+// ============================================================================
+
+#[tokio::test]
+async fn test_refresh_endpoint_requires_manage_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    // A user with conversation perms but NOT summarization::settings::manage.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_refresh_nogate",
+        &["conversations::read", "conversations::create"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/_test/summarization/refresh"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "branch_id": Uuid::new_v4(),
+            "model_id": Uuid::new_v4(),
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // 403 (not 404): proves the debug route IS registered in the test build
+    // AND that it is gated by `RequirePermissions<(SummarizationSettingsManage,)>`.
+    assert_eq!(
+        res.status(),
+        403,
+        "test_refresh must require summarization::settings::manage (403), got {}: {}",
+        res.status(),
+        res.text().await.unwrap_or_default()
+    );
+}
+
+#[tokio::test]
+async fn test_refresh_endpoint_noop_branch_returns_ok() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_refresh_ok",
+        &[
+            "conversations::read",
+            "conversations::create",
+            "summarization::settings::manage",
+        ],
+    )
+    .await;
+
+    // A fresh conversation → an active branch with no summarizable messages, so
+    // `decide_summarize_action` returns `Noop` and `refresh_summary` returns
+    // `Ok(())` before ever loading/calling the model.
+    let conv_id = create_conversation(&server, &user.token).await;
+    let pool = open_pool(&server).await;
+    let branch_id = active_branch_id(&pool, Uuid::parse_str(&conv_id).unwrap()).await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/_test/summarization/refresh"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            // model_id is never dereferenced on the Noop path (model load
+            // happens after the Noop early-return) — a random uuid is fine.
+            "branch_id": branch_id,
+            "model_id": Uuid::new_v4(),
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let status = res.status();
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(
+        status, 200,
+        "test_refresh on an empty branch must succeed via the Noop path, got {status}: {body}"
+    );
+    assert_eq!(
+        body,
+        json!({ "ok": true }),
+        "the handler returns {{\"ok\":true}} on success"
+    );
 }

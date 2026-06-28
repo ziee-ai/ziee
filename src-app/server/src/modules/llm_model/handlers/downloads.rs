@@ -300,17 +300,25 @@ pub async fn delete_download(
     Path(download_id): Path<Uuid>,
     
 ) -> ApiResult<StatusCode> {
-    // Verify the download exists and user has access
+    // DELETE is idempotent: a row that is already absent — never existed, or
+    // concurrently removed by the boot-time retention prune loop (prune.rs)
+    // between this lookup and the delete — yields 204, not a confusing 404. We
+    // only 400 when the row is present AND still active.
     let download = Repos.download_instance
         .get_by_id(download_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to verify download {}: {}", download_id, e);
             AppError::internal_error("Database operation failed").to_api_error()
-        })?
-        .ok_or_else(|| AppError::not_found("Download instance").to_api_error())?;
+        })?;
 
-    // Only allow deleting terminal states
+    let download = match download {
+        Some(d) => d,
+        // Already gone — idempotent success.
+        None => return Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT)),
+    };
+
+    // Only allow deleting terminal states.
     if !download.is_terminal() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -318,14 +326,13 @@ pub async fn delete_download(
         ));
     }
 
-    let deleted = Repos.download_instance.delete(download_id).await.map_err(|e| {
+    // Ignore the deleted flag: if the row vanished between the lookup above and
+    // here (prune loop / concurrent delete), the post-condition "row is gone"
+    // still holds, so the DELETE succeeds idempotently.
+    Repos.download_instance.delete(download_id).await.map_err(|e| {
         tracing::error!("Failed to delete download {}: {}", download_id, e);
         AppError::internal_error("Failed to delete download").to_api_error()
     })?;
-
-    if !deleted {
-        return Err(AppError::not_found("Download instance").to_api_error());
-    }
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

@@ -144,6 +144,62 @@ async fn list_project_conversations_returns_only_scoped() {
     assert_eq!(convs[0]["id"], conv_p1);
 }
 
+/// Pagination edge cases on `GET /projects/{id}/conversations`: `limit`/`page`
+/// honored, `page=0` clamped to the first page, an over-max `limit` clamped (so
+/// it returns all rows when fewer than the cap exist), and a far page returns
+/// an empty array (never an error).
+#[tokio::test]
+async fn list_project_conversations_pagination_edges() {
+    let server = TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        helpers::full_project_permissions(),
+    )
+    .await;
+
+    let p = helpers::create_project(&server, &user, "Paged").await;
+    let pid = p["id"].as_str().unwrap().to_string();
+
+    // Three conversations in the project.
+    for _ in 0..3 {
+        helpers::create_project_conversation(&server, &user, &pid).await;
+    }
+
+    let client = reqwest::Client::new();
+    let fetch = |q: String| {
+        let client = client.clone();
+        let url = server.api_url(&format!("/projects/{}/conversations?{}", pid, q));
+        let token = user.token.clone();
+        async move {
+            let resp = client
+                .get(url)
+                .header("Authorization", format!("Bearer {}", token))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            let body: Value = resp.json().await.unwrap();
+            body.as_array().expect("array").len()
+        }
+    };
+
+    // First page of size 2 → 2 rows; second page → the remaining 1.
+    assert_eq!(fetch("page=1&limit=2".to_string()).await, 2);
+    assert_eq!(fetch("page=2&limit=2".to_string()).await, 1);
+
+    // page=0 is clamped up to page 1 (PaginationQuery min), so it behaves like
+    // the first page rather than erroring or returning everything.
+    assert_eq!(fetch("page=0&limit=2".to_string()).await, 2);
+
+    // An over-max limit is clamped to the per-page cap (100); with only 3 rows
+    // that still returns all 3.
+    assert_eq!(fetch("limit=1000".to_string()).await, 3);
+
+    // A page far beyond the data returns an empty array (not an error).
+    assert_eq!(fetch("page=999999&limit=2".to_string()).await, 0);
+}
+
 #[tokio::test]
 async fn chat_list_returns_all_user_conversations() {
     let server = TestServer::start().await;

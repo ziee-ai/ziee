@@ -15,6 +15,7 @@
 //!   staleness 410, schema 422) + the schema-valid resume → completed.
 
 mod access_and_durability;
+mod conversation_elicit;
 mod elicit;
 mod elicit_data_seeding;
 mod install_from_hub;
@@ -25,6 +26,7 @@ mod resume;
 mod run_cost_test;
 mod run_history_and_delete;
 mod run_mocked;
+mod sync_emit_test;
 mod run_model;
 mod sandbox_progress;
 mod sandbox_run;
@@ -35,6 +37,7 @@ mod status_machine;
 mod stream_access;
 mod sync_emit_test;
 mod system_endpoints;
+mod test_endpoint;
 mod tool_step;
 mod validate_and_dry_run;
 

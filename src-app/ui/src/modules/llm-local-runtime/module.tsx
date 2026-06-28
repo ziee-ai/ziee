@@ -14,6 +14,24 @@ import {
 } from './stores'
 import './types' // Register event types
 
+// The Local Runtimes page stacks three independently-gated sections:
+//   - version cards          → llm_local_runtime::versions_read (RuntimeVersionRead)
+//   - per-instance status/logs inside the version model blocks → LocalRuntimeRead
+//   - the singleton runtime-config card → llm_local_runtime::settings_read
+// Anyone who can see ANY of those should reach the page (and its menu entry);
+// per-section <Can> gates inside the page still hide each card individually.
+// Gating the route on LocalRuntimeRead alone both (a) let in principals with
+// only instance-status access who then saw an empty page, and (b) LOCKED OUT
+// version-only/settings-only readers whose content is the page's main purpose.
+// Mirrors the anyOf pattern used by code-sandbox.
+const LOCAL_RUNTIME_READ_PERM = {
+  anyOf: [
+    Permissions.LocalRuntimeRead,
+    Permissions.RuntimeVersionRead,
+    Permissions.RuntimeSettingsRead,
+  ],
+}
+
 const RuntimeVersionSettings = lazyWithPreload(() =>
   import('./components/RuntimeVersionSettings').then(m => ({
     default: m.RuntimeVersionSettings,
@@ -31,7 +49,7 @@ export default createModule({
       path: '/settings/llm-runtime',
       element: RuntimeVersionSettings,
       requiresAuth: true,
-      permission: Permissions.LocalRuntimeRead,
+      permission: LOCAL_RUNTIME_READ_PERM,
       layout: SettingsLayoutDef,
     },
   ],
@@ -81,7 +99,7 @@ export default createModule({
         // sandbox, hardware, etc.) uses a relative path here.
         path: 'llm-runtime',
         order: 52, // After LLM Providers (51), before LLM Repositories (53)
-        permission: Permissions.LocalRuntimeRead,
+        permission: LOCAL_RUNTIME_READ_PERM,
       },
     ],
   },

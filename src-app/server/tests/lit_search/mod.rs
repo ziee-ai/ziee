@@ -14,8 +14,10 @@
 // seams (compiled out of release) point them at the loopback mocks below, paired
 // with `LIT_SEARCH_ALLOW_LOOPBACK=1` so the SSRF policy permits 127.0.0.1.
 
+mod citations_handoff_test;
 mod fulltext_test;
 mod mcp_test;
+mod multistep_test;
 mod real_llm_test;
 mod sandbox_mount_test;
 mod settings_test;

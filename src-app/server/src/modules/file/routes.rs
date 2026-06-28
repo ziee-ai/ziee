@@ -10,6 +10,10 @@ use super::handlers::*;
 /// (see main.rs); this route opts into a higher ceiling. Capped at 200 MB
 /// (DoS hardening) — comfortably above the 50 MB per-file content cap
 /// (`MAX_FILE_SIZE`) to leave headroom for multipart envelope/metadata.
+/// Per-route body limit for the whole multipart upload request (approved
+/// policy value: 200 MB). The global router cap is 16 MB (see main.rs); this
+/// route opts into the higher ceiling. Individual files are additionally capped
+/// at 50 MB by `MAX_FILE_SIZE` in the upload handler.
 const FILE_UPLOAD_BODY_LIMIT: usize = 200 * 1024 * 1024;
 
 /// File management routes

@@ -275,5 +275,74 @@ mod flavor_lock_tests {
 
         let _ = fs::remove_dir_all(&dir);
         CONVERSATION_FLAVOR.remove(&conv);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::code_sandbox::models::ConversationFile;
+    use crate::modules::code_sandbox::types::{SandboxContext, CONVERSATION_FLAVOR};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn ctx_for(conv: Uuid) -> SandboxContext {
+        SandboxContext {
+            conversation_id: conv,
+            user_id: Uuid::new_v4(),
+            workspace: PathBuf::from("/nonexistent-test-workspace"),
+            files: Arc::new(Vec::<ConversationFile>::new()),
+        }
+    }
+
+    /// The `SANDBOX_NOT_INITIALIZED` guard is the first thing
+    /// `execute_command` does: when the module state is not initialized
+    /// (the default in a lib unit-test process — no sandbox booted), the
+    /// call must fail fast with a 503 / `SANDBOX_NOT_INITIALIZED` rather
+    /// than panicking, touching the filesystem, or invoking bwrap. This
+    /// pins both the status and the stable machine-readable error code.
+    #[tokio::test]
+    async fn execute_command_errors_when_state_uninitialized() {
+        // This test is only meaningful while sandbox state is unset; in the
+        // lib test binary nothing boots the module, so `get_state()` is None.
+        if config::get_state().is_some() {
+            return; // some other in-process test booted the sandbox; skip.
+        }
+
+        let conv = Uuid::new_v4();
+        let ctx = ctx_for(conv);
+
+        let err = execute_command(&ctx, "echo hi", "minimal")
+            .await
+            .expect_err("uninitialized sandbox must return an error, not Ok");
+
+        assert_eq!(
+            err.status_code(),
+            StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+            "uninitialized sandbox should map to 503"
+        );
+        assert_eq!(err.error_code(), "SANDBOX_NOT_INITIALIZED");
+    }
+
+    /// Ordering guarantee: the not-initialized guard short-circuits BEFORE
+    /// the per-conversation flavor lock is written. A regression that moved
+    /// the `CONVERSATION_FLAVOR` insert (or the flavor-switch wipe) ahead of
+    /// the state check would leave a stale lock entry behind even on a failed
+    /// call — assert the conversation never gets pinned when the call errors.
+    #[tokio::test]
+    async fn failed_uninitialized_call_does_not_pin_conversation_flavor() {
+        if config::get_state().is_some() {
+            return;
+        }
+
+        let conv = Uuid::new_v4();
+        // Precondition: this fresh conversation id has no flavor lock yet.
+        assert!(CONVERSATION_FLAVOR.get(&conv).is_none());
+
+        let ctx = ctx_for(conv);
+        let _ = execute_command(&ctx, "echo hi", "minimal").await;
+
+        assert!(
+            CONVERSATION_FLAVOR.get(&conv).is_none(),
+            "the early SANDBOX_NOT_INITIALIZED return must not pin a flavor lock"
+        );
     }
 }

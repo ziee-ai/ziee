@@ -89,3 +89,51 @@ pub fn with_permission<Perms: PermissionList>(op: TransformOperation) -> Transfo
     // Add security requirement for Bearer token
     op.security_requirement("bearerAuth")
 }
+
+#[cfg(test)]
+mod with_permission_tests {
+    use super::*;
+    use crate::modules::permissions::types::PermissionCheck;
+
+    struct TestPerm;
+    impl PermissionCheck for TestPerm {
+        const NAME: &'static str = "UsersRead";
+        const PERMISSION: &'static str = "users::read";
+        const DESCRIPTION: &'static str = "Read users";
+        const MODULE: &'static str = "users";
+    }
+
+    /// `with_permission` decorates the OpenAPI operation with the bearer-auth
+    /// security requirement, a documented 403 (INSUFFICIENT_PERMISSIONS), and a
+    /// description naming the required permission. Asserted via the serialized
+    /// operation to avoid coupling to aide's internal types.
+    #[test]
+    fn with_permission_documents_403_bearer_and_permission() {
+        let mut op = aide::openapi::Operation::default();
+        {
+            let t = TransformOperation::new(&mut op);
+            let _ = with_permission::<(TestPerm,)>(t);
+        }
+        let json = serde_json::to_value(&op).expect("serialize operation");
+
+        // A 403 response is documented.
+        assert!(
+            json["responses"]["403"].is_object(),
+            "with_permission must document a 403 response: {json}"
+        );
+        // The bearer-auth security requirement was added.
+        assert!(
+            serde_json::to_string(&json["security"])
+                .unwrap()
+                .contains("bearerAuth"),
+            "with_permission must add the bearerAuth security requirement: {}",
+            json["security"]
+        );
+        // The description names the required permission.
+        assert!(
+            json["description"].as_str().unwrap_or("").contains("users::read"),
+            "with_permission must name the permission in the description: {}",
+            json["description"]
+        );
+    }
+}

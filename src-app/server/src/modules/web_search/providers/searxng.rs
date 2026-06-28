@@ -20,6 +20,9 @@ const SEARXNG_POLICY: OutboundUrlPolicy = OutboundUrlPolicy {
     allow_schemes: &["http", "https"],
     allow_localhost: true,
     allow_private: true,
+    // Admin-configured trusted host; preserve prior behavior (link-local was
+    // permitted alongside private before the flag was split out).
+    allow_link_local: true,
 };
 
 pub struct SearxngProvider {

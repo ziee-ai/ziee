@@ -599,3 +599,70 @@ async fn test_download_with_authenticated_repository() {
     println!("  - Download completed successfully");
     println!("  - Model appears in provider's models list");
 }
+
+/// Cancel a download while it is in an ACTIVE state (the existing test only
+/// cancels an already-completed download). A `downloading` row is cancellable:
+/// the endpoint returns 204 and flips the row's status to `cancelled`.
+#[tokio::test]
+async fn cancel_download_in_active_state_succeeds() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "dl_cancel_active",
+        &[
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+            "llm_models::downloads_cancel",
+            "llm_models::downloads_read",
+        ],
+    )
+    .await;
+
+    let hf_repo =
+        crate::llm_model::download_test::get_huggingface_repository(&server, &user.token, false)
+            .await;
+    let repo_id = uuid::Uuid::parse_str(hf_repo["id"].as_str().unwrap()).unwrap();
+    let provider =
+        crate::llm_model::download_test::get_local_provider(&server, &user.token).await;
+    let provider_id = uuid::Uuid::parse_str(provider["id"].as_str().unwrap()).unwrap();
+
+    // Seed an ACTIVE (downloading) download instance.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let dl_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO download_instances (id, provider_id, repository_id, request_data, status)
+           VALUES ($1, $2, $3, $4, 'downloading')"#,
+    )
+    .bind(dl_id)
+    .bind(provider_id)
+    .bind(repo_id)
+    .bind(serde_json::json!({ "repository_path": "org/m", "main_filename": "model.safetensors" }))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Cancel the active download.
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-models/downloads/{dl_id}/cancel")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::NO_CONTENT,
+        "cancelling an active download must succeed"
+    );
+
+    // The row is now cancelled.
+    let row: (String,) = sqlx::query_as("SELECT status FROM download_instances WHERE id = $1")
+        .bind(dl_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(row.0, "cancelled", "active download flips to cancelled");
+    pool.close().await;
+}

@@ -271,5 +271,181 @@ mod sse_cap_tests {
         for id in ids {
             remove_client(id);
         }
+mod tests {
+    use super::*;
+
+    /// F-01: the SSE client pool is capped at MAX_SSE_CLIENTS — `add_client`
+    /// returns `Some` until the cap, then `None` (the caller surfaces 429/503),
+    /// and `remove_client` frees a slot so a new client can connect again.
+    #[test]
+    fn add_client_enforces_cap_and_remove_frees_slot() {
+        // Start from a clean registry (the static is process-global).
+        SSE_CLIENTS.lock().unwrap().clear();
+
+        let mut ids = Vec::with_capacity(MAX_SSE_CLIENTS);
+        for _ in 0..MAX_SSE_CLIENTS {
+            let id = Uuid::new_v4();
+            assert!(add_client(id).is_some(), "below the cap must accept clients");
+            ids.push(id);
+        }
+
+        // At capacity → refused.
+        assert!(
+            add_client(Uuid::new_v4()).is_none(),
+            "at MAX_SSE_CLIENTS, new clients must be refused"
+        );
+
+        // Freeing one slot lets exactly one more in.
+        remove_client(ids[0]);
+        assert!(
+            add_client(Uuid::new_v4()).is_some(),
+            "removing a client frees a slot"
+        );
+        assert!(
+            add_client(Uuid::new_v4()).is_none(),
+            "back at capacity → refused again"
+        );
+
+        SSE_CLIENTS.lock().unwrap().clear();
+    }
+
+    /// F-04: `stop_hardware_monitoring` clears the active flag so the monitoring
+    /// loop exits on its next tick (graceful shutdown).
+    #[test]
+    fn stop_clears_active_flag() {
+        MONITORING_ACTIVE.store(true, Ordering::SeqCst);
+        stop_hardware_monitoring();
+        assert!(
+            !MONITORING_ACTIVE.load(Ordering::SeqCst),
+            "stop must clear MONITORING_ACTIVE"
+        );
+    }
+
+    /// The per-tick snapshot the monitoring loop broadcasts (`collect_hardware_usage`,
+    /// driven from the loop at monitoring.rs:138) must be a well-formed
+    /// `HardwareUsageUpdate`: a real RFC3339 timestamp, a finite non-negative CPU
+    /// percentage, and live memory figures whose percentage stays sane (the
+    /// `saturating_sub` guard, F-05). Uses real `sysinfo` reads — no globals, no
+    /// spawn — so it's fully deterministic.
+    #[test]
+    fn collect_hardware_usage_produces_wellformed_snapshot() {
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
+        let snap = collect_hardware_usage(&mut sys);
+
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(&snap.timestamp).is_ok(),
+            "timestamp must be RFC3339: {}",
+            snap.timestamp
+        );
+        assert!(
+            snap.cpu.usage_percentage.is_finite() && snap.cpu.usage_percentage >= 0.0,
+            "cpu usage must be finite + non-negative: {}",
+            snap.cpu.usage_percentage
+        );
+        assert!(
+            snap.memory.used_ram > 0,
+            "used_ram must be > 0 on a real host"
+        );
+        assert!(
+            snap.memory.usage_percentage.is_finite() && snap.memory.usage_percentage >= 0.0,
+            "memory usage_percentage must be finite + non-negative: {}",
+            snap.memory.usage_percentage
+        );
+    }
+
+    /// The broadcast step of the loop (monitoring.rs:199-228): a connected client
+    /// receives the usage event, and a client whose receiver has been dropped is
+    /// pruned from the registry (so a stale channel can't accumulate).
+    #[tokio::test]
+    async fn broadcast_usage_update_delivers_to_live_client_and_prunes_dead() {
+        SSE_CLIENTS.lock().unwrap().clear();
+
+        let live_id = Uuid::new_v4();
+        let mut live_rx = add_client(live_id).expect("registry has room for the live client");
+
+        // A "dead" client: keep it registered but drop its receiver, so the
+        // broadcast's `tx.send(...)` fails and the client must be pruned.
+        let dead_id = Uuid::new_v4();
+        let dead_rx = add_client(dead_id).expect("registry has room for the dead client");
+        drop(dead_rx);
+
+        let mut sys = System::new_all();
+        sys.refresh_all();
+        let snap = collect_hardware_usage(&mut sys);
+
+        broadcast_usage_update(snap).await;
+
+        // The live client received the broadcast frame.
+        assert!(
+            matches!(live_rx.try_recv(), Ok(Ok(_))),
+            "live client must receive the broadcast event"
+        );
+
+        // The dead client was pruned; the live one remains.
+        {
+            let clients = SSE_CLIENTS.lock().unwrap();
+            assert!(
+                !clients.contains_key(&dead_id),
+                "a client with a dropped receiver must be pruned on broadcast"
+            );
+            assert!(
+                clients.contains_key(&live_id),
+                "the live client must remain registered"
+            );
+        }
+
+        SSE_CLIENTS.lock().unwrap().clear();
+    }
+
+    /// The start lifecycle (monitoring.rs:81-132): `start_hardware_monitoring`
+    /// atomically claims the active flag and spawns the loop; a second start while
+    /// active is a single-shot no-op (F-04); and with zero clients the loop
+    /// idle-stops, clearing the flag. Bounded with real-time polling so a
+    /// regression that never idle-stops fails loudly instead of hanging.
+    /// (Real time rather than `start_paused`/`advance`, which need tokio's
+    /// `test-util` feature that the lib's dev-deps don't enable.)
+    #[tokio::test]
+    async fn start_is_idempotent_and_idle_stops_without_clients() {
+        // Force the precondition immediately before claiming so the
+        // compare_exchange wins and a loop genuinely spawns.
+        SSE_CLIENTS.lock().unwrap().clear();
+        MONITORING_ACTIVE.store(false, Ordering::SeqCst);
+
+        start_hardware_monitoring().await;
+        assert!(
+            MONITORING_ACTIVE.load(Ordering::SeqCst),
+            "start must atomically set MONITORING_ACTIVE"
+        );
+
+        // Second start while active is a no-op — must not panic, flag stays set.
+        start_hardware_monitoring().await;
+        assert!(
+            MONITORING_ACTIVE.load(Ordering::SeqCst),
+            "re-start while active must be a single-shot no-op (flag still set)"
+        );
+
+        // No clients are connected → the spawned loop idle-stops on its next tick,
+        // clearing the flag (monitoring.rs:112-132).
+        // Real-time bounded poll: the loop ticks on an interval (~2s), and with
+        // zero clients clears the flag on its next tick. Poll for up to ~12s so
+        // a regression that never idle-stops fails loudly instead of hanging.
+        let mut idle_stopped = false;
+        for _ in 0..120 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
+                idle_stopped = true;
+                break;
+            }
+        }
+        assert!(
+            idle_stopped,
+            "monitoring loop must idle-stop (clear the flag) when no clients are connected"
+        );
+
+        // Hygiene: leave the globals clean for sibling tests.
+        stop_hardware_monitoring();
+        SSE_CLIENTS.lock().unwrap().clear();
     }
 }

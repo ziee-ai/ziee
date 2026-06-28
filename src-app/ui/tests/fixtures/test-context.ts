@@ -81,7 +81,25 @@ interface TestFixtures {
   testInfra: TestInfrastructure
 }
 
-export const test = base.extend<TestFixtures>({
+/**
+ * Per-spec options (declared as Playwright test options so a spec can opt in
+ * via `test.use({ ... })`). Defaults keep every other spec's behaviour
+ * identical.
+ */
+interface TestOptions {
+  /**
+   * Enable the built-in BioMCP server in this spec's backend config. Off by
+   * default (BioMCP is isolated out of E2E — see the `bio_mcp` block below);
+   * a dedicated bio spec flips this on to register + exercise the bio admin
+   * surface.
+   */
+  bioMcpEnabled: boolean
+}
+
+export const test = base.extend<TestFixtures & TestOptions>({
+  bioMcpEnabled: [false, { option: true }],
+
+  // Auto-capture HTML snapshot, console logs, and network requests on test failure
   // Auto-capture HTML snapshot, console logs, and network requests on test failure
   page: async ({ page }, use, testInfo) => {
     // Capture console logs
@@ -164,7 +182,7 @@ export const test = base.extend<TestFixtures>({
     }
   },
 
-  testInfra: async ({}, use, testInfo) => {
+  testInfra: async ({ bioMcpEnabled }, use, testInfo) => {
     const testId = crypto.randomBytes(4).toString('hex')
     const databaseName = `ziee_test_${testId}`
     const workerIndex = testInfo.workerIndex
@@ -314,6 +332,8 @@ ${
   process.env.ZIEE_E2E_SANDBOX === '1'
     ? `code_sandbox:
   enabled: true
+  # bio E2E spec enables it explicitly via test.use({ bioMcpEnabled: true }).
+  enabled: ${bioMcpEnabled}
 `
     : ''
 }`

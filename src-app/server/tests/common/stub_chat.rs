@@ -506,6 +506,44 @@ fn script(
             }
             let echoed = last_tool_result_text(messages);
             (Some(format!("Recalled prior result: {echoed}")), None)
+        // Turn 1 of the model-authored-file workflow: emit a files_mcp
+        // `create_file` writing STUB_CONTENT into STUB_FILE — the model authors
+        // a brand-new file (not an uploaded one) that it can reuse on a later
+        // turn. The continuation acknowledges the creation.
+        "create_file" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "create_file"))
+            {
+                let filename = parse_token(last_user, "STUB_FILE=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored.md".into());
+                let content = parse_token(last_user, "STUB_CONTENT=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored body".into());
+                return (
+                    None,
+                    Some((wire.to_string(), json!({ "filename": filename, "content": content }))),
+                );
+            }
+            (Some("Created the file.".into()), None)
+        }
+        // A later turn of the authored-file workflow: read a file back BY NAME
+        // (STUB_NAME) via files_mcp `read_file`. Name resolution searches the
+        // CONVERSATION's available files, so this only succeeds if a file
+        // authored on an earlier turn persisted and is still reusable here. The
+        // continuation echoes the file's content so the test can assert the
+        // round-trip recovered the authored content.
+        "read_named" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "read_file"))
+            {
+                let name = parse_token(last_user, "STUB_NAME=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored.md".into());
+                return (None, Some((wire.to_string(), json!({ "name": name }))));
+            }
+            let echoed = last_tool_result_text(messages);
+            (Some(format!("Reading the authored file: {echoed}")), None)
         }
         // "text" and any unknown plan → a plain answer.
         _ => (Some("Hello from the stub model.".into()), None),

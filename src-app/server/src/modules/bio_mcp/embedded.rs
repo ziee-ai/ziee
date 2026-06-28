@@ -134,3 +134,63 @@ fn set_executable(path: &PathBuf) -> Result<(), AppError> {
     })?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `biomcp_available()` is exactly "a non-stub binary is embedded".
+    #[test]
+    fn availability_reflects_embedded_payload() {
+        assert_eq!(biomcp_available(), !binaries::BIOMCP.is_empty());
+    }
+
+    /// Extraction contract is consistent with availability: a stub build errors
+    /// out (feature self-disables), a real build extracts a non-empty binary to
+    /// disk. Exercises the real `ensure_biomcp_extracted` path either way.
+    #[test]
+    fn ensure_extracted_matches_availability() {
+        if biomcp_available() {
+            let path = ensure_biomcp_extracted().expect("a real binary must extract");
+            assert!(path.exists(), "extracted binary must exist on disk");
+            assert!(
+                fs::metadata(path).unwrap().len() > 0,
+                "extracted binary must be non-empty"
+            );
+        } else {
+            assert!(
+                ensure_biomcp_extracted().is_err(),
+                "a stub build must report the binary unavailable"
+            );
+        }
+    }
+
+    /// On Unix the extracted binary MUST be marked executable (0o755) or the
+    /// supervisor can't spawn it.
+    #[cfg(unix)]
+    #[test]
+    fn set_executable_sets_0755() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "ziee-biomcp-exec-test-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("fake-biomcp");
+        fs::write(&f, b"#!/bin/sh\ntrue\n").unwrap();
+
+        // Start NON-executable.
+        let mut perms = fs::metadata(&f).unwrap().permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(&f, perms).unwrap();
+
+        set_executable(&f).expect("set_executable");
+
+        let mode = fs::metadata(&f).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "binary must be chmod 0o755 after extraction");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

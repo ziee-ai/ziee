@@ -128,6 +128,15 @@ test.describe('Social login — navikt end-to-end parity', () => {
       })
       expect(tokenInStore).toBeTruthy()
       expect(tokenInStore).not.toBe('')
+
+      // Cross-subsystem: the OAuth-derived session must be FUNCTIONAL for chat.
+      // The existing social-login coverage stops at the logged-in landing; here
+      // we navigate to the chat surface (the '/chat' new-chat page) and assert
+      // the composer's send affordance renders for the OAuth-authenticated user.
+      await page.goto(`${baseURL}/chat`, { waitUntil: 'domcontentloaded' })
+      await expect(
+        page.getByRole('button', { name: 'Send message' }),
+      ).toBeVisible({ timeout: 30_000 })
     } finally {
       await mock!.stop()
     }

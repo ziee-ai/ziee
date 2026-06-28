@@ -380,4 +380,112 @@ mod tests {
         assert_eq!(plan_arm(false, true), Arm::Fts);
         assert_eq!(plan_arm(false, false), Arm::None);
     }
+
+    /// Concurrent search during a re-embed (half-dimensions race) safety
+    /// invariant: while `embed_worker::reembed_all` is rebuilding, the
+    /// `ALTER COLUMN` NULLs every chunk's embedding before the new vectors
+    /// land. A search firing in that window must NEVER surface a NULL-embedding
+    /// row (which would be a half-dimension / dimensionless garbage hit) — the
+    /// vector arm's `WHERE embedding IS NOT NULL` guard (see `vector_rows`)
+    /// must drop it. This drives the REAL private `vector_rows` query against a
+    /// chunk that has a valid 768-d embedding and a sibling chunk left NULL
+    /// (exactly the mid-rebuild state) and asserts only the valid row returns.
+    ///
+    /// DB-gated: soft-skips (mirroring the suite's env-gated real-stack tests)
+    /// when no Postgres is reachable, so `cargo test --lib` without a DB stays
+    /// green; runs for real wherever `DATABASE_URL` points at a migrated DB.
+    #[tokio::test]
+    async fn vector_search_excludes_null_embeddings_during_rebuild() {
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skip: DATABASE_URL unset — no DB to exercise vector_rows against");
+                return;
+            }
+        };
+        let pool = match sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return;
+            }
+        };
+        // Idempotent: no-op if another lib test already initialized the factory.
+        // Seed + query through the SAME factory pool `vector_rows` reads, so the
+        // assertion holds regardless of which pool won the once-init race.
+        crate::core::init_repositories(pool.clone());
+        let db = Repos.file_rag.pool_clone();
+
+        let tag = Uuid::new_v4();
+        let user_id: Uuid =
+            sqlx::query_scalar("INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id")
+                .bind(format!("rag_nullrace_{tag}"))
+                .bind(format!("rag_nullrace_{tag}@example.com"))
+                .fetch_one(&db)
+                .await
+                .expect("seed user");
+        let file_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO files (user_id, filename, file_size) VALUES ($1, 'rag.txt', 1) RETURNING id",
+        )
+        .bind(user_id)
+        .fetch_one(&db)
+        .await
+        .expect("seed file");
+
+        let embedding = HalfVector::from_f32_slice(&vec![0.1f32; 768]);
+        // Chunk A: a fully-embedded row (post-rebuild / not yet NULLed).
+        let valid_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO file_chunks \
+             (file_id, user_id, blob_version_id, version, page_number, chunk_index, \
+              char_start, char_end, content, embedding, embedding_model) \
+             VALUES ($1, $2, $3, 1, 1, 0, 0, 5, 'hello', $4, 'test-model') RETURNING id",
+        )
+        .bind(file_id)
+        .bind(user_id)
+        .bind(Uuid::new_v4())
+        .bind(&embedding)
+        .fetch_one(&db)
+        .await
+        .expect("seed valid-embedding chunk");
+        // Chunk B: embedding NULLed — the exact mid-`ALTER COLUMN` rebuild state.
+        let null_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO file_chunks \
+             (file_id, user_id, blob_version_id, version, page_number, chunk_index, \
+              char_start, char_end, content, embedding) \
+             VALUES ($1, $2, $3, 1, 1, 1, 0, 5, 'hello', NULL) RETURNING id",
+        )
+        .bind(file_id)
+        .bind(user_id)
+        .bind(Uuid::new_v4())
+        .fetch_one(&db)
+        .await
+        .expect("seed NULL-embedding chunk");
+
+        // threshold 2.5 > the cosine-distance ceiling of 2.0, so the only thing
+        // that can drop the NULL row is the `IS NOT NULL` guard, not the metric.
+        let query_vec = HalfVector::from_f32_slice(&vec![0.1f32; 768]);
+        let rows = vector_rows(&[file_id], user_id, &query_vec, 2.5, 10)
+            .await
+            .expect("vector_rows must not error on a mid-rebuild corpus");
+
+        let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+        assert!(
+            ids.contains(&valid_id),
+            "the valid-embedding chunk must be returned (got {ids:?})"
+        );
+        assert!(
+            !ids.contains(&null_id),
+            "a NULL-embedding chunk (mid-rebuild) must never surface in vector search (got {ids:?})"
+        );
+
+        // Cascade-clean the seeded user so the shared DB stays tidy.
+        let _ = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&db)
+            .await;
+    }
 }

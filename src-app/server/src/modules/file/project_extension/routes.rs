@@ -18,6 +18,7 @@ use super::handlers::*;
 /// Per-route body limit for project-file uploads. Matches the file
 /// module's standalone /files/upload cap (200 MB) — both routes share
 /// the same `upload_file_inner` validator chain (50 MB per-file).
+/// the same `upload_file_inner` validator chain (50 MB per individual file).
 const PROJECT_FILE_UPLOAD_BODY_LIMIT: usize = 200 * 1024 * 1024;
 
 pub fn project_files_router() -> ApiRouter {

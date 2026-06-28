@@ -880,6 +880,16 @@ async fn test_convert_document_persists_file_and_emits_saved_resource_link() {
 }
 
 /// upload arbitrary bytes with a chosen MIME → returns the library file id.
+// ── read_file: non-text file_type branches (image / binary) ──────────────────
+//
+// `read_file` dispatches on `AvailableFile::file_type` (available_files.rs:97):
+// an `image/*` mime → FileType::Image (returns an MCP `image` content block with
+// base64 `data` + `mimeType`); a no-text non-image blob → FileType::Binary
+// (returns a text note "no extractable text", never bytes). The existing
+// read_file tests only exercise the Text branch (line slicing); these cover the
+// two non-text branches end-to-end through the real handler + file store.
+
+/// Upload arbitrary bytes with an explicit mime; returns the new file id.
 async fn upload_bytes(
     server: &TestServer,
     user: &TestUser,
@@ -906,6 +916,11 @@ async fn upload_bytes(
         resp.status(),
         reqwest::StatusCode::CREATED,
         "upload: {}",
+        .expect("upload");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::CREATED,
+        "upload {filename}: {}",
         resp.text().await.unwrap_or_default()
     );
     let v: Value = resp.json().await.unwrap();
@@ -985,6 +1000,34 @@ async fn test_write_tool_denied_without_files_upload_permission() {
     )
     .await;
     let conv = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+/// A minimal, valid 1×1 transparent PNG. The magic sniffer keys on the 8-byte
+/// PNG signature (`\x89PNG\r\n\x1a\n`), so this is classified `image/png`.
+fn one_by_one_png() -> Vec<u8> {
+    vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // signature
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR len + type
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, // bit depth/color + CRC
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, // IDAT len + type
+        0x78, 0x9C, 0x62, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4,
+        0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82, // IEND + CRC
+    ]
+}
+
+/// `read_file` on an image returns an MCP `image` content block (base64 `data`
+/// + `mimeType`), NOT a text slice — the vision path the chat layer relies on.
+#[tokio::test]
+async fn test_read_file_image_returns_image_block() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_read_image").await;
+
+    let png = one_by_one_png();
+    let project_id = create_project(&server, &user, "read-image-project").await;
+    let file_id = upload_bytes(&server, &user, "pixel.png", "image/png", png.clone()).await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let conv_id = create_conversation(&server, &user).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
 
     let body = call_tool(
         &server,
@@ -1000,5 +1043,157 @@ async fn test_write_tool_denied_without_files_upload_permission() {
     assert!(
         msg.contains("files::upload") || msg.to_lowercase().contains("permission"),
         "error must name the missing write permission: {body}"
+        conv_uuid,
+        "read_file",
+        json!({ "id": file_id }),
+    )
+    .await;
+    assert!(body["error"].is_null(), "read_file(image) should succeed; body={body}");
+
+    let block = &body["result"]["content"][0];
+    assert_eq!(block["type"], "image", "image file → image content block; body={body}");
+    assert_eq!(
+        block["mimeType"], "image/png",
+        "image content block carries the mime; body={body}"
+    );
+    // `data` must be the real base64 of the uploaded bytes (round-trips the
+    // bytes through the file store, not a stub).
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(block["data"].as_str().expect("base64 data string"))
+        .expect("content data is valid base64");
+    assert_eq!(decoded, png, "decoded image bytes equal the uploaded PNG");
+}
+
+/// `read_file` on a no-text binary blob returns a text note ("no extractable
+/// text"), never the raw bytes — the Binary branch.
+#[tokio::test]
+async fn test_read_file_binary_returns_no_text_note() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_read_binary").await;
+
+    // Junk bytes matching no known magic signature → octet-stream → Binary.
+    let blob: Vec<u8> = vec![0x00, 0x01, 0x02, 0xFF, 0xFE, 0x7A, 0x00, 0x13, 0x37, 0x42];
+    let project_id = create_project(&server, &user, "read-binary-project").await;
+    let file_id =
+        upload_bytes(&server, &user, "data.bin", "application/octet-stream", blob.clone()).await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let conv_id = create_conversation(&server, &user).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "read_file",
+        json!({ "id": file_id }),
+    )
+    .await;
+    assert!(body["error"].is_null(), "read_file(binary) should succeed; body={body}");
+
+    let block = &body["result"]["content"][0];
+    assert_eq!(block["type"], "text", "binary file → a text note, not bytes; body={body}");
+    let text = block["text"].as_str().expect("text note");
+    assert!(
+        text.contains("no extractable text") || text.contains("no text layer"),
+        "binary note explains there is no extractable text; text={text}"
+    );
+    // The raw byte payload must NOT be surfaced (no image/base64 block).
+    assert!(
+        body["result"]["content"][0]["data"].is_null(),
+        "binary read must not leak a base64 data block; body={body}"
+    );
+}
+
+/// convert_document real-path resource_link PERSISTENCE: render Markdown→PDF via
+/// the embedded pandoc+typst engine, save to the file store, and emit a
+/// resource_link pointing at the saved file. The existing convert_document test
+/// only covers the empty-markdown validation (returns before any render); this
+/// asserts the persistence contract the audit names — the emitted link is
+/// `is_saved=true` at `/api/files/{id}`, and that exact file is a DURABLE,
+/// retrievable store artifact (metadata + a downloadable real PDF), proving the
+/// link is a persisted file id, not a transient handle.
+#[tokio::test]
+async fn test_convert_document_emits_persisted_resource_link() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_convert_persist").await;
+    let conv_id = create_conversation(&server, &user).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "convert_document",
+        json!({
+            "markdown": "# Persisted Report\n\nThis is a converted PDF body.\n",
+            "filename": "report.pdf",
+        }),
+    )
+    .await;
+    assert!(
+        body["error"].is_null(),
+        "convert_document should succeed (pandoc+typst are embedded); body={body}"
+    );
+
+    let sc = &body["result"]["structuredContent"];
+    let file_id = sc["file_id"]
+        .as_str()
+        .expect("convert_document returns structuredContent.file_id")
+        .to_string();
+
+    // The resource_link the model receives must reference the persisted file.
+    let link = &sc["content"][0];
+    assert_eq!(
+        link["type"], "resource_link",
+        "convert_document emits a resource_link block; sc={sc}"
+    );
+    assert_eq!(
+        link["is_saved"],
+        json!(true),
+        "the converted file is already saved (is_saved=true), so persist_links references rather than re-fetches it"
+    );
+    assert_eq!(
+        link["uri"].as_str().unwrap(),
+        format!("/api/files/{file_id}"),
+        "the link URI points at the persisted file id"
+    );
+    assert_eq!(link["name"].as_str().unwrap(), "report.pdf", "sanitized filename");
+    assert_eq!(
+        link["mimeType"].as_str().unwrap(),
+        "application/pdf",
+        "the saved artifact is a PDF"
+    );
+
+    // PERSISTENCE: the linked file is a real, retrievable store artifact (not a
+    // transient render). Metadata round-trips with the MCP provenance stamp...
+    let meta = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(meta.status(), 200, "GET /files/{{id}} for the converted file");
+    let meta_json: Value = meta.json().await.unwrap();
+    assert_eq!(
+        meta_json["created_by"], "mcp",
+        "convert_document stamps created_by=mcp; meta={meta_json}"
+    );
+    assert_eq!(meta_json["filename"], "report.pdf");
+
+    // ...and the bytes download as a genuinely-rendered PDF.
+    let dl = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/download")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dl.status(), 200, "the persisted converted PDF is downloadable");
+    let bytes = dl.bytes().await.unwrap();
+    assert!(
+        bytes.starts_with(b"%PDF"),
+        "the downloaded artifact is a real rendered PDF (magic %PDF); len={}",
+        bytes.len()
     );
 }

@@ -1169,5 +1169,121 @@ async fn test_list_repositories_pagination_edges() {
     assert!(
         !b["repositories"].as_array().unwrap().is_empty(),
         "page=0 is treated as the first page"
+/// Pagination edge cases on `GET /llm-repositories` (`list_repositories`,
+/// handlers.rs:39-76). The handler slices an in-memory `Vec` after the
+/// `PaginationQuery` deserializer clamps the inputs (`page>=1`,
+/// `1<=per_page<=PAGINATION_MAX_PER_PAGE`), so this asserts the slicing +
+/// clamp boundaries end-to-end through the real handler: per_page=1 returns
+/// exactly one row, a page past the end returns an EMPTY list (not an error),
+/// per_page over the 100 cap is clamped, and page<1 / per_page<1 fall back to
+/// the defaults rather than erroring. There are >=2 built-in repos seeded, so
+/// everything is computed relative to the observed baseline total.
+#[tokio::test]
+async fn test_list_llm_repositories_pagination_edge_cases() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "pageadmin",
+        &["llm_repositories::read", "llm_repositories::create"],
+    )
+    .await;
+
+    let client = reqwest::Client::new();
+    let base = server.api_url("/llm-repositories");
+
+    // Helper: GET a page and return (repositories.len(), total, page, per_page).
+    async fn page_of(
+        client: &reqwest::Client,
+        base: &str,
+        token: &str,
+        query: &str,
+    ) -> (usize, i64, i64, i64) {
+        let url = if query.is_empty() {
+            base.to_string()
+        } else {
+            format!("{base}?{query}")
+        };
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .expect("list request failed");
+        assert_eq!(resp.status(), 200, "list must be 200 for query `{query}`");
+        let body: serde_json::Value = resp.json().await.expect("parse list json");
+        let len = body["repositories"]
+            .as_array()
+            .expect("repositories array")
+            .len();
+        (
+            len,
+            body["total"].as_i64().expect("total"),
+            body["page"].as_i64().expect("page"),
+            body["per_page"].as_i64().expect("per_page"),
+        )
+    }
+
+    // Baseline (built-in repos are seeded, so this is >= 2).
+    let (_, baseline_total, def_page, def_per_page) =
+        page_of(&client, &base, &admin.token, "").await;
+    assert_eq!(def_page, 1, "default page must be 1");
+    assert_eq!(def_per_page, 20, "default per_page must be 20");
+    assert!(baseline_total >= 2, "built-in repos should make baseline >= 2");
+
+    // Create 3 additional repositories (enabled:false skips the connection probe).
+    for i in 0..3 {
+        let resp = client
+            .post(&base)
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .json(&json!({
+                "name": format!("Page Repo {i}"),
+                "url": format!("https://example.com/page-{i}"),
+                "auth_type": "none",
+                "enabled": false,
+            }))
+            .send()
+            .await
+            .expect("create request failed");
+        assert_eq!(resp.status(), 201, "create repo {i} should be 201");
+    }
+    let total = baseline_total + 3;
+
+    // 1) per_page=1 → exactly one row, total reflects all rows, echoed page/per_page.
+    let (len, t, p, pp) = page_of(&client, &base, &admin.token, "page=1&per_page=1").await;
+    assert_eq!(len, 1, "per_page=1 must return exactly one repository");
+    assert_eq!(t, total, "total must count ALL repositories, not just the page");
+    assert_eq!((p, pp), (1, 1), "page/per_page must be echoed back");
+
+    // 2) Page past the end → EMPTY list, still 200, total unchanged (not an error).
+    let past_page = total + 5; // well beyond the last page at per_page=1
+    let (len, t, p, _) = page_of(
+        &client,
+        &base,
+        &admin.token,
+        &format!("page={past_page}&per_page=1"),
+    )
+    .await;
+    assert_eq!(len, 0, "a page beyond the last must return an empty list, not an error");
+    assert_eq!(t, total, "total stays the full count even on an out-of-range page");
+    assert_eq!(p, past_page, "the requested (in-range, >=1) page is echoed back");
+
+    // 3) per_page over the 100 cap → clamped to PAGINATION_MAX_PER_PAGE (100).
+    let (len, _, _, pp) = page_of(&client, &base, &admin.token, "page=1&per_page=9999").await;
+    assert_eq!(pp, 100, "per_page over the cap must clamp to PAGINATION_MAX_PER_PAGE");
+    assert_eq!(
+        len,
+        (total as usize).min(100),
+        "with the clamped 100-row window the whole (small) set is returned"
+    );
+
+    // 4) page<1 and per_page<1 → clamped to the defaults (page=1, per_page=20), 200.
+    let (len, t, p, pp) = page_of(&client, &base, &admin.token, "page=0&per_page=0").await;
+    assert_eq!((p, pp), (1, 20), "page<1 and per_page<1 must clamp to the defaults");
+    assert_eq!(t, total, "total is independent of clamping");
+    assert_eq!(
+        len,
+        (total as usize).min(20),
+        "the clamped default 20-row window returns the whole small set"
     );
 }

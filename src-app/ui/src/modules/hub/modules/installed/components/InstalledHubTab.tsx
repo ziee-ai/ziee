@@ -133,6 +133,16 @@ export function InstalledHubTab() {
             replace_existing: true,
           })
         }
+      } else if (row.hub_category === 'skill') {
+        // Only USER-scope skills reach here — system skills disable the
+        // Re-install button (they need group choices; see the button gate).
+        // The backend re-install path replaces the prior install for this hub_id.
+        await Stores.Skill.installFromHub(row.hub_id)
+      } else if (row.hub_category === 'workflow') {
+        await Stores.Workflow.installFromHub(row.hub_id)
+      } else {
+        // Unhandled category — surface an error instead of a false success.
+        throw new Error(`Re-install not supported for ${row.hub_category}`)
       }
       message.success(
         `Re-installed ${row.name || row.hub_id} from v${catalogVersion ?? '?'}`,
@@ -175,6 +185,21 @@ export function InstalledHubTab() {
           model_id: row.entity_id,
           delete_file: true,
         })
+      } else if (row.hub_category === 'skill') {
+        if (row.is_system) {
+          await ApiClient.SkillSystem.delete({ id: row.entity_id })
+        } else {
+          await ApiClient.Skill.delete({ id: row.entity_id })
+        }
+      } else if (row.hub_category === 'workflow') {
+        if (row.is_system) {
+          await ApiClient.Workflow.deleteSystem({ id: row.entity_id })
+        } else {
+          await ApiClient.Workflow.delete({ id: row.entity_id })
+        }
+      } else {
+        // Unhandled category — surface an error instead of a false success.
+        throw new Error(`Remove not supported for ${row.hub_category}`)
       }
       message.success(`Removed ${row.name || row.hub_id}`)
       await Stores.HubInstalled.loadInstalled()
@@ -303,8 +328,17 @@ export function InstalledHubTab() {
                           </Flex>
                         </div>
                         <div className="flex gap-2 items-center justify-end">
-                          {row.hub_category === 'model' ? (
-                            <Tooltip title="Models re-install via the Models tab (pick a provider + quantization)">
+                          {row.hub_category === 'model' ||
+                          ((row.hub_category === 'skill' ||
+                            row.hub_category === 'workflow') &&
+                            row.is_system) ? (
+                            <Tooltip
+                              title={
+                                row.hub_category === 'model'
+                                  ? 'Models re-install via the Models tab (pick a provider + quantization)'
+                                  : `System ${row.hub_category}s re-install from the ${row.hub_category === 'skill' ? 'Skills' : 'Workflows'} tab (it sets the group assignments)`
+                              }
+                            >
                               <Button icon={<ReloadOutlined />} disabled>
                                 Re-install
                               </Button>

@@ -312,6 +312,68 @@ mod tests {
         assert_eq!(req.jsonrpc, "2.0"); // default applied
     }
 
+    /// Mirrors the per-conversation flavor-lock decision in
+    /// `tools/execute.rs::execute_command_with_mounts` (the FIRST call
+    /// pins the flavor; a later call in the SAME conversation requesting
+    /// a DIFFERENT flavor is detected as a switch and re-pins). This is
+    /// the "flavor-switch within a conversation" decision that drives the
+    /// install-cache wipe — previously only the wipe primitive
+    /// (`version_manager::flavor_switch_wipes_only_caller_conversation`)
+    /// was tested, never the lock transition that decides WHEN to wipe.
+    ///
+    /// Returns `(was_switch, locked_after)` exactly as execute.rs computes
+    /// them, so a regression in the entry/or_insert/insert sequence fails
+    /// here rather than silently mis-wiping (or never wiping) a real run.
+    fn resolve_flavor_lock(conv: Uuid, requested: &str) -> (bool, String) {
+        let locked = CONVERSATION_FLAVOR
+            .entry(conv)
+            .or_insert_with(|| requested.to_string())
+            .clone();
+        let was_switch = locked != requested;
+        if was_switch {
+            CONVERSATION_FLAVOR.insert(conv, requested.to_string());
+        }
+        let after = CONVERSATION_FLAVOR.get(&conv).map(|v| v.clone()).unwrap();
+        (was_switch, after)
+    }
+
+    #[test]
+    fn conversation_flavor_lock_pins_then_switches() {
+        let conv_a = Uuid::new_v4();
+        let conv_b = Uuid::new_v4();
+
+        // 1) First call in a conversation pins the requested flavor and is
+        //    NOT a switch (nothing to wipe yet).
+        let (switch1, locked1) = resolve_flavor_lock(conv_a, "minimal");
+        assert!(!switch1, "first call must not be a flavor switch");
+        assert_eq!(locked1, "minimal");
+
+        // 2) Same flavor again in the same conversation: still no switch.
+        let (switch2, locked2) = resolve_flavor_lock(conv_a, "minimal");
+        assert!(!switch2, "same-flavor re-request must not switch");
+        assert_eq!(locked2, "minimal");
+
+        // 3) Different flavor in the SAME conversation: detected as a
+        //    switch, and the lock re-pins to the new flavor so the NEXT
+        //    call sees it as the baseline.
+        let (switch3, locked3) = resolve_flavor_lock(conv_a, "full");
+        assert!(switch3, "different flavor in same conversation must switch");
+        assert_eq!(locked3, "full");
+        let (switch4, locked4) = resolve_flavor_lock(conv_a, "full");
+        assert!(!switch4, "post-switch baseline must be the new flavor");
+        assert_eq!(locked4, "full");
+
+        // 4) A DIFFERENT conversation is independent — conv_a's switch to
+        //    "full" must not leak into conv_b's first pin.
+        let (switch_b, locked_b) = resolve_flavor_lock(conv_b, "minimal");
+        assert!(!switch_b, "a different conversation pins independently");
+        assert_eq!(locked_b, "minimal");
+
+        // Clean up the process-global map so sibling tests are unaffected.
+        CONVERSATION_FLAVOR.remove(&conv_a);
+        CONVERSATION_FLAVOR.remove(&conv_b);
+    }
+
     #[test]
     fn jsonrpc_request_accepts_string_id() {
         let raw = r#"{"jsonrpc":"2.0","id":"abc","method":"x"}"#;

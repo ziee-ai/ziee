@@ -31,7 +31,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   return (
     <Card className="w-full max-w-md mx-auto">
       {error && (
-        <div className="py-4">
+        <div className="py-4" role="alert" aria-live="assertive">
           <Alert
             title={error}
             type="error"

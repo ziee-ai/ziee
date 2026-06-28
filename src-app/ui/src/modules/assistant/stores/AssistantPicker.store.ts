@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import { Permissions, type Assistant } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 
 /**
  * Assistant picker store — the user's per-chat-composer assistant
@@ -31,11 +32,13 @@ interface AssistantPickerState {
 
   // Lifecycle hooks (consumed by createStoreProxy)
   __init__: {
+    __store__?: () => void
     availableAssistants: () => Promise<void>
   }
+  __destroy__?: () => void
 
   // Actions
-  loadAssistants: () => Promise<void>
+  loadAssistants: (force?: boolean) => Promise<void>
   selectAssistant: (assistantId: string) => void
   clearAssistant: () => void
   reset: () => void
@@ -51,18 +54,32 @@ export const useAssistantPickerStore = create<AssistantPickerState>()(
       error: null,
 
       __init__: {
+        // Keep the cached picker list fresh when assistants are
+        // created/edited/deleted on another device (or after an SSE
+        // reconnect). Self-gated on assistants::read (the no-403 reconnect
+        // rule — sync:reconnect fires for every store regardless of audience).
+        __store__: () => {
+          const GROUP = 'AssistantPicker'
+          const reload = () => {
+            if (!hasPermissionNow(Permissions.AssistantsRead)) return
+            void get().loadAssistants(true)
+          }
+          Stores.EventBus.on('sync:assistant', reload, GROUP)
+          Stores.EventBus.on('sync:reconnect', reload, GROUP)
+        },
         availableAssistants: () => get().loadAssistants(),
       },
 
-      loadAssistants: async () => {
+      loadAssistants: async (force = false) => {
         // Permission-gate the shell-eager-load fetch — the chat shell
         // accesses the picker regardless of route; without
         // assistants::read the API 403s.
         if (!hasPermissionNow(Permissions.AssistantsRead)) return
 
-        // Only load if not already loaded.
+        // Only load if not already loaded (unless a sync event forces a
+        // refresh past this once-load guard).
         const state = get()
-        if (state.availableAssistants.length > 0) return
+        if (!force && state.availableAssistants.length > 0) return
 
         set(s => {
           s.loading = true
@@ -107,6 +124,10 @@ export const useAssistantPickerStore = create<AssistantPickerState>()(
         set(s => {
           s.selectedAssistantId = null
         })
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('AssistantPicker')
       },
     })),
   ),

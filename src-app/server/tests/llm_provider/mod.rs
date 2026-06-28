@@ -2653,6 +2653,58 @@ async fn test_discover_models_catalog_and_local_paths() {
     let lid = local["id"].as_str().unwrap();
     let lbody: serde_json::Value = reqwest::Client::new()
         .get(server.api_url(&format!("/llm-providers/{lid}/discover-models")))
+/// Concurrency: multiple admins assigning the SAME provider→group at the same
+/// time must converge to exactly ONE assignment (no duplicate rows, no lost
+/// update, no 500). The existing idempotent test only assigns sequentially.
+#[tokio::test]
+async fn test_concurrent_provider_group_assignment_is_safe() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "concurrent_assign",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::assign_groups",
+            "groups::read",
+        ],
+    )
+    .await;
+
+    let provider = create_test_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap().to_string();
+    let admin_group_id = get_admin_group_id(&server, &user.token).await;
+
+    // Fire N identical assignments concurrently (simulating several admins).
+    let url = server.api_url(&format!("/llm-providers/{}/groups", provider_id));
+    let mut handles = Vec::new();
+    for _ in 0..6 {
+        let url = url.clone();
+        let token = user.token.clone();
+        let gid = admin_group_id.clone();
+        handles.push(tokio::spawn(async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&json!({ "group_id": gid }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }));
+    }
+    for h in handles {
+        let status = h.await.unwrap();
+        assert_eq!(
+            status,
+            StatusCode::NO_CONTENT,
+            "every concurrent assign must succeed, got {status}"
+        );
+    }
+
+    // Exactly one assignment survives — no duplicate rows from the race.
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -2665,5 +2717,9 @@ async fn test_discover_models_catalog_and_local_paths() {
     assert!(
         lbody["notes"].as_array().unwrap().iter().any(|n| n.as_str().unwrap_or("").contains("llm-models")),
         "local must point at /api/llm-models: {lbody}"
+    assert_eq!(
+        body.as_array().unwrap().len(),
+        1,
+        "concurrent identical assigns must converge to a single assignment"
     );
 }

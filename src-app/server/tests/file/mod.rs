@@ -1761,3 +1761,82 @@ async fn test_file_content_responses_have_private_bounded_cache_control() {
         );
     }
 }
+
+// ============================================================================
+// Graceful degradation — failed processing still yields a successful upload
+// (audit all-f2c43a4939b6: ProcessingResult::default() fallback at
+//  file/handlers/upload.rs:165-168)
+// ============================================================================
+
+#[tokio::test]
+async fn test_upload_unprocessable_pdf_degrades_gracefully() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "file_degrade_user",
+        &["files::upload", "files::download"],
+    )
+    .await;
+
+    // Valid PDF magic (so MIME sniffing accepts it as application/pdf rather
+    // than rejecting it as a MIME mismatch) but a corrupt body the PDF
+    // processor cannot turn into pages. The upload must STILL succeed with a
+    // degraded (empty) processing result instead of failing the whole request.
+    let corrupt_pdf: &[u8] = b"%PDF-1.4\nthis is not a valid PDF body \xff\xfe garbage";
+
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(corrupt_pdf.to_vec())
+            .file_name("broken.pdf")
+            .mime_str("application/pdf")
+            .unwrap(),
+    );
+
+    let url = server.api_url("/files/upload");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        201,
+        "upload of an unprocessable PDF must still succeed (graceful degradation), not 5xx"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let file_id = body["id"].as_str().expect("response should carry a file id");
+    assert_eq!(body["filename"], "broken.pdf");
+    assert_eq!(body["mime_type"], "application/pdf");
+    assert!(
+        body["file_size"].as_i64().unwrap() > 0,
+        "the original bytes are still stored despite the processing failure"
+    );
+    assert_eq!(
+        body["text_page_count"].as_i64().unwrap(),
+        0,
+        "a file that failed processing degrades to zero extracted text pages"
+    );
+
+    // The stored original remains downloadable after the degraded upload.
+    let dl = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{}/download", file_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("download request failed");
+    assert_eq!(
+        dl.status(),
+        200,
+        "the original file must be downloadable after a degraded upload"
+    );
+    let downloaded = dl.bytes().await.expect("download body");
+    assert_eq!(
+        downloaded.as_ref(),
+        corrupt_pdf,
+        "the stored original is returned byte-for-byte"
+    );
+}

@@ -262,4 +262,98 @@ mod tests {
         assert!(ris.contains("DO  - 10.1038/abc"));
         assert!(ris.trim_end().ends_with("ER  -"));
     }
+
+    /// The Text export path shells out to `pandoc --csl <style>`. A nonexistent
+    /// style file makes pandoc exit non-zero, exercising the subprocess
+    /// error branch in `run_pandoc`/`export` (the previously-untested pandoc
+    /// failure path). When pandoc itself is unavailable, `find_pandoc` also
+    /// errors — either way `export` must surface an `Err`, never a silent
+    /// empty string.
+    #[tokio::test]
+    async fn export_text_with_missing_csl_style_surfaces_error() {
+        let items = vec![json!({
+            "type": "article-journal",
+            "id": "a",
+            "title": "X"
+        })];
+        let bogus = std::path::PathBuf::from("/nonexistent/ziee-test-style-does-not-exist.csl");
+        let res = export(items, ExportFormat::Text, Some(bogus)).await;
+        assert!(
+            res.is_err(),
+            "a missing CSL style must surface a pandoc error, not an empty Ok"
+        );
+    }
+
+    /// A field value containing CR/LF must NOT corrupt the line-oriented RIS
+    /// structure: a newline in the title could otherwise split into a bogus
+    /// second line or inject a premature `ER  -` terminator (record-smuggling).
+    /// `ris_sanitize` collapses CR/LF to a space; assert the value stays on its
+    /// own single tag line and the record carries exactly one terminator.
+    #[test]
+    fn ris_writer_sanitizes_newlines_and_resists_injection() {
+        let items = vec![json!({
+            "type": "article-journal",
+            // Injected CR/LF + a forged terminator + a forged second record.
+            "title": "Sneaky\r\nER  - \r\nTY  - BOOK\nTI  - Forged",
+            "author": [{ "family": "Mc\nEvil", "given": "A." }],
+            "DOI": "10.1/x",
+        })];
+        let ris = to_ris(&items);
+
+        // The whole forged title lands on ONE `TI  -` line: no newline survives
+        // inside the value, so the forged `ER  -`/`TY  -` fragments stay inert
+        // text rather than becoming real RIS lines. (Exact run-length of the
+        // collapsed whitespace is unimportant — the single-line invariant is.)
+        let ti_line = ris
+            .lines()
+            .find(|l| l.starts_with("TI  - "))
+            .expect("a TI line");
+        assert!(
+            ti_line.contains("Sneaky") && ti_line.contains("Forged"),
+            "the entire CR/LF title must collapse onto one TI line, got: {ti_line:?}"
+        );
+        // The author CR/LF is likewise collapsed onto a single AU line.
+        let au_line = ris
+            .lines()
+            .find(|l| l.starts_with("AU  - "))
+            .expect("an AU line");
+        assert!(
+            au_line.contains("Mc") && au_line.contains("Evil"),
+            "author CR/LF must collapse onto one AU line, got: {au_line:?}"
+        );
+        // Exactly one REAL record terminator line — the forged `ER  - ` did not
+        // smuggle a premature record boundary.
+        assert_eq!(
+            ris.lines().filter(|l| *l == "ER  - ").count(),
+            1,
+            "exactly one record terminator; forged ER must not split the record:\n{ris}"
+        );
+        // Exactly one REAL record-type line — the forged `TY  - BOOK` is inert.
+        assert_eq!(
+            ris.lines().filter(|l| l.starts_with("TY  - ")).count(),
+            1,
+            "exactly one TY line; forged TY must not become a real line:\n{ris}"
+        );
+    }
+
+    /// The CslJson + Ris export branches are pure-Rust (no pandoc) and must
+    /// round-trip deterministically through the public `export` dispatch.
+    #[tokio::test]
+    async fn export_csljson_and_ris_need_no_pandoc() {
+        let items = vec![json!({
+            "type": "article-journal",
+            "title": "CRISPR interference in plants",
+            "DOI": "10.1038/abc"
+        })];
+        let cj = export(items.clone(), ExportFormat::CslJson, None)
+            .await
+            .expect("csljson export is infallible for valid items");
+        assert!(cj.contains("CRISPR interference in plants"));
+
+        let ris = export(items, ExportFormat::Ris, None)
+            .await
+            .expect("ris export is infallible");
+        assert!(ris.contains("TY  - JOUR"));
+        assert!(ris.contains("DO  - 10.1038/abc"));
+    }
 }

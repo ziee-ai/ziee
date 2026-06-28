@@ -382,3 +382,87 @@ async fn real_llm_calls_semantic_search_and_grounds_answer() {
         turn.text
     );
 }
+
+/// Real-LLM `read_file` through the agentic loop (the stub test
+/// `agentic_chat::manifest_injected_and_read_file_round_trips` covers the stub
+/// path; the existing real-LLM test exercises `semantic_search`, not
+/// `read_file`). A distinctive codeword is buried in a manifest-attached doc;
+/// the model is asked to READ the file and report it, and we assert the real
+/// model actually fired `read_file` and grounded its answer in the content.
+#[tokio::test]
+async fn real_llm_calls_read_file_through_agentic_loop() {
+    if std::env::var("ANTHROPIC_API_KEY").is_err() {
+        eprintln!(
+            "test real_llm_calls_read_file_through_agentic_loop skipped: \
+             ANTHROPIC_API_KEY unset (source tests/.env.test)"
+        );
+        return;
+    }
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = create_user_with_permissions(&server, "file_rag_readfile", &["*"]).await;
+
+    let Some(model) = anthropic_haiku_model(&server, &user.user_id).await else {
+        return;
+    };
+    let model_id = model["id"].as_str().unwrap().to_string();
+
+    let filler = "Routine operating procedures follow standard company policy. ".repeat(30);
+    let body = format!(
+        "Reykjavik Operations Handbook — internal reference.\n\n{filler}\n\n\
+         Section 7.1 — Access: the master door-lock override code for the Reykjavik vault is \
+         GLACIER-5582. Do not share outside operations.\n\n{filler}\n"
+    );
+
+    let project_id = create_project(&server, &user, "readfile-agentic").await;
+    let file_id = upload_text(&server, &user, "reykjavik-ops-handbook.txt", &body).await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    wait_for_chunks(&pool, &file_id, 1).await;
+
+    let conv_resp = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "model_id": model_id }))
+        .send()
+        .await
+        .expect("create conv");
+    assert_eq!(conv_resp.status(), reqwest::StatusCode::CREATED);
+    let conv: Value = conv_resp.json().await.unwrap();
+    let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
+    let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
+    attach_conversation_to_project(
+        &server,
+        &user,
+        &project_id,
+        &conv["id"].as_str().unwrap().to_string(),
+    )
+    .await;
+
+    let turn = crate::chat::helpers::send_and_collect(
+        &server,
+        &user.token,
+        conv_id,
+        branch_id,
+        Uuid::parse_str(&model_id).unwrap(),
+        "Open the Reykjavik operations handbook with the read_file tool and tell me the exact \
+         master door-lock override code written in it.",
+    )
+    .await;
+
+    let tools_fired: Vec<&str> = turn
+        .frames
+        .iter()
+        .filter(|f| f.event_type == "mcpToolStart")
+        .filter_map(|f| f.data["tool_name"].as_str())
+        .collect();
+    assert!(
+        tools_fired.contains(&"read_file"),
+        "real LLM must call read_file through the agentic loop; tools fired={tools_fired:?}; answer={:?}",
+        turn.text
+    );
+    assert!(
+        turn.text.contains("GLACIER-5582"),
+        "answer must contain the code read via read_file; answer={:?}",
+        turn.text
+    );
+}

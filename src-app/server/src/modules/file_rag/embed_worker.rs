@@ -200,5 +200,67 @@ mod dim_guard_tests {
         assert!(!embedding_dim_matches(512, 768));
         // Degenerate: empty vector is never writable.
         assert!(!embedding_dim_matches(0, 768));
+mod tests {
+    use super::*;
+
+    /// All assertions live in ONE test fn because they mutate the
+    /// process-global `REBUILD_IN_PROGRESS` static; splitting them into
+    /// separate `#[test]` fns would let cargo's parallel runner interleave
+    /// them and flake. No other test in the crate touches this static, so a
+    /// single serial fn fully owns it. We assert the static is `false` on
+    /// entry and restore it to `false` on exit so the suite is order-clean.
+    #[test]
+    fn rebuild_guard_single_flight_and_raii_clear() {
+        // Precondition: nothing in flight at the start of the test.
+        assert!(
+            !is_in_progress(),
+            "REBUILD_IN_PROGRESS must start cleared"
+        );
+
+        // --- RAII guard sets the flag on construction-equivalent and clears
+        //     it on drop (the panic-safety contract reembed_all relies on). ---
+        {
+            // Mirror reembed_all's acquire: CAS false -> true must succeed.
+            assert!(
+                REBUILD_IN_PROGRESS
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok(),
+                "first acquire of the rebuild flag must win the CAS"
+            );
+            let _guard = InProgressGuard;
+            assert!(
+                is_in_progress(),
+                "is_in_progress() must report true while the flag is held"
+            );
+
+            // --- Single-flight: a concurrent acquire while held must LOSE the
+            //     CAS (this is exactly the early-return path in reembed_all). ---
+            assert!(
+                REBUILD_IN_PROGRESS
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .is_err(),
+                "a second concurrent acquire must fail the CAS (single-flight)"
+            );
+            // Flag still held — the loser did not clobber it.
+            assert!(is_in_progress());
+        } // _guard drops here -> Drop clears the flag.
+
+        // --- RAII-clears-on-drop: after the guard's scope, the flag is free. ---
+        assert!(
+            !is_in_progress(),
+            "InProgressGuard::drop must clear REBUILD_IN_PROGRESS"
+        );
+
+        // --- A fresh acquire now succeeds again (the system recovered, not
+        //     wedged true forever — the exact bug the guard prevents). ---
+        assert!(
+            REBUILD_IN_PROGRESS
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok(),
+            "after the guard drops, the next rebuild must be able to acquire"
+        );
+        // Restore the static so the rest of the suite sees a clean slate.
+        REBUILD_IN_PROGRESS.store(false, Ordering::Release);
+        assert!(!is_in_progress());
     }
 }

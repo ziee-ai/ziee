@@ -6,7 +6,7 @@ pub enum LfsError {
     AccessDenied,
 
     #[error("Remote server responded with not-okay code: {0}")]
-    ResponseNotOkay(String),
+    ResponseNotOkay(u16),
 
     #[error("File IO error: {0}")]
     Io(#[from] std::io::Error),

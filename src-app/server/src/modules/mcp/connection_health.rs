@@ -377,3 +377,108 @@ async fn disable_for_health_failure(
     .map_err(AppError::database_error)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    /// Drives the REAL boot-time `run_startup_health_check` — the
+    /// restart/resume-after-crash recovery path (audit all-19618bab49c1):
+    /// on every server (re)start it re-probes each enabled, non-built-in
+    /// MCP server and auto-disables the ones that no longer connect, so a
+    /// process that crashed (or whose upstream MCP servers died while it was
+    /// down) recovers a coherent health state at the next boot instead of
+    /// leaving dead servers `enabled` in users' tool lists.
+    ///
+    /// This is the genuinely durable recovery seam: the in-memory pieces
+    /// (`elicitation::registry` oneshot channels, live connection handles in
+    /// `manager`) are reconstructed from scratch on reconnect and carry no
+    /// cross-restart state — the boot health-check is what re-establishes the
+    /// persisted MCP state, and it had no test.
+    ///
+    /// The test seeds an enabled HTTP server pointing at a closed loopback
+    /// port (instant connection-refused, no network egress), simulates a boot
+    /// by calling `run_startup_health_check`, and asserts the unreachable
+    /// server was flipped to `enabled = false` with a persisted `unhealthy`
+    /// health record — exactly the recovery a real restart performs.
+    ///
+    /// DB-gated soft-skip (mirrors the suite's env-gated real-stack tests) so
+    /// `cargo test --lib` without Postgres stays green; runs for real wherever
+    /// `DATABASE_URL` points at a migrated DB.
+    #[tokio::test]
+    async fn startup_health_check_auto_disables_unreachable_server_on_boot() {
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skip: DATABASE_URL unset — no DB to exercise run_startup_health_check");
+                return;
+            }
+        };
+        let pool = match PgPoolOptions::new().max_connections(2).connect(&url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return;
+            }
+        };
+        // `run_startup_health_check` reads + writes via the global `Repos`;
+        // init is idempotent (no-op if another lib test already won the race).
+        crate::core::init_repositories(pool.clone());
+
+        // An enabled, non-built-in HTTP server whose URL is a closed loopback
+        // port — the probe must fail (connection refused) exactly as it would
+        // for a server whose upstream died while the process was down.
+        let name = format!("crash-recovery-probe-{}", Uuid::new_v4());
+        let server_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO mcp_servers (name, display_name, transport_type, url, enabled, is_system)
+            VALUES ($1, $1, 'http', 'http://127.0.0.1:1/mcp', true, true)
+            RETURNING id
+            "#,
+        )
+        .bind(&name)
+        .fetch_one(&pool)
+        .await
+        .expect("seed enabled unreachable mcp server");
+
+        // Sanity: it really is enabled going into the "boot".
+        let enabled_before: bool =
+            sqlx::query_scalar("SELECT enabled FROM mcp_servers WHERE id = $1")
+                .bind(server_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(enabled_before, "precondition: seeded server must be enabled");
+
+        // Simulate the boot recovery pass.
+        run_startup_health_check(pool.clone()).await;
+
+        // Recovery outcome: the unreachable server was auto-disabled and its
+        // failure was recorded — the persisted health state the next-boot
+        // recovery is responsible for.
+        let (enabled_after, status): (bool, Option<String>) = sqlx::query_as(
+            "SELECT enabled, last_health_check_status FROM mcp_servers WHERE id = $1",
+        )
+        .bind(server_id)
+        .fetch_one(&pool)
+        .await
+        .expect("re-read server after startup health check");
+
+        assert!(
+            !enabled_after,
+            "run_startup_health_check must auto-disable an unreachable server on boot"
+        );
+        assert_eq!(
+            status.as_deref(),
+            Some("unhealthy"),
+            "the boot probe failure must be recorded as an unhealthy health-check"
+        );
+
+        // Cleanup so repeated runs + sibling lib tests stay isolated.
+        let _ = sqlx::query("DELETE FROM mcp_servers WHERE id = $1")
+            .bind(server_id)
+            .execute(&pool)
+            .await;
+    }
+}

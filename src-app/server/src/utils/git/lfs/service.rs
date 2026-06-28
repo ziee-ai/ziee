@@ -279,7 +279,7 @@ impl LfsService {
                     status
                 )))
             } else {
-                Err(LfsError::ResponseNotOkay(format!("{}", status)))
+                Err(LfsError::ResponseNotOkay(status.as_u16()))
             };
         }
 

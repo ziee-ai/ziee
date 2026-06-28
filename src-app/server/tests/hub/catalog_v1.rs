@@ -402,3 +402,60 @@ async fn installed_endpoint_surfaces_null_version_rows() {
 // publisher-switches-catalog flow is exercised hermetically in
 // `catalog_hermetic.rs` via the mock Pages server's
 // `MockHub::switch_to`.
+
+/// LAZY-FETCH on cache miss: with the catalog pointed at a mock Pages server,
+/// the FIRST GET /hub/manifest/{id} resolves the IndexItem then fetches that
+/// item's manifest body from Pages (it was never seeded/cached) and returns it.
+/// The seed-backed `manifest_endpoint_returns_model_json` only exercises the
+/// cache-hit path; this drives the network-lazy-fetch arm (hub_manager::manifest).
+#[tokio::test]
+async fn manifest_lazy_fetches_from_pages_on_cache_miss() {
+    use super::mock_release_server::{MockItem, MockVersion, spawn_mock_hub};
+
+    let mock = spawn_mock_hub(vec![MockVersion {
+        version: "9.9.1-test",
+        prerelease: true,
+        items: vec![MockItem {
+            category: "model",
+            name: "io.github.test/lazy-model",
+            min_ziee_version: None,
+            extra_json: None,
+            mcp_http: false,
+            bundle_files: None,
+            bundle_entry_point: None,
+        }],
+    }])
+    .await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "lazy_manifest_admin",
+        &["hub::catalog::read", "hub::catalog::manage", "hub::models::read"],
+    )
+    .await;
+
+    // Load the INDEX from the mock (per-item manifests are NOT fetched here).
+    let refresh = reqwest::Client::new()
+        .post(server.api_url("/hub/refresh"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refresh.status(), 200, "refresh against mock Pages must 200");
+
+    // First manifest GET → lazy-fetch this item's manifest body from Pages.
+    let res = reqwest::Client::new()
+        .get(server.api_url("/hub/manifest/io.github.test%2Flazy-model?category=model"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "lazy-fetched manifest should 200");
+    let payload: Json = res.json().await.unwrap();
+    assert_eq!(payload["category"], "model");
+    assert_eq!(payload["model"]["name"], "io.github.test/lazy-model");
+}

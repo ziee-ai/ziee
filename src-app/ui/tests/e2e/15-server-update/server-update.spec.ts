@@ -54,6 +54,29 @@ test.describe('Server update notification', () => {
     await expect(page.getByText(/install\.sh \| sh/)).toBeVisible()
   })
 
+  test('the upgrade command copy button writes the command to the clipboard', async ({
+    page,
+    context,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await mockStatus(page, STATUS_AVAILABLE)
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/about`)
+    await expect(page.getByText(/install\.sh \| sh/)).toBeVisible({
+      timeout: 30000,
+    })
+
+    // antd Paragraph `copyable` renders a copy affordance; clicking it writes
+    // the upgrade command to the clipboard.
+    await page.locator('.ant-typography-copy').first().click()
+
+    const clip = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clip).toMatch(/install\.sh \| sh/)
+  })
+
   test('admin banner appears, links to About, and dismisses', async ({
     page,
     testInfra,
