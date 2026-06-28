@@ -1,15 +1,12 @@
 import { useRef } from 'react'
-import { Button, Empty, Tabs, Typography, theme } from 'antd'
+import { Button, Empty, Tabs, Text } from '@/components/ui'
 import { CircleAlert, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { resolvePanelRenderer } from '@/modules/chat/core/stores/Chat.store'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
-const { Text } = Typography
-
 function ActivePanelContent() {
-  const { token } = theme.useToken()
   const { tabs, activeId } = Stores.Chat.rightPanel
   const activeTab = tabs.find(t => t.id === activeId)
   // Empty body when there's literally no tab to display — this is the
@@ -25,9 +22,9 @@ function ActivePanelContent() {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6">
         <Empty
-          image={<CircleAlert style={{ fontSize: 56, color: token.colorWarning }} />}
           description={
             <div className="flex flex-col items-center gap-1">
+              <CircleAlert className="size-14 text-amber-500" />
               <Text strong>Can't display this tab</Text>
               <Text type="secondary" className="text-xs">
                 No renderer is registered for type{' '}
@@ -47,22 +44,21 @@ function ActivePanelContent() {
 }
 
 function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
-  const { token } = theme.useToken()
   const { tabs, activeId } = Stores.Chat.rightPanel
 
   if (tabs.length === 0) return null
 
   return (
     <div
-      className="flex-shrink-0"
-      style={{ borderBottom: `1px solid ${token.colorBorderSecondary}` }}
+      className="flex-shrink-0 flex items-center border-b border-border"
       data-testid="chat-right-panel-tabs"
     >
       <Tabs
-        type="editable-card"
+        editable
         hideAdd
-        size="small"
-        activeKey={activeId ?? undefined}
+        size="sm"
+        className="flex-1 min-w-0"
+        value={activeId ?? undefined}
         items={tabs.map(tab => {
           const resolved = resolvePanelRenderer(tab)
           return {
@@ -76,23 +72,20 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
             closable: true,
           }
         })}
-        onChange={key => Stores.Chat.setActiveRightPanelTab(key)}
-        onEdit={(key, action) => {
-          if (action === 'remove') Stores.Chat.closeRightPanelTab(key as string)
+        onValueChange={key => Stores.Chat.setActiveRightPanelTab(key)}
+        onEdit={(action, key) => {
+          if (action === 'remove') Stores.Chat.closeRightPanelTab(key)
         }}
-        tabBarExtraContent={{
-          right: (
-            <Button
-              type="text"
-              size="small"
-              icon={<X style={{ fontSize: 12 }} />}
-              className="!w-6 !h-6 !min-w-0 !p-0 opacity-60 hover:opacity-100 mr-1"
-              title="Close panel"
-              onClick={onCloseAll}
-              data-testid="chat-right-panel-close"
-            />
-          ),
-        }}
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={<X className="size-3" />}
+        className="!w-6 !h-6 !min-w-0 !p-0 opacity-60 hover:opacity-100 mr-1"
+        title="Close panel"
+        onClick={onCloseAll}
+        data-testid="chat-right-panel-close"
+        aria-label="Close panel"
       />
     </div>
   )
@@ -100,7 +93,6 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
 
 export function ChatRightPanel() {
   const panelRef = useRef<HTMLDivElement>(null)
-  const { token } = theme.useToken()
   const { rightPanel } = Stores.Chat
   const { sm: isMobile } = useWindowMinSize()
 
@@ -113,8 +105,7 @@ export function ChatRightPanel() {
     if (!showDrawer) return null
     return (
       <div
-        className="fixed inset-0 z-[1000] flex flex-col"
-        style={{ backgroundColor: token.colorBgLayout }}
+        className="fixed inset-0 z-[1000] flex flex-col bg-background"
         data-testid="chat-right-panel"
       >
         <PanelTabs onCloseAll={Stores.Chat.closeMobileDrawer} />
@@ -129,11 +120,11 @@ export function ChatRightPanel() {
   return (
     <div
       ref={panelRef}
-      className="relative flex-shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out"
-      style={{
-        width: isOpen ? panelWidth : 0,
-        borderLeft: isOpen ? `1px solid ${token.colorBorderSecondary}` : undefined,
-      }}
+      className={
+        'relative flex-shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out ' +
+        (isOpen ? 'border-l border-border' : '')
+      }
+      style={{ width: isOpen ? panelWidth : 0 }}
       data-testid="chat-right-panel"
       data-panel-open={isOpen ? 'true' : 'false'}
     >

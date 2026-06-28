@@ -1,12 +1,19 @@
 import { Plus, Users } from 'lucide-react'
-import { Button, Empty, List, Tooltip } from 'antd'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { useEffect, useState } from 'react'
-import { message, Tag, Confirm } from '@/components/ui'
+import {
+  message,
+  Tag,
+  Confirm,
+  Button,
+  Empty,
+  List,
+  Tooltip,
+} from '@/components/ui'
 
 export function UserGroupsDrawer() {
   const { isOpen, user } = Stores.UserGroupsDrawer
@@ -122,48 +129,46 @@ export function UserGroupsDrawer() {
       ) : (
         <List
           dataSource={groups}
+          rowKey="id"
           renderItem={group => {
             const isMember = userGroupIds.has(group.id)
-            const actions = canAssign
-              ? [
-                  isMember ? (
-                    <Confirm
-                      key="remove"
-                      title="Remove user from this group?"
-                      onConfirm={() => handleRemoveFromGroup(group.id)}
-                      okText="OK"
-                      cancelText="Cancel"
-                    >
-                      <Button variant="link" danger size="small">
-                        Remove
-                      </Button>
-                    </Confirm>
-                  ) : (
-                    <Button
-                      key="assign"
-                      variant="link"
-                      size="small"
-                      onClick={() => handleAssignToGroup(group.id)}
-                    >
-                      Assign
-                    </Button>
-                  ),
-                ]
-              : []
+            const action = canAssign ? (
+              isMember ? (
+                <Confirm
+                  title="Remove user from this group?"
+                  onConfirm={() => handleRemoveFromGroup(group.id)}
+                  okText="OK"
+                  cancelText="Cancel"
+                >
+                  <Button variant="link" size="sm">
+                    Remove
+                  </Button>
+                </Confirm>
+              ) : (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => handleAssignToGroup(group.id)}
+                >
+                  Assign
+                </Button>
+              )
+            ) : null
             return (
-              <List.Item actions={actions}>
-                <List.Item.Meta
-                  avatar={<Users />}
-                  title={
-                    <div className="flex items-center gap-2">
-                      {group.name}
-                      {isMember && <Tag tone="success">Member</Tag>}
-                      {group.is_system && <Tag tone="warning">System</Tag>}
-                    </div>
-                  }
-                  description={group.description || 'No description'}
-                />
-              </List.Item>
+              <div className="flex items-center gap-3">
+                <Users />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    {group.name}
+                    {isMember && <Tag tone="success">Member</Tag>}
+                    {group.is_system && <Tag tone="warning">System</Tag>}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {group.description || 'No description'}
+                  </div>
+                </div>
+                {action && <div>{action}</div>}
+              </div>
             )
           }}
         />

@@ -11,6 +11,8 @@ export type UploadProps = {
   /** accept attribute, e.g. "image/*,.pdf". */
   accept?: string
   multiple?: boolean
+  /** Pick a whole folder (sets `webkitdirectory`); the drop path still yields top-level files. */
+  directory?: boolean
   disabled?: boolean
   /** Accessible label for the file input (required — i18n). */
   label: string
@@ -19,7 +21,7 @@ export type UploadProps = {
   className?: string} & KitStyleProps
 
 export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function Upload(
-  { onFiles, accept, multiple, disabled, label, children, className, style }, ref,
+  { onFiles, accept, multiple, directory, disabled, label, children, className, style }, ref,
 ) {
   const s = useSurface({ disabled })
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -60,6 +62,8 @@ export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function U
         multiple={multiple}
         disabled={locked}
         aria-label={label}
+        // webkitdirectory is non-standard (not in React's input typings) → spread it.
+        {...(directory ? ({ webkitdirectory: '' } as Record<string, string>) : {})}
         className="sr-only"
         onChange={(e) => { pick(e.target.files); e.target.value = '' }}
       />

@@ -1,25 +1,32 @@
-import { useEffect } from 'react'
-import { Empty, Switch, Table, Tag, Typography } from 'antd'
-import type { ColumnsType } from 'antd/es/table'
+import { useEffect, useState } from 'react'
+import {
+  Empty,
+  Switch,
+  Table,
+  Tag,
+  Text,
+  Paragraph,
+  Pagination,
+  type TableColumn,
+  type TagTone,
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { type McpToolCall } from '@/api-client/types'
 
-const { Text, Paragraph } = Typography
-
-const STATUS_COLOR: Record<string, string> = {
-  completed: 'green',
-  failed: 'red',
-  timeout: 'orange',
+const STATUS_TONE: Record<string, TagTone> = {
+  completed: 'success',
+  failed: 'error',
+  timeout: 'warning',
   cancelled: 'default',
 }
 
-const SOURCE_COLOR: Record<string, string> = {
-  chat: 'blue',
-  rest: 'geekblue',
-  always: 'purple',
-  approval: 'gold',
-  sampling: 'cyan',
-  workflow: 'magenta',
+const SOURCE_TONE: Record<string, TagTone> = {
+  chat: 'info',
+  rest: 'info',
+  always: 'info',
+  approval: 'warning',
+  sampling: 'info',
+  workflow: 'error',
 }
 
 /**
@@ -30,27 +37,26 @@ const SOURCE_COLOR: Record<string, string> = {
 export function McpToolCallsTab({ serverId }: { serverId: string }) {
   const { calls, total, currentPage, pageSize, loading, hideBuiltIn, error } =
     Stores.McpToolCalls
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // (Re)load this server's calls on mount / when the drawer swaps servers.
   useEffect(() => {
     void Stores.McpToolCalls.loadCalls(serverId, 1)
   }, [serverId])
 
-  const columns: ColumnsType<McpToolCall> = [
+  const columns: TableColumn<McpToolCall>[] = [
     {
       title: 'Time',
-      dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (v: string) => new Date(v).toLocaleString(),
+      render: row => new Date(row.created_at).toLocaleString(),
     },
     {
       title: 'Tool',
-      dataIndex: 'tool_name',
       key: 'tool_name',
-      render: (v: string, row: McpToolCall) => (
+      render: row => (
         <span>
-          {v}
+          {row.tool_name}
           {row.is_built_in ? (
             <Tag className="ml-1" data-testid="mcp-tool-call-builtin-tag">
               built-in
@@ -61,39 +67,43 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
     },
     {
       title: 'Status',
-      dataIndex: 'status',
       key: 'status',
       width: 110,
-      render: (v: string, row: McpToolCall) => (
-        <Tag color={row.is_error ? 'red' : (STATUS_COLOR[v] ?? 'default')}>
-          {v}
+      render: row => (
+        <Tag tone={row.is_error ? 'error' : (STATUS_TONE[row.status] ?? 'default')}>
+          {row.status}
         </Tag>
       ),
     },
     {
       title: 'Source',
-      dataIndex: 'source',
       key: 'source',
       width: 110,
-      render: (v: string) => <Tag color={SOURCE_COLOR[v] ?? 'default'}>{v}</Tag>,
+      render: row => (
+        <Tag tone={SOURCE_TONE[row.source] ?? 'default'}>{row.source}</Tag>
+      ),
     },
     {
       title: 'Duration',
-      dataIndex: 'duration_ms',
       key: 'duration_ms',
       width: 100,
-      render: (v: number | null) => (v == null ? '—' : `${v} ms`),
+      render: row => (row.duration_ms == null ? '—' : `${row.duration_ms} ms`),
     },
   ]
+
+  const expandedCall = expandedId
+    ? calls.find(c => c.id === expandedId)
+    : undefined
 
   return (
     <div className="flex flex-col gap-3" data-testid="mcp-tool-calls-tab">
       <div className="flex justify-end items-center gap-2">
         <Text type="secondary">Hide built-in</Text>
         <Switch
-          size="small"
+          size="sm"
           checked={hideBuiltIn}
           onChange={v => Stores.McpToolCalls.setHideBuiltIn(v)}
+          aria-label="Hide built-in"
           data-testid="mcp-tool-calls-hide-builtin"
         />
       </div>
@@ -104,61 +114,56 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       ) : null}
       <Table<McpToolCall>
         rowKey="id"
-        size="small"
         loading={loading}
         dataSource={calls}
         columns={columns}
-        locale={{
-          emptyText: (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="No tool calls recorded yet"
-            />
-          ),
-        }}
-        expandable={{
-          expandRowByClick: true,
-          expandedRowRender: (row: McpToolCall) => (
-            <div
-              className="flex flex-col gap-2"
-              data-testid="mcp-tool-call-detail"
-            >
-              <div>
-                <Text strong>Arguments</Text>
-                <Paragraph className="!mb-2">
-                  <pre className="text-xs whitespace-pre-wrap">
-                    {JSON.stringify(row.arguments_json, null, 2)}
-                  </pre>
-                </Paragraph>
-              </div>
-              <div>
-                <Text strong>Result</Text>
-                {row.error_message ? (
-                  <Paragraph type="danger" className="!mb-0">
-                    {row.error_message}
-                  </Paragraph>
-                ) : (
-                  <Paragraph className="!mb-0">
-                    <pre className="text-xs whitespace-pre-wrap">
-                      {JSON.stringify(row.result_json, null, 2)}
-                    </pre>
-                  </Paragraph>
-                )}
-              </div>
-            </div>
-          ),
-        }}
-        pagination={{
-          current: currentPage,
-          pageSize,
-          // Server-side total — the hide-built-in filter is applied server-side
-          // (via the is_built_in query param), so total/pages stay consistent.
-          total,
-          showSizeChanger: true,
-          pageSizeOptions: ['10', '20', '50'],
-          onChange: (page: number, size: number) =>
-            Stores.McpToolCalls.setPage(page, size),
-        }}
+        empty={<Empty description="No tool calls recorded yet" />}
+        onRowClick={row =>
+          setExpandedId(id => (id === row.id ? null : row.id))
+        }
+      />
+      {expandedCall ? (
+        <div
+          className="flex flex-col gap-2 rounded-md border p-3"
+          data-testid="mcp-tool-call-detail"
+        >
+          <div>
+            <Text strong>Arguments</Text>
+            <Paragraph className="!mb-2">
+              <pre className="text-xs whitespace-pre-wrap">
+                {JSON.stringify(expandedCall.arguments_json, null, 2)}
+              </pre>
+            </Paragraph>
+          </div>
+          <div>
+            <Text strong>Result</Text>
+            {expandedCall.error_message ? (
+              <Paragraph type="danger" className="!mb-0">
+                {expandedCall.error_message}
+              </Paragraph>
+            ) : (
+              <Paragraph className="!mb-0">
+                <pre className="text-xs whitespace-pre-wrap">
+                  {JSON.stringify(expandedCall.result_json, null, 2)}
+                </pre>
+              </Paragraph>
+            )}
+          </div>
+        </div>
+      ) : null}
+      <Pagination
+        current={currentPage}
+        pageSize={pageSize}
+        total={total}
+        aria-label="Tool-call pages"
+        previousLabel="Previous page"
+        nextLabel="Next page"
+        pageLabel={p => `Page ${p}`}
+        showSizeChanger
+        pageSizeOptions={[10, 20, 50]}
+        pageSizeLabel="Page size"
+        onPageSizeChange={size => Stores.McpToolCalls.setPage(1, size)}
+        onChange={page => Stores.McpToolCalls.setPage(page, pageSize)}
       />
     </div>
   )
