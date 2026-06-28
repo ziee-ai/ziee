@@ -172,3 +172,46 @@ pub fn complete_guide_step_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<400, (), _>(|res| res.description("Validation error"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{is_valid_onboarding_id, MAX_ONBOARDING_ID_LEN};
+
+    #[test]
+    fn valid_slug_ids_are_accepted() {
+        for id in ["getting-started", "memory-setup", "step_1", "a", "abc-123_xyz"] {
+            assert!(is_valid_onboarding_id(id), "{id} should be valid");
+        }
+    }
+
+    #[test]
+    fn empty_id_is_rejected() {
+        assert!(!is_valid_onboarding_id(""));
+    }
+
+    #[test]
+    fn id_at_max_len_ok_one_over_rejected() {
+        let at_max = "a".repeat(MAX_ONBOARDING_ID_LEN);
+        let over = "a".repeat(MAX_ONBOARDING_ID_LEN + 1);
+        assert!(is_valid_onboarding_id(&at_max), "len==MAX must be accepted");
+        assert!(!is_valid_onboarding_id(&over), "len>MAX must be rejected");
+    }
+
+    #[test]
+    fn disallowed_chars_are_rejected() {
+        // uppercase, slash (step_key separator collision), spaces, dots, NUL,
+        // control chars, and non-ascii must all be refused.
+        for bad in [
+            "Getting-Started", // uppercase
+            "a/b",             // slash separator collision
+            "a b",             // space
+            "a.b",             // dot
+            "a\0b",            // NUL byte
+            "a\nb",            // control char
+            "café",            // non-ascii
+            "guide!",          // punctuation
+        ] {
+            assert!(!is_valid_onboarding_id(bad), "{bad:?} should be rejected");
+        }
+    }
+}
