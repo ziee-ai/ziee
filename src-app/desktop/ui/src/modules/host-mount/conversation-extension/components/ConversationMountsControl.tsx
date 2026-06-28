@@ -8,18 +8,13 @@
  */
 
 import { useState } from 'react'
-import { App, Badge, Button, Empty, List, Popover, Switch, Typography } from 'antd'
-import {
-  DeleteOutlined,
-  FolderAddOutlined,
-  FolderOpenOutlined,
-} from '@ant-design/icons'
+import { Badge, Button, Empty, List, Paragraph, Popover, Switch, Text, message } from '@/components/ui'
+import { Trash2, FolderPlus, FolderOpen } from 'lucide-react'
 
 import type { MountEntry } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 
 export function ConversationMountsControl() {
-  const { message } = App.useApp()
   const conversationId = Stores.Chat.conversation?.id
   const { saving } = Stores.ConversationHostMounts
 
@@ -64,54 +59,52 @@ export function ConversationMountsControl() {
   }
 
   const content = (
-    <div style={{ width: 360 }} data-test-section="conversation-host-mounts">
-      <Typography.Paragraph type="secondary" className="!mb-2 text-xs">
+    <div className="w-[360px]" data-test-section="conversation-host-mounts">
+      <Paragraph type="secondary" className="!mb-2 text-xs">
         Folders mounted here apply to this conversation only and override the
         project's. Read-only by default.
-      </Typography.Paragraph>
+      </Paragraph>
       {draft.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No folders mounted" />
+        <Empty description="No folders mounted" />
       ) : (
         <List
-          size="small"
+          size="sm"
+          aria-label="Mounted folders"
           dataSource={draft}
           rowKey={(m) => m.host_path}
           renderItem={(m, i) => (
-            <List.Item
-              actions={[
+            <div className="flex items-center justify-between gap-2">
+              <Text code ellipsis className="max-w-[220px]">
+                {m.host_path}
+              </Text>
+              <div className="flex items-center gap-1">
                 <Switch
-                  key="ro"
-                  size="small"
+                  size="sm"
                   checked={m.read_only}
+                  aria-label={`Read-only ${m.host_path}`}
                   onChange={(c) =>
                     setDraft(
                       draft.map((x, idx) => (idx === i ? { ...x, read_only: c } : x)),
                     )
                   }
-                />,
+                />
                 <Button
-                  key="rm"
-                  type="text"
-                  danger
-                  size="small"
-                  icon={<DeleteOutlined />}
+                  variant="ghost"
+                  size="sm"
+                  icon={<Trash2 />}
                   onClick={() => setDraft(draft.filter((_, idx) => idx !== i))}
                   aria-label={`Remove ${m.host_path}`}
-                />,
-              ]}
-            >
-              <Typography.Text code ellipsis style={{ maxWidth: 220 }}>
-                {m.host_path}
-              </Typography.Text>
-            </List.Item>
+                />
+              </div>
+            </div>
           )}
         />
       )}
       <div className="mt-2 flex justify-between">
-        <Button size="small" icon={<FolderAddOutlined />} onClick={addFolder}>
+        <Button size="sm" variant="outline" icon={<FolderPlus />} onClick={addFolder}>
           Add folder
         </Button>
-        <Button size="small" type="primary" onClick={save} loading={saving}>
+        <Button size="sm" onClick={save} loading={saving}>
           Save
         </Button>
       </div>
@@ -123,14 +116,15 @@ export function ConversationMountsControl() {
       open={open}
       onOpenChange={onOpenChange}
       trigger="click"
-      placement="bottomRight"
+      side="bottom"
+      align="end"
       content={content}
       title="Mounted folders"
     >
-      <Badge count={savedCount} size="small" offset={[-2, 2]}>
+      <Badge count={savedCount} offset={[-2, 2]} aria-label={`${savedCount} mounted folders`}>
         <Button
-          type="text"
-          icon={<FolderOpenOutlined />}
+          variant="ghost"
+          icon={<FolderOpen />}
           aria-label="Mounted folders"
         />
       </Badge>
