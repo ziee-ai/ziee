@@ -124,7 +124,7 @@ export function ProfileSettingsPage() {
 
   return (
     <SettingsPageContainer title="Profile">
-      <Card title="Account">
+      <Card title="Account" data-testid="profile-account-card">
         {/* Wrap the body in a flex column with explicit gap. Per-child
             mb-* wasn't taking effect — antd v6's Card body layout
             collapses sibling margins; flex gap is the reliable lever. */}
@@ -141,16 +141,17 @@ export function ProfileSettingsPage() {
             <Avatar className="size-16" fallback={<User />} />
           )}
           <Flex gap="sm" wrap>
-            <Tag tone={user.is_admin ? 'warning' : undefined}>
+            <Tag data-testid="profile-role-tag" tone={user.is_admin ? 'warning' : undefined}>
               {user.is_admin ? 'Administrator' : 'User'}
             </Tag>
-            <Tag tone={user.email_verified ? 'success' : 'warning'}>
+            <Tag data-testid="profile-email-verified-tag" tone={user.email_verified ? 'success' : 'warning'}>
               {user.email_verified ? 'Email verified' : 'Email unverified'}
             </Tag>
           </Flex>
         </Flex>
 
         <Descriptions
+          data-testid="profile-account-descriptions"
           size="sm"
           column={2}
           items={[
@@ -172,6 +173,7 @@ export function ProfileSettingsPage() {
 
         <Form
           name="profile-form"
+          data-testid="profile-info-form"
           form={profileForm}
           layout="horizontal"
           labelWidth={160}
@@ -183,17 +185,17 @@ export function ProfileSettingsPage() {
             label="Display name"
             description="The name shown to others. Optional."
           >
-            <Input maxLength={255} placeholder="Your display name" />
+            <Input data-testid="profile-display-name-input" maxLength={255} placeholder="Your display name" />
           </FormField>
           <FormField name="username" label="Username" required>
-            <Input maxLength={255} placeholder="Your username" />
+            <Input data-testid="profile-username-input" maxLength={255} placeholder="Your username" />
           </FormField>
 
           {canEdit && (
             <>
               <Separator className="!my-3" />
               <Flex justify="end">
-                <Button type="submit" loading={savingProfile}>
+                <Button type="submit" data-testid="profile-save-button" loading={savingProfile}>
                   Save
                 </Button>
               </Flex>
@@ -204,10 +206,11 @@ export function ProfileSettingsPage() {
       </Card>
 
       {canEdit && (
-        <Card title="Password">
+        <Card title="Password" data-testid="profile-password-card">
           {hasPassword ? (
             <Form
               name="password-form"
+              data-testid="profile-password-form"
               form={passwordForm}
               layout="horizontal"
               labelWidth={160}
@@ -219,6 +222,7 @@ export function ProfileSettingsPage() {
                 required
               >
                 <PasswordInput
+                  data-testid="profile-current-password-input"
                   showLabel="Show password"
                   hideLabel="Hide password"
                   autoComplete="current-password"
@@ -227,6 +231,7 @@ export function ProfileSettingsPage() {
               </FormField>
               <FormField name="new_password" label="New password" required>
                 <PasswordInput
+                  data-testid="profile-new-password-input"
                   showLabel="Show password"
                   hideLabel="Hide password"
                   autoComplete="new-password"
@@ -240,6 +245,7 @@ export function ProfileSettingsPage() {
                 required
               >
                 <PasswordInput
+                  data-testid="profile-confirm-password-input"
                   showLabel="Show password"
                   hideLabel="Hide password"
                   autoComplete="new-password"
@@ -249,7 +255,7 @@ export function ProfileSettingsPage() {
 
               <Separator className="!my-3" />
               <Flex justify="end">
-                <Button type="submit" loading={savingPassword}>
+                <Button type="submit" data-testid="profile-change-password-button" loading={savingPassword}>
                   Change password
                 </Button>
               </Flex>
