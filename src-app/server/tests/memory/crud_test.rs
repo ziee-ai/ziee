@@ -380,3 +380,69 @@ async fn test_delete_all_only_affects_caller() {
     let rows = body["items"].as_array().cloned().unwrap_or_default();
     assert_eq!(rows.len(), 1, "bob's memory must survive alice's delete-all");
 }
+
+/// Concurrency: the same user writing memories from multiple "devices"
+/// simultaneously. Each concurrent POST /memories must create a distinct row
+/// (no lost write, no id collision, no 5xx) — the per-row insert is independent.
+#[tokio::test]
+async fn test_concurrent_memory_writes_all_persist_distinct_rows() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "mem_concurrent",
+        &["memory::read", "memory::write"],
+    )
+    .await;
+
+    // Fan out 10 simultaneous creates (distinct content per "device").
+    let mut handles = Vec::new();
+    for i in 0..10 {
+        let url = server.api_url("/memories");
+        let token = user.token.clone();
+        handles.push(tokio::spawn(async move {
+            let res = reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "content": format!("concurrent fact #{i}"),
+                    "kind": "fact",
+                    "importance": 50,
+                }))
+                .send()
+                .await
+                .expect("create");
+            let status = res.status().as_u16();
+            let body: Value = res.json().await.unwrap_or_else(|_| json!({}));
+            (status, body["id"].as_str().unwrap_or("").to_string())
+        }));
+    }
+
+    let mut ids = std::collections::HashSet::new();
+    for h in handles {
+        let (status, id) = h.await.expect("task");
+        assert_eq!(status, 201, "every concurrent write must 201");
+        assert!(!id.is_empty(), "each write returns a row id");
+        ids.insert(id);
+    }
+    assert_eq!(ids.len(), 10, "all 10 concurrent writes persisted distinct rows");
+
+    // And the list reflects all 10 (no lost write).
+    let res = reqwest::Client::new()
+        .get(server.api_url("/memories?per_page=100"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = res.json().await.unwrap();
+    let rows = body["items"].as_array().cloned().unwrap_or_default();
+    let persisted = rows
+        .iter()
+        .filter(|r| {
+            r["content"]
+                .as_str()
+                .map(|c| c.starts_with("concurrent fact #"))
+                .unwrap_or(false)
+        })
+        .count();
+    assert_eq!(persisted, 10, "all concurrent writes are listed; got {persisted}");
+}
