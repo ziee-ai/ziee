@@ -733,7 +733,14 @@ impl HubManager {
     pub async fn refresh(&self) -> Result<RefreshOutcome, AppError> {
         let _guard = HUB_REFRESH_LOCK.lock().await;
 
-        let previous_version = self.catalog().await.ok().map(|c| c.hub_version);
+        let previous_version = self
+            .catalog()
+            .await
+            .inspect_err(|e| {
+                tracing::debug!("hub.refresh: no readable previous catalog (expected on first boot): {e}")
+            })
+            .ok()
+            .map(|c| c.hub_version);
 
         let base = hub_pages_base();
         let url = format!("{}/index.json", base.trim_end_matches('/'));

@@ -98,7 +98,15 @@ pub async fn resources_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value,
 
     for run in runs {
         // The workflow def gives us outputs[] expose modes + expose_logs.
-        let def = workflow_def_for_run(pool, &run).await.ok();
+        let def = workflow_def_for_run(pool, &run)
+            .await
+            .inspect_err(|e| {
+                tracing::warn!(
+                    "workflow_mcp.resources: failed to load workflow def for run {}: {e}",
+                    run.id
+                )
+            })
+            .ok();
 
         // 1. Outputs that resolve to artifact (explicit or auto-promoted).
         if let Some(obj) = run.final_output_json.as_ref().and_then(|v| v.as_object()) {
@@ -204,7 +212,15 @@ pub async fn resources_read(
             // C2: an output's `from` may reference a step whose id differs
             // from the output name, so we need the def to resolve the
             // backing step file (mirrors tools::read_full_output_value).
-            let def = workflow_def_for_run(pool, &run).await.ok();
+            let def = workflow_def_for_run(pool, &run)
+            .await
+            .inspect_err(|e| {
+                tracing::warn!(
+                    "workflow_mcp.resources: failed to load workflow def for run {}: {e}",
+                    run.id
+                )
+            })
+            .ok();
             // Honor `expose: hidden` — resources/list never advertises a
             // hidden output, so resources/read (reachable via a guessed URI)
             // must refuse it too, or the Hidden intent is bypassed.
@@ -224,7 +240,15 @@ pub async fn resources_read(
         }
         ResourceKind::Log { step_id, kind } => {
             // Gate by expose_logs.
-            let def = workflow_def_for_run(pool, &run).await.ok();
+            let def = workflow_def_for_run(pool, &run)
+            .await
+            .inspect_err(|e| {
+                tracing::warn!(
+                    "workflow_mcp.resources: failed to load workflow def for run {}: {e}",
+                    run.id
+                )
+            })
+            .ok();
             if !logs_surfaceable(def.as_ref(), &step_id) {
                 // Refusal, not a missing resource — the log may well exist on
                 // disk; the workflow's `expose_logs` policy forbids surfacing it
