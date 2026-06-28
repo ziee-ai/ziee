@@ -52,7 +52,7 @@ export function HostMountPolicyPage() {
       title="Host Mount Policy"
       subtitle="Control whether folders from this machine can be mounted into the code sandbox, and which paths are allowed."
     >
-      <Card loading={loading && !policy} className="mb-4" data-test-section="host-mount-policy">
+      <Card loading={loading && !policy} className="mb-4" data-test-section="host-mount-policy" data-testid="desktop-hostmount-policy-card">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
@@ -62,7 +62,7 @@ export function HostMountPolicyPage() {
                 project or conversation.
               </Paragraph>
             </div>
-            <Switch checked={enabled} onChange={setEnabled} aria-label="Allow host-folder mounting" />
+            <Switch checked={enabled} onChange={setEnabled} aria-label="Allow host-folder mounting" data-testid="desktop-hostmount-policy-enabled-switch" />
           </div>
 
           <div className="flex items-center justify-between">
@@ -73,7 +73,7 @@ export function HostMountPolicyPage() {
                 sandbox modify the real files in mounted folders.
               </Paragraph>
             </div>
-            <Switch checked={allowReadwrite} onChange={setAllowReadwrite} aria-label="Allow read-write mounts" />
+            <Switch checked={allowReadwrite} onChange={setAllowReadwrite} aria-label="Allow read-write mounts" data-testid="desktop-hostmount-policy-readwrite-switch" />
           </div>
 
           <div>
@@ -93,11 +93,12 @@ export function HostMountPolicyPage() {
               emptyText="No prefixes added"
               removeLabel={(label) => `Remove ${label}`}
               aria-label="Allowed path prefixes"
+              data-testid="desktop-hostmount-policy-prefixes-select"
             />
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={save} loading={saving} disabled={!dirty}>
+            <Button onClick={save} loading={saving} disabled={!dirty} data-testid="desktop-hostmount-policy-save-btn">
               Save
             </Button>
           </div>

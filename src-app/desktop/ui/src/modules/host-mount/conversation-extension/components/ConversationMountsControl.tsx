@@ -65,10 +65,11 @@ export function ConversationMountsControl() {
         project's. Read-only by default.
       </Paragraph>
       {draft.length === 0 ? (
-        <Empty description="No folders mounted" />
+        <Empty description="No folders mounted" data-testid="desktop-hostmount-conv-empty" />
       ) : (
         <List
           size="sm"
+          data-testid="desktop-hostmount-conv-list"
           aria-label="Mounted folders"
           dataSource={draft}
           rowKey={(m) => m.host_path}
@@ -81,6 +82,7 @@ export function ConversationMountsControl() {
                 <Switch
                   size="sm"
                   checked={m.read_only}
+                  data-testid={`desktop-hostmount-conv-readonly-${i}`}
                   aria-label={`Read-only ${m.host_path}`}
                   onChange={(c) =>
                     setDraft(
@@ -93,6 +95,7 @@ export function ConversationMountsControl() {
                   size="sm"
                   icon={<Trash2 />}
                   onClick={() => setDraft(draft.filter((_, idx) => idx !== i))}
+                  data-testid={`desktop-hostmount-conv-remove-${i}`}
                   aria-label={`Remove ${m.host_path}`}
                 />
               </div>
@@ -101,10 +104,10 @@ export function ConversationMountsControl() {
         />
       )}
       <div className="mt-2 flex justify-between">
-        <Button size="sm" variant="outline" icon={<FolderPlus />} onClick={addFolder}>
+        <Button size="sm" variant="outline" icon={<FolderPlus />} onClick={addFolder} data-testid="desktop-hostmount-conv-add-btn">
           Add folder
         </Button>
-        <Button size="sm" onClick={save} loading={saving}>
+        <Button size="sm" onClick={save} loading={saving} data-testid="desktop-hostmount-conv-save-btn">
           Save
         </Button>
       </div>
@@ -121,10 +124,11 @@ export function ConversationMountsControl() {
       content={content}
       title="Mounted folders"
     >
-      <Badge count={savedCount} offset={[-2, 2]} aria-label={`${savedCount} mounted folders`}>
+      <Badge count={savedCount} offset={[-2, 2]} aria-label={`${savedCount} mounted folders`} data-testid="desktop-hostmount-conv-badge">
         <Button
           variant="ghost"
           icon={<FolderOpen />}
+          data-testid="desktop-hostmount-conv-trigger-btn"
           aria-label="Mounted folders"
         />
       </Badge>

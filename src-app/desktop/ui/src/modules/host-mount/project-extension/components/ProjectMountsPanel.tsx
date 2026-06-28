@@ -83,12 +83,14 @@ export function ProjectMountsPanel() {
           icon={<FolderPlus />}
           onClick={addFolder}
           aria-label="Add folder"
+          data-testid="desktop-hostmount-project-add-btn"
         >
           Add folder
         </Button>
       }
       className="mb-4"
       data-test-section="project-host-mounts"
+      data-testid="desktop-hostmount-project-card"
     >
       <Text type="secondary" className="block mb-4">
         Folders from this machine are mounted into the code sandbox at{' '}
@@ -105,10 +107,12 @@ export function ProjectMountsPanel() {
       ) : draft.length === 0 ? (
         <Empty
           description={<Text type="secondary">No folders mounted</Text>}
+          data-testid="desktop-hostmount-project-empty"
         />
       ) : (
         <List
           size="sm"
+          data-testid="desktop-hostmount-project-list"
           dataSource={draft}
           rowKey={(m) => m.host_path}
           renderItem={(m, i) => (
@@ -126,6 +130,7 @@ export function ProjectMountsPanel() {
                     size="sm"
                     checked={m.read_only}
                     onChange={(c) => setReadOnly(i, c)}
+                    data-testid={`desktop-hostmount-project-readonly-${i}`}
                   />
                 </span>
                 <Button
@@ -135,6 +140,7 @@ export function ProjectMountsPanel() {
                   icon={<Trash2 />}
                   onClick={() => removeAt(i)}
                   aria-label={`Remove ${m.host_path}`}
+                  data-testid={`desktop-hostmount-project-remove-${i}`}
                 />
               </div>
             </div>
@@ -147,6 +153,7 @@ export function ProjectMountsPanel() {
           onClick={save}
           loading={saving}
           disabled={!dirty || loading}
+          data-testid="desktop-hostmount-project-save-btn"
         >
           Save
         </Button>
