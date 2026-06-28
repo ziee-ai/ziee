@@ -387,6 +387,24 @@ pub fn apply_summary_block(summary: &ConversationSummary, chat_request: &mut Cha
     );
 }
 
+/// Resolve the effective `(trigger, keep_recent)` after the fraction-of-window
+/// override. The trigger is the SMALLER of the admin cap and the override (when
+/// set); keep_recent is then re-clamped below the trigger so a small-context
+/// override can't leave keep_recent >= trigger (which silently disables
+/// summarization — see the regression note in `refresh_summary`).
+pub(crate) fn effective_thresholds(
+    admin_trigger: usize,
+    admin_keep_recent: usize,
+    trigger_override: Option<usize>,
+) -> (usize, usize) {
+    let trigger = match trigger_override {
+        Some(o) => admin_trigger.min(o),
+        None => admin_trigger,
+    };
+    let keep_recent = admin_keep_recent.min(trigger.saturating_sub(1));
+    (trigger, keep_recent)
+}
+
 /// Generate / refresh the persisted summary for this branch. Picks
 /// FULL or INCREMENTAL path based on `decide_summarize_action`.
 /// Idempotent at the row level via `ON CONFLICT (branch_id) DO UPDATE`.
@@ -432,18 +450,11 @@ pub async fn refresh_summary(
             }
         };
 
-    // Apply the fraction-of-window override: summarize at the SMALLER of the
-    // admin cap and 0.75× the model's context window.
-    let trigger = match trigger_override {
-        Some(o) => trigger.min(o),
-        None => trigger,
-    };
-    // Preserve keep_recent < trigger after the override. The DB CHECK only
-    // guards the admin row; a fraction-of-window override below keep_recent
-    // (small-context models) would otherwise leave keep_recent >= trigger and
-    // silently disable summarization (the keep-recent loop never breaks and
-    // cutoff walks to 0 → Noop). Re-clamp so summarization still fires.
-    let keep_recent = keep_recent.min(trigger.saturating_sub(1));
+    // Apply the fraction-of-window override (summarize at the SMALLER of the
+    // admin cap and 0.75× the model's context window) + the keep_recent
+    // re-clamp. Extracted to `effective_thresholds` so the selection + clamp
+    // are unit-testable as one unit.
+    let (trigger, keep_recent) = effective_thresholds(trigger, keep_recent, trigger_override);
 
     let pool = Repos.summarization.pool_clone();
     let existing = fetch_summary(&pool, branch_id).await?;
@@ -698,6 +709,26 @@ mod tests {
             ),
             "large-token messages must trigger even at a small message count"
         );
+    }
+
+    #[test]
+    fn fraction_of_window_override_selects_smaller_trigger_and_reclamps() {
+        // No override → admin values pass through (keep_recent still re-clamped
+        // below the trigger, but here 3000 < 8000-1 so it is unchanged).
+        assert_eq!(effective_thresholds(8000, 3000, None), (8000, 3000));
+
+        // A SMALL override (e.g. 0.75 × a tiny context window) wins over the
+        // larger admin cap, and keep_recent is re-clamped to trigger - 1 so
+        // summarization still fires.
+        assert_eq!(effective_thresholds(8000, 3000, Some(200)), (200, 199));
+
+        // A LARGE override does NOT raise the admin cap (min keeps the admin
+        // value); keep_recent stays below it.
+        assert_eq!(effective_thresholds(8000, 3000, Some(20000)), (8000, 3000));
+
+        // Override equal to admin trigger → keep_recent clamps to trigger - 1
+        // only when it would otherwise exceed it.
+        assert_eq!(effective_thresholds(500, 1000, Some(500)), (500, 499));
     }
 
     #[test]
