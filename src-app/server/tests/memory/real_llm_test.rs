@@ -285,6 +285,152 @@ async fn r3b_multi_turn_progressively_accumulates_memories() {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// R3c — a contradicting/refining fact drives an extraction-time
+//        UPDATE or DELETE op, not a duplicate ADD.
+//
+// r3/r3b only ever exercise the ADD branch of the extractor's op
+// dispatch (`engine/extractor.rs:257`). The prompt (`engine/prompts.rs`)
+// explicitly biases the LLM toward UPDATE (refine) / DELETE (contradict)
+// over a duplicate ADD when an existing memory conflicts with a new
+// fact — but no real-LLM test drives `apply_update`/`apply_delete`
+// (extractor.rs:268/278). `extraction_test.rs::test_audit_log_records_add_update_delete`
+// only reaches UPDATE/DELETE via the manual REST PATCH/DELETE path, NOT
+// the LLM-driven extractor. This test closes that gap: it plants a fact,
+// then feeds a directly-contradicting follow-up, and proves the extractor
+// emitted a non-ADD op by asserting the audit log records an UPDATE or
+// DELETE (which on this user can only have come from turn 2's extraction,
+// since turn 1 produced an ADD), and that the resolved state reflects the
+// new fact.
+// ────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn r3c_contradicting_fact_drives_extraction_update_or_delete() {
+    if h::skip_if_no_keys("r3c_contradiction_update_delete") {
+        return;
+    }
+    let server = crate::common::TestServer::start().await;
+    let _ids = h::setup_real_providers(&server).await;
+    let user = h::memory_user(&server, "r3c_contradiction").await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/memory/settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "extraction_enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success(), "enable extraction → {}", res.status());
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "r3c_contradiction_admin",
+        &["memory::admin::manage"],
+    )
+    .await;
+
+    // Drive one extraction turn through the real Groq extractor via the
+    // admin-only test hook.
+    let extract = |user_msg: &'static str, assistant_msg: &'static str| {
+        let api = server.api_url("/_test/memory/extract");
+        let token = admin.token.clone();
+        async move {
+            let res = reqwest::Client::new()
+                .post(api)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "user_id": user_id,
+                    "user_message": user_msg,
+                    "assistant_message": assistant_msg,
+                }))
+                .send()
+                .await
+                .unwrap();
+            assert!(
+                res.status().is_success(),
+                "test/extract → {}: {}",
+                res.status(),
+                res.text().await.unwrap_or_default()
+            );
+        }
+    };
+
+    // Turn 1 — plant a clear, durable preference. Extraction should ADD it.
+    extract(
+        "My favorite color is blue.",
+        "Got it — I'll keep blue in mind.",
+    )
+    .await;
+
+    // The planted fact is in memory after turn 1.
+    let blob_after_1 = memory_blob(&server, &user.token).await;
+    assert!(
+        blob_after_1.contains("blue"),
+        "turn-1 fact (blue) must be stored before the contradiction; got: {blob_after_1}"
+    );
+
+    // Turn 2 — a direct contradiction + refinement of the SAME attribute.
+    // The dedup-biased prompt should make the LLM resolve this with an
+    // UPDATE (refine the existing memory) or DELETE (drop the contradicted
+    // one), not stack a second, conflicting "favorite color" memory.
+    extract(
+        "Actually, forget blue — I no longer like blue at all. My favorite color is now green.",
+        "Understood — switching your favorite color to green.",
+    )
+    .await;
+
+    // Proof the non-ADD branch ran: the user's audit log now carries an
+    // UPDATE or DELETE op. Turn 1 only produced ADD, so any UPDATE/DELETE
+    // op can only have come from turn 2's extraction-time op dispatch
+    // (extractor.rs apply_update / apply_delete) — the path no prior
+    // real-LLM test exercises.
+    let log: Vec<Value> = reqwest::Client::new()
+        .get(server.api_url("/memory/audit-log"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let ops: Vec<&str> = log.iter().filter_map(|e| e["op"].as_str()).collect();
+    assert!(
+        ops.iter().any(|o| *o == "UPDATE" || *o == "DELETE"),
+        "a contradicting fact must drive an extraction-time UPDATE or DELETE \
+         (not a duplicate ADD); audit ops were: {ops:?}"
+    );
+
+    // …and the resolved state reflects the new fact.
+    let blob_after_2 = memory_blob(&server, &user.token).await;
+    assert!(
+        blob_after_2.contains("green"),
+        "after the contradiction, memory must reflect the new fact (green); got: {blob_after_2}"
+    );
+}
+
+/// Joins a user's stored memory contents into one lowercased blob.
+async fn memory_blob(server: &crate::common::TestServer, token: &str) -> String {
+    let body: Value = reqwest::Client::new()
+        .get(server.api_url("/memories?limit=50"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    body["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| r["content"].as_str())
+        .collect::<Vec<_>>()
+        .join(" | ")
+        .to_lowercase()
+}
+
+// ────────────────────────────────────────────────────────────────────
 // R7 — cosine threshold filters semantically unrelated memories.
 // ────────────────────────────────────────────────────────────────────
 
