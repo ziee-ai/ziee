@@ -7,7 +7,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::common::secret::{decrypt_secret, encrypt_secret};
+use crate::common::secret::{decrypt_secret, encrypt_secret, resolve_optional_secret};
 
 use super::models::{
     EnvVarView, HeaderView, McpServer, McpServerOAuthConfig, SetMcpServerOAuthConfigRequest,
@@ -1348,7 +1348,8 @@ pub async fn get_mcp_server_oauth_config(
 ) -> Result<Option<McpServerOAuthConfig>, AppError> {
     let row = sqlx::query!(
         r#"
-        SELECT server_id, client_id, client_secret, scopes, resource, created_at, updated_at
+        SELECT server_id, client_id, client_secret, client_secret_encrypted,
+               scopes, resource, created_at, updated_at
         FROM mcp_server_oauth_configs
         WHERE server_id = $1
         "#,
@@ -1357,12 +1358,21 @@ pub async fn get_mcp_server_oauth_config(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|r| {
-        oauth_row_to_model(
-            r.server_id, r.client_id, r.client_secret, r.scopes, r.resource,
-            r.created_at, r.updated_at,
-        )
-    }))
+    let Some(r) = row else { return Ok(None) };
+    // Prefer the encrypted column; fall back to plaintext for legacy rows.
+    let client_secret =
+        resolve_optional_secret(pool, r.client_secret_encrypted, r.client_secret)
+            .await
+            .unwrap_or_default();
+    Ok(Some(oauth_row_to_model(
+        r.server_id,
+        r.client_id,
+        client_secret,
+        r.scopes,
+        r.resource,
+        r.created_at,
+        r.updated_at,
+    )))
 }
 
 pub async fn set_mcp_server_oauth_config(
@@ -1370,30 +1380,48 @@ pub async fn set_mcp_server_oauth_config(
     server_id: Uuid,
     request: SetMcpServerOAuthConfigRequest,
 ) -> Result<McpServerOAuthConfig, AppError> {
+    // Encrypt at rest: store the secret in client_secret_encrypted and NULL the
+    // plaintext column when a storage_key is configured; fall back to plaintext
+    // in dev (no key). Mirrors web_search_providers.upsert_provider.
+    let (plaintext, encrypted): (Option<String>, Option<Vec<u8>>) = match encrypt_secret(
+        pool,
+        &request.client_secret,
+        crate::core::secrets::storage_key(),
+    )
+    .await?
+    {
+        Some(blob) => (None, Some(blob)),
+        None => (Some(request.client_secret.clone()), None),
+    };
+
     let row = sqlx::query!(
         r#"
         INSERT INTO mcp_server_oauth_configs
-            (server_id, client_id, client_secret, scopes, resource, updated_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
+            (server_id, client_id, client_secret, client_secret_encrypted, scopes, resource, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
         ON CONFLICT (server_id) DO UPDATE SET
             client_id = EXCLUDED.client_id,
             client_secret = EXCLUDED.client_secret,
+            client_secret_encrypted = EXCLUDED.client_secret_encrypted,
             scopes = EXCLUDED.scopes,
             resource = EXCLUDED.resource,
             updated_at = NOW()
-        RETURNING server_id, client_id, client_secret, scopes, resource, created_at, updated_at
+        RETURNING server_id, client_id, scopes, resource, created_at, updated_at
         "#,
         server_id,
         request.client_id,
-        request.client_secret,
+        plaintext,
+        encrypted,
         request.scopes,
         request.resource,
     )
     .fetch_one(pool)
     .await?;
 
+    // Return the in-memory model with the plaintext secret we just stored
+    // (the caller redacts it via `to_response()` before sending to the API).
     Ok(oauth_row_to_model(
-        row.server_id, row.client_id, row.client_secret, row.scopes, row.resource,
+        row.server_id, row.client_id, request.client_secret, row.scopes, row.resource,
         row.created_at, row.updated_at,
     ))
 }
