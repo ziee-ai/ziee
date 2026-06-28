@@ -239,7 +239,11 @@ export default function SettingsPage() {
             which fights the soft fade overlay HeaderBarContainer
             paints below itself. */}
         {!useMobileLayout && (
-          <div className="w-fit pt-1">
+          <div
+            className="w-fit pt-1"
+            role="navigation"
+            aria-label="Settings sections"
+          >
             <SettingsMenu />
           </div>
         )}
