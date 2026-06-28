@@ -44,8 +44,11 @@ use crate::modules::llm_local_runtime::BinaryManager;
 pub enum EngineDownloadStatus {
     Pending,
     Downloading,
+    #[allow(dead_code)]
     Verifying,
+    #[allow(dead_code)]
     Extracting,
+    #[allow(dead_code)]
     Registering,
     Completed,
     Failed,
@@ -66,6 +69,7 @@ pub struct DownloadTask {
     pub engine: String,
     pub version: String,
     pub backend: String,
+    #[allow(dead_code)]
     pub started_at: SystemTime,
     pub state: Mutex<TaskRuntimeState>,
     pub events: broadcast::Sender<SSEEngineDownloadEvent>,

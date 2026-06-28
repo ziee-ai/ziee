@@ -919,7 +919,6 @@ impl SandboxBackend for Wsl2Backend {
             mount_dir: PathBuf::from(GUEST_ROOTFS_MOUNT),
             fetch_info: Some(outcome),
             artifact_id: Some(artifact_id),
-            artifact_version: Some(artifact_version),
         })
     }
 
@@ -1118,62 +1117,6 @@ impl SandboxBackend for Wsl2Backend {
                 "code_sandbox: WSL2 distro stopped on shutdown"
             );
         }
-    }
-
-    /// Legacy admin-DELETE evict by flavor: tear down EVERY pinned
-    /// version's distro for this flavor + delete every cached tarball.
-    /// Idempotent. The version-aware path is `evict_artifact` (single
-    /// `(version, flavor)` tear-down).
-    async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {
-        // Stop + unregister every running distro for this flavor (one
-        // per pinned version, post Plan 5 Phase 3).
-        let suffix_match = format!("/{flavor}");
-        let stale_keys: Vec<String> = DISTROS
-            .lock()
-            .await
-            .keys()
-            .filter(|k| k.as_str() == flavor || k.ends_with(&suffix_match))
-            .cloned()
-            .collect();
-        for key in stale_keys {
-            if let Some(h) = DISTROS.lock().await.remove(&key) {
-                stop_agent(&h).await;
-                let _ = run_wsl(&["--unregister", &h.distro]).await;
-            }
-        }
-
-        // Delete every `*-{flavor}.tar.zst` in the version-subdirs the
-        // version-manager owns.
-        let suffix = format!("-{flavor}.tar.zst");
-        let mut bytes_freed = 0u64;
-        let mut was_cached = false;
-        fn walk(
-            dir: &Path,
-            suffix: &str,
-            bytes_freed: &mut u64,
-            was_cached: &mut bool,
-        ) {
-            if let Ok(rd) = std::fs::read_dir(dir) {
-                for entry in rd.flatten() {
-                    let p = entry.path();
-                    if p.is_dir() {
-                        walk(&p, suffix, bytes_freed, was_cached);
-                    } else if p
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.ends_with(suffix))
-                    {
-                        *was_cached = true;
-                        if let Ok(m) = std::fs::metadata(&p) {
-                            *bytes_freed += m.len();
-                        }
-                        let _ = std::fs::remove_file(&p);
-                    }
-                }
-            }
-        }
-        walk(cache_dir, &suffix, &mut bytes_freed, &mut was_cached);
-        EvictOutcome { bytes_freed, was_cached }
     }
 
     /// Version-aware evict (Plan 5 Phase 3 drain-on-swap): tear down

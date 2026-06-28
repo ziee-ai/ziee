@@ -60,6 +60,7 @@ const STARTED_ACK_TIMEOUT: Duration = Duration::from_secs(10);
 /// `started_tx` / `exit_tx` halves are consumed (taken) when the
 /// corresponding frame arrives; `stdout_tx` is the channel the reader
 /// forwards `ProcessStdout` chunks onto.
+#[allow(dead_code)]
 struct HandleSlot {
     started_tx: Option<oneshot::Sender<StartedAck>>,
     stdout_tx: mpsc::UnboundedSender<Vec<u8>>,
@@ -199,6 +200,7 @@ impl Drop for LongLivedSession {
 /// Spawns the reader + writer tasks and returns the session immediately.
 /// Subsequent [`LongLivedSession::spawn`] calls send `StartProcess` frames
 /// over the same connection.
+#[allow(dead_code)]
 pub fn open_long_lived<S>(stream: S) -> LongLivedSession
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -211,6 +213,7 @@ where
 /// dropped — used by the VM backends to hold a per-flavor inflight
 /// guard so the VM-evict reaper doesn't tear the VM down underneath a
 /// live MCP session.
+#[allow(dead_code)]
 pub fn open_long_lived_with_guard<S>(
     stream: S,
     vm_keepalive: Option<Box<dyn std::any::Any + Send + Sync>>,
@@ -238,6 +241,7 @@ where
 
 /// Drains the writer channel into the network. Exits when every
 /// `writer_tx` clone is dropped.
+#[allow(dead_code)]
 async fn run_writer<W: AsyncWrite + Unpin>(mut rx: mpsc::UnboundedReceiver<Frame>, mut wr: W) {
     while let Some(frame) = rx.recv().await {
         if wr.write_all(&encode(&frame)).await.is_err() {
@@ -249,6 +253,7 @@ async fn run_writer<W: AsyncWrite + Unpin>(mut rx: mpsc::UnboundedReceiver<Frame
 
 /// Reads frames off the network and demuxes into the registry. Exits on
 /// EOF / read error or when the writer side has closed.
+#[allow(dead_code)]
 async fn run_reader<R: AsyncRead + Unpin>(mut rd: R, registry: Arc<Mutex<HashMap<u64, HandleSlot>>>) {
     let mut decoder = Decoder::new();
     let mut buf = vec![0u8; DUPLEX_BUF_BYTES];
@@ -378,6 +383,7 @@ pub struct ProcessIo {
     handle: u64,
     writer_tx: mpsc::UnboundedSender<Frame>,
     /// `take()` consumed when `wait_exit` is called; afterwards it's None.
+    #[allow(dead_code)]
     exit_rx: Option<oneshot::Receiver<ExitStatus>>,
     /// Once true, Drop does NOT send KillProcess again (the process
     /// already exited or the caller already killed it).
@@ -400,6 +406,7 @@ impl ProcessIo {
     }
 
     /// Take the exit-receiver. Can only be called once.
+    #[allow(dead_code)]
     pub fn take_exit_rx(&mut self) -> Option<oneshot::Receiver<ExitStatus>> {
         self.exit_rx.take()
     }
@@ -467,7 +474,7 @@ mod tests {
     /// optionally respond. The closure decides what to echo back
     /// based on each inbound frame.
     async fn drive_agent(
-        mut stream: DuplexStream,
+        stream: DuplexStream,
         mut on_frame: impl FnMut(Frame, &mut Vec<Frame>) -> bool + Send + 'static,
     ) {
         let (mut rd, mut wr) = tokio::io::split(stream);

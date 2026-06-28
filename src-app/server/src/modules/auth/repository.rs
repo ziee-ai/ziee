@@ -77,6 +77,7 @@ impl AuthRepository {
     }
 
     /// Create a user auth link
+    #[allow(dead_code)]
     pub async fn create_auth_link(
         &self,
         user_id: Uuid,
@@ -133,6 +134,7 @@ impl AuthRepository {
     /// Called whenever a returning user re-authenticates via the
     /// social provider — distinct from the `users.last_login_at`
     /// bump because a user may have multiple linked providers.
+    #[allow(dead_code)]
     pub async fn update_auth_link_last_login(
         &self,
         provider_id: Uuid,
@@ -339,6 +341,7 @@ impl AuthRepository {
 
     /// Create a new user from external auth (used by LDAP/OAuth)
     /// Returns the created user's ID
+    #[allow(dead_code)]
     pub async fn create_external_user(
         &self,
         username: &str,

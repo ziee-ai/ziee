@@ -190,6 +190,7 @@ pub struct BinaryInfo {
     pub path: PathBuf,
 
     /// File size in bytes
+    #[allow(dead_code)]
     pub size_bytes: u64,
 }
 
@@ -227,21 +228,6 @@ impl BinaryDownloader {
             .ok_or_else(|| RuntimeError::internal("Could not determine home directory"))?;
 
         Ok(home.join(".llm-runtime").join("binaries"))
-    }
-
-    /// Download a binary from GitHub releases (no progress reporting).
-    /// Thin wrapper around [`Self::download_with_progress`] for callers
-    /// that don't need byte-level progress (tests, idempotent re-installs).
-    pub async fn download(
-        &self,
-        engine: EngineType,
-        version: &str,
-        platform: &str,
-        arch: &str,
-        backend: &str,
-    ) -> Result<BinaryInfo> {
-        self.download_with_progress(engine, version, platform, arch, backend, |_, _| {})
-            .await
     }
 
     /// Download a binary from GitHub releases with a per-chunk progress
@@ -777,42 +763,6 @@ impl BinaryDownloader {
         Ok(())
     }
 
-    /// Get cached binary if exists
-    pub fn get_cached_binary(
-        &self,
-        engine: EngineType,
-        version: &str,
-        platform: &str,
-        arch: &str,
-        backend: &str,
-    ) -> Option<PathBuf> {
-        let engine_dir = match engine {
-            EngineType::Llamacpp => "llamacpp",
-            EngineType::Mistralrs => "mistralrs",
-        };
-
-        let binary_name = match engine {
-            EngineType::Llamacpp => {
-                if platform == "windows" { "llama-server.exe" } else { "llama-server" }
-            },
-            EngineType::Mistralrs => {
-                if platform == "windows" { "mistralrs-server.exe" } else { "mistralrs-server" }
-            },
-        };
-
-        let cache_path = self.binaries_dir
-            .join(engine_dir)
-            .join(version)
-            .join(format!("{}-{}-{}", platform, arch, backend))
-            .join(binary_name);
-
-        if cache_path.exists() {
-            Some(cache_path)
-        } else {
-            None
-        }
-    }
-
     /// List all cached binaries
     pub fn list_binaries(&self) -> Result<Vec<BinaryInfo>> {
         let mut binaries = Vec::new();
@@ -1008,7 +958,7 @@ mod tests {
             let enc = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
             let mut b = tar::Builder::new(enc);
 
-            let mut reg = |b: &mut tar::Builder<flate2::write::GzEncoder<File>>, name: &str, data: &[u8], mode: u32| {
+            let reg = |b: &mut tar::Builder<flate2::write::GzEncoder<File>>, name: &str, data: &[u8], mode: u32| {
                 let mut h = tar::Header::new_gnu();
                 h.set_size(data.len() as u64);
                 h.set_mode(mode);
@@ -1019,7 +969,7 @@ mod tests {
             reg(&mut b, "llama-server", b"#!/bin/true\n", 0o755);
             reg(&mut b, "libfoo.so.1.2.3", b"ELF-ish-bytes", 0o644);
 
-            let mut link = |b: &mut tar::Builder<flate2::write::GzEncoder<File>>, name: &str, target: &str| {
+            let link = |b: &mut tar::Builder<flate2::write::GzEncoder<File>>, name: &str, target: &str| {
                 let mut h = tar::Header::new_gnu();
                 h.set_entry_type(tar::EntryType::Symlink);
                 h.set_size(0);

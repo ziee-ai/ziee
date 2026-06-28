@@ -10,6 +10,9 @@ pub mod repository;
 pub mod secrets;
 
 // Re-export commonly used functions
+// set_server_addr is used from main.rs (binary target); suppress the
+// unused-imports warning since it only appears in the library target.
+#[allow(unused_imports)]
 pub use app_state::{
     get_app_data_dir, get_caches_config, get_server_addr, set_app_data_dir, set_caches_config,
     set_server_addr,

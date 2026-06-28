@@ -165,11 +165,7 @@ pub fn list_tasks() -> Vec<InstallTaskState> {
         .collect()
 }
 
-pub fn get_task(task_id: Uuid) -> Option<InstallTaskState> {
-    INSTALL_TASKS
-        .get(&task_id)
-        .and_then(|e| e.value().lock().ok().map(|g| g.clone()))
-}
+// get_task removed — dead code; use list_tasks + filter instead.
 
 // =====================================================================
 // SSE client lifecycle

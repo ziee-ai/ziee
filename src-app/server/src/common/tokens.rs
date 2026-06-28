@@ -24,6 +24,7 @@ pub fn estimate_tokens(s: &str) -> usize {
 }
 
 /// Estimate tokens across many strings (e.g. all text blocks of a message).
+#[allow(dead_code)]
 pub fn estimate_tokens_iter<'a, I: IntoIterator<Item = &'a str>>(parts: I) -> usize {
     parts.into_iter().map(estimate_tokens).sum()
 }

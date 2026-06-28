@@ -19,7 +19,6 @@ pub mod utils;
 pub use repositories::admin::LlmProviderRepository;
 pub use repositories::user::UserKeyRepository;
 pub use routes::llm_provider_router;
-pub use user_extension::UserGroupLlmProviderRepository;
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;

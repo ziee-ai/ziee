@@ -79,30 +79,25 @@ impl InstanceState {
         }
     }
 
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Failed { .. } | Self::Stopped)
-    }
-
-    pub fn is_running(&self) -> bool {
-        matches!(self, Self::Starting | Self::Healthy | Self::Unhealthy { .. })
-    }
-}
-
-/// What an engine's `health_check` boils down to from the state
-/// machine's perspective. The server's crash path produces these
-/// directly from its `/health` probe + process-liveness check.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HealthSignal {
-    Ok,
-    Unhealthy(String),
-    ProcessGone(Option<i32>),
+    // is_terminal / is_running removed — dead code; use on_event-based
+    // state machine transitions instead.
 }
 
 /// Events that drive the state machine. The supervisor produces
 /// these from health-check probes; the server module emits
 /// [`HealthEvent::AdminStop`] / [`HealthEvent::AdminStart`] /
 /// [`HealthEvent::ClearFailed`] from REST handlers.
+///
+/// # Dead-code note
+/// `Ok`, `Unhealthy`, and `ClearFailed` variants are part of the state
+/// machine's designed input set but currently never constructed: the
+/// health-check → event path (Ok/Unhealthy) and the admin-rest →
+/// event path (ClearFailed) were not wired up. AdminStop IS constructed
+/// in tests. Keeping these variants so the state machine's match is
+/// total — if a future patch wires the REST handler or the health
+/// reporter, the enum contract is complete.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum HealthEvent {
     /// Engine reports `Ok` — equivalent to `HealthSignal::Ok`.
     Ok,
@@ -352,6 +347,7 @@ impl HealthStateMachine {
     }
 
     /// Manual reset for a Failed instance.
+    #[allow(dead_code)]
     pub fn clear_failed(&mut self) {
         if matches!(self.state, InstanceState::Failed { .. }) {
             self.state = InstanceState::Stopped;
@@ -361,13 +357,7 @@ impl HealthStateMachine {
         }
     }
 
-    /// Human-readable failure reason if we're in Failed; else None.
-    pub fn last_failure_reason(&self) -> Option<&str> {
-        match &self.state {
-            InstanceState::Failed { reason } => Some(reason.as_str()),
-            _ => None,
-        }
-    }
+    // last_failure_reason removed — dead code.
 }
 
 #[cfg(test)]

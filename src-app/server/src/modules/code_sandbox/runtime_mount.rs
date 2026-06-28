@@ -101,7 +101,6 @@ pub struct EnsureOutcome {
     pub mount_dir: PathBuf,
     pub fetch_info: Option<FetchOutcome>,
     pub artifact_id: Option<uuid::Uuid>,
-    pub artifact_version: Option<String>,
 }
 
 // =====================================================================
@@ -109,6 +108,11 @@ pub struct EnsureOutcome {
 // =====================================================================
 
 #[derive(Debug, Clone)]
+// Several VM-backend variants below are constructed only on macOS/Windows
+// build paths (and some are forward-looking error taxonomy); their `From`
+// match arms map each to a user-facing AppError. Keep them on every build so
+// the match stays total and the Win/macOS error UX is preserved.
+#[allow(dead_code)]
 pub enum ReadyError {
     SquashfuseMissing,
     NoRootfsForFlavor { flavor: String, cache_dir: PathBuf },
@@ -361,7 +365,6 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
         mount_dir,
         fetch_info,
         artifact_id: Some(artifact_id),
-        artifact_version: Some(fetch_version),
     })
 }
 
@@ -633,131 +636,11 @@ pub async fn shutdown() {
     }
 }
 
-/// Snapshot of flavors currently mounted (server-spawned squashfuse live).
-/// Empty if no flavor has been mounted yet. Projects the (version,
-/// flavor) composite MOUNTED keys back to a flavor-only set for the
-/// `/code-sandbox/environments` endpoint (removed Phase 2c).
-pub async fn mounted_set() -> std::collections::HashSet<String> {
-    match MOUNTED.get() {
-        Some(slot) => slot
-            .lock()
-            .await
-            .keys()
-            .map(|k| {
-                // Composite key shape "<version>/<flavor>" — split off the
-                // flavor; fall back to the whole key for legacy entries
-                // (pre-version-aware mounts).
-                k.rsplit_once('/').map(|(_, f)| f.to_string()).unwrap_or_else(|| k.clone())
-            })
-            .collect(),
-        None => std::collections::HashSet::new(),
-    }
-}
-
 /// Result of evicting a flavor from the cache.
 #[derive(Debug, Clone, Copy)]
 pub struct EvictOutcome {
     pub bytes_freed: u64,
     pub was_cached: bool,
-}
-
-/// Evict a flavor from the cache: unmount EVERY pinned version's
-/// squashfuse process for this flavor (if mounted), drop their
-/// READY/MOUNTED registry entries, and delete all cached
-/// `*-{flavor}.squashfs` files under `cache_dir`. Used by the legacy
-/// `/code-sandbox/environments/{flavor}` admin DELETE endpoint.
-/// Idempotent.
-///
-/// For version-aware eviction (the Plan 5 Phase 3 drain-on-swap
-/// path), use [`evict_by_version_flavor`] instead — it kills only
-/// the specific `(version, flavor)` mount and leaves any sibling
-/// version of the same flavor running.
-pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
-    // 1. Drop READY cells for any (version, flavor) entry matching
-    //    this flavor. Also flush the version-manager mount registry
-    //    so MOUNTED_ARTIFACTS doesn't leak stale entries until the
-    //    next server restart.
-    if let Some(map) = READY.get() {
-        let suffix = format!("/{flavor}");
-        map.retain(|k, _| k != flavor && !k.ends_with(&suffix));
-    }
-    let deregistered =
-        crate::modules::code_sandbox::version_manager::deregister_mounts_for_flavor(flavor);
-    if deregistered > 0 {
-        tracing::debug!(
-            flavor,
-            deregistered,
-            "code_sandbox: evict_flavor flushed version-manager registry"
-        );
-    }
-
-    // 2. Unmount every squashfuse spawn for this flavor (across all
-    //    pinned versions). Same defensive sequence as shutdown().
-    if let Some(slot) = MOUNTED.get() {
-        let suffix = format!("/{flavor}");
-        let stale_keys: Vec<String> = slot
-            .lock()
-            .await
-            .keys()
-            .filter(|k| k.as_str() == flavor || k.ends_with(&suffix))
-            .cloned()
-            .collect();
-        for key in stale_keys {
-            let taken = slot.lock().await.remove(&key);
-            if let Some(MountedRootfs { mut child, mount_dir }) = taken {
-                if let Some(pid) = child.id() {
-                    #[cfg(target_os = "linux")]
-                    unsafe {
-                        libc::kill(pid as libc::pid_t, libc::SIGTERM);
-                    }
-                    #[cfg(not(target_os = "linux"))]
-                    let _ = pid;
-                    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
-                }
-                let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
-                let _ = std::fs::remove_dir(&mount_dir);
-            }
-        }
-    }
-
-    // 3. Delete the cached squashfs file(s) for this flavor + mirror mount dir.
-    let suffix = format!("-{flavor}.squashfs");
-    let mut bytes_freed: u64 = 0;
-    let mut was_cached = false;
-    if let Ok(rd) = std::fs::read_dir(cache_dir) {
-        for entry in rd.flatten() {
-            let p = entry.path();
-            let is_match = p
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.ends_with(&suffix));
-            if !is_match {
-                continue;
-            }
-            was_cached = true;
-            if let Ok(meta) = std::fs::metadata(&p) {
-                bytes_freed += meta.len();
-            }
-            // Best-effort unmount + remove the mirror mount dir (the squashfs
-            // basename without its extension).
-            if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
-                let mnt = cache_dir.join(stem);
-                let _ = Command::new("fusermount").arg("-u").arg(&mnt).status().await;
-                let _ = std::fs::remove_dir_all(&mnt);
-            }
-            match std::fs::remove_file(&p) {
-                Ok(()) => tracing::info!(
-                    path = %p.display(), flavor, "code_sandbox: rootfs evicted from cache"
-                ),
-                Err(e) => tracing::warn!(
-                    path = %p.display(), error = %e,
-                    "code_sandbox: evict failed to remove squashfs"
-                ),
-            }
-        }
-    }
-
-    EvictOutcome { bytes_freed, was_cached }
 }
 
 /// Version-aware evict: tear down ONLY the `(version, flavor)`

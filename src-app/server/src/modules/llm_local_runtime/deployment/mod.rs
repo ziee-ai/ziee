@@ -60,7 +60,9 @@ pub struct DeploymentResult {
 #[derive(Debug, Clone)]
 pub struct InstanceStatus {
     pub running: bool,
+    #[allow(dead_code)]
     pub pid: Option<i32>,
+    #[allow(dead_code)]
     pub port: Option<i32>,
     pub uptime_seconds: Option<i64>,
 }

@@ -328,11 +328,11 @@ pub struct OAuth2Provider {
     provider_id: Uuid,
     config: OAuth2Config,
     raw_config: serde_json::Value,
-    pool: PgPool,
+    // pool field removed — never read; retained implicitly via borrows
 }
 
 impl OAuth2Provider {
-    pub fn new(provider: &AuthProvider, pool: PgPool) -> Result<Self, AuthError> {
+    pub fn new(provider: &AuthProvider, _pool: PgPool) -> Result<Self, AuthError> {
         let config: OAuth2Config =
             serde_json::from_value(provider.config.clone()).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid OAuth2 configuration: {}", e))
@@ -343,7 +343,6 @@ impl OAuth2Provider {
             provider_id: provider.id,
             config,
             raw_config: provider.config.clone(),
-            pool,
         })
     }
 

@@ -52,7 +52,6 @@ const LOG_LINE_MAX_BYTES: usize = 16 * 1024;
 struct ProcessInfo {
     child: Child,
     port: i32,
-    base_url: String,
     started_at: std::time::Instant,
     logs: std::collections::VecDeque<String>,
     /// P2: broadcast channel for live log streaming. The capture
@@ -147,7 +146,6 @@ impl LocalDeployment {
         // (copy of the bio_mcp / code_sandbox squashfuse path).
         #[cfg(target_os = "linux")]
         unsafe {
-            use std::os::unix::process::CommandExt;
             cmd.pre_exec(|| {
                 let r = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0);
                 if r == 0 {
@@ -488,21 +486,8 @@ impl LocalDeployment {
         }
     }
 
-    /// Subscribe to live logs for the given model. Returns a
-    /// broadcast receiver + a snapshot of the existing buffer for
-    /// initial replay. Used by the SSE handler in P2.
-    pub async fn subscribe_logs(
-        &self,
-        model_id: Uuid,
-    ) -> AppResult<(tokio::sync::broadcast::Receiver<String>, Vec<String>)> {
-        let processes = self.processes.read().await;
-        let proc_info = processes
-            .get(&model_id)
-            .ok_or_else(|| AppError::not_found("Process not found"))?;
-        let rx = proc_info.log_broadcast.subscribe();
-        let snapshot: Vec<String> = proc_info.logs.iter().cloned().collect();
-        Ok((rx, snapshot))
-    }
+
+
 }
 
 /// Push `flag VALUE` onto the argv when `v` is `Some` (numeric/float
@@ -720,7 +705,6 @@ impl Deployment for LocalDeployment {
         let proc_info = ProcessInfo {
             child,
             port,
-            base_url: base_url.clone(),
             started_at: std::time::Instant::now(),
             logs: std::collections::VecDeque::new(),
             log_broadcast,

@@ -44,6 +44,7 @@ pub struct DownloadVersionRequest {
 
 /// Request to set a version as system default
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[allow(dead_code)]
 pub struct SetSystemDefaultRequest {
     /// Runtime version ID
     pub version_id: Uuid,

@@ -22,12 +22,14 @@ pub enum McpScope {
 }
 
 impl McpScope {
+    #[allow(dead_code)]
     pub fn conversation_id(&self) -> Option<Uuid> {
         match self {
             McpScope::Conversation(id) => Some(*id),
             McpScope::Project(_) => None,
         }
     }
+    #[allow(dead_code)]
     pub fn project_id(&self) -> Option<Uuid> {
         match self {
             McpScope::Project(id) => Some(*id),

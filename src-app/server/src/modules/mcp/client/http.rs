@@ -961,10 +961,12 @@ impl Drop for HttpMcpClient {
 }
 
 impl HttpMcpClient {
+    #[allow(dead_code)]
     pub fn new(server: McpServer) -> Result<Self, AppError> {
         Self::new_internal(server, None, None)
     }
 
+    #[allow(dead_code)]
     pub fn new_with_sampling(
         server: McpServer,
         handler: Arc<dyn SamplingHandler>,
@@ -974,6 +976,7 @@ impl HttpMcpClient {
 
     /// Construct a client that authenticates to an external server via the
     /// OAuth 2.1 `client_credentials` grant (acquired lazily on the first 401).
+    #[allow(dead_code)]
     pub fn new_with_oauth(
         server: McpServer,
         oauth: OAuthClientConfig,

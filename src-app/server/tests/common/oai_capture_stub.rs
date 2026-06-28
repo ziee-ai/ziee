@@ -150,6 +150,7 @@ impl StubChat {
     }
 
     /// Every captured request body, in order.
+    #[allow(dead_code)]
     pub fn requests(&self) -> Vec<Value> {
         self.requests.lock().unwrap().clone()
     }

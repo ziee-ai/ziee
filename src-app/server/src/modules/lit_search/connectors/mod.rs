@@ -90,6 +90,7 @@ pub struct SearchOpts {
 
 #[async_trait]
 pub trait LitConnector: Send + Sync {
+    #[allow(dead_code)]
     fn key(&self) -> &'static str;
     async fn search(&self, query: &str, opts: SearchOpts) -> Result<Vec<LitRecord>, AppError>;
 }

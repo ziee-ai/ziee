@@ -34,6 +34,7 @@ struct ExtractionOp {
     #[serde(default = "default_importance_op")]
     importance: i16,
     #[serde(default = "default_confidence_op")]
+    #[allow(dead_code)]
     confidence: i16,
     #[serde(default = "default_kind_op")]
     kind: String,

@@ -21,11 +21,13 @@ pub trait DesktopModule: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Module version
+    #[allow(dead_code)]
     fn version(&self) -> &'static str {
         "1.0.0"
     }
 
     /// Module description
+    #[allow(dead_code)]
     fn description(&self) -> &'static str {
         ""
     }
@@ -50,6 +52,7 @@ pub trait DesktopModule: Send + Sync {
     ///
     /// Use this for routes that don't need OpenAPI documentation,
     /// such as static file serving or proxy endpoints.
+    #[allow(dead_code)]
     fn register_routes(&self, router: Router) -> Router {
         router
     }
@@ -60,6 +63,7 @@ pub trait DesktopModule: Send + Sync {
     /// - Stop background tasks
     /// - Save state
     /// - Release resources
+    #[allow(dead_code)]
     fn shutdown(&mut self) -> Result<()> {
         Ok(())
     }

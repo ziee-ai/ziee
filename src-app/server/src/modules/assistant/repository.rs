@@ -28,30 +28,9 @@ impl AssistantRepository {
     }
 
     /// Atomically delete the given prior-install assistant ids and create the
-    /// new one, in ONE transaction — the hub "replace existing install" path.
-    /// Previously these were separate awaits, so a create failure after the
-    /// deletes left the user with NO assistant. Returns the created assistant
-    /// plus the ids that were actually deleted (so the caller can emit
-    /// `assistant.deleted` events AFTER the commit).
-    pub async fn replace_from_hub(
-        &self,
-        existing_ids: &[Uuid],
-        user_id: Option<Uuid>,
-        request: CreateAssistantRequest,
-    ) -> Result<(Assistant, Vec<Uuid>), AppError> {
-        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
-        let mut deleted = Vec::new();
-        for id in existing_ids {
-            if delete_assistant_tx(&mut tx, *id).await? {
-                deleted.push(*id);
-            }
-        }
-        let assistant = create_assistant_tx(&mut tx, user_id, request).await?;
-        tx.commit().await.map_err(AppError::database_error)?;
-        Ok((assistant, deleted))
-    }
-
-    /// Like [`replace_from_hub`] but ALSO records the new assistant in
+    /// new one, in ONE transaction, atomically recording the hub tracking row.
+    /// Returns the created assistant, the ids actually deleted, and the
+    /// hub-tracking row.
     /// `hub_entities` inside the SAME transaction, so the install (delete prior
     /// + create + track) commits atomically. Previously the `track_hub_entity`
     /// call was a separate await after the create tx committed, so a tracking

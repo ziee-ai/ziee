@@ -139,9 +139,6 @@ pub trait SandboxBackend: Send + Sync {
     /// Tear down anything this backend owns (FUSE daemons / VMs / distros).
     async fn shutdown(&self);
 
-    /// Evict a flavor from the local cache (unmount + delete). Idempotent.
-    async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome;
-
     /// Evict a specific (version, flavor) mount after the version
     /// manager's drain task observed the inflight counter hit zero
     /// (Plan 5 Phase 3). Default impl is version-aware — it kills
@@ -169,29 +166,6 @@ pub trait SandboxBackend: Send + Sync {
         .await
     }
 
-    /// **Test-only seam.** Execute an arbitrary `bwrap` argv against the
-    /// given rootfs and return the raw stdout/stderr/exit. Tier-4 tests
-    /// use this to verify the hardening primitives the argv builder
-    /// emits (seccomp blocks foo, --ro-bind makes /usr read-only, etc.)
-    /// without naming `bwrap` themselves.
-    ///
-    /// Per-backend dispatch:
-    ///   - Linux: `Command::new("bwrap").args(argv)` directly on the host.
-    ///   - macOS: ensure a libkrun VM is up for `rootfs_squashfs`,
-    ///     send `Frame::Exec { bwrap_path: "/usr/bin/bwrap", argv, .. }`
-    ///     to the in-guest agent, collect frames.
-    ///   - Windows: equivalent vsock dispatch via the WSL2 agent.
-    ///   - Unsupported: error out.
-    ///
-    /// `rootfs_squashfs` is the path to a `.squashfs` file (Mac/Windows
-    /// pass it to libkrun/WSL2 as a virtio-blk disk; Linux ignores it
-    /// — host bwrap reads from whatever path the argv references).
-    async fn exec_raw_argv(
-        &self,
-        argv: Vec<String>,
-        rootfs_squashfs: &Path,
-        timeout: std::time::Duration,
-    ) -> Result<RawExecResult, AppError>;
 
     /// Open a long-lived multiplexed session for a sandboxed MCP
     /// stdio server using `flavor`. The MCP client holds the returned
@@ -241,11 +215,23 @@ pub trait SandboxBackend: Send + Sync {
         let _ = (state, flavor, server_id);
         Ok(())
     }
+
+    /// **Test-only seam.** Execute an arbitrary `bwrap` argv against the
+    /// given rootfs and return the raw stdout/stderr/exit. Tier-4 tests
+    /// use this to verify the hardening primitives.
+    #[allow(dead_code)]
+    async fn exec_raw_argv(
+        &self,
+        argv: Vec<String>,
+        rootfs_squashfs: &Path,
+        timeout: std::time::Duration,
+    ) -> Result<RawExecResult, AppError>;
 }
 
 /// Captured output of a raw bwrap execution. Used by tier-4 hardening
 /// tests via the per-backend `exec_raw_argv` seam.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RawExecResult {
     pub exit_code: i32,
     pub stdout: Vec<u8>,

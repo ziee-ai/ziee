@@ -84,6 +84,7 @@ pub async fn append_content(
 
 /// Create a new content block with an explicit UUID (used when the ID must be pre-registered,
 /// e.g. elicitation rows where the registry stores the content_id before the row is inserted).
+#[allow(dead_code)]
 pub async fn create_content_with_id(
     pool: &PgPool,
     id: Uuid,

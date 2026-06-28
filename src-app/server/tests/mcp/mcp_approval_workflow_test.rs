@@ -1661,7 +1661,7 @@ async fn test_tool_result_persisted_to_database() {
     }
 
     // Look for tool_result content type
-    let tool_result_contents: Vec<_> = contents.iter()
+    let _tool_result_contents: Vec<_> = contents.iter()
         .filter(|c| c["content_type"].as_str() == Some("tool_result"))
         .collect();
 

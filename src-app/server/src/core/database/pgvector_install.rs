@@ -27,6 +27,7 @@ static PGVECTOR_AVAILABLE: AtomicBool = AtomicBool::new(false);
 /// True when [`install_into`] succeeded and a `CREATE EXTENSION vector`
 /// smoke test passed. Callers (e.g. memory module init) consult this
 /// before touching `vector(N)` tables.
+#[allow(dead_code)]
 pub fn is_available() -> bool {
     PGVECTOR_AVAILABLE.load(Ordering::Acquire)
 }

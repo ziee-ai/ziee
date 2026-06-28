@@ -262,6 +262,8 @@ pub enum Compat {
 }
 
 impl Compat {
+    /// Check if this is the Ok variant (tests use this directly).
+    #[cfg(test)]
     pub fn is_ok(&self) -> bool {
         matches!(self, Compat::Ok)
     }
@@ -1080,6 +1082,7 @@ pub(crate) fn is_safe_manifest_path(rel: &str) -> bool {
 /// Guard a semver-shaped string. Kept from v1 for handlers that read
 /// per-entry `version` fields from the catalog before using them in
 /// a path or downstream identifier.
+#[allow(dead_code)]
 pub(crate) fn is_safe_version(v: &str) -> bool {
     !v.is_empty()
         && v.len() <= 32

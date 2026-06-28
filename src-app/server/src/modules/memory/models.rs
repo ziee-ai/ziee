@@ -265,15 +265,8 @@ where
 /// handler files; now a single source of truth.
 pub const MAX_MEMORY_CONTENT_LEN: usize = 4_000;
 
-/// Allowed values for `source` — guards against arbitrary writes.
-pub const VALID_SOURCES: &[&str] = &["extraction", "mcp_tool", "manual"];
-
 /// Allowed values for `kind`.
 pub const VALID_KINDS: &[&str] = &["preference", "fact", "goal", "relationship", "other"];
-
-pub fn is_valid_source(s: &str) -> bool {
-    VALID_SOURCES.contains(&s)
-}
 
 pub fn is_valid_kind(s: &str) -> bool {
     VALID_KINDS.contains(&s)

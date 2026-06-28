@@ -44,6 +44,7 @@ const TEST_KID: &str = "apple-mock-kid-1";
 pub struct AppleMockServer {
     /// Underlying wiremock instance. Stays alive for the lifetime of
     /// AppleMockServer.
+    #[allow(dead_code)]
     pub server: MockServer,
     /// Base URL — pass into the AppleProvider's config as `base_url`
     /// so its calls hit this mock instead of appleid.apple.com.

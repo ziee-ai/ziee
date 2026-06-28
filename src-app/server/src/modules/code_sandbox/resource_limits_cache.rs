@@ -51,6 +51,7 @@ pub async fn get() -> Result<Arc<CodeSandboxResourceLimits>, AppError> {
 /// returns the embedded defaults otherwise. Code paths that need
 /// always-fresh values should call [`get`] from an async context first to
 /// prime the cache.
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 pub fn snapshot_or_defaults() -> Arc<CodeSandboxResourceLimits> {
     if let Some(rw) = CACHE.get() {
         return rw.read().expect("resource_limits_cache RwLock").clone();
@@ -80,6 +81,7 @@ pub fn invalidate(new_row: &CodeSandboxResourceLimits) {
 /// boot, before migrations ran in dev). MUST match the SQL DEFAULTs in
 /// migration 41 so behavior is identical on a fresh install whether or not
 /// the cache primed yet.
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 fn defaults() -> CodeSandboxResourceLimits {
     let now = chrono::Utc::now();
     CodeSandboxResourceLimits {

@@ -512,18 +512,6 @@ pub fn tiny_gguf_bytes() -> Vec<u8> {
     buf
 }
 
-/// Truncated/garbage GGUF: valid magic but a header claiming KV pairs
-/// that aren't present, so the parser errors → validation_warning.
-pub fn garbage_gguf_bytes() -> Vec<u8> {
-    let mut buf = Vec::new();
-    buf.extend_from_slice(b"GGUF");
-    buf.extend_from_slice(&3u32.to_le_bytes());
-    buf.extend_from_slice(&999u64.to_le_bytes()); // tensor_count (lie)
-    buf.extend_from_slice(&999u64.to_le_bytes()); // kv_count (lie)
-    // … no actual KV data follows.
-    buf
-}
-
 /// Creates a test provider
 ///
 /// # Arguments
@@ -575,34 +563,6 @@ pub async fn create_test_provider(
 /// * `server` - Test server instance
 /// * `token` - Authentication token
 ///
-/// # Returns
-/// Provider JSON object
-pub async fn get_or_create_local_provider(
-    server: &TestServer,
-    token: &str,
-) -> serde_json::Value {
-    let response = reqwest::Client::new()
-        .get(server.api_url("/llm-providers"))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .unwrap();
-
-    let body: serde_json::Value = response.json().await.unwrap();
-
-    // Look for a local provider
-    if let Some(providers) = body["providers"].as_array() {
-        for provider in providers {
-            if provider["provider_type"].as_str() == Some("local") {
-                return provider.clone();
-            }
-        }
-    }
-
-    // Create a local provider if none exists
-    create_test_provider(server, token, "Local Models").await
-}
-
 /// Gets the Hugging Face repository and configures API key
 ///
 /// # Arguments

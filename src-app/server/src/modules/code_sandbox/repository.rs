@@ -85,6 +85,7 @@ impl CodeSandboxRepository {
 
     /// True when the conversation already has a provenance row for this path
     /// (so staging can skip re-copying / re-seeding).
+    #[allow(dead_code)]
     pub async fn workspace_provenance_exists(
         &self,
         conversation_id: Uuid,
@@ -232,6 +233,11 @@ impl CodeSandboxRepository {
 
     /// Fetch a single file by id, scoped to the user that owns it.
     /// Foreign-attachment access is denied at query time (returns None).
+    ///
+    /// NOTE: dead_code allowed — used by integration tests
+    /// (tier2_repository.rs) which are a separate crate, so the
+    /// lib crate's dead_code lint fires despite active use.
+    #[allow(dead_code)]
     pub async fn get_file_by_id(
         &self,
         file_id: Uuid,

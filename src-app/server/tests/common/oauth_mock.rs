@@ -9,8 +9,14 @@ use testcontainers::{
 /// This provides a lightweight, scriptable mock OAuth2/OpenID Connect server
 /// for testing OAuth flows without requiring a full Keycloak instance.
 pub struct OAuthMockServer {
+    #[allow(dead_code)]
     container: ContainerAsync<GenericImage>,
+    /// Host address. Only read by `base_url()` which is pub but never called
+    /// (tests use `issuer_url` directly). Kept as convenience for debugging.
+    #[allow(dead_code)]
     pub host: String,
+    /// Dynamically assigned port. Same status as `host`.
+    #[allow(dead_code)]
     pub port: u16,
     pub issuer_url: String,
 }
@@ -81,6 +87,7 @@ impl OAuthMockServer {
     }
 
     /// Get the base URL of the mock server
+    #[allow(dead_code)]
     pub fn base_url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
     }
@@ -101,6 +108,7 @@ impl OAuthMockServer {
     }
 
     /// Get the JWKS endpoint URL
+    #[allow(dead_code)]
     pub fn jwks_url(&self) -> String {
         format!("{}/.well-known/jwks.json", self.issuer_url)
     }

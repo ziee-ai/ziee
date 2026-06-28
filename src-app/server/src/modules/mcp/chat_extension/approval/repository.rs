@@ -119,62 +119,6 @@ pub async fn upsert_conversation_settings(
 /// model context. Closes 04-chat F-05 (Medium).
 const MAX_TOOL_INPUT_BYTES: usize = 256 * 1024;
 
-/// Create a pending tool use approval
-pub async fn create_tool_approval(
-    pool: &PgPool,
-    conversation_id: Uuid,
-    branch_id: Uuid,
-    message_id: Uuid,
-    user_id: Uuid,
-    tool_use_id: String,
-    tool_name: String,
-    tool_input: serde_json::Value,
-    server_id: Option<Uuid>,
-    server_name: String,
-) -> Result<ToolUseApproval, AppError> {
-    // Reject oversized tool_input before it lands in the DB.
-    let serialized_len = serde_json::to_string(&tool_input)
-        .map(|s| s.len())
-        .unwrap_or(0);
-    if serialized_len > MAX_TOOL_INPUT_BYTES {
-        return Err(AppError::bad_request(
-            "TOOL_INPUT_TOO_LARGE",
-            format!(
-                "tool_input is {} bytes serialized; cap is {}",
-                serialized_len, MAX_TOOL_INPUT_BYTES
-            ),
-        ));
-    }
-    let approval = sqlx::query_as!(
-        ToolUseApproval,
-        r#"
-        INSERT INTO tool_use_approvals (
-            conversation_id, branch_id, message_id, user_id,
-            tool_use_id, tool_name, tool_input, server_id, server_name, status
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
-        RETURNING
-            id, conversation_id, branch_id, message_id, user_id,
-            tool_use_id, tool_name, tool_input, server_id, server_name, status,
-            approved_at as "approved_at: _", approved_by, approval_note,
-            created_at as "created_at: _", updated_at as "updated_at: _"
-        "#,
-        conversation_id,
-        branch_id,
-        message_id,
-        user_id,
-        tool_use_id,
-        tool_name,
-        tool_input,
-        server_id,
-        server_name
-    )
-    .fetch_one(pool)
-    .await?;
-
-    Ok(approval)
-}
-
 /// One pending-approval row to insert in a batch.
 pub struct NewToolApproval {
     pub tool_use_id: String,
@@ -184,12 +128,8 @@ pub struct NewToolApproval {
     pub server_name: String,
 }
 
-/// Create many pending tool-use approvals in a single round-trip. Replaces a
-/// per-tool INSERT loop (N+1) with one multi-row INSERT. The four
-/// conversation-scoped columns are constant across the batch; the per-tool
-/// columns are passed as parallel arrays and expanded via UNNEST. RETURNING
-/// order is NOT guaranteed to match the input order — callers must not rely on
-/// positional correspondence (the SSE fan-out keys off the input list).
+/// Create pending tool use approvals in a batch (INSERT, not individual).
+/// Returns the inserted rows.
 pub async fn create_tool_approvals(
     pool: &PgPool,
     conversation_id: Uuid,

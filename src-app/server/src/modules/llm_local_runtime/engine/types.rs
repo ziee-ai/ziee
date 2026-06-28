@@ -28,33 +28,5 @@ impl std::fmt::Display for EngineType {
     }
 }
 
-/// Device type for running models.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DeviceType {
-    Cpu,
-    Cuda,
-    Metal,
-    Rocm,
-    Vulkan,
-    Opencl,
-}
-
-impl std::fmt::Display for DeviceType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Cpu => write!(f, "cpu"),
-            Self::Cuda => write!(f, "cuda"),
-            Self::Metal => write!(f, "metal"),
-            Self::Rocm => write!(f, "rocm"),
-            Self::Vulkan => write!(f, "vulkan"),
-            Self::Opencl => write!(f, "opencl"),
-        }
-    }
-}
-
-impl Default for DeviceType {
-    fn default() -> Self {
-        Self::Cpu
-    }
-}
+// DeviceType removed — dead code; the GPU-detection provider now uses a
+// per-engine settings-based approach (LlamaCppSettings / MistralRsSettings).

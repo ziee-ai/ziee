@@ -72,11 +72,13 @@ pub struct FetchOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RootfsFormat {
     Squashfs,
+    #[allow(dead_code)]
     TarZst,
 }
 
 impl RootfsFormat {
     /// File-name extension (no leading dot) for this packaging.
+    #[allow(dead_code)]
     pub fn ext(self) -> &'static str {
         match self {
             RootfsFormat::Squashfs => "squashfs",
@@ -145,6 +147,7 @@ pub fn is_fetch_in_flight(flavor: &str) -> bool {
 
 /// Resolve, download, verify, and install the squashfs for `flavor`
 /// matching the system-wide pinned rootfs version. Idempotent.
+#[allow(dead_code)]
 pub async fn fetch_flavor(
     cache_dir: &Path,
     flavor: &str,

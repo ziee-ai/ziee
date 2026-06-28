@@ -88,6 +88,7 @@ impl CancellationTracker {
     /// Used on graceful shutdown so in-flight downloads observe the cancel
     /// and run their own teardown (mark interrupted, stop writing) instead of
     /// being abruptly aborted with the runtime. Returns the number cancelled.
+    #[allow(dead_code)]
     pub async fn cancel_all(&self) -> usize {
         let mut senders = self.cancellation_senders.write().await;
         let count = senders.len();

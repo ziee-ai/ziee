@@ -27,8 +27,6 @@ pub mod repository;
 pub mod routes;
 pub mod tools;
 
-pub use repository::FilesMcpRepository;
-
 /// Deterministic UUID for the built-in files MCP server row. Stable across
 /// deployments. Mirrors `memory_mcp_server_id`.
 pub fn files_mcp_server_id() -> Uuid {

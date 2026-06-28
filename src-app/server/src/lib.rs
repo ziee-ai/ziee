@@ -186,7 +186,8 @@ pub mod mcp {
 // `ziee::code_sandbox::CodeSandboxRepository`).
 #[doc(hidden)]
 pub mod workflow_mcp {
-    pub use crate::modules::workflow_mcp::{workflow_mcp_server_id, WorkflowMcpRepository};
+    pub use crate::modules::workflow_mcp::repository::WorkflowMcpRepository;
+    pub use crate::modules::workflow_mcp::workflow_mcp_server_id;
 }
 
 // Re-export the web_search built-in-server registration surface for the Tier-2
@@ -495,7 +496,10 @@ async fn setup_server(
         // engine auto-start synchronously before returning a
         // Response, so this layer caps the whole spawn + first-byte
         // window. See main.rs for the full rationale.
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)));
+        .layer(tower_http::timeout::TimeoutLayer::with_status_code(
+            axum::http::StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(660),
+        ));
     let app = core::app_builder::apply_rate_limit_layer(app, &config, None);
     let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(

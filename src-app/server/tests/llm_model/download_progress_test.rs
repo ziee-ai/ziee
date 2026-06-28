@@ -378,6 +378,7 @@ async fn test_download_cancellation() {
     // we WANT to test cancel-after-complete, so wait until complete.
     let client = reqwest::Client::new();
     let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    #[allow(unused_assignments)]
     let mut last_status = String::new();
     loop {
         let resp = client

@@ -48,7 +48,7 @@ impl SkillListQuery {
 use super::events;
 use super::models::{Skill, UpdateSkill};
 use super::permissions::{
-    SkillsAssignToGroups, SkillsInstall, SkillsManage, SkillsManageSystem, SkillsRead,
+    SkillsAssignToGroups, SkillsManage, SkillsManageSystem, SkillsRead,
 };
 use super::types::{
     AvailableSkillEntry, AvailableSkillsQuery, AvailableSkillsResponse,

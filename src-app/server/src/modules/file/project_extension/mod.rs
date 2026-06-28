@@ -19,4 +19,4 @@ pub mod models;
 pub mod repository;
 pub mod routes;
 
-pub use repository::{PROJECT_MAX_FILES, ProjectFilesRepository};
+pub use repository::ProjectFilesRepository;

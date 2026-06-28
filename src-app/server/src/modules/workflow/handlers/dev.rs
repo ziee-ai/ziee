@@ -8,8 +8,6 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-
 use aide::transform::TransformOperation;
 use axum::extract::{Multipart, Path as AxumPath, Query};
 use axum::http::StatusCode;

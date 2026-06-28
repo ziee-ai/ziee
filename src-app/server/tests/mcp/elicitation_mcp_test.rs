@@ -68,7 +68,7 @@ async fn setup_with(tools: bool) -> Fixture {
     let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
     let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
 
-    let mut probe = ChatStreamProbe::open(&server, &user.token).await;
+    let probe = ChatStreamProbe::open(&server, &user.token).await;
     probe.subscribe(Some(conv_id)).await;
 
     Fixture {

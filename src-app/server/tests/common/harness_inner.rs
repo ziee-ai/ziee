@@ -92,9 +92,8 @@ pub struct TestServer {
     /// sandbox is enabled). Held here so Drop cleans it; tests that
     /// need the path can read `workspace_root` below.
     _workspace_tempdir: Option<tempfile::TempDir>,
-    /// Resolved workspace_root that was injected into the test YAML
-    /// (`None` when sandbox was not enabled for this test).
-    pub workspace_root: Option<PathBuf>,
+    // (workspace_root was removed — unused; the config string still
+    // injects it into the test YAML, but no test reads this field.)
     /// Tier-6 cache TempDir holding the staged test squashfs +
     /// known_revisions.dev.toml on Mac/Windows. Held for the
     /// TestServer's lifetime; dropped (which deletes the tree) when
@@ -194,6 +193,9 @@ pub struct TestServerOptions {
 impl TestServer {
     /// Start a TestServer with the default options (sandbox disabled).
     /// Equivalent to `start_with_options(TestServerOptions::default())`.
+    /// Used by the ziee server tests but not the desktop tests (which use
+    /// `start_desktop`), so it reads as dead on the desktop build — keep it.
+    #[allow(dead_code)]
     pub async fn start() -> Self {
         Self::start_with_options(TestServerOptions::default()).await
     }
@@ -201,6 +203,10 @@ impl TestServer {
     /// Start a TestServer that spawns `ziee-desktop --headless`
     /// instead of the server-only `ziee` binary. Required for tests
     /// that exercise routes owned by the desktop crate.
+    ///
+    /// Used cross-crate by the `ziee-desktop` integration tests, so it
+    /// appears unused from the `ziee` crate's own build — keep it.
+    #[allow(dead_code)]
     pub async fn start_desktop() -> Self {
         Self::start_with_options(TestServerOptions {
             use_desktop_binary: true,
@@ -351,7 +357,7 @@ secrets:
         // Optional code_sandbox section. Only written when the test
         // explicitly opts in; otherwise the server boots with sandbox
         // disabled (the default behavior every existing test relies on).
-        let (workspace_tempdir, workspace_root_path) = if opts.sandbox_enabled {
+        let (workspace_tempdir, _) = if opts.sandbox_enabled {
             let rootfs = opts
                 .sandbox_rootfs
                 .as_ref()
@@ -543,7 +549,7 @@ secrets:
             database_url: test_database_url,
             temp_config_path,
             _workspace_tempdir: workspace_tempdir,
-            workspace_root: workspace_root_path,
+            // workspace_root field removed — see struct doc
             _sandbox_cache_tempdir: opts.sandbox_cache_tempdir.clone(),
             _hub_tempdir: hub_tempdir,
         }
@@ -747,6 +753,9 @@ pub mod test_helpers {
     /// `create_user_with_permissions(_, _, &["A"])` would leave the user
     /// in default + add a separate group with [A], giving them both A
     /// AND every default permission.
+    // Shared cross-crate harness: used by the ziee server tests but not the
+    // desktop tests, so it reads as dead on the desktop build — keep it.
+    #[allow(dead_code)]
     pub async fn create_user_with_only_permissions(
         server: &TestServer,
         username: &str,
@@ -779,6 +788,9 @@ pub mod test_helpers {
     }
 
     /// Create a test user via API (requires admin token)
+    // Shared cross-crate harness: used by the ziee server tests but not the
+    // desktop tests, so it reads as dead on the desktop build — keep it.
+    #[allow(dead_code)]
     pub async fn create_test_user(
         server: &TestServer,
         admin_token: &str,
@@ -805,75 +817,4 @@ pub mod test_helpers {
     }
 }
 
-/// Helper to make HTTP requests during tests
-pub mod http {
-    use serde::Serialize;
-    use serde::de::DeserializeOwned;
-
-    pub async fn get<T: DeserializeOwned>(url: &str) -> Result<T, reqwest::Error> {
-        reqwest::get(url).await?.json().await
-    }
-
-    pub async fn get_with_auth<T: DeserializeOwned>(
-        url: &str,
-        token: &str,
-    ) -> Result<T, reqwest::Error> {
-        let client = reqwest::Client::new();
-        client
-            .get(url)
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await?
-            .json()
-            .await
-    }
-
-    pub async fn post<T: Serialize, R: DeserializeOwned>(
-        url: &str,
-        body: &T,
-    ) -> Result<R, reqwest::Error> {
-        let client = reqwest::Client::new();
-        client.post(url).json(body).send().await?.json().await
-    }
-
-    pub async fn post_with_auth<T: Serialize, R: DeserializeOwned>(
-        url: &str,
-        token: &str,
-        body: &T,
-    ) -> Result<R, reqwest::Error> {
-        let client = reqwest::Client::new();
-        client
-            .post(url)
-            .header("Authorization", format!("Bearer {}", token))
-            .json(body)
-            .send()
-            .await?
-            .json()
-            .await
-    }
-
-    pub async fn put<T: Serialize, R: DeserializeOwned>(
-        url: &str,
-        body: &T,
-    ) -> Result<R, reqwest::Error> {
-        let client = reqwest::Client::new();
-        client.put(url).json(body).send().await?.json().await
-    }
-
-    pub async fn delete(url: &str) -> Result<reqwest::Response, reqwest::Error> {
-        let client = reqwest::Client::new();
-        client.delete(url).send().await
-    }
-
-    pub async fn delete_with_auth(
-        url: &str,
-        token: &str,
-    ) -> Result<reqwest::Response, reqwest::Error> {
-        let client = reqwest::Client::new();
-        client
-            .delete(url)
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-    }
-}
+// http helper module removed — all functions were unused.

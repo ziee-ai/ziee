@@ -5,7 +5,7 @@
 
 use crate::common::TestServer;
 use crate::common::test_helpers::create_user_with_permissions;
-use super::mock_release::{self, MockReleaseServer};
+use super::mock_release;
 use super::test_helpers::{self as lrt, LOCAL_RUNTIME_ADMIN_PERMS};
 use reqwest::StatusCode;
 use serde_json::json;

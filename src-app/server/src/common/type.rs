@@ -280,12 +280,14 @@ impl<'de> Deserialize<'de> for PaginationQuery {
 impl PaginationQuery {
     /// `page` is already clamped on deserialize; this method is kept as
     /// an explicit no-op for callers built before the deserializer change.
+    #[allow(dead_code)]
     pub fn page_clamped(&self) -> i32 {
         self.page
     }
 
     /// `per_page` is already clamped on deserialize; this method is kept
     /// as an explicit no-op for callers built before the deserializer change.
+    #[allow(dead_code)]
     pub fn per_page_clamped(&self) -> i32 {
         self.per_page
     }

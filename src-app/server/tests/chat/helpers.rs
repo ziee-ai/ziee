@@ -599,22 +599,6 @@ pub async fn create_conversation(
     response.json().await.unwrap()
 }
 
-/// Get all conversations for the user
-pub async fn list_conversations(
-    server: &crate::common::TestServer,
-    token: &str,
-) -> Value {
-    let response = reqwest::Client::new()
-        .get(server.api_url("/conversations"))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    response.json().await.unwrap()
-}
-
 /// Get a conversation by ID
 pub async fn get_conversation(
     server: &crate::common::TestServer,
@@ -737,22 +721,6 @@ pub async fn edit_message(
     response.json().await.unwrap()
 }
 
-/// Delete a message
-pub async fn delete_message(
-    server: &crate::common::TestServer,
-    token: &str,
-    message_id: Uuid,
-) -> StatusCode {
-    let response = reqwest::Client::new()
-        .delete(server.api_url(&format!("/messages/{}", message_id)))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .unwrap();
-
-    response.status()
-}
-
 /// Create a branch from a message
 pub async fn create_branch(
     server: &crate::common::TestServer,
@@ -778,47 +746,6 @@ pub async fn create_branch(
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    response.json().await.unwrap()
-}
-
-/// List all branches in a conversation
-pub async fn list_branches(
-    server: &crate::common::TestServer,
-    token: &str,
-    conversation_id: Uuid,
-) -> Value {
-    let response = reqwest::Client::new()
-        .get(server.api_url(&format!(
-            "/conversations/{}/branches",
-            conversation_id
-        )))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    response.json().await.unwrap()
-}
-
-/// Activate a branch
-pub async fn activate_branch(
-    server: &crate::common::TestServer,
-    token: &str,
-    conversation_id: Uuid,
-    branch_id: Uuid,
-) -> Value {
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!(
-            "/conversations/{}/branches/{}/activate",
-            conversation_id, branch_id
-        )))
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
     response.json().await.unwrap()
 }
 
@@ -1065,25 +992,6 @@ pub async fn create_stub_model_with_delay(
     (stub, model)
 }
 
-/// Parse SSE stream into individual chunks
-/// Returns a vector of parsed JSON chunks
-pub async fn parse_sse_stream(response: reqwest::Response) -> Vec<Value> {
-    let bytes = response.bytes().await.unwrap();
-    let text = String::from_utf8(bytes.to_vec()).unwrap();
-
-    let mut chunks = Vec::new();
-    for line in text.lines() {
-        if let Some(json_str) = line.strip_prefix("data: ") {
-            // Remove "data: " prefix
-            if json_str != "[DONE]"
-                && let Ok(chunk) = serde_json::from_str::<Value>(json_str) {
-                    chunks.push(chunk);
-                }
-        }
-    }
-    chunks
-}
-
 /// SSE Event with event name and data
 #[derive(Debug, Clone)]
 pub struct SSEEvent {
@@ -1091,95 +999,22 @@ pub struct SSEEvent {
     pub data: Value,
 }
 
-/// Parse SSE stream into events with their event names
-/// Returns a vector of SSEEvent structs with event name and parsed data
-pub async fn parse_sse_events(response: reqwest::Response) -> Vec<SSEEvent> {
-    let bytes = response.bytes().await.unwrap();
-    let text = String::from_utf8(bytes.to_vec()).unwrap();
-
-    let mut events = Vec::new();
-    let mut current_event = String::from("message"); // Default SSE event type
-
-    for line in text.lines() {
-        if line.starts_with("event: ") {
-            current_event = line[7..].trim().to_string();
-        } else if let Some(json_str) = line.strip_prefix("data: ") {
-            // Remove "data: " prefix
-            if json_str != "[DONE]"
-                && let Ok(data) = serde_json::from_str::<Value>(json_str) {
-                    events.push(SSEEvent {
-                        event: current_event.clone(),
-                        data,
-                    });
-                }
-            // Reset to default after consuming data
-            current_event = String::from("message");
-        }
-    }
-    events
+/// Extract UUIDs from JSON string fields
+pub fn parse_uuid(value: &Value) -> Uuid {
+    value
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .expect("Failed to parse UUID from JSON value")
 }
 
-/// Query branch_messages junction table to verify message-branch relationships
-/// Returns vector of (message_id, is_clone) tuples
-pub async fn get_branch_messages(
-    server: &crate::common::TestServer,
-    branch_id: Uuid,
-) -> Vec<(Uuid, bool)> {
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&server.database_url)
-        .await
-        .expect("Failed to connect to test database");
-
-    let rows = sqlx::query!(
-        "SELECT message_id, is_clone FROM branch_messages
-         WHERE branch_id = $1 ORDER BY created_at",
-        branch_id
-    )
-    .fetch_all(&pool)
-    .await
-    .unwrap();
-
-    pool.close().await;
-
-    rows.iter()
-        .map(|row| (row.message_id, row.is_clone))
-        .collect()
-}
-
-/// Verify branch structure matches expected message IDs and clone flags
-pub async fn verify_branch_structure(
-    server: &crate::common::TestServer,
-    branch_id: Uuid,
-    expected_message_ids: &[Uuid],
-    expected_clone_flags: &[bool],
-) {
+/// Assert that two UUIDs match (helper for cleaner test code)
+pub fn assert_uuid_eq(actual: &Value, expected: Uuid, field_name: &str) {
+    let actual_uuid = parse_uuid(actual);
     assert_eq!(
-        expected_message_ids.len(),
-        expected_clone_flags.len(),
-        "Expected arrays must have same length"
+        actual_uuid, expected,
+        "UUID mismatch for field '{}'",
+        field_name
     );
-
-    let branch_messages = get_branch_messages(server, branch_id).await;
-
-    assert_eq!(
-        branch_messages.len(),
-        expected_message_ids.len(),
-        "Branch has different number of messages than expected"
-    );
-
-    for (i, (msg_id, is_clone)) in branch_messages.iter().enumerate() {
-        assert_eq!(
-            *msg_id, expected_message_ids[i],
-            "Message ID mismatch at position {}",
-            i
-        );
-        assert_eq!(
-            *is_clone, expected_clone_flags[i],
-            "Clone flag mismatch at position {}",
-            i
-        );
-    }
 }
 
 /// Get message contents from database
@@ -1251,63 +1086,4 @@ pub async fn get_approval_status_from_db(
     pool.close().await;
 
     result.map(|row| row.status)
-}
-
-/// Get all tool use approvals for a branch from database
-pub async fn get_all_approvals_from_db(
-    server: &crate::common::TestServer,
-    branch_id: Uuid,
-) -> Vec<Value> {
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&server.database_url)
-        .await
-        .expect("Failed to connect to test database");
-
-    let rows = sqlx::query!(
-        r#"
-        SELECT id, tool_use_id, tool_name, status, approved_by, approval_note, created_at
-        FROM tool_use_approvals
-        WHERE branch_id = $1
-        ORDER BY created_at
-        "#,
-        branch_id
-    )
-    .fetch_all(&pool)
-    .await
-    .unwrap();
-
-    pool.close().await;
-
-    rows.iter()
-        .map(|row| {
-            json!({
-                "id": row.id.to_string(),
-                "tool_use_id": row.tool_use_id,
-                "tool_name": row.tool_name,
-                "status": row.status,
-                "approved_by": row.approved_by.map(|u| u.to_string()),
-                "approval_note": row.approval_note,
-                "created_at": row.created_at.to_string(),
-            })
-        })
-        .collect()
-}
-
-/// Extract UUIDs from JSON string fields
-pub fn parse_uuid(value: &Value) -> Uuid {
-    value
-        .as_str()
-        .and_then(|s| Uuid::parse_str(s).ok())
-        .expect("Failed to parse UUID from JSON value")
-}
-
-/// Assert that two UUIDs match (helper for cleaner test code)
-pub fn assert_uuid_eq(actual: &Value, expected: Uuid, field_name: &str) {
-    let actual_uuid = parse_uuid(actual);
-    assert_eq!(
-        actual_uuid, expected,
-        "UUID mismatch for field '{}'",
-        field_name
-    );
 }

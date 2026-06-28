@@ -16,12 +16,15 @@ use uuid::Uuid;
 pub enum AuthProviderEvent {
     /// A new provider was created. Refetch via the list endpoint for
     /// the row data (which masks secrets).
+    #[allow(dead_code)]
     Created { id: Uuid },
 
     /// A provider was updated.
+    #[allow(dead_code)]
     Updated { id: Uuid },
 
     /// A provider was deleted. Linked user accounts remain.
+    #[allow(dead_code)]
     Deleted { id: Uuid, name: String },
 
     /// An enabled provider failed its connection probe and was
@@ -29,6 +32,7 @@ pub enum AuthProviderEvent {
     /// `health::enforce_on_create_with_enabled`, and
     /// `health::record_test_outcome` — every path where the probe can
     /// flip `enabled=false` server-side.
+    #[allow(dead_code)]
     AutoDisabled { id: Uuid, reason: String },
 }
 

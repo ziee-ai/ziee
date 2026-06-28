@@ -16,6 +16,7 @@ use testcontainers::{
 /// - Bender
 /// - And many more...
 pub struct LdapMockServer {
+    #[allow(dead_code)]
     container: ContainerAsync<GenericImage>,
     pub host: String,
     pub port: u16,
@@ -79,12 +80,6 @@ impl LdapMockServer {
     pub fn get_test_user() -> (&'static str, &'static str) {
         // Fry's credentials from the test LDAP server
         ("fry", "fry")
-    }
-
-    /// Get another test user credentials
-    pub fn get_test_user_2() -> (&'static str, &'static str) {
-        // Leela's credentials
-        ("leela", "leela")
     }
 }
 

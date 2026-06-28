@@ -19,7 +19,7 @@
 //! has its own SSE-progress plumbing via `streaming.rs`.
 
 use axum::http::StatusCode;
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::{KeepAlive, Sse};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::Deserialize;
