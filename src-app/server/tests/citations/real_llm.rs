@@ -278,3 +278,103 @@ async fn real_llm_multi_turn_citations() {
         "turn 2 should also invoke a citations tool (built-in stays attached across turns)"
     );
 }
+
+/// Real-LLM coverage for `lookup_citations` specifically (verify + add + list
+/// are covered above; lookup — resolve a reference WITHOUT persisting — was not).
+/// The model is told to look up DOI 10.5555/known; we assert a citations tool
+/// fired AND that lookup did NOT persist a library entry (lookup ≠ add).
+#[tokio::test]
+async fn real_llm_invokes_lookup_citations() {
+    let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
+        eprintln!("skipping citations::real_llm_lookup — ANTHROPIC_API_KEY unset");
+        return;
+    };
+
+    let doi = crate::citations::start_mock_doi_resolver().await;
+    let idconv = crate::citations::start_mock_idconv().await;
+    let crossref = crate::citations::start_mock_crossref().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("ANTHROPIC_API_KEY".to_string(), api_key.clone()),
+            ("CITATIONS_RESOLVER_ENDPOINT".to_string(), doi),
+            ("CITATIONS_IDCONV_ENDPOINT".to_string(), idconv),
+            ("CITATIONS_CROSSREF_ENDPOINT".to_string(), crossref),
+            ("CITATIONS_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+        ],
+        ..Default::default()
+    })
+    .await;
+
+    let user = create_user_with_permissions(
+        &server,
+        "cit_real_llm_lookup",
+        &[
+            "conversations::create", "conversations::read", "conversations::edit",
+            "messages::create", "messages::read", "llm_models::read",
+            "citations::use", "citations::manage",
+        ],
+    )
+    .await;
+
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let cit_id = citations_server_id();
+    for _ in 0..50 {
+        let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM mcp_servers WHERE id = $1")
+            .bind(cit_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
+        if exists.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let default_group: Uuid =
+        sqlx::query_scalar("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id, assigned_at) \
+         VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING",
+    )
+    .bind(default_group)
+    .bind(cit_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let model = create_tool_capable_anthropic_model(&server, &user.user_id, &api_key).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let payload = json!({
+        "content": "Use ONLY the lookup_citations tool to look up DOI 10.5555/known. \
+                    Do NOT add or save it — just look it up. You MUST call the tool.",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string(),
+        "enable_mcp": true,
+        "mcp_config": { "mcp_servers": [ { "server_id": cit_id.to_string(), "tools": [] } ] }
+    });
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server, &user.token, conversation_id, payload, &["complete"],
+    )
+    .await;
+    assert!(
+        events.iter().any(|e| e.event == "mcpToolStart"),
+        "the model should have called the lookup_citations tool"
+    );
+
+    // lookup must NOT persist a library entry (it only resolves).
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM bibliography_entries WHERE user_id = $1")
+            .bind(Uuid::parse_str(&user.user_id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    pool.close().await;
+    assert_eq!(count, 0, "lookup_citations must not persist an entry; found {count}");
+}
