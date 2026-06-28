@@ -712,3 +712,44 @@ async fn test_by_id_404_for_nonexistent_repository() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+/// Concurrent test-connection probes of the SAME repository must all succeed
+/// (no 500/panic) and converge to a consistent healthy row — exercises the
+/// race on the shared probe → last_health_check write path. The mock upstream
+/// is the only external boundary; the probe logic + DB write are real.
+#[tokio::test]
+async fn concurrent_test_by_id_probes_all_succeed_and_converge() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let upstream = mock_ok().await;
+    let repo_id = seed_disabled_row(&server, &admin.token, "byid-race", &upstream.uri()).await;
+
+    // Fire 8 concurrent probes of the same row.
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let url = server.api_url(&format!("/llm-repositories/{repo_id}/test"));
+        let token = admin.token.clone();
+        handles.push(tokio::spawn(async move {
+            reqwest::Client::new()
+                .post(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&serde_json::json!({}))
+                .send()
+                .await
+                .unwrap()
+        }));
+    }
+    for h in handles {
+        let resp = h.await.unwrap();
+        assert_eq!(resp.status(), 200, "every concurrent probe must 200, not error");
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body["success"], true, "each concurrent probe succeeds: {body}");
+    }
+
+    // The row converges to a single consistent healthy state.
+    let pool = pool_for(&server).await;
+    let (_enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
+    assert_eq!(status, "healthy", "row converges healthy after concurrent probes");
+    assert_eq!(reason, None);
+    assert!(at.is_some(), "last_health_check_at stamped");
+}
