@@ -1011,6 +1011,72 @@ mod tests {
         assert_eq!(build_transcript(&m), "");
     }
 
+    // ---- message_to_summarizable (content-block text extraction) ----
+
+    fn content_block(
+        content: serde_json::Value,
+    ) -> crate::modules::chat::core::models::content::MessageContent {
+        let ty = content
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("text")
+            .to_string();
+        crate::modules::chat::core::models::content::MessageContent {
+            id: Uuid::new_v4(),
+            message_id: Uuid::new_v4(),
+            content_type: ty,
+            content,
+            sequence_order: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    fn message_with(
+        role: &str,
+        blocks: Vec<serde_json::Value>,
+    ) -> crate::modules::chat::core::types::MessageWithContent {
+        crate::modules::chat::core::types::MessageWithContent {
+            message: crate::modules::chat::core::models::message::Message {
+                id: Uuid::new_v4(),
+                role: role.to_string(),
+                originated_from_id: Uuid::new_v4(),
+                edit_count: 0,
+                model_id: None,
+                created_at: chrono::Utc::now(),
+            },
+            contents: blocks.into_iter().map(content_block).collect(),
+        }
+    }
+
+    #[test]
+    fn message_to_summarizable_extracts_only_text_blocks() {
+        // A turn mixing a text block with a NON-text (thinking) block — only the
+        // text contributes to the summarizable text.
+        let m = message_with(
+            "assistant",
+            vec![
+                serde_json::json!({ "type": "text", "text": "the answer is 42" }),
+                serde_json::json!({ "type": "thinking", "thinking": "internal reasoning" }),
+            ],
+        );
+        let s = message_to_summarizable(&m);
+        assert_eq!(s.role, "assistant");
+        assert_eq!(s.text, "the answer is 42", "only the text block contributes");
+    }
+
+    #[test]
+    fn message_to_summarizable_non_text_only_turn_yields_empty_text() {
+        // A turn with NO text block (thinking-only) → empty text, so the
+        // downstream transcript/decide logic correctly skips it (no crash).
+        let m = message_with(
+            "user",
+            vec![serde_json::json!({ "type": "thinking", "thinking": "just reasoning" })],
+        );
+        let s = message_to_summarizable(&m);
+        assert_eq!(s.text, "", "a non-text-only turn must produce empty text");
+    }
+
     // ---- apply_summary_block ----
 
     fn user_msg(text: &str) -> ChatMessage {
