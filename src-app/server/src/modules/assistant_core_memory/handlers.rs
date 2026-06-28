@@ -7,6 +7,9 @@ use super::permissions::{CoreMemoryRead, CoreMemoryWrite};
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::permissions::{RequirePermissions, with_permission};
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
+};
 
 const MAX_BLOCK_LABEL_LEN: usize = 64;
 const MAX_CONTENT_LEN: usize = 50_000;
@@ -41,6 +44,7 @@ pub fn list_blocks_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn upsert_block(
     auth: RequirePermissions<(CoreMemoryWrite,)>,
+    origin: SyncOrigin,
     Json(body): Json<UpsertCoreMemoryBlockRequest>,
 ) -> ApiResult<Json<CoreMemoryBlock>> {
     if !is_valid_block_label(&body.block_label) {
@@ -75,6 +79,13 @@ pub async fn upsert_block(
             body.char_limit,
         )
         .await?;
+    sync_publish(
+        SyncEntity::AssistantCoreMemory,
+        SyncAction::Update,
+        body.assistant_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(row)))
 }
 
@@ -89,6 +100,7 @@ pub fn upsert_block_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn delete_block(
     auth: RequirePermissions<(CoreMemoryWrite,)>,
+    origin: SyncOrigin,
     Path((assistant_id, block_label)): Path<(Uuid, String)>,
 ) -> ApiResult<StatusCode> {
     if !is_valid_block_label(&block_label) {
@@ -105,6 +117,13 @@ pub async fn delete_block(
     if !deleted {
         return Err(AppError::not_found("CoreMemoryBlock").into());
     }
+    sync_publish(
+        SyncEntity::AssistantCoreMemory,
+        SyncAction::Delete,
+        assistant_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 

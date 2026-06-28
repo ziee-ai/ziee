@@ -84,6 +84,8 @@ pub enum SyncEntity {
     MemoryAdminSettings,
     /// Deployment-wide Document-RAG (file_rag) admin settings (singleton).
     FileRagAdminSettings,
+    /// A user's Letta-style assistant core-memory blocks changed (owner-scoped).
+    AssistantCoreMemory,
     /// Code-sandbox resource-limit settings (singleton).
     CodeSandboxSettings,
     /// Hub catalog settings (singleton).

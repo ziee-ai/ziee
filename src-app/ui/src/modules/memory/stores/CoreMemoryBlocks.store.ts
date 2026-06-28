@@ -46,6 +46,7 @@ export const useCoreMemoryBlocksStore = create<CoreMemoryBlocksStore>()(
               void get().load(assistantId)
             })
           }
+          eventBus.on('sync:assistant_core_memory', reloadAll, GROUP)
           eventBus.on('sync:reconnect', reloadAll, GROUP)
         },
       },
