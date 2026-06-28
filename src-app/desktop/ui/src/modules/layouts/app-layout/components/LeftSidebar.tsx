@@ -146,7 +146,10 @@ export function LeftSidebar() {
   // the box (at the content area's left edge); user grabs in that
   // 8px gap to resize.
   return (
+    // token-derived glass material: color-mix(var(--card)) fill + var(--border) inset border +
+    // conditional elevation shadow; theme-aware, not hardcoded hues, but not expressible as token classes
     <div
+      data-allow-custom-color
       style={{
         position: 'absolute',
         top: 8,

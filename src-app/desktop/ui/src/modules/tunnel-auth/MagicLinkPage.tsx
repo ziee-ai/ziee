@@ -85,7 +85,7 @@ export function MagicLinkPage() {
     return (
       <PageShell centerColumn>
         <Spin size="lg" label="Logging you in" />
-        <span className="text-sm text-gray-500">Logging you in…</span>
+        <span className="text-sm text-muted-foreground">Logging you in…</span>
       </PageShell>
     )
   }
@@ -109,7 +109,7 @@ export function MagicLinkPage() {
           subtitle={
             <>
               <div>{exchangeError}</div>
-              <div className="text-xs text-gray-500 mt-2">
+              <div className="text-xs text-muted-foreground mt-2">
                 Magic links expire after 5 minutes and can only be used once.
                 Get a fresh one from the desktop app's Remote Access page.
               </div>

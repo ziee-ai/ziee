@@ -178,8 +178,10 @@ export const HeaderBarContainer = ({
           content surface color, bottom edge is transparent. When
           content scrolls up beneath the (transparent) header, it
           dissolves into the bg color before being clipped. */}
+      {/* token-derived gradient (var(--card) → transparent card); theme-aware, not a hardcoded hue, but no single token class expresses a gradient */}
       <div
         aria-hidden="true"
+        data-allow-custom-color
         style={{
           position: 'absolute',
           left: 0,
