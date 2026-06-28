@@ -139,3 +139,54 @@ async fn read_skill_file_reads_reference_and_rejects_traversal() {
         "rejection mentions path safety: {msg}"
     );
 }
+
+/// The MCP tool result must carry BOTH channels (handlers.rs:148-151): a
+/// human/text `content[]` block AND a machine-readable `structuredContent`,
+/// with the text channel being the stringified structured value. Existing
+/// tests only read `structuredContent`; this pins the dual-channel contract.
+#[tokio::test]
+async fn load_skill_response_has_dual_text_and_structured_channels() {
+    let (server, _mock) = server_with_skill_catalog().await;
+    let admin = admin_and_refresh(&server).await;
+    install_fixture_skill(&server, &admin.token).await;
+
+    let body: Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "load_skill", "arguments": { "name": FIXTURE_SKILL_NAME } }),
+    )
+    .send()
+    .await
+    .expect("load_skill")
+    .json()
+    .await
+    .expect("parse");
+
+    assert!(body["error"].is_null(), "load_skill should succeed: {body}");
+    let result = &body["result"];
+
+    // Text channel: a `content` array whose first block is type=text.
+    let block = &result["content"][0];
+    assert_eq!(block["type"], "text", "first content block is text: {body}");
+    let text = block["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("text channel present: {body}"));
+    assert!(!text.is_empty(), "text channel non-empty: {body}");
+
+    // Structured channel: a machine-readable object present alongside text.
+    let structured = &result["structuredContent"];
+    assert!(
+        structured.is_object(),
+        "structuredContent present as object: {body}"
+    );
+
+    // The text channel is exactly the stringified structured value
+    // (handlers does `text: v.to_string()`, `structuredContent: v`).
+    let reparsed: Value = serde_json::from_str(text)
+        .unwrap_or_else(|e| panic!("text channel is the JSON-encoded structured value ({e}): {text}"));
+    assert_eq!(
+        &reparsed, structured,
+        "text channel mirrors structuredContent"
+    );
+}
