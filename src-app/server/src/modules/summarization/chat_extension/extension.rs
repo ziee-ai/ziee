@@ -37,3 +37,25 @@ static SUMMARIZATION_EXTENSION: ExtensionEntry = ExtensionEntry {
     order: METADATA.order,
     factory: create,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::METADATA as SUMMARIZATION;
+    use crate::modules::memory::chat_extension::extension::METADATA as MEMORY;
+
+    /// Load-bearing invariant: the summarization extension MUST run strictly
+    /// before the memory extension. Memory inserts core-memory blocks at
+    /// position 0 / appends a retrieval block; if memory ran first it would
+    /// shift the message indices summarization counts when pruning the
+    /// condensed prefix. Guard the two `order` constants so a future re-number
+    /// of either can't silently invert them.
+    #[test]
+    fn summarization_runs_before_memory() {
+        assert!(
+            SUMMARIZATION.order < MEMORY.order,
+            "summarization (order {}) must run before memory (order {})",
+            SUMMARIZATION.order,
+            MEMORY.order
+        );
+    }
+}
