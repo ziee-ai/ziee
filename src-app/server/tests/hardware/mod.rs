@@ -262,3 +262,63 @@ async fn test_subscribe_hardware_usage_sse_format() {
     // Note: We don't read the response body because SSE streams are endless
     // and would cause the test to hang. The content-type verification is sufficient.
 }
+
+/// Permission edge case: `hardware::read` and `hardware::monitor` are a SPLIT.
+/// Holding one must NOT grant the other endpoint. The existing tests only cover
+/// with-perm / no-perm; this covers the WRONG-perm cross combinations.
+#[tokio::test]
+async fn test_hardware_read_and_monitor_perms_do_not_cross() {
+    let server = crate::common::TestServer::start().await;
+
+    // User A: monitor only (no read).
+    let monitor_only = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hw_monitor_only",
+        &["hardware::monitor"],
+    )
+    .await;
+    // User B: read only (no monitor).
+    let read_only = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hw_read_only",
+        &["hardware::read"],
+    )
+    .await;
+
+    let client = reqwest::Client::new();
+
+    // monitor-only on the read endpoint → 403.
+    let r = client
+        .get(server.api_url("/hardware"))
+        .header("Authorization", format!("Bearer {}", monitor_only.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        r.status(),
+        403,
+        "hardware::monitor must NOT grant access to the hardware::read info endpoint"
+    );
+
+    // read-only on the monitor (usage-stream) endpoint → 403.
+    let r = client
+        .get(server.api_url("/hardware/usage-stream"))
+        .header("Authorization", format!("Bearer {}", read_only.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        r.status(),
+        403,
+        "hardware::read must NOT grant access to the hardware::monitor usage stream"
+    );
+
+    // Positive controls: each perm DOES grant its own endpoint.
+    let r = client
+        .get(server.api_url("/hardware"))
+        .header("Authorization", format!("Bearer {}", read_only.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200, "hardware::read grants the info endpoint");
+}
