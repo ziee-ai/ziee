@@ -150,3 +150,50 @@ async fn test_core_memory_endpoints_require_permission() {
         .unwrap();
     assert_eq!(delete.status(), 403, "delete must be perm-gated");
 }
+
+// audit id all-78af0c1c5c31 — char_limit edge cases. The handler requires
+// char_limit in 1..=50000 (handlers.rs:64-70), checked BEFORE any DB/FK work.
+// block_label + content are valid here so the char_limit guard is the one that
+// fires. The existing tests only used a valid char_limit (1000/100).
+#[tokio::test]
+async fn test_core_memory_char_limit_edge_cases_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_charlimit",
+        &["memory::core::read", "memory::core::write"],
+    )
+    .await;
+    let assistant_id = Uuid::new_v4();
+
+    let put = |char_limit: i64| {
+        let url = server.api_url("/assistants/core-memory");
+        let token = user.token.clone();
+        async move {
+            reqwest::Client::new()
+                .put(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "assistant_id": assistant_id,
+                    "block_label": "persona",
+                    "content": "valid content",
+                    "char_limit": char_limit,
+                }))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // 0 is below the 1..=50000 range.
+    let res = put(0).await;
+    assert_eq!(res.status(), 400, "char_limit 0 must be rejected");
+    assert_eq!(
+        res.json::<Value>().await.unwrap_or_default()["error_code"],
+        "VALIDATION_ERROR"
+    );
+
+    // 50001 is above the range.
+    let res = put(50_001).await;
+    assert_eq!(res.status(), 400, "char_limit 50001 must be rejected");
+}
