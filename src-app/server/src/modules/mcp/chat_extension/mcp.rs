@@ -1169,8 +1169,9 @@ impl ChatExtension for McpChatExtension {
             mcp_servers.as_ref().map(|s| s.len()).unwrap_or(0)
         );
 
-        // Validate and build server configuration
-        let (mut server_configs, accessible_ids) =
+        // Validate and build server configuration. `accessible_servers` is
+        // reused below instead of re-fetching the same accessible-server list.
+        let (mut server_configs, accessible_ids, mut accessible_servers) =
             helpers::validate_and_build_config(&self.pool, context.user_id, mcp_servers).await?;
 
         // Fetch the auto-attached built-ins by deterministic id, OUTSIDE the
@@ -1203,10 +1204,9 @@ impl ChatExtension for McpChatExtension {
             return Ok(BeforeLlmAction::Continue);
         }
 
-        // Get all accessible servers with details (+ the auto-attached built-ins
-        // so the tool-listing loop can resolve their details).
-        let mut accessible_servers =
-            helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
+        // Reuse the accessible-server list already fetched by
+        // `validate_and_build_config` (+ the auto-attached built-ins so the
+        // tool-listing loop can resolve their details).
         for s in builtin_servers {
             if !accessible_servers.iter().any(|x| x.id == s.id) {
                 accessible_servers.push(s);

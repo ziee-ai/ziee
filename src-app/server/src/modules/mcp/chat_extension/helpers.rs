@@ -40,13 +40,15 @@ pub async fn get_all_accessible_config(
     Ok(enabled_servers)
 }
 
-/// Validate requested servers and build final configuration
-/// Returns (valid_configs, accessible_server_ids)
+/// Validate requested servers and build final configuration.
+/// Returns (valid_configs, accessible_server_ids, accessible_servers).
+/// The full `accessible_servers` list is returned so callers can reuse it
+/// instead of re-issuing `get_all_accessible_config` for the same request.
 pub async fn validate_and_build_config(
     pool: &sqlx::PgPool,
     user_id: Uuid,
     requested_servers: Option<Vec<McpServerConfig>>,
-) -> Result<(Vec<(Uuid, Vec<String>)>, Vec<Uuid>), AppError> {
+) -> Result<(Vec<(Uuid, Vec<String>)>, Vec<Uuid>, Vec<McpServer>), AppError> {
     // Get all accessible servers
     let accessible_servers = get_all_accessible_config(pool, user_id).await?;
     let accessible_ids: Vec<Uuid> = accessible_servers.iter().map(|s| s.id).collect();
@@ -75,7 +77,7 @@ pub async fn validate_and_build_config(
         accessible_ids.iter().map(|&id| (id, vec![])).collect()
     };
 
-    Ok((config, accessible_ids))
+    Ok((config, accessible_ids, accessible_servers))
 }
 
 /// Anthropic API tool-name regex: `^[a-zA-Z0-9_-]{1,128}$`.
