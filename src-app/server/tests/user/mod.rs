@@ -1432,3 +1432,117 @@ async fn test_create_user_auto_assigned_to_default_group() {
         "newly created user {new_user_id} must be auto-assigned to the default group {default_group_id}"
     );
 }
+
+// Group CRUD lifecycle (audit r2-f1c1391cf89d). The happy-path group
+// create→list→get→update→delete coverage lives only in the ORPHANED
+// `tests/user_group/mod.rs` (never declared in integration_tests.rs, so it
+// never compiles or runs — see /tmp discovered note). The registered group
+// tests here only exercise the system-protection / self-escalation EDGES;
+// this drives the basic lifecycle through the real handlers so it actually
+// runs in the suite.
+#[tokio::test]
+async fn test_group_crud_lifecycle_through_real_handlers() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "grp_crud_admin",
+        &["groups::read", "groups::create", "groups::edit", "groups::delete"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", admin.token);
+
+    // CREATE
+    let name = format!("crud-grp-{}", Uuid::new_v4());
+    let created: serde_json::Value = client
+        .post(server.api_url("/groups"))
+        .header("Authorization", &bearer)
+        .json(&serde_json::json!({
+            "name": name,
+            "description": "original description",
+            "permissions": ["profile::read"]
+        }))
+        .send()
+        .await
+        .expect("create group request failed")
+        .json()
+        .await
+        .expect("parse created group");
+    let group_id = created
+        .get("id")
+        .and_then(|v| v.as_str())
+        .expect("created group must carry an id")
+        .to_string();
+
+    // READ — appears in the list AND GET /groups/{id} returns it
+    let listed: serde_json::Value = client
+        .get(server.api_url("/groups"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("list groups failed")
+        .json()
+        .await
+        .expect("parse list");
+    let in_list = listed
+        .get("groups")
+        .and_then(|g| g.as_array())
+        .map(|arr| {
+            arr.iter()
+                .any(|g| g.get("id").and_then(|v| v.as_str()) == Some(group_id.as_str()))
+        })
+        .unwrap_or(false);
+    assert!(in_list, "created group must appear in GET /groups");
+
+    let got = client
+        .get(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("get group failed");
+    assert_eq!(got.status(), 200, "GET /groups/{{id}} must return the created group");
+
+    // UPDATE — change the description (POST /groups/{id})
+    let upd = client
+        .post(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .json(&serde_json::json!({ "description": "updated description" }))
+        .send()
+        .await
+        .expect("update group failed");
+    assert_eq!(upd.status(), 200, "update of a custom group must succeed");
+    let refetched: serde_json::Value = client
+        .get(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("refetch group failed")
+        .json()
+        .await
+        .expect("parse refetched group");
+    assert_eq!(
+        refetched.get("description").and_then(|v| v.as_str()),
+        Some("updated description"),
+        "updated description must persist"
+    );
+
+    // DELETE — DELETE /groups/{id}, then it is gone
+    let del = client
+        .delete(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("delete group failed");
+    assert!(
+        del.status().is_success(),
+        "delete of a custom group must succeed, got {}",
+        del.status()
+    );
+    let after = client
+        .get(server.api_url(&format!("/groups/{group_id}")))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .expect("get after delete failed");
+    assert_eq!(after.status(), 404, "deleted group must be gone (404)");
+}
