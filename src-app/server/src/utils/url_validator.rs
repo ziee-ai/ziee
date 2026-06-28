@@ -76,6 +76,11 @@ pub struct OutboundUrlPolicy {
     pub allow_schemes: &'static [&'static str],
     pub allow_localhost: bool,
     pub allow_private: bool,
+    /// Whether link-local addresses (IPv4 169.254.0.0/16 — which includes the
+    /// cloud metadata endpoint 169.254.169.254 — and IPv6 fe80::/10) are
+    /// permitted. Independent of `allow_private` so a policy can allow LAN
+    /// RFC1918 hosts while still blocking IMDS/link-local (the MCP case).
+    pub allow_link_local: bool,
 }
 
 impl OutboundUrlPolicy {
@@ -84,6 +89,7 @@ impl OutboundUrlPolicy {
         allow_schemes: &["https"],
         allow_localhost: false,
         allow_private: false,
+        allow_link_local: false,
     };
 
     /// HTTP+HTTPS public-only. Used by clients that need plain HTTP for
@@ -92,6 +98,18 @@ impl OutboundUrlPolicy {
         allow_schemes: &["http", "https"],
         allow_localhost: false,
         allow_private: false,
+        allow_link_local: false,
+    };
+
+    /// HTTP+HTTPS for user-configured MCP servers: localhost (built-in servers)
+    /// and RFC1918 LAN hosts (self-hosted MCP servers) are allowed, but
+    /// link-local / cloud-metadata (169.254.0.0/16, fe80::/10) is always
+    /// blocked. Low-breakage SSRF hardening for the admin-trusted MCP surface.
+    pub const MCP_USER: Self = Self {
+        allow_schemes: &["http", "https"],
+        allow_localhost: true,
+        allow_private: true,
+        allow_link_local: false,
     };
 
     /// HTTP+HTTPS allowing localhost (sandbox-internal, dev). Still blocks
@@ -100,6 +118,7 @@ impl OutboundUrlPolicy {
         allow_schemes: &["http", "https"],
         allow_localhost: true,
         allow_private: false,
+        allow_link_local: false,
     };
 }
 
@@ -182,8 +201,10 @@ fn is_blocked_v4(ip: &Ipv4Addr, policy: &OutboundUrlPolicy) -> bool {
     if ip.is_loopback() {
         return !policy.allow_localhost;
     }
+    if ip.is_link_local() {
+        return !policy.allow_link_local;
+    }
     if ip.is_private()
-        || ip.is_link_local()
         || ip.is_broadcast()
         || ip.is_documentation()
         || ip.is_unspecified()
@@ -210,7 +231,7 @@ fn is_blocked_v6(ip: &Ipv6Addr, policy: &OutboundUrlPolicy) -> bool {
     let segments = ip.segments();
     // Link-local fe80::/10
     if segments[0] & 0xffc0 == 0xfe80 {
-        return !policy.allow_private;
+        return !policy.allow_link_local;
     }
     // Unique local fc00::/7
     if segments[0] & 0xfe00 == 0xfc00 {
