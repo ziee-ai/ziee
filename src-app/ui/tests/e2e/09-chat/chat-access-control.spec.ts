@@ -245,6 +245,45 @@ test.describe('Chat - Model Access Control', () => {
     await assertModelVisibleInDropdown(page, 'Model Enabled')
     await assertModelNotVisibleInDropdown(page, 'Model Disabled')
   })
+
+  // gap 439481356129: dynamic GROUP→PROVIDER permission change. The user stays
+  // in the group the whole time; only the group's provider ASSIGNMENT changes.
+  // Removing the provider from the group must revoke the user's model access
+  // (user_extension/handlers.rs emits UserLlmProvider sync; the dropdown
+  // refreshes its group-scoped view on the next load).
+  test('removing a provider from the user\'s group revokes model access', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    const providerId = await createProviderViaAPI(apiURL, adminToken, 'Provider DynPerm')
+    await createModelViaAPI(apiURL, adminToken, providerId, 'model-dyn', 'Model Dyn')
+
+    const username = `dynperm_${Date.now()}`
+    const password = 'TestPass123!'
+    const userId = await createTestUser(apiURL, adminToken, username, `${username}@test.com`, password)
+
+    const groupId = await createGroupViaAPI(apiURL, adminToken, `dyn-group-${Date.now()}`, 'Dynamic perm group')
+    await assignUserToGroupViaAPI(apiURL, adminToken, userId, groupId)
+    // Group is granted the provider → user (member) sees the model.
+    await assignProviderToGroupViaAPI(apiURL, adminToken, groupId, [providerId])
+
+    await login(page, baseURL, username, password)
+    await goToNewChatPage(page, baseURL)
+    await assertModelVisibleInDropdown(page, 'Model Dyn')
+
+    // Dynamically REVOKE the provider from the group (user stays in the group).
+    await assignProviderToGroupViaAPI(apiURL, adminToken, groupId, [])
+
+    // After a fresh load the user's group-scoped provider set no longer
+    // includes the model.
+    await login(page, baseURL, username, password)
+    await goToNewChatPage(page, baseURL)
+    await assertModelNotVisibleInDropdown(page, 'Model Dyn')
+  })
 })
 
 // =====================================================
