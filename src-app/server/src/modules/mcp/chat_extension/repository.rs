@@ -83,6 +83,26 @@ impl McpChatRepository {
         .await
     }
 
+    /// Create many pending tool-use approvals in a single round-trip.
+    pub async fn create_tool_approvals(
+        &self,
+        conversation_id: Uuid,
+        branch_id: Uuid,
+        message_id: Uuid,
+        user_id: Uuid,
+        items: &[repository::NewToolApproval],
+    ) -> Result<Vec<ToolUseApproval>, AppError> {
+        repository::create_tool_approvals(
+            &self.pool,
+            conversation_id,
+            branch_id,
+            message_id,
+            user_id,
+            items,
+        )
+        .await
+    }
+
     /// Get all pending approvals for a branch
     pub async fn get_pending_approvals_for_branch(
         &self,

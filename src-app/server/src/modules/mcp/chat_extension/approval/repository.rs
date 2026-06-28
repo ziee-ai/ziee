@@ -175,6 +175,86 @@ pub async fn create_tool_approval(
     Ok(approval)
 }
 
+/// One pending-approval row to insert in a batch.
+pub struct NewToolApproval {
+    pub tool_use_id: String,
+    pub tool_name: String,
+    pub tool_input: serde_json::Value,
+    pub server_id: Option<Uuid>,
+    pub server_name: String,
+}
+
+/// Create many pending tool-use approvals in a single round-trip. Replaces a
+/// per-tool INSERT loop (N+1) with one multi-row INSERT. The four
+/// conversation-scoped columns are constant across the batch; the per-tool
+/// columns are passed as parallel arrays and expanded via UNNEST. RETURNING
+/// order is NOT guaranteed to match the input order — callers must not rely on
+/// positional correspondence (the SSE fan-out keys off the input list).
+pub async fn create_tool_approvals(
+    pool: &PgPool,
+    conversation_id: Uuid,
+    branch_id: Uuid,
+    message_id: Uuid,
+    user_id: Uuid,
+    items: &[NewToolApproval],
+) -> Result<Vec<ToolUseApproval>, AppError> {
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+    // Reject oversized tool_input before any of the batch lands in the DB.
+    for it in items {
+        let serialized_len = serde_json::to_string(&it.tool_input)
+            .map(|s| s.len())
+            .unwrap_or(0);
+        if serialized_len > MAX_TOOL_INPUT_BYTES {
+            return Err(AppError::bad_request(
+                "TOOL_INPUT_TOO_LARGE",
+                format!(
+                    "tool_input is {} bytes serialized; cap is {}",
+                    serialized_len, MAX_TOOL_INPUT_BYTES
+                ),
+            ));
+        }
+    }
+    let tool_use_ids: Vec<String> = items.iter().map(|i| i.tool_use_id.clone()).collect();
+    let tool_names: Vec<String> = items.iter().map(|i| i.tool_name.clone()).collect();
+    let tool_inputs: Vec<serde_json::Value> = items.iter().map(|i| i.tool_input.clone()).collect();
+    let server_ids: Vec<Option<Uuid>> = items.iter().map(|i| i.server_id).collect();
+    let server_names: Vec<String> = items.iter().map(|i| i.server_name.clone()).collect();
+
+    let rows = sqlx::query_as!(
+        ToolUseApproval,
+        r#"
+        INSERT INTO tool_use_approvals (
+            conversation_id, branch_id, message_id, user_id,
+            tool_use_id, tool_name, tool_input, server_id, server_name, status
+        )
+        SELECT $1, $2, $3, $4,
+               t.tool_use_id, t.tool_name, t.tool_input, t.server_id, t.server_name, 'pending'
+        FROM UNNEST($5::text[], $6::text[], $7::jsonb[], $8::uuid[], $9::text[])
+            AS t(tool_use_id, tool_name, tool_input, server_id, server_name)
+        RETURNING
+            id, conversation_id, branch_id, message_id, user_id,
+            tool_use_id, tool_name, tool_input, server_id, server_name, status,
+            approved_at as "approved_at: _", approved_by, approval_note,
+            created_at as "created_at: _", updated_at as "updated_at: _"
+        "#,
+        conversation_id,
+        branch_id,
+        message_id,
+        user_id,
+        &tool_use_ids,
+        &tool_names,
+        &tool_inputs,
+        &server_ids as &[Option<Uuid>],
+        &server_names
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
+}
+
 /// Get all pending approvals for a branch
 pub async fn get_pending_approvals_for_branch(
     pool: &PgPool,

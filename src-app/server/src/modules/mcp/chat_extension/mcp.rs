@@ -1902,48 +1902,61 @@ impl ChatExtension for McpChatExtension {
                 tools_needing_approval.len()
             );
 
-            for (tool_use_id, tool_name, server_id_str, input) in &tools_needing_approval {
-                // Parse UUID and lookup server name
-                let (server_id, server_name) = if let Ok(id) = uuid::Uuid::parse_str(server_id_str) {
-                    let name = accessible_servers
-                        .iter()
-                        .find(|s| s.id == id)
-                        .map(|s| s.name.clone())
-                        .unwrap_or_else(|| id.to_string());
-                    (Some(id), name)
-                } else {
-                    (None, server_id_str.to_string())
-                };
+            // Resolve (server_id, server_name) for each tool, then insert all
+            // pending-approval rows in ONE round-trip (was an N+1 INSERT loop).
+            let resolved: Vec<(Option<uuid::Uuid>, String)> = tools_needing_approval
+                .iter()
+                .map(|(_, _, server_id_str, _)| {
+                    if let Ok(id) = uuid::Uuid::parse_str(server_id_str) {
+                        let name = accessible_servers
+                            .iter()
+                            .find(|s| s.id == id)
+                            .map(|s| s.name.clone())
+                            .unwrap_or_else(|| id.to_string());
+                        (Some(id), name)
+                    } else {
+                        (None, server_id_str.to_string())
+                    }
+                })
+                .collect();
 
-                // Create pending approval with server_id and server_name
-                tracing::info!(
-                    "Creating approval record: tool_use_id={}, branch_id={}, message_id={}, tool_name={}",
-                    tool_use_id, context.branch_id, final_message.id, tool_name
-                );
+            let new_approvals: Vec<crate::modules::mcp::chat_extension::approval::repository::NewToolApproval> =
+                tools_needing_approval
+                    .iter()
+                    .zip(resolved.iter())
+                    .map(|((tool_use_id, tool_name, _, input), (server_id, server_name))| {
+                        crate::modules::mcp::chat_extension::approval::repository::NewToolApproval {
+                            tool_use_id: tool_use_id.clone(),
+                            tool_name: tool_name.clone(),
+                            tool_input: input.clone(),
+                            server_id: *server_id,
+                            server_name: server_name.clone(),
+                        }
+                    })
+                    .collect();
 
-                let approval_record = crate::core::Repos
-                    .chat
-                    .mcp
-                    .create_tool_approval(
-                        context.conversation_id,
-                        context.branch_id,
-                        final_message.id,
-                        context.user_id,
-                        tool_use_id.clone(),
-                        tool_name.clone(),
-                        input.clone(),
-                        server_id,
-                        server_name.clone(),
-                    )
-                    .await?;
+            let created = crate::core::Repos
+                .chat
+                .mcp
+                .create_tool_approvals(
+                    context.conversation_id,
+                    context.branch_id,
+                    final_message.id,
+                    context.user_id,
+                    &new_approvals,
+                )
+                .await?;
+            tracing::info!(
+                "Created {} pending approval records for branch_id={}",
+                created.len(), context.branch_id
+            );
 
-                tracing::info!(
-                    "Created approval record: id={}, tool_use_id={}, branch_id={}, status={}",
-                    approval_record.id, approval_record.tool_use_id, approval_record.branch_id, approval_record.status
-                );
-
-                // Send SSE event for approval required
-                helpers::send_approval_required_event(tx, tool_use_id, tool_name, &server_name, server_id_str, input).await?;
+            // Fan out the per-tool SSE events (keyed off the input list, not the
+            // RETURNING order which is not guaranteed to match).
+            for ((tool_use_id, tool_name, server_id_str, input), (_, server_name)) in
+                tools_needing_approval.iter().zip(resolved.iter())
+            {
+                helpers::send_approval_required_event(tx, tool_use_id, tool_name, server_name, server_id_str, input).await?;
             }
 
             // Do NOT pause here. A built-in tool (files/memory) can share the
