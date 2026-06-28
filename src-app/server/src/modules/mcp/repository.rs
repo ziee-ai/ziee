@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -1427,8 +1427,8 @@ fn oauth_row_to_model(
         client_secret,
         scopes,
         resource,
-        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
     }
 }
 

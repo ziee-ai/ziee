@@ -1,7 +1,7 @@
 // Hub repository
 #![allow(dead_code)]
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -288,7 +288,7 @@ pub async fn track_hub_entity_in_tx(
         entity_id: record.entity_id,
         hub_id: record.hub_id,
         hub_category: record.hub_category,
-        created_at: DateTime::from_timestamp(record.created_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(record.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         created_by: record.created_by,
     })
 }
