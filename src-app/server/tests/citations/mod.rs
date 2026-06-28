@@ -351,6 +351,64 @@ async fn test_same_doi_twice_dedups_to_one_entry() {
     assert_eq!(list_entries(&server, &user.token).await.len(), 1, "{body}");
 }
 
+/// CONCURRENT add race (audit all-5e6b3968a246). `test_same_doi_twice_…` only
+/// covers the SEQUENTIAL case (two items in one call — the loser is caught by
+/// the pre-insert `find_by_doi` dedup at handlers.rs:600). The genuine race is
+/// two INDEPENDENT requests for the same DOI firing at once: both can pass the
+/// pre-insert find (each sees no existing row), both reach `insert_entry`, one
+/// wins the partial-unique index and the other gets a 409 that the retry loop
+/// (handlers.rs:690-720) must resolve by re-finding the winner and returning a
+/// `linked_existing` — never a duplicate row and never a `failed`/5xx.
+#[tokio::test]
+async fn test_concurrent_add_same_doi_races_to_one_entry() {
+    let server = server_with_mock_resolver().await;
+    let user = create_user_with_permissions(&server, "cit_race", &[]).await;
+
+    // Fire two add_citations for the SAME DOI concurrently (each `jsonrpc` builds
+    // its own reqwest::Client → independent connections that truly race at the DB).
+    let req = |token: &str| {
+        jsonrpc(
+            &server,
+            token,
+            "tools/call",
+            json!({ "name": "add_citations", "arguments": { "items": [{ "id": "10.5555/known" }] } }),
+        )
+        .send()
+    };
+    let (a, b) = tokio::join!(req(&user.token), req(&user.token));
+
+    let result_of = |res: reqwest::Response| async move {
+        let body: Value = res.json().await.unwrap();
+        body["result"]["structuredContent"]["results"][0].clone()
+    };
+    let ra = result_of(a.unwrap()).await;
+    let rb = result_of(b.unwrap()).await;
+
+    // Neither request errored: each is a stored citation (inserted by the winner,
+    // linked_existing by the 409-retry loser) — never `failed`/null.
+    for r in [&ra, &rb] {
+        let outcome = r["dedup_outcome"].as_str().unwrap_or("");
+        assert!(
+            outcome == "inserted" || outcome == "linked_existing",
+            "concurrent add must resolve the 409 race, not fail: {r}"
+        );
+        assert!(!r["entry_id"].is_null(), "a winning/linked entry id is required: {r}");
+    }
+
+    // Exactly one of them inserted; the other linked to that same row.
+    let inserted = [&ra, &rb].iter().filter(|r| r["dedup_outcome"] == "inserted").count();
+    assert_eq!(inserted, 1, "exactly one concurrent add must insert: a={ra} b={rb}");
+    assert_eq!(
+        ra["entry_id"], rb["entry_id"],
+        "both concurrent adds must map to the SAME single entry: a={ra} b={rb}"
+    );
+
+    // And the DB holds exactly one bibliography entry for that DOI (the race did
+    // not create a duplicate).
+    let entries = list_entries(&server, &user.token).await;
+    assert_eq!(entries.len(), 1, "the 409 retry must collapse the race to one row: {entries:?}");
+}
+
 #[tokio::test]
 async fn test_idless_exact_reimport_dedups_by_fingerprint() {
     let server = server_with_mock_resolver().await;
