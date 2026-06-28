@@ -212,4 +212,30 @@ mod tests {
         // matches how `upload` wrote it — NOT "".
         assert_eq!(get_extension("noext"), "noext");
     }
+
+    // ── API-key rotation detection (cached provider_file_id invalidation) ──────
+
+    #[test]
+    fn api_key_fingerprint_is_stable_for_same_key() {
+        // The cache-reuse path compares the stored fingerprint against the
+        // current key's fingerprint; the SAME key must yield the SAME
+        // fingerprint so a valid cached provider_file_id is reused.
+        let k = "sk-abc123";
+        assert_eq!(api_key_fingerprint(k), api_key_fingerprint(k));
+        // SHA-256 hex is 64 chars.
+        assert_eq!(api_key_fingerprint(k).len(), 64);
+        assert!(api_key_fingerprint(k).bytes().all(|b| b.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn api_key_fingerprint_differs_after_rotation() {
+        // A rotated key must produce a DIFFERENT fingerprint so `key_rotated`
+        // detects the rotation and discards the stale cached provider_file_id
+        // (which belongs to the previous account).
+        let old = api_key_fingerprint("sk-old-account-key");
+        let new = api_key_fingerprint("sk-new-account-key");
+        assert_ne!(old, new, "rotation must change the fingerprint");
+        // The comparison the service uses: stored != current ⇒ invalidate.
+        assert!(old != new, "stored fingerprint != current ⇒ cache invalidated");
+    }
 }
