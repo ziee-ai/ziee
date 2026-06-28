@@ -1,5 +1,5 @@
 import { Tag } from '@/components/ui'
-import { ToolOutlined } from '@ant-design/icons'
+import { Wrench } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
 /**
@@ -31,7 +31,7 @@ export function McpStatusRow() {
           <Tag
             key={serverId}
             tone="info"
-            icon={<ToolOutlined />}
+            icon={<Wrench />}
             onClose={async () => {
               mcpStore.deselectServer(serverId)
               if (currentConversationId) {

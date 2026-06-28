@@ -1,10 +1,6 @@
 import { useState } from 'react'
 import { Alert, Button, Card, Progress, Text } from '@/components/ui'
-import {
-  ToolOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-} from '@ant-design/icons'
+import { Wrench, CircleCheck, CircleX } from 'lucide-react'
 import {
   createExtension,
   type ChatExtension,
@@ -34,11 +30,11 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
   const getStatusIcon = () => {
     switch (toolCall.status) {
       case 'started':
-        return <ToolOutlined spin className="text-blue-500" />
+        return <Wrench className="text-blue-500 animate-spin" />
       case 'completed':
-        return <CheckCircleOutlined className="text-green-500" />
+        return <CircleCheck className="text-green-500" />
       case 'error':
-        return <CloseCircleOutlined className="text-red-500" />
+        return <CircleX className="text-red-500" />
     }
   }
 
@@ -178,11 +174,11 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {toolResultData?.is_error ? (
-            <CloseCircleOutlined className="text-red-500" />
+            <CircleX className="text-red-500" />
           ) : toolResultData ? (
-            <CheckCircleOutlined className="text-green-500" />
+            <CircleCheck className="text-green-500" />
           ) : (
-            <ToolOutlined className="text-blue-500" />
+            <Wrench className="text-blue-500" />
           )}
           <Text strong>{toolUseData.name || 'Tool Call'}</Text>
           <Text type="secondary" className="text-xs">({serverName})</Text>

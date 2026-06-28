@@ -6,7 +6,7 @@ import {
   Select,
   Text,
 } from '@/components/ui'
-import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
+import { Plus, Search, Eraser } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -116,7 +116,7 @@ export function McpServersSettings() {
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Search servers..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             allowClear
@@ -144,7 +144,7 @@ export function McpServersSettings() {
             {policyAllowsAdd && (
               <Button
                 variant="default"
-                icon={<PlusOutlined />}
+                icon={<Plus />}
                 onClick={handleAddServer}
               >
                 Add Server
@@ -167,7 +167,7 @@ export function McpServersSettings() {
             <Button
               size="sm"
               variant="ghost"
-              icon={<ClearOutlined />}
+              icon={<Eraser />}
               onClick={clearAllFilters}
             >
               Clear all

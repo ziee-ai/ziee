@@ -1,4 +1,4 @@
-import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
+import { Plus, Search, Eraser } from 'lucide-react'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -81,7 +81,7 @@ export function SystemMcpServersPage() {
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Search servers..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
             allowClear
@@ -105,7 +105,7 @@ export function SystemMcpServersPage() {
           <Can permission={Permissions.McpServersAdminCreate}>
             <Button
               variant="default"
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               onClick={handleCreateServer}
             >
               Add Server
@@ -127,7 +127,7 @@ export function SystemMcpServersPage() {
             <Button
               size="sm"
               variant="ghost"
-              icon={<ClearOutlined />}
+              icon={<Eraser />}
               onClick={clearAllFilters}
             >
               Clear all

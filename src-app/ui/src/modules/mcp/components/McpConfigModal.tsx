@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, Space, InputNumber } from '@/components/ui'
-import { ToolOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Wrench, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { Tool } from '@/api-client/types'
 import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/mcp/stores/McpComposer.store'
@@ -343,7 +343,7 @@ export function McpConfigModal() {
       className="max-w-[800px]"
       title={
         <div className="flex items-center gap-2">
-          <ToolOutlined />
+          <Wrench />
           <span>
             {isProjectScope ? 'MCP Defaults for Project' : 'MCP Configuration'}
           </span>
@@ -484,7 +484,7 @@ export function McpConfigModal() {
                   />
                   <Button
                     variant="ghost"
-                    icon={<DeleteOutlined />}
+                    icon={<Trash2 />}
                     onClick={() => mcpStore.removePerToolLimit(currentConversationId, limit.server_id, limit.tool_name)}
                   />
                 </div>

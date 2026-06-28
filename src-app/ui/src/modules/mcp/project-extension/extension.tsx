@@ -7,7 +7,7 @@
 // Side-effect file: imported by `mcp/module.tsx` so the registration
 // happens at app boot. Doesn't export a component.
 
-import { ToolOutlined } from '@ant-design/icons'
+import { Wrench } from 'lucide-react'
 import { projectExtensionRegistry } from '@/modules/projects/core/extensions'
 import { ProjectMcpSettingsPanel } from './components/ProjectMcpSettingsPanel'
 
@@ -16,7 +16,7 @@ projectExtensionRegistry.register({
   slots: {
     advanced_settings: {
       label: 'MCP Defaults',
-      icon: <ToolOutlined />,
+      icon: <Wrench />,
       panel: ProjectMcpSettingsPanel,
       order: 10,
     },

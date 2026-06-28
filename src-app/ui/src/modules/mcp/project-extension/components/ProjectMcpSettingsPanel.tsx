@@ -1,5 +1,5 @@
 import { Button, Card, Empty, Skeleton, Space, Tag, Text } from '@/components/ui'
-import { EditOutlined, ToolOutlined } from '@ant-design/icons'
+import { Pencil, Wrench } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import {
@@ -105,7 +105,7 @@ export function ProjectMcpSettingsPanel() {
     <Card
       title={
         <span>
-          <ToolOutlined className="mr-2" />
+          <Wrench className="mr-2" />
           MCP Defaults
         </span>
       }
@@ -116,7 +116,7 @@ export function ProjectMcpSettingsPanel() {
         canEdit && (
           <Button
             variant="ghost"
-            icon={<EditOutlined />}
+            icon={<Pencil />}
             onClick={handleConfigure}
             aria-label="Edit MCP defaults"
           >
