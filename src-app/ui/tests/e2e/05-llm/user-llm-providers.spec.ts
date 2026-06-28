@@ -285,4 +285,60 @@ test.describe('User LLM Providers settings page', () => {
     await expect(page.getByRole('button', { name: 'Update Key' })).not.toBeVisible()
     await expect(page.getByRole('button', { name: 'Remove Key' })).not.toBeVisible()
   })
+
+  // audit id c7c6a450bf5d — the page's error branch (UserLlmProvidersPage.tsx
+  // :110-112, the `if (error) return <Alert type="error" .../>`) was untested.
+  test('shows an error alert when the providers list fails to load', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Fail the providers fetch → the store sets `error` → the page renders the
+    // error Alert instead of the provider UI.
+    await page.route(/\/api\/user-llm-providers(\?.*)?$/, async route =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error_code: 'INTERNAL', error: 'provider load exploded' }),
+      }),
+    )
+
+    await page.goto(`${baseURL}/settings/user-llm-providers`)
+    await expect(page.locator('.ant-alert-error')).toBeVisible({ timeout: 15000 })
+  })
+
+  // audit id 9b9a621f318b — the mobile (sub-`sm`) responsive layout swaps the
+  // desktop sidebar for a Dropdown provider selector (UserLlmProvidersPage.tsx
+  // :220-246); that responsive branch + dropdown selection was untested.
+  test('mobile viewport uses the dropdown provider selector', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    const providerName = `e2e-mobile-${Date.now()}`
+    const provider = await createProviderViaApi(apiURL, adminToken, providerName, null)
+    await assignProviderToDefaultGroup(apiURL, adminToken, provider.id)
+
+    // Mobile width → below the `sm` breakpoint.
+    await page.setViewportSize({ width: 375, height: 800 })
+    await page.goto(`${baseURL}/settings/user-llm-providers`)
+    await page.waitForLoadState('load')
+
+    // The desktop sidebar "Providers" title is hidden on mobile…
+    await expect(
+      page.getByRole('heading', { level: 4, name: 'Providers' }),
+    ).toHaveCount(0)
+    // …and the mobile Dropdown trigger is present. Open it and pick the provider.
+    await page.locator('.ant-dropdown-trigger').first().click()
+    await page.getByRole('menuitem', { name: providerName }).first().click()
+
+    // The provider detail panel renders (heading = the provider name).
+    await expect(
+      page.getByRole('heading', { level: 4, name: providerName }),
+    ).toBeVisible({ timeout: 10000 })
+  })
 })
