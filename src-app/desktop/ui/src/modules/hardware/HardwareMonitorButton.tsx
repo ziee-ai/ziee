@@ -15,7 +15,7 @@
  * instead of opening a duplicate.
  */
 
-import { App, Button } from 'antd'
+import { Button, message } from '@/components/ui'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -24,7 +24,6 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 const WINDOW_LABEL = 'hardware-monitor'
 
 export function HardwareMonitorButton() {
-  const { message } = App.useApp()
   const canMonitor = usePermission(Permissions.HardwareMonitor)
 
   if (!canMonitor) return null

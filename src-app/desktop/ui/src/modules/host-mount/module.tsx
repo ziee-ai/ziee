@@ -12,7 +12,7 @@
  */
 
 import { lazy } from 'react'
-import { FolderOpenOutlined } from '@ant-design/icons'
+import { FolderOpen } from 'lucide-react'
 import { createModule, type AppModule } from '@ziee/ui-core'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/types'
@@ -57,7 +57,7 @@ const hostMountModule: AppModule = createModule({
     settingsAdminPages: [
       {
         id: 'host-mount-policy',
-        icon: <FolderOpenOutlined />,
+        icon: <FolderOpen />,
         label: 'Host Mount Policy',
         path: 'host-mount',
         order: 95,
