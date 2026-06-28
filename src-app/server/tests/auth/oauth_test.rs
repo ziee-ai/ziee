@@ -1164,3 +1164,46 @@ async fn test_oauth_token_exchange_failure_is_handled() {
         status
     );
 }
+
+/// Error path: the provider DENIES authorization and redirects back to our
+/// callback with `?error=access_denied` (and crucially NO `code`). This is the
+/// IdP-side failure (user clicked "Cancel", consent withheld, provider policy
+/// block). Our callback must reject it — never mint a session — and must not
+/// 500. Because `OAuthCallbackQuery` requires `code`, a denial (which omits it)
+/// is refused at the request boundary with a 400, so a denied authorization can
+/// never reach the login-completion path. This pins that externally-observable
+/// contract, complementing `test_oauth_callback_invalid_or_expired_state_returns_400`
+/// (bad state) and `test_oauth_token_exchange_failure_is_handled` (token POST fails).
+#[tokio::test]
+async fn test_oauth_callback_provider_error_is_rejected() {
+    let test_server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    // A real IdP denial callback: error params, a state, and NO authorization
+    // code. (We use a random state — a denied flow never gets far enough for
+    // the state to matter, and the missing `code` is rejected first.)
+    let resp = client
+        .get(format!(
+            "{}/api/auth/oauth/some-provider/callback?error=access_denied&error_description=User+denied+access&state={}",
+            test_server.base_url,
+            uuid::Uuid::new_v4()
+        ))
+        .send()
+        .await
+        .expect("callback request failed");
+
+    let status = resp.status();
+    assert!(
+        !status.is_redirection(),
+        "a denied authorization must NOT yield a login redirect, got {}",
+        status
+    );
+    assert_eq!(
+        status, 400,
+        "a provider error/denial callback (no code) must be rejected with 400, got {}",
+        status
+    );
+}
