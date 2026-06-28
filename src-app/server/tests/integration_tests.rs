@@ -13,6 +13,7 @@ mod file;
 mod file_rag;
 mod files_mcp;
 mod hardware;
+mod health;
 mod hub;
 mod lit_search;
 mod llm_local_runtime;
