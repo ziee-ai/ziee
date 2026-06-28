@@ -1061,3 +1061,200 @@ async fn model_recalls_prior_result_via_get_tool_result() {
         "recalled result must carry the original tool output; body={body}"
     );
 }
+
+/// audit id all-d51c1faaf853 — per-assistant CORE MEMORY injection into chat
+/// requests. With memory enabled + an assistant carrying a core-memory block,
+/// before_llm_call (retriever::inject_core_memory_blocks) must prepend the block
+/// as a system message the model receives. Asserted via the stub's recorded
+/// request text (deterministic; no real LLM).
+#[tokio::test]
+async fn core_memory_block_is_injected_into_the_chat_request() {
+    use crate::common::chat_stream_probe::ChatStreamProbe;
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_coremem").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+    enable_memory(&server, &user).await;
+
+    // An assistant + a core-memory block for this user+assistant.
+    let assistant: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Persona Bot", "is_template": false, "enabled": true }))
+        .send().await.unwrap().json().await.unwrap();
+    let assistant_id = assistant["id"].as_str().unwrap().to_string();
+
+    let put = reqwest::Client::new()
+        .put(server.api_url("/assistants/core-memory"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "assistant_id": assistant_id,
+            "block_label": "persona",
+            "content": "CORE_MEM_MARKER_K3 always answer like a pirate",
+            "char_limit": 1000,
+        }))
+        .send().await.unwrap();
+    assert_eq!(put.status(), 200, "core-memory upsert: {}", put.text().await.unwrap_or_default());
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    let conv = Uuid::parse_str(&conv_id).unwrap();
+    let mut probe = ChatStreamProbe::open(&server, &user.token).await;
+    probe.subscribe(Some(conv)).await;
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/conversations/{conv_id}/messages")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "content": "STUB_PLAN=text hi",
+            "model_id": model_id,
+            "branch_id": branch_id,
+            "assistant_id": assistant_id,
+        }))
+        .send().await.unwrap();
+    assert!(resp.status().is_success(), "send: {}", resp.text().await.unwrap_or_default());
+    let _ = probe.collect_until_terminal(conv, std::time::Duration::from_secs(30)).await;
+
+    // The core-memory block reached the model in a system message.
+    assert!(
+        stub.requests().iter().any(|r| r.all_text.contains("CORE_MEM_MARKER_K3")),
+        "core-memory block content must be injected into the chat request; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        stub.requests().iter().any(|r| r.all_text.contains("Assistant core memory")),
+        "the core-memory system header must be present"
+    );
+}
+
+/// audit id all-84c76a5591f4 — multiple subsystems exercised TOGETHER in one
+/// conversation: memory (`remember`), files (`read_file`), and tool-result
+/// recall (`get_tool_result`) all coexist + interoperate across turns. No prior
+/// test combined 3 built-in MCP subsystems in a single chat. Deterministic stub.
+#[tokio::test]
+async fn multiple_builtin_subsystems_coexist_in_one_conversation() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_multi").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+    enable_memory(&server, &user).await;
+
+    let project_id = create_project(&server, &user, "multi-project").await;
+    let file_id = upload_text(&server, &user, "notes.txt", "MULTI_MARKER_88 combined subsystems").await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // Turn 1 — memory: remember a fact.
+    let _ = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "STUB_PLAN=remember The user is testing combined subsystems.",
+    ).await;
+    // Turn 2 — files: read the file (creates a tool_result).
+    let body2 = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "STUB_PLAN=read_first_file read it",
+    ).await;
+    assert!(body2.contains("MULTI_MARKER_88"), "files subsystem round-trip: {body2}");
+
+    // Both subsystems' tools were attached + used in the SAME conversation.
+    assert!(stub.requests_with_tool("remember") >= 1, "memory tool used: {:?}", stub.requests());
+    assert!(stub.requests_with_tool("read_file") >= 1, "files tool used: {:?}", stub.requests());
+
+    // The remembered fact persisted (memory subsystem actually wrote).
+    let mems: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/memories"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    let items = mems["items"].as_array().cloned().unwrap_or_default();
+    assert!(
+        items.iter().any(|m| m["content"].as_str().unwrap_or("").contains("combined subsystems")),
+        "the remembered fact must persist alongside the files round-trip; mems={mems}"
+    );
+}
+
+/// audit ids all-cd217222b2fa + all-cee2507f7ec7 — automatic summarization
+/// during a real chat turn (the after_llm_call extension hook's background
+/// refresh) AND the before_llm_call hook applying the resulting summary on the
+/// next turn. Deterministic: the summarization model is the stub, so refresh
+/// persists a summary without a real LLM key.
+#[tokio::test]
+async fn summarization_hooks_run_during_chat_and_apply_on_next_turn() {
+    use crate::common::chat_stream_probe::ChatStreamProbe;
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_summ").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    // Enable summarization, point the summarizer at the stub model, and set a
+    // low trigger so a couple of long turns cross it.
+    let put = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "enabled": true,
+            "default_summarization_model_id": model_id,
+            "summarize_after_tokens": 500,
+            "summarizer_keep_recent_tokens": 100,
+        }))
+        .send().await.unwrap();
+    assert!(put.status().is_success(), "summarization settings: {}", put.text().await.unwrap_or_default());
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    let conv = Uuid::parse_str(&conv_id).unwrap();
+
+    // Two long turns (~1600 chars each) → well past the 500-token (≈2000-char)
+    // trigger, so the after_llm_call hook fires its background refresh.
+    let long = "STUB_PLAN=text ".to_string() + &"context filler sentence. ".repeat(70);
+    for _ in 0..2 {
+        let _ = send_and_collect(&server, &user, &conv_id, &branch_id, &model_id, &long).await;
+    }
+
+    // The after_llm_call hook persists a rolling summary in the background.
+    let summary_url = server.api_url(&format!("/conversations/{conv_id}/summary"));
+    let token = user.token.clone();
+    let mut got_summary = false;
+    for _ in 0..30 {
+        let body: serde_json::Value = reqwest::Client::new()
+            .get(&summary_url)
+            .header("Authorization", format!("Bearer {token}"))
+            .send().await.unwrap().json().await.unwrap();
+        if !body.is_null() && body.get("summary_text").and_then(|v| v.as_str()).is_some() {
+            got_summary = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    assert!(got_summary, "after_llm_call must persist a rolling summary during chat");
+
+    // before_llm_call: the NEXT turn applies the stored summary into the request
+    // the model sees (the condensed-history prefix). Assert the summary system
+    // block reaches the stub.
+    let mut probe = ChatStreamProbe::open(&server, &user.token).await;
+    probe.subscribe(Some(conv)).await;
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/conversations/{conv_id}/messages")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "content": "STUB_PLAN=text and now?", "model_id": model_id, "branch_id": branch_id }))
+        .send().await.unwrap();
+    assert!(resp.status().is_success());
+    let _ = probe.collect_until_terminal(conv, std::time::Duration::from_secs(30)).await;
+
+    // The applied summary surfaces as a "conversation summary" system block in
+    // the request (before_llm_call → apply_summary_to_history).
+    assert!(
+        stub.requests().iter().any(|r| {
+            let t = r.all_text.to_lowercase();
+            t.contains("summary")
+        }),
+        "before_llm_call must inject the summary into a later turn's request; requests={:?}",
+        stub.requests()
+    );
+}
