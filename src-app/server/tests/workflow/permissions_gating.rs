@@ -88,3 +88,53 @@ async fn assign_to_groups_requires_assign_permission() {
         "assign-to-groups without workflows::assign_to_groups should 403: {body}"
     );
 }
+
+// audit id all-09d02d703669 — run-level endpoints (run a workflow, change a
+// run's timeout, delete a run) are all gated on `workflows::execute`, but only
+// import/groups had negative perm-gate tests. A user WITHOUT workflows::execute
+// must 403 on each; the perm extractor fires before any workflow/run lookup, so
+// arbitrary ids are fine.
+#[tokio::test]
+async fn run_level_endpoints_require_execute_permission() {
+    let server = plain_server().await;
+    // read-only (+ install/manage) but explicitly NOT workflows::execute.
+    let user = create_user_with_permissions(
+        &server,
+        "wf_run_noexec",
+        &["workflows::read", "workflows::install", "workflows::manage"],
+    )
+    .await;
+    let auth = format!("Bearer {}", user.token);
+    let client = reqwest::Client::new();
+
+    // POST /workflows/{id}/run
+    let wf_id = Uuid::new_v4();
+    let resp = client
+        .post(server.api_url(&format!("/workflows/{wf_id}/run")))
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .expect("run without execute perm");
+    assert_eq!(resp.status(), 403, "run_workflow must require workflows::execute");
+
+    // PUT /workflow-runs/{run_id}/timeout
+    let run_id = Uuid::new_v4();
+    let resp = client
+        .put(server.api_url(&format!("/workflow-runs/{run_id}/timeout")))
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "timeout_ms": 1000 }))
+        .send()
+        .await
+        .expect("set timeout without execute perm");
+    assert_eq!(resp.status(), 403, "set_run_timeout must require workflows::execute");
+
+    // DELETE /workflow-runs/{run_id}
+    let resp = client
+        .delete(server.api_url(&format!("/workflow-runs/{run_id}")))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .expect("delete run without execute perm");
+    assert_eq!(resp.status(), 403, "delete_run must require workflows::execute");
+}
