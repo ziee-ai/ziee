@@ -1,21 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useApiKeysStepStore } from './ApiKeysStep.store'
 import {
-  Typography,
-  Form,
-  Input,
   Spin,
   Alert,
   Tag,
   Flex,
-  Menu,
-} from 'antd'
+  Text,
+  Title,
+  Paragraph,
+  PasswordInput,
+} from '@/components/ui'
 import { ApiOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
-
-const { Title, Text, Paragraph } = Typography
 
 export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps) {
   const enteredApiKeys = Stores.ApiKeysStep.enteredApiKeys
@@ -47,7 +45,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
   if (loading) {
     return (
       <div className="flex justify-center mt-8">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -80,7 +78,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
         <Flex className="flex-row gap-2 items-center h-full">
           <IconComponent className="text-lg" />
           <div className="flex-1 flex items-center h-full overflow-x-hidden">
-            <Typography.Text ellipsis>{provider.name}</Typography.Text>
+            <Text ellipsis>{provider.name}</Text>
           </div>
         </Flex>
       ),
@@ -103,36 +101,41 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
       </Paragraph>
 
       {error && (
-        <Alert type="error" title={error} showIcon className="mb-3" />
+        <Alert tone="error" title={error} className="mb-3" />
       )}
 
       {/* Two-column layout */}
       <div className="flex flex-1 mb-4">
         {/* Left sidebar */}
         <div className="w-40 flex-shrink-0 pt-1">
-          <Menu
-            className={`
-              w-full h-full !m-0
-              [&_.ant-menu]:!px-0
-              [&_.ant-menu-item]:!h-8
-              [&_.ant-menu-item]:!leading-[32px]
-              !bg-transparent !border-none`}
-            selectedKeys={[currentProvider.id]}
-            items={menuItems}
-            onClick={({ key }) => setSelectedId(key)}
-          />
+          <div className="w-full h-full">
+            {menuItems.map(item => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setSelectedId(item.key)}
+                className={`w-full text-left px-2 h-8 leading-8 rounded flex items-center ${
+                  currentProvider.id === item.key
+                    ? 'bg-accent text-accent-foreground'
+                    : 'hover:bg-muted text-foreground'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Right content */}
         <div className="flex-1 px-4">
-          <Flex align="center" gap={8} className="mb-1">
+          <Flex align="center" gap="small" className="mb-1">
             {(() => {
               const IconComponent = PROVIDER_ICONS[currentProvider.provider_type] || PROVIDER_ICONS.custom
               return <IconComponent className="text-xl" />
             })()}
             <Text strong className="text-base">{currentProvider.name}</Text>
             {(currentProvider.api_key_configured || hasUserKey) && (
-              <Tag icon={<CheckCircleOutlined />} color="success">
+              <Tag icon={<CheckCircleOutlined />} tone="success">
                 {hasUserKey ? 'Your key configured' : 'Admin key configured'}
               </Tag>
             )}
@@ -144,9 +147,12 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
               : 'No system key is set. Enter your own to use this provider.'}
           </Text>
 
-          <Form layout="vertical" className="max-w-sm">
-            <Form.Item label="Your API Key" className="!mb-2">
-              <Input.Password
+          <div className="max-w-sm">
+            <div className="mb-2">
+              <label className="block text-sm font-medium mb-1">Your API Key</label>
+              <PasswordInput
+                showLabel="Show API key"
+                hideLabel="Hide API key"
                 value={enteredApiKeys[currentProvider.id] || ''}
                 onChange={e =>
                   Stores.ApiKeysStep.setApiKey(currentProvider.id, e.target.value)
@@ -159,8 +165,8 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
                       : 'sk-...'
                 }
               />
-            </Form.Item>
-          </Form>
+            </div>
+          </div>
         </div>
       </div>
     </div>
