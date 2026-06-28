@@ -2970,6 +2970,59 @@ mod builtin_tests {
         assert!(always_on.iter().all(|id| only_base.contains(id)));
     }
 
+    /// The three life-science built-ins (`bio_mcp`, `lit_search`, `citations`)
+    /// must all attach TOGETHER when their flags are co-set on one tool-capable
+    /// request, independently of the file/memory/web built-ins. `auto_attach_*`
+    /// was only ever asserted cumulatively-on-top-of-everything before; this
+    /// isolates the bio+lit+citations combination so a regression that made one
+    /// flag clobber another (or that coupled bio/citations to web_search being
+    /// on) would be caught. Mirrors mcp.rs:144-163.
+    #[test]
+    fn auto_attach_collects_bio_lit_citations_together() {
+        let elicit = crate::modules::elicitation_mcp::elicitation_mcp_server_id();
+        let tool_result = crate::modules::tool_result_mcp::tool_result_mcp_server_id();
+        let bio = crate::modules::bio_mcp::bio_mcp_server_id();
+        let lit = crate::modules::lit_search::lit_search_server_id();
+        let citations = crate::modules::citations::citations_server_id();
+        // Built-ins that are deliberately NOT flagged on this request.
+        let files = crate::modules::files_mcp::files_mcp_server_id();
+        let memory = crate::modules::memory_mcp::memory_mcp_server_id();
+        let web = crate::modules::web_search::web_search_server_id();
+
+        // Tool-capable model with ONLY the bio + lit_search + citations flags
+        // set — no files/memory/web.
+        let mut m: HashMap<String, serde_json::Value> = HashMap::new();
+        m.insert("model_tools_capable".into(), json!(true));
+        m.insert("attach_bio_mcp".into(), json!("true"));
+        m.insert(
+            crate::modules::lit_search::chat_extension::ATTACH_FLAG.into(),
+            json!("true"),
+        );
+        m.insert(
+            crate::modules::citations::chat_extension::ATTACH_FLAG.into(),
+            json!("true"),
+        );
+
+        let ids = auto_attach_builtin_ids(&m);
+
+        // All three life-science servers attach concurrently …
+        assert!(ids.contains(&bio), "bio_mcp must attach");
+        assert!(ids.contains(&lit), "lit_search must attach");
+        assert!(ids.contains(&citations), "citations must attach");
+        // … alongside the always-on pair …
+        assert!(ids.contains(&elicit) && ids.contains(&tool_result));
+        // … and the un-flagged built-ins stay OFF (no coupling / clobber).
+        assert!(!ids.contains(&files));
+        assert!(!ids.contains(&memory));
+        assert!(!ids.contains(&web));
+        // Exactly the 3 flagged + 2 always-on, no duplicates.
+        assert_eq!(ids.len(), 5, "got {ids:?}");
+        let mut deduped = ids.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(deduped.len(), ids.len(), "no server id should appear twice");
+    }
+
     #[test]
     fn elicitation_is_builtin_and_auto_approved() {
         // ask_user must be treated as a built-in so its tool skips the manual
