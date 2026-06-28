@@ -221,6 +221,97 @@ async fn snapshot_carries_step_progress_and_manifest_descriptions() {
     assert_eq!(research["kind"], "llm", "manifest carries the step kind");
 }
 
+// Two dependent steps so the manifest ORDER is meaningful (topo: gather→synthesize).
+const ORDERED_WORKFLOW_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: gather
+    kind: llm
+    prompt: "Gather on {{ inputs.topic }}"
+  - id: synthesize
+    kind: llm
+    prompt: "Synthesize {{ gather.output }}"
+    depends_on: [gather]
+outputs:
+  - name: result
+    from: "{{ synthesize.output }}"
+    expose: full
+"#;
+
+/// SSE event ORDERING + COMPLETENESS: the per-run stream's FIRST data frame is
+/// the `snapshot`, and that snapshot's `step_manifest` lists EVERY step in topo
+/// order (gather before synthesize). sandbox_progress only asserted manifest
+/// contents/descriptions, never the first-frame ordering nor the topo order.
+#[tokio::test]
+async fn snapshot_is_first_frame_and_manifest_is_topo_ordered_and_complete() {
+    let server = plain_server().await;
+    let user = workflow_user(&server, "wf_sse_ordering").await;
+    let wf = import_dev_workflow(&server, &user.token, "sse-ordering", ORDERED_WORKFLOW_YAML).await;
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+
+    let run = run_workflow(
+        &server,
+        &user.token,
+        &wf_id,
+        json!({
+            "inputs": { "topic": "lichens" },
+            "conversation_id": conv_id.to_string(),
+            "mocks": { "gather": "g", "synthesize": "s" }
+        }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(final_run["status"], "completed", "mocked run completes: {final_run}");
+
+    // Collect the ORDERED list of SSE event names from the run's replay.
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflow-runs/{run_id}/events")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("subscribe to events");
+    assert_eq!(resp.status(), 200);
+    let mut resp = resp;
+    let mut names: Vec<String> = Vec::new();
+    let mut snapshot: Option<Json> = None;
+    let mut buf = String::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while let Ok(Ok(Some(chunk))) = tokio::time::timeout_at(deadline, resp.chunk()).await {
+        buf.push_str(&String::from_utf8_lossy(&chunk));
+        while let Some(idx) = buf.find("\n\n") {
+            let frame: String = buf.drain(..idx + 2).collect();
+            if let Some((ev, data)) = parse_sse_frame(&frame) {
+                names.push(ev.clone());
+                if ev == "snapshot" {
+                    snapshot = Some(serde_json::from_str(&data).expect("snapshot json"));
+                }
+            }
+        }
+        if names.iter().any(|n| n == "snapshot") {
+            break;
+        }
+    }
+
+    // Ordering: the snapshot is the FIRST data frame (a non-`connected` handshake
+    // may precede it, but no run/step event may come before the snapshot).
+    let snap_pos = names.iter().position(|n| n == "snapshot").expect("a snapshot frame");
+    let pre: Vec<&String> = names[..snap_pos].iter().collect();
+    assert!(
+        pre.iter().all(|n| n.as_str() == "connected"),
+        "no run/step event may precede the snapshot; pre-snapshot frames={pre:?}"
+    );
+
+    // Completeness + topo order: the manifest lists BOTH steps, gather before synthesize.
+    let snapshot = snapshot.expect("snapshot data");
+    let manifest = snapshot["step_manifest"].as_array().expect("manifest array");
+    let ids: Vec<&str> = manifest.iter().filter_map(|m| m["id"].as_str()).collect();
+    assert_eq!(ids, vec!["gather", "synthesize"], "manifest is complete + topo-ordered: {ids:?}");
+}
+
 /// A `kind: sandbox` step that writes 5 `progress.v1` bar updates to
 /// `$ZIEE_PROGRESS` over ~2s, then prints a final line as its output.
 const PROGRESS_SANDBOX_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"

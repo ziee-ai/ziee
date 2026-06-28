@@ -1023,3 +1023,81 @@ async fn file_attachment_and_memory_combine_in_one_turn() {
         "the remember edit should persist a memory row; rows={rows:?}"
     );
 }
+
+/// Cross-subsystem: files_mcp AND memory built-ins active in the SAME
+/// conversation. The memory tests never attach files; the files_mcp tests never
+/// enable memory. Here both are wired: turn 1 reads a project file (files_mcp),
+/// turn 2 remembers a fact (memory) — asserting both subsystems function
+/// together without interfering.
+#[tokio::test]
+async fn files_mcp_and_memory_coexist_in_one_conversation() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_files_mem").await;
+    enable_memory(&server, &user).await;
+
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    // A project file carrying a marker, attached to the conversation.
+    let project_id = create_project(&server, &user, "files-mem-project").await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "memo.txt",
+        "CROSS_MARKER_42 the quarterly figures are confidential",
+    )
+    .await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // Turn 1 — files_mcp: read the attached file and echo its content.
+    let body1 = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "STUB_PLAN=read_first_file what is in my memo?",
+    )
+    .await;
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "turn 1 should call read_file; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        body1.contains("CROSS_MARKER_42"),
+        "turn 1 answer should echo the file content; body={body1}"
+    );
+
+    // Turn 2 — memory: remember a fact in the SAME conversation.
+    let body2 = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "STUB_PLAN=remember The user audits figures quarterly.",
+    )
+    .await;
+    assert!(
+        body2.contains("remember that"),
+        "turn 2 should acknowledge the save; body={body2}"
+    );
+
+    // Both subsystems produced their effect: the memory row persisted.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT content FROM user_memories WHERE user_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(Uuid::parse_str(&user.user_id).unwrap())
+    .fetch_all(&pool)
+    .await
+    .expect("query memories");
+    pool.close().await;
+    assert!(
+        rows.iter().any(|(c,)| c.to_lowercase().contains("quarterly") || c.to_lowercase().contains("audit")),
+        "memory should persist alongside the files_mcp usage; rows={rows:?}"
+    );
+}
