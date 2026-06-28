@@ -609,6 +609,111 @@ async fn non_admin_rejected_from_admin_endpoints() {
     assert_eq!(backfill.status(), reqwest::StatusCode::FORBIDDEN, "backfill must 403");
 }
 
+/// Dimension-mismatch after a model swap (the guards at
+/// `embed_worker.rs:137-145` and `ingest.rs:229-236`, which skip a chunk whose
+/// freshly-embedded vector dimension != the column dimension).
+///
+/// Those guards exist because `file_chunks.embedding` is a fixed-width
+/// `halfvec(768)` column: if a swapped-in model emits a vector of a different
+/// dimension, writing it would be rejected by Postgres and would corrupt the
+/// HNSW index. The guards therefore SKIP such chunks (leaving them NULL =
+/// FTS-only) instead of writing them at the wrong width.
+///
+/// This pins that contract end-to-end against the REAL schema + the REAL
+/// production write (`set_chunk_embedding`'s exact untyped
+/// `UPDATE file_chunks SET embedding = $1` bind): a real ingest-produced chunk
+/// rejects a wrong-dimension `halfvec` write but accepts a matching 768-dim one.
+/// So a model returning a mismatched dimension can NEVER be silently stored —
+/// it can only be skipped, which is precisely the guarded behavior.
+#[tokio::test]
+async fn embedding_dimension_mismatch_on_model_swap_is_rejected_not_silently_stored() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_dimswap").await;
+    let pool = db_pool(&server).await;
+
+    // Real ingest path produces a chunk (embedding NULL, FTS-only — no embedder).
+    let file_id = upload_text(
+        &server,
+        &user,
+        "swap.txt",
+        "Mitochondria are the powerhouse of the cell; the electron transport chain \
+         pumps protons across the inner membrane.",
+    )
+    .await;
+    wait_for_chunks(&pool, &file_id, 1).await;
+
+    let fid = Uuid::parse_str(&file_id).unwrap();
+    let (chunk_id, chunk_uid): (Uuid, Uuid) = sqlx::query_as(
+        "SELECT id, user_id FROM file_chunks WHERE file_id = $1 ORDER BY id LIMIT 1",
+    )
+    .bind(fid)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch a chunk");
+
+    // The production write verbatim (repository::set_chunk_embedding):
+    //   UPDATE file_chunks SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4
+    let write_embedding = |dims: usize, model: &'static str| {
+        let pool = pool.clone();
+        let hv = pgvector::HalfVector::from_f32_slice(&vec![0.0123_f32; dims]);
+        async move {
+            sqlx::query(
+                "UPDATE file_chunks SET embedding = $1, embedding_model = $2 \
+                 WHERE id = $3 AND user_id = $4",
+            )
+            .bind(hv)
+            .bind(model)
+            .bind(chunk_id)
+            .bind(chunk_uid)
+            .execute(&pool)
+            .await
+        }
+    };
+
+    // A swapped model emitting the WRONG dimension (4 != 768) must be rejected
+    // by the column — this is the failure the in-loop guards short-circuit.
+    let mismatch = write_embedding(4, "swapped-model-4dim").await;
+    assert!(
+        mismatch.is_err(),
+        "writing a 4-dim vector into halfvec(768) must be rejected by Postgres, \
+         not silently stored at the wrong width",
+    );
+
+    // The stale chunk is still untouched: embedding NULL, model NULL (the guard
+    // left it FTS-only rather than corrupting it).
+    let (emb_is_null, model_is_null): (bool, bool) = sqlx::query_as(
+        "SELECT embedding IS NULL, embedding_model IS NULL FROM file_chunks WHERE id = $1",
+    )
+    .bind(chunk_id)
+    .fetch_one(&pool)
+    .await
+    .expect("re-read chunk after rejected write");
+    assert!(
+        emb_is_null && model_is_null,
+        "a rejected wrong-dim write must leave the chunk NULL (skipped/FTS-only), \
+         got embedding_null={emb_is_null} model_null={model_is_null}",
+    );
+
+    // A model emitting the MATCHING 768 dimension writes cleanly and is tagged —
+    // the post-swap re-embed of a same-dimension model fills the corpus.
+    let ok = write_embedding(768, "swapped-model-768dim").await;
+    assert!(ok.is_ok(), "a 768-dim vector must store into halfvec(768): {ok:?}");
+
+    let (has_embedding, model_tag): (bool, Option<String>) = sqlx::query_as(
+        "SELECT embedding IS NOT NULL, embedding_model FROM file_chunks WHERE id = $1",
+    )
+    .bind(chunk_id)
+    .fetch_one(&pool)
+    .await
+    .expect("re-read chunk after matching write");
+    assert!(has_embedding, "matching-dim embedding should now be present");
+    assert_eq!(
+        model_tag.as_deref(),
+        Some("swapped-model-768dim"),
+        "the chunk should be tagged with the swapped-in model",
+    );
+}
+
 /// Setting a non-embedding model is rejected (400) and does not persist.
 #[tokio::test]
 async fn non_embedder_model_rejected() {
@@ -933,5 +1038,123 @@ async fn admin_read_permission_revocation_is_enforced_per_request() {
         after.status(),
         reqwest::StatusCode::FORBIDDEN,
         "after the grant is removed, the same token must be re-checked and refused (403), not served from a cached allow"
+    );
+}
+
+/// Concurrent re-index of the SAME file serializes on the per-file advisory
+/// xact lock (`pg_advisory_xact_lock(hashtext('file_rag_reindex:' || file_id))`
+/// in `FileRagRepository::reindex_chunks`), so two simultaneous rewrites can
+/// never interleave their DELETE-then-INSERT into mixed or duplicate chunks.
+///
+/// This drives the REAL production path (rewrite_file → commit_new_version →
+/// spawn_reindex → reindex_chunks) twice CONCURRENTLY against one file, then —
+/// once the dust settles — asserts the invariants that can only hold if the
+/// lock truly serialized the two transactions:
+///   - no duplicate `chunk_index` (a half-interleaved insert would dupe),
+///   - all surviving chunks share ONE `blob_version_id` (no two-version blend),
+///   - exactly one rewrite's marker is present (not both, not neither),
+///   - the original content is fully gone.
+/// A broken/missing lock would let the two DELETE/INSERTs interleave and leave
+/// duplicate indices or a mix of both markers. Nothing is mocked.
+#[tokio::test]
+async fn concurrent_rewrite_same_file_serializes_via_advisory_lock() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_advlock").await;
+    let pool = db_pool(&server).await;
+
+    // Original content carries a unique marker; long enough to be a real body.
+    let original = format!("origmarker {}", "lorem ipsum dolor sit amet ".repeat(40));
+    let (conv, ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-advlock",
+        &[("notes.md", original.as_str())],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    let fid = Uuid::parse_str(&ids[0]).unwrap();
+    wait_for_chunks(&pool, &ids[0], 1).await;
+    wait_for_chunk_text(&pool, &ids[0], "origmarker").await;
+
+    // Two DISTINCT rewrites of the SAME file, fired CONCURRENTLY → two
+    // spawn_reindex tasks that race on the per-file advisory lock.
+    let alpha = format!("alphamarker {}", "alpha body content words ".repeat(60));
+    let beta = format!("betamarker {}", "beta body content words ".repeat(60));
+    let (ra, rb) = tokio::join!(
+        call_tool(&server, &user, conv_uuid, "rewrite_file", json!({ "id": ids[0], "content": alpha })),
+        call_tool(&server, &user, conv_uuid, "rewrite_file", json!({ "id": ids[0], "content": beta })),
+    );
+    assert!(ra["error"].is_null(), "rewrite A should succeed; body={ra}");
+    assert!(rb["error"].is_null(), "rewrite B should succeed; body={rb}");
+
+    // Wait for re-index to settle: the original marker is gone AND the chunk
+    // count is stable across two consecutive reads (no in-flight reindex).
+    let mut last = -1i64;
+    let mut settled = false;
+    for _ in 0..80 {
+        let orig_present: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM file_chunks WHERE file_id = $1 AND content ILIKE '%origmarker%' LIMIT 1",
+        )
+        .bind(fid)
+        .fetch_optional(&pool)
+        .await
+        .expect("scan orig");
+        let n = chunk_count(&pool, &ids[0]).await;
+        if orig_present.is_none() && n > 0 && n == last {
+            settled = true;
+            break;
+        }
+        last = n;
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(settled, "re-index did not settle to a stable, original-free state");
+
+    // Invariants that hold IFF the advisory lock serialized the two reindexes.
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(fid)
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    let distinct_idx: i64 =
+        sqlx::query_scalar("SELECT COUNT(DISTINCT chunk_index) FROM file_chunks WHERE file_id = $1")
+            .bind(fid)
+            .fetch_one(&pool)
+            .await
+            .expect("distinct idx");
+    let distinct_ver: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT blob_version_id) FROM file_chunks WHERE file_id = $1",
+    )
+    .bind(fid)
+    .fetch_one(&pool)
+    .await
+    .expect("distinct ver");
+    let has_alpha: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM file_chunks WHERE file_id = $1 AND content ILIKE '%alphamarker%' LIMIT 1",
+    )
+    .bind(fid)
+    .fetch_optional(&pool)
+    .await
+    .expect("scan alpha");
+    let has_beta: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM file_chunks WHERE file_id = $1 AND content ILIKE '%betamarker%' LIMIT 1",
+    )
+    .bind(fid)
+    .fetch_optional(&pool)
+    .await
+    .expect("scan beta");
+
+    assert!(total > 0, "file must have chunks after the concurrent rewrites");
+    assert_eq!(
+        distinct_idx, total,
+        "duplicate chunk_index rows => the two reindex transactions interleaved (lock failed)"
+    );
+    assert_eq!(
+        distinct_ver, 1,
+        "chunks span >1 blob_version_id => a mixed/blended index (lock failed); got {distinct_ver}"
+    );
+    assert_ne!(
+        has_alpha.is_some(),
+        has_beta.is_some(),
+        "exactly one rewrite must win; both markers present => corrupt interleave, neither => lost write"
     );
 }
