@@ -33,7 +33,7 @@ function providerNeedsApiKey(
 }
 
 export function ModelSelector() {
-  const { selectedModelId, providers } = Stores.ModelPicker
+  const { selectedModelId, providers, loading } = Stores.ModelPicker
   const { sending } = Stores.Chat
   const mainContentMinSize = useMainContentMinSize()
   const [pendingProviderForKey, setPendingProviderForKey] = useState<{
@@ -107,8 +107,9 @@ export function ModelSelector() {
         value={selectedModelId}
         onChange={handleChange}
         popupMatchSelectWidth={false}
-        placeholder="Select Model"
+        placeholder={loading && providers.length === 0 ? 'Loading…' : 'Select Model'}
         aria-label="Model"
+        loading={loading && providers.length === 0}
         disabled={sending}
         options={availableModels}
         style={{ fontSize: 15, maxWidth: mainContentMinSize.xs ? 130 : undefined }}
