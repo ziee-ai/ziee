@@ -1244,4 +1244,98 @@ mod tests {
         assert_eq!(request_text(&req, 2), "m0");
         assert_eq!(request_text(&req, 3), "m1");
     }
+
+    /// Concurrent-refresh race (summarizer.rs:27-32 comment) on the per-branch
+    /// `ON CONFLICT (branch_id) DO UPDATE` upsert (summarizer.rs:645-). Two
+    /// background refreshes for the SAME branch can run at once; the upsert must
+    /// converge them to exactly ONE row (no duplicate, no error), the surviving
+    /// row carrying one racer's coherent (text, count) pair — never a torn mix.
+    ///
+    /// DB-gated soft-skip (mirrors `memory::reaper`'s in-source DB test): no
+    /// `DATABASE_URL` / unreachable DB → green; runs for real against a migrated
+    /// DB. Uses runtime sqlx (no compile-time DB needed).
+    #[tokio::test]
+    async fn concurrent_upsert_summary_for_same_branch_converges_to_one_row() {
+        use sqlx::postgres::PgPoolOptions;
+
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skip: DATABASE_URL unset — no DB to exercise the upsert race");
+                return;
+            }
+        };
+        let pool = match PgPoolOptions::new().max_connections(4).connect(&url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return;
+            }
+        };
+
+        // Seed the FK chain: users -> conversations -> branches (the upsert's
+        // branch_id is a PK + FK to branches ON DELETE CASCADE).
+        let tag = Uuid::new_v4();
+        let user_id: Uuid =
+            sqlx::query_scalar("INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id")
+                .bind(format!("sumrace_{tag}"))
+                .bind(format!("sumrace_{tag}@example.com"))
+                .fetch_one(&pool)
+                .await
+                .expect("seed user");
+        let conversation_id: Uuid =
+            sqlx::query_scalar("INSERT INTO conversations (user_id) VALUES ($1) RETURNING id")
+                .bind(user_id)
+                .fetch_one(&pool)
+                .await
+                .expect("seed conversation");
+        let branch_id: Uuid =
+            sqlx::query_scalar("INSERT INTO branches (conversation_id) VALUES ($1) RETURNING id")
+                .bind(conversation_id)
+                .fetch_one(&pool)
+                .await
+                .expect("seed branch");
+
+        // Two concurrent refreshes for the SAME branch with DISTINCT payloads —
+        // genuinely racing at the partial-PK ON CONFLICT (each its own pool conn).
+        let (p1, p2) = (pool.clone(), pool.clone());
+        let (r1, r2) = tokio::join!(
+            upsert_summary(&p1, branch_id, "SUMMARY_ALPHA", None, 5, "model-a"),
+            upsert_summary(&p2, branch_id, "SUMMARY_BETA", None, 7, "model-b"),
+        );
+        r1.expect("first concurrent upsert must succeed (ON CONFLICT resolves the race, not error)");
+        r2.expect("second concurrent upsert must succeed (ON CONFLICT resolves the race, not error)");
+
+        // Exactly ONE row for the branch (PK + ON CONFLICT collapse the race).
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM conversation_summaries WHERE branch_id = $1")
+                .bind(branch_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count summary rows");
+        assert_eq!(
+            count, 1,
+            "concurrent refresh must converge to exactly one summary row, never a duplicate"
+        );
+
+        // The surviving row is one racer's COHERENT (text, count) pair — the
+        // upsert sets all columns from EXCLUDED, so no torn mix of the two.
+        let (text, mc): (String, i32) = sqlx::query_as(
+            "SELECT summary_text, message_count FROM conversation_summaries WHERE branch_id = $1",
+        )
+        .bind(branch_id)
+        .fetch_one(&pool)
+        .await
+        .expect("fetch surviving summary row");
+        assert!(
+            (text == "SUMMARY_ALPHA" && mc == 5) || (text == "SUMMARY_BETA" && mc == 7),
+            "surviving summary must be one racer's coherent (text,count) pair, got ({text}, {mc})"
+        );
+
+        // Cleanup (cascades to conversation/branch/summary).
+        let _ = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&pool)
+            .await;
+    }
 }
