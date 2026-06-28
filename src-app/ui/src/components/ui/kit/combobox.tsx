@@ -145,7 +145,7 @@ export type ComboboxProps = {
   'aria-label'?: string
   'aria-labelledby'?: string
   /** Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. */
-  'data-testid'?: string} & KitStyleProps
+  'data-testid': string} & KitStyleProps
 
 const triggerH = (size?: 'sm' | 'default' | 'lg') =>
   size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'

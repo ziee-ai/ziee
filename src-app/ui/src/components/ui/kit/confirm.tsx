@@ -26,7 +26,7 @@ export interface ConfirmProps {
   /** The trigger element. Optional when driving the dialog via `open`/`onOpenChange`. */
   children?: React.ReactElement
   /** Test selector — forwarded onto the dialog content <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 // Built on AlertDialog (modal + focus-trapped + focus-restoring), not a Popover — an
@@ -62,7 +62,7 @@ export function Confirm({ title, description, okText, cancelText, danger, onConf
           {/* onCancel is fired once, from onOpenChange(false) — which also covers Esc + overlay. */}
           <AlertDialogCancel disabled={busy}>{cancelText}</AlertDialogCancel>
           {/* a plain Button (not AlertDialogAction) so the dialog only closes on success. */}
-          <Button variant={isDanger ? 'destructive' : 'default'} disabled={okButtonProps?.disabled} loading={busy} onClick={run}>{okText}</Button>
+          <Button data-testid={`${testid}-confirm`} variant={isDanger ? 'destructive' : 'default'} disabled={okButtonProps?.disabled} loading={busy} onClick={run}>{okText}</Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </Root>

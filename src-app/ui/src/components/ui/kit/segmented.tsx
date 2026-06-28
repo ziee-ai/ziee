@@ -28,7 +28,7 @@ export interface SegmentedProps {
   'aria-label'?: string
   'aria-describedby'?: string
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 const itemH = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-10' : 'h-8')

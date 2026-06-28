@@ -25,7 +25,7 @@ export interface CheckboxProps {
   'aria-describedby'?: string
   invalid?: boolean
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export const Checkbox = React.forwardRef<HTMLButtonElement, CheckboxProps>(function Checkbox(

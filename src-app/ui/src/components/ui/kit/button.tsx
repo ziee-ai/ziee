@@ -18,6 +18,8 @@ type ButtonCommon = Omit<BaseButtonProps, 'size'> & {
   target?: string
   /** Tooltip shown on hover AND keyboard focus. Doubles as the accessible name when a string. */
   tooltip?: React.ReactNode
+  /** Test selector — REQUIRED, forwarded onto the rendered button/anchor via {...props} (i18n-safe). */
+  'data-testid': string
 }
 
 // Icon-only buttons have no text → no accessible name. The type FORCES a `tooltip`

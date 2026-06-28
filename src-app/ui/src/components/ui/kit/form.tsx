@@ -140,7 +140,7 @@ export interface FormProps<T extends FieldValues> {
   labelWidth?: number | string
   className?: string
   /** Test selector — forwarded onto the <form> root (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
   children: React.ReactNode
 }
 

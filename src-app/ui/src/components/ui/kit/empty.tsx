@@ -11,7 +11,7 @@ export interface EmptyProps {
   children?: React.ReactNode
   className?: string
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export function Empty({ title, description, icon, image, children, className, 'data-testid': testid }: EmptyProps) {

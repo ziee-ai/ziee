@@ -19,6 +19,8 @@ export type CardProps = Omit<React.ComponentProps<'div'>, 'title' | 'style'> & {
   hoverable?: boolean
   className?: string
   children?: React.ReactNode
+  /** Test selector — REQUIRED, forwarded onto the card root via {...rest} (i18n-safe). */
+  'data-testid': string
 } & KitStyleProps
 
 export function Card({ title, extra, footer, loading, size = 'default', hoverable, className, style, allowStyle: _a, children, ...rest }: CardProps) {

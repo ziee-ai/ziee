@@ -19,7 +19,7 @@ export type UploadProps = {
   /** Dropzone body (instructions, icon, current file list). */
   children: React.ReactNode
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
   className?: string} & KitStyleProps
 
 export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function Upload(

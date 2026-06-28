@@ -44,7 +44,7 @@ export type TreeProps = {
   className?: string
   'aria-label': string
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 } & KitStyleProps
 
 interface FlatRow { node: TreeNode; level: number; parentKey?: string }
@@ -246,6 +246,7 @@ export function Tree({
         {checkable && (
           <span onClick={(e) => e.stopPropagation()}>
             <Checkbox
+              data-testid={`${testid}-check-${n.key}`}
               checked={checkedSet.has(n.key)}
               indeterminate={halfSet.has(n.key)}
               disabled={n.disabled}

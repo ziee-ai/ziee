@@ -33,7 +33,7 @@ export interface DropdownProps {
   /** Initial open state when uncontrolled (legacy `defaultOpen`). */
   defaultOpen?: boolean
   /** Test selector — forwarded onto the menu content <root>. Items derive `${testid}-item-${key}`. */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export function Dropdown({ items, children, side, align = 'end', disabled, onSelect, open, onOpenChange, defaultOpen, 'data-testid': testid }: DropdownProps) {

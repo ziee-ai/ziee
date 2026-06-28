@@ -19,7 +19,7 @@ export interface ListProps<T> {
   className?: string
   'aria-label'?: string
   /** Test selector — forwarded onto <root>. Rows derive `${testid}-row-${rowKey}`. */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 const rowPad = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'px-3 py-2' : size === 'lg' ? 'px-5 py-4' : 'px-4 py-3')
@@ -41,7 +41,7 @@ export function List<T>({ dataSource, renderItem, rowKey, header, footer, empty,
           ))}
         </ul>
       ) : dataSource.length === 0 ? (
-        <div className="p-6">{empty ?? <Empty />}</div>
+        <div className="p-6">{empty ?? <Empty data-testid={`${testid}-empty`} />}</div>
       ) : (
         <ul aria-label={ariaLabel} className="divide-y">
           {dataSource.map((item, i) => (

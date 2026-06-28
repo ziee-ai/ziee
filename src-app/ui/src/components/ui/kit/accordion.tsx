@@ -11,8 +11,8 @@ export interface AccordionItemDef {
 }
 
 export type AccordionProps =
-  | { items: AccordionItemDef[]; type?: 'single'; collapsible?: boolean; defaultValue?: string; value?: string; onValueChange?: (v: string) => void; ghost?: boolean; className?: string; 'data-testid'?: string }
-  | { items: AccordionItemDef[]; type: 'multiple'; defaultValue?: string[]; value?: string[]; onValueChange?: (v: string[]) => void; ghost?: boolean; className?: string; 'data-testid'?: string }
+  | { items: AccordionItemDef[]; type?: 'single'; collapsible?: boolean; defaultValue?: string; value?: string; onValueChange?: (v: string) => void; ghost?: boolean; className?: string; 'data-testid': string }
+  | { items: AccordionItemDef[]; type: 'multiple'; defaultValue?: string[]; value?: string[]; onValueChange?: (v: string[]) => void; ghost?: boolean; className?: string; 'data-testid': string }
 
 // legacy `ghost` removes item borders/background.
 const ghostCls = '[&_[data-slot=accordion-item]]:border-0'

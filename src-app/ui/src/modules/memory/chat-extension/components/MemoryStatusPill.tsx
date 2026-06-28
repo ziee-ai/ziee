@@ -98,6 +98,7 @@ export function MemoryStatusPill() {
   return (
     <Tooltip content="Per-conversation memory retrieval override">
       <Dropdown
+        data-testid="memory-status-pill-dropdown"
         items={items}
         onSelect={(key) => setRemote(key as Mode)}
         disabled={loading}

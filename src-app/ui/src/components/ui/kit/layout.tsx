@@ -7,7 +7,7 @@ type Div = {
   children?: React.ReactNode
   className?: string
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 } & KitStyleProps
 
 function make(tag: 'header' | 'footer' | 'aside' | 'main' | 'div', base: string, display = 'Layout') {

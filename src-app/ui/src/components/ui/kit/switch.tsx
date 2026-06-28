@@ -28,7 +28,7 @@ export interface SwitchProps {
   'aria-describedby'?: string
   invalid?: boolean
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function Switch(

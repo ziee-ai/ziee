@@ -26,6 +26,8 @@ const countTones: Record<BadgeTone, string> = {
 
 type BadgeBase = Omit<React.ComponentProps<'span'>, 'prefix' | 'style'> & {
   tone?: BadgeTone
+  /** Test selector — REQUIRED, forwarded onto the badge root via {...props} (i18n-safe). */
+  'data-testid': string
 } & KitStyleProps
 
 // Tag mode (default): a soft-tinted label badge. No count/dot props.

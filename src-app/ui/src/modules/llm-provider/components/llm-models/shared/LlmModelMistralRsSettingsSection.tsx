@@ -119,7 +119,7 @@ export function LlmModelMistralRsSettingsSection() {
   return (
     <Flex vertical className="gap-4 w-full">
       {/* Device */}
-      <Card title="Device">
+      <Card data-testid="mistralrs-card-device" title="Device">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Device Type"
@@ -143,7 +143,7 @@ export function LlmModelMistralRsSettingsSection() {
       </Card>
 
       {/* Sequence & Memory Management */}
-      <Card title="Sequence & Memory Management">
+      <Card data-testid="mistralrs-card-sequence-memory" title="Sequence & Memory Management">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Max Sequences"
@@ -177,7 +177,7 @@ export function LlmModelMistralRsSettingsSection() {
       </Card>
 
       {/* PagedAttention Configuration */}
-      <Card title="PagedAttention Configuration">
+      <Card data-testid="mistralrs-card-paged-attention" title="PagedAttention Configuration">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="PagedAttention GPU Memory (MB)"
@@ -275,7 +275,7 @@ export function LlmModelMistralRsSettingsSection() {
       </Card>
 
       {/* Performance Optimization */}
-      <Card title="Performance Optimization">
+      <Card data-testid="mistralrs-card-performance" title="Performance Optimization">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Prefix Cache Count"
@@ -294,7 +294,7 @@ export function LlmModelMistralRsSettingsSection() {
       </Card>
 
       {/* Model Configuration */}
-      <Card title="Model Configuration">
+      <Card data-testid="mistralrs-card-model" title="Model Configuration">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Data Type"

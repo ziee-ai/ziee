@@ -18,7 +18,7 @@ export interface DialogProps {
   className?: string
   children?: React.ReactNode
   /** Test selector — forwarded onto the dialog content <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export function Dialog({ open, onOpenChange, title, description, footer, size = 'default', trigger, className, children, 'data-testid': testid }: DialogProps) {

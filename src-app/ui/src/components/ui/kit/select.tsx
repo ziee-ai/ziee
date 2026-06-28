@@ -62,7 +62,7 @@ interface SelectBase {
   'aria-labelledby'?: string
   'aria-required'?: boolean
   /** Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. */
-  'data-testid'?: string
+  'data-testid': string
 }
 // allowClear adds a clear button → its accessible name (clearLabel) is REQUIRED (no default, for i18n).
 export type SelectProps =

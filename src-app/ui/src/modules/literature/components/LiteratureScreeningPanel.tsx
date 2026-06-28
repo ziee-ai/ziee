@@ -217,7 +217,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                 <Text strong className="text-sm">
                   {i + 1}. {record.title}
                 </Text>
-                {record.is_preprint && <Tag className="ml-1">preprint</Tag>}
+                {record.is_preprint && <Tag data-testid={`lit-screening-preprint-${i}`} className="ml-1">preprint</Tag>}
                 <Paragraph type="secondary" className="text-xs !mb-0">
                   {record.authors?.slice(0, 3).join(', ')}
                   {record.authors?.length > 3 ? ' et al.' : ''}

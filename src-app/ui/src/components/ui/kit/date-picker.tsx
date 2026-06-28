@@ -55,7 +55,7 @@ export type DatePickerProps = {
   'aria-labelledby'?: string
   'aria-required'?: boolean
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 } & KitStyleProps
 
 const triggerH = (size?: 'sm' | 'default' | 'lg') =>

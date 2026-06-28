@@ -32,7 +32,7 @@ export type MenuProps = {
   className?: string
   'aria-label': string
   /** Test selector — forwarded onto <root>. Items derive `${testid}-item-${key}`. */
-  'data-testid'?: string
+  'data-testid': string
 } & KitStyleProps
 
 // Extract a plain-text accessible name from a label node (used when `collapsed` hides it).

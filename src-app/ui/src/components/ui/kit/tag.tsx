@@ -42,6 +42,8 @@ type TagBase = Omit<React.ComponentProps<'span'>, 'ref' | 'style'> & {
   tone?: TagTone
   variant?: TagVariant
   icon?: React.ReactNode
+  /** Test selector — REQUIRED, forwarded onto the tag span via {...props} (i18n-safe). */
+  'data-testid': string
 } & KitStyleProps
 // A closable Tag MUST supply both onClose and an explicit closeLabel (no default — the
 // caller owns the string for i18n).

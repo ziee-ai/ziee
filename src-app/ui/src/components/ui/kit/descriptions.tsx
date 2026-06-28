@@ -18,7 +18,7 @@ export type DescriptionsProps = {
   bordered?: boolean
   size?: 'sm' | 'default'
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
   className?: string} & KitStyleProps
 
 export function Descriptions({ items, title, column = 1, bordered, size = 'default', className, style, 'data-testid': testid }: DescriptionsProps) {

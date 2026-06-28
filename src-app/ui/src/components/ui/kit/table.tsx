@@ -29,7 +29,7 @@ export interface TableProps<T> {
   className?: string
   onRowClick?: (record: T, index: number) => void
   /** Test selector — forwarded onto <root>. Rows derive `${testid}-row-${rowKey}`. */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 const alignCls = { left: 'text-left', center: 'text-center', right: 'text-right' } as const
@@ -70,7 +70,7 @@ export function Table<T>({ columns, dataSource, rowKey, loading, caption, empty,
           ))
         ) : dataSource.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={columns.length} className="h-24">{empty ?? <Empty />}</TableCell>
+            <TableCell colSpan={columns.length} className="h-24">{empty ?? <Empty data-testid={`${testid}-empty`} />}</TableCell>
           </TableRow>
         ) : (
           dataSource.map((record, i) => (

@@ -13,7 +13,7 @@ export type StatisticProps = {
   groupSeparator?: boolean
   className?: string
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
   valueClassName?: string} & KitStyleProps
 
 export function Statistic({ title, value, precision, prefix, suffix, groupSeparator = true, className, valueClassName, style, 'data-testid': testid }: StatisticProps) {

@@ -26,7 +26,7 @@ interface AlertCommon {
   className?: string
   children?: React.ReactNode
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 // A dismissible alert MUST supply both onClose and an explicit closeLabel (no built-in
 // default — the caller owns the string so it can be translated).

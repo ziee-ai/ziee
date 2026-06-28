@@ -390,7 +390,7 @@ interface RenderButtonProps {
   onClick: () => void
   loading?: boolean
   danger?: boolean
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export function RenderButton({

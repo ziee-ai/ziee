@@ -30,7 +30,7 @@ export interface ProgressProps {
   /** Required accessible name (no default — caller owns the string for i18n). */
   'aria-label': string
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export function Progress({ value, tone = 'primary', size = 'default', shape = 'line', circleSize = 120, showInfo, format, className, 'aria-label': ariaLabel, 'data-testid': testid }: ProgressProps) {

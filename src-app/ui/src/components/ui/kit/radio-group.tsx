@@ -28,7 +28,7 @@ export interface RadioGroupProps {
   'aria-labelledby'?: string
   'aria-describedby'?: string
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export const RadioGroup = React.forwardRef<HTMLDivElement, RadioGroupProps>(function RadioGroup(

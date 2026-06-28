@@ -19,7 +19,7 @@ type SheetBase = {
   className?: string
   children?: React.ReactNode
   /** Test selector — forwarded onto the sheet content <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 } & (
   // loading replaces the body with a spinner; its accessible name is REQUIRED then (i18n).
   | { loading?: false; loadingLabel?: never }

@@ -29,7 +29,7 @@ interface PaginationBase {
   /** Optional total-summary renderer, e.g. (total,[from,to]) => `${from}-${to} of ${total}`. */
   showTotal?: (total: number, range: [number, number]) => React.ReactNode
   /** Test selector — forwarded onto the nav <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 // Page-size dropdown — when enabled, its accessible name + change handler are required.
@@ -151,6 +151,7 @@ export function Pagination({
       {showSizeChanger && (
         <Select
           size="sm"
+          data-testid={`${testid}-page-size`}
           aria-label={pageSizeLabel}
           value={String(pageSize)}
           options={sizeItems}
@@ -160,6 +161,7 @@ export function Pagination({
       {showQuickJumper && pageCount > 1 && (
         <Input
           size="sm"
+          data-testid={`${testid}-jump`}
           className="w-16"
           inputMode="numeric"
           aria-label={jumpLabel}

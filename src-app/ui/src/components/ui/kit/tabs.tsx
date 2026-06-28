@@ -36,7 +36,7 @@ export interface TabsProps {
   /** Accessible name for a tab's close affordance. Falls back to "Close <label>". */
   closeLabel?: (item: TabItem) => string
   /** Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export function Tabs({

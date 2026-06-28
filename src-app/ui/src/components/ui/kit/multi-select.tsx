@@ -198,7 +198,7 @@ export type MultiSelectProps = {
   'aria-describedby'?: string
   'aria-required'?: boolean
   /** Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. */
-  'data-testid'?: string
+  'data-testid': string
 } & KitStyleProps &
   // An accessible name is REQUIRED — either an inline label or a referenced one (no silent default).
   (
@@ -298,7 +298,7 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
             return (
               // stop the remove click/keys from bubbling to the trigger (which would open it).
               <span key={v} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                <Tag onClose={() => { if (!locked) toggle(v) }} closeLabel={removeLabel(label)}>
+                <Tag data-testid={`${testid}-tag-${v}`} onClose={() => { if (!locked) toggle(v) }} closeLabel={removeLabel(label)}>
                   {label}
                 </Tag>
               </span>

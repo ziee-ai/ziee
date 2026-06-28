@@ -11,6 +11,8 @@ export type TextareaProps = Omit<React.ComponentProps<'textarea'>, 'style'> & {
   invalid?: boolean
   /** Grow with content (legacy `autoSize`). Optional min/max row bounds. */
   autoSize?: boolean | { minRows?: number; maxRows?: number }
+  /** Test selector — REQUIRED, forwarded onto the textarea via {...props} (i18n-safe). */
+  'data-testid': string
 } & KitStyleProps
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(

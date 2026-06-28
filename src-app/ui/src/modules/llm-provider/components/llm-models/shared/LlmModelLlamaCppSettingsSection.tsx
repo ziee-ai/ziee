@@ -37,7 +37,7 @@ export function LlmModelLlamaCppSettingsSection() {
   return (
     <Flex vertical className="gap-4 w-full">
       {/* Device */}
-      <Card title="Device">
+      <Card data-testid="llamacpp-card-device" title="Device">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Device Type"
@@ -65,7 +65,7 @@ export function LlmModelLlamaCppSettingsSection() {
       </Card>
 
       {/* Context & Memory Management */}
-      <Card title="Context & Memory Management">
+      <Card data-testid="llamacpp-card-context-memory" title="Context & Memory Management">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Context Size"
@@ -200,7 +200,7 @@ export function LlmModelLlamaCppSettingsSection() {
       </Card>
 
       {/* Threading & Performance */}
-      <Card title="Threading & Performance">
+      <Card data-testid="llamacpp-card-threading" title="Threading & Performance">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Generation Threads"
@@ -291,7 +291,7 @@ export function LlmModelLlamaCppSettingsSection() {
       </Card>
 
       {/* GPU Configuration */}
-      <Card title="GPU Configuration">
+      <Card data-testid="llamacpp-card-gpu" title="GPU Configuration">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="GPU Layers"
@@ -372,7 +372,7 @@ export function LlmModelLlamaCppSettingsSection() {
       </Card>
 
       {/* Model Configuration */}
-      <Card title="Model Configuration">
+      <Card data-testid="llamacpp-card-model" title="Model Configuration">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="RoPE Base Frequency"
@@ -487,7 +487,7 @@ export function LlmModelLlamaCppSettingsSection() {
       </Card>
 
       {/* Advanced Options */}
-      <Card title="Advanced Options">
+      <Card data-testid="llamacpp-card-advanced" title="Advanced Options">
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Random Seed"

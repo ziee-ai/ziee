@@ -17,6 +17,8 @@ export type InputProps = Omit<React.ComponentProps<'input'>, 'size' | 'prefix' |
   invalid?: boolean
   /** Show a clear (×) button when there's a value (legacy `allowClear`). Fires onChange with ''. */
   allowClear?: boolean
+  /** Test selector — REQUIRED, forwarded onto the input via {...props} (i18n-safe). */
+  'data-testid': string
 } & KitStyleProps
 
 const heightFor = (size?: 'sm' | 'default' | 'lg') =>

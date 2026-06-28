@@ -17,6 +17,8 @@ export {
 // overrides the primitive's hardcoded sr-only text so it's translatable).
 export type SidebarTriggerProps = React.ComponentProps<typeof BaseSidebarTrigger> & {
   'aria-label': string
+  /** Test selector — REQUIRED, forwarded onto the trigger via {...props} (i18n-safe). */
+  'data-testid': string
 }
 // forwardRef so it can still be used as a Tooltip/Popover `asChild` trigger.
 export const SidebarTrigger = React.forwardRef<

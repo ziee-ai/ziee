@@ -20,7 +20,7 @@ export interface ResultProps {
   extra?: React.ReactNode
   className?: string
   /** Test selector — forwarded onto <root> (i18n-safe). */
-  'data-testid'?: string
+  'data-testid': string
 }
 
 export function Result({ status = 'info', title, subtitle, icon, extra, className, 'data-testid': testid }: ResultProps) {
