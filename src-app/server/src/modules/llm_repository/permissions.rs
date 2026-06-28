@@ -44,3 +44,59 @@ impl PermissionCheck for LlmRepositoriesDelete {
 // =====================================================
 // Helper Function to Collect All Permissions
 // =====================================================
+
+#[cfg(test)]
+mod tests {
+    // audit id all-710690387070 — the permission file had no test pinning the
+    // PERMISSION strings / MODULE / NAME constants. Mirrors
+    // project/permissions.rs::tests so drift between these constants and the
+    // migration that grants them (and the FE Permissions enum scraped from the
+    // OpenAPI examples) fails the suite.
+    use super::*;
+
+    #[test]
+    fn permission_strings_are_stable() {
+        assert_eq!(LlmRepositoriesRead::PERMISSION, "llm_repositories::read");
+        assert_eq!(LlmRepositoriesCreate::PERMISSION, "llm_repositories::create");
+        assert_eq!(LlmRepositoriesEdit::PERMISSION, "llm_repositories::edit");
+        assert_eq!(LlmRepositoriesDelete::PERMISSION, "llm_repositories::delete");
+    }
+
+    #[test]
+    fn permission_modules_are_consistent() {
+        for module in [
+            LlmRepositoriesRead::MODULE,
+            LlmRepositoriesCreate::MODULE,
+            LlmRepositoriesEdit::MODULE,
+            LlmRepositoriesDelete::MODULE,
+        ] {
+            assert_eq!(module, "llm_repository");
+        }
+    }
+
+    #[test]
+    fn permission_names_are_distinct() {
+        let names = [
+            LlmRepositoriesRead::NAME,
+            LlmRepositoriesCreate::NAME,
+            LlmRepositoriesEdit::NAME,
+            LlmRepositoriesDelete::NAME,
+        ];
+        let mut sorted = names.to_vec();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), names.len(), "permission NAME constants must be distinct");
+    }
+
+    #[test]
+    fn permission_strings_are_namespaced_under_module() {
+        for p in [
+            LlmRepositoriesRead::PERMISSION,
+            LlmRepositoriesCreate::PERMISSION,
+            LlmRepositoriesEdit::PERMISSION,
+            LlmRepositoriesDelete::PERMISSION,
+        ] {
+            assert!(p.starts_with("llm_repositories::"), "{p} must be llm_repositories-namespaced");
+        }
+    }
+}
