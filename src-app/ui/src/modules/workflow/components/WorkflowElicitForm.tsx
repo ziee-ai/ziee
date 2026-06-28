@@ -1,4 +1,4 @@
-import { FormOutlined } from '@ant-design/icons'
+import { SquarePen } from 'lucide-react'
 import {
   Alert,
   Button,
@@ -190,7 +190,7 @@ export function WorkflowElicitForm({
   return (
     <Alert
       type="info"
-      icon={<FormOutlined />}
+      icon={<SquarePen />}
       showIcon
       title="Input required"
       description={

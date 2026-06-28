@@ -1,10 +1,10 @@
 import { Button, Flex, Form, Input, Switch, Tooltip, Typography } from 'antd'
 import {
-  DeleteOutlined,
-  KeyOutlined,
-  LockOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+  Trash2,
+  Key,
+  Lock,
+  Plus,
+} from 'lucide-react'
 
 const { Text } = Typography
 
@@ -148,8 +148,8 @@ export function KeyValueSecretEditor({
                           className="!mb-0 shrink-0"
                         >
                           <Switch
-                            checkedChildren={<LockOutlined />}
-                            unCheckedChildren={<KeyOutlined />}
+                            checkedChildren={<Lock />}
+                            unCheckedChildren={<Key />}
                             onChange={() => {
                               // Toggling the switch wipes the value so
                               // the user has to opt-in to whatever the
@@ -174,7 +174,7 @@ export function KeyValueSecretEditor({
                 }}
               </Form.Item>
               <Button
-                icon={<DeleteOutlined />}
+                icon={<Trash2 />}
                 onClick={() => remove(field.name)}
                 aria-label={`Remove ${labelSingular}`}
                 className="shrink-0"
@@ -204,7 +204,7 @@ export function KeyValueSecretEditor({
               })
             }
             block
-            icon={<PlusOutlined />}
+            icon={<Plus />}
           >
             Add {labelSingular}
           </Button>

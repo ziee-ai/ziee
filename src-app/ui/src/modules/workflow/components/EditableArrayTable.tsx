@@ -1,7 +1,7 @@
 import {
-  DeleteOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+  Trash2,
+  Plus,
+} from 'lucide-react'
 import {
   Button,
   Form,
@@ -279,7 +279,7 @@ export function EditableArrayTable({
             <Button
               size="small"
               type="text"
-              icon={<DeleteOutlined />}
+              icon={<Trash2 />}
               disabled={disabled || !canRemoveBelowMin}
               aria-label="Remove row"
               onClick={() => remove(row.field.name)}
@@ -380,7 +380,7 @@ export function EditableArrayTable({
               type="dashed"
               size="small"
               block
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               disabled={disabled || atMax}
               onClick={() => add(newRow(cols))}
             >

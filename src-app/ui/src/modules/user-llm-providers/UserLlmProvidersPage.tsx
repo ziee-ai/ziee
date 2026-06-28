@@ -12,7 +12,7 @@ import {
   Dropdown,
   Empty,
 } from 'antd'
-import { CheckCircleOutlined } from '@ant-design/icons'
+import { CircleCheck } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
 import { Menu } from '@/components/ui'
 import { Stores } from '@/core/stores'
@@ -145,9 +145,9 @@ export default function UserLlmProvidersPage() {
           </Title>
           <Tag color={hasUserKey ? 'green' : currentProvider.api_key_configured ? 'blue' : 'orange'}>
             {hasUserKey ? (
-              <><CheckCircleOutlined /> Your key configured</>
+              <><CircleCheck /> Your key configured</>
             ) : currentProvider.api_key_configured ? (
-              <><CheckCircleOutlined /> Admin key configured</>
+              <><CircleCheck /> Admin key configured</>
             ) : (
               'No admin key'
             )}

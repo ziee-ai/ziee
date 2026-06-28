@@ -10,7 +10,7 @@ import {
   zodResolver,
 } from '@/components/ui'
 import { z } from 'zod'
-import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
+import { Pencil, Check, X } from 'lucide-react'
 import { IoIosArrowBack } from 'react-icons/io'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
@@ -93,13 +93,13 @@ export function TitleEditor() {
           type="submit"
           variant="ghost"
           size="sm"
-          icon={<CheckOutlined />}
+          icon={<Check />}
           className="!p-1"
         />
         <Button
           variant="ghost"
           size="sm"
-          icon={<CloseOutlined />}
+          icon={<X />}
           onClick={handleCancel}
           className="!p-1"
         />
@@ -127,7 +127,7 @@ export function TitleEditor() {
       <Tooltip title="Edit title">
         <Button
           variant="ghost"
-          icon={<EditOutlined />}
+          icon={<Pencil />}
           onClick={handleEditClick}
           aria-label="Edit conversation title"
         />

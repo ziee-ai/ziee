@@ -1,4 +1,4 @@
-import { PlusOutlined } from '@ant-design/icons'
+import { Plus } from 'lucide-react'
 import {
   Button,
   Empty,
@@ -116,7 +116,7 @@ export function UserGroupsSettings() {
         <Tooltip title="Create group">
           <Button
             variant="ghost"
-            icon={<PlusOutlined aria-hidden="true" />}
+            icon={<Plus aria-hidden="true" />}
             onClick={() => setCreateModalVisible(true)}
             aria-label="Create group"
           />

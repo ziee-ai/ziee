@@ -14,11 +14,11 @@ import {
 } from '@/components/ui'
 import { z } from 'zod'
 import {
-  CheckOutlined,
-  CloseOutlined,
-  DeleteOutlined,
-  EditOutlined,
-} from '@ant-design/icons'
+  Check,
+  X,
+  Trash2,
+  Pencil,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
@@ -135,7 +135,7 @@ export function ProviderHeader() {
             </FormField>
             <div className={'flex items-center gap-2'}>
               <Button type="submit" aria-label="Save provider name">
-                <CheckOutlined aria-hidden="true" />
+                <Check aria-hidden="true" />
               </Button>
               <Button
                 type="button"
@@ -143,7 +143,7 @@ export function ProviderHeader() {
                 onClick={() => setIsEditingName(false)}
                 aria-label="Cancel editing provider name"
               >
-                <CloseOutlined aria-hidden="true" />
+                <X aria-hidden="true" />
               </Button>
             </div>
           </div>
@@ -169,7 +169,7 @@ export function ProviderHeader() {
                 }}
                 aria-label="Edit provider name"
               >
-                <EditOutlined aria-hidden="true" />
+                <Pencil aria-hidden="true" />
               </Button>
             )}
             {canDelete && !currentProvider.built_in && (
@@ -185,7 +185,7 @@ export function ProviderHeader() {
                   variant="ghost"
                   aria-label="Delete provider"
                 >
-                  <DeleteOutlined aria-hidden="true" />
+                  <Trash2 aria-hidden="true" />
                 </Button>
               </Confirm>
             )}

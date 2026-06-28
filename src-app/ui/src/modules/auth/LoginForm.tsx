@@ -11,7 +11,7 @@ import {
   useForm,
   zodResolver,
 } from '@/components/ui'
-import { LockOutlined, UserOutlined } from '@ant-design/icons'
+import { Lock, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { LoginRequest } from '@/api-client/types'
@@ -62,7 +62,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
       <Form form={form} name="login" onSubmit={onSubmit} layout="vertical" size="lg">
         <FormField label="Username or Email" name="username">
           <Input
-            prefix={<UserOutlined />}
+            prefix={<User />}
             placeholder="Enter your username or email"
             autoComplete="username"
           />
@@ -70,7 +70,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
         <FormField label="Password" name="password">
           <PasswordInput
-            prefix={<LockOutlined />}
+            prefix={<Lock />}
             placeholder="Enter your password"
             autoComplete="current-password"
             showLabel="Show password"

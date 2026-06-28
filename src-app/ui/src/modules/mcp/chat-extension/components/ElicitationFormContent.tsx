@@ -13,11 +13,11 @@ import {
   Typography,
 } from 'antd'
 import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  FormOutlined,
-  StopOutlined,
-} from '@ant-design/icons'
+  CircleCheck,
+  CircleX,
+  SquarePen,
+  Ban,
+} from 'lucide-react'
 import dayjs, { type Dayjs } from 'dayjs'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
@@ -431,7 +431,7 @@ export function ElicitationFormContent({
       >
         <Alert
           type="success"
-          icon={<CheckCircleOutlined />}
+          icon={<CircleCheck />}
           showIcon
           title={
             <div>
@@ -464,7 +464,7 @@ export function ElicitationFormContent({
       >
         <Alert
           type="warning"
-          icon={<CloseCircleOutlined />}
+          icon={<CircleX />}
           showIcon
           title={
             <div>
@@ -487,7 +487,7 @@ export function ElicitationFormContent({
       >
         <Alert
           type="error"
-          icon={<StopOutlined />}
+          icon={<Ban />}
           showIcon
           title={
             <div>
@@ -511,7 +511,7 @@ export function ElicitationFormContent({
     >
       <Alert
         type="info"
-        icon={<FormOutlined />}
+        icon={<SquarePen />}
         showIcon
         title={
           <div>

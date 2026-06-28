@@ -17,7 +17,7 @@ import {
   message,
 } from '@/components/ui'
 import { z } from 'zod'
-import { ReloadOutlined } from '@ant-design/icons'
+import { RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -217,7 +217,7 @@ export function SemanticSearchSection() {
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium">Force re-embed all memories</span>
             <Button
-              icon={<ReloadOutlined />}
+              icon={<RotateCw />}
               variant="outline"
               onClick={() => setReembedConfirmOpen(true)}
               disabled={!settings.embedding_model_id || !canManage}

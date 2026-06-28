@@ -12,7 +12,7 @@ import {
   zodResolver,
 } from '@/components/ui'
 import { z } from 'zod'
-import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons'
+import { Lock, Mail, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { CreateUserRequest } from '@/api-client/types'
@@ -105,7 +105,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       >
         <FormField label="Username" name="username">
           <Input
-            prefix={<UserOutlined />}
+            prefix={<User />}
             placeholder="Enter your username"
             autoComplete="username"
           />
@@ -113,7 +113,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
         <FormField label="Email" name="email">
           <Input
-            prefix={<MailOutlined />}
+            prefix={<Mail />}
             placeholder="Enter your email address"
             autoComplete="email"
           />
@@ -121,7 +121,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
         <FormField label="Password" name="password">
           <PasswordInput
-            prefix={<LockOutlined />}
+            prefix={<Lock />}
             placeholder="Enter your password"
             autoComplete="new-password"
             showLabel="Show password"
@@ -131,7 +131,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
         <FormField label="Confirm Password" name="confirmPassword">
           <PasswordInput
-            prefix={<LockOutlined />}
+            prefix={<Lock />}
             placeholder="Confirm your password"
             autoComplete="new-password"
             showLabel="Show password"
