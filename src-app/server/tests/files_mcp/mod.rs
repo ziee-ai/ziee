@@ -785,3 +785,94 @@ async fn test_convert_document_persists_file_and_emits_saved_resource_link() {
         .expect("fetch converted file");
     assert_eq!(res.status(), reqwest::StatusCode::OK, "converted file must be fetchable");
 }
+
+/// upload arbitrary bytes with a chosen MIME → returns the library file id.
+async fn upload_bytes(
+    server: &TestServer,
+    user: &TestUser,
+    filename: &str,
+    mime: &str,
+    bytes: Vec<u8>,
+) -> String {
+    use reqwest::multipart;
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(bytes)
+            .file_name(filename.to_string())
+            .mime_str(mime)
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload bytes");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::CREATED,
+        "upload: {}",
+        resp.text().await.unwrap_or_default()
+    );
+    let v: Value = resp.json().await.unwrap();
+    v["id"].as_str().unwrap().to_string()
+}
+
+/// read_file on image + binary file types (gap f13b1109c88b, handlers.rs:545-652):
+/// an image file returns an `image` content block (base64 + mimeType) for vision;
+/// a binary file with no extractable text returns a graceful "[… no extractable
+/// text]" note (never an error / never raw bytes as "text").
+#[tokio::test]
+async fn test_read_file_image_and_binary_types() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_read_types").await;
+    let conv = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+    let project_id = create_project(&server, &user, "read-types-project").await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv.to_string()).await;
+
+    // A real 1x1 PNG.
+    let png: Vec<u8> = vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    let img_id = upload_bytes(&server, &user, "pixel.png", "image/png", png).await;
+    attach_file_to_project(&server, &user, &project_id, &img_id).await;
+
+    // An opaque binary with no text layer.
+    let bin_id = upload_bytes(
+        &server,
+        &user,
+        "blob.bin",
+        "application/octet-stream",
+        vec![0x00, 0x01, 0x02, 0xFF, 0xFE, 0x10, 0x42, 0x00],
+    )
+    .await;
+    attach_file_to_project(&server, &user, &project_id, &bin_id).await;
+
+    // Image → an `image` content block.
+    let img = call_tool(&server, &user, conv, "read_file", json!({ "id": img_id })).await;
+    assert!(img["error"].is_null(), "read_file(image) ok: {img}");
+    let img_block = &img["result"]["content"][0];
+    assert_eq!(img_block["type"], "image", "image file yields an image block: {img}");
+    assert!(
+        img_block["data"].as_str().map(|s| !s.is_empty()).unwrap_or(false),
+        "image block carries base64 data: {img}"
+    );
+    assert!(
+        img_block["mimeType"].as_str().unwrap_or("").starts_with("image/"),
+        "image block carries an image mimeType: {img}"
+    );
+
+    // Binary → graceful no-text note, not an error or raw bytes.
+    let bin = call_tool(&server, &user, conv, "read_file", json!({ "id": bin_id })).await;
+    assert!(bin["error"].is_null(), "read_file(binary) must not error: {bin}");
+    let text = bin["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("no extractable text") || text.contains("no text layer"),
+        "binary file yields a graceful no-text note, got: {text}"
+    );
+}

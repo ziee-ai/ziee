@@ -909,3 +909,59 @@ async fn test_setup_admin_joins_administrators_and_users_groups() {
         );
     }
 }
+
+/// Login user-enumeration / timing-mitigation contract (gap c0d66672d9b2).
+/// The handler runs bcrypt against a dummy hash for unknown users and collapses
+/// every failure into one INVALID_CREDENTIALS 401 (handlers.rs:176-243), so a
+/// wrong password and a non-existent username are INDISTINGUISHABLE to a
+/// client — no account enumeration. (We assert the response equivalence, the
+/// observable contract of the constant-time path, not wall-clock timing.)
+#[tokio::test]
+async fn login_unknown_user_and_wrong_password_are_indistinguishable() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Register a real user.
+    let reg = client
+        .post(server.api_url("/auth/register"))
+        .json(&json!({
+            "username": "timing_real_user",
+            "email": "timing@example.com",
+            "password": "correct-horse-battery",
+            "display_name": "T"
+        }))
+        .send()
+        .await
+        .expect("register");
+    assert_eq!(reg.status(), 201);
+
+    // (a) Existing user, WRONG password.
+    let wrong = client
+        .post(server.api_url("/auth/login"))
+        .json(&json!({ "username": "timing_real_user", "password": "definitely-wrong" }))
+        .send()
+        .await
+        .expect("login wrong pw");
+    let wrong_status = wrong.status();
+    let wrong_body: serde_json::Value = wrong.json().await.unwrap();
+
+    // (b) NON-EXISTENT user.
+    let unknown = client
+        .post(server.api_url("/auth/login"))
+        .json(&json!({ "username": "no_such_user_at_all", "password": "anything" }))
+        .send()
+        .await
+        .expect("login unknown user");
+    let unknown_status = unknown.status();
+    let unknown_body: serde_json::Value = unknown.json().await.unwrap();
+
+    // Identical 401 + identical error code + identical message → no enumeration.
+    assert_eq!(wrong_status, 401);
+    assert_eq!(unknown_status, 401);
+    assert_eq!(wrong_body["error_code"], "INVALID_CREDENTIALS");
+    assert_eq!(unknown_body["error_code"], "INVALID_CREDENTIALS");
+    assert_eq!(
+        wrong_body["message"], unknown_body["message"],
+        "wrong-password and unknown-user responses must be identical (no enumeration)"
+    );
+}

@@ -922,3 +922,43 @@ async fn test_is_template_is_immutable_on_update() {
         .unwrap();
     assert_eq!(got["is_template"], false, "GET must also show is_template still false");
 }
+
+/// is_template override (gap c5cf71095c1e): a user POSTing `is_template: true`
+/// to /assistants must NOT create a template — the handler force-sets
+/// is_template = false (handlers.rs:127-128), so the privilege boundary
+/// between user assistants and (privileged) templates can't be bypassed via
+/// the request body.
+#[tokio::test]
+async fn test_user_cannot_create_template_via_assistants_endpoint() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create"],
+    )
+    .await;
+
+    let payload = json!({
+        "name": "Sneaky Template",
+        "description": "tries to be a template",
+        "instructions": "x",
+        "is_template": true  // client attempts to elevate — must be ignored
+    });
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        body["is_template"], false,
+        "the /assistants endpoint must force is_template=false regardless of the request body"
+    );
+    // It is owned by the creating user (a real user assistant, not an ownerless template).
+    assert!(body["created_by"].is_string());
+}

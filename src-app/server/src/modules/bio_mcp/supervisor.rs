@@ -352,7 +352,7 @@ pub async fn shutdown() {
 
 #[cfg(test)]
 mod tests {
-    use super::fingerprint;
+    use super::{fingerprint, is_unsafe_env_name};
 
     #[test]
     fn fingerprint_is_stable_and_value_sensitive() {
@@ -367,5 +367,41 @@ mod tests {
         let mut d = a.clone();
         d.push(("S2_API_KEY".to_string(), "k".to_string()));
         assert_ne!(fingerprint(&a), fingerprint(&d));
+    }
+
+    /// Env-fingerprint recycling (gap ca2a70a5189c): REMOVING a key (admin
+    /// clears an API key) must change the fingerprint so the supervisor
+    /// recycles the sidecar with the new env; an empty env is stable + distinct.
+    #[test]
+    fn fingerprint_recycles_on_key_removal_and_handles_empty() {
+        let with_key = vec![
+            ("NCBI_API_KEY".to_string(), "abc".to_string()),
+            ("S2_API_KEY".to_string(), "k".to_string()),
+        ];
+        let removed = vec![("NCBI_API_KEY".to_string(), "abc".to_string())];
+        assert_ne!(
+            fingerprint(&with_key),
+            fingerprint(&removed),
+            "removing a key must change the fingerprint (forces a recycle)"
+        );
+        let empty: Vec<(String, String)> = vec![];
+        assert_eq!(fingerprint(&empty), fingerprint(&[]), "empty env fp is stable");
+        assert_ne!(fingerprint(&empty), fingerprint(&removed));
+    }
+
+    /// The loader-hijack denylist (security control): PATH/HOME/LD_*/DYLD_* and
+    /// friends are rejected as injectable sidecar env names (case-insensitive),
+    /// while ordinary API-key names are allowed.
+    #[test]
+    fn is_unsafe_env_name_blocks_loader_hijack_vars() {
+        for bad in [
+            "PATH", "path", "Home", "LD_PRELOAD", "ld_library_path",
+            "DYLD_INSERT_LIBRARIES", "LC_ALL", "TZ",
+        ] {
+            assert!(is_unsafe_env_name(bad), "{bad} must be rejected");
+        }
+        for ok in ["NCBI_API_KEY", "S2_API_KEY", "OPENFDA_API_KEY", "ONCOKB_TOKEN"] {
+            assert!(!is_unsafe_env_name(ok), "{ok} must be allowed");
+        }
     }
 }

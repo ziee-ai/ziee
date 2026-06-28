@@ -6,6 +6,7 @@
 
 mod mcp_test;
 mod real_llm_test;
+mod restart_test;
 mod settings_test;
 
 use serde_json::{Value, json};

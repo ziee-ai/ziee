@@ -1109,3 +1109,65 @@ async fn test_auth_type_switch_prunes_previous_secret() {
          api_key was pruned on the earlier switch"
     );
 }
+
+/// Pagination edge cases on the list endpoint (gap 1992f1919ecd):
+/// page-beyond-end yields an empty page but preserves `total`; an over-max
+/// per_page is clamped (PaginationQuery bounds at PAGINATION_MAX_PER_PAGE=100);
+/// page=0 is treated as the first page, never an error. Built-in repos (HF +
+/// GitHub) guarantee total >= 2.
+#[tokio::test]
+async fn test_list_repositories_pagination_edges() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "repo_pager",
+        &["llm_repositories::read"],
+    )
+    .await;
+    let get = |q: &str| {
+        let url = server.api_url(&format!("/llm-repositories{q}"));
+        let token = admin.token.clone();
+        async move {
+            reqwest::Client::new()
+                .get(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .expect("list repos")
+        }
+    };
+
+    // First page of size 1: exactly one row, total reflects the full set.
+    let r = get("?page=1&per_page=1").await;
+    assert_eq!(r.status(), 200);
+    let b: serde_json::Value = r.json().await.unwrap();
+    let total = b["total"].as_i64().unwrap();
+    assert!(total >= 2, "built-in repos → total >= 2, got {total}");
+    assert_eq!(b["repositories"].as_array().unwrap().len(), 1, "per_page=1 → one row");
+
+    // Page far beyond the end: empty page, but total is unchanged.
+    let r = get("?page=9999&per_page=1").await;
+    assert_eq!(r.status(), 200);
+    let b: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(
+        b["repositories"].as_array().unwrap().len(),
+        0,
+        "a page past the end returns no rows"
+    );
+    assert_eq!(b["total"].as_i64().unwrap(), total, "total preserved past the end");
+
+    // Over-max per_page is clamped to <= 100 (no unbounded fetch).
+    let r = get("?page=1&per_page=100000").await;
+    assert_eq!(r.status(), 200);
+    let b: serde_json::Value = r.json().await.unwrap();
+    assert!(b["per_page"].as_i64().unwrap() <= 100, "per_page clamped to <= 100");
+
+    // page=0 is coerced to the first page, not an error / empty result.
+    let r = get("?page=0&per_page=10").await;
+    assert_eq!(r.status(), 200, "page=0 must not error");
+    let b: serde_json::Value = r.json().await.unwrap();
+    assert!(
+        !b["repositories"].as_array().unwrap().is_empty(),
+        "page=0 is treated as the first page"
+    );
+}

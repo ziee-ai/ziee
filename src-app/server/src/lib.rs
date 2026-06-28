@@ -156,6 +156,13 @@ pub mod workflow_mcp {
     pub use crate::modules::workflow_mcp::{workflow_mcp_server_id, WorkflowMcpRepository};
 }
 
+// Re-export the web_search built-in-server registration surface for the Tier-2
+// restart/re-register idempotency test (mirrors the workflow_mcp block above).
+#[doc(hidden)]
+pub mod web_search {
+    pub use crate::modules::web_search::{web_search_server_id, WebSearchRepository};
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`
