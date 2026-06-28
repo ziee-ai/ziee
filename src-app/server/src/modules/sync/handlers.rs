@@ -30,6 +30,24 @@ use super::registry::{ClientConn, SYNC_CHANNEL_CAPACITY, registry};
 /// window (bounded staleness) without a per-event DB hit.
 const RECHECK_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Resolve the re-check interval. A debug-only env override
+/// (`SYNC_RECHECK_TICK_MS`, compiled out of release builds via
+/// `cfg!(debug_assertions)` — same testability-seam pattern as
+/// `LLM_RUNTIME_REAPER_TICK_MS`) lets the mid-stream deactivation /
+/// permission-revocation integration test observe the teardown in
+/// milliseconds instead of the 60s production cadence. Ignored in release.
+fn recheck_interval() -> Duration {
+    #[cfg(debug_assertions)]
+    if let Ok(ms) = std::env::var("SYNC_RECHECK_TICK_MS") {
+        if let Ok(n) = ms.parse::<u64>() {
+            if n > 0 {
+                return Duration::from_millis(n);
+            }
+        }
+    }
+    RECHECK_INTERVAL
+}
+
 /// GET /api/sync/subscribe — per-user realtime change stream.
 #[debug_handler]
 pub async fn subscribe_sync(
@@ -88,7 +106,7 @@ pub async fn subscribe_sync(
         let _guard = ConnGuard(conn_id);
 
         let mut recheck =
-            tokio::time::interval_at(tokio::time::Instant::now() + RECHECK_INTERVAL, RECHECK_INTERVAL);
+            tokio::time::interval_at(tokio::time::Instant::now() + recheck_interval(), recheck_interval());
         // After a stall, don't fire missed ticks back-to-back (each does DB work).
         recheck.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let sleep = tokio::time::sleep_until(deadline);

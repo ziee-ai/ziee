@@ -120,3 +120,48 @@ async fn originating_connection_is_skipped_but_the_users_other_tab_updates() {
     other_tab.expect_event("memory", "create", EVENT_TIMEOUT).await;
     origin_tab.expect_silence(SILENCE_WINDOW).await;
 }
+
+// ── Mid-stream deactivation tears down the sync stream (gap c71588ff52a2) ────
+
+/// The subscribe loop's periodic re-check (handlers.rs:111-131) must tear down
+/// an OPEN stream once the account is deactivated mid-stream. Uses the
+/// debug-only `SYNC_RECHECK_TICK_MS` seam to shorten the 60s cadence so the
+/// teardown is observable in the test window.
+#[tokio::test]
+async fn deactivating_a_user_mid_stream_closes_their_sync_stream() {
+    let server = crate::common::TestServer::start_with_options(
+        crate::common::TestServerOptions {
+            extra_env: vec![("SYNC_RECHECK_TICK_MS".to_string(), "200".to_string())],
+            ..Default::default()
+        },
+    )
+    .await;
+
+    // Admin who can deactivate; victim is a plain user (baseline profile::read).
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_deact_admin",
+        &["users::create", "users::toggle_status"],
+    )
+    .await;
+    let victim =
+        crate::common::test_helpers::create_user_with_permissions(&server, "sync_deact_victim", &[])
+            .await;
+
+    // Victim opens a sync stream.
+    let mut victim_probe = SyncProbe::open(&server, &victim.token).await;
+
+    // Admin deactivates the victim mid-stream.
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/users/{}/toggle-active", victim.user_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("toggle-active");
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["is_active"], false, "victim must be deactivated");
+
+    // Within a few re-check ticks the server tears the victim's stream down.
+    victim_probe.expect_closed(Duration::from_secs(5)).await;
+}

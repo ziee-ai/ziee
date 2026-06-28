@@ -164,6 +164,27 @@ impl SyncProbe {
             Ok(None) | Err(_) => {}
         }
     }
+
+    /// Assert the server CLOSES the stream within `dur` (e.g. the periodic
+    /// re-check tears it down after the account is deactivated or loses the
+    /// baseline permission). Intervening data frames are ignored; a closed
+    /// channel (`recv` → None) is the success condition.
+    pub async fn expect_closed(&mut self, dur: Duration) {
+        let deadline = tokio::time::Instant::now() + dur;
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                panic!("expected the sync stream to close within {dur:?}, but it stayed open");
+            }
+            match tokio::time::timeout(remaining, self.rx.recv()).await {
+                Ok(None) => return, // server closed the stream — success
+                Ok(Some(_)) => continue, // ignore data frames, keep waiting for close
+                Err(_) => panic!(
+                    "expected the sync stream to close within {dur:?}, but it stayed open"
+                ),
+            }
+        }
+    }
 }
 
 /// Pull `event:` + concatenated `data:` lines out of one raw SSE frame.

@@ -885,3 +885,30 @@ impl DownloadInstance {
         )
     }
 }
+
+#[cfg(test)]
+mod download_status_tests {
+    use super::DownloadStatus;
+
+    /// The DownloadStatus vocabulary (models.rs:773-780) is the persisted
+    /// contract a server reboot relies on: a download's status is stored as a
+    /// string, so after a restart `from_str` must map every persisted value
+    /// back to its variant (in particular `downloading` → an in-progress row a
+    /// reaper can reconcile). Unknown strings must be rejected, not coerced.
+    #[test]
+    fn download_status_string_roundtrips_for_every_variant() {
+        for s in ["pending", "downloading", "completed", "failed", "cancelled"] {
+            let v = DownloadStatus::from_str(s).unwrap_or_else(|| panic!("from_str({s})"));
+            assert_eq!(v.as_str(), s, "as_str must invert from_str for {s}");
+        }
+        // The in-progress state a reboot needs to detect survives the round-trip.
+        assert_eq!(DownloadStatus::from_str("downloading"), Some(DownloadStatus::Downloading));
+    }
+
+    #[test]
+    fn download_status_rejects_unknown() {
+        assert_eq!(DownloadStatus::from_str("in_progress"), None);
+        assert_eq!(DownloadStatus::from_str(""), None);
+        assert_eq!(DownloadStatus::from_str("DOWNLOADING"), None, "case-sensitive");
+    }
+}

@@ -779,3 +779,59 @@ async fn test_delete_conversation_not_found() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+// =====================================================
+// Multi-user CONCURRENT access (gap 57f5cc767743)
+// =====================================================
+
+/// Two users hit each other's conversations SIMULTANEOUSLY: owner-scoping must
+/// hold under concurrency — each cross-user read is 404 (existence not leaked)
+/// while each owner's own read is 200. Existing ownership tests only do a
+/// single sequential cross-user attempt.
+#[tokio::test]
+async fn test_concurrent_cross_user_conversation_access_is_isolated() {
+    let server = crate::common::TestServer::start().await;
+    let alice = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "concurrent_alice",
+        &["conversations::create", "conversations::read"],
+    )
+    .await;
+    let bob = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "concurrent_bob",
+        &["conversations::create", "conversations::read"],
+    )
+    .await;
+
+    let a_conv = super::helpers::create_conversation(&server, &alice.token, None, Some("Alice")).await;
+    let b_conv = super::helpers::create_conversation(&server, &bob.token, None, Some("Bob")).await;
+    let a_id = super::helpers::parse_uuid(&a_conv["id"]);
+    let b_id = super::helpers::parse_uuid(&b_conv["id"]);
+
+    let get = |token: String, id: uuid::Uuid| {
+        let url = server.api_url(&format!("/conversations/{id}"));
+        async move {
+            reqwest::Client::new()
+                .get(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .expect("get conversation")
+                .status()
+        }
+    };
+
+    // Fire all four reads CONCURRENTLY: each owner→own (200), each→other (404).
+    let (a_own, b_own, a_cross, b_cross) = tokio::join!(
+        get(alice.token.clone(), a_id),
+        get(bob.token.clone(), b_id),
+        get(alice.token.clone(), b_id),
+        get(bob.token.clone(), a_id),
+    );
+
+    assert_eq!(a_own, StatusCode::OK, "alice reads her own conversation");
+    assert_eq!(b_own, StatusCode::OK, "bob reads his own conversation");
+    assert_eq!(a_cross, StatusCode::NOT_FOUND, "alice must not see bob's conversation");
+    assert_eq!(b_cross, StatusCode::NOT_FOUND, "bob must not see alice's conversation");
+}

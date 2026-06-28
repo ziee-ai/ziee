@@ -741,3 +741,47 @@ async fn create_file_tool_emits_file_sync_to_owner_only() {
     // Owner-scoped: the other user sees nothing.
     other_probe.expect_silence(Duration::from_secs(1)).await;
 }
+
+/// convert_document SUCCESS path (gap f9bee5f86798): a real markdown→PDF
+/// conversion persists a new file AND returns a `resource_link` content block
+/// with `is_saved: true` pointing at `/api/files/{id}` — the durable artifact
+/// the resource_link-persistence consumer references (never re-saves). Proves
+/// the conversion output is actually persisted and fetchable.
+#[tokio::test]
+async fn test_convert_document_persists_file_and_emits_saved_resource_link() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_convert_ok").await;
+    let conv = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv,
+        "convert_document",
+        json!({ "markdown": "# Title\n\nHello world, this is a real paragraph.\n" }),
+    )
+    .await;
+    assert!(body["error"].is_null(), "convert_document should succeed: {body}");
+
+    let sc = &body["result"]["structuredContent"];
+    let file_id = sc["file_id"].as_str().expect("converted file id");
+
+    // The structured content carries a SAVED resource_link to the new file.
+    let link = &sc["content"][0];
+    assert_eq!(link["type"], "resource_link", "first block is a resource_link: {sc}");
+    assert_eq!(link["is_saved"], true, "converted artifact must be persisted: {sc}");
+    assert_eq!(
+        link["uri"].as_str(),
+        Some(format!("/api/files/{file_id}").as_str()),
+        "resource_link uri points at the persisted file: {sc}"
+    );
+
+    // The persisted file is actually retrievable.
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("fetch converted file");
+    assert_eq!(res.status(), reqwest::StatusCode::OK, "converted file must be fetchable");
+}
