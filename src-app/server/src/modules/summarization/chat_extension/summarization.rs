@@ -252,4 +252,20 @@ mod tests {
         assert!(resolve_effective_enabled("inherit", true));
         assert!(!resolve_effective_enabled("inherit", false));
     }
+
+    /// Fail-soft contract: on a DB error before_llm_call defaults per_conv_mode
+    /// to DEFAULT_SUMMARIZATION_MODE and admin_enabled to `true`
+    /// (`.unwrap_or_else(|_| DEFAULT)` + `.unwrap_or(true)`). Those exact
+    /// defaults MUST compose to the on-by-default path, so a transient DB
+    /// failure degrades to "summarization enabled", not silently off.
+    #[test]
+    fn fail_soft_defaults_resolve_to_enabled() {
+        // The documented default mode is the inherit path.
+        assert_eq!(super::super::repository::DEFAULT_SUMMARIZATION_MODE, "inherit");
+        // DB-error defaults: mode = DEFAULT_SUMMARIZATION_MODE, admin = true.
+        assert!(resolve_effective_enabled(
+            super::super::repository::DEFAULT_SUMMARIZATION_MODE,
+            true
+        ));
+    }
 }
