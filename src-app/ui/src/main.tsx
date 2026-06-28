@@ -43,6 +43,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {error.message}
           </pre>
           <div style={{ display: 'flex', gap: 12 }}>
+            {/* biome-ignore lint: root crash-fallback must be self-contained (inline styles, no kit/theme/CSS dependency) so it still renders when the design system is what failed */}
             <button
               onClick={reset}
               style={{
@@ -56,6 +57,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             >
               Try again
             </button>
+            {/* biome-ignore lint: root crash-fallback must be self-contained (inline styles, no kit/theme/CSS dependency) so it still renders when the design system is what failed */}
             <button
               onClick={() => window.location.reload()}
               style={{

@@ -491,6 +491,7 @@ export function LlmRepositoryDrawer() {
         disabled={!canSave}
       >
         {/* Hidden field to keep `enabled` in form state so persistRepository reads it */}
+        {/* biome-ignore lint: type=hidden registers `enabled` in rhf form state; the kit has no hidden-input equivalent */}
         <input type="hidden" {...form.register('enabled')} />
 
         <FormField

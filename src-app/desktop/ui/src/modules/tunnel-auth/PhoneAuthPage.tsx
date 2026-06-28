@@ -138,6 +138,7 @@ export function PhoneAuthPage() {
               saved credential to this host. No visible field — the
               admin's actual username stays hidden, matching the
               `hide_username` config the backend sets in tunnel mode. */}
+          {/* biome-ignore lint: hidden, readOnly password-manager username anchor (autoComplete="username"); not an interactive control and has no kit equivalent */}
           <input
             type="text"
             autoComplete="username"
