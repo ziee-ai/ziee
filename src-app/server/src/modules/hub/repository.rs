@@ -227,6 +227,26 @@ pub async fn track_hub_entity(
     created_by: Option<Uuid>,
     hub_version: Option<&str>,
 ) -> Result<HubEntity, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+    let entity = track_hub_entity_in_tx(
+        &mut tx, entity_type, entity_id, hub_id, hub_category, created_by, hub_version,
+    )
+    .await?;
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(entity)
+}
+
+/// Tx-aware variant of `track_hub_entity` so a hub multi-step install
+/// (create the server/assistant + track it) commits atomically.
+pub async fn track_hub_entity_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    entity_type: HubEntityType,
+    entity_id: Uuid,
+    hub_id: &str,
+    hub_category: HubCategory,
+    created_by: Option<Uuid>,
+    hub_version: Option<&str>,
+) -> Result<HubEntity, AppError> {
     let entity_type_str = entity_type.as_str();
     let hub_category_str = hub_category.as_str();
 
@@ -245,7 +265,7 @@ pub async fn track_hub_entity(
         created_by,
         hub_version
     )
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await
     {
         Ok(r) => r,

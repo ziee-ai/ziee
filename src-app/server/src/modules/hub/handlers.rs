@@ -952,50 +952,61 @@ pub async fn create_mcp_server_from_hub(
         &policy,
     )?;
 
-    for existing_id in &existing_ids {
-        // Tolerate "already deleted" — racy with a concurrent delete
-        // (admin page in another tab). Any other DB error surfaces.
-        match Repos.mcp.delete_user_server(*existing_id, auth.user.id).await {
-            Ok(()) => {
-                event_bus
-                    .emit(crate::modules::mcp::events::McpServerEvent::user_server_deleted(
-                        *existing_id,
-                        auth.user.id,
-                    ))
-                    .await;
-            }
-            Err(e) if e.status_code() == 404 => (),
-            Err(e) => return Err(e.into()),
-        }
-    }
-
     // Same tiered command + flavor validation the native create path runs
-    // (hub installs are user-owned → host tier).
+    // (hub installs are user-owned → host tier). Done before the transaction
+    // so a validation failure never touches the DB.
     crate::modules::mcp::handlers::validate_sandbox_fields_create(
         false,
         &plan.create_request,
     )?;
 
+    // Wrap the whole replace flow (delete prior installs + create + track) in
+    // ONE transaction: a mid-failure can no longer leave installs deleted with
+    // no replacement, or a created server untracked. Events are deferred until
+    // after commit so peers never react to rolled-back state.
+    let pool = Repos.pool();
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    let mut deleted_ids: Vec<Uuid> = Vec::new();
+    for existing_id in &existing_ids {
+        // Tolerate "already deleted" — racy with a concurrent delete
+        // (admin page in another tab). Any other DB error surfaces (rolls back).
+        match Repos.mcp.delete_user_server_in_tx(&mut tx, *existing_id, auth.user.id).await {
+            Ok(()) => deleted_ids.push(*existing_id),
+            Err(e) if e.status_code() == 404 => (),
+            Err(e) => return Err(e.into()),
+        }
+    }
+
     let server = Repos
         .mcp
-        .create_user_server(auth.user.id, plan.create_request)
+        .create_user_server_in_tx(&mut tx, auth.user.id, plan.create_request)
         .await?;
 
     // Track in hub_entities, stamping the catalog version captured by
-    // the lookup so /hub/installed can detect when this row falls
-    // behind a future catalog activation.
-    let hub_tracking = Repos
-        .hub
-        .track_hub_entity(
-            HubEntityType::McpServer,
-            server.id,
-            &request.hub_id,
-            HubCategory::McpServer,
-            Some(auth.user.id),
-            plan.hub_version.as_deref(),
-        )
-        .await?;
+    // the lookup so /hub/installed can detect when this row falls behind.
+    let hub_tracking = crate::modules::hub::repository::track_hub_entity_in_tx(
+        &mut tx,
+        HubEntityType::McpServer,
+        server.id,
+        &request.hub_id,
+        HubCategory::McpServer,
+        Some(auth.user.id),
+        plan.hub_version.as_deref(),
+    )
+    .await?;
 
+    tx.commit().await.map_err(AppError::database_error)?;
+
+    // Emit events only AFTER the commit succeeds.
+    for id in deleted_ids {
+        event_bus
+            .emit(crate::modules::mcp::events::McpServerEvent::user_server_deleted(
+                id,
+                auth.user.id,
+            ))
+            .await;
+    }
     event_bus.emit_async(
         HubEvent::mcp_server_created_from_hub(
             server.id,

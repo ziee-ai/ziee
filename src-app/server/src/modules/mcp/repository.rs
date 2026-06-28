@@ -397,6 +397,27 @@ impl McpRepository {
         create_user_mcp_server(&self.pool, user_id, request).await
     }
 
+    /// Tx-aware create for the atomic hub-install flow. The caller owns the
+    /// transaction; secret encrypt/decrypt run on this repo's pool.
+    pub async fn create_user_server_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        user_id: Uuid,
+        request: CreateMcpServerRequest,
+    ) -> Result<McpServer, AppError> {
+        create_user_mcp_server_in_tx(tx, &self.pool, user_id, request).await
+    }
+
+    /// Tx-aware delete for the atomic hub-install replace flow.
+    pub async fn delete_user_server_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), AppError> {
+        delete_user_mcp_server_in_tx(tx, id, user_id).await
+    }
+
     pub async fn get_user_server(
         &self,
         id: Uuid,
@@ -664,6 +685,24 @@ pub async fn create_user_mcp_server(
     user_id: Uuid,
     request: CreateMcpServerRequest,
 ) -> Result<McpServer, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+    let server = create_user_mcp_server_in_tx(&mut tx, pool, user_id, request).await?;
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(server)
+}
+
+/// Tx-aware variant: the mcp_servers INSERT runs on the caller's transaction so
+/// a hub multi-step install (delete prior installs + create + track_hub_entity)
+/// is atomic. The secret encrypt (`split_entries_for_storage`) and decrypt
+/// (`assemble_mcp_server`) helpers are stateless pgcrypto computations on the
+/// passed-in plaintext/ciphertext, so they run on the pool — only the row write
+/// needs to be in the transaction.
+pub async fn create_user_mcp_server_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    pool: &PgPool,
+    user_id: Uuid,
+    request: CreateMcpServerRequest,
+) -> Result<McpServer, AppError> {
     // Validate transport-specific fields
     validate_transport_config(&request.transport_type, &request)?;
 
@@ -733,7 +772,7 @@ pub async fn create_user_mcp_server(
         request.run_in_sandbox.unwrap_or(false),
         request.sandbox_flavor.as_deref(),
     )
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await
     .map_err(|e| {
         if let sqlx::Error::Database(db_err) = &e
@@ -1190,6 +1229,27 @@ pub async fn delete_user_mcp_server(
         user_id
     )
     .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::not_found("Server"));
+    }
+
+    Ok(())
+}
+
+/// Tx-aware variant of `delete_user_mcp_server` for the atomic hub replace flow.
+pub async fn delete_user_mcp_server_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    id: Uuid,
+    user_id: Uuid,
+) -> Result<(), AppError> {
+    let result = sqlx::query!(
+        "DELETE FROM mcp_servers WHERE id = $1 AND user_id = $2 AND is_system = false",
+        id,
+        user_id
+    )
+    .execute(&mut **tx)
     .await?;
 
     if result.rows_affected() == 0 {
