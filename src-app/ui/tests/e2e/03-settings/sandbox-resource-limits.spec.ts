@@ -194,4 +194,62 @@ test.describe('Sandbox resource limits admin settings', () => {
     // And the server PUT must not have fired.
     expect(state.lastPatch).toBeNull()
   })
+
+  test('Reset reverts an edited field and clears the dirty state', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const state = { current: defaults(), lastPatch: null as Partial<Row> | null }
+    await loginAsAdmin(page, baseURL)
+    await mockLimits(page, state)
+    await gotoResourceLimits(page, baseURL)
+
+    const mem = page.getByLabel('memory.max')
+    await expect(mem).toHaveValue('512')
+
+    // Reset is disabled until the form is dirty.
+    const reset = page.getByRole('button', { name: 'Reset' })
+    await expect(reset).toBeDisabled()
+
+    // Edit a field → the form becomes dirty and Reset enables.
+    await mem.fill('256')
+    await expect(reset).toBeEnabled()
+
+    // Reset → the field reverts to the loaded value, Reset disables again,
+    // and no PUT was issued.
+    await reset.click()
+    await expect(mem).toHaveValue('512')
+    await expect(reset).toBeDisabled()
+    expect(state.lastPatch).toBeNull()
+  })
+
+  test('a failed save surfaces an error message', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const state = { current: defaults(), lastPatch: null as Partial<Row> | null }
+    await loginAsAdmin(page, baseURL)
+    await mockLimits(page, state)
+    // Override the PUT to fail (registered after mockLimits → takes precedence).
+    await page.route(/\/api\/code-sandbox\/resource-limits$/, async (route, req) => {
+      if (req.method() === 'PUT') {
+        return route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { message: 'boom' } }),
+        })
+      }
+      return route.fallback()
+    })
+    await gotoResourceLimits(page, baseURL)
+
+    // Make a valid edit, then Save → the 500 surfaces an error message.
+    await page.getByLabel('memory.max').fill('256')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.locator('.ant-message-error').first()).toBeVisible({
+      timeout: 10000,
+    })
+  })
 })
