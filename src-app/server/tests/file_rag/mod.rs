@@ -910,3 +910,67 @@ async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
         "concurrent reindex must leave exactly one consistent chunk set"
     );
 }
+
+/// Concurrent search during an embed rebuild (the half-dimensions race): while a
+/// re-embed is in flight the `file_chunks.embedding` column is NULL for affected
+/// rows. A search MUST stay safe — the vector arm's `embedding IS NOT NULL`
+/// filter excludes those rows (so a stale/wrong-dimension query vector can't hit
+/// a half-migrated row and error), while FTS keeps serving from `content_tsv`.
+/// With NO embedding model configured, freshly-indexed chunks have NULL
+/// embeddings — exactly the mid-rebuild state — so this reproduces it directly.
+#[tokio::test]
+async fn search_during_embed_rebuild_vector_arm_excludes_null_embeddings_fts_still_serves() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_embed_race").await;
+    let pool = db_pool(&server).await;
+
+    // FTS-only deployment (no embedding model) → chunks land with NULL embeddings.
+    set_rag_settings(&server, &user, json!({ "enabled": true })).await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "race.txt",
+        "ZEBRAFISH genomics quarterly report with distinctive searchable tokens\n",
+    )
+    .await;
+    let _ = wait_for_chunks(&pool, &file_id, 1).await;
+
+    // Confirm the rows really are in the NULL-embedding (mid-rebuild) state.
+    let with_embedding: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM file_chunks WHERE file_id = $1 AND embedding IS NOT NULL",
+    )
+    .bind(Uuid::parse_str(&file_id).unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(with_embedding, 0, "precondition: embeddings are NULL (mid-rebuild)");
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let scope = vec![Uuid::parse_str(&file_id).unwrap()];
+
+    // Vector arm with an arbitrary query vector → ZERO hits (NULL rows excluded),
+    // and crucially NO dimension-mismatch error.
+    let vec_hits = ziee::file_rag_search::vector_search_hit_count_for_test(
+        &scope,
+        user_uuid,
+        &vec![0.05f32; 768],
+        1.0,
+        10,
+    )
+    .await
+    .expect("vector search must not error on NULL-embedding rows");
+    assert_eq!(vec_hits, 0, "the vector arm must exclude NULL-embedding rows");
+
+    // FTS arm still serves the content during the rebuild window.
+    let fts_hits = ziee::file_rag_search::fts_search_hit_count_for_test(
+        &scope,
+        user_uuid,
+        "ZEBRAFISH",
+        10,
+        "simple",
+        0.0,
+    )
+    .await
+    .expect("fts search must succeed");
+    assert!(fts_hits >= 1, "FTS must still return results while embeddings are NULL");
+}

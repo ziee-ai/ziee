@@ -192,6 +192,15 @@ pub mod workflow_mcp_internal {
     pub use crate::modules::workflow_mcp::tools::await_terminal_for_test;
 }
 
+// Re-export file_rag search arms for the concurrent-search-during-embed race
+// test (NULL embeddings mid-rebuild → vector arm excludes them, FTS still serves).
+#[doc(hidden)]
+pub mod file_rag_search {
+    pub use crate::modules::file_rag::retrieval::{
+        fts_search_hit_count_for_test, vector_search_hit_count_for_test,
+    };
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`

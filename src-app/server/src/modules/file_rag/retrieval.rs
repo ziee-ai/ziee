@@ -176,6 +176,35 @@ const SELECT_COLS: &str =
     "id, file_id, blob_version_id, version, page_number, char_start, char_end, content";
 
 /// Vector (cosine) arm. `metric` = cosine distance; hit score = 1 − distance.
+/// Test-only: number of vector-arm hits for a raw query vector. Re-exported via
+/// `ziee::file_rag_search` so the concurrent-search-during-embed (NULL embedding
+/// / half-dimensions) race test can assert the `embedding IS NOT NULL` filter
+/// excludes mid-rebuild rows without exposing `SemanticHit`/`HalfVector`.
+#[doc(hidden)]
+pub async fn vector_search_hit_count_for_test(
+    scope_ids: &[Uuid],
+    user_id: Uuid,
+    query_vec: &[f32],
+    threshold: f32,
+    limit: i64,
+) -> Result<usize, AppError> {
+    let v = HalfVector::from_f32_slice(query_vec);
+    Ok(vector_search(scope_ids, user_id, &v, threshold, limit).await?.len())
+}
+
+/// Test-only: number of FTS-arm hits. Re-exported alongside the vector wrapper.
+#[doc(hidden)]
+pub async fn fts_search_hit_count_for_test(
+    scope_ids: &[Uuid],
+    user_id: Uuid,
+    query: &str,
+    limit: i64,
+    dict: &str,
+    min_rank: f32,
+) -> Result<usize, AppError> {
+    Ok(fts_search(scope_ids, user_id, query, limit, dict, min_rank).await?.len())
+}
+
 async fn vector_search(
     scope_ids: &[Uuid],
     user_id: Uuid,
