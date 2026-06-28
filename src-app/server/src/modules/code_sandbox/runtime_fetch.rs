@@ -478,6 +478,29 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
+    /// Rootfs DOWNLOAD FAILURE handling: an unreachable host must surface a
+    /// download error (FetchError::Download upstream), not a partial/garbage
+    /// "success". The inline tests only covered the happy path. attempts=1 so it
+    /// doesn't retry-loop.
+    #[test]
+    fn download_blob_blocking_errors_on_unreachable_host() {
+        let dest = std::env::temp_dir().join("ziee_rootfs_dl_fail_test_blob");
+        let _ = std::fs::remove_file(&dest);
+
+        // 127.0.0.1:1 refuses connections → DownloadResult::Failed → Err.
+        let r = download_blob_blocking("http://127.0.0.1:1/rootfs.squashfs", &dest, 1);
+        assert!(r.is_err(), "an unreachable host must produce a download error");
+
+        // No completed-looking artifact is left behind (the verify/install steps
+        // must never see a partial blob as if it downloaded).
+        let leftover_ok = match std::fs::metadata(&dest) {
+            Ok(m) => m.len() == 0,
+            Err(_) => true,
+        };
+        assert!(leftover_ok, "a failed download must not leave a non-empty artifact");
+        let _ = std::fs::remove_file(&dest);
+    }
+
     #[test]
     fn fetch_lock_is_per_flavor_and_stable() {
         let a1 = fetch_lock_for("alpha");
