@@ -73,6 +73,123 @@ async fn test_core_memory_block_label_validation() {
     assert_eq!(res.status(), 400);
 }
 
+// audit id all-ff09478e26e9 — concurrent upsert/delete race on the SAME core
+// memory block. The repository's upsert is an INSERT ... ON CONFLICT DO UPDATE
+// (repository.rs:50-106) keyed by (assistant_id, user_id, block_label), so many
+// concurrent writers to the same block must never error, never duplicate the
+// row (the UNIQUE constraint), and converge to a single consistent final state.
+// A concurrent delete racing the writers must likewise either remove the row or
+// be raced-out by a later upsert. Exercised through the real HTTP path against a
+// real assistant fixture (so the FK + ON CONFLICT actually run).
+#[tokio::test]
+async fn test_concurrent_core_memory_upsert_delete_is_consistent() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_race",
+        &["assistants::create", "memory::core::read", "memory::core::write"],
+    )
+    .await;
+    let token = user.token.clone();
+
+    // Real assistant so the assistant_core_memory FK is satisfied.
+    let created = reqwest::Client::new()
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "name": "race-assistant" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201, "assistant create should return 201");
+    let assistant_id = created.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let upsert = |n: usize| {
+        let url = server.api_url("/assistants/core-memory");
+        let token = token.clone();
+        let assistant_id = assistant_id.clone();
+        async move {
+            reqwest::Client::new()
+                .put(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "assistant_id": assistant_id,
+                    "block_label": "persona",
+                    "content": format!("content-{n}"),
+                    "char_limit": 1000,
+                }))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // 16 concurrent upserts to the same block — every one must succeed (200).
+    let mut handles = Vec::new();
+    for n in 0..16usize {
+        handles.push(tokio::spawn(upsert(n)));
+    }
+    for h in handles {
+        let res = h.await.unwrap();
+        assert_eq!(
+            res.status(),
+            200,
+            "every concurrent upsert to the same block must succeed (ON CONFLICT)"
+        );
+    }
+
+    // After the storm, exactly ONE row exists for that block (UNIQUE held).
+    let list: Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/assistants/{assistant_id}/core-memory")))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let blocks = list.as_array().expect("core-memory list is an array");
+    let persona: Vec<&Value> = blocks
+        .iter()
+        .filter(|b| b["block_label"] == "persona")
+        .collect();
+    assert_eq!(
+        persona.len(),
+        1,
+        "concurrent upserts must converge to exactly one row, got {persona:?}"
+    );
+    let content = persona[0]["content"].as_str().unwrap();
+    assert!(
+        content.starts_with("content-"),
+        "final content must be one of the written values, got {content}"
+    );
+
+    // Now race a delete against a fresh upsert; the end state is deterministic
+    // (0 or 1 row) and never a 5xx error.
+    let del_url = server.api_url(&format!(
+        "/assistants/{assistant_id}/core-memory/persona"
+    ));
+    let (del_res, up_res) = tokio::join!(
+        async {
+            reqwest::Client::new()
+                .delete(&del_url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+        },
+        upsert(99),
+    );
+    assert!(
+        del_res.status().is_success() || del_res.status() == 404,
+        "concurrent delete must be 2xx or 404, got {}",
+        del_res.status()
+    );
+    assert_eq!(up_res.status(), 200, "racing upsert must still succeed");
+}
+
 #[tokio::test]
 async fn test_delete_nonexistent_core_memory_block_returns_404() {
     // Deleting a block that was never created must surface 404, not a silent
