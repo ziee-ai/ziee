@@ -319,6 +319,24 @@ test.describe('Literature search admin settings', () => {
     expect(state.lastConnectorPatch?.body.api_key).toBe('')
   })
 
+  test('shows an error Alert when settings fail to load', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    // Settings endpoint hard-fails → the store surfaces `error`, which the
+    // page renders as an error Alert above the cards.
+    await page.route(/\/api\/lit-search\/settings$/, async route =>
+      route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'boom' }) }),
+    )
+    await page.route(/\/api\/lit-search\/connectors$/, async route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ connectors: [] }) }),
+    )
+
+    await page.goto(`${baseURL}/settings/literature`)
+    await expect(
+      page.getByText('Failed to load literature search settings'),
+    ).toBeVisible({ timeout: 10000 })
+  })
+
   test('caps form saves max_results / per-source / timeout', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const state = freshState()
