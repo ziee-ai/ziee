@@ -1,4 +1,4 @@
-import { GlobalOutlined } from '@ant-design/icons'
+import { Globe } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -39,7 +39,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'web-search',
-        icon: <GlobalOutlined />,
+        icon: <Globe />,
         label: 'Web Search',
         path: 'web-search',
         order: 27,

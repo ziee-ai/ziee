@@ -1,4 +1,4 @@
-import { InboxOutlined } from '@ant-design/icons'
+import { Inbox } from 'lucide-react'
 import type { UploadFile } from 'antd'
 import { Alert, App, Button, Modal, Space, Typography, Upload } from 'antd'
 import { useState } from 'react'
@@ -121,7 +121,7 @@ export function ImportWorkflowDialog({
           }}
         >
           <p className="ant-upload-drag-icon">
-            <InboxOutlined />
+            <Inbox />
           </p>
           <p className="ant-upload-text">
             Drop a workflow bundle (.tar.gz) or workflow.yaml here

@@ -1,4 +1,4 @@
-import { ImportOutlined } from '@ant-design/icons'
+import { Import as ImportIcon } from 'lucide-react'
 import { Button, Empty, Flex, Space, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
@@ -29,7 +29,7 @@ export function AdminWorkflowsPage() {
         <Flex justify="end">
           <Can permission={Permissions.WorkflowsManageSystem}>
             <Button
-              icon={<ImportOutlined />}
+              icon={<ImportIcon />}
               onClick={() => setImportOpen(true)}
             >
               Import

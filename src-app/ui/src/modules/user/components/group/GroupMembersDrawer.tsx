@@ -1,4 +1,4 @@
-import { UserOutlined } from '@ant-design/icons'
+import { User } from 'lucide-react'
 import { List, Tag } from 'antd'
 import { useEffect } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
@@ -33,7 +33,7 @@ export function GroupMembersDrawer() {
         renderItem={user => (
           <List.Item>
             <List.Item.Meta
-              avatar={<UserOutlined aria-hidden="true" />}
+              avatar={<User aria-hidden="true" />}
               title={user.username}
               description={
                 <div>

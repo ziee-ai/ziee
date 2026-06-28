@@ -1,4 +1,4 @@
-import { StopOutlined } from '@ant-design/icons'
+import { Ban } from 'lucide-react'
 import {
   message,
   Alert,
@@ -136,7 +136,7 @@ export function WorkflowRunProgressView({
           <Button
             variant="destructive"
             size="sm"
-            icon={<StopOutlined />}
+            icon={<Ban />}
             loading={cancelling}
             onClick={() => void Stores.WorkflowRun.cancel(runId)}
           >

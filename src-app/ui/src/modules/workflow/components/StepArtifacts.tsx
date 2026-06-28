@@ -1,4 +1,4 @@
-import { DownloadOutlined, FileOutlined } from '@ant-design/icons'
+import { Download as DownloadIcon, File } from 'lucide-react'
 import { Button, Image, Space, Text } from '@/components/ui'
 import { useEffect, useRef, useState } from 'react'
 import { ApiClient } from '@/api-client'
@@ -152,7 +152,7 @@ function ArtifactBlock({
   return (
     <div className="flex items-center justify-between gap-2 border rounded p-2">
       <Space size={8}>
-        <FileOutlined aria-hidden="true" />
+        <File aria-hidden="true" />
         <div className="flex flex-col">
           {meta}
           {artifact.description && (
@@ -165,7 +165,7 @@ function ArtifactBlock({
       <Button
         size="sm"
         variant="ghost"
-        icon={<DownloadOutlined aria-hidden="true" />}
+        icon={<DownloadIcon aria-hidden="true" />}
         loading={downloading}
         onClick={() => void handleDownload()}
         aria-label={`Download ${artifact.filename}`}

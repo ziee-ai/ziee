@@ -1,4 +1,4 @@
-import { DeleteOutlined } from '@ant-design/icons'
+import { Trash2 } from 'lucide-react'
 import { Button, Empty, List, Confirm, Space, Tag, Text, Link } from '@/components/ui'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -127,7 +127,7 @@ export function WorkflowRunsList({
                 <Button
                   variant="destructive"
                   size="sm"
-                  icon={<DeleteOutlined />}
+                  icon={<Trash2 />}
                   loading={!!deleting[run.id]}
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}
                 />

@@ -1,9 +1,4 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  TeamOutlined,
-  UserOutlined,
-} from '@ant-design/icons'
+import { Trash2, Pencil, Users, User } from 'lucide-react'
 import {
   Badge,
   Button,
@@ -56,7 +51,7 @@ export function GroupListItem({
         <Button
           key="members"
           variant="ghost"
-          icon={<UserOutlined aria-hidden="true" />}
+          icon={<User aria-hidden="true" />}
           onClick={() => onViewMembers(group)}
           aria-label={`View members of ${group.name}`}
         >
@@ -70,7 +65,7 @@ export function GroupListItem({
         <Button
           key="edit"
           variant="ghost"
-          icon={<EditOutlined aria-hidden="true" />}
+          icon={<Pencil aria-hidden="true" />}
           onClick={() => onEdit(group)}
           aria-label={`Edit ${group.name}`}
         >
@@ -92,7 +87,7 @@ export function GroupListItem({
         >
           <Button
             variant="destructive"
-            icon={<DeleteOutlined aria-hidden="true" />}
+            icon={<Trash2 aria-hidden="true" />}
             aria-label={`Delete ${group.name}`}
           >
             Delete
@@ -135,7 +130,7 @@ export function GroupListItem({
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <div className={'flex-1 min-w-48'}>
               <Flex className="gap-2 items-center">
-                <TeamOutlined aria-hidden="true" />
+                <Users aria-hidden="true" />
                 <Text className="font-medium">{group.name}</Text>
                 {group.is_system && <Tag tone="warning">System</Tag>}
                 <Badge color={group.is_active ? 'green' : 'red'} />
