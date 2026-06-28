@@ -265,9 +265,43 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const previousBodyOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
+    // Remember what was focused before the overlay opened so we can restore
+    // it on close (standard dialog focus management).
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const sidebar = document.getElementById('app-sidebar')
+
+    const focusable = (): HTMLElement[] => {
+      if (!sidebar) return []
+      return Array.from(
+        sidebar.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter(el => el.offsetParent !== null)
+    }
+
+    // Move focus into the dialog on open.
+    focusable()[0]?.focus()
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         Stores.AppLayout.setSidebarCollapsed(true)
+        return
+      }
+      if (e.key !== 'Tab') return
+      // Trap Tab focus inside the sidebar dialog.
+      const items = focusable()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement as HTMLElement | null
+      if (e.shiftKey) {
+        if (active === first || !sidebar?.contains(active)) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || !sidebar?.contains(active)) {
+        e.preventDefault()
+        first.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -275,6 +309,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return () => {
       document.body.style.overflow = previousBodyOverflow
       document.removeEventListener('keydown', onKeyDown)
+      // Restore focus to the trigger that opened the overlay.
+      previouslyFocused?.focus?.()
     }
   }, [windowMinSize.xs, isSidebarCollapsed])
 
