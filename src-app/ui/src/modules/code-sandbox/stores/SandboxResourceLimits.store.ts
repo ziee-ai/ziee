@@ -5,8 +5,10 @@ import { ApiClient } from '@/api-client'
 import {
   type CodeSandboxResourceLimits,
   type UpdateCodeSandboxResourceLimits,
+  Permissions,
 } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import { hasPermissionNow } from '@/core/permissions'
 
 /**
  * Runtime-configurable resource caps for the code sandbox (Plan 1 §6).
@@ -49,8 +51,16 @@ export const useSandboxResourceLimitsStore =
             const GROUP = 'SandboxResourceLimitsStore'
             // Code-sandbox resource-limit settings (singleton). Refetch on a
             // remote change (the event id is nil — it's a singleton row) or on
-            // SSE reconnect.
-            const reload = () => void get().loadLimits()
+            // SSE reconnect. SELF-GATE the refetch: `sync:reconnect` fires for
+            // every store regardless of the user's permissions, so without this
+            // a user lacking resource-limits read would 403 on reconnect (the
+            // no-403-reconnect rule). The perm checked MUST equal the read-perm
+            // the GET endpoint enforces. Mirrors SandboxRootfsVersions.store.
+            const reload = () => {
+              if (!hasPermissionNow(Permissions.CodeSandboxResourceLimitsRead))
+                return
+              void get().loadLimits()
+            }
             eventBus.on('sync:code_sandbox_settings', reload, GROUP)
             eventBus.on('sync:reconnect', reload, GROUP)
           },
