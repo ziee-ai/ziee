@@ -35,8 +35,9 @@ export default function AboutSettings() {
 
   return (
     <SettingsPageContainer title="About" subtitle="Server version and updates">
-      <Card>
+      <Card data-testid="serverupd-about-card">
         <Descriptions
+          data-testid="serverupd-about-descriptions"
           column={1}
           size="sm"
           items={[
@@ -57,9 +58,9 @@ export default function AboutSettings() {
                 <>
                   <Text code>{latestVersion}</Text>{' '}
                   {updateAvailable ? (
-                    <Tag tone="info">update available</Tag>
+                    <Tag data-testid="serverupd-update-available-tag" tone="info">update available</Tag>
                   ) : (
-                    <Tag tone="success">up to date</Tag>
+                    <Tag data-testid="serverupd-uptodate-tag" tone="success">up to date</Tag>
                   )}
                 </>
               ) : (
@@ -84,6 +85,7 @@ export default function AboutSettings() {
 
         {!enabled && (
           <Alert
+            data-testid="serverupd-disabled-alert"
             tone="info"
             className="mt-4"
             title="Update checks are disabled by operator config"
@@ -92,7 +94,7 @@ export default function AboutSettings() {
         )}
 
         {error && (
-          <Alert tone="error" className="mt-4" title={error} />
+          <Alert data-testid="serverupd-error-alert" tone="error" className="mt-4" title={error} />
         )}
 
         {updateAvailable && (
@@ -124,6 +126,7 @@ export default function AboutSettings() {
         )}
 
         <Button
+          data-testid="serverupd-refresh-btn"
           className="mt-2"
           icon={<RotateCw />}
           loading={loading}

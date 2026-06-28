@@ -28,6 +28,7 @@ function ServerUpdateBannerInner() {
 
   return (
     <Alert
+      data-testid="serverupd-banner-alert"
       tone="info"
       onClose={() => Stores.ServerUpdate.dismiss()}
       closeLabel="Close"
@@ -35,6 +36,7 @@ function ServerUpdateBannerInner() {
         <span>
           Ziee {latestVersion} is available.{' '}
           <Button
+            data-testid="serverupd-banner-howto-btn"
             variant="link"
             size="sm"
             className="!p-0 !h-auto"
