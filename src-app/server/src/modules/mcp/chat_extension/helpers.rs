@@ -877,6 +877,34 @@ mod tests {
         assert!(content.contains("no interactive session"), "got: {content}");
     }
 
+    /// A pathologically large LLM-generated `schema` is rejected as a tool
+    /// error BEFORE it can be streamed to the form (the FE renders a field per
+    /// property, so an oversized schema would hang the browser). The size guard
+    /// runs ahead of the interactive-stream check, so all-None args drive it.
+    #[tokio::test]
+    async fn ask_user_oversized_schema_is_error() {
+        // Build a JSON-schema object whose serialized form clears the cap.
+        let big: std::collections::BTreeMap<String, serde_json::Value> = (0..60_000)
+            .map(|i| (format!("field_{i}"), serde_json::json!({ "type": "string" })))
+            .collect();
+        let schema = serde_json::json!({ "type": "object", "properties": big });
+        assert!(
+            serde_json::to_vec(&schema).unwrap().len() > MAX_STRUCTURED_CONTENT_BYTES,
+            "fixture must actually exceed the cap",
+        );
+        let result = run_ask_user_elicitation(
+            serde_json::json!({ "message": "Pick", "schema": schema }),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        let (content, is_error) = tool_result_parts(&result);
+        assert!(is_error, "oversized schema must be a tool error");
+        assert!(content.contains("too large"), "got: {content}");
+    }
+
     // ── ask_user response → tool_result mapping (plan Tier 1) ─────────────────
 
     #[test]
