@@ -134,4 +134,76 @@ test.describe('Summarization — admin thresholds', () => {
       timeout: 10000,
     })
   })
+
+  // audit id 4c6db476f377 — the "Summarizer model" Select (the
+  // default_summarization_model_id dropdown) was never opened or selected from
+  // in E2E. Mock the chat-model list so the dropdown is deterministically
+  // populated, open it, pick a model, and assert the PUT persists its id.
+  test('summarizer model dropdown lists models and persists the selection', async ({
+    page,
+    testInfra,
+  }) => {
+    const MODEL_ID = '11111111-1111-1111-1111-111111111111'
+    const MODEL_LABEL = 'Claude Test Model'
+
+    await page.route(/\/api\/llm-models(\?.*)?$/, async route => {
+      if (route.request().method() !== 'GET') return route.continue()
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          models: [
+            {
+              id: MODEL_ID,
+              name: 'claude-test',
+              display_name: MODEL_LABEL,
+              provider_id: '22222222-2222-2222-2222-222222222222',
+            },
+          ],
+          page: 1,
+          per_page: 200,
+          total: 1,
+        }),
+      })
+    })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let putBody: any = null
+    await page.route(/\/api\/summarization\/settings$/, async route => {
+      const req = route.request()
+      if (req.method() === 'PUT') {
+        putBody = JSON.parse(req.postData() ?? '{}')
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            id: 1,
+            enabled: true,
+            default_summarization_model_id: putBody?.default_summarization_model_id,
+            summarize_after_tokens: 20000,
+            summarizer_keep_recent_tokens: 4000,
+            updated_at: new Date().toISOString(),
+          }),
+        })
+      }
+      return route.continue()
+    })
+
+    // Reload so the mocked /api/llm-models populates the dropdown.
+    await page.goto(`${testInfra.baseURL}/settings/summarization-admin`)
+    const card = summarizationCard(page)
+    await expect(card.getByLabel('Summarizer model')).toBeVisible({
+      timeout: 30000,
+    })
+
+    // Open the antd Select and choose the mocked model.
+    await card.getByLabel('Summarizer model').click()
+    await page.getByRole('option', { name: MODEL_LABEL }).click()
+
+    await card.locator('.ant-btn-primary[type="submit"]').click()
+    await expect(page.getByText(SUCCESS_TOAST).first()).toBeVisible({
+      timeout: 10000,
+    })
+    expect(putBody?.default_summarization_model_id).toBe(MODEL_ID)
+  })
 })
