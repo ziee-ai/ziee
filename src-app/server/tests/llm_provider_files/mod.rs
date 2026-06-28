@@ -667,3 +667,134 @@ async fn test_reupload_after_provider_failure() {
     // Cleanup the temp blob dir.
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+// audit id all-088637dee7e6 — the API-key-rotation cache-invalidation edge in
+// get_or_upload_provider_file (service.rs:82-86): a cached Completed mapping
+// whose stored api_key_fingerprint no longer matches the provider's current key
+// belongs to a different account and MUST be discarded → re-upload, not a
+// stale-id return. Drives the REAL service fn; only the provider boundary mocked.
+struct SequentialUploadProvider {
+    upload_calls: AtomicUsize,
+}
+
+#[ziee::async_trait]
+impl AIProvider for SequentialUploadProvider {
+    fn name(&self) -> &str {
+        "seq-upload"
+    }
+    async fn stream_chat(
+        &self,
+        _a: &str,
+        _b: &str,
+        _r: ChatRequest,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamChatChunk, ProviderError>> + Send>>,
+        ProviderError,
+    > {
+        Err(ProviderError::NotSupported("mock".into()))
+    }
+    async fn embeddings(
+        &self,
+        _a: &str,
+        _b: &str,
+        _r: EmbeddingsRequest,
+    ) -> Result<EmbeddingsResponse, ProviderError> {
+        Err(ProviderError::NotSupported("mock".into()))
+    }
+    fn supports_file_api(&self) -> bool {
+        true
+    }
+    async fn upload_file(
+        &self,
+        _a: &str,
+        _b: &str,
+        _u: FileUpload,
+    ) -> Result<Option<FileUploadResponse>, ProviderError> {
+        let n = self.upload_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(Some(FileUploadResponse {
+            provider_file_id: format!("upload-{n}"),
+            expires_at: None,
+            metadata: None,
+        }))
+    }
+}
+
+#[tokio::test]
+async fn test_key_rotation_discards_cached_mapping_and_reuploads() {
+    use std::sync::Arc;
+    use ziee::llm_provider_files_test_api::{
+        get_or_upload_provider_file, FileRepository, FileStorage, FilesystemStorage, LlmProvider,
+        ProxySettings,
+    };
+
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "rotate_user", &[]).await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+
+    let file_id = create_test_file(&pool, user_id, "rotate.txt").await;
+    let tmp = std::env::temp_dir().join(format!("ziee-rotate-{}", Uuid::new_v4()));
+    let storage: Arc<dyn FileStorage> = Arc::new(FilesystemStorage::new(&tmp));
+    storage
+        .save_original(user_id, file_id, "txt", b"rotate me")
+        .await
+        .unwrap();
+    let file_repo = FileRepository::new(pool.clone());
+
+    let mut provider = LlmProvider {
+        id: Uuid::new_v4(),
+        name: "Anthropic Rotate".to_string(),
+        provider_type: "anthropic".to_string(),
+        enabled: true,
+        api_key: Some("key-AAAAAAAA".to_string()),
+        base_url: Some("https://api.test.example/v1".to_string()),
+        built_in: false,
+        proxy_settings: ProxySettings::default(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        default_runtime_version_id: None,
+    };
+    sqlx::query!(
+        r#"INSERT INTO llm_providers (id, name, provider_type, enabled, api_key, base_url)
+           VALUES ($1, $2, $3, true, $4, $5)"#,
+        provider.id,
+        provider.name,
+        provider.provider_type,
+        provider.api_key,
+        provider.base_url,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let ai = SequentialUploadProvider { upload_calls: AtomicUsize::new(0) };
+
+    // First call with key-A → uploads → "upload-0", stores fingerprint(A).
+    let first =
+        get_or_upload_provider_file(&pool, &file_repo, &storage, file_id, user_id, &provider, &ai)
+            .await
+            .unwrap();
+    assert_eq!(first, "upload-0");
+    assert_eq!(ai.upload_calls.load(Ordering::SeqCst), 1);
+
+    // Same key-A again → cache hit, NO new upload.
+    let cached =
+        get_or_upload_provider_file(&pool, &file_repo, &storage, file_id, user_id, &provider, &ai)
+            .await
+            .unwrap();
+    assert_eq!(cached, "upload-0", "same key must return the cached id");
+    assert_eq!(ai.upload_calls.load(Ordering::SeqCst), 1, "no re-upload on a cache hit");
+
+    // Rotate the provider's key → the stored fingerprint no longer matches, so
+    // the cached mapping is discarded and a fresh upload runs (service.rs:82-86).
+    provider.api_key = Some("key-BBBBBBBB".to_string());
+    let after_rotation =
+        get_or_upload_provider_file(&pool, &file_repo, &storage, file_id, user_id, &provider, &ai)
+            .await
+            .unwrap();
+    assert_eq!(after_rotation, "upload-1", "rotated key must trigger a re-upload, not return the stale id");
+    assert_eq!(ai.upload_calls.load(Ordering::SeqCst), 2, "key rotation must re-upload");
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
