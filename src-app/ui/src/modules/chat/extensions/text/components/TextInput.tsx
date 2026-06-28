@@ -37,6 +37,7 @@ export function TextInput() {
   return (
     <div className="w-full">
       <Textarea
+        data-testid="chat-message-textarea"
         ref={ref}
         onKeyDown={handleKeyDown}
         placeholder="Type your message..."

@@ -84,6 +84,7 @@ export function MessageActions() {
     >
       <Tooltip content="Copy">
         <Button
+          data-testid="chat-message-copy-btn"
           variant="ghost"
           size="sm"
           icon={<CopyIcon />}

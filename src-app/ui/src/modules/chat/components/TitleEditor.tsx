@@ -76,6 +76,7 @@ export function TitleEditor() {
   if (isEditing) {
     return (
       <Form
+        data-testid="chat-title-editor-form"
         name="title-editor"
         form={form}
         onSubmit={handleSave}
@@ -87,6 +88,7 @@ export function TitleEditor() {
           className="!mb-0 flex-1"
         >
           <Input
+            data-testid="chat-title-input"
             placeholder="Enter conversation title"
             autoFocus
             size="sm"
@@ -94,6 +96,7 @@ export function TitleEditor() {
           />
         </FormField>
         <Button
+          data-testid="chat-title-save-btn"
           type="submit"
           variant="ghost"
           size="sm"
@@ -101,6 +104,7 @@ export function TitleEditor() {
           className="!p-1"
         />
         <Button
+          data-testid="chat-title-cancel-btn"
           variant="ghost"
           size="sm"
           icon={<X />}
@@ -130,6 +134,7 @@ export function TitleEditor() {
       </Title>
       <Tooltip title="Edit title">
         <Button
+          data-testid="chat-title-edit-btn"
           variant="ghost"
           icon={<Pencil />}
           onClick={handleEditClick}

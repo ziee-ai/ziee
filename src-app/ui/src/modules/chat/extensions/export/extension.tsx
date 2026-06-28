@@ -152,8 +152,8 @@ function ExportButton() {
   }
 
   return (
-    <Dropdown items={getExportMenuItems()} side="bottom" align="end">
-      <Button icon={<Download />}>
+    <Dropdown data-testid="chat-export-dropdown" items={getExportMenuItems()} side="bottom" align="end">
+      <Button data-testid="chat-export-btn" icon={<Download />}>
         Export
       </Button>
     </Dropdown>

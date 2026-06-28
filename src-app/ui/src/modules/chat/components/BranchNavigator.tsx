@@ -39,6 +39,7 @@ export function BranchNavigator() {
   return (
     <Space size={2} data-testid="branch-navigator">
       <Button
+        data-testid="chat-branch-prev-btn"
         variant="ghost"
         size="sm"
         icon={<ChevronLeft />}
@@ -49,6 +50,7 @@ export function BranchNavigator() {
         {displayIndex + 1} / {total}
       </Text>
       <Button
+        data-testid="chat-branch-next-btn"
         variant="ghost"
         size="sm"
         icon={<ChevronRight />}

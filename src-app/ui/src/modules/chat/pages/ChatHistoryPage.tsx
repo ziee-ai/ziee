@@ -95,6 +95,7 @@ export default function ChatHistoryPage() {
               content={searchOpenInNarrow ? 'Hide search' : 'Search'}
             >
               <Button
+                data-testid="chat-history-search-toggle-btn"
                 variant={searchOpenInNarrow ? 'default' : 'ghost'}
                 icon={<SearchIcon />}
                 onClick={() => setSearchOpenInNarrow(v => !v)}
@@ -140,6 +141,7 @@ export default function ChatHistoryPage() {
               Start your first conversation to see your chat history here
             </Text>
             <Button
+              data-testid="chat-history-new-chat-btn"
               variant="default"
               icon={<Plus />}
               onClick={() => navigate('/chat')}

@@ -90,6 +90,7 @@ export function ChatInput({
               }
             >
               <Button
+                data-testid="chat-input-add-btn"
                 icon={<Plus className="size-4" />}
                 variant="ghost"
                 size="lg"
@@ -103,6 +104,7 @@ export function ChatInput({
           <div className="flex items-center gap-2">
             <ExtensionSlot name="toolbar_model" />
             <Button
+              data-testid="chat-input-send-btn"
               size="lg"
               icon={<SendIcon className="rotate-[270deg]" />}
               onClick={handleSend}

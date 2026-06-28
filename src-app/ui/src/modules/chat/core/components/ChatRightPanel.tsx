@@ -22,6 +22,7 @@ function ActivePanelContent() {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6">
         <Empty
+          data-testid="chat-panel-no-renderer-empty"
           description={
             <div className="flex flex-col items-center gap-1">
               <CircleAlert className="size-14 text-amber-500" />
@@ -54,6 +55,7 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
       data-testid="chat-right-panel-tabs"
     >
       <Tabs
+        data-testid="chat-right-panel-tab-list"
         editable
         hideAdd
         size="sm"

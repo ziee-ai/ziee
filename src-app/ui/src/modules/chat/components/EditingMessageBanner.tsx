@@ -28,6 +28,7 @@ export function EditingMessageBanner() {
       </div>
       <Tooltip content="Cancel edit">
         <Button
+          data-testid="chat-editing-cancel-btn"
           variant="ghost"
           size="sm"
           icon={<X />}

@@ -101,6 +101,7 @@ export default function ConversationPage() {
     return (
       <main className="flex flex-col items-center justify-center h-full p-8">
         <Alert
+          data-testid="chat-conversation-not-found-alert"
           tone="error"
           title="Conversation not found"
           description="This conversation may have been deleted or you don't have access to it."
@@ -131,7 +132,7 @@ export default function ConversationPage() {
       {/* Error banner */}
       {error && (
         <div className="w-full max-w-4xl mx-auto px-4 pt-4">
-          <Alert tone="error" title={error} onClose={Stores.Chat.clearError} closeLabel="Close" />
+          <Alert data-testid="chat-conversation-error-alert" tone="error" title={error} onClose={Stores.Chat.clearError} closeLabel="Close" />
         </div>
       )}
 

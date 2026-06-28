@@ -21,6 +21,7 @@ export function ModelSelector({
       className={`mb-0 inline-block`}
     >
       <Select
+        data-testid="chat-model-select"
         popupMatchSelectWidth={false}
         placeholder="Model"
         disabled={isDisabled}
