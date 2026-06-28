@@ -558,6 +558,53 @@ async fn test_grep_files_hits() {
     );
 }
 
+// audit id all-b8f8e4819634 — the grep_files truncation path (GREP_MAX_MATCHES =
+// 200) was never exercised: the existing tests only assert truncated=false. A
+// corpus with MORE than 200 matching lines must cap `matches` at exactly 200 and
+// set `truncated=true`, so the model knows the result is partial. (The (MAX+1)th
+// sentinel is pushed then trimmed, so the cap is exact, not off-by-one.)
+#[tokio::test]
+async fn test_grep_files_truncates_at_match_cap() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_grep_trunc").await;
+    // 250 matching lines > the 200 cap.
+    let mut body = String::new();
+    for i in 0..250 {
+        body.push_str(&format!("NEEDLE line {i}\n"));
+    }
+    let (conv_id, _ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "grep-trunc-project",
+        &[("big.txt", body.as_str())],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let res = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "grep_files",
+        json!({ "pattern": "NEEDLE" }),
+    )
+    .await;
+    assert!(res["error"].is_null(), "grep should succeed; body={res}");
+    let sc = &res["result"]["structuredContent"];
+    let matches = sc["matches"].as_array().expect("matches array");
+    assert_eq!(
+        matches.len(),
+        200,
+        "matches must be capped at GREP_MAX_MATCHES (200); got {}",
+        matches.len()
+    );
+    assert_eq!(
+        sc["truncated"].as_bool().unwrap(),
+        true,
+        "a >200-match corpus must report truncated=true"
+    );
+}
+
 /// (4b) A malformed regex (unbalanced `(`) must NOT error — it falls back to a
 /// LITERAL (escaped) substring match. The literal `error(` text matches the body.
 #[tokio::test]
