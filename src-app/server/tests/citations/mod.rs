@@ -177,6 +177,40 @@ async fn test_initialize_returns_server_info() {
 }
 
 #[tokio::test]
+async fn test_jsonrpc_unknown_method_returns_method_not_found() {
+    // An unknown JSON-RPC method must return a well-formed error object
+    // (code -32601) at HTTP 200, NOT a transport-level failure.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "cit_mnf", &["citations::use"]).await;
+    let res = jsonrpc(&server, &user.token, "does/not/exist", json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"]["code"], -32601, "method_not_found code; got {body}");
+    assert!(body.get("result").is_none(), "must not carry a result: {body}");
+}
+
+#[tokio::test]
+async fn test_jsonrpc_malformed_body_returns_parse_error() {
+    // A body that isn't valid JSON must yield a -32700 parse error at HTTP 400.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "cit_parse", &["citations::use"]).await;
+    let res = reqwest::Client::new()
+        .post(server.api_url("/citations/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .body("{ this is not json ")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"]["code"], -32700, "parse_error code; got {body}");
+}
+
+#[tokio::test]
 async fn test_tools_list_has_six_batch_tools() {
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "cit_list", &["citations::use"]).await;
