@@ -172,4 +172,35 @@ test.describe('Document RAG — admin settings surface', () => {
       page.getByText('Backfill dispatched in the background.'),
     ).toBeVisible({ timeout: 10000 })
   })
+
+  // FullTextSection (the lexical-arm tuning card) had no interaction coverage —
+  // only that its title renders. Exercise its form save round-trip.
+  test('Full-text search settings save round-trips', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    await ragAdmin(page, baseURL, apiURL)
+
+    const card = page.locator(
+      '.ant-card:has(.ant-card-head-title:has-text("Full-text search"))',
+    )
+    await expect(card).toBeVisible({ timeout: 30000 })
+
+    // Change "RRF k" and save the card.
+    const rrf = card.getByRole('spinbutton', { name: /RRF k/i })
+    await rrf.click()
+    await rrf.press('ControlOrMeta+a')
+    await rrf.fill('80')
+    await card.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByText('Full-text settings saved.')).toBeVisible({
+      timeout: 10000,
+    })
+
+    // Reload → the change persisted.
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    const card2 = page.locator(
+      '.ant-card:has(.ant-card-head-title:has-text("Full-text search"))',
+    )
+    await expect(card2.getByRole('spinbutton', { name: /RRF k/i })).toHaveValue('80', {
+      timeout: 30000,
+    })
+  })
 })
