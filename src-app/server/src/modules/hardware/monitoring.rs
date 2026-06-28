@@ -226,3 +226,55 @@ async fn broadcast_usage_update(usage_update: HardwareUsageUpdate) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// F-01: the SSE client pool is capped at MAX_SSE_CLIENTS — `add_client`
+    /// returns `Some` until the cap, then `None` (the caller surfaces 429/503),
+    /// and `remove_client` frees a slot so a new client can connect again.
+    #[test]
+    fn add_client_enforces_cap_and_remove_frees_slot() {
+        // Start from a clean registry (the static is process-global).
+        SSE_CLIENTS.lock().unwrap().clear();
+
+        let mut ids = Vec::with_capacity(MAX_SSE_CLIENTS);
+        for _ in 0..MAX_SSE_CLIENTS {
+            let id = Uuid::new_v4();
+            assert!(add_client(id).is_some(), "below the cap must accept clients");
+            ids.push(id);
+        }
+
+        // At capacity → refused.
+        assert!(
+            add_client(Uuid::new_v4()).is_none(),
+            "at MAX_SSE_CLIENTS, new clients must be refused"
+        );
+
+        // Freeing one slot lets exactly one more in.
+        remove_client(ids[0]);
+        assert!(
+            add_client(Uuid::new_v4()).is_some(),
+            "removing a client frees a slot"
+        );
+        assert!(
+            add_client(Uuid::new_v4()).is_none(),
+            "back at capacity → refused again"
+        );
+
+        SSE_CLIENTS.lock().unwrap().clear();
+    }
+
+    /// F-04: `stop_hardware_monitoring` clears the active flag so the monitoring
+    /// loop exits on its next tick (graceful shutdown).
+    #[test]
+    fn stop_clears_active_flag() {
+        MONITORING_ACTIVE.store(true, Ordering::SeqCst);
+        stop_hardware_monitoring();
+        assert!(
+            !MONITORING_ACTIVE.load(Ordering::SeqCst),
+            "stop must clear MONITORING_ACTIVE"
+        );
+    }
+}
