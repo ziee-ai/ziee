@@ -15,7 +15,7 @@ import {
   Pagination,
 } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type User } from '@/api-client/types'
@@ -40,6 +40,11 @@ export function UsersSettings() {
   } = Stores.Users
   const { error: groupsError } = Stores.UserGroups
   const { user: currentUser } = Stores.Auth
+  // Which user's activate/deactivate confirmation is open (shared by the status
+  // Switch + the Activate/Deactivate Button — both open the same Confirm).
+  const [activeConfirmUserId, setActiveConfirmUserId] = useState<string | null>(
+    null,
+  )
 
   const canEdit = usePermission(Permissions.UsersEdit)
   const canResetPassword = usePermission(Permissions.UsersResetPassword)
@@ -93,8 +98,17 @@ export function UsersSettings() {
     if (canToggleStatus && !isSelf && !isRootAdmin) {
       actions.push(
         <div key="active-confirm" className="inline-flex items-center">
-          <Switch className={'mr-2!'} checked={user.is_active} data-testid={`user-active-switch-${user.id}`} />
+          <Switch
+            className={'mr-2!'}
+            checked={user.is_active}
+            onChange={() => setActiveConfirmUserId(user.id)}
+            data-testid={`user-active-switch-${user.id}`}
+          />
           <Confirm
+            open={activeConfirmUserId === user.id}
+            onOpenChange={open =>
+              setActiveConfirmUserId(open ? user.id : null)
+            }
             title={`${user.is_active ? 'Deactivate' : 'Activate'} this user?`}
             onConfirm={() => handleToggleActive(user.id)}
             okText="OK"

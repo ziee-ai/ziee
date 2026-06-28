@@ -119,12 +119,16 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                   }`}
                   onClick={alreadyInstalled ? undefined : () => Stores.McpServersStep.toggleMcpServer(server.name)}
                 >
-                  <Checkbox
-                    data-testid={`onboarding-mcp-hub-server-checkbox-${server.name}`}
-                    checked={isSelected}
-                    disabled={alreadyInstalled}
-                    className="mt-1"
-                  />
+                  {/* stop bubbling so the checkbox's own toggle doesn't double-fire the row onClick */}
+                  <span onClick={e => e.stopPropagation()}>
+                    <Checkbox
+                      data-testid={`onboarding-mcp-hub-server-checkbox-${server.name}`}
+                      checked={isSelected}
+                      disabled={alreadyInstalled}
+                      onChange={() => Stores.McpServersStep.toggleMcpServer(server.name)}
+                      className="mt-1"
+                    />
+                  </span>
                   <div>
                     <div className="flex items-center gap-2">
                       <Text strong>{leaf}</Text>

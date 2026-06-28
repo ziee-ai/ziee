@@ -188,7 +188,7 @@ export function WorkflowRunDialog({
       </div>
       {conversationId && (
         <div className="mt-2 flex items-center gap-2">
-          <Switch data-testid="wf-run-conversation-output-switch" checked disabled size="sm" />
+          <Switch data-testid="wf-run-conversation-output-switch" defaultChecked disabled size="sm" />
           <Text type="secondary" className="text-xs">
             Output posts back to the current conversation
           </Text>
