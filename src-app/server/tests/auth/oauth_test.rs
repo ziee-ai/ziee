@@ -1090,3 +1090,77 @@ async fn test_oauth_provider_validation() {
     // In a real test, you would validate against your provider schema
     assert!(invalid_config.get("client_secret").is_none());
 }
+
+/// Error path: a callback whose `state` matches no oauth_sessions row (never
+/// solicited, or the row already expired/was deleted) must collapse to a
+/// neutral 400 INVALID_STATE — never a 500, and never a provider-existence
+/// oracle.
+#[tokio::test]
+async fn test_oauth_callback_invalid_or_expired_state_returns_400() {
+    let test_server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let resp = client
+        .get(format!(
+            "{}/api/auth/oauth/some-provider/callback?code=abc&state={}",
+            test_server.base_url,
+            uuid::Uuid::new_v4()
+        ))
+        .send()
+        .await
+        .expect("callback request failed");
+    assert_eq!(
+        resp.status(),
+        400,
+        "an unknown/expired state must return 400, got {}",
+        resp.status()
+    );
+}
+
+/// Error path: token exchange fails (e.g. wrong client_secret / unreachable
+/// token endpoint). We point `token_url` at a closed loopback port so the
+/// exchange errors; OUR callback must surface a non-success status rather than
+/// panicking or redirecting to a logged-in session.
+#[tokio::test]
+async fn test_oauth_token_exchange_failure_is_handled() {
+    let test_server = crate::common::TestServer::start().await;
+    let oauth_server = OAuthMockServer::start()
+        .await
+        .expect("mock oauth server");
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .unwrap();
+
+    // Real authorize_url (so the flow reaches our callback with a code) but a
+    // dead token endpoint → the token POST fails.
+    seed_oidc_provider(
+        &pool,
+        "test-oauth-tokenfail",
+        &oauth_server,
+        serde_json::json!({ "token_url": "http://127.0.0.1:1/token" }),
+    )
+    .await;
+
+    let (status, _loc) = drive_oauth_flow(
+        &test_server,
+        "test-oauth-tokenfail",
+        "tokfail-subject",
+        serde_json::json!({ "sub": "tokfail-subject", "email": "tf@example.com" }),
+        None,
+    )
+    .await;
+
+    assert!(
+        !status.is_redirection(),
+        "a failed token exchange must NOT yield a successful login redirect, got {}",
+        status
+    );
+    assert!(
+        status.is_client_error() || status.is_server_error(),
+        "token-exchange failure should surface an error status, got {}",
+        status
+    );
+}
