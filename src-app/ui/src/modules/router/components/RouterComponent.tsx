@@ -30,6 +30,7 @@ function RoutePermissionGate({
   if (!allowed) {
     return (
       <Result
+        data-testid="router-route-forbidden-result"
         status="403"
         title="Not authorized"
         subtitle="You don't have permission to view this page."
