@@ -275,6 +275,39 @@ test.describe('Settings - Profile (self-service)', () => {
     ).toHaveCount(0)
   })
 
+  test('read-only profile (no profile::edit) disables the form + shows the notice', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsFreshUser(page, baseURL, apiURL, 'readonly')
+
+    // The fresh user has profile::edit via the default Users group (so it could
+    // complete onboarding). To exercise the canEdit=false branch we strip
+    // profile::edit from the /auth/me bootstrap — the FRONTEND gate
+    // (`usePermission(ProfileEdit)`) is the unit under test, with the permission
+    // set (its sole input) coming from that endpoint.
+    await page.route(/\/api\/auth\/me$/, async (route) => {
+      const res = await route.fetch()
+      const body = await res.json()
+      body.permissions = (body.permissions as string[]).filter(
+        (p) => p !== 'profile::edit',
+      )
+      await route.fulfill({ response: res, json: body })
+    })
+
+    await gotoProfile(page, baseURL)
+
+    // The read-only notice renders, the form fields are disabled, and the
+    // edit-only actions (Save / Change password) are gone.
+    await expect(
+      page.getByText(/Fields are read-only/),
+    ).toBeVisible()
+    await expect(page.getByLabel('Display name')).toBeDisabled()
+    await expect(page.getByLabel('Username')).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Save' })).toHaveCount(0)
+  })
+
   test('blocks weak new password and mismatched confirmation client-side', async ({
     page,
     testInfra,
