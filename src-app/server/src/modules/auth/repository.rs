@@ -374,15 +374,61 @@ impl AuthRepository {
         provider_id: Uuid,
         external_id: &str,
     ) -> Result<Uuid, AppError> {
-        let user_id = self
-            .create_external_user(username, email, display_name)
-            .await?;
+        // All three writes (user row, auth link, default-group assignment) must
+        // be atomic: a failure after the user INSERT would otherwise leave an
+        // orphan user with no auth link (unable to log in, blocking the
+        // username/email) or no default group.
+        let user_id = Uuid::new_v4();
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
 
-        self.create_auth_link(user_id, provider_id, external_id)
-            .await?;
+        sqlx::query!(
+            r#"
+            INSERT INTO users (id, username, email, display_name, is_active, is_admin, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, true, false, NOW(), NOW())
+            "#,
+            user_id,
+            username,
+            email,
+            display_name
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
 
-        self.assign_user_to_default_group(user_id).await?;
+        sqlx::query!(
+            r#"
+            INSERT INTO user_auth_links (user_id, provider_id, external_id, created_at, last_login_at)
+            VALUES ($1, $2, $3, NOW(), NOW())
+            "#,
+            user_id,
+            provider_id,
+            external_id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
 
+        let default_group = sqlx::query!(
+            r#"SELECT id FROM groups WHERE is_default = true LIMIT 1"#
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+        if let Some(group) = default_group {
+            sqlx::query!(
+                r#"
+                INSERT INTO user_groups (user_id, group_id, assigned_at)
+                VALUES ($1, $2, NOW())
+                "#,
+                user_id,
+                group.id
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+
+        tx.commit().await.map_err(AppError::database_error)?;
         Ok(user_id)
     }
 
