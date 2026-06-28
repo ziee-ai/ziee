@@ -471,9 +471,9 @@ where
 
     // Install the seccomp pipe (read end dup2'd to the host-specified fd in the
     // bwrap child). Keep the read fd to close after spawn.
-    let seccomp_read_fd = match (req.seccomp_fd, bpf.as_ref()) {
+    let (seccomp_read_fd, seccomp_writer) = match (req.seccomp_fd, bpf.as_ref()) {
         (Some(fd), Some(bytes)) => match install_seccomp(&mut cmd, fd, bytes.clone()) {
-            Ok(rfd) => Some(rfd),
+            Ok((rfd, h)) => (Some(rfd), Some(h)),
             Err(e) => {
                 let _ = tx.send(Frame::Stderr(format!("agent: seccomp setup failed: {e}\n").into_bytes()));
                 let _ = tx.send(Frame::Exit(ExitStatus { code: -1, timed_out: false }));
@@ -482,7 +482,7 @@ where
                 return Ok(());
             }
         },
-        _ => None,
+        _ => (None, None),
     };
 
     // Live-progress FIFO (workflow sandbox step). When the host set
@@ -571,6 +571,11 @@ where
     // Make sure all output is flushed before Exit.
     let _ = out_task.await;
     let _ = err_task.await;
+    // Join the seccomp BPF writer (bwrap has consumed the filter by now); this
+    // reaps the task instead of leaking it and surfaces a truncated-write log.
+    if let Some(h) = seccomp_writer {
+        let _ = h.await;
+    }
     // Stop the progress reader + unlink the FIFO BEFORE dropping `tx`: the
     // bwrap child has exited so no further `$ZIEE_PROGRESS` writes arrive, and
     // we don't want an orphaned reader holding the writer half of `tx`.
@@ -898,9 +903,9 @@ async fn spawn_long_lived(
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
 
-    let seccomp_read_fd = match (req.seccomp_fd, bpf.as_ref()) {
+    let (seccomp_read_fd, seccomp_writer) = match (req.seccomp_fd, bpf.as_ref()) {
         (Some(fd), Some(bytes)) => match install_seccomp(&mut cmd, fd, bytes.clone()) {
-            Ok(rfd) => Some(rfd),
+            Ok((rfd, h)) => (Some(rfd), Some(h)),
             Err(e) => {
                 let _ = tx.send(Frame::Started(StartedAck {
                     handle,
@@ -910,7 +915,7 @@ async fn spawn_long_lived(
                 return;
             }
         },
-        _ => None,
+        _ => (None, None),
     };
 
     let spawned = cmd.spawn();
@@ -996,6 +1001,11 @@ async fn spawn_long_lived(
     tokio::spawn(async move {
         let _cgroup = cgroup; // held until exit so Drop rmdir's the cgroup
         let status = child.wait().await;
+        // Reap the seccomp BPF writer now that the child has consumed its
+        // filter and exited — joins the task instead of leaking it.
+        if let Some(h) = seccomp_writer {
+            let _ = h.await;
+        }
         let code = status.as_ref().ok().and_then(|s| s.code()).unwrap_or(-1);
         // Remove BEFORE sending the exit so any concurrent KillProcess
         // observes the missing entry instead of racing with a freshly
@@ -1243,7 +1253,11 @@ impl Drop for GuestCgroup {
 /// bwrap, which reads it via `--seccomp <target_fd>`). Returns the parent's
 /// read fd so the caller can close it after spawn.
 #[cfg(target_os = "linux")]
-fn install_seccomp(cmd: &mut Command, target_fd: i32, bpf: Arc<Vec<u8>>) -> std::io::Result<i32> {
+fn install_seccomp(
+    cmd: &mut Command,
+    target_fd: i32,
+    bpf: Arc<Vec<u8>>,
+) -> std::io::Result<(i32, tokio::task::JoinHandle<()>)> {
     let mut fds: [libc::c_int; 2] = [0; 2];
     if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
         return Err(std::io::Error::last_os_error());
@@ -1251,9 +1265,13 @@ fn install_seccomp(cmd: &mut Command, target_fd: i32, bpf: Arc<Vec<u8>>) -> std:
     let read_fd = fds[0];
     let write_fd = fds[1];
 
-    // Write the BPF from a task (it may exceed the pipe buffer). Must complete
-    // in full or bwrap rejects a truncated filter.
-    tokio::spawn(async move {
+    // Write the BPF from a task (it may exceed the pipe buffer, so it MUST run
+    // concurrently with the bwrap child that drains the read end — we can't
+    // await it before spawn or a >pipe-buffer filter would deadlock). The
+    // JoinHandle is returned so the caller awaits it during connection cleanup
+    // instead of leaking a detached task whose truncation error would go
+    // unobserved.
+    let writer = tokio::spawn(async move {
         let bytes: &[u8] = bpf.as_ref();
         let mut off = 0;
         while off < bytes.len() {
@@ -1296,7 +1314,7 @@ fn install_seccomp(cmd: &mut Command, target_fd: i32, bpf: Arc<Vec<u8>>) -> std:
             Ok(())
         });
     }
-    Ok(read_fd)
+    Ok((read_fd, writer))
 }
 
 /// Resolve when the host closes the control connection (read half hits EOF) or
