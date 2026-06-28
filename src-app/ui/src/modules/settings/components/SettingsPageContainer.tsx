@@ -40,10 +40,7 @@ export function SettingsPageContainer({
           )}
         </div>
       </div>
-      <div
-        role="main"
-        className={'flex w-full flex-1 justify-center pb-3 mt-3'}
-      >
+      <div className={'flex w-full flex-1 justify-center pb-3 mt-3'}>
         <div
           className={
             'max-w-4xl w-full h-full flex flex-col gap-3 px-3 self-center'
