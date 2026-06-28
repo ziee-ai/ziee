@@ -9,6 +9,12 @@ This layer exists to catch regressions that only show up after the
 Tauri bundling pipeline — bad `productName`, broken `tauri.conf.json`
 capability ACL, missing rust-embed assets, wrong `mainBinaryName`, etc.
 
+> **Currently macOS-only.** `smoke.mjs` resolves the macOS bundle path
+> (`target/release/bundle/macos/Ziee.app`), so the harness runs only on
+> macOS as-is. The Linux/Windows WebDriver install steps below are kept
+> as reference for a future cross-platform port (which also needs the
+> matching Linux/Windows bundle paths). See **Limitations**.
+
 ## Prerequisites
 
 1. **Build the bundle first.** From `src-app/`:
