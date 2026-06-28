@@ -148,9 +148,9 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       )}
 
       {completeness && (
-        <div className="rounded-md bg-blue-50 p-3 border border-blue-200">
-          <Text className="text-sm font-medium text-blue-800">{completeness.estimate.toUpperCase()}</Text>
-          <Paragraph className="text-xs text-blue-600 !mb-0">{completeness.caveat}</Paragraph>
+        <div className="rounded-md bg-accent p-3 border border-border">
+          <Text className="text-sm font-medium text-foreground">{completeness.estimate.toUpperCase()}</Text>
+          <Paragraph className="text-xs text-muted-foreground !mb-0">{completeness.caveat}</Paragraph>
         </div>
       )}
 
