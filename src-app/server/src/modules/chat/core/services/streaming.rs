@@ -2157,4 +2157,33 @@ mod trim_tests {
             );
         }
     }
+
+    /// Recall-roundtrip linkage: a CLEARED older result's placeholder must carry
+    /// the EXACT `tool_use_id` inside a `get_tool_result(...)` hint, so the model
+    /// can recover the full result via the tool_result_mcp recall path (whose own
+    /// retrieval is covered by tests/tool_result_mcp). Without the right id in the
+    /// placeholder the roundtrip is impossible.
+    #[test]
+    fn cleared_placeholder_carries_tool_use_id_for_recall() {
+        let big = "x".repeat(400);
+        let mut msgs: Vec<ChatMessage> = (0..5)
+            .map(|i| tool_result_msg(&format!("tu{i}"), &big))
+            .collect();
+        clear_old_tool_results(&mut msgs, 100, 1);
+
+        // The oldest result (tu0) is cleared and its placeholder names tu0 in a
+        // get_tool_result hint.
+        let txt = match &msgs[0].content[0] {
+            ContentBlock::ToolResult { content, .. } => match &content[0] {
+                ContentBlock::Text { text } => text.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        };
+        assert!(txt.contains("get_tool_result"), "placeholder must point at get_tool_result: {txt}");
+        assert!(
+            txt.contains("tool_use_id=\"tu0\""),
+            "placeholder must carry the cleared result's exact tool_use_id for recall: {txt}"
+        );
+    }
 }
