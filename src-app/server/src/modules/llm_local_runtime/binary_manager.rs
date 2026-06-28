@@ -166,17 +166,23 @@ impl BinaryManager {
         self.get_binary_path(runtime_version.id).await
     }
 
-    /// List all registered runtime versions from database
-    pub async fn list_versions(&self) -> Result<Vec<RuntimeVersion>, Box<dyn std::error::Error>> {
-        Ok(version_repo::list_all(&self.pool).await?)
+    /// List all registered runtime versions from database (paginated).
+    pub async fn list_versions(
+        &self,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<RuntimeVersion>, Box<dyn std::error::Error>> {
+        Ok(version_repo::list_all(&self.pool, page, per_page).await?)
     }
 
-    /// List versions for a specific engine
+    /// List versions for a specific engine (paginated).
     pub async fn list_versions_for_engine(
         &self,
         engine: &str,
+        page: i64,
+        per_page: i64,
     ) -> Result<Vec<RuntimeVersion>, Box<dyn std::error::Error>> {
-        Ok(version_repo::list_by_engine(&self.pool, engine).await?)
+        Ok(version_repo::list_by_engine(&self.pool, engine, page, per_page).await?)
     }
 
     /// Get the latest version for an engine
@@ -287,7 +293,7 @@ impl BinaryManager {
         };
 
         let releases = self.downloader.list_releases(engine_type).await?;
-        let installed = version_repo::list_by_engine(&self.pool, engine).await?;
+        let installed = version_repo::list_by_engine(&self.pool, engine, 1, 500).await?;
 
         let versions = releases
             .into_iter()

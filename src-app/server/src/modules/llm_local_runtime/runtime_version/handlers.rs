@@ -28,11 +28,30 @@ use super::download_task::{
 // Query Parameters
 // =====================================================
 
+/// Default page size for paginated list queries. Runtime versions are
+/// realistically few (downloaded engine binaries), so the default returns the
+/// whole set in one page while still bounding the query — the frontend fetches
+/// all without truncation, and the `page` param exists for future growth.
+const DEFAULT_PAGE_SIZE: i64 = 500;
+
+/// Upper bound on versions materialized by the usage view (it must see every
+/// version to group models, so it cannot itself paginate — this is the DoS cap).
+const MAX_USAGE_VERSIONS: i64 = 500;
+
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ListVersionsQuery {
     /// Filter by engine (optional)
     pub engine: Option<String>,
+    /// Page number (1-indexed, default 1)
+    #[serde(default = "default_page")]
+    pub page: i64,
+    /// Items per page (default 50, max 500)
+    #[serde(default = "default_per_page")]
+    pub per_page: i64,
 }
+
+fn default_page() -> i64 { 1 }
+fn default_per_page() -> i64 { DEFAULT_PAGE_SIZE }
 
 /// A backend artifact tag: starts with a lowercase letter, then `[a-z0-9.]`
 /// (e.g. `cpu`, `cuda12.6`, `rocm6.1`). Rejects `..` / path separators.
@@ -68,12 +87,12 @@ pub async fn list_runtime_versions(
 
     let versions = if let Some(engine) = params.engine {
         binary_manager
-            .list_versions_for_engine(&engine)
+            .list_versions_for_engine(&engine, params.page, params.per_page)
             .await
             .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
     } else {
         binary_manager
-            .list_versions()
+            .list_versions(params.page, params.per_page)
             .await
             .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
     };
@@ -613,43 +632,35 @@ pub async fn list_version_usage(
     Query(params): Query<ListVersionsQuery>,
 ) -> ApiResult<Json<VersionUsageResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::with_cache_dir(
-        pool.clone(),
-        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
-    )
-    .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
+    // Effective-version resolution is fully batched in the repository now, so
+    // this handler no longer needs a BinaryManager (it previously called
+    // select_runtime_version per model — an N+1 storm).
     let engine = params.engine.as_deref();
     let models = super::repository::list_local_models_with_status(pool, engine)
         .await
         .map_err(|e| AppError::internal_error(format!("usage query: {e}")))?;
 
     let versions = match engine {
-        Some(e) => super::repository::list_by_engine(pool, e).await,
-        None => super::repository::list_all(pool).await,
+        Some(e) => super::repository::list_by_engine(pool, e, 1, MAX_USAGE_VERSIONS).await,
+        None => super::repository::list_all(pool, 1, MAX_USAGE_VERSIONS).await,
     }
     .map_err(|e| AppError::internal_error(format!("versions query: {e}")))?;
+
+    // Batched effective-version resolution (was an N+1 of select_runtime_version
+    // per model). One constant set of queries resolves every model.
+    let resolution = super::repository::resolve_effective_versions(pool, &models)
+        .await
+        .map_err(|e| AppError::internal_error(format!("resolve query: {e}")))?;
 
     let mut by_version: std::collections::HashMap<Uuid, Vec<ModelUsageInfo>> =
         std::collections::HashMap::new();
     let mut unresolved: Vec<ModelUsageInfo> = Vec::new();
 
     for m in models {
-        let effective = match binary_manager
-            .select_runtime_version(Some(m.id), Some(m.provider_id), &m.engine)
-            .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(
-                    "runtime_version: select_runtime_version failed for model {}: {e}",
-                    m.id
-                );
-                None
-            }
-        };
-        let pinned = match &effective {
-            Some(v) => m.required_runtime_version_id == Some(v.id),
+        let effective = resolution.get(&m.id).copied().flatten();
+        let pinned = match effective {
+            Some(v) => m.required_runtime_version_id == Some(v),
             None => false,
         };
         let info = ModelUsageInfo {
@@ -663,7 +674,7 @@ pub async fn list_version_usage(
             pinned,
         };
         match effective {
-            Some(v) => by_version.entry(v.id).or_default().push(info),
+            Some(v) => by_version.entry(v).or_default().push(info),
             None => unresolved.push(info),
         }
     }
