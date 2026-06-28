@@ -1,18 +1,21 @@
 import {
   CloudDownloadOutlined,
-  EyeInvisibleOutlined,
-  EyeTwoTone,
 } from '@ant-design/icons'
 import {
   Alert,
-  App,
   Button,
   Form,
+  FormField,
   Input,
+  PasswordInput,
   Select,
   Switch,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
@@ -23,11 +26,28 @@ import {
   type UpdateLlmRepositoryRequest,
 } from '@/api-client/types'
 
-const { Text } = Typography
+const schema = z.object({
+  name: z.string().min(1, 'Please enter a repository name'),
+  url: z.string().min(1, 'Please enter a repository URL').url('Please enter a valid URL'),
+  auth_type: z.string().min(1),
+  api_key: z.string().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  token: z.string().optional(),
+  auth_test_api_endpoint: z.string().optional(),
+  enabled: z.boolean().optional(),
+})
+
+type FormValues = z.infer<typeof schema>
 
 export function LlmRepositoryDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      auth_type: 'none',
+      enabled: true,
+    },
+  })
   const [loading, setLoading] = useState(false)
   // Local mirror of the Switch's checked state. Form.useWatch is
   // flaky for elements rendered outside the immediate Form provider
@@ -47,6 +67,14 @@ export function LlmRepositoryDrawer() {
   const canSave = repository ? canEdit : canCreate
   const mode: 'create' | 'edit' = repository ? 'edit' : 'create'
 
+  // Watch auth-related fields for conditional rendering and test-button visibility
+  const authType = form.watch('auth_type')
+  const url = form.watch('url')
+  const apiKey = form.watch('api_key')
+  const username = form.watch('username')
+  const password = form.watch('password')
+  const token = form.watch('token')
+
   // Update form when editing repository.
   //
   // NOTE: api_key / password / token are no longer returned in GET
@@ -57,7 +85,7 @@ export function LlmRepositoryDrawer() {
   // visible (non-secret).
   useEffect(() => {
     if (repository && open) {
-      form.setFieldsValue({
+      form.reset({
         name: repository.name,
         url: repository.url,
         auth_type: repository.auth_type,
@@ -67,7 +95,7 @@ export function LlmRepositoryDrawer() {
       })
       setEnabledValue(repository.enabled)
     } else if (!repository && open) {
-      form.setFieldsValue({
+      form.reset({
         auth_type: 'none',
         enabled: true,
       })
@@ -130,7 +158,7 @@ export function LlmRepositoryDrawer() {
    *   drawer's editing row + the list page.
    */
   const testRepositoryFromForm = async () => {
-    const values = form.getFieldsValue()
+    const values = form.getValues()
     const isEdit = mode === 'edit'
 
     // EDIT mode skips secret-required checks because the backend
@@ -171,23 +199,16 @@ export function LlmRepositoryDrawer() {
         // 8s for failure so the user has time to read the reason —
         // matches the longer-duration pattern used for failed enable
         // transitions elsewhere in this drawer.
-        message.error({
-          content:
-            result.message || `Connection to ${values.name} failed`,
-          duration: 8,
-        })
+        message.error(result.message || `Connection to ${values.name} failed`, { duration: 8000 })
       }
     } catch (error: any) {
       console.error('Repository connection test failed:', error)
-      message.error({
-        content: error?.message || `Connection to ${values.name} failed`,
-        duration: 8,
-      })
+      message.error(error?.message || `Connection to ${values.name} failed`, { duration: 8000 })
     }
   }
 
   const handleClose = () => {
-    form.resetFields()
+    form.reset()
     Stores.LlmRepositoryDrawer.closeDrawer()
   }
 
@@ -264,10 +285,7 @@ export function LlmRepositoryDrawer() {
       // `enabled` value), and `connection_warning` is an optional
       // sibling that appears only when the probe failed.
       if (wrapped.connection_warning) {
-        message.warning({
-          content: `Repository added but disabled — ${wrapped.connection_warning.reason}`,
-          duration: 8,
-        })
+        message.warning(`Repository added but disabled — ${wrapped.connection_warning.reason}`, { duration: 8000 })
       }
       // Strip `connection_warning` so the caller sees a plain
       // LlmRepository shape — the warning has already been surfaced.
@@ -276,7 +294,7 @@ export function LlmRepositoryDrawer() {
     }
   }
 
-  const handleSubmit = async (values: any) => {
+  const handleSubmit = async (values: FormValues) => {
     setLoading(true)
     try {
       await persistRepository(values)
@@ -286,10 +304,7 @@ export function LlmRepositoryDrawer() {
       handleClose()
     } catch (error: any) {
       console.error('Failed to save repository:', error)
-      message.error({
-        content: error?.message || 'Failed to save repository',
-        duration: 8,
-      })
+      message.error(error?.message || 'Failed to save repository', { duration: 8000 })
     } finally {
       setLoading(false)
     }
@@ -324,20 +339,20 @@ export function LlmRepositoryDrawer() {
         // OFF in create mode is purely local — there's nothing
         // persisted to disable.
         setEnabledValue(false)
-        form.setFieldsValue({ enabled: false })
+        form.setValue('enabled', false)
         return
       }
 
       // ON in create mode: probe the form values without persisting.
       // Mirrors the user's request that the Switch in the Add Repository
       // drawer "immediately test the connection without saving".
-      const values = form.getFieldsValue()
+      const values = form.getValues()
       const validation = validateFormForTest(values, false)
       if (!validation.ok) {
         // Stay OFF; show the hint so the user knows what's missing.
         message.warning(validation.hint)
         setEnabledValue(false)
-        form.setFieldsValue({ enabled: false })
+        form.setValue('enabled', false)
         return
       }
 
@@ -357,27 +372,20 @@ export function LlmRepositoryDrawer() {
         })
         if (result.success) {
           setEnabledValue(true)
-          form.setFieldsValue({ enabled: true })
+          form.setValue('enabled', true)
           message.success(
             result.message || 'Connection test passed — enabled in form',
           )
         } else {
           setEnabledValue(false)
-          form.setFieldsValue({ enabled: false })
-          message.error({
-            content:
-              result.message ||
-              'Connection test failed; repository will be created disabled',
-            duration: 8,
-          })
+          form.setValue('enabled', false)
+          message.error(result.message ||
+              'Connection test failed; repository will be created disabled', { duration: 8000 })
         }
       } catch (error: any) {
         setEnabledValue(false)
-        form.setFieldsValue({ enabled: false })
-        message.error({
-          content: error?.message || 'Connection test failed',
-          duration: 8,
-        })
+        form.setValue('enabled', false)
+        message.error(error?.message || 'Connection test failed', { duration: 8000 })
       } finally {
         setTogglingEnable(false)
       }
@@ -394,7 +402,7 @@ export function LlmRepositoryDrawer() {
           enabled: false,
         })
         setEnabledValue(false)
-        form.setFieldsValue({ enabled: false })
+        form.setValue('enabled', false)
         message.success('Repository disabled')
         return
       }
@@ -403,8 +411,8 @@ export function LlmRepositoryDrawer() {
       // probes the persisted config; on failure, the response is 400
       // and the AutoDisabled event flips the row back to disabled
       // via the store's event listener.
-      const values = form.getFieldsValue()
-      form.setFieldsValue({ enabled: true })
+      const values = form.getValues()
+      form.setValue('enabled', true)
       setEnabledValue(true)
       try {
         await persistRepository(values, true)
@@ -420,16 +428,21 @@ export function LlmRepositoryDrawer() {
           error?.message ||
           'Connection probe failed; repository remains disabled.'
         setEnabledValue(false)
-        form.setFieldsValue({ enabled: false })
-        message.error({
-          content: `Failed to enable: ${reason}`,
-          duration: 8,
-        })
+        form.setValue('enabled', false)
+        message.error(`Failed to enable: ${reason}`, { duration: 8000 })
       }
     } finally {
       setTogglingEnable(false)
     }
   }
+
+  // Only show test button if URL is provided and auth is configured (if needed)
+  const showTestButton =
+    url &&
+    (authType === 'none' ||
+      (authType === 'api_key' && apiKey) ||
+      (authType === 'basic_auth' && username && password) ||
+      (authType === 'bearer_token' && token))
 
   return (
     <Drawer
@@ -454,10 +467,9 @@ export function LlmRepositoryDrawer() {
       {mode === 'edit' &&
         repository?.last_health_check_status === 'unhealthy' && (
           <Alert
-            type="error"
-            showIcon
+            tone="error"
             className="!mb-4"
-            message={
+            title={
               repository.last_health_check_at
                 ? `Connection test failed at ${new Date(
                     repository.last_health_check_at,
@@ -473,165 +485,115 @@ export function LlmRepositoryDrawer() {
         name="llm-repository-form"
         form={form}
         layout="vertical"
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canSave}
       >
-        <Form.Item
+        {/* Hidden field to keep `enabled` in form state so persistRepository reads it */}
+        <input type="hidden" {...form.register('enabled')} />
+
+        <FormField
           name="name"
           label="Repository Name"
-          rules={[
-            { required: true, message: 'Please enter a repository name' },
-          ]}
+          required
         >
           <Input
             placeholder="My Custom Repository"
             disabled={repository?.built_in}
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="url"
           label="Repository URL"
-          rules={[
-            { required: true, message: 'Please enter a repository URL' },
-            { type: 'url', message: 'Please enter a valid URL' },
-          ]}
+          required
         >
           <Input
             placeholder="https://your-custom-repo.com/models"
             disabled={repository?.built_in}
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="auth_type"
           label="Authentication Type"
-          rules={[{ required: true }]}
+          required
         >
-          <Select disabled={repository?.built_in}>
-            <Select.Option value="none">No Authentication</Select.Option>
-            <Select.Option value="api_key">API Key</Select.Option>
-            <Select.Option value="basic_auth">
-              Basic Authentication
-            </Select.Option>
-            <Select.Option value="bearer_token">Bearer Token</Select.Option>
-          </Select>
-        </Form.Item>
+          <Select
+            disabled={repository?.built_in}
+            options={[
+              { value: 'none', label: 'No Authentication' },
+              { value: 'api_key', label: 'API Key' },
+              { value: 'basic_auth', label: 'Basic Authentication' },
+              { value: 'bearer_token', label: 'Bearer Token' },
+            ]}
+          />
+        </FormField>
 
-        <Form.Item dependencies={['auth_type']} noStyle>
-          {({ getFieldValue }) => {
-            const authType = getFieldValue('auth_type')
+        {authType === 'api_key' && (
+          <FormField name="api_key" label="API Key">
+            <PasswordInput
+              placeholder="Enter your API key"
+              showLabel="Show API key"
+              hideLabel="Hide API key"
+            />
+          </FormField>
+        )}
 
-            if (authType === 'api_key') {
-              return (
-                <Form.Item name="api_key" label="API Key">
-                  <Input.Password
-                    placeholder="Enter your API key"
-                    iconRender={visible =>
-                      visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />
-                    }
-                  />
-                </Form.Item>
-              )
-            }
+        {authType === 'basic_auth' && (
+          <>
+            <FormField name="username" label="Username">
+              <Input placeholder="Enter your username" />
+            </FormField>
+            <FormField name="password" label="Password">
+              <PasswordInput
+                placeholder="Enter your password"
+                showLabel="Show password"
+                hideLabel="Hide password"
+              />
+            </FormField>
+          </>
+        )}
 
-            if (authType === 'basic_auth') {
-              return (
-                <>
-                  <Form.Item name="username" label="Username">
-                    <Input placeholder="Enter your username" />
-                  </Form.Item>
-                  <Form.Item name="password" label="Password">
-                    <Input.Password
-                      placeholder="Enter your password"
-                      iconRender={visible =>
-                        visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />
-                      }
-                    />
-                  </Form.Item>
-                </>
-              )
-            }
+        {authType === 'bearer_token' && (
+          <FormField name="token" label="Bearer Token">
+            <PasswordInput
+              placeholder="Enter your bearer token"
+              showLabel="Show token"
+              hideLabel="Hide token"
+            />
+          </FormField>
+        )}
 
-            if (authType === 'bearer_token') {
-              return (
-                <Form.Item name="token" label="Bearer Token">
-                  <Input.Password
-                    placeholder="Enter your bearer token"
-                    iconRender={visible =>
-                      visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />
-                    }
-                  />
-                </Form.Item>
-              )
-            }
-
-            return null
-          }}
-        </Form.Item>
-
-        <Form.Item
+        <FormField
           name="auth_test_api_endpoint"
           label="Authentication Test Endpoint"
-          extra="Custom endpoint to test authentication. If not provided, the main repository URL will be used for testing."
+          description="Custom endpoint to test authentication. If not provided, the main repository URL will be used for testing."
         >
           <Input
             disabled={repository?.built_in}
             placeholder="https://api.example.com/auth/test"
           />
-        </Form.Item>
+        </FormField>
 
         {/* Test Connection Section */}
-        <Form.Item
-          dependencies={[
-            'url',
-            'auth_type',
-            'api_key',
-            'username',
-            'password',
-            'token',
-            'auth_test_api_endpoint',
-          ]}
-          noStyle
-        >
-          {({ getFieldValue }) => {
-            const authType = getFieldValue('auth_type')
-            const url = getFieldValue('url')
-
-            // Only show test button if URL is provided and auth is configured (if needed)
-            const showTestButton =
-              url &&
-              (authType === 'none' ||
-                (authType === 'api_key' && getFieldValue('api_key')) ||
-                (authType === 'basic_auth' &&
-                  getFieldValue('username') &&
-                  getFieldValue('password')) ||
-                (authType === 'bearer_token' && getFieldValue('token')))
-
-            if (showTestButton) {
-              return (
-                <Form.Item label="Connection Test">
-                  <div>
-                    <Text type="secondary" className="block mb-3">
-                      Test your repository configuration to ensure it's
-                      accessible
-                    </Text>
-                    <Button
-                      type="default"
-                      icon={<CloudDownloadOutlined />}
-                      loading={testing}
-                      onClick={testRepositoryFromForm}
-                    >
-                      Test Connection
-                    </Button>
-                  </div>
-                </Form.Item>
-              )
-            }
-
-            return null
-          }}
-        </Form.Item>
+        {showTestButton && (
+          <FormField name="_test_connection_placeholder" label="Connection Test">
+            <div>
+              <Text type="secondary" className="block mb-3">
+                Test your repository configuration to ensure it's
+                accessible
+              </Text>
+              <Button
+                variant="outline"
+                icon={<CloudDownloadOutlined />}
+                loading={testing}
+                onClick={testRepositoryFromForm}
+              >
+                Test Connection
+              </Button>
+            </div>
+          </FormField>
+        )}
 
         {/* Enable Repository switch.
          *
@@ -647,10 +609,7 @@ export function LlmRepositoryDrawer() {
          * disable, ON = save full form + backend probe with auto-revert
          * on probe failure).
          */}
-        <Form.Item name="enabled" hidden valuePropName="checked">
-          <Switch />
-        </Form.Item>
-        <Form.Item label="Enable Repository">
+        <FormField name="_enabled_display" label="Enable Repository">
           <Switch
             checked={enabledValue}
             disabled={repository?.built_in}
@@ -658,16 +617,17 @@ export function LlmRepositoryDrawer() {
             onChange={handleEnabledToggle}
             aria-label="Enable repository"
           />
-          {mode === 'edit' && (
-            <Text type="secondary" className="block mt-1 text-xs">
-              Enabling runs a connection probe; the repository stays
-              disabled if it can't reach the upstream.
-            </Text>
-          )}
-        </Form.Item>
+        </FormField>
+        {mode === 'edit' && (
+          <Text type="secondary" className="block mt-1 text-xs">
+            Enabling runs a connection probe; the repository stays
+            disabled if it can't reach the upstream.
+          </Text>
+        )}
 
         <div className="flex justify-end gap-3 pt-4">
           <Button
+            variant="outline"
             onClick={handleClose}
             disabled={loading || creating || updating}
           >
@@ -675,8 +635,7 @@ export function LlmRepositoryDrawer() {
           </Button>
           {canSave && (
             <Button
-              type="primary"
-              htmlType="submit"
+              type="submit"
               loading={loading || creating || updating}
             >
               {repository ? 'Save' : 'Add'}
