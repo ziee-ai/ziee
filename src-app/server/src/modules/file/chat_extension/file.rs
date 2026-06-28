@@ -161,6 +161,17 @@ impl ChatExtension for FileExtension {
                         .and_then(|v| v.as_str())
                         .ok_or_else(|| AppError::internal_error("Provider type not in context"))?;
 
+                    // Batch-resolve all files in ONE query (avoids an N+1
+                    // get_by_id_and_user per file). Ownership is enforced by the
+                    // query's `user_id = $2`, so a foreign/deleted id is simply
+                    // absent from the map and skipped below.
+                    let owned_files = Repos
+                        .file
+                        .get_by_ids_and_user(file_ids, context.user_id)
+                        .await?;
+                    let file_by_id: std::collections::HashMap<_, _> =
+                        owned_files.iter().map(|f| (f.id, f)).collect();
+
                     let mut file_blocks = Vec::new();
                     for file_id in file_ids {
                         // Images are inlined by the replay path (vision); skip
@@ -168,11 +179,9 @@ impl ChatExtension for FileExtension {
                         // mime — NOT `avail` membership: content-dedup can fold
                         // this (newest) upload into an earlier same-checksum
                         // entry, so its id may be absent from `avail` even though
-                        // it IS an image. (Ownership re-checked; a foreign/deleted
-                        // id resolves to None and is skipped.)
-                        let Some(file) =
-                            Repos.file.get_by_id_and_user(*file_id, context.user_id).await?
-                        else {
+                        // it IS an image. (A foreign/deleted id is absent from the
+                        // map and skipped.)
+                        let Some(file) = file_by_id.get(file_id) else {
                             continue;
                         };
                         let is_image = file
