@@ -612,6 +612,35 @@ fn is_text_mime(mime: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// The text-vs-binary predicate that decides whether resources/read returns
+    /// a `text` field or a base64 `blob` (resources.rs binary-output path): text
+    /// / JSON / YAML / +json mimes are text; everything else (images, octet-stream,
+    /// pdf, zip) takes the base64 blob branch.
+    #[test]
+    fn is_text_mime_drives_text_vs_base64_blob_branch() {
+        for t in [
+            "text/plain",
+            "text/csv",
+            "text/markdown",
+            "application/json",
+            "application/yaml",
+            "application/x-yaml",
+            "application/vnd.api+json",
+        ] {
+            assert!(is_text_mime(t), "{t} should be served as text");
+        }
+        for b in [
+            "image/png",
+            "image/jpeg",
+            "application/octet-stream",
+            "application/pdf",
+            "application/zip",
+            "application/x-protobuf",
+        ] {
+            assert!(!is_text_mime(b), "{b} must take the base64 blob branch");
+        }
+    }
+
     #[test]
     fn uri_roundtrip_output() {
         let run = Uuid::new_v4();
