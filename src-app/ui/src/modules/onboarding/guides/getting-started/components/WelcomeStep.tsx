@@ -24,7 +24,7 @@ export default function WelcomeStep({ registerBeforeNext }: OnboardingStepProps)
       </div>
 
       <Paragraph className="text-base">
-        This quick setup will help you configure Ziee Chat so it&apos;s ready
+        This quick setup will help you configure Ziee so it&apos;s ready
         to use right away. It only takes a few minutes.
       </Paragraph>
 
