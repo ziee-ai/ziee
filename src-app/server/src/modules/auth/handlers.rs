@@ -1907,20 +1907,16 @@ pub async fn admin_delete_provider(
     origin: SyncOrigin,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<DeleteProviderResponse>> {
-    let existing = provider_repo::get_provider_by_id(Repos.pool(), id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
-    let affected = provider_repo::count_links_for_provider(Repos.pool(), id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    let n = provider_repo::delete_provider(Repos.pool(), id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    if n == 0 {
-        return Err((StatusCode::NOT_FOUND, AppError::not_found("Auth provider")));
-    }
-    event_bus.emit_async(AuthProviderEvent::deleted(id, existing.name).into());
+    // Atomic: existence-lock + link count + delete in ONE transaction (row
+    // locked FOR UPDATE). Serializes concurrent deletes and makes the reported
+    // `affected_user_links` exactly match the FK cascade. `None` means the
+    // provider doesn't exist (or a concurrent deleter already removed it) → 404.
+    let (name, affected) =
+        provider_repo::delete_provider_with_link_count(Repos.pool(), id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+            .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
+    event_bus.emit_async(AuthProviderEvent::deleted(id, name).into());
     sync_publish(
         SyncEntity::AuthProvider,
         SyncAction::Delete,

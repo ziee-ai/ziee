@@ -183,6 +183,59 @@ pub async fn delete_provider(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
     Ok(res.rows_affected())
 }
 
+/// Atomically delete a provider and return its name + the number of
+/// `user_auth_links` that were cascade-removed.
+///
+/// All three steps (existence-lock, link count, delete) run inside ONE
+/// transaction with the provider row locked `FOR UPDATE`. This replaces the
+/// previous get→count→delete sequence of three separate, non-atomic queries:
+///   - Concurrent deletes both passed the standalone existence check, then
+///     one DELETE affected 0 rows → a confusing 404 to the loser. Under the
+///     row lock the second deleter now blocks until the first commits, then
+///     observes the row already gone and gets a clean `Ok(None)` (→ 404,
+///     which is correct: the provider genuinely no longer exists).
+///   - `affected_user_links` could be stale (links added/removed between the
+///     count and the delete). Taken under the lock in the same tx, the count
+///     now exactly matches what the FK cascade removes.
+///
+/// Returns `Ok(None)` when the provider does not exist.
+pub async fn delete_provider_with_link_count(
+    pool: &PgPool,
+    id: Uuid,
+) -> Result<Option<(String, i64)>, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // Lock the row for the duration of the tx; serializes concurrent deletes.
+    let Some(row) = sqlx::query!(
+        r#"SELECT name FROM auth_providers WHERE id = $1 FOR UPDATE"#,
+        id,
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?
+    else {
+        tx.rollback().await.map_err(AppError::database_error)?;
+        return Ok(None);
+    };
+
+    let affected = sqlx::query!(
+        r#"SELECT COUNT(*) as "count!" FROM user_auth_links WHERE provider_id = $1"#,
+        id,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?
+    .count;
+
+    sqlx::query!(r#"DELETE FROM auth_providers WHERE id = $1"#, id)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(Some((row.name, affected)))
+}
+
 /// Flip `enabled` to false on the row. Called by the health-enforcement
 /// layer when an enable-transition probe fails or a manual Test of an
 /// enabled row turns up failing. Touches `updated_at` so frontend
