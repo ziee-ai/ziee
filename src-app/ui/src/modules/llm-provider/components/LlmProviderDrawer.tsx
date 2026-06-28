@@ -130,13 +130,14 @@ export function LlmProviderDrawer() {
         layout="vertical"
         onSubmit={handleSubmit}
         disabled={!canSave}
+        data-testid="llm-provider-form"
       >
         <FormField
           name="name"
           label="Provider Name"
           required
         >
-          <Input placeholder="My Custom Provider" />
+          <Input placeholder="My Custom Provider" data-testid="llm-provider-name-input" />
         </FormField>
 
         <FormField
@@ -148,6 +149,7 @@ export function LlmProviderDrawer() {
             options={PROVIDER_TYPES}
             disabled={!!provider}
             placeholder="Select provider type"
+            data-testid="llm-provider-type-select"
           />
         </FormField>
 
@@ -169,11 +171,12 @@ export function LlmProviderDrawer() {
                 placeholder="Enter your API key"
                 showLabel="Show API key"
                 hideLabel="Hide API key"
+                data-testid="llm-provider-api-key-input"
               />
             </FormField>
 
             <FormField name="base_url" label="Base URL">
-              <Input placeholder="https://api.provider.com/v1" />
+              <Input placeholder="https://api.provider.com/v1" data-testid="llm-provider-base-url-input" />
             </FormField>
           </>
         )}
@@ -183,15 +186,15 @@ export function LlmProviderDrawer() {
           label="Enable Provider"
           valuePropName="checked"
         >
-          <Switch aria-label="Enable or disable this provider" />
+          <Switch aria-label="Enable or disable this provider" data-testid="llm-provider-enabled-switch" />
         </FormField>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button variant="outline" onClick={handleClose} disabled={loading}>
+          <Button variant="outline" onClick={handleClose} disabled={loading} data-testid="llm-provider-cancel-btn">
             {canSave ? 'Cancel' : 'Close'}
           </Button>
           {canSave && (
-            <Button type="submit" loading={loading}>
+            <Button type="submit" loading={loading} data-testid="llm-provider-submit-btn">
               {provider ? 'Save' : 'Add'}
             </Button>
           )}

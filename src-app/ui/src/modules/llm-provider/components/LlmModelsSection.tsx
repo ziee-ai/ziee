@@ -133,6 +133,7 @@ export function LlmModelsSection() {
           checked={llmModel.enabled !== false}
           onChange={checked => handleToggleLlmModel(llmModel.id, checked)}
           aria-label={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
+          data-testid={`llm-model-enable-switch-${llmModel.id}`}
         />,
       )
     }
@@ -166,6 +167,7 @@ export function LlmModelsSection() {
           icon={<Pencil aria-hidden="true" />}
           onClick={() => handleEditLlmModel(llmModel.id)}
           aria-label={`Edit ${llmModel.display_name} model`}
+          data-testid={`llm-model-edit-btn-${llmModel.id}`}
         >
           {'Edit'}
         </Button>,
@@ -180,6 +182,7 @@ export function LlmModelsSection() {
           icon={<Trash2 aria-hidden="true" />}
           onClick={() => handleDeleteLlmModel(llmModel.id)}
           aria-label={`Delete ${llmModel.display_name} model`}
+          data-testid={`llm-model-delete-btn-${llmModel.id}`}
         >
           {'Delete'}
         </Button>,
@@ -196,6 +199,7 @@ export function LlmModelsSection() {
     if (currentProvider.provider_type === 'local') {
       return (
         <Dropdown
+          data-testid="llm-models-add-dropdown"
           items={[
             {
               key: 'upload',
@@ -222,6 +226,7 @@ export function LlmModelsSection() {
               variant="ghost"
               icon={<Plus aria-hidden="true" />}
               aria-label="Add model"
+              data-testid="llm-models-add-local-btn"
             />
           </Tooltip>
         </Dropdown>
@@ -235,6 +240,7 @@ export function LlmModelsSection() {
           icon={<Plus aria-hidden="true" />}
           onClick={handleAddLlmModel}
           aria-label="Add model"
+          data-testid="llm-models-add-remote-btn"
         />
       </Tooltip>
     )
@@ -246,12 +252,12 @@ export function LlmModelsSection() {
   }
 
   return (
-    <Card title="Models" extra={getAddButton()}>
+    <Card title="Models" extra={getAddButton()} data-testid="llm-models-section-card">
       {loading ? (
         <Loading />
       ) : llmModels.length === 0 ? (
         <div>
-          <Empty description="No models yet" />
+          <Empty description="No models yet" data-testid="llm-models-empty" />
         </div>
       ) : (
         <div>

@@ -76,7 +76,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
       size={600}
       footer={
         <div className="flex justify-end gap-2">
-          <Button onClick={handleClose} disabled={saving}>
+          <Button onClick={handleClose} disabled={saving} data-testid="llm-group-providers-cancel-btn">
             Cancel
           </Button>
           <Button
@@ -84,6 +84,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
             onClick={handleSave}
             loading={saving}
             disabled={loading}
+            data-testid="llm-group-providers-save-btn"
           >
             Save
           </Button>
@@ -118,6 +119,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                     key={provider.id}
                     onClick={() => handleToggle(provider.id, !isChecked)}
                     className="cursor-pointer"
+                    data-testid={`llm-group-provider-card-${provider.id}`}
                   >
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
@@ -127,6 +129,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                             handleToggle(provider.id, checked)
                           }
                           size="sm"
+                          data-testid={`llm-group-provider-switch-${provider.id}`}
                         />
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
@@ -138,6 +141,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                             <Tag
                               tone="info"
                               className="text-[11px] m-0"
+                              data-testid={`llm-group-provider-builtin-tag-${provider.id}`}
                             >
                               Built-in
                             </Tag>
@@ -146,6 +150,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                             <Tag
                               tone="success"
                               className="text-[11px] m-0"
+                              data-testid={`llm-group-provider-status-tag-${provider.id}`}
                             >
                               Enabled
                             </Tag>
@@ -153,6 +158,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                             <Tag
                               tone="warning"
                               className="text-[11px] m-0"
+                              data-testid={`llm-group-provider-status-tag-${provider.id}`}
                             >
                               Disabled
                             </Tag>

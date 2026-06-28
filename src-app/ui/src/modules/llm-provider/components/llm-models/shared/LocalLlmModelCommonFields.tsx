@@ -28,6 +28,7 @@ export function LocalLlmModelCommonFields() {
       >
         <Select
           placeholder="Select Engine Type"
+          data-testid="llm-engine-type-select"
           options={ENGINE_OPTIONS.map(option => ({
             value: option.value,
             label: option.label,
@@ -43,6 +44,7 @@ export function LocalLlmModelCommonFields() {
       >
         <Select
           placeholder="Select file format"
+          data-testid="llm-file-format-select"
           options={LOCAL_FILE_TYPE_OPTIONS.map(option => ({
             value: option.value,
             label: option.label,

@@ -108,7 +108,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
       className="!max-w-[600px]"
       footer={
         <div className="flex justify-end gap-2">
-          <Button onClick={handleClose} disabled={saving}>
+          <Button onClick={handleClose} disabled={saving} data-testid="llm-provider-groups-cancel-btn">
             Cancel
           </Button>
           <Button
@@ -116,6 +116,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
             onClick={handleSave}
             loading={saving}
             disabled={loading}
+            data-testid="llm-provider-groups-save-btn"
           >
             Save
           </Button>
@@ -146,13 +147,14 @@ export function LlmProviderGroupsAssignmentDrawer() {
               {groups.map(group => {
                 const isChecked = assignedIds.includes(group.id)
                 return (
-                  <Card key={group.id} className="w-full">
+                  <Card key={group.id} className="w-full" data-testid={`llm-provider-group-card-${group.id}`}>
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
                           checked={isChecked}
                           onChange={checked => handleToggle(group.id, checked)}
                           className="mt-0.5"
+                          data-testid={`llm-provider-group-switch-${group.id}`}
                         />
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
@@ -164,6 +166,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
                             <Tag
                               tone="warning"
                               className="text-xs m-0"
+                              data-testid={`llm-provider-group-system-tag-${group.id}`}
                             >
                               System
                             </Tag>
@@ -172,12 +175,14 @@ export function LlmProviderGroupsAssignmentDrawer() {
                             <Tag
                               tone="success"
                               className="text-xs m-0"
+                              data-testid={`llm-provider-group-status-tag-${group.id}`}
                             >
                               Active
                             </Tag>
                           ) : (
                             <Tag
                               className="text-xs m-0"
+                              data-testid={`llm-provider-group-status-tag-${group.id}`}
                             >
                               Inactive
                             </Tag>

@@ -95,13 +95,14 @@ export function EditLlmModelDrawer() {
       open={open}
       onClose={handleCancel}
       footer={[
-        <Button key="cancel" variant="outline" onClick={handleCancel}>
+        <Button key="cancel" variant="outline" onClick={handleCancel} data-testid="llm-edit-model-cancel-btn">
           Cancel
         </Button>,
         <Button
           key="submit"
           loading={loading}
           onClick={() => form.handleSubmit(onValid)()}
+          data-testid="llm-edit-model-save-btn"
         >
           Save
         </Button>,
@@ -109,7 +110,7 @@ export function EditLlmModelDrawer() {
       size={600}
       mask={{ closable: false }}
     >
-      <Form name="edit-llm-model-form" form={form} onSubmit={onValid} layout="vertical">
+      <Form name="edit-llm-model-form" form={form} onSubmit={onValid} layout="vertical" data-testid="llm-edit-model-form">
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />
 
         <Flex className={`flex-col gap-3`}>
@@ -124,7 +125,7 @@ export function EditLlmModelDrawer() {
             <LlmModelMistralRsSettingsSection />
           )}
 
-          <Card title="Parameters">
+          <Card title="Parameters" data-testid="llm-edit-model-parameters-card">
             <LlmModelParametersSection parameters={MODEL_PARAMETERS} />
           </Card>
         </Flex>

@@ -229,6 +229,7 @@ export function DownloadIndicatorWidget() {
                     variant="outline"
                     icon={<X />}
                     onClick={() => handleClear(download)}
+                    data-testid={`llm-download-clear-btn-${download.id}`}
                   >
                     Clear
                   </Button>
@@ -239,6 +240,7 @@ export function DownloadIndicatorWidget() {
                     variant="default"
                     icon={<RotateCw />}
                     onClick={() => handleRetry(download)}
+                    data-testid={`llm-download-retry-btn-${download.id}`}
                   >
                     Retry
                   </Button>
@@ -273,6 +275,7 @@ export function DownloadIndicatorWidget() {
           tone={badgeTone}
           offset={[10, 0]}
           aria-label={`${badgeCount} active download${badgeCount !== 1 ? 's' : ''}`}
+          data-testid="llm-download-indicator-badge"
         >
           <Download style={{ fontSize: 20 }} aria-label="Downloads" />
         </Badge>

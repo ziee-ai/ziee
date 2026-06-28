@@ -126,7 +126,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="Hardware backend to run the model on. Leave empty to auto-select; CPU runs inference on the CPU."
           >
             <FormField name={getFieldName('device_type')} aria-label="Device Type" className="m-0">
-              <Select
+              <Select data-testid="llm-mistralrs-device-type"
                 placeholder="Auto"
                 className="w-[120px]"
                 options={[
@@ -150,7 +150,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="Maximum running sequences at any time (default: 16)"
           >
             <FormField name={getFieldName('max_seqs')} aria-label="Max Sequences">
-              <InputNumber
+              <InputNumber data-testid="llm-mistralrs-max-seqs"
                 min={1}
                 max={1024}
                 placeholder="16"
@@ -170,7 +170,7 @@ export function LlmModelMistralRsSettingsSection() {
               valuePropName="checked"
               className="m-0"
             >
-              <Switch />
+              <Switch data-testid="llm-mistralrs-no-kv-cache" />
             </FormField>
           </ResponsiveConfigItem>
         </Flex>
@@ -184,7 +184,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="GPU memory to allocate for KV cache with PagedAttention in MBs"
           >
             <FormField name={getFieldName('paged_attn_gpu_mem')} aria-label="PagedAttention GPU Memory (MB)">
-              <InputNumber
+              <InputNumber data-testid="llm-mistralrs-paged-attn-gpu-mem"
                 min={128}
                 max={65536}
                 placeholder="Auto"
@@ -200,7 +200,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="Percentage of GPU memory to utilize after allocation of KV cache with PagedAttention, from 0 to 1 (default: 0.9 on CUDA)"
           >
             <FormField name={getFieldName('paged_attn_gpu_mem_usage')} aria-label="PagedAttention GPU Memory Usage">
-              <InputNumber
+              <InputNumber data-testid="llm-mistralrs-paged-attn-gpu-mem-usage"
                 min={0.1}
                 max={1.0}
                 step={0.1}
@@ -217,7 +217,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="Total context length to allocate the KV cache for (total number of tokens which the KV cache can hold)"
           >
             <FormField name={getFieldName('paged_ctxt_len')} aria-label="PagedAttention Context Length">
-              <InputNumber
+              <InputNumber data-testid="llm-mistralrs-paged-ctxt-len"
                 min={512}
                 max={131072}
                 placeholder="Auto"
@@ -233,7 +233,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="Block size (number of tokens per block) for PagedAttention (default: 32 on CUDA)"
           >
             <FormField name={getFieldName('paged_attn_block_size')} aria-label="PagedAttention Block Size">
-              <InputNumber
+              <InputNumber data-testid="llm-mistralrs-paged-attn-block-size"
                 min={1}
                 max={512}
                 placeholder="32"
@@ -253,7 +253,7 @@ export function LlmModelMistralRsSettingsSection() {
               valuePropName="checked"
               className="m-0"
             >
-              <Switch />
+              <Switch data-testid="llm-mistralrs-no-paged-attn" />
             </FormField>
           </ResponsiveConfigItem>
 
@@ -268,7 +268,7 @@ export function LlmModelMistralRsSettingsSection() {
               valuePropName="checked"
               className="m-0"
             >
-              <Switch />
+              <Switch data-testid="llm-mistralrs-paged-attn" />
             </FormField>
           </ResponsiveConfigItem>
         </Flex>
@@ -282,7 +282,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="Number of prefix caches to hold on the device. Other caches are evicted to the CPU based on a LRU strategy (default: 16)"
           >
             <FormField name={getFieldName('prefix_cache_n')} aria-label="Prefix Cache Count">
-              <InputNumber
+              <InputNumber data-testid="llm-mistralrs-prefix-cache-n"
                 min={1}
                 max={128}
                 placeholder="16"
@@ -301,7 +301,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="Model data type (default: auto)"
           >
             <FormField name={getFieldName('dtype')} aria-label="Data Type">
-              <Select
+              <Select data-testid="llm-mistralrs-dtype"
                 placeholder="auto"
                 className="w-full"
                 options={[
@@ -321,7 +321,7 @@ export function LlmModelMistralRsSettingsSection() {
             description={`In-situ quantization to apply (${selectedDeviceType.toUpperCase()})`}
           >
             <FormField name={getFieldName('in_situ_quant')} aria-label="In-Situ Quantization">
-              <Select
+              <Select data-testid="llm-mistralrs-in-situ-quant"
                 placeholder="None"
                 className="w-full"
                 options={availableQuantizationOptions}
@@ -336,7 +336,7 @@ export function LlmModelMistralRsSettingsSection() {
             description="Integer seed to ensure reproducible random number generation"
           >
             <FormField name={getFieldName('seed')} aria-label="Random Seed">
-              <InputNumber
+              <InputNumber data-testid="llm-mistralrs-seed"
                 min={0}
                 max={4294967295}
                 placeholder="Random"

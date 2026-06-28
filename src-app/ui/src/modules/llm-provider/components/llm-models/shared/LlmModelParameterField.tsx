@@ -51,6 +51,7 @@ function StringArrayInput({
             }}
             closeLabel="Remove"
             className="mb-1"
+            data-testid={`llm-string-array-tag-${tag}`}
           >
             {tag}
           </Tag>
@@ -63,6 +64,7 @@ function StringArrayInput({
         onBlur={handleAddTag}
         placeholder={placeholder || 'Press Enter to add'}
         className="w-full"
+        data-testid="llm-string-array-input"
       />
     </div>
   )
@@ -109,18 +111,20 @@ export function LlmModelParameterField({
             min={min}
             max={max}
             step={step}
+            data-testid={`llm-param-${fieldName}`}
           />
         )
       case 'password':
-        return <PasswordInput showLabel="Show" hideLabel="Hide" placeholder={placeholder} className="w-full" />
+        return <PasswordInput showLabel="Show" hideLabel="Hide" placeholder={placeholder} className="w-full" data-testid={`llm-param-${fieldName}`} />
       case 'textarea':
-        return <Textarea placeholder={placeholder} rows={3} />
+        return <Textarea placeholder={placeholder} rows={3} data-testid={`llm-param-${fieldName}`} />
       case 'select':
         return (
           <Select
             placeholder={placeholder}
             className="w-full"
             options={(options ?? []).map(o => ({ value: String(o.value), label: o.label }))}
+            data-testid={`llm-param-${fieldName}`}
           />
         )
       case 'string-array':
@@ -129,7 +133,7 @@ export function LlmModelParameterField({
         )
       case 'text':
       default:
-        return <Input placeholder={placeholder} className="w-full" />
+        return <Input placeholder={placeholder} className="w-full" data-testid={`llm-param-${fieldName}`} />
     }
   }
 

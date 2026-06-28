@@ -352,7 +352,7 @@ export function AddLocalLlmModelUploadDrawer() {
       open={open}
       onClose={handleCancel}
       footer={[
-        <Button key="cancel" variant="outline" onClick={handleCancel} disabled={uploading}>
+        <Button key="cancel" variant="outline" onClick={handleCancel} disabled={uploading} data-testid="llm-upload-drawer-cancel-btn">
           {canCreate ? 'Cancel' : 'Close'}
         </Button>,
         canCreate && (
@@ -361,6 +361,7 @@ export function AddLocalLlmModelUploadDrawer() {
             loading={loading}
             onClick={() => form.handleSubmit(onValid)()}
             disabled={uploading}
+            data-testid="llm-upload-drawer-submit-btn"
           >
             {uploading ? 'Uploading...' : 'Upload'}
           </Button>
@@ -375,6 +376,7 @@ export function AddLocalLlmModelUploadDrawer() {
         form={form}
         onSubmit={onValid}
         layout="vertical"
+        data-testid="llm-model-upload-form"
       >
         <LocalLlmModelCommonFields />
 
@@ -387,6 +389,7 @@ export function AddLocalLlmModelUploadDrawer() {
           </label>
           <Upload
             onFiles={handleFiles}
+            data-testid="llm-upload-files"
             label="Select model files"
             multiple
             disabled={uploading}
@@ -414,6 +417,7 @@ export function AddLocalLlmModelUploadDrawer() {
         >
           <Select
             placeholder="Select the main model file"
+            data-testid="llm-upload-main-file-select"
             disabled={uploading}
             options={filteredFiles
               .filter(item => item.purpose === 'model')
@@ -425,16 +429,17 @@ export function AddLocalLlmModelUploadDrawer() {
         </FormField>
 
         {!uploading && filteredFiles.length > 0 && (
-          <Card title="Selected Files (Root Folder Only)" size="sm">
+          <Card title="Selected Files (Root Folder Only)" size="sm" data-testid="llm-upload-selected-files-card">
             <List
               dataSource={filteredFiles}
+              data-testid="llm-upload-selected-files-list"
               renderItem={item => (
                 <div className="flex items-center justify-between">
                   <Text className={item.required ? 'font-bold' : undefined}>
                     {item.file.name}
                   </Text>
                   <div className="flex items-center gap-2">
-                    <Tag tone={item.required ? 'success' : 'info'} className="m-0">
+                    <Tag tone={item.required ? 'success' : 'info'} className="m-0" data-testid={`llm-upload-file-tag-${item.file.name}`}>
                       {item.purpose}
                     </Tag>
                     <Text type="secondary" className="text-xs">
@@ -452,12 +457,14 @@ export function AddLocalLlmModelUploadDrawer() {
             <Card
               title="Upload Progress"
               size="sm"
+              data-testid="llm-upload-progress-card"
               extra={
                 <Button
                   variant="link"
                   size="sm"
                   onClick={handleCancelUpload}
                   className="text-destructive"
+                  data-testid="llm-upload-cancel-btn"
                 >
                   Cancel Upload
                 </Button>
@@ -470,6 +477,7 @@ export function AddLocalLlmModelUploadDrawer() {
                     value={Math.round(overallUploadProgress)}
                     tone="primary"
                     aria-label="Overall upload progress"
+                    data-testid="llm-upload-overall-progress"
                   />
                   <Text type="secondary" className="text-xs">
                     {
@@ -493,6 +501,7 @@ export function AddLocalLlmModelUploadDrawer() {
                             : 'primary'
                         }
                         aria-label={`Upload progress for ${fileProgress.filename}`}
+                        data-testid={`llm-upload-file-progress-${index}`}
                       />
                       {fileProgress.size && (
                         <Text type="secondary" className="text-xs">

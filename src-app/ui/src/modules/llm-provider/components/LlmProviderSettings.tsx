@@ -155,6 +155,7 @@ export function LlmProviderSettings() {
       return (
         <Empty
           description={'No provider selected'}
+          data-testid="llm-provider-settings-empty"
         />
       )
     }
@@ -200,6 +201,7 @@ export function LlmProviderSettings() {
                     className={'w-full flex flex-row gap-2 items-center mb-4'}
                   >
                     <Dropdown
+                      data-testid="llm-provider-select-dropdown"
                       items={menuItems.map(item => ({
                         key: item.key,
                         label: (
@@ -227,7 +229,7 @@ export function LlmProviderSettings() {
                         }
                       }}
                     >
-                      <Button className="w-fit" size={'lg'}>
+                      <Button className="w-fit" size={'lg'} data-testid="llm-provider-select-btn">
                         {currentProvider ? (
                           <Flex className="gap-2 items-center">
                             {(() => {

@@ -37,21 +37,21 @@ export function DownloadItem({
     switch (download.status) {
       case 'downloading':
       case 'pending':
-        return <Tag tone="info">Downloading...</Tag>
+        return <Tag tone="info" data-testid="llm-download-status-tag">Downloading...</Tag>
       case 'completed':
         return (
-          <Tag tone="success" icon={<CircleCheck />}>
+          <Tag tone="success" icon={<CircleCheck />} data-testid="llm-download-status-tag">
             Downloaded
           </Tag>
         )
       case 'failed':
         return (
-          <Tag tone="error" icon={<CircleAlert />}>
+          <Tag tone="error" icon={<CircleAlert />} data-testid="llm-download-status-tag">
             Failed
           </Tag>
         )
       case 'cancelled':
-        return <Tag>Cancelled</Tag>
+        return <Tag data-testid="llm-download-status-tag">Cancelled</Tag>
       default:
         return null
     }
@@ -87,7 +87,7 @@ export function DownloadItem({
   // FULL MODE (for LocalProviderSettings)
   if (mode === 'full') {
     return (
-      <Card size="sm">
+      <Card size="sm" data-testid="llm-download-item-card">
         <Flex vertical gap="small" className="w-full">
           <div
             className="flex justify-between items-center"
@@ -103,6 +103,7 @@ export function DownloadItem({
                   size="sm"
                   icon={<Eye />}
                   onClick={onViewDetails}
+                  data-testid="llm-download-view-details-btn"
                 >
                   View Details
                 </Button>
@@ -113,6 +114,7 @@ export function DownloadItem({
                   size="sm"
                   icon={<X />}
                   onClick={onCancel}
+                  data-testid="llm-download-cancel-btn"
                 >
                   Cancel
                 </Button>
@@ -123,6 +125,7 @@ export function DownloadItem({
                   size="sm"
                   icon={<X />}
                   onClick={onClose}
+                  data-testid="llm-download-close-btn"
                 >
                   Close
                 </Button>
@@ -169,6 +172,7 @@ export function DownloadItem({
               size="sm"
               icon={<X />}
               onClick={onCancel}
+              data-testid="llm-download-compact-cancel-btn"
             >
               Cancel
             </Button>
