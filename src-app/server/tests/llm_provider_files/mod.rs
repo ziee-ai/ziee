@@ -268,6 +268,75 @@ async fn test_upsert_updates_existing_mapping() {
 }
 
 #[tokio::test]
+async fn test_concurrent_upserts_converge_to_single_row() {
+    // The mapping upsert is documented "idempotent and safe for concurrent
+    // calls" (ON CONFLICT (file_id, provider_id)). Fire many concurrent upserts
+    // for the SAME (file_id, provider_id) and assert: none errors with a
+    // duplicate-key violation, exactly ONE row survives, and its
+    // provider_file_id is one of the racing writers' values (last-writer-wins).
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "race_user", &[])
+        .await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+    let file_id = create_test_file(&pool, user_id, "race.pdf").await;
+    let provider_id = create_test_provider(&pool, "Race Provider", "openai").await;
+
+    const N: usize = 12;
+    let mut handles = Vec::with_capacity(N);
+    for i in 0..N {
+        let pool = pool.clone();
+        handles.push(tokio::spawn(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO llm_provider_files (
+                    file_id, provider_id, provider_file_id, provider_metadata, upload_status
+                )
+                VALUES ($1, $2, $3, $4, 'completed')
+                ON CONFLICT (file_id, provider_id) DO UPDATE SET
+                    provider_file_id = EXCLUDED.provider_file_id,
+                    provider_metadata = EXCLUDED.provider_metadata,
+                    upload_status = 'completed',
+                    updated_at = NOW()
+                "#,
+            )
+            .bind(file_id)
+            .bind(provider_id)
+            .bind(format!("file_race_{i}"))
+            .bind(json!({ "writer": i }))
+            .execute(&pool)
+            .await
+        }));
+    }
+    for h in handles {
+        h.await.unwrap().expect("concurrent upsert must not error (no duplicate-key violation)");
+    }
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
+    )
+    .bind(file_id)
+    .bind(provider_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "concurrent upserts must converge to exactly one row");
+
+    let pfid: Option<String> = sqlx::query_scalar(
+        "SELECT provider_file_id FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
+    )
+    .bind(file_id)
+    .bind(provider_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let pfid = pfid.expect("surviving row has a provider_file_id");
+    assert!(pfid.starts_with("file_race_"), "survivor is one of the writers: {pfid}");
+}
+
+#[tokio::test]
 async fn test_delete_provider_file_mapping() {
     let server = crate::common::TestServer::start().await;
     let pool = sqlx::PgPool::connect(&server.database_url)
