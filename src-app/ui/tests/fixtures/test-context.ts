@@ -306,7 +306,17 @@ bio_mcp:
   # chat. Its admin surface is the generic MCP system-server UI; a dedicated
   # bio E2E spec would enable it explicitly.
   enabled: false
+${
+  // Code sandbox is OFF by default in E2E (enabling it spawns squashfuse and
+  // requires a mounted rootfs). The real-sandbox-via-chat E2E
+  // (09-chat/mcp-chat-sandbox-real-llm.spec.ts) opts in explicitly with
+  // ZIEE_E2E_SANDBOX=1 (alongside ANTHROPIC_API_KEY + a mounted rootfs).
+  process.env.ZIEE_E2E_SANDBOX === '1'
+    ? `code_sandbox:
+  enabled: true
 `
+    : ''
+}`
 
     writeFileSync(configPath, configContent)
 
