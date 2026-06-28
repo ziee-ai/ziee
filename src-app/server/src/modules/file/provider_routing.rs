@@ -483,4 +483,76 @@ mod tests {
             other => panic!("expected inlined extracted Text, got {other:?}"),
         }
     }
+
+    // ---- Provider-SPECIFIC routing branches (lines 76-77 / 82-87) ----------
+    // The tests above all pin `provider_type = "openai"`, so the
+    // `matches!(provider_type, "anthropic" | "gemini")` native-branch guard at
+    // line 76 is only ever evaluated FALSE. These drive the same routing fn
+    // with the native-capable provider types so that guard is evaluated TRUE,
+    // proving it is correctly *mime-gated*: a non-image/non-PDF file on
+    // anthropic/gemini is NOT diverted to the native provider-API path — it
+    // falls through to the exact same extracted-text / verbatim-text handling
+    // as openai. (The native image/PDF divergence at line 79 →
+    // `process_via_provider_api` reads `Repos.llm_provider` + uploads, so it is
+    // integration-tier — `tests/file/file_attachments_real_providers_test.rs`;
+    // these stay DB-free.)
+    async fn route_as(
+        provider_type: &str,
+        file: &File,
+        user_id: Uuid,
+    ) -> Result<Vec<ContentBlock>, AppError> {
+        process_file_blocks_with_file(&lazy_pool(), file, Uuid::new_v4(), provider_type, user_id)
+            .await
+    }
+
+    #[tokio::test]
+    async fn anthropic_non_native_doc_falls_through_to_extracted_text() {
+        let user = Uuid::new_v4();
+        // A docx is neither image nor PDF, so even on anthropic the native
+        // guard (line 76-77) does NOT capture it → extracted-text inline,
+        // identical to the openai path. Exercises the guard evaluated TRUE for
+        // the provider but FALSE on the mime sub-condition.
+        let file = make_file(
+            user,
+            "brief.docx",
+            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            1,
+        );
+        storage()
+            .save_text_page(user, file.blob_version_id, 1, "ANTHROPIC PAGE\n")
+            .await
+            .unwrap();
+
+        let blocks = route_as("anthropic", &file, user).await.unwrap();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(text, "[File: brief.docx]\nANTHROPIC PAGE\n");
+            }
+            other => panic!("expected inlined extracted Text on anthropic, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn gemini_text_like_falls_through_to_verbatim_text() {
+        let user = Uuid::new_v4();
+        // A text-like (JSON) file on gemini skips the native image/PDF guard and
+        // is inlined verbatim — same as openai — proving the gemini arm of the
+        // native-branch guard is mime-gated, not a blanket provider divert.
+        let file = make_file(user, "cfg.json", Some("application/json"), 0);
+        let body = b"{\"provider\":\"gemini\"}";
+        storage()
+            .save_original(user, file.blob_version_id, "json", body)
+            .await
+            .unwrap();
+
+        let blocks = route_as("gemini", &file, user).await.unwrap();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ContentBlock::Text { text } => {
+                assert_eq!(text, "[File: cfg.json]\n{\"provider\":\"gemini\"}");
+            }
+            other => panic!("expected verbatim Text on gemini, got {other:?}"),
+        }
+    }
 }
