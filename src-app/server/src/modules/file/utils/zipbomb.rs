@@ -96,3 +96,65 @@ pub fn is_ooxml_or_odf(mime_type: &str) -> bool {
             | "application/zip"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    /// Build a single-entry zip whose `body` is Deflate-compressed.
+    fn zip_with(body: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut w = zip::ZipWriter::new(Cursor::new(&mut buf));
+            let opts =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            w.start_file("entry.bin", opts).unwrap();
+            w.write_all(body).unwrap();
+            w.finish().unwrap();
+        }
+        buf
+    }
+
+    // audit id all-a745a3865cd6 — zip-bomb validation (the core decompression-
+    // bomb guard) was untested. MIME smuggling is already covered by
+    // file::utils::magic::tests (rejects_html_as_png / allows_html_as_html).
+    #[test]
+    fn validate_accepts_a_normal_low_ratio_zip() {
+        // ~2 KiB of incompressible-ish text → ratio well under 200.
+        let body: Vec<u8> = (0..2048u32).map(|i| (i % 251) as u8).collect();
+        assert!(validate(&zip_with(&body)).is_ok(), "a normal zip must pass");
+    }
+
+    #[test]
+    fn validate_rejects_a_high_ratio_bomb() {
+        // 4 MiB of zeros compresses to a few KB → ratio >> MAX_COMPRESSION_RATIO.
+        let bomb = zip_with(&vec![0u8; 4 * 1024 * 1024]);
+        match validate(&bomb) {
+            Err(ZipBombError::RatioExceeded { ratio, cap }) => {
+                assert!(ratio > cap, "ratio {ratio} must exceed cap {cap}");
+                assert_eq!(cap, MAX_COMPRESSION_RATIO);
+            }
+            other => panic!("a high-ratio zip must be rejected as RatioExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_rejects_non_zip_bytes_as_open_failed() {
+        match validate(b"this is plainly not a zip archive at all") {
+            Err(ZipBombError::OpenFailed(_)) => {}
+            other => panic!("non-zip bytes must fail to open, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn is_ooxml_or_odf_classifies_zip_family_mimes() {
+        assert!(is_ooxml_or_odf("application/zip"));
+        assert!(is_ooxml_or_odf(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ));
+        assert!(!is_ooxml_or_odf("text/plain"));
+        assert!(!is_ooxml_or_odf("image/png"));
+    }
+}
