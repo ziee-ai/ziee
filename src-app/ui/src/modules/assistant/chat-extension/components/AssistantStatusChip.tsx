@@ -19,6 +19,7 @@ export function AssistantStatusChip() {
 
   return (
     <Tag
+      data-testid="assistant-status-chip"
       tone="info"
       icon={<Bot />}
       onClose={() => selectAssistant(null as any)}

@@ -59,6 +59,7 @@ export function UserAssistantsSettings() {
       actions.push(
         <Button
           key="edit"
+          data-testid={`user-assistant-${assistant.id}-edit`}
           variant="ghost"
           icon={<Pencil />}
           onClick={() => handleEdit(assistant)}
@@ -72,13 +73,14 @@ export function UserAssistantsSettings() {
       actions.push(
         <Confirm
           key="delete"
+          data-testid={`user-assistant-${assistant.id}-delete-confirm`}
           title="Delete Assistant"
           description="Are you sure you want to delete this assistant?"
           onConfirm={() => handleDelete(assistant)}
           okText="Delete"
           cancelText="Cancel"
         >
-          <Button variant="ghost" icon={<Trash2 />}>
+          <Button data-testid={`user-assistant-${assistant.id}-delete`} variant="ghost" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,
@@ -95,11 +97,13 @@ export function UserAssistantsSettings() {
     >
       <div>
         <Card
+          data-testid="user-assistants-card"
           title="My Assistants"
           extra={
             <Can permission={Permissions.AssistantsCreate}>
               <Tooltip content="Create assistant">
                 <Button
+                  data-testid="user-assistants-create-btn"
                   variant="ghost"
                   icon={<Plus aria-hidden="true" />}
                   onClick={handleCreate}
@@ -113,7 +117,7 @@ export function UserAssistantsSettings() {
             <Loading />
           ) : assistants.length === 0 ? (
             <div>
-              <Empty description="No assistants yet" />
+              <Empty data-testid="user-assistants-empty" description="No assistants yet" />
             </div>
           ) : (
             <div>
@@ -131,10 +135,10 @@ export function UserAssistantsSettings() {
                             <Bot />
                             <Text className="font-medium">{assistant.name}</Text>
                             {assistant.is_default && (
-                              <Tag tone="success">Default</Tag>
+                              <Tag data-testid={`user-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag tone="error">Inactive</Tag>
+                              <Tag data-testid={`user-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
                             )}
                           </Flex>
                         </div>
@@ -144,6 +148,7 @@ export function UserAssistantsSettings() {
                       </div>
 
                       <Descriptions
+                        data-testid={`user-assistant-${assistant.id}-desc`}
                         size="sm"
                         items={[
                           {

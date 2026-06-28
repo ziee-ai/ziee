@@ -30,6 +30,7 @@ export function AssistantSelector({
   return (
     <Tooltip content="Select Assistant">
       <Combobox
+        data-testid="assistant-selector"
         value={selectedAssistantId ?? undefined}
         onChange={handleChange}
         options={options}

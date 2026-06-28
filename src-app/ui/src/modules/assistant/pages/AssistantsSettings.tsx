@@ -67,6 +67,7 @@ export function AssistantsSettings() {
       actions.push(
         <Button
           key="edit"
+          data-testid={`template-assistant-${assistant.id}-edit`}
           variant="ghost"
           icon={<Pencil />}
           onClick={() => handleEdit(assistant)}
@@ -80,13 +81,14 @@ export function AssistantsSettings() {
       actions.push(
         <Confirm
           key="delete"
+          data-testid={`template-assistant-${assistant.id}-delete-confirm`}
           title="Delete Assistant"
           description="Are you sure you want to delete this assistant?"
           onConfirm={() => handleDelete(assistant)}
           okText="Delete"
           cancelText="Cancel"
         >
-          <Button variant="destructive" icon={<Trash2 />}>
+          <Button data-testid={`template-assistant-${assistant.id}-delete`} variant="destructive" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,
@@ -110,11 +112,13 @@ export function AssistantsSettings() {
     >
       <div>
         <Card
+          data-testid="template-assistants-card"
           title="Template Assistants"
           extra={
             <Can permission={Permissions.AssistantsTemplateCreate}>
               <Tooltip content="Create assistant">
                 <Button
+                  data-testid="template-assistants-create-btn"
                   variant="ghost"
                   icon={<Plus aria-hidden="true" />}
                   onClick={handleCreate}
@@ -128,7 +132,7 @@ export function AssistantsSettings() {
             <Loading />
           ) : assistants.length === 0 ? (
             <div>
-              <Empty description="No assistants yet" />
+              <Empty data-testid="template-assistants-empty" description="No assistants yet" />
             </div>
           ) : (
             <div>
@@ -148,10 +152,10 @@ export function AssistantsSettings() {
                               {assistant.name}
                             </Text>
                             {assistant.is_default && (
-                              <Tag tone="success">Default</Tag>
+                              <Tag data-testid={`template-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag tone="error">Inactive</Tag>
+                              <Tag data-testid={`template-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
                             )}
                           </div>
                         </div>
@@ -161,6 +165,7 @@ export function AssistantsSettings() {
                       </div>
 
                       <Descriptions
+                        data-testid={`template-assistant-${assistant.id}-desc`}
                         size="sm"
                         column={3}
                         items={[
@@ -185,6 +190,7 @@ export function AssistantsSettings() {
               <Separator className="mb-4" />
               <div className="flex justify-end">
                 <Pagination
+              data-testid="template-assistants-pagination"
               previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`}
                   current={storePage}
                   total={totalAssistants}

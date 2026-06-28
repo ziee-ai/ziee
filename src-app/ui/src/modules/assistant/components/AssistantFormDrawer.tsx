@@ -215,6 +215,7 @@ export function AssistantFormDrawer() {
       footer={null}
     >
       <Form
+        data-testid="assistant-form"
         name="assistant-form"
         form={form}
         layout="vertical"
@@ -223,6 +224,7 @@ export function AssistantFormDrawer() {
       >
         <FormField name="name" label="Name">
           <Input
+            data-testid="assistant-form-name"
             placeholder="Enter assistant name"
             aria-label="Assistant name"
           />
@@ -230,6 +232,7 @@ export function AssistantFormDrawer() {
 
         <FormField name="description" label="Description">
           <Textarea
+            data-testid="assistant-form-description"
             placeholder="Enter a brief description"
             rows={2}
             aria-label="Assistant description"
@@ -238,6 +241,7 @@ export function AssistantFormDrawer() {
 
         <FormField name="instructions" label="Instructions">
           <Textarea
+            data-testid="assistant-form-instructions"
             placeholder="Enter system instructions for the assistant"
             rows={6}
             aria-label="Assistant instructions"
@@ -250,6 +254,7 @@ export function AssistantFormDrawer() {
           description="Model parameters in JSON format (e.g., temperature, max_tokens, top_p)"
         >
           <Textarea
+            data-testid="assistant-form-parameters"
             placeholder='{"temperature": 0.7, "max_tokens": 2048, "top_p": 0.9}'
             rows={6}
             aria-label="Model parameters in JSON format"
@@ -263,7 +268,7 @@ export function AssistantFormDrawer() {
           valuePropName="checked"
           description="Whether this assistant is enabled"
         >
-          <Switch />
+          <Switch data-testid="assistant-form-enabled" />
         </FormField>
 
         <FormField
@@ -276,15 +281,15 @@ export function AssistantFormDrawer() {
               : 'Set as your default assistant'
           }
         >
-          <Switch />
+          <Switch data-testid="assistant-form-default" />
         </FormField>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button variant="outline" onClick={handleClose} disabled={loading}>
+          <Button data-testid="assistant-form-cancel" variant="outline" onClick={handleClose} disabled={loading}>
             {canSave ? 'Cancel' : 'Close'}
           </Button>
           {canSave && (
-            <Button type="submit" loading={loading}>
+            <Button data-testid="assistant-form-submit" type="submit" loading={loading}>
               {editingAssistant ? 'Save' : 'Create'}
             </Button>
           )}
