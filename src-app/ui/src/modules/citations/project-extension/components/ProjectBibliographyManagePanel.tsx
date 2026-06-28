@@ -45,7 +45,7 @@ export function ProjectBibliographyManagePanel() {
     return () => unsub()
   }, [reload])
 
-  if (!projectId) return <Empty description="Open a project to manage its references." />
+  if (!projectId) return <Empty description="Open a project to manage its references." data-testid="cite-bib-panel-no-project-empty" />
 
   return (
     <Space direction="vertical" className="w-full">
@@ -55,6 +55,7 @@ export function ProjectBibliographyManagePanel() {
             variant="default"
             icon={<Import />}
             onClick={() => setImportOpen(true)}
+            data-testid="cite-bib-panel-import-button"
           >
             Import into project
           </Button>
@@ -65,7 +66,7 @@ export function ProjectBibliographyManagePanel() {
       {loading ? (
         <Spin label="Loading" />
       ) : entries.length === 0 ? (
-        <Empty description="No references in this project yet." />
+        <Empty description="No references in this project yet." data-testid="cite-bib-panel-empty" />
       ) : (
         <div>
           {entries.map(e => (

@@ -45,7 +45,7 @@ export function CitationCard({
     .join(' · ')
 
   return (
-    <Card size="sm" className="mb-2">
+    <Card size="sm" className="mb-2" data-testid={`cite-card-${entry.id}`}>
       <Space direction="vertical" size={2} className="w-full">
         <Space align="center" className="justify-between w-full">
           <Space size={8}>
@@ -62,6 +62,7 @@ export function CitationCard({
               onConfirm={handleDelete}
               okText="OK"
               cancelText="Cancel"
+              data-testid={`cite-card-delete-confirm-${entry.id}`}
             >
               <Button
                 size="sm"
@@ -69,6 +70,7 @@ export function CitationCard({
                 type="button"
                 aria-label={`Delete ${entry.citation_key}`}
                 icon={<Trash2 />}
+                data-testid={`cite-card-delete-button-${entry.id}`}
               />
             </Confirm>
           )}

@@ -67,6 +67,7 @@ export function ImportCitationsModal({
     <Dialog
       open={open}
       title="Import citations"
+      data-testid="cite-import-modal"
       onOpenChange={(v) => {
         if (!v) {
           setResult(null)
@@ -103,6 +104,7 @@ export function ImportCitationsModal({
           tone="info"
           title="Import result"
           description={summary(result)}
+          data-testid="cite-import-result-alert"
         />
       )}
     </Dialog>
