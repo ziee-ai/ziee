@@ -10,6 +10,7 @@ import { createUser, updateUser, deleteUser } from './helpers/user-actions'
 import {
   assertUserExists,
   assertUserNotExists,
+  assertUserStatus,
   assertDrawerOpen,
   assertDrawerClosed,
 } from './helpers/user-assertions'
@@ -157,6 +158,35 @@ test.describe('Users CRUD Operations', () => {
     // Verify user still exists
     await assertUserExists(page, userData.username)
     // Note: Email verification removed due to complex DOM structure
+  })
+
+  test('edit drawer Active switch deactivates a user', async ({ page }) => {
+    // Create an active user.
+    await openCreateUserDrawer(page)
+    const timestamp = Date.now()
+    const userData = {
+      username: `inactuser${timestamp}`,
+      email: `inactuser${timestamp}@example.com`,
+      password: 'password123',
+    }
+    await createUser(page, userData)
+    await assertUserStatus(page, userData.username, 'active')
+
+    // Open the edit drawer and flip the "Active" switch OFF.
+    await openEditUserDrawer(page, userData.username)
+    await assertDrawerOpen(page, /edit user/i)
+
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    const activeSwitch = drawer.getByRole('switch', { name: 'Active' })
+    await expect(activeSwitch).toHaveAttribute('aria-checked', 'true')
+    await activeSwitch.click()
+    await expect(activeSwitch).toHaveAttribute('aria-checked', 'false')
+
+    await drawer.locator('.ant-btn-primary[type="submit"]').click()
+    await assertDrawerClosed(page)
+
+    // The list row now reports the user as inactive.
+    await assertUserStatus(page, userData.username, 'inactive')
   })
 
   test('should cancel user creation', async ({ page }) => {
