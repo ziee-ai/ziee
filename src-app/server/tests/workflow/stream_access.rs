@@ -292,3 +292,103 @@ async fn log_step_id_dotdot_traversal_is_rejected() {
         "code surfaced: {body}"
     );
 }
+
+// ── read_output (GET /workflow-runs/{run_id}/output/{step_id}) edge cases ────
+//
+// `output_stream::read_output` has four distinct exit paths and none had a
+// dedicated test (audit all-e9f9800f741c): (a) run not found → 404
+// `RESOURCE_NOT_FOUND` "WorkflowRun not found"; (b) cross-user → 403
+// `WORKFLOW_RUN_FORBIDDEN` (ownership is checked BEFORE the per-step lookup,
+// so an intruder hitting a real run + a real step still 403s, never 404);
+// (c) an unknown step_id on an OWNED run → 404 "step output not found";
+// (d) the happy path → 200 streaming the `gen` step's text output. The four
+// tests below pin each branch.
+
+#[tokio::test]
+async fn output_read_happy_path_streams_step_output() {
+    let server = plain_server().await;
+    let owner = workflow_user(&server, "wf_out_owner").await;
+    let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-ok").await;
+
+    // `gen` is SIMPLE_OK_YAML's only step; its output file exists on a
+    // completed run, so the owner streams it back with a 200.
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflow-runs/{run_id}/output/gen")))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .expect("owner read gen output");
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    assert_eq!(status, 200, "owner must read its own step output: {body}");
+    assert!(!body.is_empty(), "streamed output should not be empty");
+}
+
+#[tokio::test]
+async fn output_read_nonexistent_run_is_404() {
+    let server = plain_server().await;
+    // A user holding the gating perm but pointing at a random run id: the
+    // `find_run(...).ok_or(not_found("WorkflowRun"))?` arm fires.
+    let user = intruder(&server, "wf_out_norun").await;
+    let missing = Uuid::new_v4();
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflow-runs/{missing}/output/gen")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("read output of missing run");
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    assert_eq!(status, 404, "unknown run must 404: {body}");
+    assert!(
+        body.contains("WorkflowRun"),
+        "missing-run message surfaced: {body}"
+    );
+}
+
+#[tokio::test]
+async fn output_read_cross_user_is_forbidden() {
+    let server = plain_server().await;
+    let owner = workflow_user(&server, "wf_out_xuser_owner").await;
+    // A REAL run owned by `owner` with a REAL step (`gen`): ownership is
+    // checked before the step lookup, so the intruder gets 403, not 404.
+    let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-xuser").await;
+
+    let other = intruder(&server, "wf_out_xuser_intruder").await;
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflow-runs/{run_id}/output/gen")))
+        .header("Authorization", format!("Bearer {}", other.token))
+        .send()
+        .await
+        .expect("cross-user read output");
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    assert_eq!(status, 403, "cross-user output read must 403: {body}");
+    assert!(
+        body.contains("WORKFLOW_RUN_FORBIDDEN"),
+        "ownership 403 surfaced (not a step 404): {body}"
+    );
+}
+
+#[tokio::test]
+async fn output_read_unknown_step_is_404() {
+    let server = plain_server().await;
+    let owner = workflow_user(&server, "wf_out_nostep").await;
+    let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-nostep").await;
+
+    // Owned run, but a step id that never produced an output → the
+    // `step_outputs_json.get(...).ok_or(not_found("step output"))?` arm.
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflow-runs/{run_id}/output/does-not-exist")))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .expect("read unknown step output");
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    assert_eq!(status, 404, "unknown step must 404: {body}");
+    assert!(
+        body.contains("step output"),
+        "step-not-found message surfaced (distinct from missing-run): {body}"
+    );
+}
