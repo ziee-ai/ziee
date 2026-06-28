@@ -166,7 +166,20 @@ export function ProfileSettingsPage() {
           {canEdit && (
             <>
               <Divider className="!my-3" />
-              <Flex justify="end">
+              <Flex justify="end" gap={8}>
+                <Button
+                  htmlType="button"
+                  disabled={savingProfile}
+                  onClick={() => {
+                    // Discard unsaved edits — restore the persisted values.
+                    profileForm.setFieldsValue({
+                      display_name: user.display_name ?? '',
+                      username: user.username,
+                    })
+                  }}
+                >
+                  Cancel
+                </Button>
                 <Button
                   type="primary"
                   htmlType="submit"
@@ -248,7 +261,14 @@ export function ProfileSettingsPage() {
               </Form.Item>
 
               <Divider className="!my-3" />
-              <Flex justify="end">
+              <Flex justify="end" gap={8}>
+                <Button
+                  htmlType="button"
+                  disabled={savingPassword}
+                  onClick={() => passwordForm.resetFields()}
+                >
+                  Cancel
+                </Button>
                 <Button
                   type="primary"
                   htmlType="submit"
