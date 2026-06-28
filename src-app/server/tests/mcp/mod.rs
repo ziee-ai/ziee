@@ -1416,6 +1416,7 @@ async fn test_duplicate_server_name_allowed() {
 
 mod runtime;              // Stdio transport tests (18 tests)
 mod http_transport_test;  // HTTP transport tests (12 tests)
+mod stdio_transport_test; // Stdio transport conformance (npx-gated, server-everything)
 // sse_transport_test removed — SSE transport deprecated in MCP 2025-03-26
 pub mod fixtures;             // External MCP server fixtures (everything-server + mock)
 mod conformance_test;         // Spec-conformance tests against `server-everything`
@@ -1428,7 +1429,9 @@ mod conformance_resumability_test; // Plan-3 Phase-3 (I1): SSE resume via Last-E
 mod conformance_oauth_test;        // Plan-3 Phase-4 (Cos1): OAuth client_credentials
 mod oauth_config_route_test;       // Plan-3 Phase-4: per-server OAuth config endpoints
 mod conformance_cancellation_test; // Plan-3 Phase-2 (C3): client notifications/cancelled
+mod tool_call_timeout_test; // per-call timeout + retry-after-timeout transport recovery
 mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
+mod elicitation_jsonrpc_test;     // JSON-RPC route tests for /elicitation/mcp (tools/call fallback)
 mod elicitation_cancel_test;      // cancel_pending_elicitations semantics (loop-exit cleanup)
 mod rate_limit_test;              // Global rate-limiter on/off regression (governor toggle)
 mod test_connection_test;         // Connection-test endpoints (user + system test-connection)
