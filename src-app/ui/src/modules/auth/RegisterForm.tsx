@@ -81,13 +81,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card data-testid="auth-register-card" className="w-full max-w-md mx-auto">
       <div className="text-center mb-6">
         <Title level={3}>Create Account</Title>
       </div>
 
       {error && (
         <Alert
+          data-testid="auth-register-error"
           title={error}
           tone="error"
           onClose={Stores.Auth.clearAuthenticationError}
@@ -97,6 +98,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       )}
 
       <Form
+        data-testid="auth-register-form"
         form={form}
         name="register"
         onSubmit={onSubmit}
@@ -105,6 +107,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       >
         <FormField label="Username" name="username">
           <Input
+            data-testid="auth-register-username"
             prefix={<User />}
             placeholder="Enter your username"
             autoComplete="username"
@@ -113,6 +116,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
         <FormField label="Email" name="email">
           <Input
+            data-testid="auth-register-email"
             prefix={<Mail />}
             placeholder="Enter your email address"
             autoComplete="email"
@@ -121,6 +125,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
         <FormField label="Password" name="password">
           <PasswordInput
+            data-testid="auth-register-password"
             prefix={<Lock />}
             placeholder="Enter your password"
             autoComplete="new-password"
@@ -131,6 +136,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
         <FormField label="Confirm Password" name="confirmPassword">
           <PasswordInput
+            data-testid="auth-register-confirm-password"
             prefix={<Lock />}
             placeholder="Confirm your password"
             autoComplete="new-password"
@@ -139,7 +145,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           />
         </FormField>
 
-        <Button type="submit" loading={isLoading} className="w-full">
+        <Button data-testid="auth-register-submit" type="submit" loading={isLoading} className="w-full">
           Sign Up
         </Button>
 
@@ -147,7 +153,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           <div className="text-center">
             <Text type="secondary">
               Already have an account?{' '}
-              <Button variant="link" onClick={onSwitchToLogin} className="p-0">
+              <Button data-testid="auth-register-switch-to-login" variant="link" onClick={onSwitchToLogin} className="p-0">
                 Sign In
               </Button>
             </Text>
