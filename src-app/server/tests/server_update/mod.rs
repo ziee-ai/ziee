@@ -202,3 +202,49 @@ async fn detects_update_via_mock_github() {
     assert_eq!(body["notes"], json!("A big new release"));
     assert_eq!(body["enabled"], json!(true));
 }
+
+/// Concurrent reads of the cached status endpoint all succeed with a consistent
+/// body — the in-process status cache is safe under simultaneous access (no
+/// panic, deadlock, or partial read). Mirrors `admin_sees_status_with_checks_disabled`
+/// but fans out N requests at once.
+#[tokio::test]
+async fn concurrent_status_reads_all_succeed_consistently() {
+    let server = TestServer::start().await;
+    let token = test_helpers::create_user_with_permissions(&server, "su_concurrent", &[PERM])
+        .await
+        .token;
+
+    let url = status_url(&server);
+    let client = reqwest::Client::new();
+    let mut handles = Vec::new();
+    for _ in 0..16 {
+        let client = client.clone();
+        let url = url.clone();
+        let token = token.clone();
+        handles.push(tokio::spawn(async move {
+            let resp = client
+                .get(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .expect("request");
+            let status = resp.status().as_u16();
+            let body: Value = resp.json().await.expect("json");
+            (status, body["current_version"].as_str().unwrap_or("").to_string())
+        }));
+    }
+
+    let mut versions = Vec::new();
+    for h in handles {
+        let (status, version) = h.await.expect("task");
+        assert_eq!(status, 200, "every concurrent status read must 200");
+        assert!(!version.is_empty(), "current_version must be populated");
+        versions.push(version);
+    }
+    // The cached read is deterministic — every concurrent caller sees the same
+    // current_version (no torn read).
+    assert!(
+        versions.windows(2).all(|w| w[0] == w[1]),
+        "concurrent reads must return a consistent current_version: {versions:?}"
+    );
+}
