@@ -107,6 +107,16 @@ async function mockApi(page: Page, state: State) {
   await page.route(/\/api\/citations\/styles$/, async route =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ styles: ['apa', 'nature', 'vancouver'] }) }),
   )
+
+  // DELETE /api/citations/{id} — remove from state so a refetch reflects it.
+  await page.route(/\/api\/citations\/[0-9a-fA-F-]{36}$/, async (route, req) => {
+    if (req.method() === 'DELETE') {
+      const id = req.url().split('/').pop() ?? ''
+      state.entries = state.entries.filter(e => e.id !== id)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
+    }
+    return route.continue()
+  })
 }
 
 async function gotoCitations(page: Page, baseURL: string) {
@@ -247,5 +257,31 @@ test.describe('Citations library', () => {
     await page.getByText('RIS (.ris)').click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toContain('citations')
+  })
+
+  // audit id all-eb628fb20657 — deleting an individual citation via the
+  // per-card Popconfirm (CitationCard handleDelete → Stores.Citations.remove →
+  // DELETE /api/citations/{id}) was untested. Click Delete, confirm the
+  // Popconfirm, and assert the card disappears.
+  test('deletes a citation via the Popconfirm', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const state: State = {
+      entries: [entry({ title: 'Doomed paper', citation_key: 'doomed2021' })],
+    }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    await gotoCitations(page, baseURL)
+
+    await expect(page.getByText('Doomed paper')).toBeVisible()
+
+    // Per-card delete button (aria-label includes the citation key).
+    await page.getByRole('button', { name: 'Delete doomed2021' }).click()
+    // Confirm the antd Popconfirm.
+    const popover = page.locator('.ant-popconfirm:visible').last()
+    await expect(popover.getByText('Delete from library?')).toBeVisible()
+    await popover.getByRole('button', { name: /^(OK|Delete|Yes)$/ }).click()
+
+    // The card is removed (DELETE fired → state empty → refetch shows none).
+    await expect(page.getByText('Doomed paper')).toHaveCount(0, { timeout: 10000 })
   })
 })
