@@ -72,6 +72,7 @@ export function FullTextSearchSection() {
   const {
     settings,
     saving,
+    error,
     ftsRebuildStatus,
     triggeringFtsRebuild,
   } = Stores.MemoryAdmin
@@ -122,6 +123,23 @@ export function FullTextSearchSection() {
           type="warning"
           showIcon
           title="You don't have permission to view memory admin settings."
+        />
+      </Card>
+    )
+  }
+  if (!settings && error) {
+    return (
+      <Card title="Full-text search">
+        <Alert
+          type="error"
+          showIcon
+          message="Failed to load memory settings"
+          description={error}
+          action={
+            <Button size="small" onClick={() => Stores.MemoryAdmin.load()}>
+              Retry
+            </Button>
+          }
         />
       </Card>
     )
