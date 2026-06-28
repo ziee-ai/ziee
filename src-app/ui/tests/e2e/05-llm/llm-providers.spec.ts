@@ -466,3 +466,37 @@ test.describe('LLM Providers - Empty States', () => {
     await expect(page.locator('.ant-menu-item:has-text("Add Provider")')).toBeVisible()
   })
 })
+
+test.describe('LLM Providers - Multiple providers (key + keyless mix)', () => {
+  test('a keyed remote provider and a keyless local provider coexist in the list', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const ts = Date.now()
+    const remoteName = `mix-remote-${ts}`
+    const localName = `mix-local-${ts}`
+
+    await loginAsAdmin(page, baseURL)
+
+    // A remote (OpenAI) provider configured WITH an API key.
+    await createRemoteProvider(
+      page,
+      baseURL,
+      remoteName,
+      'https://api.openai.com/v1',
+      'sk-mix-test-key-123',
+    )
+    // A local provider — keyless (no credentials).
+    await createLocalProvider(page, baseURL, localName, 'Keyless local provider')
+
+    // Both providers are present simultaneously (the prior suites only ever
+    // exercised a single provider at a time).
+    await assertProviderExists(page, remoteName)
+    await assertProviderExists(page, localName)
+
+    // Cleanup.
+    await deleteProvider(page, remoteName)
+    await deleteProvider(page, localName)
+  })
+})
