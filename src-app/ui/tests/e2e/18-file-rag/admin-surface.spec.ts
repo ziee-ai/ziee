@@ -70,6 +70,27 @@ test.describe('Document RAG — admin settings surface', () => {
     await expect(page.getByText(/Embedding model/)).toBeVisible()
   })
 
+  test('MaintenanceSection Run backfill dispatches a background job', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    const maintenance = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Backfill existing files' })
+    await expect(maintenance).toBeVisible({ timeout: 20000 })
+
+    // Trigger the (idempotent) backfill — with no eligible files it's a no-op
+    // server-side but still dispatches successfully.
+    await maintenance.getByTestId('backfill-button').click()
+    await expect(
+      page.getByText('Backfill dispatched in the background.'),
+    ).toBeVisible({ timeout: 10000 })
+  })
+
   test('FullTextSection saves the RRF k tuning knob', async ({
     page,
     testInfra,
