@@ -304,3 +304,116 @@ async fn http_link_without_jwt_secret_is_skipped() {
     );
     assert_eq!(links[0].uri, url, "a non-ziee:// URI is left untouched");
 }
+
+/// Run-link recall / attribution branch (PR #110, "C4"): when `persist_links` is called
+/// with `workflow_run_id = Some(real_run)`, each newly-ingested resource_link file is linked
+/// to its producing run via `Repos.file.set_workflow_run_id` AFTER the save loop — so a later
+/// `tool_result` recall whose blocks carry that resource_link is attributable to (and A5
+/// cascade-deletable with) the run that created it. The mixed-link test above passes a
+/// *random* run id (a documented no-op that never reaches a real run row); this exercises the
+/// SUCCESS path against a REAL `workflow_runs` row and asserts (a) the ingested file's
+/// `workflow_run_id` is set (not orphan-deleted) and (b) the saved `/api/files/{id}` reference
+/// still resolves to the original bytes — i.e. the recalled link is a live, run-attributed handle.
+#[tokio::test]
+async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
+    let server = TestServer::start().await;
+    let uid = user_id(&server).await;
+
+    // Same shared DB the global Repos uses (first-call-wins init guard).
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    if !ziee::is_repos_initialized() {
+        ziee::init_repositories(pool.clone());
+    }
+    let store_dir = std::env::temp_dir().join(format!("ziee_rl_store_{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&store_dir).unwrap();
+    ziee::init_file_storage(&store_dir);
+
+    // A REAL workflow + run row so `files.workflow_run_id`'s FK is satisfiable (a random id
+    // would FK-violate and the file would be orphan-deleted instead of linked).
+    let workflow_id = Uuid::new_v4();
+    sqlx::query!(
+        "INSERT INTO workflows \
+            (id, name, extracted_path, bundle_sha256, bundle_size_bytes, file_count, entry_point, scope, owner_user_id) \
+         VALUES ($1, 'rl-run-link-wf', '/tmp/rl-none', 'deadbeef', 0, 0, 'workflow.yaml', 'user', $2)",
+        workflow_id,
+        uid,
+    )
+    .execute(&pool)
+    .await
+    .expect("insert workflow");
+    let run_id = Uuid::new_v4();
+    sqlx::query!(
+        "INSERT INTO workflow_runs (id, workflow_id, user_id) VALUES ($1, $2, $3)",
+        run_id,
+        workflow_id,
+        uid,
+    )
+    .execute(&pool)
+    .await
+    .expect("insert workflow_run");
+
+    // A host workspace root with a real run-produced artifact under it.
+    let root = std::env::temp_dir().join(format!("ziee_rl_ws_{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let artifact = root.join("chart.png");
+    let payload = b"\x89PNG\r\n\x1a\n-fake-chart-bytes";
+    std::fs::write(&artifact, payload).unwrap();
+
+    let mut links = vec![ziee_link(&format!("ziee://{}", artifact.display()), "chart.png")];
+
+    let outcome = ziee::persist_links(
+        &mut links,
+        uid,
+        None,
+        None,
+        "workflow",
+        Some(run_id), // REAL run → the run-link branch must set files.workflow_run_id
+        code_sandbox_server_id(),
+        true,
+        &serde_json::json!({}),
+        &[root.clone()],
+        None,
+    )
+    .await
+    .expect("persist_links");
+
+    // Exactly one ingested, rewritten to the model-facing recall handle (no host-path leak).
+    assert_eq!(outcome.saved.len(), 1, "exactly one ingested");
+    let art = &outcome.saved[0];
+    assert_eq!(
+        links[0].uri,
+        format!("/api/files/{}", art.file_id),
+        "ziee:// rewritten to the /api/files/{{id}} recall handle"
+    );
+    assert!(!links[0].uri.contains("ziee://"), "no host-path leak in the recalled URI");
+
+    // Run-link branch: the ingested file is attributed to the producing run — it SURVIVES
+    // (was not orphan-deleted) and carries the run id.
+    let row = sqlx::query!(
+        "SELECT workflow_run_id FROM files WHERE id = $1",
+        art.file_id
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("ingested file row survives (not orphaned)");
+    assert_eq!(
+        row.workflow_run_id,
+        Some(run_id),
+        "the ingested resource_link file must be linked to its producing run"
+    );
+
+    // The recalled reference is genuinely resolvable: its bytes round-trip from storage.
+    let stored = ziee::get_file_storage()
+        .load_original(uid, art.file_id, "png")
+        .await
+        .expect("saved /api/files/{id} blob is recallable");
+    assert_eq!(stored, payload, "recalled resource_link resolves to the original bytes");
+
+    pool.close().await;
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::remove_dir_all(&store_dir).ok();
+}
