@@ -282,6 +282,72 @@ async fn test_discover_models_local_provider_returns_note_no_network() {
     );
 }
 
+/// discover-models on a NON-local provider exercises Layer 1 (the curated
+/// catalog) AND the live `/v1/models` error-fallback branch — deterministically
+/// and WITHOUT real network: the base_url points at loopback, which the
+/// outbound-URL SSRF policy rejects up front, so `fetch_v1_models` fails fast
+/// and the handler falls back to catalog-only with an explanatory note. (The
+/// existing discover tests only cover the 404 + local short-circuit paths.)
+#[tokio::test]
+async fn test_discover_models_openai_catalog_with_live_call_fallback() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "discover_openai",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
+
+    // A loopback base_url is blocked by the PUBLIC_HTTP_OR_HTTPS SSRF policy
+    // before any socket is opened → the live call errors instantly (no network).
+    let provider: serde_json::Value = {
+        let res = reqwest::Client::new()
+            .post(server.api_url("/llm-providers"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&json!({
+                "name": "OpenAI Compatible",
+                "provider_type": "openai",
+                "api_key": "sk-test-dummy",
+                "base_url": "http://127.0.0.1:9/v1",
+                "enabled": false
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED, "create: {}", res.status());
+        res.json().await.unwrap()
+    };
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{provider_id}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["provider_type"], "openai");
+
+    // Layer 1: the curated openai catalog populates models, all sourced
+    // "catalog" (the live augment failed, so nothing is "discovery").
+    let models = body["models"].as_array().unwrap();
+    assert!(!models.is_empty(), "openai catalog must yield models: {body}");
+    assert!(
+        models.iter().all(|m| m["source"] == "catalog"),
+        "all models must come from the catalog when the live call fails: {body}"
+    );
+
+    // The live-call failure is surfaced as a note (catalog-only fallback).
+    let notes = body["notes"].as_array().unwrap();
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.as_str().unwrap_or("").contains("live /v1/models call failed")),
+        "expected a live-call fallback note; got {body}"
+    );
+}
+
 #[tokio::test]
 async fn test_get_provider_by_id_success() {
     let server = crate::common::TestServer::start().await;

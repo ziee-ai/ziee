@@ -624,3 +624,126 @@ async fn test_get_conversation_history_succeeds_with_permission() {
 
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+// =====================================================
+// AND-logic + mid-session escalation (extractors.rs)
+// =====================================================
+
+/// HTTP-level proof of the multi-permission AND gate: `duplicate_project`
+/// requires BOTH `projects::create` AND `projects::read`. A user granted only
+/// ONE of the pair must be rejected (403) and the error must name the MISSING
+/// permission — the extractor's per-request `missing_permissions` path. A
+/// positive control (both perms → past the gate, surfacing 404 for the bogus
+/// id) confirms the 403 comes from the AND logic, not an unrelated failure.
+#[tokio::test]
+async fn test_duplicate_project_requires_all_permissions_and_logic() {
+    let server = crate::common::TestServer::start().await;
+    let bogus_project = uuid::Uuid::new_v4();
+
+    // Only `projects::create` — missing `projects::read`.
+    let partial = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "and_partial",
+        &["projects::create"],
+    )
+    .await;
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/projects/{bogus_project}/duplicate")))
+        .header("Authorization", format!("Bearer {}", partial.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::FORBIDDEN,
+        "partial grant must be rejected by the AND gate"
+    );
+    let body: serde_json::Value = res.json().await.unwrap();
+    let msg = serde_json::to_string(&body).unwrap();
+    assert!(
+        msg.contains("projects::read"),
+        "403 must name the missing permission; body={body}"
+    );
+
+    // Both perms → past the gate; the bogus id yields 404, NOT 403.
+    let full = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "and_full",
+        &["projects::create", "projects::read"],
+    )
+    .await;
+    let res2 = reqwest::Client::new()
+        .post(server.api_url(&format!("/projects/{bogus_project}/duplicate")))
+        .header("Authorization", format!("Bearer {}", full.token))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        res2.status(),
+        StatusCode::FORBIDDEN,
+        "full grant must clear the AND gate (got {}): {:?}",
+        res2.status(),
+        res2.text().await.ok()
+    );
+}
+
+/// Permissions are re-resolved from the DB on EVERY request, so a mid-session
+/// grant takes effect immediately on the next call (no token refresh). A user
+/// who starts with no `conversations::create` gets 403; after the permission is
+/// appended to their group, the very next request succeeds (201).
+#[tokio::test]
+async fn test_permission_escalation_takes_effect_mid_session() {
+    let server = crate::common::TestServer::start().await;
+    // In a per-test group with ZERO permissions (not the default Users group).
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "escalate",
+        &[],
+    )
+    .await;
+
+    let payload = json!({ "title": "Escalation" });
+
+    // Before: no conversations::create → 403.
+    let before = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(before.status(), StatusCode::FORBIDDEN, "starts unauthorized");
+
+    // Admin action: grant the permission to the user's group(s) mid-session.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let affected = sqlx::query(
+        "UPDATE groups SET permissions = array_append(permissions, 'conversations::create') \
+         WHERE id IN (SELECT group_id FROM user_groups WHERE user_id = $1) \
+           AND NOT ('conversations::create' = ANY(permissions))",
+    )
+    .bind(uuid::Uuid::parse_str(&user.user_id).unwrap())
+    .execute(&pool)
+    .await
+    .unwrap()
+    .rows_affected();
+    assert!(affected >= 1, "grant must touch the user's group");
+    pool.close().await;
+
+    // After: the NEXT request re-resolves perms from the DB → 201.
+    let after = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        after.status(),
+        StatusCode::CREATED,
+        "mid-session grant must take effect on the next request"
+    );
+}

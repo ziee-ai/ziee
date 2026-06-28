@@ -473,6 +473,70 @@ async fn test_convert_document_empty_markdown_errors() {
     );
 }
 
+/// convert_document renders markdown → PDF, persists it to the file store, and
+/// emits a `resource_link` content block pointing at the saved file. This pins
+/// the full success path (real pandoc render → process_and_save → Repos.file)
+/// AND the resource_link shape the chat persist_links consumer relies on
+/// (`is_saved:true` + `uri = /api/files/{id}`). Persistence is verified for
+/// real by downloading the referenced file and asserting it is a PDF.
+#[tokio::test]
+async fn test_convert_document_persists_pdf_and_emits_resource_link() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_convert_ok").await;
+    let (conv_id, _ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "convert-ok-project",
+        &[("seed.txt", "content")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "convert_document",
+        json!({ "markdown": "# Title\n\nHello **world**.", "filename": "report.pdf" }),
+    )
+    .await;
+
+    assert!(body["error"].is_null(), "convert should succeed; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    let file_id = sc["file_id"].as_str().expect("file_id present");
+
+    // The emitted resource_link references the persisted file, flagged saved so
+    // the chat persist_links path references (never re-saves) it.
+    let link = &sc["content"][0];
+    assert_eq!(link["type"], "resource_link", "resource_link block: {sc}");
+    assert_eq!(link["is_saved"], serde_json::Value::Bool(true));
+    assert_eq!(
+        link["uri"].as_str().unwrap(),
+        format!("/api/files/{file_id}"),
+        "uri points at the saved file"
+    );
+    assert_eq!(
+        link["mimeType"].as_str().unwrap(),
+        "application/pdf",
+        "converted artifact is a PDF"
+    );
+
+    // Persistence is REAL: the referenced file downloads and is a valid PDF.
+    let dl = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/download")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dl.status(), 200, "saved file must be downloadable");
+    let bytes = dl.bytes().await.unwrap();
+    assert!(
+        bytes.starts_with(b"%PDF"),
+        "persisted artifact is a real PDF (got {} bytes)",
+        bytes.len()
+    );
+}
+
 /// (4a) `grep_files` returns matching lines with file/page/line references.
 #[tokio::test]
 async fn test_grep_files_hits() {

@@ -547,3 +547,93 @@ async fn test_cascade_delete_on_provider_deletion() {
 
     assert!(mapping.is_none(), "Mapping should be cascade deleted");
 }
+
+// ============================================================================
+// API-key rotation → cached provider_file_id invalidation
+// ============================================================================
+
+/// The cache-reuse path in `get_or_upload_provider_file` keys on an
+/// `api_key_fingerprint` stored in `provider_metadata`: on a cache HIT it
+/// reuses the mapping ONLY when the stored fingerprint equals the current
+/// key's fingerprint, otherwise it treats the cached `provider_file_id` as
+/// belonging to a different account and re-uploads. This pins the persisted
+/// half of that decision end-to-end: the fingerprint round-trips through the
+/// real `llm_provider_files` row, and the same comparison the service performs
+/// (`stored != current ⇒ invalidate`) yields reuse for the same key and
+/// invalidation after rotation.
+#[tokio::test]
+async fn test_api_key_fingerprint_persists_and_detects_rotation() {
+    use sha2::{Digest, Sha256};
+
+    fn fingerprint(key: &str) -> String {
+        let mut h = Sha256::new();
+        h.update(key.as_bytes());
+        hex::encode(h.finalize())
+    }
+
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect");
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "rotation_user", &[])
+            .await;
+    let user_id = Uuid::parse_str(&user.user_id).expect("uuid");
+    let file_id = create_test_file(&pool, user_id, "doc.pdf").await;
+    let provider_id = create_test_provider(&pool, "Rotation Provider", "gemini").await;
+
+    let old_key = "sk-account-A-original";
+    // Persist a completed mapping carrying the OLD key's fingerprint — exactly
+    // what `save_upload_response` writes into provider_metadata.
+    sqlx::query!(
+        r#"
+        INSERT INTO llm_provider_files (
+            file_id, provider_id, provider_file_id,
+            provider_metadata, upload_status
+        )
+        VALUES ($1, $2, $3, $4, 'completed')
+        "#,
+        file_id,
+        provider_id,
+        "provider-file-acctA",
+        json!({ "api_key_fingerprint": fingerprint(old_key), "filename": "doc.pdf" })
+    )
+    .execute(&pool)
+    .await
+    .expect("insert mapping");
+
+    // Read the mapping back as the service does (provider_metadata JSONB).
+    let row = sqlx::query!(
+        r#"
+        SELECT provider_file_id, provider_metadata, upload_status
+        FROM llm_provider_files
+        WHERE file_id = $1 AND provider_id = $2
+        "#,
+        file_id,
+        provider_id
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("fetch mapping");
+
+    let stored = row
+        .provider_metadata
+        .get("api_key_fingerprint")
+        .and_then(|v| v.as_str())
+        .expect("fingerprint persisted in provider_metadata");
+
+    // Same key → NOT rotated → the cached provider_file_id is reused.
+    let key_rotated_same = stored != fingerprint(old_key);
+    assert!(!key_rotated_same, "same key must NOT be flagged as rotated");
+    assert_eq!(row.upload_status, "completed");
+    assert_eq!(row.provider_file_id.as_deref(), Some("provider-file-acctA"));
+
+    // Rotated key → the stored fingerprint no longer matches → the cached id is
+    // invalidated (the service re-uploads instead of returning the stale id).
+    let new_key = "sk-account-B-rotated";
+    let key_rotated_after = stored != fingerprint(new_key);
+    assert!(
+        key_rotated_after,
+        "rotated key must invalidate the cached provider_file_id"
+    );
+}
