@@ -332,4 +332,43 @@ test.describe('Group Membership Management', () => {
     await viewGroupMembers(page, groupName)
     await _assertUserInGroup(page, username)
   })
+
+  // audit id c7c0ee1310ffc692 — a user belonging to 2+ groups was never tested
+  // (the assign flow was only ever exercised for a single group).
+  test('assigns a user to multiple groups at once', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const ts = Date.now()
+    const groupA = `MultiGrpA${ts}`
+    const groupB = `MultiGrpB${ts}`
+    const username = `multiuser${ts}`
+
+    // Create the two target groups.
+    await navigateToUserGroups(page, baseURL)
+    await openCreateGroupDrawer(page)
+    await createGroup(page, { name: groupA, description: 'multi A' })
+    await openCreateGroupDrawer(page)
+    await createGroup(page, { name: groupB, description: 'multi B' })
+
+    // Create the user.
+    await navigateToUsers(page, baseURL)
+    await openCreateUserDrawer(page)
+    await createUser(page, {
+      username,
+      email: `${username}@example.com`,
+      password: 'password123',
+    })
+
+    // Assign to BOTH groups in one AssignGroupDrawer submission.
+    await assignUserToGroups(page, username, [groupA, groupB])
+
+    // The user shows in BOTH groups' member lists.
+    await navigateToUserGroups(page, baseURL)
+    await viewGroupMembers(page, groupA)
+    await _assertUserInGroup(page, username)
+
+    await navigateToUserGroups(page, baseURL)
+    await viewGroupMembers(page, groupB)
+    await _assertUserInGroup(page, username)
+  })
 })
