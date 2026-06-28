@@ -97,10 +97,12 @@
   "scripts": {
     "build": "npm run generate-openapi && tsc && vite build",
     "build:nocheck": "npm run generate-openapi && vite build",
-    "check": "npm run generate-openapi && tsc && npm run lint:guardrails && npm run check:kit-manifest",
+    "check": "npm run generate-openapi && tsc && npm run lint:guardrails && npm run check:kit-manifest && npm run check:testid-registry",
     "lint:guardrails": "biome lint --only=style/noRestrictedImports src",
     "check:kit-manifest": "node scripts/gen-kit-manifest.mjs --check",
     "gen:kit-manifest": "node scripts/gen-kit-manifest.mjs",
+    "check:testid-registry": "node scripts/gen-testid-registry.mjs --check",
+    "gen:testid-registry": "node scripts/gen-testid-registry.mjs",
     "dev": "vite",
     "format": "biome format --write ./src",
     "format:check": "biome check ./src",
