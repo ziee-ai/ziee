@@ -161,6 +161,7 @@ export default function SettingsPage() {
 
   const SettingsMenu = () => (
     <Menu
+      data-testid="desktop-settings-menu"
       aria-label="Settings sections"
       className="w-fit h-full p-1"
       selectedKey={currentSection || validSections[0]}
@@ -187,6 +188,7 @@ export default function SettingsPage() {
           {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
+                data-testid="desktop-settings-section-dropdown"
                 align="start"
                 items={menuItems.map(item => ({
                   key: item.key,
@@ -199,7 +201,7 @@ export default function SettingsPage() {
                 }))}
                 onSelect={key => handleMenuClick(key)}
               >
-                <Button variant="ghost" className="mt-[2px]">
+                <Button data-testid="desktop-settings-section-dropdown-btn" variant="ghost" className="mt-[2px]">
                   {getCurrentSectionInfo().icon} {getCurrentSectionInfo().label}{' '}
                   <IoIosArrowDown />
                 </Button>
