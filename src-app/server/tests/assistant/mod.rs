@@ -1,5 +1,6 @@
 // Integration tests for Assistant module
 
+mod message_attribution_test;
 mod sync_emit_test;
 
 use reqwest::StatusCode;
