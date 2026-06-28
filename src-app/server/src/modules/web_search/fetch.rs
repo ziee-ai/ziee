@@ -200,4 +200,107 @@ mod tests {
         // Title best-effort (readability may derive it from <title> or <h1>).
         assert!(!title.is_empty() || md.contains("Real Heading"));
     }
+
+    /// Spawn a one-shot loopback HTTP/1.1 server that answers the first request
+    /// with a `302 Found` to `location`, and return its port. Dependency-free
+    /// (blocking `std::net` in a thread) so it doesn't rely on tokio `net`
+    /// feature flags being enabled for this crate.
+    fn spawn_redirect_once(location: String) -> u16 {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut sock, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = sock.read(&mut buf);
+                let resp = format!(
+                    "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = sock.write_all(resp.as_bytes());
+                let _ = sock.flush();
+            }
+        });
+        port
+    }
+
+    /// SSRF: a redirect from an allowed (loopback) origin to a private/IMDS
+    /// target must be REFUSED by the validated client's per-hop redirect policy
+    /// — the redirect is re-validated, not blindly followed. We use the
+    /// `DEV_LOCAL` policy (loopback allowed, but RFC1918 + link-local/IMDS still
+    /// blocked) so the INITIAL hop is reachable while the redirect TARGET is
+    /// still validated. Without re-validation a 302 would bypass the pre-flight
+    /// check on the initial URL — exactly the hole this guards.
+    #[tokio::test]
+    async fn validated_client_blocks_redirect_to_private_or_imds_target() {
+        for target in [
+            "http://169.254.169.254/latest/meta-data/", // cloud metadata (link-local)
+            "http://10.0.0.1/secret",                   // RFC1918 private
+        ] {
+            let port = spawn_redirect_once(target.to_string());
+            let client = build_validated_client(OutboundUrlPolicy::DEV_LOCAL).unwrap();
+            let res = client
+                .get(format!("http://127.0.0.1:{port}/start"))
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await;
+            let err = res.expect_err(&format!(
+                "redirect to {target} must be SSRF-blocked, not followed"
+            ));
+            // A refused hop surfaces as a redirect error; the private/IMDS
+            // endpoint is never connected to.
+            assert!(
+                err.is_redirect()
+                    || err.to_string().to_lowercase().contains("redirect")
+                    || err.to_string().contains("blocked"),
+                "blocked redirect to {target} should surface as a redirect error, got: {err}"
+            );
+        }
+    }
+
+    /// Complement / control: redirects ARE followed when the target is allowed
+    /// — so the block above is specific to the private target, not "redirects
+    /// disabled". A loopback origin 302s to another loopback path under
+    /// `DEV_LOCAL`; the client follows it and returns the final body.
+    #[tokio::test]
+    async fn validated_client_follows_redirect_to_allowed_loopback() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            // Hop 1: /start -> 302 -> /final on the same loopback origin.
+            if let Ok((mut sock, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = sock.read(&mut buf);
+                let loc = format!("http://127.0.0.1:{port}/final");
+                let resp = format!(
+                    "HTTP/1.1 302 Found\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = sock.write_all(resp.as_bytes());
+                let _ = sock.flush();
+            }
+            // Hop 2: /final -> 200 with a sentinel body.
+            if let Ok((mut sock, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = sock.read(&mut buf);
+                let body = "OK-FINAL";
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(resp.as_bytes());
+                let _ = sock.flush();
+            }
+        });
+        let client = build_validated_client(OutboundUrlPolicy::DEV_LOCAL).unwrap();
+        let res = client
+            .get(format!("http://127.0.0.1:{port}/start"))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .expect("loopback->loopback redirect should be followed under DEV_LOCAL");
+        assert!(res.status().is_success(), "final status: {}", res.status());
+        assert_eq!(res.text().await.unwrap(), "OK-FINAL");
+    }
 }
