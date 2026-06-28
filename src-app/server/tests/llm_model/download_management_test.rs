@@ -905,3 +905,111 @@ async fn test_delete_active_download_returns_invalid_state() {
         "error_code should be INVALID_STATE, got body: {body}"
     );
 }
+
+// =====================================================
+// Resume-after-restart: orphaned non-terminal download rows
+// (audit all-c736e307b89e)
+// =====================================================
+
+/// A download running in a background `tokio::spawn` leaves a row in the
+/// non-terminal `downloading` state. If the server process restarts, that task
+/// is gone but the row remains. This asserts the *current, real* cross-restart
+/// behavior: there is NO boot-time reconciler that resets such an orphan, so a
+/// persisted `downloading` row survives a fresh server boot and is still
+/// surfaced as in-progress by the list endpoint (it is NOT auto-failed). If a
+/// reconciler is ever added, this test should be updated to assert the
+/// orphan→failed transition instead.
+#[tokio::test]
+async fn test_orphaned_downloading_row_survives_restart_unreconciled() {
+    use uuid::Uuid;
+
+    // A fresh server boot. Module init runs (only a prune loop for terminal
+    // rows >7d) — nothing reconciles a live `downloading` row.
+    let server = TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "dl_orphan_restart",
+        &["llm_models::downloads_read"],
+    )
+    .await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+
+    // Minimal provider + repository to satisfy the download_instances FKs.
+    let provider_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in)
+         VALUES ($1, 'Orphan Restart Provider', 'huggingface', true, false)",
+    )
+    .bind(provider_id)
+    .execute(&pool)
+    .await
+    .expect("insert provider");
+
+    let repository_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO llm_repositories (id, name, url, auth_type, enabled, built_in)
+         VALUES ($1, 'Orphan Restart Repo', 'https://huggingface.co', 'none', true, false)",
+    )
+    .bind(repository_id)
+    .execute(&pool)
+    .await
+    .expect("insert repository");
+
+    // A row left behind by a pre-restart background task: status `downloading`.
+    let download_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO download_instances (id, provider_id, repository_id, request_data, status)
+         VALUES ($1, $2, $3, '{}'::jsonb, 'downloading')",
+    )
+    .bind(download_id)
+    .bind(provider_id)
+    .bind(repository_id)
+    .execute(&pool)
+    .await
+    .expect("insert orphaned downloading download");
+    pool.close().await;
+
+    // List filtered to `downloading`: the orphan is still present and in-progress.
+    let resp = reqwest::Client::new()
+        .get(server.api_url("/llm-models/downloads?status=downloading&per_page=100"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list downloads request failed");
+    assert_eq!(resp.status(), 200, "list downloads should be 200");
+    let body: serde_json::Value = resp.json().await.expect("parse list body");
+
+    let downloads = body["downloads"].as_array().expect("downloads array");
+    let orphan = downloads
+        .iter()
+        .find(|d| d["id"] == serde_json::json!(download_id.to_string()));
+    assert!(
+        orphan.is_some(),
+        "the orphaned downloading row must survive the restart and still be listed (no boot reconciler); body: {body}"
+    );
+    assert_eq!(
+        orphan.unwrap()["status"],
+        serde_json::json!("downloading"),
+        "the orphaned row is still reported as 'downloading' (not auto-failed)"
+    );
+
+    // And it is fetchable individually, still non-terminal.
+    let one = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-models/downloads/{download_id}")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("get download request failed");
+    assert_eq!(one.status(), 200, "the orphaned download is fetchable by id");
+    let one_body: serde_json::Value = one.json().await.expect("parse one body");
+    assert_eq!(
+        one_body["status"],
+        serde_json::json!("downloading"),
+        "single-fetch confirms the persisted non-terminal status survives restart"
+    );
+}
