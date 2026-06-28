@@ -16,6 +16,7 @@
 
 mod fulltext_test;
 mod mcp_test;
+mod multistep_test;
 mod real_llm_test;
 mod sandbox_mount_test;
 mod settings_test;
