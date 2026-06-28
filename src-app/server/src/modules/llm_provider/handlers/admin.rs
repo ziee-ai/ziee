@@ -425,7 +425,10 @@ pub async fn delete_provider(
             }
             Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
         }
-        Ok(Ok(false)) => Err(AppError::not_found("Provider").into()),
+        // Already gone (e.g. a concurrent DELETE won the race). DELETE is
+        // idempotent: report success rather than a spurious 404. No event /
+        // sync emit — this request changed nothing.
+        Ok(Ok(false)) => Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT)),
         Ok(Err(msg)) => Err(AppError::bad_request("DELETE_ERROR", &msg).into()),
         Err(e) => {
             tracing::error!("Failed to delete provider {}: {}", provider_id, e);
