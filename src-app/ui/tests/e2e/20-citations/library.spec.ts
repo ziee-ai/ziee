@@ -189,4 +189,57 @@ test.describe('Citations library', () => {
     const download = await downloadPromise
     expect(download.suggestedFilename()).toContain('citations')
   })
+
+  test('deletes a citation via the card Popconfirm', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const target = entry({ title: 'Doomed paper', citation_key: 'doomed2020' })
+    const state: State = { entries: [target] }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    // Mock the DELETE so the real network call (which the store awaits before
+    // pruning local state) succeeds deterministically.
+    await page.route(/\/api\/citations\/[0-9a-f-]+$/, async (route, req) => {
+      if (req.method() === 'DELETE') {
+        state.entries = state.entries.filter(e => e.id !== target.id)
+        return route.fulfill({ status: 204, body: '' })
+      }
+      return route.continue()
+    })
+    await gotoCitations(page, baseURL)
+
+    await expect(page.getByText('Doomed paper')).toBeVisible()
+
+    // The per-card delete is gated on citations::manage (admin holds it via *).
+    await page.getByRole('button', { name: 'Delete doomed2020' }).click()
+    // Confirm the Popconfirm.
+    const popconfirm = page.locator('.ant-popconfirm:visible')
+    await expect(popconfirm.getByText('Delete from library?')).toBeVisible()
+    // Confirm via the primary (danger) button — text-independent + stable.
+    await popconfirm.locator('.ant-btn-primary').click()
+
+    await expect(page.getByText('Doomed paper')).toHaveCount(0)
+  })
+
+  // The Export dropdown wires 4 formats → distinct file extensions
+  // (CitationsSettingsPage EXPORT_FORMATS). library.spec previously only
+  // exercised RIS; cover the other three so a mis-wired ext/format regresses.
+  for (const { label, ext } of [
+    { label: 'BibTeX (.bib)', ext: '.bib' },
+    { label: 'CSL-JSON (.json)', ext: '.json' },
+    { label: 'Formatted (CSL style)', ext: '.txt' },
+  ]) {
+    test(`exports the library as ${label}`, async ({ page, testInfra }) => {
+      const { baseURL } = testInfra
+      const state: State = { entries: [entry({ title: 'Exportable paper' })] }
+      await loginAsAdmin(page, baseURL)
+      await mockApi(page, state)
+      await gotoCitations(page, baseURL)
+
+      const downloadPromise = page.waitForEvent('download')
+      await page.getByRole('button', { name: 'Export' }).click()
+      await page.getByText(label).click()
+      const download = await downloadPromise
+      expect(download.suggestedFilename()).toBe(`citations${ext}`)
+    })
+  }
 })
