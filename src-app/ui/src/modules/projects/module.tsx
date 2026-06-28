@@ -1,4 +1,4 @@
-import { FolderOutlined } from '@ant-design/icons'
+import { Folder } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
@@ -82,7 +82,7 @@ export default createModule({
     sidebarNavigation: [
       {
         id: 'projects',
-        icon: <FolderOutlined />,
+        icon: <Folder />,
         label: 'Projects',
         path: '/projects',
         order: 20,

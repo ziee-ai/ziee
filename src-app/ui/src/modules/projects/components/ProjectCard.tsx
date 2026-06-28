@@ -1,11 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Flex, Confirm, Tooltip, Text, Title } from '@/components/ui'
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  FolderOutlined,
-} from '@ant-design/icons'
+import { Copy, Folder, Pencil, Trash2 } from 'lucide-react'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
 
@@ -60,7 +55,7 @@ export function ProjectCard({
       data-test-project-name={project.name}
       title={
         <div className="flex items-center gap-2 min-w-0">
-          <FolderOutlined aria-hidden="true" />
+          <Folder aria-hidden="true" />
           <Title level={5} className="!m-0 truncate">
             {project.name}
           </Title>
@@ -73,7 +68,7 @@ export function ProjectCard({
               <Button
                 variant="ghost"
                 size="sm"
-                icon={<EditOutlined />}
+                icon={<Pencil />}
                 aria-label={`Edit ${project.name}`}
                 onClick={(e: React.MouseEvent) => {
                   stop(e)
@@ -87,7 +82,7 @@ export function ProjectCard({
               <Button
                 variant="ghost"
                 size="sm"
-                icon={<CopyOutlined />}
+                icon={<Copy />}
                 aria-label={`Duplicate ${project.name}`}
                 onClick={(e: React.MouseEvent) => {
                   stop(e)
@@ -111,7 +106,7 @@ export function ProjectCard({
               <Button
                 variant="ghost"
                 size="sm"
-                icon={<DeleteOutlined />}
+                icon={<Trash2 />}
                 aria-label={`Delete ${project.name}`}
                 onClick={stop}
               />

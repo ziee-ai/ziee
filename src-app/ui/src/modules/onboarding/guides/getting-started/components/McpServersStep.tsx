@@ -10,7 +10,7 @@ import {
   Tag,
   Switch,
 } from '@/components/ui'
-import { ToolOutlined } from '@ant-design/icons'
+import { Wrench } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -45,7 +45,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
   return (
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
-        <ToolOutlined className="text-3xl text-purple-500" />
+        <Wrench className="text-3xl text-purple-500" />
         <Title level={3} className="!mb-0">
           MCP Servers
         </Title>

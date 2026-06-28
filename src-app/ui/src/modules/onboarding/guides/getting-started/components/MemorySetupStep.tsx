@@ -12,13 +12,7 @@ import {
   Space,
   Flex,
 } from '@/components/ui'
-import {
-  BulbOutlined,
-  InfoCircleOutlined,
-  ArrowLeftOutlined,
-  ReloadOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { Lightbulb, Info, ArrowLeft, RotateCw, Plus } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -78,7 +72,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
     return (
       <div className="max-w-lg">
         <div className="flex items-center gap-3 mb-4">
-          <BulbOutlined className="text-3xl text-amber-500" />
+          <Lightbulb className="text-3xl text-amber-500" />
           <Title level={3} className="!mb-0">
             Persistent Memory
           </Title>
@@ -121,7 +115,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
   return (
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
-        <BulbOutlined className="text-3xl text-amber-500" />
+        <Lightbulb className="text-3xl text-amber-500" />
         <Title level={3} className="!mb-0">
           Persistent Memory
         </Title>
@@ -185,12 +179,12 @@ function PickModelScreen({
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
         <Button
-          icon={<ArrowLeftOutlined />}
+          icon={<ArrowLeft />}
           size="sm"
           onClick={onBack}
           aria-label="Back"
         />
-        <BulbOutlined className="text-3xl text-amber-500" />
+        <Lightbulb className="text-3xl text-amber-500" />
         <Title level={3} className="!mb-0">
           Pick an embedding model
         </Title>
@@ -217,7 +211,7 @@ function PickModelScreen({
       {noModelsAvailable ? (
         <Alert
           tone="info"
-          icon={<InfoCircleOutlined />}
+          icon={<Info />}
           title="No embedding-capable models found."
           description={
             <Flex vertical className="w-full gap-2">
@@ -233,7 +227,7 @@ function PickModelScreen({
               <Space>
                 <Button
                   variant="default"
-                  icon={<PlusOutlined />}
+                  icon={<Plus />}
                   onClick={() => {
                     // Open the LLM Providers page in a NEW tab so the
                     // wizard state is preserved. The admin adds the
@@ -244,7 +238,7 @@ function PickModelScreen({
                   Add embedding model
                 </Button>
                 <Button
-                  icon={<ReloadOutlined />}
+                  icon={<RotateCw />}
                   loading={refreshing}
                   onClick={async () => {
                     setRefreshing(true)

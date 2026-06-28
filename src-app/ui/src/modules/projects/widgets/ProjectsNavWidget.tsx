@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Separator, Empty, Spin, Text } from '@/components/ui'
-import {
-  FolderOutlined,
-  FolderOpenOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { Folder, FolderOpen, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
@@ -92,7 +88,7 @@ export function ProjectsNavWidget() {
       {projects.length === 0 ? (
         <div className="px-2 py-3">
           <Empty
-            image={<FolderOutlined className="text-2xl text-gray-400" />}
+            image={<Folder className="text-2xl text-gray-400" />}
             description={
               <Text type="secondary" className="text-xs">
                 No projects yet
@@ -132,7 +128,7 @@ export function ProjectsNavWidget() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <FolderOpenOutlined className="text-sm shrink-0" />
+                    <FolderOpen className="text-sm shrink-0" />
                     <Text
                       className="text-sm truncate block"
                       title={project.name}
@@ -144,7 +140,7 @@ export function ProjectsNavWidget() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<PlusOutlined />}
+                      icon={<Plus />}
                       aria-label={`New chat in ${project.name}`}
                       onClick={e => {
                         e.stopPropagation()
@@ -167,7 +163,7 @@ export function ProjectsNavWidget() {
       <div className="px-2 pb-1">
         <Button
           variant="ghost"
-          icon={<FolderOutlined />}
+          icon={<Folder />}
           block
           onClick={() => navigate('/projects')}
         >

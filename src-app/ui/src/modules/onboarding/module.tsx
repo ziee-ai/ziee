@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { BookOutlined } from '@ant-design/icons'
+import { Book } from 'lucide-react'
 import { BlankLayout } from '@/modules/layouts/blank'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useOnboardingStore } from './stores/Onboarding.store'
@@ -33,7 +33,7 @@ export default createModule({
     sidebarTools: [
       {
         id: 'onboarding',
-        icon: <BookOutlined />,
+        icon: <Book />,
         label: 'Onboarding',
         path: '/onboarding',
         order: 90,

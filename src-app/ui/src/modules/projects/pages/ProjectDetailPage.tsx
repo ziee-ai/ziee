@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Separator, Flex, Confirm, Spin, Text, Title, Paragraph, message } from '@/components/ui'
-import {
-  ArrowLeftOutlined,
-  CloseCircleOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-} from '@ant-design/icons'
+import { ArrowLeft, CircleX, Copy, Pencil, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -246,7 +240,7 @@ export function ProjectDetailPage() {
           <div className="flex items-center min-w-0 gap-2">
             <Button
               variant="ghost"
-              icon={<ArrowLeftOutlined />}
+              icon={<ArrowLeft />}
               onClick={() => navigate('/projects')}
               aria-label="Back to projects"
             />
@@ -260,7 +254,7 @@ export function ProjectDetailPage() {
           </div>
           <div className="flex items-center gap-1">
             <Can permission={Permissions.ProjectsEdit}>
-              <Button variant="ghost" icon={<EditOutlined />} onClick={handleEdit}>
+              <Button variant="ghost" icon={<Pencil />} onClick={handleEdit}>
                 Edit
               </Button>
             </Can>
@@ -279,7 +273,7 @@ export function ProjectDetailPage() {
             >
               <Button
                 variant="ghost"
-                icon={<CopyOutlined />}
+                icon={<Copy />}
                 onClick={handleDuplicate}
               >
                 Duplicate
@@ -326,7 +320,7 @@ export function ProjectDetailPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<CloseCircleOutlined />}
+                  icon={<CircleX />}
                   onClick={handleDeselectAll}
                 >
                   Clear
@@ -363,7 +357,7 @@ export function ProjectDetailPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<DeleteOutlined />}
+                      icon={<Trash2 />}
                       loading={bulkDeleting}
                     >
                       Delete
@@ -412,7 +406,7 @@ export function ProjectDetailPage() {
               <Can permission={Permissions.ProjectsEdit}>
                 <Button
                   variant="ghost"
-                  icon={<EditOutlined />}
+                  icon={<Pencil />}
                   onClick={handleEdit}
                   aria-label="Edit project details"
                 >
