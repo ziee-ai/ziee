@@ -151,6 +151,48 @@ test.describe('Server update notification', () => {
     await expect(page.locator('.ant-alert-error')).toBeVisible({ timeout: 30000 })
   })
 
+  test('About page shows the green "up to date" tag when current', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await mockStatus(page, {
+      ...STATUS_AVAILABLE,
+      update_available: false,
+      latest_version: '0.1.0',
+    })
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/about`)
+
+    // Latest == current and no update → the green "up to date" Tag renders
+    // (NOT the blue "update available" one).
+    await expect(
+      page.locator('.ant-tag-green', { hasText: 'up to date' }),
+    ).toBeVisible({ timeout: 30000 })
+    await expect(page.getByText('update available')).toHaveCount(0)
+  })
+
+  test('About page shows "not checked yet" before the first poll', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    // Enabled but never polled → no latest_version yet.
+    await mockStatus(page, {
+      ...STATUS_AVAILABLE,
+      enabled: true,
+      update_available: false,
+      latest_version: null,
+      checked_at: null,
+    })
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/about`)
+
+    await expect(page.getByText('not checked yet')).toBeVisible({
+      timeout: 30000,
+    })
+  })
+
   test('shows the disabled (air-gapped) notice', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await mockStatus(page, {
