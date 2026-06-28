@@ -90,7 +90,7 @@ pub async fn complete_guide(
 
     let progress = Repos
         .onboarding
-        .complete_guide(auth.user.id, &guide_id)
+        .complete_guide(auth.user.id, &guide_id, MAX_ONBOARDING_COMPLETIONS as i32)
         .await?;
 
     Ok((StatusCode::OK, Json(progress)))
@@ -138,7 +138,7 @@ pub async fn complete_guide_step(
     let step_key = format!("{}/{}", gid, sid);
     let progress = Repos
         .onboarding
-        .complete_guide_step(auth.user.id, &step_key)
+        .complete_guide_step(auth.user.id, &step_key, MAX_ONBOARDING_COMPLETIONS as i32)
         .await?;
 
     Ok((StatusCode::OK, Json(progress)))
