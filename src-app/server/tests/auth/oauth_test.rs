@@ -1229,3 +1229,36 @@ async fn test_oauth_auto_provision_dedups_colliding_username() {
         row.username
     );
 }
+
+// audit id all-6bcac91964d0 — provider-error-on-callback. When the IdP denies
+// consent it redirects back WITHOUT a `code` (e.g. ?error=access_denied). The
+// callback requires `code`, so such a request is rejected (4xx) rather than
+// authenticating. (Token-exchange failure + expired/invalid state are covered
+// by test_oauth_token_exchange_failure_is_handled +
+// test_oauth_callback_invalid_or_expired_state_returns_400.)
+#[tokio::test]
+async fn test_oauth_callback_without_code_is_rejected() {
+    let test_server = crate::common::TestServer::start().await;
+    let oauth_server = OAuthMockServer::start().await.expect("mock");
+    let pool = sqlx::PgPool::connect(&test_server.database_url).await.unwrap();
+    seed_oidc_provider(&pool, "test-oauth", &oauth_server, json!({})).await;
+
+    // Provider error redirect: error + state, NO code.
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let resp = client
+        .get(format!(
+            "{}/api/auth/oauth/test-oauth/callback?error=access_denied&state=whatever",
+            test_server.base_url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        resp.status().is_client_error(),
+        "a provider-error callback (no code) must be rejected, got {}",
+        resp.status()
+    );
+}
