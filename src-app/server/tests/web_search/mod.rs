@@ -87,6 +87,33 @@ pub async fn start_failing_searxng() -> (String, std::sync::Arc<std::sync::atomi
     (format!("http://127.0.0.1:{port}"), hits)
 }
 
+/// Spawn a loopback SearXNG that always returns HTTP 429 (rate-limited) — used
+/// to exercise the chain's fallback on a rate-limit response (distinct from a
+/// 500). Returns the base url + a hit counter.
+pub async fn start_rate_limited_searxng() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use axum::{Router, http::StatusCode, routing::get};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let hits = Arc::new(AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let h = hits.clone();
+    let app = Router::new().route(
+        "/search",
+        get(move || {
+            let h = h.clone();
+            async move {
+                h.fetch_add(1, Ordering::SeqCst);
+                StatusCode::TOO_MANY_REQUESTS
+            }
+        }),
+    );
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app.into_make_service()).await;
+    });
+    (format!("http://127.0.0.1:{port}"), hits)
+}
+
 /// Loopback mock SearXNG that returns a result containing `marker` and counts
 /// hits — for the real-LLM test (proves a real model invoked the tool AND used
 /// the result). Returns (base_url, hit_counter).
