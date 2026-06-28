@@ -799,3 +799,54 @@ async fn create_template_assistant(
     assert_eq!(response.status(), StatusCode::CREATED);
     response.json().await.unwrap()
 }
+
+/// `is_template` is deliberately omitted from `UpdateAssistantRequest`, so it is
+/// IMMUTABLE: a client that injects `is_template: true` into the update body
+/// must NOT be able to promote a user assistant into a template. The field is
+/// dropped at deserialization and the persisted value stays `false`.
+#[tokio::test]
+async fn test_is_template_is_immutable_on_update() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tmpl_immut",
+        &["assistants::create", "assistants::edit", "assistants::read"],
+    )
+    .await;
+
+    let assistant = create_user_assistant(&server, &user.token, "Plain Assistant").await;
+    let assistant_id = assistant["id"].as_str().unwrap();
+    assert_eq!(assistant["is_template"], false, "precondition: a user assistant");
+
+    // Attempt to flip is_template via the update body (and is_default for good measure).
+    let payload = json!({
+        "name": "Still Not A Template",
+        "is_template": true,
+        "is_default": true,
+    });
+    let response = reqwest::Client::new()
+        .put(server.api_url(&format!("/assistants/{}", assistant_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        body["is_template"], false,
+        "is_template must remain false — the injected field is ignored"
+    );
+
+    // Confirm via a fresh GET that the persisted row wasn't promoted either.
+    let got: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/assistants/{}", assistant_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(got["is_template"], false, "GET must also show is_template still false");
+}
