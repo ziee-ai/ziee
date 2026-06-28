@@ -186,7 +186,7 @@ required to run them; CI can shell out to the recipes directly.
 
 Existing `hub_entities` rows from before the reverse-DNS migration
 carried a slug `hub_id` (e.g. `"filesystem-mcp"`). The SQL migration
-`00000000000089_rewrite_hub_entities_hub_id_to_reverse_dns.sql` runs at
+`00000000000092_rewrite_hub_entities_hub_id_to_reverse_dns.sql` runs at
 boot via build.rs and rewrites every recognized legacy slug to its
 reverse-DNS form (e.g.
 `"io.github.modelcontextprotocol/filesystem"`). The migration is

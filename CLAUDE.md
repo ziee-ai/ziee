@@ -759,9 +759,10 @@ Flat, per-user grouping above conversations. Each project owns:
 ### Backend module
 
 - Code: `src-app/server/src/modules/project/{mod,models,types,repository,routes,handlers,permissions,events}.rs`
-- Migrations: `00000000000046..00000000000049` (projects table,
+- Migrations: `00000000000051..00000000000054` (projects table,
   project_files join, conversations.project_id ALTER, Administrators
-  permission grant).
+  permission grant). Later additions: `..055` (loop settings),
+  `..073` (project_conversations), `..103` (project_bibliography).
 - Chat extension: `src-app/server/src/modules/chat/extensions/project/`
   at **order 8** — runs BEFORE the assistant extension (order 10) so
   the final wire format is `[assistant_sys, project_sys, user_msg]`
