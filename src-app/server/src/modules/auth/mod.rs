@@ -13,6 +13,8 @@ pub mod types;
 
 // Re-exports
 pub use jwt::JwtService;
+// Suppress unused-import false positive: the re-export IS needed for `pub use modules::auth::hash_password` in lib.rs.
+#[allow(unused_imports)]
 pub use password::hash_password;
 pub use repository::AuthRepository;
 pub use routes::{auth_admin_routes, auth_routes};
