@@ -86,6 +86,7 @@ export function ImportCitationsModal({
         rows={6}
         value={text}
         onChange={e => setText(e.target.value)}
+        aria-label="Identifiers or CSL-JSON to import"
         placeholder={'10.1038/s41586-021-...\n34121113\n2101.12345'}
       />
       {result && (
