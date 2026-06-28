@@ -1101,3 +1101,44 @@ async fn default_model_round_trips_and_sets_null_on_model_delete() {
         after["default_model_id"]
     );
 }
+
+/// create_project validates default-asset references: a non-existent
+/// default_model_id → 422 DEFAULT_MODEL_NOT_FOUND, and a foreign/non-existent
+/// default_assistant_id → 422 DEFAULT_ASSISTANT_INACCESSIBLE. Neither error
+/// path was exercised by an integration test.
+#[tokio::test]
+async fn test_create_project_rejects_bad_default_asset_refs() {
+    let server = TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "proj_badrefs",
+        helpers::full_project_permissions(),
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", user.token);
+
+    // Non-existent model → 422 DEFAULT_MODEL_NOT_FOUND.
+    let r = client
+        .post(server.api_url("/projects"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "name": "Bad Model", "default_model_id": Uuid::new_v4() }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 422, "dangling default_model_id must 422");
+    let body: Value = r.json().await.unwrap();
+    assert_eq!(body["error_code"].as_str(), Some("DEFAULT_MODEL_NOT_FOUND"), "{body}");
+
+    // Foreign/non-existent assistant → 422 DEFAULT_ASSISTANT_INACCESSIBLE.
+    let r = client
+        .post(server.api_url("/projects"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "name": "Bad Asst", "default_assistant_id": Uuid::new_v4() }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 422, "inaccessible default_assistant_id must 422");
+    let body: Value = r.json().await.unwrap();
+    assert_eq!(body["error_code"].as_str(), Some("DEFAULT_ASSISTANT_INACCESSIBLE"), "{body}");
+}
