@@ -74,8 +74,9 @@ export function EmbeddingSection() {
 
   if (!canRead) {
     return (
-      <Card title="Embedding (semantic search)">
+      <Card data-testid="filerag-embedding-card" title="Embedding (semantic search)">
         <Alert
+          data-testid="filerag-embedding-noperm-alert"
           tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
@@ -139,9 +140,10 @@ export function EmbeddingSection() {
 
   return (
     <>
-      <Card title="Embedding (semantic search)">
+      <Card data-testid="filerag-embedding-card" title="Embedding (semantic search)">
         {noModelsAvailable && (
           <Alert
+            data-testid="filerag-embedding-no-models-alert"
             tone="info"
             className="!mb-4"
             title="No embedding-capable models found."
@@ -157,6 +159,7 @@ export function EmbeddingSection() {
           />
         )}
         <Form
+          data-testid="filerag-embedding-form"
           name="file-rag-admin-embedding-form"
           form={form}
           layout="horizontal"
@@ -169,7 +172,7 @@ export function EmbeddingSection() {
             description="When off, retrieval uses full-text only. Effective semantic recall also requires an embedding model below."
             valuePropName="checked"
           >
-            <Switch aria-label="Enable semantic search" />
+            <Switch data-testid="filerag-embedding-switch" aria-label="Enable semantic search" />
           </FormField>
 
           <FormField
@@ -178,6 +181,7 @@ export function EmbeddingSection() {
             description={`The model used to compute document + query vectors. The vector dimension is derived automatically from the model. Current dimension: ${settings.embedding_dimensions}`}
           >
             <Combobox
+              data-testid="filerag-embedding-model-select"
               placeholder={
                 noModelsAvailable
                   ? 'No embedding-capable models'
@@ -200,7 +204,7 @@ export function EmbeddingSection() {
             label="Cosine distance threshold"
             description="Chunks with distance ≥ this value are dropped from the vector arm. Lower = stricter."
           >
-            <InputNumber min={0} max={2} step={0.05} className="w-40" />
+            <InputNumber data-testid="filerag-embedding-cosine" min={0} max={2} step={0.05} className="w-40" />
           </FormField>
 
           {/* No form field — a labeled action row (Form.Item without a name). */}
@@ -209,6 +213,7 @@ export function EmbeddingSection() {
               Force re-embed all chunks
             </div>
             <Button
+              data-testid="filerag-embedding-reembed-btn"
               icon={<RotateCw />}
               loading={triggeringReembed}
               onClick={() => setReembedConfirmOpen(true)}
@@ -226,7 +231,7 @@ export function EmbeddingSection() {
             <>
               <Separator className="!my-3" />
               <Flex justify="end">
-                <Button type="submit" loading={saving}>
+                <Button data-testid="filerag-embedding-save" type="submit" loading={saving}>
                   Save
                 </Button>
               </Flex>
@@ -236,6 +241,7 @@ export function EmbeddingSection() {
       </Card>
 
       <Dialog
+        data-testid="filerag-embedding-reembed-dialog"
         open={reembedConfirmOpen}
         onOpenChange={v => {
           if (!v) setReembedConfirmOpen(false)
@@ -243,10 +249,10 @@ export function EmbeddingSection() {
         title="Re-embed every document chunk?"
         footer={
           <>
-            <Button variant="outline" onClick={() => setReembedConfirmOpen(false)}>
+            <Button data-testid="filerag-embedding-reembed-cancel" variant="outline" onClick={() => setReembedConfirmOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleReembed}>Re-embed</Button>
+            <Button data-testid="filerag-embedding-reembed-confirm" onClick={handleReembed}>Re-embed</Button>
           </>
         }
       >
@@ -258,6 +264,7 @@ export function EmbeddingSection() {
       </Dialog>
 
       <Dialog
+        data-testid="filerag-embedding-swap-dialog"
         open={pendingSwap !== null}
         onOpenChange={v => {
           if (!v) setPendingSwap(null)
@@ -265,10 +272,11 @@ export function EmbeddingSection() {
         title="Change the embedding model?"
         footer={
           <>
-            <Button variant="outline" onClick={() => setPendingSwap(null)}>
+            <Button data-testid="filerag-embedding-swap-cancel" variant="outline" onClick={() => setPendingSwap(null)}>
               Keep current model
             </Button>
             <Button
+              data-testid="filerag-embedding-swap-confirm"
               onClick={async () => {
                 if (!pendingSwap) return
                 const captured = pendingSwap

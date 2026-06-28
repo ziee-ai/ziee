@@ -61,8 +61,9 @@ export function ChunkingSection() {
 
   if (!canRead) {
     return (
-      <Card title="Chunking">
+      <Card data-testid="filerag-chunking-card" title="Chunking">
         <Alert
+          data-testid="filerag-chunking-noperm-alert"
           tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
@@ -91,12 +92,13 @@ export function ChunkingSection() {
   }
 
   return (
-    <Card title="Chunking">
+    <Card data-testid="filerag-chunking-card" title="Chunking">
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Applies to files indexed after saving; existing files keep their current
         chunking until re-uploaded or edited.
       </Paragraph>
       <Form
+        data-testid="filerag-chunking-form"
         name="file-rag-admin-chunking-form"
         form={form}
         layout="horizontal"
@@ -109,7 +111,7 @@ export function ChunkingSection() {
           label="Chunk size (characters)"
           description="Target window size per chunk. ~1200 chars ≈ 300 tokens — small enough for precise citations, large enough for coherent passages."
         >
-          <InputNumber min={200} max={8000} step={100} className="w-40" />
+          <InputNumber data-testid="filerag-chunking-chunk-chars" min={200} max={8000} step={100} className="w-40" />
         </FormField>
 
         <FormField
@@ -117,7 +119,7 @@ export function ChunkingSection() {
           label="Chunk overlap (characters)"
           description="How much consecutive chunks overlap, so a passage split across a boundary is still retrievable. Must be smaller than the chunk size."
         >
-          <InputNumber min={0} max={4000} step={50} className="w-40" />
+          <InputNumber data-testid="filerag-chunking-overlap" min={0} max={4000} step={50} className="w-40" />
         </FormField>
 
         <FormField
@@ -125,14 +127,14 @@ export function ChunkingSection() {
           label="Max chunks per file"
           description="Safety cap; a file producing more chunks than this is truncated (with a server log) to bound storage and embedding cost."
         >
-          <InputNumber min={1} max={100000} step={100} className="w-40" />
+          <InputNumber data-testid="filerag-chunking-max-chunks" min={1} max={100000} step={100} className="w-40" />
         </FormField>
 
         {canManage && (
           <>
             <Separator className="my-3" />
             <Flex justify="end">
-              <Button type="submit" loading={saving}>
+              <Button data-testid="filerag-chunking-save" type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>

@@ -20,8 +20,9 @@ export function MaintenanceSection() {
 
   if (!canRead) {
     return (
-      <Card title="Maintenance">
+      <Card data-testid="filerag-maintenance-card" title="Maintenance">
         <Alert
+          data-testid="filerag-maintenance-noperm-alert"
           tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
@@ -42,7 +43,7 @@ export function MaintenanceSection() {
   }
 
   return (
-    <Card title="Maintenance">
+    <Card data-testid="filerag-maintenance-card" title="Maintenance">
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Backfill indexes files that have extracted text but no chunks yet —
         anything uploaded before Document RAG was enabled, or that failed to
@@ -53,6 +54,7 @@ export function MaintenanceSection() {
         <div className="flex items-center gap-4">
           <span className="text-sm font-medium w-40">Backfill existing files</span>
           <Button
+            data-testid="filerag-maintenance-backfill"
             icon={<Database />}
             loading={triggeringBackfill}
             disabled={!settings.enabled || !canManage}

@@ -68,8 +68,9 @@ export function FullTextSection() {
 
   if (!canRead) {
     return (
-      <Card title="Full-text search">
+      <Card data-testid="filerag-fts-card" title="Full-text search">
         <Alert
+          data-testid="filerag-fts-noperm-alert"
           tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
@@ -95,8 +96,9 @@ export function FullTextSection() {
   }
 
   return (
-    <Card title="Full-text search">
+    <Card data-testid="filerag-fts-card" title="Full-text search">
       <Form
+        data-testid="filerag-fts-form"
         name="file-rag-admin-fts-form"
         form={form}
         layout="horizontal"
@@ -109,7 +111,7 @@ export function FullTextSection() {
           description="The lexical arm. When off (and no embedder is set), semantic_search returns nothing."
           valuePropName="checked"
         >
-          <Switch aria-label="Enable full-text search" />
+          <Switch data-testid="filerag-fts-switch" aria-label="Enable full-text search" />
         </FormField>
 
         <FormField
@@ -117,7 +119,7 @@ export function FullTextSection() {
           label="RRF k"
           description="Reciprocal Rank Fusion constant for blending the vector + full-text arms. Higher = more egalitarian. Default 60 (the RRF paper)."
         >
-          <InputNumber min={1} max={1000} className="w-40" />
+          <InputNumber data-testid="filerag-fts-rrf-k" min={1} max={1000} className="w-40" />
         </FormField>
 
         <FormField
@@ -125,7 +127,7 @@ export function FullTextSection() {
           label="Candidate multiplier"
           description="Hybrid pulls top-K × this many candidates from each arm before fusion. Higher = more recall, more DB load."
         >
-          <InputNumber min={1} max={20} className="w-40" />
+          <InputNumber data-testid="filerag-fts-candidate-mult" min={1} max={20} className="w-40" />
         </FormField>
 
         <FormField
@@ -133,14 +135,14 @@ export function FullTextSection() {
           label="Minimum rank"
           description="ts_rank_cd cutoff. 0.0 = no filter (default). Raise to drop weak lexical matches."
         >
-          <InputNumber min={0} max={1} step={0.05} className="w-40" />
+          <InputNumber data-testid="filerag-fts-min-rank" min={0} max={1} step={0.05} className="w-40" />
         </FormField>
 
         {canManage && (
           <>
             <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="submit" loading={saving}>
+              <Button data-testid="filerag-fts-save" type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>

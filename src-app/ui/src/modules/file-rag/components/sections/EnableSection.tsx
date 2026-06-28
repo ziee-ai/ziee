@@ -39,8 +39,9 @@ export function EnableSection() {
 
   if (!canRead) {
     return (
-      <Card title="Document search">
+      <Card data-testid="filerag-enable-card" title="Document search">
         <Alert
+          data-testid="filerag-enable-noperm-alert"
           tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
@@ -64,8 +65,9 @@ export function EnableSection() {
   }
 
   return (
-    <Card title="Document search">
+    <Card data-testid="filerag-enable-card" title="Document search">
       <Form
+        data-testid="filerag-enable-form"
         name="file-rag-admin-master-form"
         form={form}
         layout="horizontal"
@@ -78,7 +80,7 @@ export function EnableSection() {
           description="On by default. When off, files are not indexed and the semantic_search tool returns a disabled note. Full-text search works immediately; semantic search additionally needs an embedding model (below)."
           valuePropName="checked"
         >
-          <Switch aria-label="Enable Document RAG deployment-wide" />
+          <Switch data-testid="filerag-enable-switch" aria-label="Enable Document RAG deployment-wide" />
         </FormField>
 
         <FormField
@@ -86,14 +88,14 @@ export function EnableSection() {
           label="Default top-K"
           description="How many passages semantic_search returns when the caller doesn't specify. The model can request fewer per call; a single call returns at most 50."
         >
-          <InputNumber min={1} max={50} className="w-40" />
+          <InputNumber data-testid="filerag-enable-top-k" min={1} max={50} className="w-40" />
         </FormField>
 
         {canManage && (
           <>
             <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="submit" loading={saving}>
+              <Button data-testid="filerag-enable-save" type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>
