@@ -513,6 +513,15 @@ pub async fn delete_user(
         .await
         .unwrap_or_default();
 
+    // Same rationale for the user's file-store blobs: `files` is
+    // `ON DELETE CASCADE`, so after the delete the rows are gone and the
+    // on-disk blobs would be orphaned. Collect the blob ids first.
+    let file_blob_ids = Repos
+        .file
+        .list_all_blob_ids_for_user(user_id)
+        .await
+        .unwrap_or_default();
+
     // Delete user
     Repos.user.delete(user_id).await?;
 
@@ -520,6 +529,14 @@ pub async fn delete_user(
     for dir in &skill_bundle_dirs {
         if let Err(e) = std::fs::remove_dir_all(dir) {
             tracing::warn!("delete_user: failed to remove skill bundle dir {}: {}", dir, e);
+        }
+    }
+
+    // Best-effort cleanup of the now-orphaned file-store blobs on disk.
+    let storage = crate::modules::file::storage::manager::get_file_storage();
+    for blob_id in &file_blob_ids {
+        if let Err(e) = storage.delete_all(user_id, *blob_id).await {
+            tracing::warn!("delete_user: failed to remove file blob {}: {}", blob_id, e);
         }
     }
 

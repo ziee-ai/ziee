@@ -308,6 +308,25 @@ impl FileRepository {
         Ok(blob_ids)
     }
 
+    /// All distinct blob version ids owned by a user (across every file +
+    /// version). Used by the user-delete path to clean up on-disk blobs that
+    /// the `files` `ON DELETE CASCADE` would otherwise orphan.
+    pub async fn list_all_blob_ids_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError> {
+        sqlx::query_scalar!(
+            r#"SELECT DISTINCT fv.blob_version_id
+               FROM file_versions fv
+               JOIN files f ON f.id = fv.file_id
+               WHERE f.user_id = $1"#,
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
     /// Append a new immutable version and advance the head. The caller MUST
     /// have already saved the new blob keyed by `new_version_id` (the new
     /// version's `blob_version_id` == its own id). Flips the prior head via the
