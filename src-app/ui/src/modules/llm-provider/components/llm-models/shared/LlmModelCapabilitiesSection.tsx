@@ -62,7 +62,7 @@ function CapabilityRow({
       <span>
         {label}
         {help && (
-          <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>
+          <span className="text-muted-foreground" style={{ fontSize: 12, marginLeft: 8 }}>
             {help}
           </span>
         )}

@@ -35,7 +35,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Space size="small">
-            <Database className="text-blue-500" aria-hidden="true" />
+            <Database className="text-primary" aria-hidden="true" />
             <Text strong>LLM Providers</Text>
             {loading ? (
               <Spin size="sm" label="Loading" />
