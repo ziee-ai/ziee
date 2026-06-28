@@ -72,18 +72,19 @@ export function RuntimeConfigCard() {
 
   if (loadingSettings && !settings) {
     return (
-      <Card title="Runtime configuration">
+      <Card title="Runtime configuration" data-testid="llmrt-runtime-config-card">
         <Spin label="Loading" />
       </Card>
     )
   }
 
   return (
-    <Card title="Runtime configuration">
+    <Card title="Runtime configuration" data-testid="llmrt-runtime-config-card">
       <Form
         form={form}
         onSubmit={handleSave}
         disabled={!canManage}
+        data-testid="llmrt-runtime-config-form"
         // Two columns: label on the left, input + help text on the
         // right. xs (mobile) collapses to stacked (label on top of
         // input) so neither side gets squeezed below a usable width.
@@ -96,7 +97,7 @@ export function RuntimeConfigCard() {
           description="Engines idle longer than this are automatically unloaded to free memory. 0 disables idle eviction."
           required
         >
-          <InputNumber min={0} max={86400} className="!w-full" />
+          <InputNumber min={0} max={86400} className="!w-full" data-testid="llmrt-config-idle-unload" />
         </FormField>
 
         <FormField
@@ -105,7 +106,7 @@ export function RuntimeConfigCard() {
           description="How long the proxy waits for a freshly-spawned engine to become healthy before giving up."
           required
         >
-          <InputNumber min={1} max={600} className="!w-full" />
+          <InputNumber min={1} max={600} className="!w-full" data-testid="llmrt-config-autostart-timeout" />
         </FormField>
 
         <FormField
@@ -114,7 +115,7 @@ export function RuntimeConfigCard() {
           description="When unloading an idle engine, how long to wait for in-flight requests to finish before forcing the stop."
           required
         >
-          <InputNumber min={1} max={600} className="!w-full" />
+          <InputNumber min={1} max={600} className="!w-full" data-testid="llmrt-config-drain-timeout" />
         </FormField>
 
         {canManage && (
@@ -124,6 +125,7 @@ export function RuntimeConfigCard() {
               <Button
                 loading={savingSettings}
                 type="submit"
+                data-testid="llmrt-config-save-btn"
               >
                 Save
               </Button>

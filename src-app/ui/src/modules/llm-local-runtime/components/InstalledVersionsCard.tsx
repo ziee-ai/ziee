@@ -80,11 +80,13 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
   return (
     <Card
       title="Installed versions"
+      data-testid={`llmrt-installed-versions-card-${engine}`}
       extra={
         <Button
           icon={<RotateCw />}
           loading={refreshing}
           onClick={handleRefresh}
+          data-testid={`llmrt-installed-refresh-${engine}`}
           aria-label={`Refresh installed ${engine} versions`}
         >
           Refresh
@@ -96,6 +98,7 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
       ) : engineVersions.length === 0 ? (
         <Empty
           description="No versions installed yet — install one below."
+          data-testid={`llmrt-installed-empty-${engine}`}
         />
       ) : (
         <div>
@@ -127,7 +130,7 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
                 </Text>
                 <div>
                   {engineUsage.unresolved.map(m => (
-                    <Tag key={m.id}>{m.display_name}</Tag>
+                    <Tag key={m.id} data-testid={`llmrt-unresolved-tag-${m.id}`}>{m.display_name}</Tag>
                   ))}
                 </div>
               </Flex>

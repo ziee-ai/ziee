@@ -70,6 +70,7 @@ export function VersionModelsBlock({
     <Accordion
       ghost
       defaultValue="models"
+      data-testid={`llmrt-version-models-${versionId}`}
       items={[
         {
           key: 'models',
@@ -78,6 +79,7 @@ export function VersionModelsBlock({
             models.length === 0 ? (
               <Empty
                 description="No models use this version — safe to delete"
+                data-testid={`llmrt-version-models-empty-${versionId}`}
               />
             ) : (
               <Flex direction="column" gap="small">
@@ -140,7 +142,7 @@ function ModelRow({
         <Space>
           <span className={`inline-block size-2 rounded-full ${model.running ? 'bg-blue-500' : 'bg-muted-foreground/40'}`} aria-hidden />
           <span>{model.display_name}</span>
-          {!model.pinned && <Tag tone="default">inherited</Tag>}
+          {!model.pinned && <Tag tone="default" data-testid={`llmrt-model-inherited-tag-${model.id}`}>inherited</Tag>}
         </Space>
         <Space>
           {canManage && (
@@ -154,6 +156,7 @@ function ModelRow({
               >
                 <Select
                   className="min-w-[180px]"
+                  data-testid={`llmrt-model-version-select-${model.id}`}
                   value={versionId}
                   options={versionOptions}
                   loading={busy}
@@ -170,6 +173,7 @@ function ModelRow({
                 <>
                   <Button
                     icon={<RotateCw />}
+                    data-testid={`llmrt-model-restart-${model.id}`}
                     loading={busy}
                     onClick={() =>
                       Stores.RuntimeModelUsage.restartModel(engine, model.id).catch(
@@ -182,6 +186,7 @@ function ModelRow({
                   <Button
                     variant="destructive"
                     icon={<Power />}
+                    data-testid={`llmrt-model-stop-${model.id}`}
                     loading={busy}
                     onClick={() =>
                       Stores.RuntimeModelUsage.stopModel(engine, model.id).catch(
@@ -195,6 +200,7 @@ function ModelRow({
               ) : (
                 <Button
                   icon={<CirclePlay />}
+                  data-testid={`llmrt-model-start-${model.id}`}
                   loading={busy}
                   onClick={() =>
                     Stores.RuntimeModelUsage.startModel(engine, model.id).catch(
@@ -210,6 +216,7 @@ function ModelRow({
           {model.running && canViewLogs && (
             <Button
               variant="ghost"
+              data-testid={`llmrt-model-logs-${model.id}`}
               icon={expanded ? <ChevronUp /> : <ChevronDown />}
               onClick={() => setExpanded(e => !e)}
               aria-label={
@@ -231,6 +238,7 @@ function ModelRow({
             <Descriptions
               size="sm"
               column={2}
+              data-testid={`llmrt-model-instance-desc-${model.id}`}
               items={[
                 { key: 'status', label: 'Status', children: instance.status },
                 { key: 'port', label: 'Port', children: instance.local_port },

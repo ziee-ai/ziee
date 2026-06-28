@@ -77,6 +77,7 @@ export function RuntimeVersionCard({ version }: Props) {
           icon={<Star />}
           loading={isSettingDefault}
           onClick={handleSetDefault}
+          data-testid={`llmrt-version-set-default-${version.version}`}
           aria-label={`Set version ${version.version} as default`}
         >
           Set as Default
@@ -88,6 +89,7 @@ export function RuntimeVersionCard({ version }: Props) {
     actions.push(
       <Confirm
         key="delete"
+        data-testid={`llmrt-version-delete-confirm-${version.version}`}
         title="Delete Runtime Version"
         description={
           <Flex direction="column" gap="small" className="[&_*]:!m-0">
@@ -103,6 +105,7 @@ export function RuntimeVersionCard({ version }: Props) {
               checked={removeBinary}
               onChange={(e: boolean) => setRemoveBinary(e)}
               label="Also remove cached files from disk"
+              data-testid={`llmrt-version-delete-removebinary-${version.version}`}
             />
           </Flex>
         }
@@ -115,6 +118,7 @@ export function RuntimeVersionCard({ version }: Props) {
           variant="destructive"
           icon={<Trash2 />}
           loading={isDeleting}
+          data-testid={`llmrt-version-delete-${version.version}`}
           aria-label={`Delete version ${version.version}`}
         >
           Delete
@@ -141,6 +145,7 @@ export function RuntimeVersionCard({ version }: Props) {
 
       <Descriptions
         size="sm"
+        data-testid={`llmrt-version-desc-${version.version}`}
         items={[
           {
             key: 'platform',

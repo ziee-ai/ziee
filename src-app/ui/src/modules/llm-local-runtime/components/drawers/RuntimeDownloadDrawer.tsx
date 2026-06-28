@@ -110,8 +110,8 @@ export function RuntimeDownloadDrawer() {
       size={600}
       footer={
         <Space>
-          <Button variant="outline" onClick={handleClose}>Cancel</Button>
-          <Button onClick={form.handleSubmit(handleSubmit)} loading={submitting}>
+          <Button variant="outline" onClick={handleClose} data-testid="llmrt-download-cancel-btn">Cancel</Button>
+          <Button onClick={form.handleSubmit(handleSubmit)} loading={submitting} data-testid="llmrt-download-submit-btn">
             Download
           </Button>
         </Space>
@@ -121,6 +121,7 @@ export function RuntimeDownloadDrawer() {
         form={form}
         layout="vertical"
         onSubmit={handleSubmit}
+        data-testid="llmrt-download-form"
       >
         <FormField
           label="Version"
@@ -128,7 +129,7 @@ export function RuntimeDownloadDrawer() {
           required
           description="Enter 'latest' for the newest version, or a specific version tag (e.g., 'b4359')"
         >
-          <Input placeholder="latest" />
+          <Input placeholder="latest" data-testid="llmrt-download-version" />
         </FormField>
 
         <FormField
@@ -137,6 +138,7 @@ export function RuntimeDownloadDrawer() {
           required
         >
           <Select
+            data-testid="llmrt-download-platform"
             options={[
               { value: 'linux', label: 'Linux' },
               { value: 'macos', label: 'macOS' },
@@ -151,6 +153,7 @@ export function RuntimeDownloadDrawer() {
           required
         >
           <Select
+            data-testid="llmrt-download-arch"
             options={[
               { value: 'x86_64', label: 'x86_64' },
               { value: 'aarch64', label: 'aarch64' },
@@ -171,6 +174,7 @@ export function RuntimeDownloadDrawer() {
           }
         >
           <Select
+            data-testid="llmrt-download-backend"
             loading={isChecking}
             options={(backendOptions.length > 0 ? backendOptions : ['cpu']).map(
               b => ({

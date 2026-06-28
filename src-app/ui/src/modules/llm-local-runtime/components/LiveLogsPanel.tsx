@@ -63,9 +63,9 @@ export function LiveLogsPanel({ modelId }: { modelId: string }) {
   }, [lines])
 
   return (
-    <Card title="Live logs">
+    <Card title="Live logs" data-testid={`llmrt-live-logs-card-${modelId}`}>
       {lines.length === 0 ? (
-        <Empty description="No log output yet" />
+        <Empty description="No log output yet" data-testid={`llmrt-live-logs-empty-${modelId}`} />
       ) : (
         <div
           ref={scrollRef}

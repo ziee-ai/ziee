@@ -48,6 +48,7 @@ export function RuntimeVersionSettings() {
         <Flex className="flex-col gap-3">
           <Tabs
             defaultValue="llamacpp"
+            data-testid="llmrt-engine-tabs"
             items={[
               {
                 key: 'llamacpp',

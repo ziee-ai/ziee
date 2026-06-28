@@ -132,12 +132,14 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
   return (
     <Card
       title="Available versions"
+      data-testid="llmrt-available-versions-card"
       extra={
         <Can permission={Permissions.RuntimeVersionRead}>
           <Button
             icon={<RotateCw />}
             loading={isChecking}
             onClick={handleCheckForUpdates}
+            data-testid="llmrt-check-updates-btn"
             aria-label={`Check for updates for ${engine}`}
           >
             Check for updates
@@ -235,6 +237,7 @@ function BackendsRow({
             key={b}
             variant="solid"
             tone={b === gpu.recommended ? 'success' : undefined}
+            data-testid={`llmrt-backend-tag-${b}`}
           >
             {BACKEND_LABEL[b] ?? b}
           </Tag>
@@ -277,9 +280,9 @@ function AvailableVersionRow({
                 {formatBytes(v.size_bytes)}
               </Text>
             )}
-            {isLatest && <Tag tone="info" variant="solid">latest</Tag>}
-            {v.installed && <Tag tone="success" variant="solid">installed</Tag>}
-            {v.prerelease && <Tag variant="solid">prerelease</Tag>}
+            {isLatest && <Tag tone="info" variant="solid" data-testid={`llmrt-version-latest-tag-${v.version}`}>latest</Tag>}
+            {v.installed && <Tag tone="success" variant="solid" data-testid={`llmrt-version-installed-tag-${v.version}`}>installed</Tag>}
+            {v.prerelease && <Tag variant="solid" data-testid={`llmrt-version-prerelease-tag-${v.version}`}>prerelease</Tag>}
           </Space>
           <Can permission={Permissions.RuntimeVersionCreate}>
             <Button
@@ -287,6 +290,7 @@ function AvailableVersionRow({
               loading={inProgress}
               disabled={v.installed || inProgress}
               onClick={onDownload}
+              data-testid={`llmrt-version-install-${v.version}`}
               aria-label={`Install ${v.version}`}
             >
               {v.installed
@@ -320,6 +324,7 @@ function DownloadProgressLine({ progress }: { progress: DownloadSnapshot }) {
     <Flex vertical className="gap-1">
       <Progress
         value={pct ?? 0}
+        data-testid={`llmrt-download-progress-${progress.key}`}
         tone={
           progress.status === 'failed'
             ? 'error'
