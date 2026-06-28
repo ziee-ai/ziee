@@ -117,6 +117,7 @@ export function MemoryStatusPill() {
           aria-label="Per-conversation memory retrieval override"
           color={colorByMode[mode]}
           icon={mode === 'off' ? <EyeInvisibleOutlined /> : <BulbOutlined />}
+          aria-label={`Memory mode: ${labelByMode[mode]}`}
           style={{ cursor: 'pointer', margin: 0 }}
         >
           {labelByMode[mode]}

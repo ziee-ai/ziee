@@ -22,7 +22,16 @@ function SidebarItem({
   return (
     <div
       onClick={onClick}
-      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150"
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick?.()
+        }
+      }}
+      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150 focus-visible:outline focus-visible:outline-2"
       style={{ color: token.colorTextBase }}
       onMouseEnter={e => {
         e.currentTarget.style.backgroundColor = token.colorPrimaryHover
@@ -34,6 +43,7 @@ function SidebarItem({
       }}
     >
       <div
+        aria-hidden="true"
         className="w-4 h-4 mr-1.5 flex items-center justify-center"
         style={{ fontSize: 18 }}
       >

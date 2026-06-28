@@ -13,7 +13,6 @@ import { EditLlmModelDrawer } from '@/modules/llm-provider/components/llm-models
 const { Text } = Typography
 
 export function LocalProviderSettings() {
-  console.log('[LocalProviderSettings] Component rendering')
   const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
 

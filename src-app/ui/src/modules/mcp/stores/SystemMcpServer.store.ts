@@ -119,8 +119,6 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
       // Initialization methods
       __init__: {
         __store__: () => {
-          console.log('🚀 SystemMcpServer store initializing...')
-
           const eventBus = Stores.EventBus
           const unsubscribers: (() => void)[] = []
 
@@ -178,8 +176,6 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
 
           // Store unsubscribers for cleanup
           set({ _eventUnsubscribers: unsubscribers })
-
-          console.log(`✅ Subscribed to ${unsubscribers.length} events`)
         },
         systemServers: () => get().loadSystemServers(),
       },
@@ -520,11 +516,6 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
       __destroy__: () => {
         const { _eventUnsubscribers } = get()
 
-        console.log('🗑️ Destroying SystemMcpServer store')
-        console.log(
-          `   Unsubscribing from ${_eventUnsubscribers?.length || 0} events`,
-        )
-
         // Unsubscribe from all events
         _eventUnsubscribers?.forEach(unsub => unsub())
 
@@ -543,8 +534,6 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           systemServersError: null,
           _eventUnsubscribers: [],
         })
-
-        console.log('✅ SystemMcpServer store cleaned up')
       },
 
       // Wait 10 seconds before destroying (users might come back)

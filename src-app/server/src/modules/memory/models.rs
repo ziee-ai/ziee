@@ -175,7 +175,13 @@ pub struct UpdateUserMemorySettingsRequest {
     pub extraction_enabled: Option<bool>,
     pub retrieval_enabled: Option<bool>,
     pub max_memories: Option<i32>,
+    // Tri-state: absent = leave unchanged, null = clear to NULL, value = set.
+    // Without deserialize_nullable_field the outer Option swallows an explicit
+    // null into None, making "clear to NULL" impossible (matches the admin
+    // settings struct + project/summarization).
+    #[serde(default, deserialize_with = "deserialize_nullable_field")]
     pub retention_days: Option<Option<i32>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_field")]
     pub extraction_model_id: Option<Option<Uuid>>,
 }
 

@@ -216,6 +216,8 @@ export function AssistantFormDrawer() {
           <TextArea
             placeholder="Enter system instructions for the assistant"
             rows={6}
+            maxLength={65536}
+            showCount
             aria-label="Assistant instructions"
           />
         </Form.Item>

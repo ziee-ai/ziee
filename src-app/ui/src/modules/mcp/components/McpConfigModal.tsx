@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { App, Modal, Collapse, Switch, Tag, Typography, Empty, Checkbox, Select, Divider, Button, Space, InputNumber } from 'antd'
 import type { CollapseProps } from 'antd'
 import { ToolOutlined, DeleteOutlined } from '@ant-design/icons'
@@ -53,8 +53,9 @@ export function McpConfigModal() {
   const [stopToolValue, setStopToolValue] = useState<string | null>(null)
   const [perToolLimitValue, setPerToolLimitValue] = useState<string | null>(null)
 
-  // Get enabled servers (available for selection)
-  const enabledServers = servers.filter(s => s.enabled)
+  // Get enabled servers (available for selection). Memoized so the array
+  // reference is stable across renders (it feeds effect deps / child props).
+  const enabledServers = useMemo(() => servers.filter(s => s.enabled), [servers])
 
   // Get the current config keyed by scope. Project scope uses the
   // `project:<id>` namespaced key (set by openConfigModalForProject);
@@ -218,7 +219,7 @@ export function McpConfigModal() {
   //     persisted on first message when the conversation is created.
   const handleSave = async () => {
     if (!isProjectScope && !currentConversationId) {
-      console.log('[MCP Config Modal] Settings stored in pending config (will save on first message)')
+      // Settings stay in pending config and persist on first message.
       return
     }
 
@@ -233,7 +234,6 @@ export function McpConfigModal() {
       } else {
         await mcpStore.saveConversationConfig(currentConversationId!, availableServerIds, serverToolsMap)
       }
-      console.log('[MCP Config Modal] Configuration saved successfully')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save configuration:', error)
       message.error(
@@ -260,7 +260,6 @@ export function McpConfigModal() {
     try {
       const availableServerIds = enabledServers.map(s => s.id)
       await mcpStore.saveUserDefaults(currentConversationId, availableServerIds, true)
-      console.log('[MCP Config Modal] Saved as user defaults')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save as defaults:', error)
     } finally {

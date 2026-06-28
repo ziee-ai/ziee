@@ -8,7 +8,8 @@
 //!
 //! The module exposes a small async API used by:
 //!   - boot init (`ensure_pin_initialized`)
-//!   - `execute_command` lazy-fetch path (`resolve_artifact`)
+//!   - `execute_command` lazy-fetch path (`install_version`, via
+//!     `runtime_fetch::ensure_fetched` / `sandbox`)
 //!   - admin handlers (`list_releases`, `install_version`, `set_pin`,
 //!     `delete_artifact`, `status`)
 //!
@@ -713,7 +714,7 @@ pub async fn delete_artifact(pool: &PgPool, id: Uuid) -> Result<(), VersionError
 /// disk with the expected sha256, returns that row without hitting
 /// the network. The returned `(RootfsArtifact, Option<DownloadStats>)`
 /// — `Some` when this call actually downloaded bytes, `None` on a
-/// cache hit — is what `resolve_artifact` uses to populate
+/// cache hit — is what the lazy-fetch path uses to populate
 /// `fetch_info` for the chat UI.
 ///
 /// `cache_dir` is the per-version-agnostic root that holds version
@@ -849,26 +850,6 @@ pub async fn install_version(
     Ok((inserted, Some(stats)))
 }
 
-/// Single-call lazy resolver used by the `execute_command` MCP tool +
-/// the lower-level `runtime_fetch::ensure_fetched` shim. Reads the
-/// pin, then either returns the cached artifact row or downloads +
-/// installs the missing one.
-///
-/// Returns `(artifact, fetch_stats)` — `fetch_stats` is `Some` only when
-/// this call did the download (so the chat UI's `fetch_info` can stay
-/// `None` on warm-path hits).
-pub async fn resolve_artifact(
-    pool: &PgPool,
-    cache_dir: &std::path::Path,
-    arch: &str,
-    flavor: &str,
-    package: &str,
-) -> Result<(RootfsArtifact, Option<DownloadStats>), VersionError> {
-    let pinned = ensure_pin_initialized(pool)
-        .await?
-        .ok_or(VersionError::PinNotSet)?;
-    install_version(pool, cache_dir, &pinned, arch, flavor, package, |_| {}).await
-}
 
 /// Stats surfaced via `EnsureOutcome.fetch_info` for the chat UI.
 #[derive(Debug, Clone, Serialize, JsonSchema)]

@@ -441,6 +441,7 @@ pub async fn test_repository_connection_by_id(
     _auth: RequirePermissions<(LlmRepositoriesEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(repository_id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(overrides): Json<UpdateLlmRepositoryRequest>,
 ) -> ApiResult<Json<TestRepositoryConnectionResponse>> {
     // 1. Load persisted row (`get_by_id` returns the decrypted
@@ -584,6 +585,17 @@ pub async fn test_repository_connection_by_id(
             }
         }
     }
+
+    // Cross-device sync: the probe persisted new `last_health_check_*`
+    // columns (and may have auto-disabled the row), so notify other
+    // surfaces to reload — mirrors update_repository / delete.
+    sync_publish(
+        SyncEntity::LlmRepository,
+        SyncAction::Update,
+        repository_id,
+        Audience::perm::<LlmRepositoriesRead>(),
+        origin.0,
+    );
 
     let message = if outcome.success {
         format!("Connection to {} successful", working_name)

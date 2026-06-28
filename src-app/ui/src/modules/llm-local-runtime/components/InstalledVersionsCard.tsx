@@ -1,5 +1,5 @@
 import { Fragment, useEffect } from 'react'
-import { Button, Card, Divider, Empty, Flex, Spin, Tag, Typography } from 'antd'
+import { App, Button, Card, Divider, Empty, Flex, Spin, Tag, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -32,6 +32,7 @@ import { VersionModelsBlock } from './VersionModelsBlock'
  * model lists + the unresolved set).
  */
 export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
+  const { message } = App.useApp()
   const { versions, loading: loadingVersions } = Stores.RuntimeVersion
   const { usage, loading: loadingUsage } = Stores.RuntimeModelUsage
   const canManage = usePermission(Permissions.LocalRuntimeManage)
@@ -43,8 +44,12 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
     // and the per-version models (Stores.RuntimeModelUsage).
     // Fire-and-forget; the loading spinners on the button + spinner
     // for empty state cover the user-visible state.
-    Stores.RuntimeVersion.loadVersions().catch(() => {})
-    Stores.RuntimeModelUsage.loadUsage(engine).catch(() => {})
+    Stores.RuntimeVersion.loadVersions().catch(() =>
+      message.error('Failed to refresh runtime versions'),
+    )
+    Stores.RuntimeModelUsage.loadUsage(engine).catch(() =>
+      message.error('Failed to refresh version usage'),
+    )
   }
 
   const engineVersions = versions.filter(v => v.engine === engine)

@@ -31,7 +31,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
     if (providers.length > 0 && !selectedId) {
       setSelectedId(providers[0].id)
     }
-  }, [providers])
+  }, [providers, selectedId])
 
   useEffect(() => {
     Stores.Onboarding.setReady(true)

@@ -328,6 +328,9 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
                 connected: (_d: SSEInstallConnectedData) => {
                   set(s => {
                     s.sseConnected = true
+                    // Clear any stale "disconnected; reconnecting" message now
+                    // that the stream is live again.
+                    s.error = null
                   })
                 },
                 taskStarted: (t: InstallTaskState) => {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
+  App,
   Typography,
   Form,
   Input,
@@ -25,6 +26,7 @@ const { Title, Text } = Typography
 const KEY_DISPLAY_PLACEHOLDER = '••••••••••••••••••••••••'
 
 export default function UserLlmProvidersPage() {
+  const { message } = App.useApp()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [keyValue, setKeyValue] = useState('')
   const [savingFor, setSavingFor] = useState<string | null>(null)
@@ -60,6 +62,9 @@ export default function UserLlmProvidersPage() {
     setSavingFor(selectedId)
     try {
       await Stores.UserLlmProviders.saveKey(selectedId, key)
+      message.success('API key saved')
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Failed to save API key')
     } finally {
       setSavingFor(null)
     }

@@ -234,30 +234,6 @@ impl McpSettingsRepository {
         }
     }
 
-    /// Delete the row for the given scope. Returns true if a row was
-    /// deleted, false if no row existed (idempotent).
-    pub async fn delete(&self, scope: McpScope) -> Result<bool, AppError> {
-        let rows = match scope {
-            McpScope::Conversation(id) => sqlx::query!(
-                "DELETE FROM mcp_settings WHERE conversation_id = $1",
-                id
-            )
-            .execute(&self.pool)
-            .await
-            .map_err(AppError::database_error)?
-            .rows_affected(),
-            McpScope::Project(id) => sqlx::query!(
-                "DELETE FROM mcp_settings WHERE project_id = $1",
-                id
-            )
-            .execute(&self.pool)
-            .await
-            .map_err(AppError::database_error)?
-            .rows_affected(),
-        };
-        Ok(rows > 0)
-    }
-
     /// Copy the payload from `src` into a new row scoped to `dst`,
     /// inside the given transaction. Used by mcp's ProjectExtension on
     /// conversation-attach (project → conversation) and on

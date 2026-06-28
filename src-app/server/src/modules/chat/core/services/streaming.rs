@@ -704,7 +704,9 @@ impl StreamingService {
         branch_id: Uuid,
         conversation_id: Uuid,
         user_id: Uuid,
-        origin_conn: Option<Uuid>,
+        // Accepted for call-site symmetry with the streaming path; the
+        // detached completion emit deliberately uses origin=None (see below).
+        _origin_conn: Option<Uuid>,
         request: SendMessageRequest,
     ) -> Result<(Option<Uuid>, Uuid), AppError> {
         use crate::modules::chat::core::types::streaming::{
@@ -881,7 +883,11 @@ impl StreamingService {
                 crate::modules::sync::SyncAction::Update,
                 conversation_id,
                 crate::modules::sync::Audience::owner(owner_id),
-                origin_conn,
+                // Detached completion task: emit with origin=None so EVERY
+                // surface (incl. the originating connection's other tabs)
+                // refetches the now-committed turn. (Convention: background/
+                // completion emits never suppress the origin.)
+                None,
             );
         });
 

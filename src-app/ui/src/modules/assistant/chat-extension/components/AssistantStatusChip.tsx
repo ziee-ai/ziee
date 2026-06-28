@@ -7,7 +7,7 @@ import { Stores } from '@/core/stores'
  * Shows the selected assistant as a purple tag in the status row
  */
 export function AssistantStatusChip() {
-  const { selectedAssistantId, availableAssistants, selectAssistant } =
+  const { selectedAssistantId, availableAssistants, clearAssistant } =
     Stores.AssistantPicker
 
   if (!selectedAssistantId) return null
@@ -22,7 +22,7 @@ export function AssistantStatusChip() {
       color="purple"
       icon={<RobotOutlined />}
       closable
-      onClose={() => selectAssistant(null as any)}
+      onClose={() => clearAssistant()}
       style={{ margin: 0 }}
     >
       {assistant.name}

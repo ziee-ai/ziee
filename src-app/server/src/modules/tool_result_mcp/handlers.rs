@@ -19,11 +19,11 @@ use crate::core::Repos;
 use crate::modules::code_sandbox::types::{
     ConversationIdHeader, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
 };
+use crate::modules::mcp::permissions::McpServersRead;
 use crate::modules::permissions::RequirePermissions;
-use crate::modules::user::permissions::ProfileRead;
 
 pub async fn jsonrpc_handler(
-    auth: RequirePermissions<(ProfileRead,)>,
+    auth: RequirePermissions<(McpServersRead,)>,
     ConversationIdHeader(conversation_id): ConversationIdHeader,
     body: axum::body::Bytes,
 ) -> Response {

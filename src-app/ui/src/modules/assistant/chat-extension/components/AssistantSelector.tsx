@@ -37,6 +37,7 @@ export function AssistantSelector({
         onChange={handleChange}
         options={options}
         disabled={disabled}
+        aria-label="Select assistant"
         placeholder="Assistant"
         style={{ minWidth: 120 }}
         size="small"

@@ -111,12 +111,10 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
     <>
       <Card
         hoverable
+        className="cursor-pointer h-full focus-visible:outline focus-visible:outline-2"
         role="button"
         tabIndex={0}
         aria-label={`View skill ${item.name}`}
-        className="cursor-pointer h-full"
-        role="button"
-        tabIndex={0}
         onClick={() => setShowDetails(true)}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ') {

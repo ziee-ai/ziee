@@ -103,7 +103,16 @@ function AssistantOption({
     <>
       <div
         onClick={onClick}
-        className="cursor-pointer px-3 py-1.5 rounded-md"
+        role="menuitem"
+        tabIndex={0}
+        aria-current={active || undefined}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClick()
+          }
+        }}
+        className="cursor-pointer px-3 py-1.5 rounded-md focus-visible:outline focus-visible:outline-2"
         style={{
           fontSize: 14,
           backgroundColor: active ? token.colorPrimaryBg : 'transparent',

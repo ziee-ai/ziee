@@ -206,6 +206,12 @@ impl BinaryDownloader {
 
         let client = reqwest::Client::builder()
             .user_agent("llm-runtime/0.1.0")
+            // Cap connection setup and per-read inactivity so a stalled peer
+            // can't hang the data transfer forever. A blanket request timeout
+            // is deliberately avoided — large engine downloads are legitimately
+            // long-running; read_timeout only fires on no-progress.
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .read_timeout(std::time::Duration::from_secs(60))
             .build()?;
 
         Ok(Self {
@@ -416,6 +422,7 @@ impl BinaryDownloader {
         let response = self.client
             .get(&url)
             .header("Accept", "application/vnd.github.v3+json")
+            .timeout(std::time::Duration::from_secs(30))
             .send()
             .await?;
 
@@ -445,6 +452,7 @@ impl BinaryDownloader {
             .client
             .get(&url)
             .header("Accept", "application/vnd.github.v3+json")
+            .timeout(std::time::Duration::from_secs(30))
             .send()
             .await?;
 

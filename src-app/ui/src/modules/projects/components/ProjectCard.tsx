@@ -58,7 +58,16 @@ export function ProjectCard({
     <Card
       hoverable
       onClick={handleOpen}
-      className="h-full"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open project ${project.name}`}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          handleOpen()
+        }
+      }}
+      className="h-full focus-visible:outline focus-visible:outline-2"
       data-test-project-name={project.name}
       title={
         <div className="flex items-center gap-2 min-w-0">

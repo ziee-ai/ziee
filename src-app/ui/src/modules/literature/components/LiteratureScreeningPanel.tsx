@@ -242,6 +242,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                 )}
                 <Segmented
                   size="small"
+                  aria-label="Screening decision"
                   value={decision}
                   onChange={val => setDecision(key, val as ScreeningDecision)}
                   options={[

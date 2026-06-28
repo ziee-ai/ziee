@@ -38,6 +38,7 @@ type DrawerState =
 function relativeTime(iso: string | null | undefined): string {
   if (!iso) return ''
   const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
   const secs = Math.floor((Date.now() - then) / 1000)
   if (secs < 60) return `${secs}s ago`
   if (secs < 3600) return `${Math.floor(secs / 60)}m ago`

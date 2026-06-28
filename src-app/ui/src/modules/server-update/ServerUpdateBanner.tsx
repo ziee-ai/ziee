@@ -33,6 +33,8 @@ function ServerUpdateBannerInner() {
       type="info"
       showIcon
       banner
+      role="status"
+      aria-label="Software update available"
       // antd v6 only renders the close control for the object form when
       // `closeIcon` is truthy (Alert.js isClosable: `isPlainObject(closable) &&
       // closable.closeIcon`); `closeIcon: true` → default CloseOutlined.

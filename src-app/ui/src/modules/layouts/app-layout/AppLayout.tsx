@@ -435,6 +435,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content Area */}
       <div
+        role="main"
         className="flex-1 flex flex-col relative overflow-hidden"
         style={{
           // Pure white content surface — `colorBgLayout` would pick

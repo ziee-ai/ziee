@@ -146,6 +146,7 @@ export function SummarizationStatusPill() {
           icon={
             mode === 'off' ? <EyeInvisibleOutlined /> : <CompressOutlined />
           }
+          aria-label={`Summarization override: ${labelByMode[mode]}`}
           style={{ cursor: 'pointer', margin: 0 }}
         >
           {labelByMode[mode]}

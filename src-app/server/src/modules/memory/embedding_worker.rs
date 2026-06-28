@@ -70,7 +70,9 @@ pub async fn reembed_all(
         );
         return;
     }
-    // Guard resets the flag on every exit path, including a panic unwind.
+    // RAII reset so the flag clears on a normal return, an error, OR a panic
+    // unwind — a bare `store(false)` after the await would leak the guard
+    // permanently (blocking all future rebuilds) if `run` ever panicked.
     let _guard = InProgressGuard;
     let result = run(pool, new_model_id, new_model_name, target_dimensions).await;
     if let Err(e) = result {
