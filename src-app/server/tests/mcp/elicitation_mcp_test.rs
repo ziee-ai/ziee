@@ -576,3 +576,94 @@ async fn ask_user_not_attached_to_non_tool_capable_model() {
         "a non-tool-capable model must never surface an ask_user form"
     );
 }
+
+/// Upload a text file to the user's library; returns its id (multipart, like
+/// the chat upload path).
+async fn upload_text(server: &TestServer, token: &str, filename: &str, body: &str) -> String {
+    use reqwest::multipart;
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(body.as_bytes().to_vec())
+            .file_name(filename.to_string())
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {token}"))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload");
+    assert_eq!(resp.status(), 200, "upload: {}", resp.text().await.unwrap_or_default());
+    let v: Value = resp.json().await.unwrap();
+    v["id"].as_str().unwrap().to_string()
+}
+
+/// Cross-flow: a chat turn that BOTH carries a user file attachment AND triggers
+/// an `ask_user` elicitation. The file must be inlined into the same generation
+/// the model uses to call `ask_user`, the elicitation gate must still fire, and
+/// after the user accepts, the turn resumes to completion. Pins the
+/// file-attachment × elicitation interaction the per-flow tests never combine.
+#[tokio::test]
+async fn ask_user_elicitation_works_with_a_file_attachment_in_the_same_turn() {
+    let mut fx = setup().await;
+    let marker = "ELICIT_FILE_MARKER_Qoo the approved budget is 42";
+    let file_id = upload_text(&fx.server, &fx.user.token, "budget.txt", marker).await;
+
+    // Send the ask_user turn WITH the file attached.
+    let payload = json!({
+        "content": "STUB_PLAN=ask_user review the attached budget and pick a color",
+        "model_id": fx.model_id.to_string(),
+        "branch_id": fx.branch_id.to_string(),
+        "file_ids": [file_id],
+        "enable_mcp": true,
+        "mcp_config": { "mcp_servers": [] },
+    });
+    let resp = reqwest::Client::new()
+        .post(fx.server.api_url(&format!("/conversations/{}/messages", fx.conv_id)))
+        .header("Authorization", format!("Bearer {}", fx.user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), 200, "send with file: {}", resp.text().await.unwrap_or_default());
+
+    // The turn pauses on the elicitation gate even though it carried a file.
+    let frames = fx
+        .probe
+        .collect_until(fx.conv_id, &["mcpElicitationRequired"], TURN_TIMEOUT)
+        .await;
+    let gate = frames.last().expect("a frame");
+    assert_eq!(
+        gate.event_type, "mcpElicitationRequired",
+        "turn must reach the elicitation gate with a file attached, got '{}'",
+        gate.event_type
+    );
+    let elicitation_id = gate.data["elicitation_id"].as_str().expect("elicitation_id").to_string();
+
+    // The attached file's bytes were inlined into the SAME generation that
+    // issued ask_user (the attachment wasn't dropped by the elicitation path).
+    assert!(
+        fx.stub.requests().iter().any(|r| r.all_text.contains("ELICIT_FILE_MARKER_Qoo")),
+        "the attached file must be inlined into the elicitation turn; requests={:?}",
+        fx.stub.requests()
+    );
+
+    // Accept → the turn resumes and completes.
+    let r = respond(
+        &fx.server,
+        &fx.user.token,
+        &elicitation_id,
+        json!({ "action": "accept", "content": { "color": "green" } }),
+    )
+    .await;
+    assert_eq!(r.status(), 200, "accept respond must succeed");
+
+    let frames = fx.probe.collect_until_terminal(fx.conv_id, TURN_TIMEOUT).await;
+    assert_eq!(
+        frames.last().expect("terminal").event_type,
+        "complete",
+        "turn must complete after the elicitation is answered"
+    );
+}

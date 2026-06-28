@@ -2730,3 +2730,70 @@ async fn test_ssrf_provider_rejects_rfc1918_base_url() {
     let res = create_provider_with_base_url(&server, &admin.token, "http://192.168.1.1/v1").await;
     assert_eq!(res.status(), 400, "RFC 1918 base_url must be rejected");
 }
+
+/// Concurrency: many admins assigning the SAME provider to the SAME group at
+/// once must converge to a single assignment row (the `ON CONFLICT` upsert is
+/// race-safe), with every concurrent request succeeding — no duplicate rows,
+/// no 5xx. The existing idempotent test only fires sequentially. Mirrors the
+/// `llm_provider_files` concurrent-upsert convergence test.
+#[tokio::test]
+async fn test_concurrent_provider_group_assignment_converges_to_one_row() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "concurrent_assign",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::assign_groups",
+            "groups::read",
+        ],
+    )
+    .await;
+
+    let provider = create_test_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap().to_string();
+    let admin_group_id = get_admin_group_id(&server, &user.token).await;
+
+    // Fire N concurrent identical assign requests.
+    let url = server.api_url(&format!("/llm-providers/{provider_id}/groups"));
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let url = url.clone();
+        let token = user.token.clone();
+        let group = admin_group_id.clone();
+        handles.push(tokio::spawn(async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "group_id": group }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }));
+    }
+    for h in handles {
+        let status = h.await.unwrap();
+        assert!(
+            status == StatusCode::NO_CONTENT || status == StatusCode::CONFLICT,
+            "each concurrent assign must succeed or be a benign conflict, got {status}"
+        );
+    }
+
+    // Exactly one assignment row survives the race.
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        body.as_array().unwrap().len(),
+        1,
+        "concurrent assigns must converge to a single row: {body}"
+    );
+}

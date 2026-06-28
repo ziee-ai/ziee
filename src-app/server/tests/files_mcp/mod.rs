@@ -799,3 +799,56 @@ async fn test_edit_file_emits_sync_event_to_owner_only() {
     // Owner-scoped: Bob must NOT receive Alice's event.
     bob_probe.expect_silence(Duration::from_secs(1)).await;
 }
+
+/// The files MCP WRITE tools are gated on `files::upload` by an in-handler
+/// `require_write` check (the route itself only requires `files::read`). A user
+/// holding `files::read` but NOT `files::upload` must be refused with a
+/// PERMISSION_DENIED JSON-RPC error when calling a write tool, while a read tool
+/// still works. (Prior tests only exercised the happy path with a `*` user.)
+#[tokio::test]
+async fn test_write_tools_denied_without_files_upload_permission() {
+    let server = TestServer::start().await;
+    // files::read + conversation perms, but deliberately NO files::upload.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "files_mcp_readonly",
+        &["files::read", "conversations::create", "conversations::read"],
+    )
+    .await;
+
+    // The user owns a bare conversation (write tools are conversation-scoped).
+    let conv: Value = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "title": "ro" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
+
+    // A WRITE tool → PERMISSION_DENIED (require_write fires before dispatch).
+    let body = call_tool(
+        &server,
+        &user,
+        conv_id,
+        "create_file",
+        json!({ "path": "blocked.txt", "content": "nope" }),
+    )
+    .await;
+    assert!(body["error"].is_object(), "create_file must be denied: {body}");
+    let err = serde_json::to_string(&body["error"]).unwrap();
+    assert!(
+        err.contains("PERMISSION_DENIED") || err.contains("files::upload"),
+        "denial must name the missing files::upload permission: {body}"
+    );
+
+    // A READ tool with the same token still succeeds (read is allowed).
+    let list = call_tool(&server, &user, conv_id, "list_files", json!({})).await;
+    assert!(
+        list["error"].is_null(),
+        "list_files (a read tool) must still work for a files::read user: {list}"
+    );
+}

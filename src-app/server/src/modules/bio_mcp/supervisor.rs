@@ -153,20 +153,24 @@ async fn current_env() -> Result<Vec<(String, String)>, AppError> {
         ));
     }
 
+    Ok(env_pairs_from_headers(&server.headers))
+}
+
+/// Pure projection of the bio row's `headers` JSON into the `(ENV_NAME, value)`
+/// pairs to inject: header names map 1:1 to upstream env-var names
+/// (e.g. NCBI_API_KEY); empty values are skipped; and unsafe names
+/// (`is_unsafe_env_name`) are rejected so a misconfigured/compromised row can't
+/// inject `LD_PRELOAD` or replace `PATH`. Output is sorted for a stable
+/// fingerprint. Extracted from `current_env` so the filtering can be unit-tested
+/// without a DB.
+fn env_pairs_from_headers(headers: &serde_json::Value) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
-    if let Some(map) = server.headers.as_object() {
+    if let Some(map) = headers.as_object() {
         for (k, v) in map {
             if let Some(s) = v.as_str() {
-                // Header names map 1:1 to upstream env-var names
-                // (e.g. NCBI_API_KEY). Skip empty values.
                 if s.is_empty() {
                     continue;
                 }
-                // Defense-in-depth: the admin-configured keys are upstream API
-                // tokens, never loader/hardening vars. Reject names that could
-                // hijack the sidecar's dynamic loader or override the env_clear
-                // whitelist (a misconfigured/compromised row can't inject
-                // LD_PRELOAD or replace PATH).
                 if is_unsafe_env_name(k) {
                     tracing::warn!("bio_mcp: ignoring unsafe env-var name in headers: {}", k);
                     continue;
@@ -176,7 +180,7 @@ async fn current_env() -> Result<Vec<(String, String)>, AppError> {
         }
     }
     out.sort();
-    Ok(out)
+    out
 }
 
 /// True for env-var names that the admin must not be able to inject via the
@@ -352,7 +356,44 @@ pub async fn shutdown() {
 
 #[cfg(test)]
 mod tests {
-    use super::{fingerprint, is_unsafe_env_name};
+    use super::{env_pairs_from_headers, fingerprint, is_unsafe_env_name};
+
+    #[test]
+    fn env_pairs_from_headers_filters_empty_and_unsafe_and_sorts() {
+        // current_env()'s core projection: legit API keys pass through, empty
+        // values are dropped, loader/whitelist-hijack names are rejected, and
+        // the output is sorted (stable fingerprint).
+        let headers = serde_json::json!({
+            "NCBI_API_KEY": "ncbi-secret",
+            "S2_API_KEY": "s2-secret",
+            "EMPTY_KEY": "",            // dropped: empty value
+            "PATH": "/evil/bin",        // rejected: env_clear whitelist var
+            "LD_PRELOAD": "/x.so",      // rejected: loader hijack
+            "DYLD_INSERT_LIBRARIES": "/y.dylib", // rejected: loader hijack
+            "NUMERIC": 5,               // dropped: non-string value
+        });
+        let pairs = env_pairs_from_headers(&headers);
+
+        assert_eq!(
+            pairs,
+            vec![
+                ("NCBI_API_KEY".to_string(), "ncbi-secret".to_string()),
+                ("S2_API_KEY".to_string(), "s2-secret".to_string()),
+            ],
+            "only non-empty, safe, string-valued headers survive, sorted"
+        );
+        // None of the rejected names leak into the injected env.
+        let names: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
+        for blocked in ["PATH", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "EMPTY_KEY", "NUMERIC"] {
+            assert!(!names.contains(&blocked), "{blocked} must not be injected");
+        }
+    }
+
+    #[test]
+    fn env_pairs_from_headers_empty_object_is_empty() {
+        assert!(env_pairs_from_headers(&serde_json::json!({})).is_empty());
+        assert!(env_pairs_from_headers(&serde_json::Value::Null).is_empty());
+    }
 
     #[test]
     fn is_unsafe_env_name_blocks_loader_and_whitelist_vars() {

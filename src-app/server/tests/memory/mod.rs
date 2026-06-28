@@ -4,6 +4,7 @@ mod capability_filter_test;
 mod combined_real_llm_test;
 mod core_memory_test;
 mod crud_test;
+mod embedding_failure_test;
 mod extraction_injection_test;
 mod extraction_model_validation_test;
 mod extraction_test;
