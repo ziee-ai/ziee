@@ -30,6 +30,7 @@ export function AdminSkillsPage() {
           <Can permission={Permissions.SkillsManageSystem}>
             <Button
               icon={<Import />}
+              data-testid="skill-admin-import-button"
               onClick={() => setImportOpen(true)}
             >
               Import
@@ -45,6 +46,7 @@ export function AdminSkillsPage() {
               key={skill.id}
               className="overflow-hidden"
               data-skill-id={skill.id}
+              data-testid={`skill-admin-card-${skill.id}`}
             >
               <div
                 className="p-3 cursor-pointer"
@@ -70,7 +72,7 @@ export function AdminSkillsPage() {
         </div>
 
         {!loading && systemSkills.length === 0 && (
-          <Empty description="No system skills installed" className="!mt-12" />
+          <Empty description="No system skills installed" className="!mt-12" data-testid="skill-admin-empty" />
         )}
 
         <SkillDetailDrawer />

@@ -49,7 +49,7 @@ export function ConversationSkillsPanel({
 
   if (allRows.length === 0) {
     return (
-      <Empty description="No skills available in this conversation" />
+      <Empty description="No skills available in this conversation" data-testid="skill-conversation-empty" />
     )
   }
 
@@ -68,6 +68,7 @@ export function ConversationSkillsPanel({
   return (
     <List
       size="sm"
+      data-testid="skill-conversation-list"
       dataSource={allRows}
       renderItem={(skill, index) => {
         const visible = availableIds.has(skill.id)
@@ -94,6 +95,7 @@ export function ConversationSkillsPanel({
             </div>
             <Switch
               size="sm"
+              data-testid={`skill-conversation-switch-${skill.id}`}
               checked={visible}
               onChange={next => void handleToggle(skill.id, next)}
             />
