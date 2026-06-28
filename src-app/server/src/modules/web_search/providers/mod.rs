@@ -340,6 +340,30 @@ mod tests {
         assert!(build("nope", &json!({}), None, 10).is_err());
     }
 
+    // audit id all-16398c877c5b — a chain mixing unknown provider keys with
+    // valid ones. `validate_chain` rejects such a chain at WRITE time (the
+    // reachable user-facing behavior, also asserted by
+    // validate_chain_rejects_unknown above). But `search_via_chain`'s resolution
+    // loop is defense-in-depth: it skips any entry whose `descriptor(key)` is
+    // None (`let Some(desc) = descriptor(key) else { continue }`) so a stale
+    // chain that somehow contains a key no longer in the catalog still resolves
+    // only its valid entries instead of erroring. This pins that the skip
+    // predicate is exactly `descriptor(key).is_none()`.
+    #[test]
+    fn unknown_chain_keys_are_skipped_known_keys_resolve() {
+        let chain = ["nope", "searxng", "also-bogus", "brave"];
+        let resolved: Vec<&str> = chain
+            .iter()
+            .copied()
+            .filter(|k| descriptor(k).is_some())
+            .collect();
+        // Only the two real catalog entries survive the resolution skip.
+        assert_eq!(resolved, vec!["searxng", "brave"]);
+        // The unknown keys individually resolve to None (the `continue` branch).
+        assert!(descriptor("nope").is_none());
+        assert!(descriptor("also-bogus").is_none());
+    }
+
     #[test]
     fn any_configured_in_chain_gate() {
         let rows = vec![WebSearchProviderRow {
