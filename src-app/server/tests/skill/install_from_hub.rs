@@ -242,3 +242,76 @@ async fn user_skill_install_emits_owner_scoped_skill_create() {
         .await;
     other_probe.expect_silence(Duration::from_secs(1)).await;
 }
+
+/// Cross-subsystem: skill_mcp (load_skill) coexists with the memory built-in
+/// (remember) in ONE conversation. The skill test suite is otherwise
+/// skill-isolated; this proves the skill subsystem attaches ALONGSIDE another
+/// subsystem (memory) for a tool-capable model — refuting the "no cross-subsystem
+/// flows" gap.
+#[tokio::test]
+async fn skill_mcp_coexists_with_memory_builtin() {
+    use crate::common::stub_chat::{register_stub_model, StubChat};
+
+    let (server, _mock) = server_with_skill_catalog().await;
+    let user = admin_and_refresh(&server).await;
+
+    // Install a skill so the skill chat-extension attaches skill_mcp (load_skill).
+    let _ = install_fixture_skill(&server, &user.token).await;
+
+    // Enable memory deployment-wide + per-user extraction so `remember` attaches.
+    let client = reqwest::Client::new();
+    client
+        .put(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .put(server.api_url("/memory/settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "extraction_enabled": true }))
+        .send()
+        .await
+        .unwrap();
+
+    let stub = StubChat::start().await;
+    let model_id = register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+    let model_uuid = crate::chat::helpers::parse_uuid(&serde_json::json!(model_id));
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, Some(model_uuid), None)
+            .await;
+    let conv_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let _ = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &user.token,
+        conv_id,
+        serde_json::json!({
+            "content": "hello",
+            "model_id": model_id,
+            "branch_id": branch_id.to_string(),
+            "enable_mcp": true,
+            "mcp_config": { "mcp_servers": [] }
+        }),
+        &["complete"],
+    )
+    .await;
+
+    let reqs = stub.requests();
+    let first = reqs.first().expect("at least one recorded request");
+    assert!(
+        first.has_tool("load_skill"),
+        "skill_mcp's load_skill must attach (a skill is installed); tools={:?}",
+        first.tool_names
+    );
+    assert!(
+        first.has_tool("remember"),
+        "memory's remember must attach ALONGSIDE skill_mcp; tools={:?}",
+        first.tool_names
+    );
+}
