@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Popover as Root, PopoverTrigger, PopoverContent } from '../shadcn/popover'
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '../shadcn/command'
@@ -16,10 +16,22 @@ export interface MultiSelectOption {
   disabled?: boolean
 }
 
+// Split a raw input string on the configured token separators, returning the cleaned tokens
+// found (everything except the trailing in-progress fragment) plus that remainder.
+function splitOnSeparators(text: string, separators: string[]): { tokens: string[]; rest: string } {
+  if (separators.length === 0) return { tokens: [], rest: text }
+  const escaped = separators.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('')
+  const parts = text.split(new RegExp(`[${escaped}]`))
+  const rest = parts.pop() ?? ''
+  const tokens = parts.map((p) => p.trim()).filter(Boolean)
+  return { tokens, rest }
+}
+
 // Virtualized multi-select listbox for large option sets (cmdk renders all rows + can't window).
 // Own filter + arrow-key aria-activedescendant nav; toggling keeps the popover open.
 function VirtualMultiList({
   options, selectedSet, onToggle, searchPlaceholder, emptyText, listboxId,
+  allowCreate, tokenSeparators, onCreateToken, createLabel,
 }: {
   options: MultiSelectOption[]
   selectedSet: Set<string>
@@ -27,6 +39,10 @@ function VirtualMultiList({
   searchPlaceholder: string
   emptyText: string
   listboxId: string
+  allowCreate?: boolean
+  tokenSeparators: string[]
+  onCreateToken: (value: string) => void
+  createLabel: (query: string) => string
 }) {
   const [query, setQuery] = React.useState('')
   const filtered = React.useMemo(() => {
@@ -43,17 +59,38 @@ function VirtualMultiList({
   const virtualizer = useVirtualizer({
     count: filtered.length, getScrollElement: () => scrollRef.current, estimateSize: () => 32, overscan: 8,
   })
+  const trimmed = query.trim()
+  const exists = React.useMemo(
+    () => options.some((o) => o.value === trimmed || o.label === trimmed) || selectedSet.has(trimmed),
+    [options, selectedSet, trimmed],
+  )
+  const canCreate = !!allowCreate && trimmed !== '' && !exists
+  const commit = (v: string) => { onCreateToken(v); setQuery('') }
   const nextEnabled = (from: number, dir: 1 | -1) => {
     for (let i = from + dir; i >= 0 && i < filtered.length; i += dir) if (!filtered[i].disabled) return i
     return -1
   }
   const goTo = (n: number) => { if (n >= 0) { setActive(n); virtualizer.scrollToIndex(n) } }
+  const onChange = (raw: string) => {
+    if (allowCreate && tokenSeparators.length) {
+      const { tokens, rest } = splitOnSeparators(raw, tokenSeparators)
+      tokens.forEach(commit)
+      setQuery(rest)
+    } else {
+      setQuery(raw)
+    }
+  }
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); goTo(nextEnabled(active, 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); goTo(nextEnabled(active, -1)) }
     else if (e.key === 'Home') { e.preventDefault(); goTo(firstEnabled) }
     else if (e.key === 'End') { e.preventDefault(); goTo(lastEnabled) }
-    else if (e.key === 'Enter') { e.preventDefault(); const o = filtered[active]; if (o && !o.disabled) onToggle(o.value) }
+    else if (e.key === 'Enter') {
+      e.preventDefault()
+      const o = filtered[active]
+      if (o && !o.disabled) onToggle(o.value)
+      else if (canCreate) commit(trimmed)
+    }
   }
   const virtualItems = virtualizer.getVirtualItems()
   const activeMounted = virtualItems.some((vi) => vi.index === active)
@@ -68,15 +105,26 @@ function VirtualMultiList({
           aria-autocomplete="list"
           aria-activedescendant={activeMounted && filtered[active] ? `${listboxId}-${active}` : undefined}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={searchPlaceholder}
           className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
       </div>
-      {filtered.length === 0 ? (
+      {/* fixed create row above the virtualized scroller (it can't host a non-option row). */}
+      {canCreate && (
+        <button
+          type="button"
+          onClick={() => commit(trimmed)}
+          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Plus className="size-4 shrink-0" aria-hidden />
+          <span className="truncate">{createLabel(trimmed)}</span>
+        </button>
+      )}
+      {filtered.length === 0 && !canCreate ? (
         <div className="py-6 text-center text-sm text-muted-foreground">{emptyText}</div>
-      ) : (
+      ) : filtered.length === 0 ? null : (
         <div ref={scrollRef} role="listbox" aria-multiselectable id={listboxId} className="max-h-72 overflow-auto p-1">
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualItems.map((vi) => {
@@ -112,6 +160,7 @@ function VirtualMultiList({
 }
 
 // Multi-select with searchable list + removable tags (legacy Select mode="multiple").
+// `allowCreate` enables free-text tokens not present in `options` (legacy Select mode="tags").
 // Form-bindable: value:string[] + onChange(string[]) + name + id + ref.
 export type MultiSelectProps = {
   options: MultiSelectOption[]
@@ -126,6 +175,12 @@ export type MultiSelectProps = {
   emptyText: string
   /** Builds the accessible name for a tag's remove button, e.g. (label) => `Remove ${label}`. */
   removeLabel: (label: string) => string
+  /** Allow adding free-text values not in `options` (legacy Select mode="tags"). */
+  allowCreate?: boolean
+  /** Characters that commit the typed text as a token (e.g. [',']). Used with `allowCreate`. */
+  tokenSeparators?: string[]
+  /** Label for the "create" affordance. Falls back to `Create "<query>"`. */
+  createLabel?: (query: string) => string
   disabled?: boolean
   loading?: boolean
   invalid?: boolean
@@ -142,7 +197,7 @@ export type MultiSelectProps = {
 
 export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(function MultiSelect(
   { options, value, defaultValue, onValueChange, onChange, onBlur, placeholder, searchPlaceholder, emptyText, removeLabel,
-    disabled, loading, invalid, virtual, name, id, className, style,
+    allowCreate, tokenSeparators = [], createLabel, disabled, loading, invalid, virtual, name, id, className, style,
     'aria-describedby': ariaDescribedby, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby,
     'aria-required': ariaRequired },
   ref,
@@ -150,6 +205,7 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
   const s = useSurface({ disabled })
   const listboxId = React.useId()
   const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState('')
   const [current, setCurrent] = useControllableState<string[]>({
     value, defaultValue: defaultValue ?? [], onChange: (v) => { onValueChange?.(v); onChange?.(v) },
   })
@@ -164,9 +220,26 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
   const selectedSet = React.useMemo(() => new Set(current), [current])
   // functional updater (the hook supports it) → no stale read-modify-write on rapid toggles.
   const toggle = (v: string) => setCurrent((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v])
+  // Create-only (add, never toggle off) for free-text tokens.
+  const addToken = (v: string) => { const t = v.trim(); if (t) setCurrent((prev) => prev.includes(t) ? prev : [...prev, t]) }
+  const resolvedCreateLabel = createLabel ?? ((q: string) => `Create "${q}"`)
+
+  const trimmed = query.trim()
+  const exists = options.some((o) => o.value === trimmed || o.label === trimmed) || selectedSet.has(trimmed)
+  const canCreate = !!allowCreate && trimmed !== '' && !exists
+  const handleInput = (raw: string) => {
+    if (allowCreate && tokenSeparators.length) {
+      const { tokens, rest } = splitOnSeparators(raw, tokenSeparators)
+      tokens.forEach(addToken)
+      setQuery(rest)
+    } else {
+      setQuery(raw)
+    }
+  }
+
   if (s.loading) return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
   return (
-    <Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) onBlur?.() }}>
+    <Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) { onBlur?.(); setQuery('') } }}>
       {/* native form submission: one hidden input per selected value (div trigger has no name). */}
       {name != null && current.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
       <PopoverTrigger asChild>
@@ -216,19 +289,34 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         {virtual ? (
-          <VirtualMultiList options={options} selectedSet={selectedSet} onToggle={toggle} searchPlaceholder={searchPlaceholder} emptyText={emptyText} listboxId={listboxId} />
+          <VirtualMultiList
+            options={options} selectedSet={selectedSet} onToggle={toggle}
+            searchPlaceholder={searchPlaceholder} emptyText={emptyText} listboxId={listboxId}
+            allowCreate={allowCreate} tokenSeparators={tokenSeparators} onCreateToken={addToken} createLabel={resolvedCreateLabel}
+          />
         ) : (
-          <Command>
-            <CommandInput placeholder={searchPlaceholder} />
+          <Command shouldFilter={!allowCreate}>
+            <CommandInput placeholder={searchPlaceholder} value={query} onValueChange={handleInput} />
             <CommandList id={listboxId}>
-              <CommandEmpty>{emptyText}</CommandEmpty>
-              <CommandGroup>
-                {options.map((o) => (
-                  <CommandItem key={o.value} value={o.value} keywords={[o.label]} disabled={o.disabled} onSelect={() => toggle(o.value)}>
-                    <Check className={cn('mr-2 size-4', selectedSet.has(o.value) ? 'opacity-100' : 'opacity-0')} aria-hidden />
-                    {o.label}
+              {!canCreate && <CommandEmpty>{emptyText}</CommandEmpty>}
+              {canCreate && (
+                <CommandGroup>
+                  <CommandItem value={`__create__${trimmed}`} onSelect={() => { addToken(trimmed); setQuery('') }}>
+                    <Plus className="mr-2 size-4" aria-hidden />
+                    {resolvedCreateLabel(trimmed)}
                   </CommandItem>
-                ))}
+                </CommandGroup>
+              )}
+              <CommandGroup>
+                {/* with allowCreate, cmdk filtering is off → filter here so the list still narrows. */}
+                {options
+                  .filter((o) => !allowCreate || trimmed === '' || o.label.toLowerCase().includes(trimmed.toLowerCase()))
+                  .map((o) => (
+                    <CommandItem key={o.value} value={o.value} keywords={[o.label]} disabled={o.disabled} onSelect={() => toggle(o.value)}>
+                      <Check className={cn('mr-2 size-4', selectedSet.has(o.value) ? 'opacity-100' : 'opacity-0')} aria-hidden />
+                      {o.label}
+                    </CommandItem>
+                  ))}
               </CommandGroup>
             </CommandList>
           </Command>
