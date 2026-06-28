@@ -1,5 +1,5 @@
+import { Paperclip } from 'lucide-react'
 import { App, Upload, theme } from 'antd'
-import { PaperClipOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
@@ -49,7 +49,7 @@ export function FileAttachMenuItem() {
           e.currentTarget.style.backgroundColor = 'transparent'
         }}
       >
-        <PaperClipOutlined style={{ fontSize: 16 }} />
+        <Paperclip style={{ fontSize: 16 }} />
         <span style={{ fontSize: 14 }}>Attach files or photos</span>
       </div>
     </Upload>

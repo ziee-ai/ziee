@@ -1,6 +1,6 @@
+import { FileQuestion, TriangleAlert } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Empty, Spin, Text, Title } from '@/components/ui'
-import { FileUnknownOutlined, WarningOutlined } from '@ant-design/icons'
 import type { File as FileEntity } from '@/api-client/types'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import { DownloadButton } from '@/modules/file/viewers/shared/chrome'
@@ -139,7 +139,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
               data-testid="too-large-to-preview"
             >
               <Empty
-                icon={<WarningOutlined className="text-5xl text-amber-500" />}
+                icon={<TriangleAlert className="text-5xl text-amber-500" />}
                 description={
                   <div className="flex flex-col items-center gap-1">
                     <Text strong>File too large to preview</Text>
@@ -163,7 +163,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
               data-testid="cannot-preview"
             >
               <Empty
-                icon={<FileUnknownOutlined className="text-5xl text-muted-foreground" />}
+                icon={<FileQuestion className="text-5xl text-muted-foreground" />}
                 description={
                   <div className="flex flex-col items-center gap-1">
                     <Text strong>Cannot preview this file</Text>

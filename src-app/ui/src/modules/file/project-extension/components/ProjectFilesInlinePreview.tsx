@@ -1,6 +1,6 @@
+import { File } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { Text } from '@/components/ui'
-import { FileOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
@@ -15,7 +15,7 @@ export function ProjectFilesInlinePreview() {
   return (
     <div>
       <div className="flex items-center mb-2">
-        <FileOutlined className="mr-2" />
+        <File className="mr-2" />
         <Text strong>Knowledge files</Text>
         <Text type="secondary" className="ml-2 !text-xs">
           ({files.length})

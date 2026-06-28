@@ -9,7 +9,7 @@
 //      registration is bootstrapped whenever the file module loads —
 //      independent of the projects module's load order.
 
-import { FileOutlined } from '@ant-design/icons'
+import { File } from 'lucide-react'
 import { projectExtensionRegistry } from '@/modules/projects/core/extensions'
 import { ProjectFilesInlinePreview } from './components/ProjectFilesInlinePreview'
 import { ProjectFilesManagePanel } from './components/ProjectFilesManagePanel'
@@ -19,7 +19,7 @@ projectExtensionRegistry.register({
   slots: {
     knowledge_kinds: {
       label: 'Knowledge files',
-      icon: <FileOutlined />,
+      icon: <File />,
       inlinePreview: ProjectFilesInlinePreview,
       managePanel: ProjectFilesManagePanel,
       order: 10,

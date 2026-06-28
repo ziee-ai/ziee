@@ -1,5 +1,5 @@
+import { File } from 'lucide-react'
 import { Alert, Spin, Text } from '@/components/ui'
-import { FileOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 
@@ -34,7 +34,7 @@ export function PdfBody(props: FileViewerSlotProps) {
   if (file.preview_page_count === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
-        <FileOutlined style={{ fontSize: 48 }} />
+        <File style={{ fontSize: 48 }} />
         <Text type="secondary">Preview not available for this file</Text>
       </div>
     )
