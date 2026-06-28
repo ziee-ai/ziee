@@ -45,4 +45,32 @@ test.describe('Skills - List page render', () => {
       page.getByRole('button', { name: /import/i }),
     ).toBeVisible()
   })
+
+  test('clicking a skill opens the detail drawer with metadata + body', async ({
+    page,
+  }) => {
+    // The built-in skills render as clickable cards (role="button",
+    // data-skill-id). Open the first one.
+    const firstCard = page.locator('[data-skill-id]').first()
+    await expect(firstCard).toBeVisible({ timeout: 15000 })
+    await firstCard.click()
+
+    // The SkillDetailDrawer opens with the metadata Descriptions
+    // (Name/Files/Size) and fetches the SKILL.md body.
+    const drawer = page.getByRole('dialog')
+    await expect(drawer).toBeVisible({ timeout: 10000 })
+    await expect(drawer.getByText('Name', { exact: true })).toBeVisible()
+    await expect(drawer.getByText('Files', { exact: true })).toBeVisible()
+    await expect(drawer.getByText('Size', { exact: true })).toBeVisible()
+
+    // The body fetch resolves (the transient "Loading skill content…" note
+    // clears). Built-in skills always have a SKILL.md body.
+    await expect(
+      drawer.getByText('Loading skill content…'),
+    ).toHaveCount(0, { timeout: 15000 })
+
+    // Close it.
+    await drawer.getByRole('button', { name: /close/i }).click()
+    await expect(drawer).toBeHidden()
+  })
 })
