@@ -363,3 +363,84 @@ async fn rejects_structurally_invalid_jsonrpc_with_invalid_request() {
         "must be a JSON-RPC invalid-request error: {body}"
     );
 }
+
+/// Real-LLM: the model actually CALLS the always-on get_tool_result tool to
+/// recall a prior result (mcp/chat_extension/mcp.rs:183-188 auto-attach). The
+/// recall mechanism is unit/integration-tested directly above; this proves the
+/// chat-loop path where a tool-capable model invokes get_tool_result and the
+/// recalled content flows back into its answer. Soft-skips without ANTHROPIC.
+#[tokio::test]
+async fn real_llm_invokes_get_tool_result_to_recall_a_prior_result() {
+    if std::env::var("ANTHROPIC_API_KEY").is_err() {
+        eprintln!("skipping tool_result_mcp::real_llm — ANTHROPIC_API_KEY unset");
+        return;
+    }
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(
+        &server,
+        "tr_real_llm",
+        &[
+            "conversations::create", "conversations::read", "conversations::edit",
+            "messages::create", "messages::read",
+            "llm_models::read", "llm_models::create",
+            "llm_providers::read", "llm_providers::create", "llm_providers::edit",
+            "mcp_servers::read",
+        ],
+    )
+    .await;
+
+    let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    // Seed a prior tool_result the model can recall by id, on this branch.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let msg_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO messages (id, role, originated_from_id, created_at) VALUES ($1,'assistant',$1,NOW())")
+        .bind(msg_id).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO branch_messages (branch_id, message_id, created_at) VALUES ($1,$2,NOW())")
+        .bind(branch_id).bind(msg_id).execute(&pool).await.unwrap();
+    let block = json!({
+        "type": "tool_result",
+        "tool_use_id": "toolu_recall_42",
+        "name": "some_tool",
+        "content": "RECALL_SENTINEL_99: the user's favorite color is teal.",
+        "is_error": false,
+    });
+    sqlx::query("INSERT INTO message_contents (id, message_id, content_type, content, sequence_order, created_at, updated_at) VALUES (gen_random_uuid(), $1, 'tool_result', $2, 0, NOW(), NOW())")
+        .bind(msg_id).bind(&block).execute(&pool).await.unwrap();
+    pool.close().await;
+
+    let payload = json!({
+        "content": "Call the get_tool_result tool with tool_use_id=\"toolu_recall_42\" to fetch \
+                    the earlier tool result, then state the favorite color it contains. You MUST \
+                    call the tool — do not answer from memory.",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string(),
+        "enable_mcp": true,
+        "mcp_config": { "mcp_servers": [] }
+    });
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server, &user.token, conversation_id, payload, &["complete"],
+    )
+    .await;
+
+    let tool_calls = events.iter().filter(|e| e.event == "mcpToolStart").count();
+    assert!(tool_calls > 0, "the model should have called get_tool_result (no mcpToolStart)");
+
+    // The recalled content reaches the model's answer.
+    let text: String = events
+        .iter()
+        .filter(|e| e.event == "content")
+        .filter_map(|e| e.data.get("content").and_then(|v| v.as_array()).cloned())
+        .flatten()
+        .filter_map(|d| d.get("delta").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    assert!(
+        text.to_lowercase().contains("teal"),
+        "the model's answer must reflect the recalled tool result; got: {text}"
+    );
+}
