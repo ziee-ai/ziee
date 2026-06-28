@@ -434,6 +434,16 @@ pub async fn reset_user_password(
         .update_password(request.user_id, &password_hash)
         .await?;
 
+    // Revoke the user's refresh tokens so existing sessions cannot silently
+    // refresh past the password change. Without this the Session sync below is
+    // cosmetic — the still-valid access token keeps passing /auth/me until it
+    // expires. After revocation the next refresh fails → forced re-login.
+    crate::modules::auth::refresh_tokens::revoke_all_for_user(
+        crate::core::Repos.pool(),
+        request.user_id,
+    )
+    .await?;
+
     // Signal the affected user's own devices (Owner) so they re-bootstrap
     // /auth/me after the credential change, mirroring delete_user's session
     // signal. Notify-only — carries just the user id, no credential data.
