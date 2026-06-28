@@ -198,6 +198,92 @@ async fn r3_extraction_pipeline_with_real_groq_llm() {
     assert_eq!(extracted["source"], "extraction");
 }
 
+// R3b — MULTI-TURN: memories accumulate progressively across several
+// conversation turns (not just a single turn). Each turn introduces a distinct
+// durable fact; after both turns the user's memory holds BOTH.
+#[tokio::test]
+async fn r3b_multi_turn_progressively_accumulates_memories() {
+    if h::skip_if_no_keys("r3b_multi_turn") {
+        return;
+    }
+    let server = crate::common::TestServer::start().await;
+    let _ids = h::setup_real_providers(&server).await;
+    let user = h::memory_user(&server, "r3b_multi").await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/memory/settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "extraction_enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success(), "enable extraction → {}", res.status());
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "r3b_multi_admin",
+        &["memory::admin::manage"],
+    )
+    .await;
+
+    // Two turns, each carrying a distinct durable fact.
+    let turns = [
+        (
+            "I'm vegetarian and have been for 10 years.",
+            "Noted — here are some vegetarian dinner ideas: ...",
+        ),
+        (
+            "By the way, I live in Berlin and work as a data scientist.",
+            "Berlin has a great data-science scene; here are some local meetups: ...",
+        ),
+    ];
+    for (user_msg, assistant_msg) in turns {
+        let res = reqwest::Client::new()
+            .post(server.api_url("/_test/memory/extract"))
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .json(&json!({
+                "user_id": user_id,
+                "user_message": user_msg,
+                "assistant_message": assistant_msg,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            res.status().is_success(),
+            "test/extract → {}: {}",
+            res.status(),
+            res.text().await.unwrap_or_default()
+        );
+    }
+
+    // After BOTH turns, the user's memory holds facts from each turn.
+    let res = reqwest::Client::new()
+        .get(server.api_url("/memories?limit=50"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = res.json().await.unwrap();
+    let rows = body["items"].as_array().cloned().unwrap_or_default();
+    let blob: String = rows
+        .iter()
+        .filter_map(|r| r["content"].as_str())
+        .collect::<Vec<_>>()
+        .join(" | ")
+        .to_lowercase();
+
+    assert!(
+        blob.contains("vegetarian"),
+        "turn-1 fact (vegetarian) must persist after turn 2; got: {blob}"
+    );
+    assert!(
+        blob.contains("berlin"),
+        "turn-2 fact (Berlin) must be accumulated alongside turn-1; got: {blob}"
+    );
+}
+
 // ────────────────────────────────────────────────────────────────────
 // R7 — cosine threshold filters semantically unrelated memories.
 // ────────────────────────────────────────────────────────────────────
