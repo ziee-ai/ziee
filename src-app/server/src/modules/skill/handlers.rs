@@ -12,16 +12,38 @@ use crate::core::Repos;
 use aide::transform::TransformOperation;
 use axum::{
     Json, debug_handler,
-    extract::Path,
+    extract::{Path, Query},
     http::StatusCode,
 };
+use schemars::JsonSchema;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    common::{ApiResult, AppError},
+    common::{ApiResult, AppError, DEFAULT_PAGE_SIZE, PAGINATION_MAX_PER_PAGE},
     modules::permissions::{RequirePermissions, with_permission},
     modules::sync::{SyncAction, SyncOrigin},
 };
+
+/// Optional pagination for the skill listings. Defaults bound an
+/// un-paginated caller to the first `DEFAULT_PAGE_SIZE` skills instead of
+/// returning an unbounded set.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SkillListQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+impl SkillListQuery {
+    fn bounds(&self) -> (i64, i64) {
+        let limit = self
+            .limit
+            .unwrap_or(DEFAULT_PAGE_SIZE as i64)
+            .clamp(1, PAGINATION_MAX_PER_PAGE as i64);
+        let offset = self.offset.unwrap_or(0).max(0);
+        (limit, offset)
+    }
+}
 
 use super::events;
 use super::models::{Skill, UpdateSkill};
@@ -41,8 +63,13 @@ use super::types::{
 #[debug_handler]
 pub async fn list_user_skills(
     auth: RequirePermissions<(SkillsRead,)>,
+    Query(q): Query<SkillListQuery>,
 ) -> ApiResult<Json<SkillListResponse>> {
-    let skills = Repos.skill.list_accessible(auth.user.id).await?;
+    let (limit, offset) = q.bounds();
+    let skills = Repos
+        .skill
+        .list_accessible(auth.user.id, limit, offset)
+        .await?;
     Ok((StatusCode::OK, Json(SkillListResponse { skills })))
 }
 
@@ -371,8 +398,10 @@ pub use crate::modules::hub::handlers::{
 #[debug_handler]
 pub async fn list_system_skills(
     _auth: RequirePermissions<(SkillsManageSystem,)>,
+    Query(q): Query<SkillListQuery>,
 ) -> ApiResult<Json<SkillListResponse>> {
-    let skills = Repos.skill.list_system().await?;
+    let (limit, offset) = q.bounds();
+    let skills = Repos.skill.list_system(limit, offset).await?;
     Ok((StatusCode::OK, Json(SkillListResponse { skills })))
 }
 

@@ -116,13 +116,15 @@ impl SkillRepository {
     pub async fn list_accessible(
         &self,
         user_id: Uuid,
+        limit: i64,
+        offset: i64,
     ) -> Result<Vec<Skill>, AppError> {
-        list_accessible(&self.pool, user_id).await
+        list_accessible(&self.pool, user_id, limit, offset).await
     }
 
     /// List all system-scope skills (admin surface).
-    pub async fn list_system(&self) -> Result<Vec<Skill>, AppError> {
-        list_system(&self.pool).await
+    pub async fn list_system(&self, limit: i64, offset: i64) -> Result<Vec<Skill>, AppError> {
+        list_system(&self.pool, limit, offset).await
     }
 
     /// Is this skill currently hidden in this conversation?
@@ -720,6 +722,8 @@ pub async fn list_available_for_conversation(
 pub async fn list_accessible(
     pool: &PgPool,
     user_id: Uuid,
+    limit: i64,
+    offset: i64,
 ) -> Result<Vec<Skill>, AppError> {
     let rows = sqlx::query_as!(
         Skill,
@@ -746,8 +750,11 @@ pub async fn list_accessible(
                 )
             ))
         ORDER BY s.name ASC
+        LIMIT $2 OFFSET $3
         "#,
         user_id,
+        limit,
+        offset,
     )
     .fetch_all(pool)
     .await
@@ -755,7 +762,7 @@ pub async fn list_accessible(
     Ok(rows)
 }
 
-pub async fn list_system(pool: &PgPool) -> Result<Vec<Skill>, AppError> {
+pub async fn list_system(pool: &PgPool, limit: i64, offset: i64) -> Result<Vec<Skill>, AppError> {
     let rows = sqlx::query_as!(
         Skill,
         r#"
@@ -771,7 +778,10 @@ pub async fn list_system(pool: &PgPool) -> Result<Vec<Skill>, AppError> {
         FROM skills
         WHERE scope = 'system'
         ORDER BY name ASC
+        LIMIT $1 OFFSET $2
         "#,
+        limit,
+        offset,
     )
     .fetch_all(pool)
     .await
