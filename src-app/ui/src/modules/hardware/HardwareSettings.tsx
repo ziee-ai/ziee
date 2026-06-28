@@ -72,6 +72,7 @@ export default function HardwareSettings() {
     return (
       <SettingsPageContainer title="Hardware">
         <Alert
+          data-testid="hardware-settings-unavailable-alert"
           title="Hardware Information Unavailable"
           description={hardwareError}
           tone="error"
@@ -81,22 +82,26 @@ export default function HardwareSettings() {
   }
 
   const renderOperatingSystemCard = () => (
-    <Card title="Operating System">
+    <Card title="Operating System" data-testid="hardware-os-card">
       <div className="flex flex-wrap gap-6">
         <Statistic
+          data-testid="hardware-os-name"
           title="Name"
           value={hardwareInfo?.operating_system.name || 'Unknown'}
         />
         <Statistic
+          data-testid="hardware-os-version"
           title="Version"
           value={hardwareInfo?.operating_system.version || 'Unknown'}
         />
         <Statistic
+          data-testid="hardware-os-arch"
           title="Architecture"
           value={hardwareInfo?.operating_system.architecture || 'Unknown'}
         />
         {hardwareInfo?.operating_system.kernel_version && (
           <Statistic
+            data-testid="hardware-os-kernel"
             title="Kernel"
             value={hardwareInfo.operating_system.kernel_version}
           />
@@ -106,29 +111,33 @@ export default function HardwareSettings() {
   )
 
   const renderCPUCard = () => (
-    <Card title="CPU">
+    <Card title="CPU" data-testid="hardware-cpu-info-card">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-6">
           <Statistic
+            data-testid="hardware-cpu-model"
             title="Model"
             value={hardwareInfo?.cpu.model || 'Unknown'}
           />
           <Statistic
+            data-testid="hardware-cpu-arch"
             title="Architecture"
             value={hardwareInfo?.cpu.architecture || 'Unknown'}
           />
-          <Statistic title="Cores" value={hardwareInfo?.cpu.cores || 0} />
+          <Statistic data-testid="hardware-cpu-cores" title="Cores" value={hardwareInfo?.cpu.cores || 0} />
           {hardwareInfo?.cpu.threads && (
-            <Statistic title="Threads" value={hardwareInfo.cpu.threads} />
+            <Statistic data-testid="hardware-cpu-threads" title="Threads" value={hardwareInfo.cpu.threads} />
           )}
           {hardwareInfo?.cpu.base_frequency && (
             <Statistic
+              data-testid="hardware-cpu-base-freq"
               title="Base Frequency"
               value={`${hardwareInfo.cpu.base_frequency} MHz`}
             />
           )}
           {hardwareInfo?.cpu.max_frequency && (
             <Statistic
+              data-testid="hardware-cpu-max-freq"
               title="Max Frequency"
               value={`${hardwareInfo.cpu.max_frequency} MHz`}
             />
@@ -138,6 +147,7 @@ export default function HardwareSettings() {
           <div>
             <Text strong>CPU Usage</Text>
             <Progress
+              data-testid="hardware-cpu-usage-progress"
               value={currentUsage.cpu.usage_percentage}
               tone={currentUsage.cpu.usage_percentage > 90 ? 'error' : 'primary'}
               format={percent =>
@@ -164,7 +174,7 @@ export default function HardwareSettings() {
   )
 
   const renderMemoryCard = () => (
-    <Card title="Memory">
+    <Card title="Memory" data-testid="hardware-memory-info-card">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-6">
           <div>
@@ -191,6 +201,7 @@ export default function HardwareSettings() {
           <div>
             <Text strong>Memory Usage</Text>
             <Progress
+              data-testid="hardware-memory-usage-progress"
               value={currentUsage.memory.usage_percentage}
               tone={currentUsage.memory.usage_percentage > 90 ? 'error' : 'primary'}
               format={percent =>
@@ -215,7 +226,7 @@ export default function HardwareSettings() {
   const renderGPUCards = () => {
     if (!hardwareInfo?.gpu_devices || hardwareInfo.gpu_devices.length === 0) {
       return (
-        <Card title="GPU">
+        <Card title="GPU" data-testid="hardware-gpu-none-card">
           <Text type="secondary">No GPU devices detected</Text>
         </Card>
       )
@@ -234,7 +245,7 @@ export default function HardwareSettings() {
           : undefined)
 
       return (
-        <Card key={index} title={gpu.name}>
+        <Card key={index} title={gpu.name} data-testid={`hardware-gpu-info-card-${index}`}>
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap gap-6">
               <div>
@@ -288,6 +299,7 @@ export default function HardwareSettings() {
               </Text>
               <div className="flex flex-wrap gap-1">
                 <Tag
+                  data-testid={`hardware-gpu-cuda-tag-${index}`}
                   tone={gpu.compute_capabilities.cuda_support ? 'success' : 'info'}
                 >
                   CUDA {gpu.compute_capabilities.cuda_support ? '✓' : '✗'}
@@ -295,17 +307,20 @@ export default function HardwareSettings() {
                     ` (${gpu.compute_capabilities.cuda_version})`}
                 </Tag>
                 <Tag
+                  data-testid={`hardware-gpu-metal-tag-${index}`}
                   tone={gpu.compute_capabilities.metal_support ? 'success' : 'info'}
                 >
                   Metal {gpu.compute_capabilities.metal_support ? '✓' : '✗'}
                 </Tag>
                 <Tag
+                  data-testid={`hardware-gpu-opencl-tag-${index}`}
                   tone={gpu.compute_capabilities.opencl_support ? 'success' : 'info'}
                 >
                   OpenCL {gpu.compute_capabilities.opencl_support ? '✓' : '✗'}
                 </Tag>
                 {gpu.compute_capabilities.vulkan_support !== undefined && (
                   <Tag
+                    data-testid={`hardware-gpu-vulkan-tag-${index}`}
                     tone={gpu.compute_capabilities.vulkan_support ? 'success' : 'info'}
                   >
                     Vulkan {gpu.compute_capabilities.vulkan_support ? '✓' : '✗'}
@@ -320,6 +335,7 @@ export default function HardwareSettings() {
                   <div className="mb-3">
                     <Text strong>GPU Utilization</Text>
                     <Progress
+                      data-testid={`hardware-gpu-util-progress-${index}`}
                       value={gpuUsage.utilization_percentage}
                       tone={gpuUsage.utilization_percentage > 90 ? 'error' : 'primary'}
                       format={percent =>
@@ -339,6 +355,7 @@ export default function HardwareSettings() {
                     </Text>
                     {gpuUsage.memory_usage_percentage !== undefined ? (
                       <Progress
+                        data-testid={`hardware-gpu-mem-progress-${index}`}
                         value={gpuUsage.memory_usage_percentage}
                         tone={gpuUsage.memory_usage_percentage > 90 ? 'error' : 'primary'}
                         format={percent =>
@@ -349,6 +366,7 @@ export default function HardwareSettings() {
                     ) : gpuUsage.memory_used !== undefined &&
                       gpuUsage.memory_total !== undefined ? (
                       <Progress
+                        data-testid={`hardware-gpu-mem-progress-${index}`}
                         value={
                           (gpuUsage.memory_used / gpuUsage.memory_total) * 100
                         }
@@ -490,16 +508,16 @@ export default function HardwareSettings() {
   }
 
   const renderConnectionStatus = () => (
-    <Card className={sseConnected ? 'hidden' : 'block'}>
+    <Card className={sseConnected ? 'hidden' : 'block'} data-testid="hardware-settings-connection-card">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-3 flex-wrap">
           <Text strong>Real-time Monitoring:</Text>
-          <Tag tone={sseConnected ? 'success' : 'error'}>
+          <Tag data-testid="hardware-settings-connection-tag" tone={sseConnected ? 'success' : 'error'}>
             {sseConnected ? 'Connected' : 'Disconnected'}
           </Tag>
         </div>
         {canMonitor && !sseConnected && !usageLoading && (
-          <Button variant="default" onClick={handleManualConnect}>
+          <Button data-testid="hardware-settings-connect-btn" variant="default" onClick={handleManualConnect}>
             Connect
           </Button>
         )}

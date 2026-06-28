@@ -53,13 +53,14 @@ export function HardwareMonitor() {
 
   const renderConnectionStatus = () => (
     <Card
+      data-testid="hardware-connection-card"
       className={sseConnected ? 'hidden' : 'block'}
     >
       <div className={'flex flex-wrap justify-between gap-3'}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Text strong>Real-time Monitoring:</Text>
-            <Tag tone={sseConnected ? 'success' : 'error'}>
+            <Tag data-testid="hardware-connection-status-tag" tone={sseConnected ? 'success' : 'error'}>
               {sseConnected ? 'Connected' : 'Disconnected'}
             </Tag>
             {usageLoading && (
@@ -70,7 +71,7 @@ export function HardwareMonitor() {
             )}
           </div>
           {!sseConnected && !usageLoading && (
-            <Button variant="default" onClick={handleManualConnect}>
+            <Button data-testid="hardware-connect-btn" variant="default" onClick={handleManualConnect}>
               Connect
             </Button>
           )}
@@ -88,8 +89,9 @@ export function HardwareMonitor() {
     if (!currentUsage) return null
 
     return (
-      <Card title="CPU Usage">
+      <Card title="CPU Usage" data-testid="hardware-cpu-card">
         <Progress
+          data-testid="hardware-cpu-progress"
           value={currentUsage.cpu.usage_percentage}
           tone={currentUsage.cpu.usage_percentage > 90 ? 'error' : 'primary'}
           aria-label="CPU usage"
@@ -115,8 +117,9 @@ export function HardwareMonitor() {
     if (!currentUsage) return null
 
     return (
-      <Card title="Memory Usage">
+      <Card title="Memory Usage" data-testid="hardware-memory-card">
         <Progress
+          data-testid="hardware-memory-progress"
           value={currentUsage.memory.usage_percentage}
           tone={currentUsage.memory.usage_percentage > 90 ? 'error' : 'primary'}
           aria-label="Memory usage"
@@ -146,6 +149,7 @@ export function HardwareMonitor() {
     return (
       <div className="p-3">
         <Alert
+          data-testid="hardware-unavailable-alert"
           title="Hardware Monitor Unavailable"
           description={hardwareError}
           tone="error"
@@ -173,7 +177,7 @@ export function HardwareMonitor() {
               {!currentUsage?.gpu_devices ||
               currentUsage.gpu_devices.length === 0 ? (
                 <div className="flex-1 min-w-80">
-                  <Card title="GPU Usage">
+                  <Card title="GPU Usage" data-testid="hardware-gpu-empty-card">
                     <Text type="secondary">No GPU usage data available</Text>
                   </Card>
                 </div>
@@ -189,12 +193,13 @@ export function HardwareMonitor() {
 
                   return (
                     <div key={index} className="flex-1 min-w-80">
-                      <Card title={`${gpuName} Usage`}>
+                      <Card title={`${gpuName} Usage`} data-testid={`hardware-gpu-card-${index}`}>
                         <div className="space-y-3">
                           {gpuUsage.utilization_percentage !== undefined && (
                             <div>
                               <Text strong>GPU Utilization</Text>
                               <Progress
+                                data-testid={`hardware-gpu-util-progress-${index}`}
                                 value={gpuUsage.utilization_percentage}
                                 tone={gpuUsage.utilization_percentage > 90 ? 'error' : 'primary'}
                                 aria-label="GPU utilization"
@@ -217,6 +222,7 @@ export function HardwareMonitor() {
                               {gpuUsage.memory_usage_percentage !==
                               undefined ? (
                                 <Progress
+                                  data-testid={`hardware-gpu-mem-progress-${index}`}
                                   value={gpuUsage.memory_usage_percentage}
                                   tone={gpuUsage.memory_usage_percentage > 90 ? 'error' : 'primary'}
                                   aria-label="GPU memory usage"
@@ -228,6 +234,7 @@ export function HardwareMonitor() {
                                 gpuUsage.memory_used !== undefined &&
                                 gpuUsage.memory_total !== undefined && (
                                   <Progress
+                                    data-testid={`hardware-gpu-mem-progress-${index}`}
                                     value={(gpuUsage.memory_used / gpuUsage.memory_total) * 100}
                                     tone={(gpuUsage.memory_used / gpuUsage.memory_total) * 100 > 90 ? 'error' : 'primary'}
                                     aria-label="GPU memory usage"
@@ -276,7 +283,7 @@ export function HardwareMonitor() {
             </div>
           </>
         ) : (
-          <Card>
+          <Card data-testid="hardware-waiting-card">
             <div className="text-center py-8">
               <Text type="secondary">
                 {sseConnected
