@@ -307,3 +307,38 @@ async fn test_provider_chain_reorder_persists() {
         assert_eq!(got["provider_chain"][1], order[1]);
     }
 }
+
+/// A provider config update (PUT /web-search/providers/{provider}) ALSO emits
+/// a `WebSearchSettings`/`update` sync frame to admins (handlers.rs:432-440) —
+/// the second emit point, distinct from the settings PUT covered above. The
+/// admin observer must receive it; a `web_search::use`-only user must not.
+#[tokio::test]
+async fn test_web_search_provider_update_emits_sync_to_admins_only() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "ws_prov_admin", admin_perms()).await;
+    let plain =
+        create_user_with_permissions(&server, "ws_prov_plain", &["web_search::use"]).await;
+
+    let mut admin_probe = SyncProbe::open(&server, &admin.token).await;
+    let mut plain_probe = SyncProbe::open(&server, &plain.token).await;
+
+    let resp = reqwest::Client::new()
+        .put(server.api_url("/web-search/providers/brave"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "api_key": "brave-secret-123" }))
+        .send()
+        .await
+        .expect("provider update");
+    assert_eq!(resp.status(), 200, "provider update should 200");
+
+    let frame = admin_probe
+        .expect_event("web_search_settings", "update", Duration::from_secs(5))
+        .await;
+    assert_eq!(
+        frame.id,
+        Uuid::nil().to_string(),
+        "singleton-row settings frame carries the nil id"
+    );
+
+    plain_probe.expect_silence(Duration::from_secs(2)).await;
+}
