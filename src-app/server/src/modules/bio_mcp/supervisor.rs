@@ -352,7 +352,23 @@ pub async fn shutdown() {
 
 #[cfg(test)]
 mod tests {
-    use super::fingerprint;
+    use super::{fingerprint, shutdown, STATE};
+
+    /// `shutdown()` is the graceful-shutdown hook: with no sidecar running it
+    /// must be a safe no-op (no panic / no lock poisoning), idempotent across
+    /// repeated calls, and leave the supervisor state with no `running` sidecar
+    /// so the next `ensure_healthy()` would respawn cleanly.
+    #[tokio::test]
+    async fn shutdown_is_idempotent_noop_when_idle() {
+        // Nothing has spawned a sidecar in this unit-test process.
+        shutdown().await;
+        shutdown().await; // idempotent — second call must not panic either.
+        let st = STATE.lock().await;
+        assert!(
+            st.running.is_none(),
+            "after shutdown the supervisor holds no running sidecar"
+        );
+    }
 
     #[test]
     fn fingerprint_is_stable_and_value_sensitive() {
