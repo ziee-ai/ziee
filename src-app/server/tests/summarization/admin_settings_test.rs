@@ -423,3 +423,43 @@ async fn test_read_only_user_can_get_but_not_put() {
         "read perm alone must NOT allow PUT — manage perm required"
     );
 }
+
+// ── Sync emission (gap 2b4d98f76c40 — SummarizationAdminSettings) ────────────
+
+/// A settings PUT must publish `summarization_admin_settings`/`update` to
+/// holders of `summarization::settings::read` (handlers.rs:194-200, audience
+/// `Audience::perm::<SummarizationSettingsRead>()`), and must NOT reach a user
+/// without that read perm. Closes the SyncEntity::SummarizationAdminSettings
+/// emit-coverage gap.
+#[tokio::test]
+async fn test_summarization_settings_update_emits_sync_to_admins_only() {
+    use crate::common::sync_probe::SyncProbe;
+    use std::time::Duration;
+    use uuid::Uuid;
+
+    let (server, admin) = admin_user("summ_sync_admin").await;
+    // Plain user: subscribes, but lacks summarization::settings::read.
+    let plain =
+        crate::common::test_helpers::create_user_with_permissions(&server, "summ_sync_plain", &[])
+            .await;
+
+    let mut admin_probe = SyncProbe::open(&server, &admin.token).await;
+    let mut plain_probe = SyncProbe::open(&server, &plain.token).await;
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+
+    let frame = admin_probe
+        .expect_event("summarization_admin_settings", "update", Duration::from_secs(5))
+        .await;
+    // Singleton row → nil wire id (notify-and-refetch).
+    assert_eq!(frame.id, Uuid::nil().to_string());
+
+    plain_probe.expect_silence(Duration::from_secs(1)).await;
+}

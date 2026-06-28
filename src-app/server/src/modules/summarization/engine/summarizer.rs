@@ -1147,4 +1147,40 @@ mod tests {
         assert_eq!(request_text(&req, 2), "m0");
         assert_eq!(request_text(&req, 3), "m1");
     }
+    // ── Non-text message handling (gap 9846f7fe8f6d) ──────────────────────
+    // build_transcript + decide_summarize_action must treat messages whose
+    // only content is non-text (tool calls, file attachments → text == "")
+    // as contributing nothing to the LLM transcript.
+
+    #[test]
+    fn build_transcript_skips_non_text_messages() {
+        let msgs = vec![
+            msg(Uuid::new_v4(), "user", "hello"),
+            // A tool-only / file-only message: message_to_summarizable yields "".
+            msg(Uuid::new_v4(), "assistant", ""),
+            msg(Uuid::new_v4(), "user", "world"),
+        ];
+        let t = build_transcript(&msgs);
+        assert!(t.contains("user: hello"), "text messages kept: {t:?}");
+        assert!(t.contains("user: world"), "text messages kept: {t:?}");
+        assert!(
+            !t.contains("assistant:"),
+            "a non-text (empty) message must be omitted from the transcript: {t:?}"
+        );
+    }
+
+    #[test]
+    fn all_non_text_messages_never_summarize() {
+        // A branch whose messages are all non-text contributes 0 transcript
+        // tokens, so summarization is a Noop (summarizer.rs:194-199 intent).
+        let msgs = vec![
+            msg(Uuid::new_v4(), "user", ""),
+            msg(Uuid::new_v4(), "assistant", ""),
+        ];
+        assert_eq!(
+            decide_summarize_action(&msgs, 10, 10, None),
+            SummarizeAction::Noop,
+            "all-non-text branch must not trigger summarization"
+        );
+    }
 }

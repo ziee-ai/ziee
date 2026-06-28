@@ -483,3 +483,77 @@ async fn failed_run_tools_call_surfaces_error_without_logs_resource() {
         "expose_logs:never must NOT attach a logs_resource link to the error result: {result}"
     );
 }
+
+// ── bd04131ef657: resources/list + read for a cleaned-up (deleted) run ───────
+
+/// After a run is DELETED (the "expired / cleaned-up run" case), its resources
+/// must disappear from `resources/list` and a `resources/read` of one of its
+/// URIs must fail GRACEFULLY (a JSON-RPC error, never a panic / 500). Exercises
+/// resources.rs:95-182 against a run whose metadata no longer exists.
+#[tokio::test]
+async fn resources_list_omits_deleted_run_and_read_errors() {
+    let server = TestServer::start().await;
+    let user = mcp_user(&server, "wf_res_deleted").await;
+
+    let (run_id, _result, _conv) =
+        run_via_tools_call(&server, &user, "bd04-deleted", REAL_LOGGED_WORKFLOW_YAML).await;
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(final_run["status"], "completed", "run completed: {final_run}");
+
+    let output_uri = format!("ziee://workflow-runs/{run_id}/outputs/summary");
+
+    // Precondition: the completed run's output is listed.
+    let resp = jsonrpc(&server, &user.token, None, "resources/list", json!({})).await;
+    let body: Json = resp.json().await.unwrap();
+    assert!(
+        body["result"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["uri"].as_str() == Some(output_uri.as_str())),
+        "precondition: run output must be listed before deletion: {body}"
+    );
+
+    // Clean up the run (terminal → deletable).
+    let del = reqwest::Client::new()
+        .delete(server.api_url(&format!("/workflow-runs/{run_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("delete run");
+    assert!(
+        del.status().is_success(),
+        "deleting a terminal run must succeed, got {}",
+        del.status()
+    );
+
+    // resources/list no longer enumerates the deleted run's resources.
+    let resp = jsonrpc(&server, &user.token, None, "resources/list", json!({})).await;
+    assert_eq!(resp.status(), 200, "resources/list still 200 after cleanup");
+    let body: Json = resp.json().await.unwrap();
+    assert!(body["error"].is_null(), "resources/list must not error post-cleanup: {body}");
+    assert!(
+        !body["result"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["uri"].as_str().map(|u| u.contains(&run_id.to_string())).unwrap_or(false)),
+        "no resource of the deleted run may be listed: {body}"
+    );
+
+    // resources/read of the now-gone resource fails gracefully (JSON-RPC error).
+    let resp = jsonrpc(
+        &server,
+        &user.token,
+        None,
+        "resources/read",
+        json!({ "uri": output_uri }),
+    )
+    .await;
+    assert_eq!(resp.status(), 200, "JSON-RPC transport still 200");
+    let body: Json = resp.json().await.unwrap();
+    assert!(
+        body["error"].is_object() || body["result"]["isError"] == json!(true),
+        "reading a deleted run's resource must surface an error, not crash: {body}"
+    );
+}

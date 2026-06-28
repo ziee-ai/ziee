@@ -517,3 +517,52 @@ async fn test_admin_providers_create_rejects_bad_type() {
     let body: serde_json::Value = r.json().await.unwrap();
     assert_eq!(body["error_code"], json!("INVALID_PROVIDER_TYPE"));
 }
+
+// ── Sync emission (gap 2b4d98f76c40 — AuthProvider) ──────────────────────────
+
+/// Creating an auth provider must publish an `auth_provider`/`create` frame to
+/// holders of `auth_providers::read` (handlers.rs:1767-1773, audience
+/// `Audience::perm::<AuthProvidersRead>()`) carrying the new provider id, and
+/// must NOT reach a plain member. Closes the SyncEntity::AuthProvider emit gap.
+/// Created with `enabled: false` so no network health-probe runs.
+#[tokio::test]
+async fn create_auth_provider_emits_sync_to_admins_only() {
+    use crate::common::sync_probe::SyncProbe;
+    use std::time::Duration;
+
+    let test_server = crate::common::TestServer::start().await;
+    let admin_token = make_admin(&test_server).await;
+    let member_token = make_member(&test_server, "ap_sync_member").await;
+
+    let mut admin_probe = SyncProbe::open(&test_server, &admin_token).await;
+    let mut member_probe = SyncProbe::open(&test_server, &member_token).await;
+
+    let r = reqwest::Client::new()
+        .post(test_server.api_url("/admin/auth-providers"))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .json(&json!({
+            "name": "sync-oidc",
+            "provider_type": "oidc",
+            "enabled": false,
+            "config": {
+                "client_id": "cid",
+                "client_secret": "sec",
+                "issuer_url": "https://accounts.google.com",
+                "scopes": ["openid", "email"]
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 201);
+    let created: serde_json::Value = r.json().await.unwrap();
+    let id = created["id"].as_str().unwrap().to_string();
+
+    let frame = admin_probe
+        .expect_event("auth_provider", "create", Duration::from_secs(5))
+        .await;
+    assert_eq!(frame.id, id, "frame carries the new provider id");
+
+    // A plain member lacks auth_providers::read → outside the audience.
+    member_probe.expect_silence(Duration::from_secs(1)).await;
+}
