@@ -1343,3 +1343,70 @@ async fn configured_embedder_with_dead_provider_is_rejected_not_5xx() {
         "FTS must still find the term after the embedder was rejected"
     );
 }
+
+/// Mid-session permission ESCALATION takes effect on the next request — the
+/// grant complement of `admin_read_permission_revocation_is_enforced_per_request`.
+///
+/// `RequirePermissions` re-resolves the caller's group permissions live on every
+/// request (`extractors.rs:130-151` → `Repos.user.get_user_groups`), so a
+/// permission added to the user's group AFTER their token was minted must be
+/// honored without a re-login. A regression that cached the initial (denied)
+/// permission set would keep returning 403 and fail this test.
+#[tokio::test]
+async fn admin_read_permission_grant_takes_effect_mid_session() {
+    let server = TestServer::start().await;
+    // Start WITHOUT file_rag::admin::read — only a normal profile permission.
+    // create_user_with_permissions seeds these onto a dedicated, non-default
+    // group we can later widen.
+    let user = create_user_with_permissions(
+        &server,
+        "file_rag_grant",
+        &["profile::read"],
+    )
+    .await;
+
+    // Before the grant: the admin-read gate refuses (the user genuinely lacks it).
+    let before = reqwest::Client::new()
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get settings (pre-grant)");
+    assert_eq!(
+        before.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "a user lacking file_rag::admin::read must be refused before the grant"
+    );
+
+    // Grant mid-flow: add file_rag::admin::read to the user's custom group.
+    // No re-login, same token — the next request must re-resolve and admit it.
+    let pool = db_pool(&server).await;
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let affected = sqlx::query(
+        "UPDATE groups \
+         SET permissions = ARRAY['profile::read','file_rag::admin::read']::text[], \
+             updated_at = NOW() \
+         WHERE is_default = false AND id IN \
+           (SELECT group_id FROM user_groups WHERE user_id = $1)",
+    )
+    .bind(user_uuid)
+    .execute(&pool)
+    .await
+    .expect("grant file_rag::admin::read to custom group")
+    .rows_affected();
+    assert!(affected >= 1, "expected to widen at least the custom permissions group");
+
+    // After the grant: the SAME token now succeeds — perms re-resolved live,
+    // not served from a cached deny.
+    let after = reqwest::Client::new()
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get settings (post-grant)");
+    assert_eq!(
+        after.status(),
+        reqwest::StatusCode::OK,
+        "after the grant is added, the same token must be re-checked and admitted (200), proving mid-session escalation takes effect"
+    );
+}
