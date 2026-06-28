@@ -1019,9 +1019,10 @@ export const useChatStore = create<ChatState>()(
         precedingUserMsg.contents,
       )
 
-      if (!userText)
-        return // Pre-fill text input with the original user message text
-      ;(get() as any).TextStore?.setText(userText)
+      // Pre-fill text input with the original user message text. Skip only
+      // the pre-fill when the preceding user message is attachment-only (no
+      // text) — the regeneration itself must still proceed below.
+      if (userText) (get() as any).TextStore?.setText(userText)
 
       // Mark as assistant-level fork so computeForkPoints anchors the
       // navigator at the assistant bubble on both parent and child branches

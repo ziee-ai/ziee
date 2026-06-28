@@ -130,6 +130,7 @@ export default function SettingsPage() {
 
   const SettingsMenu = () => (
     <Menu
+      aria-label="Settings navigation"
       className={`
       w-fit
       h-full

@@ -1,7 +1,12 @@
 import { create } from 'zustand'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
-import type { InstanceResponse, VersionUsageResponse } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import {
+  Permissions,
+  type InstanceResponse,
+  type VersionUsageResponse,
+} from '@/api-client/types'
 import type { RuntimeEngine } from '../types'
 import { emitRuntimeModelUsageChanged } from '../events/emitters'
 
@@ -128,6 +133,9 @@ export const useRuntimeModelUsageStore = create<RuntimeModelUsageState>(
     __init__: {
       __store__: () => {
         const reload = () => {
+          // Self-gate so a non-runtime-admin never 403s on a
+          // `sync:reconnect` (which fires for every store).
+          if (!hasPermissionNow(Permissions.RuntimeVersionRead)) return
           for (const engine of get().usage.keys()) {
             get().loadUsage(engine)
           }
@@ -136,6 +144,12 @@ export const useRuntimeModelUsageStore = create<RuntimeModelUsageState>(
         bus.on('runtime_version.created', reload, 'RuntimeModelUsageStore')
         bus.on('runtime_version.deleted', reload, 'RuntimeModelUsageStore')
         bus.on('runtime_version.default_changed', reload, 'RuntimeModelUsageStore')
+        // Cross-device: RuntimeVersion.store refetches versions on
+        // `sync:runtime_version` but does NOT re-emit the local
+        // `runtime_version.*` events, so this usage view would otherwise
+        // stay stale after a remote version change. Subscribe directly.
+        bus.on('sync:runtime_version', reload, 'RuntimeModelUsageStore')
+        bus.on('sync:reconnect', reload, 'RuntimeModelUsageStore')
       }
     },
 

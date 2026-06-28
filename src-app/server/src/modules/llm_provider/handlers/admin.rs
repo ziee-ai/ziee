@@ -429,4 +429,5 @@ pub fn delete_provider_docs(
         .response_with::<400, (), _>(|res| res.description("Cannot delete built-in provider"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Provider not found"))
+        .response_with::<500, (), _>(|res| res.description("Internal server error"))
 }

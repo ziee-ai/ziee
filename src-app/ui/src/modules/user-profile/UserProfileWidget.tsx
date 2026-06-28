@@ -21,9 +21,9 @@ function SidebarItem({
 
   return (
     <div
-      onClick={onClick}
       role="button"
       tabIndex={0}
+      onClick={onClick}
       aria-label={label}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -38,6 +38,14 @@ function SidebarItem({
         e.currentTarget.style.color = token.colorTextLightSolid
       }}
       onMouseLeave={e => {
+        e.currentTarget.style.backgroundColor = 'transparent'
+        e.currentTarget.style.color = token.colorTextBase
+      }}
+      onFocus={e => {
+        e.currentTarget.style.backgroundColor = token.colorPrimaryHover
+        e.currentTarget.style.color = token.colorTextLightSolid
+      }}
+      onBlur={e => {
         e.currentTarget.style.backgroundColor = 'transparent'
         e.currentTarget.style.color = token.colorTextBase
       }}

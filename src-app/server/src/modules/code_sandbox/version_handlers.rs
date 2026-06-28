@@ -21,7 +21,6 @@
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
-use futures_util::Stream;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use uuid::Uuid;

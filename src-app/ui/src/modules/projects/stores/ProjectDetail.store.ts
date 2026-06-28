@@ -2,12 +2,12 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import { Permissions } from '@/api-client/types'
-import { hasPermissionNow } from '@/core/permissions'
-import type {
-  Project,
-  ConversationResponse,
+import {
+  Permissions,
+  type Project,
+  type ConversationResponse,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
 /// Page size for the project-conversations list. Matches what the
@@ -123,6 +123,18 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
               },
               GROUP,
             )
+
+            // Cross-device sync: a `project` change on another device (or a
+            // reconnect resync) refetches the currently-loaded project so
+            // this detail page doesn't show stale data. Self-gates on
+            // `projects::read` so a non-admin reconnect never 403s.
+            const reload = () => {
+              if (!hasPermissionNow(Permissions.ProjectsRead)) return
+              const id = get().project?.id
+              if (id) void get().loadProject(id)
+            }
+            eventBus.on('sync:project', reload, GROUP)
+            eventBus.on('sync:reconnect', reload, GROUP)
           },
         },
 

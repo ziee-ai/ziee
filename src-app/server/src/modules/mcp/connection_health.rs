@@ -25,7 +25,6 @@ use serde::Serialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::client::auth::OAuthClientConfig;
 use super::handlers::test_connection::run_connection_test;
 use super::models::{McpServer, TransportType};
 

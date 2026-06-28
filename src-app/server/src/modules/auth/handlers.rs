@@ -573,10 +573,11 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?;
 
     // A deactivated account must not keep reading its profile on a still-valid
-    // JWT. 401 is the same teardown signal the session-sync path relies on:
-    // delete_user / toggle-inactive emit a Session signal expecting the device's
-    // /auth/me re-bootstrap to 401 and log out. Mirrors the is_active gate the
-    // login + refresh handlers already enforce.
+    // JWT. JwtAuth only validates the token — it never re-checks is_active, so
+    // reject here. 401 is the same teardown signal the session-sync path relies
+    // on: delete_user / toggle-inactive emit a Session signal expecting the
+    // device's /auth/me re-bootstrap to 401 and log out. Mirrors the is_active
+    // gate the login + refresh handlers (and RequirePermissions) already enforce.
     if !user.is_active {
         return Err((
             StatusCode::UNAUTHORIZED,

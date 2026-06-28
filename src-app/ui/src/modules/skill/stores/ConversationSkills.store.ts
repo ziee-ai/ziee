@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type { AvailableSkillEntry, Skill } from '@/api-client/types'
+import { Permissions, type AvailableSkillEntry, type Skill } from '@/api-client/types'
+import { Stores } from '@/core/stores'
+import { hasPermissionNow } from '@/core/permissions'
+
+const GROUP = 'ConversationSkillsStore'
 
 /**
  * Per-conversation skill opt-out store (Path B). Every installed skill
@@ -22,6 +26,9 @@ interface ConversationSkillsState {
   loadAvailable: (conversationId: string) => Promise<void>
   hide: (skillId: string, conversationId: string) => Promise<void>
   unhide: (skillId: string, conversationId: string) => Promise<void>
+
+  __init__: { __store__: () => void }
+  __destroy__: () => void
 }
 
 export const useConversationSkillsStore = create<ConversationSkillsState>()(
@@ -31,6 +38,28 @@ export const useConversationSkillsStore = create<ConversationSkillsState>()(
         available: {},
         loading: {},
         error: null,
+
+        __init__: {
+          __store__: () => {
+            // A remote skill change (install/remove, group-restriction
+            // edit) alters a conversation's effective available set.
+            // Refetch every loaded conversation; self-gate on skills::read
+            // so a user lacking it never 403s on `sync:reconnect`.
+            const reload = () => {
+              if (!hasPermissionNow(Permissions.SkillsRead)) return
+              for (const cid of Object.keys(get().available)) {
+                void get().loadAvailable(cid)
+              }
+            }
+            const eventBus = Stores.EventBus
+            eventBus.on('sync:skill', reload, GROUP)
+            eventBus.on('sync:reconnect', reload, GROUP)
+          },
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners(GROUP)
+        },
 
         loadAvailable: async (conversationId: string) => {
           set(draft => {

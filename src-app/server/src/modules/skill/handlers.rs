@@ -89,6 +89,7 @@ pub fn get_user_skill_docs(op: TransformOperation) -> TransformOperation {
 /// `Skill` row; this serves the substantive procedural content for the
 /// detail drawer (plan §5). Path is anchored to the row's
 /// `extracted_path` + `entry_point` — no user-supplied path component.
+#[debug_handler]
 pub async fn get_skill_body(
     auth: RequirePermissions<(SkillsRead,)>,
     Path(id): Path<Uuid>,

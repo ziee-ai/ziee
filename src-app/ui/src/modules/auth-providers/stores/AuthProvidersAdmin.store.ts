@@ -69,6 +69,7 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
       providers: [],
       // Start in the loading state so the first paint shows a spinner, not a
       // spurious "No providers yet" empty state, before __init__ loads.
+      // loadProviders always resets this on success/error.
       loading: true,
       saving: false,
       error: null,

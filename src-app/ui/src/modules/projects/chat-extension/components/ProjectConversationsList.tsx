@@ -42,6 +42,8 @@ export function ProjectConversationsList({
     )
   }
 
+  // Surface a load failure instead of the misleading "no conversations"
+  // empty state below.
   if (conversationsError && conversations.length === 0) {
     return (
       <Alert

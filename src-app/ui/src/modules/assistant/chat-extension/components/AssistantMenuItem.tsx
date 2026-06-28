@@ -102,9 +102,10 @@ function AssistantOption({
   return (
     <>
       <div
-        onClick={onClick}
-        role="menuitem"
+        role="button"
         tabIndex={0}
+        aria-pressed={active}
+        onClick={onClick}
         aria-current={active || undefined}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -123,6 +124,13 @@ function AssistantOption({
             e.currentTarget.style.backgroundColor = token.colorFillSecondary
         }}
         onMouseLeave={e => {
+          if (!active) e.currentTarget.style.backgroundColor = 'transparent'
+        }}
+        onFocus={e => {
+          if (!active)
+            e.currentTarget.style.backgroundColor = token.colorFillSecondary
+        }}
+        onBlur={e => {
           if (!active) e.currentTarget.style.backgroundColor = 'transparent'
         }}
       >

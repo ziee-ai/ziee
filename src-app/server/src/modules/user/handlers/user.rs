@@ -444,6 +444,15 @@ pub async fn reset_user_password(
         Audience::owner(request.user_id),
         origin.0,
     );
+    // Also emit a Profile signal — a reset can flip `has_password`
+    // (none → set). Mirrors set_active's owner-scoped Profile emit.
+    sync_publish(
+        SyncEntity::Profile,
+        SyncAction::Update,
+        request.user_id,
+        Audience::owner(request.user_id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
