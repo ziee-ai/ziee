@@ -292,23 +292,29 @@ export function McpServerCard({
                       disabled={server.enabled}
                       onConfirm={handleDelete}
                     >
-                      <Button
-                        icon={<DeleteOutlined />}
-                        danger
-                        disabled={server.enabled}
-                        onClick={e => {
-                          e.stopPropagation()
-                          if (server.enabled) {
-                            message.warning(
-                              'Please disable the server before deleting it',
-                            )
-                          }
-                        }}
-                        aria-label={`Delete ${server.display_name}`}
-                        data-testid="mcp-server-delete-btn"
+                      {/* A disabled Button never fires onClick, so the
+                          previous click-time warning was unreachable. Surface
+                          WHY the action is blocked via a hover Tooltip instead
+                          (antd wraps disabled children so the tooltip still
+                          triggers). */}
+                      <Tooltip
+                        title={
+                          server.enabled
+                            ? 'Disable the server before deleting it'
+                            : ''
+                        }
                       >
-                        Delete
-                      </Button>
+                        <Button
+                          icon={<DeleteOutlined />}
+                          danger
+                          disabled={server.enabled}
+                          onClick={e => e.stopPropagation()}
+                          aria-label={`Delete ${server.display_name}`}
+                          data-testid="mcp-server-delete-btn"
+                        >
+                          Delete
+                        </Button>
+                      </Tooltip>
                     </Popconfirm>
                   )}
                 </>
