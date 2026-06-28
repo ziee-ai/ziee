@@ -712,3 +712,46 @@ async fn test_by_id_404_for_nonexistent_repository() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+/// Tier-3 LIVE-credential connectivity test (the existing suite uses wiremock).
+/// Exercises the real `test_repository_connectivity` path against Hugging Face's
+/// `whoami-v2` endpoint with the real `HUGGINGFACE_API_KEY` (shipped in
+/// `tests/.env.test`). Soft-skips when the key is unset (mirrors the other
+/// real-credential tests' pattern).
+#[tokio::test]
+async fn live_huggingface_connection_test_with_real_credentials() {
+    let hf_key = match std::env::var("HUGGINGFACE_API_KEY") {
+        Ok(k) if !k.trim().is_empty() => k,
+        _ => {
+            eprintln!(
+                "Skipping live_huggingface_connection_test_with_real_credentials — HUGGINGFACE_API_KEY unset"
+            );
+            return;
+        }
+    };
+
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "repo_live", &["llm_repositories::read"]).await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/llm-repositories/test"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "HF Live",
+            "url": "https://huggingface.co",
+            "auth_type": "api_key",
+            "auth_config": {
+                "api_key": hf_key,
+                "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(
+        body["success"], true,
+        "live Hugging Face connection test with a real token must succeed: {body}"
+    );
+}
