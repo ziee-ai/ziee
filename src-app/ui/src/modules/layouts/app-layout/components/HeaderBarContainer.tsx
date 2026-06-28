@@ -1,4 +1,3 @@
-import tinycolor from 'tinycolor2'
 import { Stores } from '@/core/stores'
 
 interface HeaderBarContainerProps {
@@ -12,14 +11,13 @@ export const HeaderBarContainer = ({
   className = '',
   style = {},
 }: HeaderBarContainerProps) => {
-  const bgCard = '#ffffff'
   const { isSidebarCollapsed } = Stores.AppLayout
 
-  // Same-color alpha-faded transparent — pairs better with the
-  // bg-color top stop than the CSS `transparent` keyword, which
-  // interpolates through transparent BLACK and can produce a faint
-  // gray midpoint on light themes.
-  const fadeOut = tinycolor(bgCard).setAlpha(0).toRgbString()
+  // Theme-aware soft-fade: top stop = the `--card` token, bottom stop = that SAME
+  // color at alpha 0 (via `hsl(var(--card) / 0)`), so it fades through the surface
+  // hue rather than through transparent black (no gray midpoint), and follows the
+  // active theme / dark mode instead of a hardcoded white.
+  const fadeGradient = `linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card) / 0))`
 
   return (
     <div
@@ -44,6 +42,9 @@ export const HeaderBarContainer = ({
           clipped by the header — smoother than a hard line. */}
       <div
         aria-hidden="true"
+        // Theme-token gradient (card surface → same color at alpha 0); a two-stop
+        // gradient can't be expressed as a single semantic utility class.
+        data-allow-custom-color
         style={{
           position: 'absolute',
           left: 0,
@@ -51,7 +52,7 @@ export const HeaderBarContainer = ({
           top: '100%',
           height: 16,
           pointerEvents: 'none',
-          background: `linear-gradient(to bottom, ${bgCard}, ${fadeOut})`,
+          background: fadeGradient,
         }}
       />
     </div>

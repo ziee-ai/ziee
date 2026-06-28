@@ -320,6 +320,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           ? { 'data-sidebar-mask-active': '' }
           : {})}
         className={'fixed h-full w-full z-3'}
+        // Runtime-computed: derives from the `--card` theme token via tinycolor with a
+        // state-driven alpha (0.7 when the mobile overlay is open, else 0) — not a static hue.
+        data-allow-custom-color
         style={{
           backgroundColor: tinycolor('hsl(var(--card))')
             .setAlpha(windowMinSize.xs && !isSidebarCollapsed ? 0.7 : 0)
@@ -343,6 +346,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         aria-hidden={
           windowMinSize.xs ? isSidebarCollapsed : undefined
         }
+        // Neutral, state-gated drop shadow (rgba black, not a brand hue) that is part of the
+        // combined inline transition below; value is computed per collapse/viewport state.
+        data-allow-custom-color
         // STABLE style shape: same property set in every state, only
         // the VALUES change. The previous version spread an entire
         // alternate style object when `xs` flipped — which swapped
