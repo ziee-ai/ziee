@@ -9,7 +9,7 @@
 //! / `decrypt_secret` helpers (pgcrypto pgp_sym_*). Storage key comes
 //! from `ziee::storage_key()`.
 
-use ziee::{AppError, decrypt_secret, encrypt_secret, resolve_optional_secret};
+use ziee::{AppError, encrypt_secret, resolve_optional_secret};
 use sqlx::PgPool;
 
 use super::models::{RemoteAccessSettings, RemoteAccessSettingsRow};

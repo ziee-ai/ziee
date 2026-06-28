@@ -63,7 +63,11 @@ pub struct CacheEntry {
     pub status: String,
     pub content_hash: Option<String>,
     pub source: Option<String>,
+    /// Stored in DB for completeness; never read by application code.
+    #[allow(dead_code)]
     pub license: Option<String>,
+    /// Stored in DB for completeness; never read by application code.
+    #[allow(dead_code)]
     pub version: Option<String>,
 }
 

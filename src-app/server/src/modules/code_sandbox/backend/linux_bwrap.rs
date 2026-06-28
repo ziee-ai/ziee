@@ -12,7 +12,7 @@ use super::SandboxBackend;
 use crate::common::AppError;
 use crate::core::config::CodeSandboxConfig;
 use crate::modules::code_sandbox::probes;
-use crate::modules::code_sandbox::runtime_mount::{self, EnsureOutcome, EvictOutcome};
+use crate::modules::code_sandbox::runtime_mount::{self, EnsureOutcome};
 use crate::modules::code_sandbox::sandbox::{self, SandboxRunResult};
 use crate::modules::code_sandbox::types::{CodeSandboxState, HostCapabilities, SandboxContext};
 
@@ -85,21 +85,12 @@ impl SandboxBackend for LinuxBwrapBackend {
         runtime_mount::shutdown().await
     }
 
-    async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {
-        runtime_mount::evict_flavor(cache_dir, flavor).await
-    }
-
     async fn exec_raw_argv(
         &self,
         argv: Vec<String>,
         _rootfs_squashfs: &Path,
         timeout: std::time::Duration,
     ) -> Result<super::RawExecResult, AppError> {
-        // Linux backend: bwrap on the host directly. `rootfs_squashfs` is
-        // unused — Linux tests bind-mount the already-mounted rootfs into
-        // bwrap via the argv (`--ro-bind /var/lib/ziee/sandbox-rootfs/current
-        // /sandbox-rootfs`). The mount is set up by `runtime_mount` /
-        // `just sandbox-mount` before the test runs.
         let output = tokio::time::timeout(
             timeout,
             tokio::process::Command::new("bwrap").args(&argv).output(),

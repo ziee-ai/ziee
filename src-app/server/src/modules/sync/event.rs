@@ -196,7 +196,7 @@ pub enum Audience {
     Everyone,
 }
 
-/// A composable permission requirement (mirrors the frontend `PermissionExpr`).
+/// A composable permission requirement
 #[derive(Debug, Clone)]
 pub enum PermRule {
     /// The connection must hold EVERY listed permission.
@@ -225,12 +225,14 @@ impl Audience {
     /// Deliver to holders of ALL permissions in the tuple, e.g.
     /// `Audience::all_of::<(LlmProvidersRead, LlmModelsRead)>()`. Reuses the
     /// same `PermissionList` tuple machinery as `RequirePermissions<(A, B)>`.
+    #[allow(dead_code)]
     pub fn all_of<L: PermissionList>() -> Self {
         Audience::Perm(PermRule::All(L::permissions()))
     }
 
     /// Deliver to holders of ANY permission in the tuple, e.g.
     /// `Audience::any_of::<(McpServersRead, McpServersAdminRead)>()`.
+    #[allow(dead_code)]
     pub fn any_of<L: PermissionList>() -> Self {
         Audience::Perm(PermRule::Any(L::permissions()))
     }

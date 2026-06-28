@@ -35,7 +35,7 @@ use crate::modules::workflow::dispatch::{
     ToolDispatcher,
 };
 use crate::modules::workflow::events::{
-    PerRunEmitter, ProgressEmitter, SSEElicitationResolvedData, SSERunCancelledData,
+    PerRunEmitter, ProgressEmitter, SSERunCancelledData,
     SSERunCompletedData, SSERunFailedData, SSERunStartedData, SSEStepCompletedData,
     SSEStepFailedData, SSEStepManifestItem, SSEStepStartedData, SSEWorkflowRunEvent,
 };
@@ -45,10 +45,10 @@ use crate::modules::workflow::models::WorkflowRunStatus;
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{
-    ItemProgress, OutputMeta, ParsedAs, RunContext, StepKindTag, StepResult,
+    ParsedAs, RunContext, StepKindTag, StepResult,
 };
 use crate::modules::workflow::validate::{
-    OutputDef, StepConfig, StepDef, WorkflowDef, parse_workflow_yaml, topo_sort_steps,
+    OutputDef, StepConfig, WorkflowDef, topo_sort_steps,
 };
 
 /// Default per-run wall-clock cap (30 min). Used when a workflow does NOT declare

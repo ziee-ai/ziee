@@ -46,15 +46,4 @@ logging:
     )
 }
 
-/// Health check endpoint path
-pub const HEALTH_CHECK_PATH: &str = "/api/health";
-
-/// Check server health via HTTP
-pub async fn check_server_health(port: u16) -> bool {
-    let url = format!("http://127.0.0.1:{}{}", port, HEALTH_CHECK_PATH);
-
-    match reqwest::get(&url).await {
-        Ok(response) => response.status().is_success(),
-        Err(_) => false,
-    }
-}
+// HEALTH_CHECK_PATH and check_server_health removed — dead code.
