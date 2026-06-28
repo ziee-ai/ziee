@@ -954,3 +954,72 @@ async fn multi_step_upload_analyze_mcp_edit_then_followup() {
         "the MCP remember edit should have persisted a memory row; rows={rows:?}"
     );
 }
+
+/// Cross-subsystem combined flow: a FILE ATTACHMENT (file chat-extension inlines
+/// its bytes) and MEMORY (the memory chat-extension attaches + the model calls
+/// `remember`) are both active in the SAME chat turn. Asserts the file content
+/// reached the model AND a memory row was persisted — the file+memory+chat
+/// intersection none of the single-subsystem tests cover together.
+#[tokio::test]
+async fn file_attachment_and_memory_combine_in_one_turn() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_file_mem").await;
+    enable_memory(&server, &user).await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "report.txt",
+        "COMBINED_FILE_MARKER the quarterly total is 100 units",
+    )
+    .await;
+
+    // One turn: attach the file (inlined this turn) AND drive the remember tool.
+    let reply = send_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "STUB_PLAN=remember The quarterly total is 100 units.",
+        &[file_id.clone()],
+        Some(true),
+    )
+    .await;
+    assert!(reply.contains("remember that"), "the turn should acknowledge the save; got: {reply}");
+
+    // (a) The attached file's content reached the model (file chat-extension).
+    let saw_file = stub
+        .requests()
+        .iter()
+        .any(|r| r.all_text.contains("COMBINED_FILE_MARKER"));
+    assert!(saw_file, "the attached file content must be inlined into the model request");
+
+    // (b) The memory subsystem fired the remember tool in the same turn.
+    assert!(
+        stub.requests_with_tool("remember") >= 1,
+        "the memory `remember` tool must have been attached + called"
+    );
+
+    // (c) And it persisted a memory row.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT content FROM user_memories WHERE user_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(user_uuid)
+    .fetch_all(&pool)
+    .await
+    .expect("query memories");
+    pool.close().await;
+    assert!(
+        rows.iter().any(|(c,)| c.contains("100 units")),
+        "the remember edit should persist a memory row; rows={rows:?}"
+    );
+}
