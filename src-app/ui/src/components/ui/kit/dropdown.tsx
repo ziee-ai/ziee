@@ -26,11 +26,17 @@ export interface DropdownProps {
   /** Global selection handler receiving the activated item's `key` (legacy `menu.onClick`).
    *  Fires in addition to a per-item `onClick`. */
   onSelect?: (key: string) => void
+  /** Controlled open state. Omit for the default uncontrolled behavior. */
+  open?: boolean
+  /** Fires when the menu requests an open-state change (pairs with `open`). */
+  onOpenChange?: (open: boolean) => void
+  /** Initial open state when uncontrolled (legacy `defaultOpen`). */
+  defaultOpen?: boolean
 }
 
-export function Dropdown({ items, children, side, align = 'end', disabled, onSelect }: DropdownProps) {
+export function Dropdown({ items, children, side, align = 'end', disabled, onSelect, open, onOpenChange, defaultOpen }: DropdownProps) {
   return (
-    <Root>
+    <Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
       <DropdownMenuTrigger asChild disabled={disabled}>{children}</DropdownMenuTrigger>
       <DropdownMenuContent side={side} align={align}>
         {items.map((it, i) =>
