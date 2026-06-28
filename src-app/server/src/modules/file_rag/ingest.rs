@@ -237,7 +237,7 @@ async fn embed_file_chunks(file_id: Uuid, model_id: Uuid, expected_dim: i32) {
         match embed_batch(model_id, &texts).await {
             Ok(vecs) => {
                 for ((id, uid, _), vec) in batch.iter().zip(vecs.iter()) {
-                    if vec.len() as i32 != expected_dim {
+                    if !embedding_dim_ok(vec.len(), expected_dim) {
                         tracing::warn!(
                             "file_rag: model returned {}-dim vector but column is {}-dim — skipping chunk {}",
                             vec.len(),
@@ -376,5 +376,30 @@ mod ingest_tests {
         // The result is still valid UTF-8 (it is a String, so this also proves
         // no mid-codepoint truncation panicked).
         assert!(s.chars().all(|c| c == '€'));
+    }
+}
+
+/// After an embedding-model swap, a re-embed pass can receive a vector whose
+/// dimension no longer matches the `file_chunks.embedding` column (e.g. a 1024-d
+/// model while the column is halfvec(768)). Storing it would error/corrupt the
+/// index, so both `ingest` and `embed_worker` SKIP such chunks (left NULL →
+/// FTS-only until a full column rebuild). This is the shared guard predicate.
+pub(crate) fn embedding_dim_ok(vec_len: usize, expected_dim: i32) -> bool {
+    vec_len as i32 == expected_dim
+}
+
+#[cfg(test)]
+mod dim_guard_tests {
+    use super::embedding_dim_ok;
+
+    #[test]
+    fn matching_dimension_is_stored_mismatch_is_skipped() {
+        // Same dim → keep.
+        assert!(embedding_dim_ok(768, 768));
+        // Post-swap larger model → mismatch → skip (NOT stored as corrupt).
+        assert!(!embedding_dim_ok(1024, 768));
+        // Smaller / zero-length degenerate vectors are also skipped.
+        assert!(!embedding_dim_ok(384, 768));
+        assert!(!embedding_dim_ok(0, 768));
     }
 }
