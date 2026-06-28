@@ -215,3 +215,67 @@ async fn unauthenticated_client_surfaces_401_without_token_flow() {
         "a client without OAuth must not attempt a token exchange"
     );
 }
+
+// ─── Mid-conversation token re-acquisition on a 401 (not just at connect) ─────
+
+/// The existing coverage exercises the *connection-time* OAuth flow. This test
+/// covers a token that goes stale **mid-conversation**: after a first authorized
+/// call, the server rotates the required access token (simulating expiry /
+/// revocation), so the client's cached bearer now 401s. The client must re-run
+/// the OAuth flow, obtain the new token, and transparently retry — without the
+/// caller seeing an error.
+#[tokio::test]
+async fn token_is_reacquired_on_mid_conversation_401() {
+    let mock = MockMcpServer::start().await;
+    mock.enable_oauth("mcp-client", "mcp-secret", "token-v1");
+    mock.on_method(
+        "tools/list",
+        MockResponse::JsonOk(serde_json::json!({
+            "tools": [{ "name": "t", "description": "d", "inputSchema": { "type": "object" } }]
+        })),
+    );
+
+    let mut client = HttpMcpClient::new_with_oauth(
+        server_config(mock.base_url()),
+        oauth("mcp-client", "mcp-secret"),
+    )
+    .unwrap();
+    client.connect().await.expect("connect runs the OAuth flow");
+
+    // First authorized call uses token-v1.
+    let tools = client.list_tools().await.expect("first list_tools");
+    assert_eq!(tools.len(), 1);
+    let tokens_after_first = mock.count_for("__token");
+    assert!(tokens_after_first >= 1, "token acquired at least once");
+
+    // The access token rotates mid-conversation: the server now requires (and
+    // the token endpoint now issues) token-v2; the client's cached v1 is stale.
+    mock.enable_oauth("mcp-client", "mcp-secret", "token-v2");
+
+    // Next call: cached v1 → 401 → client re-runs OAuth refresh → v2 → retry OK.
+    let tools = client
+        .list_tools()
+        .await
+        .expect("list_tools succeeds after a mid-conversation token refresh");
+    assert_eq!(tools.len(), 1);
+
+    assert!(
+        mock.count_for("__token") > tokens_after_first,
+        "the client must re-acquire the token after a mid-conversation 401"
+    );
+
+    // The retried call carried the refreshed bearer.
+    let last = mock
+        .received()
+        .into_iter()
+        .rev()
+        .find(|r| r.method == "tools/list")
+        .expect("tools/list reached the server");
+    assert_eq!(
+        last.headers.get("authorization").map(String::as_str),
+        Some("Bearer token-v2"),
+        "the retry must carry the freshly-acquired bearer"
+    );
+
+    client.disconnect().await.ok();
+}
