@@ -4,10 +4,15 @@ import {
   FormProvider,
   useForm as useRhfForm,
   useFormContext,
+  useWatch,
+  useFieldArray,
+  useFormState,
+  type ArrayPath,
   type FieldValues,
   type SubmitHandler,
   type UseFormProps,
   type UseFormReturn,
+  type UseFieldArrayReturn,
 } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Field, FieldLabel, FieldContent, FieldDescription, FieldError, FieldGroup } from '../shadcn/field'
@@ -33,6 +38,92 @@ const px = (w: number | string) => (typeof w === 'number' ? `${w}px` : w)
 export { zodResolver }
 export function useForm<T extends FieldValues>(props?: UseFormProps<T>): UseFormReturn<T> {
   return useRhfForm<T>({ mode: 'onTouched', ...props })
+}
+
+// ---------------------------------------------------------------------------
+// react-hook-form escape hatches (typed pass-throughs).
+//
+// These let a child component reach the surrounding <Form>'s state without
+// prop-drilling — the kit equivalents of the legacy form-instance helpers a
+// parent form used to share down the tree.
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the surrounding <Form>'s rhf instance from context (analog of the
+ * legacy `Form.useFormInstance()` / the parent-form-context hook). Use inside
+ * a component rendered under <Form> to call `setValue`/`getValues`/etc.
+ */
+export { useFormContext }
+
+/**
+ * Subscribe to one or more field values and re-render on change (analog of the
+ * legacy `Form.useWatch(name)`). Prefer this over `form.watch` inside deep
+ * children — it reads the rhf control from context.
+ */
+export { useWatch }
+
+/**
+ * Manage a dynamic array/list of fields (analog of the legacy `Form.List`):
+ * returns `{ fields, append, remove, move, insert, ... }`. For a render-prop
+ * surface that mirrors the old list API, prefer the <FormList> helper below.
+ */
+export { useFieldArray }
+
+/**
+ * Subscribe to derived form state (`isDirty`/`errors`/`isSubmitting`/…) from
+ * context without re-rendering on every value change (analog of reading the
+ * legacy form instance's status flags).
+ */
+export { useFormState }
+
+/**
+ * Bind a single controlled field to the surrounding form (analog of the legacy
+ * field wrapper). <FormField> wraps this for the common case; reach for
+ * <Controller> directly only when you need full control over the render.
+ */
+export { Controller }
+
+export type { UseFormReturn, UseFieldArrayReturn }
+
+/**
+ * <FormList> — dynamic array-of-rows field (the kit analog of the legacy
+ * `Form.List`). Built on rhf `useFieldArray`; renders a render-prop child with
+ * the array helpers so callers own the row markup.
+ *
+ *   <FormList name="items">
+ *     {({ fields, append, remove, move }) => (
+ *       <>
+ *         {fields.map((f, i) => (
+ *           <FormField key={f.id} name={`items.${i}.value`} label="Value">
+ *             <Input />
+ *           </FormField>
+ *         ))}
+ *         <Button type="button" onClick={() => append({ value: '' })}>Add</Button>
+ *       </>
+ *     )}
+ *   </FormList>
+ *
+ * `field.id` (NOT the array index) is the stable React key. The control reads
+ * the form from context, so <FormList> must live inside a <Form>.
+ */
+export interface FormListRenderProps<T extends FieldValues> {
+  fields: UseFieldArrayReturn<T>['fields']
+  append: UseFieldArrayReturn<T>['append']
+  remove: UseFieldArrayReturn<T>['remove']
+  move: UseFieldArrayReturn<T>['move']
+  insert: UseFieldArrayReturn<T>['insert']
+  replace: UseFieldArrayReturn<T>['replace']
+  update: UseFieldArrayReturn<T>['update']
+}
+export interface FormListProps<T extends FieldValues> {
+  /** Field path of the array in the surrounding form (e.g. "headers"). */
+  name: ArrayPath<T>
+  children: (helpers: FormListRenderProps<T>) => React.ReactNode
+}
+export function FormList<T extends FieldValues = FieldValues>({ name, children }: FormListProps<T>) {
+  const { control } = useFormContext<T>()
+  const { fields, append, remove, move, insert, replace, update } = useFieldArray<T>({ control, name })
+  return <>{children({ fields, append, remove, move, insert, replace, update })}</>
 }
 
 export interface FormProps<T extends FieldValues> {

@@ -43,6 +43,21 @@ export type { ThemeProviderProps, ThemeContextValue, ThemePreference, ResolvedTh
 // form engine
 export { Form, FormField, useForm, zodResolver } from './kit/form'
 export type { FormProps, FormFieldProps } from './kit/form'
+// rhf escape hatches + dynamic array fields (parent-form-state access / Form.List analog)
+export {
+  Controller,
+  FormList,
+  useFormContext,
+  useWatch,
+  useFieldArray,
+  useFormState,
+} from './kit/form'
+export type {
+  UseFormReturn,
+  UseFieldArrayReturn,
+  FormListProps,
+  FormListRenderProps,
+} from './kit/form'
 
 // controls
 export { Button } from './kit/button'
