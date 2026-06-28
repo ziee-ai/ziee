@@ -175,7 +175,14 @@ async fn import_workflow_inner(
     origin: SyncOrigin,
     multipart: Multipart,
 ) -> ApiResult<Json<Workflow>> {
-    let bytes = read_bundle_field(multipart).await?;
+    let upload = read_bundle_field(multipart).await?;
+    let bytes = upload.bytes;
+    // Query string takes precedence; fall back to the multipart name/scope
+    // fields (the only path the frontend can use — see BundleUpload docs).
+    let q = ImportQuery {
+        name: q.name.or(upload.name),
+        scope: q.scope.or(upload.scope),
+    };
 
     // Scope resolution. `system` is admin-only.
     let scope = resolve_import_scope(user, groups, q.scope.as_deref(), "workflows")?;
@@ -523,33 +530,59 @@ pub fn test_workflow_docs(op: TransformOperation) -> TransformOperation {
 // ============================================================
 
 /// Pull the `bundle` form field out of a multipart upload as raw bytes.
-async fn read_bundle_field(mut multipart: Multipart) -> Result<Vec<u8>, AppError> {
+/// The bundle bytes plus the optional `name`/`scope` text fields. The
+/// frontend sends `name`/`scope` as multipart fields (the generated API
+/// client cannot attach query params to a FormData POST — `core.ts` only
+/// appends query params on GET), so the handler reads them here and falls
+/// back to them when the query string is empty.
+struct BundleUpload {
+    bytes: Vec<u8>,
+    name: Option<String>,
+    scope: Option<String>,
+}
+
+async fn read_bundle_field(mut multipart: Multipart) -> Result<BundleUpload, AppError> {
+    let mut bytes: Option<Vec<u8>> = None;
+    let mut name: Option<String> = None;
+    let mut scope: Option<String> = None;
     while let Ok(Some(mut field)) = multipart.next_field().await {
         let field_name = field.name().unwrap_or("").to_string();
-        if field_name == "bundle" {
-            // L10: stream chunk-by-chunk with a hard cap rather than
-            // `field.bytes()` (unbounded RAM buffering). Bound the upload at
-            // the bundle compressed cap on this authenticated endpoint.
-            let cap = crate::modules::hub::bundle::MAX_BUNDLE_COMPRESSED_BYTES as usize;
-            let mut data: Vec<u8> = Vec::new();
-            while let Some(chunk) = field.chunk().await.map_err(|e| {
-                AppError::bad_request("IMPORT_READ_FAILED", format!("read bundle field: {e}"))
-            })? {
-                if data.len().saturating_add(chunk.len()) > cap {
-                    return Err(AppError::unprocessable_entity(
-                        "IMPORT_BUNDLE_TOO_LARGE",
-                        format!("uploaded bundle exceeds the {cap}-byte cap"),
-                    ));
+        match field_name.as_str() {
+            "bundle" => {
+                // L10: stream chunk-by-chunk with a hard cap rather than
+                // `field.bytes()` (unbounded RAM buffering). Bound the upload
+                // at the bundle compressed cap on this authenticated endpoint.
+                let cap = crate::modules::hub::bundle::MAX_BUNDLE_COMPRESSED_BYTES as usize;
+                let mut data: Vec<u8> = Vec::new();
+                while let Some(chunk) = field.chunk().await.map_err(|e| {
+                    AppError::bad_request("IMPORT_READ_FAILED", format!("read bundle field: {e}"))
+                })? {
+                    if data.len().saturating_add(chunk.len()) > cap {
+                        return Err(AppError::unprocessable_entity(
+                            "IMPORT_BUNDLE_TOO_LARGE",
+                            format!("uploaded bundle exceeds the {cap}-byte cap"),
+                        ));
+                    }
+                    data.extend_from_slice(&chunk);
                 }
-                data.extend_from_slice(&chunk);
+                bytes = Some(data);
             }
-            return Ok(data);
+            "name" => {
+                name = field.text().await.ok().filter(|s| !s.is_empty());
+            }
+            "scope" => {
+                scope = field.text().await.ok().filter(|s| !s.is_empty());
+            }
+            _ => {}
         }
     }
-    Err(AppError::bad_request(
-        "IMPORT_NO_BUNDLE",
-        "multipart upload missing a `bundle` form field carrying the tar.gz",
-    ))
+    let bytes = bytes.ok_or_else(|| {
+        AppError::bad_request(
+            "IMPORT_NO_BUNDLE",
+            "multipart upload missing a `bundle` form field carrying the tar.gz",
+        )
+    })?;
+    Ok(BundleUpload { bytes, name, scope })
 }
 
 /// Resolve the requested scope for a dev import. `system` requires the
