@@ -75,4 +75,20 @@ test.describe('Literature screening flow', () => {
     expect(csv).toContain('out of scope')
     expect(csv).toContain('Base editing reduces off-target effects')
   })
+
+  test('inline tool-result card shows the dedup + saturation estimate', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
+
+    // The INLINE LiteratureToolResultCard (before opening screening) summarizes
+    // the search as "<total> identified, <n> after dedup · saturation: <EST>".
+    // The existing flow test only asserts the screening-PANEL banner; this
+    // covers the inline card's own completeness/saturation line.
+    await expect(page.getByText(/identified,\s*\d+\s*after dedup/i)).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(page.getByText(/saturation:\s*MODERATE/i)).toBeVisible()
+  })
 })
