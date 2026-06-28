@@ -150,4 +150,49 @@ mod tests {
             "the bio auto-attach flag must NOT be set for a non-tool-capable model"
         );
     }
+
+    /// Negative path: a tool-capable model but NO enabled bio row → the
+    /// enable-gate (`if !enabled`) must short-circuit, leaving the request
+    /// untouched. `model_tools_capable=true` skips the DB tool-capability
+    /// lookup, so control reaches the `get_any_server` enable-gate; against the
+    /// never-connectable lazy pool that query fails, and the real
+    /// `.ok().flatten().map(..).unwrap_or(false)` chain resolves `enabled=false`
+    /// — exactly the path a disabled/absent bio row takes — so no
+    /// `attach_bio_mcp` flag is set and no untrusted-content note is injected.
+    #[tokio::test]
+    async fn before_llm_call_skips_when_bio_row_not_enabled() {
+        let ext = BioMcpExtension::new(lazy_pool());
+
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            "model_tools_capable".to_string(),
+            serde_json::json!(true),
+        );
+        let mut context = StreamContext {
+            conversation_id: Uuid::new_v4(),
+            branch_id: Uuid::new_v4(),
+            message_id: None,
+            user_id: Uuid::new_v4(),
+            pool: lazy_pool(),
+            metadata,
+            iteration: 1,
+        };
+        let mut request = ChatRequest::default();
+        let send = send_request();
+
+        let action = ext
+            .before_llm_call(&mut context, &mut request, &send, None)
+            .await
+            .expect("before_llm_call must not error when the enable-gate resolves false");
+
+        assert!(matches!(action, BeforeLlmAction::Continue));
+        assert!(
+            request.messages.is_empty(),
+            "no untrusted-content note must be injected when the bio row is not enabled"
+        );
+        assert!(
+            !context.metadata.contains_key("attach_bio_mcp"),
+            "the bio auto-attach flag must NOT be set when the bio row is not enabled"
+        );
+    }
 }
