@@ -317,3 +317,49 @@ async fn get_tool_result_is_branch_agnostic() {
     );
     assert_eq!(body["result"]["structuredContent"]["tool_use_id"], "toolu_branch1");
 }
+
+#[tokio::test]
+async fn rejects_malformed_json_body_with_parse_error() {
+    // handlers.rs:30-38 — a body that isn't valid JSON returns HTTP 400 with a
+    // JSON-RPC parse error (-32700). This branch was untested.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_malformed", &[]).await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/tool-result/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("content-type", "application/json")
+        .body("{ this is not valid json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400, "malformed JSON must be a 400");
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(
+        body["error"]["code"], -32700,
+        "must be a JSON-RPC parse error: {body}"
+    );
+}
+
+#[tokio::test]
+async fn rejects_structurally_invalid_jsonrpc_with_invalid_request() {
+    // handlers.rs:39-48 — valid JSON that isn't a valid JSON-RPC request (here:
+    // the required `method` field is missing) returns HTTP 400 with an
+    // invalid-request error (-32600). This branch was untested.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_badshape", &[]).await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/tool-result/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "jsonrpc": "2.0", "id": 1 })) // no `method`
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400, "invalid JSON-RPC shape must be a 400");
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(
+        body["error"]["code"], -32600,
+        "must be a JSON-RPC invalid-request error: {body}"
+    );
+}

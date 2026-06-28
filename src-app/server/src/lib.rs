@@ -28,6 +28,9 @@ pub use modules::user::models::User;
 pub use modules::llm_provider::events::LlmProviderEvent;
 pub use modules::llm_provider::UserKeyRepository;
 pub use modules::mcp::events::McpServerEvent;
+// Re-exported so integration tests can drive the REAL retention reaper tick
+// (`memory::reaper::run_once`) instead of mirroring its SQL.
+pub use modules::memory::reaper::run_once as memory_reaper_run_once;
 // Re-export the LLM repository connection-health entry points so the
 // integration tests can drive the boot path directly without going
 // through the module's `init` hook.
