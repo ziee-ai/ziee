@@ -8,6 +8,7 @@ use crate::common::test_helpers::{create_user_with_no_permissions, create_user_w
 use crate::common::{TestServer, TestServerOptions};
 use crate::web_search::{
     jsonrpc, start_failing_searxng, start_mock_brave, start_mock_html, start_mock_searxng,
+    start_rate_limited_searxng,
 };
 
 fn admin_perms() -> &'static [&'static str] {
@@ -307,6 +308,64 @@ async fn test_search_chain_falls_back_to_second_provider() {
         searxng_hits.load(std::sync::atomic::Ordering::SeqCst),
         1,
         "searxng must be attempted exactly once before falling back to brave"
+    );
+}
+
+#[tokio::test]
+async fn test_search_chain_falls_back_on_rate_limit_429() {
+    // A rate-limited (HTTP 429) first provider must be treated like an error and
+    // trigger fallback to the next provider — not a fatal stop. Chain
+    // [searxng, brave]: searxng 429s, brave serves.
+    let brave_mock = start_mock_brave().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("WEB_SEARCH_BRAVE_ENDPOINT".to_string(), brave_mock)],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(&server, "ws_429_admin", admin_perms()).await;
+    let (limited, searxng_hits) = start_rate_limited_searxng().await;
+    let client = reqwest::Client::new();
+
+    client
+        .put(server.api_url("/web-search/providers/searxng"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "config": { "base_url": limited } }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .put(server.api_url("/web-search/providers/brave"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "api_key": "BSA-test-key" }))
+        .send()
+        .await
+        .unwrap();
+    let r = client
+        .put(server.api_url("/web-search/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "enabled": true, "provider_chain": ["searxng", "brave"] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+
+    let res = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "web_search", "arguments": { "query": "y" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["provider"], "brave", "429 must fall back to brave; body: {body}");
+    assert_eq!(
+        searxng_hits.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "searxng must be attempted exactly once before the 429 fallback"
     );
 }
 
