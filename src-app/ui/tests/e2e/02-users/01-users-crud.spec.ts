@@ -290,4 +290,29 @@ test.describe('Users CRUD Operations', () => {
       }
     }
   })
+
+  // audit id all-c81f77e7ceff — the existing edit test changes email + display
+  // name but NOT the username. The EditUserDrawer username field is editable;
+  // assert a username CHANGE persists (new name appears, old name gone).
+  test('should edit a user\'s username', async ({ page }) => {
+    await openCreateUserDrawer(page)
+    const ts = Date.now()
+    const original = `olduser${ts}`
+    await createUser(page, {
+      username: original,
+      email: `olduser${ts}@example.com`,
+      password: 'password123',
+    })
+
+    await openEditUserDrawer(page, original)
+    await assertDrawerOpen(page, /edit user/i)
+
+    const renamed = `newuser${ts}`
+    await updateUser(page, { username: renamed })
+    await assertDrawerClosed(page)
+
+    // The renamed user is present; the old username is gone.
+    await assertUserExists(page, renamed)
+    await assertUserNotExists(page, original)
+  })
 })
