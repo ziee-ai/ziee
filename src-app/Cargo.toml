@@ -131,7 +131,7 @@ include_dir = "0.7"
 # wrap it behind the `TunnelDriver` trait in
 # server/src/modules/remote_access/tunnel.rs so tests can substitute a
 # `MockTunnelDriver` that needs no network.
-ngrok = "0.14"
+ngrok = "0.18"
 
 # Test infra
 serial_test = "3.2"

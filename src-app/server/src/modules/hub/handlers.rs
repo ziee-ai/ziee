@@ -519,25 +519,24 @@ pub async fn create_assistant_from_hub(
 
     let plan = build_assistant_create_from_hub(&request, false).await?;
 
-    for existing_id in &existing_ids {
-        match Repos.assistant.delete(*existing_id).await {
-            Ok(()) => {
-                event_bus
-                    .emit(crate::modules::assistant::events::AssistantEvent::deleted(
-                        *existing_id,
-                        Some(auth.user.id),
-                    ))
-                    .await;
-            }
-            Err(e) if e.status_code() == 404 => (),
-            Err(e) => return Err(e.into()),
-        }
-    }
-
-    let assistant = Repos
+    // Atomically delete the prior install(s) and create the replacement in ONE
+    // transaction — previously these were separate awaits, so a create failure
+    // after the deletes left the user with no assistant at all. Emit the
+    // `assistant.deleted` events (for hub_entities orphan-cleanup) only after
+    // the commit so they reflect what actually happened.
+    let (assistant, deleted_ids) = Repos
         .assistant
-        .create(Some(auth.user.id), plan.create_request)
+        .replace_from_hub(&existing_ids, Some(auth.user.id), plan.create_request)
         .await?;
+
+    for existing_id in deleted_ids {
+        event_bus
+            .emit(crate::modules::assistant::events::AssistantEvent::deleted(
+                existing_id,
+                Some(auth.user.id),
+            ))
+            .await;
+    }
 
     // Track in hub_entities, stamping the catalog version captured
     // by the lookup so /hub/installed can detect when this row falls

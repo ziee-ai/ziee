@@ -525,22 +525,39 @@ pub(super) async fn reverify_entry(
         resolved.status
     };
 
-    let changed = final_status != entry.verification_status;
-    if changed {
-        let _ = repo.set_verification(user_id, entry.id, final_status).await;
+    let wants_change = final_status != entry.verification_status;
+    // Persist the new status, but do NOT let a swallowed DB error make the
+    // response diverge from what's actually stored. On failure, report the
+    // entry's stored status (unchanged) and surface the persist failure.
+    let mut persisted_change = false;
+    let mut reported_status = final_status;
+    let mut reason = None;
+    if wants_change {
+        match repo.set_verification(user_id, entry.id, final_status).await {
+            Ok(_) => persisted_change = true,
+            Err(e) => {
+                tracing::warn!(
+                    "citations: failed to persist verification for entry {}: {}",
+                    entry.id,
+                    e
+                );
+                reported_status = entry.verification_status;
+                reason = Some("re-resolved but failed to persist; status unchanged".into());
+            }
+        }
     }
     (
-        changed,
+        persisted_change,
         CitationItemResult {
             input: entry.citation_key.clone(),
             entry_id: Some(entry.id),
             citation_key: Some(entry.citation_key.clone()),
             dedup_outcome: None,
-            verification_status: final_status,
+            verification_status: reported_status,
             possible_duplicate_of: None,
             mismatch_fields: (!resolved.mismatch_fields.is_empty())
                 .then(|| resolved.mismatch_fields.clone()),
-            reason: None,
+            reason,
         },
     )
 }
