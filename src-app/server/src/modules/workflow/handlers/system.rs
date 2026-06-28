@@ -26,7 +26,13 @@ pub async fn list_system_workflows(
 ) -> ApiResult<Json<WorkflowListResponse>> {
     // System workflows are visible to everyone; admin list is the
     // moderation surface (delete-only here).
-    let workflows = repository::list_for_user(Repos.pool(), Uuid::nil()).await?;
+    let workflows = repository::list_for_user(
+        Repos.pool(),
+        Uuid::nil(),
+        crate::common::DEFAULT_PAGE_SIZE as i64,
+        0,
+    )
+    .await?;
     let only_system: Vec<_> = workflows.into_iter().filter(|w| w.scope == "system").collect();
     Ok((StatusCode::OK, Json(WorkflowListResponse { workflows: only_system })))
 }

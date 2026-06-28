@@ -140,7 +140,13 @@ fn input_schema_for(def: &WorkflowDef) -> Value {
 /// 128-char cap. Workflows whose `workflow.yaml` fails to parse are
 /// skipped (defensive — install-time validation should have caught it).
 pub async fn tool_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value, AppError> {
-    let workflows = repository::list_for_user(pool, user_id).await?;
+    let workflows = repository::list_for_user(
+        pool,
+        user_id,
+        crate::common::DEFAULT_PAGE_SIZE as i64,
+        0,
+    )
+    .await?;
     let mut tools: Vec<Value> = Vec::new();
     // L3: distinct reverse-DNS names can collapse to the SAME `wf_*` slug
     // (`/` and `.` both map to `_`). Two such workflows would surface as
@@ -226,7 +232,13 @@ async fn resolve_workflow_by_slug(
     user_id: Uuid,
     slug: &str,
 ) -> Result<Workflow, AppError> {
-    let workflows = repository::list_for_user(pool, user_id).await?;
+    let workflows = repository::list_for_user(
+        pool,
+        user_id,
+        crate::common::DEFAULT_PAGE_SIZE as i64,
+        0,
+    )
+    .await?;
     workflows
         .into_iter()
         .find(|wf| slug_for_name(&wf.name) == slug)

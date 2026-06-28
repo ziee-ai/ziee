@@ -274,7 +274,15 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Workflow>, App
     Ok(row)
 }
 
-pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Workflow>, AppError> {
+/// List workflows visible to `user_id`, bounded to `limit` rows starting at
+/// `offset` so the listing can never return an unbounded set. Callers that
+/// don't paginate pass `DEFAULT_PAGE_SIZE` / `0`.
+pub async fn list_for_user(
+    pool: &PgPool,
+    user_id: Uuid,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Workflow>, AppError> {
     let rows = sqlx::query_as!(
         Workflow,
         r#"
@@ -309,8 +317,11 @@ pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Workflow>
                 )
            ))
         ORDER BY name ASC
+        LIMIT $2 OFFSET $3
         "#,
         user_id,
+        limit,
+        offset,
     )
     .fetch_all(pool)
     .await

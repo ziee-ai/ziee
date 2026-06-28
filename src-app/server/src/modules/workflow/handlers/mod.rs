@@ -11,13 +11,14 @@ pub mod system;
 
 use aide::transform::TransformOperation;
 use axum::extract::Path as AxumPath;
+use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::common::{ApiResult, AppError};
+use crate::common::{ApiResult, AppError, DEFAULT_PAGE_SIZE, PAGINATION_MAX_PER_PAGE};
 use crate::core::Repos;
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::with_permission;
@@ -48,10 +49,26 @@ pub use crate::modules::hub::handlers::{
 // List + Get + Delete
 // ============================================================
 
+/// Optional pagination for the workflow listing. Defaults bound an
+/// un-paginated caller to the first `DEFAULT_PAGE_SIZE` workflows instead of
+/// returning an unbounded set.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WorkflowListQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 pub async fn list_user_workflows(
     auth: RequirePermissions<(WorkflowsRead,)>,
+    Query(q): Query<WorkflowListQuery>,
 ) -> ApiResult<Json<WorkflowListResponse>> {
-    let workflows = repository::list_for_user(Repos.pool(), auth.user.id).await?;
+    let limit = q
+        .limit
+        .unwrap_or(DEFAULT_PAGE_SIZE as i64)
+        .clamp(1, PAGINATION_MAX_PER_PAGE as i64);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let workflows =
+        repository::list_for_user(Repos.pool(), auth.user.id, limit, offset).await?;
     Ok((StatusCode::OK, Json(WorkflowListResponse { workflows })))
 }
 
