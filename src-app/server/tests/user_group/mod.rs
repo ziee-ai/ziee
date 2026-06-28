@@ -915,3 +915,65 @@ async fn test_concurrent_assign_same_user_is_race_safe() {
         .count();
     assert_eq!(count, 1, "concurrent double-assign must not duplicate membership");
 }
+
+// audit id all-b099db14941a — system groups (Users/Administrators, is_system=true)
+// must reject modification of name / deactivation / permissions
+// (groups.rs:156-166 → 400 SYSTEM_GROUP). Closes 02-permissions F-02: without
+// this guard any groups::edit holder could rewrite the default Users group's
+// permissions to ['*'] and cascade wildcard to everyone. Untested until now.
+#[tokio::test]
+async fn test_update_system_group_is_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let admin = helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["groups::read", "groups::edit"],
+    )
+    .await;
+
+    // Find a system group (seeded "Users"/"Administrators").
+    let list: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let groups = list["groups"].as_array().or_else(|| list.as_array()).expect("groups list");
+    let sys = groups
+        .iter()
+        .find(|g| g["is_system"].as_bool() == Some(true))
+        .expect("a system group must exist (Users/Administrators)");
+    let sys_id = sys["id"].as_str().unwrap();
+
+    let url = server.api_url(&format!("/groups/{sys_id}"));
+    let bearer = format!("Bearer {}", admin.token);
+
+    // (a) Rename → rejected.
+    let rename = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", &bearer)
+        .json(&json!({ "name": "Hacked Name" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rename.status(), 400, "renaming a system group must be rejected");
+    let body: serde_json::Value = rename.json().await.unwrap();
+    assert_eq!(body["error_code"], "SYSTEM_GROUP", "got: {body}");
+
+    // (b) Permissions change → rejected (the wildcard-escalation hole).
+    let escalate = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", &bearer)
+        .json(&json!({ "permissions": ["*"] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(escalate.status(), 400, "changing a system group's permissions must be rejected");
+    assert_eq!(
+        escalate.json::<serde_json::Value>().await.unwrap()["error_code"],
+        "SYSTEM_GROUP"
+    );
+}
