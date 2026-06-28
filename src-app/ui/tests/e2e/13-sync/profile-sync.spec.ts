@@ -179,4 +179,54 @@ test.describe('Realtime sync — profile (owner-scoped)', () => {
       await ctxB.close()
     }
   })
+
+  test("a user's OWN profile edit on device A reflects on their device B (same-user cross-device)", async ({
+    page,
+    browser,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    const adminToken = await getAdminToken(apiURL)
+
+    const timestamp = Date.now()
+    const username = `selfsync${timestamp}`
+    const password = 'password123'
+    await createTestUser(
+      apiURL,
+      adminToken,
+      username,
+      `${username}@example.com`,
+      password,
+      [],
+    )
+
+    // Same user logs in on BOTH devices.
+    await login(page, baseURL, username, password, { completeOnboarding: true })
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    try {
+      await login(pageB, baseURL, username, password, { completeOnboarding: true })
+      await gotoProfile(pageB, baseURL)
+      const displayInput = pageB.getByLabel(/^display name$/i)
+      await expect(displayInput).toBeVisible({ timeout: 15_000 })
+
+      // Device A edits the user's OWN profile via the self-service endpoint
+      // (no X-Sync-Connection-Id → device B, a different connection of the
+      // SAME user, still receives the owner-scoped Profile/Update frame).
+      const token = await page.evaluate(
+        () => JSON.parse(localStorage.getItem('auth-storage')!).state.token,
+      )
+      const newName = `Self Renamed ${timestamp}`
+      const res = await page.request.post(`${baseURL}/api/auth/profile`, {
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        data: { display_name: newName },
+      })
+      expect(res.ok()).toBeTruthy()
+
+      // Device B reflects the self-edit live, no reload.
+      await expect(displayInput).toHaveValue(newName, { timeout: 20_000 })
+    } finally {
+      await ctxB.close()
+    }
+  })
 })
