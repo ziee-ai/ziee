@@ -185,6 +185,23 @@ test.describe('Onboarding wizard', () => {
     await expect(page.getByText(remoteName).first()).toBeVisible({ timeout: 15000 })
     await expect(page.getByText(localName, { exact: true })).toHaveCount(0)
   })
+
+  // Negative coverage for OnboardingRedirect's `if (user.is_admin === true)
+  // return` bypass (OnboardingRedirect.tsx:41): an admin is NEVER forced into
+  // the wizard. Contrast the "fresh user is redirected into the wizard" test
+  // above — a non-admin with incomplete onboarding bounces to /onboarding,
+  // while the admin (logged in via the beforeEach) lands on the app shell.
+  test('admin is not redirected into the onboarding wizard', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+
+    // Navigate to a normal in-app route; the redirect, if it fired, would
+    // replace the URL with /onboarding before the shell renders.
+    await page.goto(`${baseURL}/`)
+    await expect(page.getByRole('menuitem', { name: /New Chat/ })).toBeVisible({
+      timeout: 20000,
+    })
+    await expect(page).not.toHaveURL(/\/onboarding/)
+  })
 })
 
 /**
