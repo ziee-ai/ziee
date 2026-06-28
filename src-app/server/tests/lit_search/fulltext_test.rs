@@ -296,3 +296,78 @@ async fn test_search_then_fetch_fulltext_end_to_end() {
     );
     assert_eq!(hits.load(Ordering::SeqCst), 1, "fulltext fetched from upstream once");
 }
+
+// audit id all-f952f5cbad73 — the multi-step lit workflow (search → fulltext →
+// verify_quote) was only tested as isolated single steps. This drives all three
+// tools in ONE conversation against loopback mocks: discover records, fetch a
+// paper's open-access full text (cached + /lit-linked), then verify a verbatim
+// quote against that cached full text. (Screening is the UI tail, covered by the
+// 19-literature E2E.)
+#[tokio::test]
+async fn multi_step_search_then_fulltext_then_verify_quote() {
+    let search = start_mock_europepmc().await;
+    let (epmc_ft, _hits) = start_mock_epmc_fulltext().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+            ("LIT_SEARCH_EUROPEPMC_ENDPOINT".to_string(), format!("{search}/search")),
+            ("LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT".to_string(), epmc_ft),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_multistep", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc"]).await;
+    let conv = seed_conversation(&server, &admin.user_id).await;
+
+    // Step 1 — search.
+    let search_body: serde_json::Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "literature_search", "arguments": { "query": "study" } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert!(search_body["error"].is_null(), "search: {search_body}");
+    assert!(
+        !search_body["result"]["structuredContent"]["records"].as_array().cloned().unwrap_or_default().is_empty(),
+        "search must return records: {search_body}"
+    );
+
+    // Step 2 — fetch full text (populates the cache + /lit view).
+    let ft: serde_json::Value = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "fetch_paper_fulltext", "arguments": { "ids": ["PMC123456"] } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert_eq!(ft["result"]["structuredContent"]["papers"][0]["status"], "full_text", "fetch: {ft}");
+
+    // Step 3 — verify a verbatim quote against the cached full text.
+    let vq: serde_json::Value = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "verify_quote", "arguments": { "id": "PMC123456", "quote": "CRISPR base editing off-target effects" } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert_eq!(vq["result"]["structuredContent"]["status"], "verified", "verify_quote: {vq}");
+}
