@@ -424,6 +424,18 @@ async fn shutdown_signal() {
 
     tracing::info!("Shutdown signal received");
 
+    // Stop the hardware-monitoring background task (it checks the active flag
+    // each tick and exits) so it isn't abruptly aborted mid-loop.
+    modules::hardware::monitoring::stop_hardware_monitoring();
+
+    // Signal every in-flight model download to cancel so each task runs its
+    // own teardown (mark interrupted, stop writing) rather than being killed
+    // with the runtime, which would leave rows stuck mid-download.
+    let cancelled = utils::cancellation::CANCELLATION_TRACKER.cancel_all().await;
+    if cancelled > 0 {
+        tracing::info!("Shutdown: signalled {cancelled} in-flight download(s) to cancel");
+    }
+
     // Tear down the server-owned squashfuse FUSE daemon (if any was
     // lazily spawned by code_sandbox). No-op if sandbox is disabled
     // or no execute_command ever ran. PDEATHSIG handles SIGKILL paths
