@@ -455,6 +455,42 @@ fn script(
                 _ => (Some("Done — wrote the file twice.".into()), None),
             }
         }
+        // Sandbox: write a NEW workspace artifact, then on the continuation call
+        // `get_resource_link` for it. Drives the code_sandbox → ziee:// →
+        // persist_links → file-store integration: get_resource_link returns a
+        // ziee://<host-path> resource_link that the chat save path ingests into
+        // the file store and rewrites to /api/files/{id}. STUB_FILE/STUB_CONTENT
+        // name the artifact. Used by the tier6 resource_link version-back test.
+        "sandbox_write_and_link" => {
+            let filename = parse_token(last_user, "STUB_FILE=")
+                .filter(|c| !c.trim().is_empty())
+                .unwrap_or_else(|| "report.txt".into());
+            let tool_results = messages
+                .iter()
+                .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"))
+                .count();
+            match tool_results {
+                0 => {
+                    let content = parse_token(last_user, "STUB_CONTENT=")
+                        .filter(|c| !c.trim().is_empty())
+                        .unwrap_or_else(|| "generated artifact".into());
+                    if let Some(w) = resolve_wire_name(tool_names, "write_file") {
+                        return (
+                            None,
+                            Some((w.to_string(), json!({ "filename": filename, "content": content }))),
+                        );
+                    }
+                    (Some("write_file tool not available".into()), None)
+                }
+                1 => {
+                    if let Some(w) = resolve_wire_name(tool_names, "get_resource_link") {
+                        return (None, Some((w.to_string(), json!({ "filename": filename }))));
+                    }
+                    (Some("get_resource_link tool not available".into()), None)
+                }
+                _ => (Some("Wrote the file and produced a resource link.".into()), None),
+            }
+        }
         // Emit the built-in `get_tool_result` recall tool with the tool_use_id
         // parsed from `STUB_TOOLUSE=<id>` in the user message; on the
         // continuation carrying the recalled content, echo it back. Drives the

@@ -363,3 +363,88 @@ async fn sandbox_unchanged_file_does_not_version_back() {
         "an unchanged second turn must NOT version-back (expected v1+v2, no v3): {versions}"
     );
 }
+
+// audit id all-75b63837a06b — code_sandbox → MCP resource_link → file-store
+// persistence, exercised through the FULL chat path. A turn drives the stub
+// model to (1) write a NEW workspace artifact via `write_file`, then (2) call
+// `get_resource_link` for it. get_resource_link returns a ziee://<host-path>
+// resource_link for the transient artifact; the chat save path's
+// `persist_links` (modules/mcp/resource_link.rs) must read those bytes off disk
+// (trusted code_sandbox emitter), ingest them into the file store, and rewrite
+// the URI to /api/files/{id}. We assert the artifact actually landed in the
+// user's library and is byte-faithfully downloadable. Rootfs-gated via
+// enabled_test_server() (clean skip, not #[ignore]).
+#[tokio::test]
+async fn sandbox_resource_link_artifact_is_persisted_to_file_store() {
+    let Some(server) = enabled_test_server().await else {
+        return; // no rootfs/bwrap on this host — skip cleanly
+    };
+    let stub = StubChat::start().await;
+    let user = create_user_with_permissions(&server, "sb_reslink", &["*"]).await;
+    let model_id =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url, true, None).await;
+
+    let conv = post(&server, &user.token, "/conversations", json!({ "model_id": model_id })).await;
+    let conv_id = conv["id"].as_str().unwrap().to_string();
+    let branch_id = conv["active_branch_id"].as_str().unwrap().to_string();
+    set_auto_approve(&server, &user.token, &conv_id).await;
+
+    const ARTIFACT: &str = "report.txt";
+    const MARKER: &str = "GENERATED_BY_SANDBOX_artifact_9921";
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+    let mut probe = ChatStreamProbe::open(&server, &user.token).await;
+    probe.subscribe(Some(conv_uuid)).await;
+    let payload = json!({
+        "content": format!("STUB_PLAN=sandbox_write_and_link STUB_FILE={ARTIFACT} STUB_CONTENT={MARKER} make a report"),
+        "model_id": model_id,
+        "branch_id": branch_id,
+        "enable_mcp": true,
+        "mcp_config": { "mcp_servers": [ { "server_id": sandbox_server_id(), "tools": [] } ] },
+    });
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/conversations/{conv_id}/messages")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("send message");
+    assert!(resp.status().is_success(), "send: {}", resp.text().await.unwrap_or_default());
+    let _ = probe.collect_until_terminal(conv_uuid, Duration::from_secs(120)).await;
+
+    // The sandbox artifact must now exist in the user's file library — proof that
+    // persist_links ingested the ziee:// resource_link into the file store.
+    let list: Value = reqwest::Client::new()
+        .get(server.api_url("/files"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let files = list
+        .as_array()
+        .cloned()
+        .or_else(|| list["files"].as_array().cloned())
+        .or_else(|| list["data"].as_array().cloned())
+        .expect("file library list");
+    let persisted = files
+        .iter()
+        .find(|f| f["filename"].as_str() == Some(ARTIFACT))
+        .unwrap_or_else(|| panic!("sandbox artifact {ARTIFACT} must be persisted to the file store: {list}"));
+    let file_id = persisted["id"].as_str().expect("persisted file id");
+
+    // ...and it is byte-faithful (the bytes were read off the workspace disk).
+    let dl = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/download")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dl.status(), 200, "persisted artifact must be downloadable");
+    let body = dl.text().await.unwrap();
+    assert!(
+        body.contains(MARKER),
+        "persisted artifact bytes must match what the sandbox wrote"
+    );
+}
