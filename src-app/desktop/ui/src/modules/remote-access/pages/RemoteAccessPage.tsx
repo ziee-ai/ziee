@@ -119,6 +119,7 @@ export function RemoteAccessPage() {
     return (
       <SettingsPageContainer title="Remote Access">
         <Empty
+          data-testid="desktop-remote-tunneled-empty"
           description={
             <div className="max-w-md mx-auto text-left">
               <Title level={5}>
@@ -153,6 +154,7 @@ export function RemoteAccessPage() {
     return (
       <SettingsPageContainer title="Remote Access">
         <Empty
+          data-testid="desktop-remote-load-error-empty"
           description={
             error
               ? `Unable to load remote-access status: ${error}`
@@ -160,6 +162,7 @@ export function RemoteAccessPage() {
           }
         >
           <Button
+            data-testid="desktop-remote-retry-btn"
             icon={<RotateCw />}
             loading={loading}
             onClick={() => Stores.RemoteAccess.loadStatus()}
@@ -181,6 +184,7 @@ export function RemoteAccessPage() {
     >
       {error && (
         <Alert
+          data-testid="desktop-remote-error-alert"
           tone="error"
           title={error}
           onClose={() => Stores.RemoteAccess.loadStatus()}
@@ -189,11 +193,12 @@ export function RemoteAccessPage() {
       )}
 
       {/* 1. ngrok auth token */}
-      <Card title="ngrok auth token">
+      <Card data-testid="desktop-remote-token-card" title="ngrok auth token">
         <div className="flex flex-col gap-1 mb-0">
           <label className="text-sm font-medium">Token</label>
           <div className="flex w-full gap-2">
             <PasswordInput
+              data-testid="desktop-remote-token-input"
               className="flex-1"
               showLabel="Show token"
               hideLabel="Hide token"
@@ -207,6 +212,7 @@ export function RemoteAccessPage() {
               autoComplete="off"
             />
             <Button
+              data-testid="desktop-remote-token-save-btn"
               disabled={!tokenDraft.trim() || saving}
               loading={saving}
               onClick={async () => {
@@ -236,17 +242,19 @@ export function RemoteAccessPage() {
       </Card>
 
       {/* 2. Custom domain (optional) */}
-      <Card title="Custom domain (optional)">
+      <Card data-testid="desktop-remote-domain-card" title="Custom domain (optional)">
         <div className="flex flex-col gap-1 mb-0">
           <label className="text-sm font-medium">Domain</label>
           <div className="flex w-full gap-2">
             <Input
+              data-testid="desktop-remote-domain-input"
               className="flex-1"
               placeholder="my-app.ngrok.app (leave blank for auto-assigned)"
               value={domainDraft}
               onChange={(e) => setDomainDraft(e.target.value)}
             />
             <Button
+              data-testid="desktop-remote-domain-save-btn"
               variant="outline"
               disabled={saving}
               loading={saving}
@@ -279,6 +287,7 @@ export function RemoteAccessPage() {
                 Auto-start tunnel on app launch
               </label>
               <Switch
+                data-testid="desktop-remote-autostart-switch"
                 checked={status.auto_start_tunnel}
                 loading={saving}
                 onChange={async (v) => {
@@ -305,7 +314,7 @@ export function RemoteAccessPage() {
       </Card>
 
       {/* 4. Password authentication (optional, OFF by default) */}
-      <Card title="Password authentication">
+      <Card data-testid="desktop-remote-password-card" title="Password authentication">
         <Paragraph type="secondary">
           By default, anyone you let in signs in by scanning the QR below. Turn
           this on if you'd also like to accept a password — handy when you want
@@ -316,10 +325,11 @@ export function RemoteAccessPage() {
 
       {/* 5. Tunnel */}
       <Card
+        data-testid="desktop-remote-tunnel-card"
         title={
           <Space>
             Tunnel
-            <Tag tone={tunnelConnected ? 'success' : 'default'}>
+            <Tag data-testid="desktop-remote-tunnel-state-tag" tone={tunnelConnected ? 'success' : 'default'}>
               {status.tunnel_state}
             </Tag>
           </Space>
@@ -327,6 +337,7 @@ export function RemoteAccessPage() {
       >
         {!tunnelReady && (
           <Alert
+            data-testid="desktop-remote-no-token-alert"
             tone="warning"
             title="Add your ngrok auth token first"
             description="Save your token above, then come back here to start the tunnel."
@@ -336,6 +347,7 @@ export function RemoteAccessPage() {
           <div className="flex flex-col gap-3">
             {status.auto_start_tunnel && status.last_error && (
               <Alert
+                data-testid="desktop-remote-autostart-failed-alert"
                 tone="error"
                 title="Auto-start failed"
                 description={
@@ -349,6 +361,7 @@ export function RemoteAccessPage() {
             )}
             <Space>
               <Button
+                data-testid="desktop-remote-start-tunnel-btn"
                 loading={saving}
                 onClick={() => Stores.RemoteAccess.startTunnel()}
               >
@@ -366,6 +379,7 @@ export function RemoteAccessPage() {
           <div className="flex flex-col gap-3">
             <Space wrap>
               <Button
+                data-testid="desktop-remote-stop-tunnel-btn"
                 variant="destructive"
                 loading={saving}
                 onClick={() => Stores.RemoteAccess.stopTunnel()}
@@ -373,6 +387,7 @@ export function RemoteAccessPage() {
                 Stop tunnel
               </Button>
               <Button
+                data-testid="desktop-remote-new-code-btn"
                 icon={<RotateCw />}
                 loading={saving}
                 onClick={() => Stores.RemoteAccess.rotateMagicLink()}
@@ -383,7 +398,7 @@ export function RemoteAccessPage() {
 
             {magicLink && (
               <div className="flex flex-col sm:flex-row gap-4 items-start">
-                <Card size="sm" className="flex-shrink-0">
+                <Card data-testid="desktop-remote-qr-card" size="sm" className="flex-shrink-0">
                   <QRCodeSVG value={magicLink.url} size={200} />
                 </Card>
                 <div className="flex-1 flex flex-col gap-2">
@@ -395,9 +410,10 @@ export function RemoteAccessPage() {
                     appears every 4 minutes.
                   </Text>
                   <div className="flex w-full gap-2">
-                    <Input className="flex-1" readOnly value={magicLink.url} />
+                    <Input data-testid="desktop-remote-magic-link-input" className="flex-1" readOnly value={magicLink.url} />
                     <Tooltip title="Copy">
                       <Button
+                        data-testid="desktop-remote-copy-magic-link-btn"
                         aria-label="Copy magic link"
                         icon={<Copy />}
                         onClick={() => onCopy(magicLink.url, 'Magic link')}
@@ -411,9 +427,10 @@ export function RemoteAccessPage() {
                         for your password:
                       </Text>
                       <div className="flex w-full gap-2">
-                        <Input className="flex-1" readOnly value={status.public_url} />
+                        <Input data-testid="desktop-remote-bare-url-input" className="flex-1" readOnly value={status.public_url} />
                         <Tooltip title="Copy">
                           <Button
+                            data-testid="desktop-remote-copy-bare-url-btn"
                             aria-label="Copy bare URL"
                             icon={<Copy />}
                             onClick={() =>
@@ -509,6 +526,7 @@ function PasswordAuthSection({
           Enable password authentication
         </label>
         <Switch
+          data-testid="desktop-remote-password-enable-switch"
           checked={status.password_auth_enabled}
           loading={saving}
           onChange={async (v) => {
@@ -537,6 +555,7 @@ function PasswordAuthSection({
 
       {status.password_auth_enabled && status.password_rotated && (
         <Button
+          data-testid="desktop-remote-change-password-toggle-btn"
           variant="link"
           className="p-0"
           onClick={() => setShowChangePassword((v) => !v)}
@@ -561,13 +580,14 @@ function PasswordAuthSection({
               machine.
             </Paragraph>
           )}
-          <Form form={form} onSubmit={submitChangePassword} layout="vertical">
+          <Form data-testid="desktop-remote-change-password-form" form={form} onSubmit={submitChangePassword} layout="vertical">
             <FormField
               name="new_password"
               label="New password"
               description="At least 8 characters. The longer and more random, the better — this is what protects your app once it's reachable from the internet."
             >
               <PasswordInput
+                data-testid="desktop-remote-new-password-input"
                 autoComplete="new-password"
                 showLabel="Show password"
                 hideLabel="Hide password"
@@ -575,6 +595,7 @@ function PasswordAuthSection({
             </FormField>
             <FormField name="confirm" label="Confirm new password">
               <PasswordInput
+                data-testid="desktop-remote-confirm-password-input"
                 autoComplete="new-password"
                 showLabel="Show password"
                 hideLabel="Hide password"
@@ -582,12 +603,14 @@ function PasswordAuthSection({
             </FormField>
             <Space>
               <Button
+                data-testid="desktop-remote-save-password-btn"
                 type="submit"
                 loading={submitting}
               >
                 Save password{needsRotationToEnable && ' and enable'}
               </Button>
               <Button
+                data-testid="desktop-remote-cancel-password-btn"
                 type="button"
                 variant="outline"
                 onClick={() => setShowChangePassword(false)}
