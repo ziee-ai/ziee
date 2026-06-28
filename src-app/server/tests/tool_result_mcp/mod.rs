@@ -394,3 +394,47 @@ async fn tool_result_mcp_requires_auth_and_permission() {
         .unwrap();
     assert_eq!(forbidden.status(), 403, "missing mcp_servers::read must be 403");
 }
+
+// audit id all-71ce2a6bda0c — recall of a tool_result that carries attached
+// resource_links. A file-producing tool (e.g. code_sandbox get_resource_link,
+// citations export) stores resource_links inside the tool_result's
+// structuredContent; get_tool_result must surface them so the model can recover
+// the file references after the result is cleared/truncated.
+#[tokio::test]
+async fn get_tool_result_recalls_attached_resource_links() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_reslink", &[]).await;
+    let (conv, _msg) = seed_tool_result(
+        &server,
+        &user.user_id,
+        "toolu_reslink",
+        "Generated 1 chart.",
+        Some(json!({
+            "resource_links": [
+                { "uri": "/api/files/abc123/download", "name": "chart.png", "mimeType": "image/png", "is_saved": true }
+            ]
+        })),
+    )
+    .await;
+
+    let body: Value = jsonrpc(
+        &server,
+        &user.token,
+        Some(&conv.to_string()),
+        "tools/call",
+        json!({ "name": "get_tool_result", "arguments": { "tool_use_id": "toolu_reslink" } }),
+    )
+    .send()
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(text.contains("--- structuredContent ---"), "recall must include structuredContent: {text}");
+    assert!(
+        text.contains("/api/files/abc123/download"),
+        "the attached resource_link URI must be recalled: {text}"
+    );
+    assert!(text.contains("chart.png"), "the resource_link name must be recalled: {text}");
+}
