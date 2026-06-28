@@ -27,6 +27,11 @@ const TICK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// transient error, fresh deployment racing). Matches the column
 /// DEFAULT in migration 52.
 const FALLBACK_GRACE_DAYS: f64 = 30.0;
+/// How many rows each reaper sub-step touches per statement. The sweep
+/// loops batch-by-batch so a large backlog never holds locks on the whole
+/// `user_memories` table in a single long transaction (engineering chunk
+/// size, not an operator-tunable policy).
+const REAP_BATCH_SIZE: i64 = 5_000;
 
 /// Spawned at module init by `MemoryModule::init`.
 pub async fn run_reaper_loop(pool: PgPool) {
@@ -60,16 +65,32 @@ pub async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
     // 1. Hard-delete grace-period-expired soft-deletes. These rows are
     // ALREADY soft-deleted (gone from the owner's visible list), so purging
     // them changes nothing a client can see — no sync emit needed.
-    let hard_deleted = sqlx::query!(
-        "DELETE FROM user_memories WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - ($1 * INTERVAL '1 day')",
-        grace_days
-    )
-    .execute(pool)
-    .await?;
-    if hard_deleted.rows_affected() > 0 {
+    let mut hard_deleted_total: u64 = 0;
+    loop {
+        let deleted = sqlx::query!(
+            r#"
+            DELETE FROM user_memories
+            WHERE id IN (
+                SELECT id FROM user_memories
+                WHERE deleted_at IS NOT NULL
+                  AND deleted_at < NOW() - ($1 * INTERVAL '1 day')
+                LIMIT $2
+                FOR UPDATE SKIP LOCKED
+            )
+            "#,
+            grace_days,
+            REAP_BATCH_SIZE,
+        )
+        .execute(pool)
+        .await?;
+        hard_deleted_total += deleted.rows_affected();
+        if (deleted.rows_affected() as i64) < REAP_BATCH_SIZE {
+            break;
+        }
+    }
+    if hard_deleted_total > 0 {
         tracing::info!(
-            "memory.reaper: hard-deleted {} grace-period-expired rows",
-            hard_deleted.rows_affected()
+            "memory.reaper: hard-deleted {hard_deleted_total} grace-period-expired rows"
         );
     }
 
@@ -78,56 +99,87 @@ pub async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
     // affected owner's other devices to reload.
     let mut touched_users: HashSet<Uuid> = HashSet::new();
 
-    // 2. Per-user retention_days enforcement.
-    let retention_rows = sqlx::query!(
-        r#"
-        UPDATE user_memories um
-        SET deleted_at = NOW()
-        FROM user_memory_settings ums
-        WHERE um.user_id = ums.user_id
-          AND ums.retention_days IS NOT NULL
-          AND um.deleted_at IS NULL
-          AND um.updated_at < NOW() - (ums.retention_days * INTERVAL '1 day')
-        RETURNING um.user_id
-        "#
-    )
-    .fetch_all(pool)
-    .await?;
-    if !retention_rows.is_empty() {
-        tracing::info!(
-            "memory.reaper: soft-deleted {} retention-aged rows",
-            retention_rows.len()
-        );
+    // 2. Per-user retention_days enforcement. Batched: each statement
+    // locks + flips at most REAP_BATCH_SIZE rows (FOR UPDATE SKIP LOCKED on
+    // the victim SELECT) so a large aged backlog can't hold a table-wide
+    // lock for the whole sweep.
+    let mut retention_total: usize = 0;
+    loop {
+        let retention_rows = sqlx::query!(
+            r#"
+            WITH victims AS (
+                SELECT um.id
+                FROM user_memories um
+                JOIN user_memory_settings ums ON um.user_id = ums.user_id
+                WHERE ums.retention_days IS NOT NULL
+                  AND um.deleted_at IS NULL
+                  AND um.updated_at < NOW() - (ums.retention_days * INTERVAL '1 day')
+                LIMIT $1
+                FOR UPDATE OF um SKIP LOCKED
+            )
+            UPDATE user_memories um
+            SET deleted_at = NOW()
+            FROM victims
+            WHERE um.id = victims.id
+            RETURNING um.user_id
+            "#,
+            REAP_BATCH_SIZE,
+        )
+        .fetch_all(pool)
+        .await?;
+        let n = retention_rows.len();
+        retention_total += n;
+        touched_users.extend(retention_rows.into_iter().map(|r| r.user_id));
+        if (n as i64) < REAP_BATCH_SIZE {
+            break;
+        }
     }
-    touched_users.extend(retention_rows.into_iter().map(|r| r.user_id));
+    if retention_total > 0 {
+        tracing::info!("memory.reaper: soft-deleted {retention_total} retention-aged rows");
+    }
 
     // 3. Per-user max_memories cap. Window function: one round-trip
     // per global sweep instead of one per user.
-    let cap_rows = sqlx::query!(
-        r#"
-        WITH ranked AS (
-            SELECT um.id,
-                   ROW_NUMBER() OVER (PARTITION BY um.user_id ORDER BY um.updated_at DESC) AS rn,
-                   COALESCE(ums.max_memories, 1000) AS cap
-            FROM user_memories um
-            LEFT JOIN user_memory_settings ums ON ums.user_id = um.user_id
-            WHERE um.deleted_at IS NULL
+    // Batched: each pass recomputes the per-user ranking over the still-live
+    // rows and flips up to REAP_BATCH_SIZE of the over-cap victims. Because
+    // each batch excludes rows already soft-deleted this sweep
+    // (`deleted_at IS NULL`), the loop converges. (The victim CTE uses a
+    // window function, so it can't take row locks — acceptable: the reaper
+    // is the only writer of `deleted_at` for cap enforcement.)
+    let mut cap_total: usize = 0;
+    loop {
+        let cap_rows = sqlx::query!(
+            r#"
+            WITH ranked AS (
+                SELECT um.id,
+                       ROW_NUMBER() OVER (PARTITION BY um.user_id ORDER BY um.updated_at DESC) AS rn,
+                       COALESCE(ums.max_memories, 1000) AS cap
+                FROM user_memories um
+                LEFT JOIN user_memory_settings ums ON ums.user_id = um.user_id
+                WHERE um.deleted_at IS NULL
+            ),
+            victims AS (
+                SELECT id FROM ranked WHERE rn > cap LIMIT $1
+            )
+            UPDATE user_memories
+            SET deleted_at = NOW()
+            WHERE id IN (SELECT id FROM victims)
+            RETURNING user_id
+            "#,
+            REAP_BATCH_SIZE,
         )
-        UPDATE user_memories
-        SET deleted_at = NOW()
-        WHERE id IN (SELECT id FROM ranked WHERE rn > cap)
-        RETURNING user_id
-        "#
-    )
-    .fetch_all(pool)
-    .await?;
-    if !cap_rows.is_empty() {
-        tracing::info!(
-            "memory.reaper: soft-deleted {} over-cap rows",
-            cap_rows.len()
-        );
+        .fetch_all(pool)
+        .await?;
+        let n = cap_rows.len();
+        cap_total += n;
+        touched_users.extend(cap_rows.into_iter().map(|r| r.user_id));
+        if (n as i64) < REAP_BATCH_SIZE {
+            break;
+        }
     }
-    touched_users.extend(cap_rows.into_iter().map(|r| r.user_id));
+    if cap_total > 0 {
+        tracing::info!("memory.reaper: soft-deleted {cap_total} over-cap rows");
+    }
 
     // Notify each affected owner once. nil id = "the list changed, reload"
     // (same convention as delete_all_memories); background sweep → origin None.
