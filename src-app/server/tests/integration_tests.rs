@@ -9,6 +9,7 @@ mod chat;
 mod citations;
 mod code_sandbox;
 mod common;
+mod elicitation_mcp;
 mod file;
 mod file_rag;
 mod files_mcp;

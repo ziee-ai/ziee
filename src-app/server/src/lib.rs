@@ -142,6 +142,13 @@ pub mod code_sandbox {
     pub use crate::modules::code_sandbox::types::SandboxContext;
     pub use crate::modules::code_sandbox::workflow_staging::StageMode;
 }
+// Re-export elicitation_mcp surface for integration tests (built-in row
+// idempotency).
+#[doc(hidden)]
+pub mod elicitation_mcp {
+    pub use crate::modules::elicitation_mcp::elicitation_mcp_server_id;
+    pub use crate::modules::elicitation_mcp::repository::ElicitationMcpRepository;
+}
 // MCP repository for integration tests that need McpRepository::list_accessible.
 #[doc(hidden)]
 pub mod mcp {
