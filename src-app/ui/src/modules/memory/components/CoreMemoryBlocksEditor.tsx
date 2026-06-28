@@ -11,6 +11,7 @@ import {
   message,
   Space,
   Empty,
+  Spin,
 } from 'antd'
 import { DeleteOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
@@ -70,7 +71,11 @@ export function CoreMemoryBlocksEditor({
         get retrieved by similarity.
       </Paragraph>
 
-      {blocks.length === 0 && !loading ? (
+      {blocks.length === 0 && loading ? (
+        <div className="flex justify-center py-6">
+          <Spin />
+        </div>
+      ) : blocks.length === 0 && !loading ? (
         <Empty
           description="No blocks yet"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
