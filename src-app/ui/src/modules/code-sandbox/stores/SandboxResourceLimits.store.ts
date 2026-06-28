@@ -3,9 +3,11 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
+  Permissions,
   type CodeSandboxResourceLimits,
   type UpdateCodeSandboxResourceLimits,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
 /**
@@ -50,7 +52,15 @@ export const useSandboxResourceLimitsStore =
             // Code-sandbox resource-limit settings (singleton). Refetch on a
             // remote change (the event id is nil — it's a singleton row) or on
             // SSE reconnect.
-            const reload = () => void get().loadLimits()
+            // Self-gate the refetch (the no-403 reconnect rule): sync:reconnect
+            // fires for every store regardless of audience, so a user without
+            // resource-limits read must not refetch (the GET would 403).
+            // Mirrors SandboxRootfsVersions.store's reload gate.
+            const reload = () => {
+              if (!hasPermissionNow(Permissions.CodeSandboxResourceLimitsRead))
+                return
+              void get().loadLimits()
+            }
             eventBus.on('sync:code_sandbox_settings', reload, GROUP)
             eventBus.on('sync:reconnect', reload, GROUP)
           },
