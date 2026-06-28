@@ -1,4 +1,4 @@
-import { NodeIndexOutlined } from '@ant-design/icons'
+import { Workflow as WorkflowIcon } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -61,7 +61,7 @@ export default createModule({
     settingsUserPages: [
       {
         id: 'workflows',
-        icon: <NodeIndexOutlined />,
+        icon: <WorkflowIcon />,
         label: 'Workflows',
         path: 'workflows',
         order: 26,
@@ -71,7 +71,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'workflows-admin',
-        icon: <NodeIndexOutlined />,
+        icon: <WorkflowIcon />,
         label: 'System Workflows',
         path: 'workflows-admin',
         order: 28,
