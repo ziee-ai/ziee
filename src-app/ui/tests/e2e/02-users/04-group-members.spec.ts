@@ -10,11 +10,12 @@ import {
   navigateToUserGroups,
   openCreateUserDrawer,
   openCreateGroupDrawer,
+  openEditGroupDrawer,
   openGroupMembersDrawer as _openGroupMembersDrawer,
   openUserGroupsDrawer,
 } from './helpers/user-navigation'
 import { createUser } from './helpers/user-actions'
-import { createGroup, viewGroupMembers } from './helpers/group-actions'
+import { createGroup, updateGroup, viewGroupMembers } from './helpers/group-actions'
 import {
   assertUserExists as _assertUserExists,
   assertGroupExists as _assertGroupExists,
@@ -355,5 +356,34 @@ test.describe('Group Membership Management', () => {
 
     // Back to "Assign" — no longer a member.
     await expect(row.getByRole('button', { name: 'Assign' })).toBeVisible()
+  })
+
+  test('group status badge colors reflect active vs inactive', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await navigateToUserGroups(page, baseURL)
+
+    const ts = Date.now()
+    const groupName = `StatusGrp_${ts}`
+
+    // A new group is active by default → green/success status badge.
+    await openCreateGroupDrawer(page)
+    await createGroup(page, { name: groupName })
+    const card = () =>
+      page.locator('.ant-card').filter({ hasText: groupName }).first()
+    await expect(card().locator('.ant-badge-status-success')).toBeVisible()
+    await expect(card().getByText('Active', { exact: true })).toBeVisible()
+
+    // Edit it to inactive → grey/default status badge (groups use the 'default'
+    // status, not the 'error' status users use for inactive).
+    await openEditGroupDrawer(page, groupName)
+    await updateGroup(page, { isActive: false })
+    await expect(card().locator('.ant-badge-status-default')).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(card().getByText('Inactive', { exact: true })).toBeVisible()
   })
 })
