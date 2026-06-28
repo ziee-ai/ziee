@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
-import { setTheme, isDarkMode } from '../../utils/theme'
+import { setTheme, isDarkMode, getTheme } from '../../utils/theme'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-helpers'
 
@@ -72,5 +72,36 @@ test.describe('Settings - General', () => {
 
     const darkModeActive = await isDarkMode(page)
     expect(darkModeActive).toBe(true)
+  })
+
+  // audit id 70b1e4252cdd120f — theme persistence across a session boundary.
+  // ConfigClient.store persists themePreference to localStorage
+  // (config-client-storage); the existing tests only assert the in-session
+  // toggle. This selects Dark via the UI, RELOADS (re-bootstrap + store
+  // rehydrate), and asserts dark mode survives.
+  test('theme preference persists across a page reload', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await goToSettingsPage(page, baseURL, 'general')
+    await waitForSettingsPageLoad(page, 'General')
+
+    // Choose Dark through the real selector.
+    await page.locator('#theme-form [aria-label="Theme"]').first().click()
+    await page
+      .getByRole('listbox')
+      .or(page.locator('.ant-select-dropdown'))
+      .first()
+      .waitFor({ state: 'visible' })
+    const darkOption = page.getByTitle('Dark')
+    await darkOption.waitFor({ state: 'visible', timeout: 5000 })
+    await darkOption.click()
+    await page.waitForTimeout(500)
+    expect(await isDarkMode(page)).toBe(true)
+
+    // Reload → the app re-bootstraps and the store rehydrates from
+    // localStorage; dark mode must still be active.
+    await page.reload({ waitUntil: 'load' })
+    await expect.poll(() => isDarkMode(page), { timeout: 10000 }).toBe(true)
+    expect(await getTheme(page)).toBe('dark')
   })
 })
