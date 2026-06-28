@@ -5,11 +5,9 @@ import {
   Button,
   Dropdown,
   Empty,
-  Menu,
   Spin,
   theme,
 } from 'antd'
-import type { MenuProps } from 'antd'
 import {
   MessageOutlined,
   DeleteOutlined,
@@ -19,6 +17,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { Menu } from '@/components/ui'
+import type { MenuItem } from '@/components/ui'
 import {
   chatExtensionRegistry,
   useConversationMenuContributions,
@@ -26,27 +26,9 @@ import {
 
 const { Text } = Typography
 
-// Shared styling with the LeftSidebar's Menus so the "Recent chats"
-// group reads as the same surface family as Navigation / Tools.
-// Keep in lockstep with `LeftSidebar.tsx::menuClass`.
-const SIDEBAR_MENU_CLASS =
-  '!bg-transparent !border-none ' +
-  '[&_.ant-menu-item]:!h-7 [&_.ant-menu-item]:!leading-[28px] ' +
-  '[&_.ant-menu-item]:!mx-2 ' +
-  '[&_.ant-menu-item]:!w-[calc(100%-1rem)] ' +
-  '[&_.ant-menu-item]:!pl-2 [&_.ant-menu-item]:!pr-2 ' +
-  '[&_.ant-menu-item]:!py-0 ' +
-  '[&_.ant-menu-item]:!rounded-md ' +
-  '[&_.ant-menu-title-content]:!py-0 ' +
-  '[&_.ant-menu-item-group-title]:!px-3 [&_.ant-menu-item-group-title]:!pt-0 ' +
-  '[&_.ant-menu-item-group-title]:!pb-0.5 ' +
-  '[&_.ant-menu-item-group-title]:!text-xs ' +
-  '[&_.ant-menu-item-group-title]:!font-semibold ' +
-  '[&_.ant-menu-item-group-title]:!tracking-wide'
-
 /**
  * Sidebar list of the user's recent conversations, backed by
- * `Stores.ChatHistory.recentConversations`. Renders as an antd
+ * `Stores.ChatHistory.recentConversations`. Renders as a kit
  * `<Menu>` so hover / selected / focus styling matches the
  * Navigation + Tools menus above it in the sidebar.
  *
@@ -67,10 +49,10 @@ export function RecentConversationsWidget() {
   }, [isInitialized])
 
   // Section header for the empty + loading states. Rendered as a standalone
-  // styled heading (NOT an antd <Menu>) — an empty Menu group produces a
+  // styled heading (NOT a Menu) — an empty Menu group produces a
   // `role="menu"` with no children, which fails axe-core's
   // `aria-required-children`. The classes mirror the Menu group-title
-  // typography in SIDEBAR_MENU_CLASS so it reads identically.
+  // typography so it reads identically.
   const headerOnly = (
     <div
       className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide"
@@ -117,46 +99,41 @@ export function RecentConversationsWidget() {
     chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
 
   // The currently-open conversation gets the Menu's `selected`
-  // treatment (token-based colorPrimary background + colorText).
+  // treatment (bg-accent + font-medium).
   const selectedKey = recentConversations.find(
     c => location.pathname === hrefFor(c),
   )?.id
 
-  const items: MenuProps['items'] = recentConversations.map(c => ({
-    key: c.id,
-    label: <ConversationRowLabel conversation={c} />,
-  }))
+  const items: MenuItem[] = [
+    {
+      type: 'group',
+      label: 'Recent chats',
+      children: recentConversations.map(c => ({
+        key: c.id,
+        label: <ConversationRowLabel conversation={c} />,
+      })),
+    },
+  ]
 
   return (
     <div
       className="flex flex-col h-full min-h-0"
-      // Hold the section header outside the scroll viewport so it
-      // stays put while the list scrolls — matches how the original
-      // implementation pinned its bespoke header.
       style={{ color: token.colorTextBase }}
     >
       <DivScrollY className="flex-col flex-1 min-h-0">
         <Menu
-          mode="inline"
-          className={SIDEBAR_MENU_CLASS}
-          selectedKeys={selectedKey ? [selectedKey] : []}
-          items={[
-            {
-              type: 'group',
-              label: 'Recent chats',
-              children: items,
-            },
-          ]}
-          onClick={({ key, domEvent }) => {
-            // The per-row action dropdown stops propagation, so any
-            // click we see here came from the row body itself.
+          mode="vertical"
+          aria-label="Recent conversations"
+          items={items}
+          selectedKey={selectedKey}
+          onSelect={key => {
             const c = recentConversations.find(x => x.id === key)
             if (!c) return
-            // Defensive: still bail if the click originated inside the
-            // floating dropdown menu (body-level portal), in case
-            // antd's event routing ever changes.
-            const target = domEvent.target as HTMLElement | null
-            if (target?.closest('.ant-dropdown')) return
+            // Defensive: bail if the click originated inside a floating
+            // dropdown menu (body-level portal), in case event routing
+            // ever changes.
+            const active = document.activeElement as HTMLElement | null
+            if (active?.closest('[role="menu"]')) return
             navigate(hrefFor(c))
           }}
         />
