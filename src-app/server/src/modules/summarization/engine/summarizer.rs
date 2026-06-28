@@ -697,6 +697,19 @@ mod tests {
     use chrono::TimeZone;
 
     #[test]
+    fn empty_or_whitespace_llm_summary_is_not_writable() {
+        // The empty-LLM-response rejection: a blank/whitespace-only summary
+        // from the model must be treated as non-writable (the refresh path
+        // skips the upsert and returns early instead of persisting garbage).
+        assert!(!summary_is_writable(""));
+        assert!(!summary_is_writable("   "));
+        assert!(!summary_is_writable("\n\t  \n"));
+        // A real summary IS writable.
+        assert!(summary_is_writable("The user prefers metric units."));
+        assert!(summary_is_writable("  leading/trailing trimmed but non-empty  "));
+    }
+
+    #[test]
     fn window_override_none_is_identity() {
         // No model context window known → admin thresholds pass through.
         assert_eq!(apply_window_override(8000, 2000, None), (8000, 2000));
