@@ -930,3 +930,93 @@ async fn test_concurrent_download_initiations_are_distinct() {
     let id2 = r2.json::<serde_json::Value>().await.unwrap()["id"].as_str().unwrap().to_string();
     assert_ne!(id1, id2, "concurrent initiations must yield distinct download instances");
 }
+
+// audit id all-00827f174278 — download CANCELLATION exercised on the REAL path
+// (the E2E spec deliberately mocks the HF download because a real ~350MB
+// download raced flakily). Here we initiate a REAL HuggingFace download and
+// immediately hit the REAL cancel endpoint: cancel must either succeed
+// (200 → status cancelled) while the download is still pending/downloading, or
+// be cleanly rejected (4xx) if the tiny model already finished — never a 500.
+// Env-keyed like the sibling real-HF tests (source tests/.env.test).
+#[tokio::test]
+async fn test_cancel_real_download() {
+    let _api_key = std::env::var("HUGGINGFACE_API_KEY")
+        .expect("HUGGINGFACE_API_KEY not set. Please source tests/.env.test or set the environment variable.");
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "cancel_downloader",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_models::downloads_read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+    let hf_repo = get_huggingface_repository(&server, &user.token, true).await;
+    let provider = get_local_provider(&server, &user.token).await;
+
+    // Initiate a real download.
+    let init = reqwest::Client::new()
+        .post(server.api_url("/llm-models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "provider_id": provider["id"].as_str().unwrap(),
+            "repository_id": hf_repo["id"].as_str().unwrap(),
+            "repository_path": "hf-internal-testing/tiny-random-gpt2",
+            "repository_branch": "main",
+            "name": "cancel-real-test",
+            "display_name": "Cancel Real Test",
+            "file_format": "safetensors",
+            "main_filename": "model.safetensors",
+            "source": { "type": "hub", "id": "hf-internal-testing/tiny-random-gpt2" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(init.status(), StatusCode::OK, "initiate should 200");
+    let download_id = init.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Immediately cancel the REAL download.
+    let cancel = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-models/downloads/{download_id}/cancel")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let cancel_status = cancel.status();
+    assert!(
+        cancel_status.is_success() || cancel_status.is_client_error(),
+        "cancel of a real download must be 2xx (cancelled in-flight) or 4xx (already terminal), never 5xx; got {cancel_status}"
+    );
+
+    // If the cancel was accepted, the download must be reported cancelled.
+    if cancel_status.is_success() {
+        let list: serde_json::Value = reqwest::Client::new()
+            .get(server.api_url("/llm-models/downloads"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let row = list["downloads"]
+            .as_array()
+            .and_then(|a| a.iter().find(|d| d["id"].as_str() == Some(download_id.as_str())));
+        if let Some(r) = row {
+            assert_eq!(
+                r["status"].as_str(),
+                Some("cancelled"),
+                "an accepted cancel must leave the download in 'cancelled' status: {r}"
+            );
+        }
+    }
+}
