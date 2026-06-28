@@ -41,7 +41,7 @@ interface FormValues {
 }
 
 export function AssistantFormDrawer() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [form] = Form.useForm<FormValues>()
 
   // Use drawer store
@@ -80,9 +80,27 @@ export function AssistantFormDrawer() {
     }
   }, [open, editingAssistant, form])
 
-  const handleClose = () => {
+  const doClose = () => {
     form.resetFields()
     Stores.AssistantDrawer.closeAssistantDrawer()
+  }
+
+  const handleClose = () => {
+    // Guard against losing edits: prompt before discarding when the user has
+    // touched any field. A pristine form (just opened / freshly reset) closes
+    // immediately. Covers both the footer Cancel button and the drawer's X.
+    if (form.isFieldsTouched()) {
+      modal.confirm({
+        title: 'Discard unsaved changes?',
+        content: 'You have unsaved changes. Closing now will discard them.',
+        okText: 'Discard',
+        okButtonProps: { danger: true },
+        cancelText: 'Keep editing',
+        onOk: doClose,
+      })
+      return
+    }
+    doClose()
   }
 
   const handleParametersBlur = () => {
