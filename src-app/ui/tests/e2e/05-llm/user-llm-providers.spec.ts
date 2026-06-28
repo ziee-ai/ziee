@@ -341,4 +341,29 @@ test.describe('User LLM Providers settings page', () => {
       page.getByRole('heading', { level: 4, name: providerName }),
     ).toBeVisible({ timeout: 10000 })
   })
+
+  // audit id all-eab883dfd4e1 — the "No AI providers available" empty state
+  // (UserLlmProvidersPage.tsx:115-129, the `providers.length === 0` Empty) had
+  // no E2E. Mock the providers list to return an empty set so the page renders
+  // the Empty guidance instead of provider cards.
+  test('shows the empty state when no AI providers are available', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.route(/\/api\/user-llm-providers(\?.*)?$/, async route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ providers: [] }),
+      }),
+    )
+
+    await page.goto(`${baseURL}/settings/user-llm-providers`)
+    await expect(
+      page.getByText('No AI providers are available yet.'),
+    ).toBeVisible({ timeout: 15000 })
+  })
 })
