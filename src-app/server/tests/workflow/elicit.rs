@@ -308,3 +308,79 @@ async fn elicit_schema_valid_response_delivers_and_resumes() {
         "run resumes + completes after the elicit reply: {final_run}"
     );
 }
+
+/// A single-step elicit workflow with a SHORT, BOUNDED wall-clock
+/// (`timeout_ms: 2500`). Used to exercise the bounded-gate EXPIRY path
+/// in `dispatch.rs` (the `tokio::time::sleep_until(deadline)` arm that
+/// fails the step with "elicit timed out after {ms}ms") — distinct from
+/// the durable `timeout_ms: 0` gate (resume.rs) and the long-lived
+/// `timeout_ms: 300000` gate that is always answered/cancelled before it
+/// can fire (the other tests in this file).
+const SHORT_TIMEOUT_ELICIT_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: confirm
+    kind: elicit
+    message: "Proceed with {{ inputs.topic }}?"
+    schema:
+      type: object
+      properties:
+        proceed:
+          type: boolean
+          title: "Proceed?"
+      required: [proceed]
+    timeout_ms: 2500
+outputs:
+  - name: decision
+    from: "{{ confirm.output }}"
+"#;
+
+/// A BOUNDED elicit gate (`timeout_ms > 0`) that is NEVER answered must
+/// fire its wall-clock and FAIL the run — the bounded-gate expiry arm in
+/// `dispatch.rs` (`error: "elicit timed out after {timeout_ms}ms"` →
+/// RunFailed). The existing coverage stops short of this: resume.rs
+/// drives the `timeout_ms: 0` DURABLE gate (which never wall-clocks), and
+/// the rest of this file uses `timeout_ms: 300000` and always answers or
+/// cancels before the timeout could fire. This asserts the timeout
+/// actually firing.
+#[tokio::test]
+async fn bounded_elicit_gate_times_out_and_fails_run() {
+    let server = plain_server().await;
+    let user = workflow_user(&server, "elicit_timeout_fires").await;
+    let wf = import_dev_workflow(&server, &user.token, "elicit-timeout", SHORT_TIMEOUT_ELICIT_YAML).await;
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+
+    let run = run_workflow(
+        &server,
+        &user.token,
+        &wf_id,
+        json!({
+            "inputs": { "topic": "shipping the feature" },
+            "conversation_id": conv_id.to_string(),
+        }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+
+    // Prove it genuinely PARKS on the elicit first (registers a pending
+    // elicitation) — so the subsequent failure is the wall-clock firing,
+    // not a setup error. The 2.5s gate is comfortably longer than the
+    // poll cadence, so the pending state is observable before expiry.
+    let _elicitation_id = poll_pending_elicitation(&server, &user.token, run_id).await;
+
+    // Do NOT answer. The bounded wall-clock fires (~2.5s) → the step
+    // errors and the run transitions to `failed`.
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(
+        final_run["status"], "failed",
+        "an unanswered bounded elicit gate must fail the run when its timeout fires: {final_run}"
+    );
+    let err = final_run["error_message"].as_str().unwrap_or("");
+    assert!(
+        err.contains("timed out") || err.contains("timeout"),
+        "the failure must reference the elicit timeout (dispatch.rs bounded-gate expiry): {final_run}"
+    );
+}
