@@ -493,8 +493,12 @@ async fn do_start(
     Ok(())
 }
 
-/// Force-clear the in-flight cell for a model. Used by the reaper +
-/// tests after a drained instance was stopped.
+/// Force-clear the in-flight cell AND the health state machine for a model.
+/// Used by the reaper + tests after a drained instance was stopped. Evicting
+/// the HEALTH entry here bounds the map to currently-tracked models (otherwise
+/// it grows once per model ever auto-started, for the process lifetime). A
+/// later restart simply re-creates a fresh state machine.
 pub async fn forget(model_id: Uuid) {
     IN_FLIGHT.lock().await.remove(&model_id);
+    HEALTH.lock().await.remove(&model_id);
 }
