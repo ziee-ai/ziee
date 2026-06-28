@@ -21,7 +21,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
   return (
     <div className="max-w-lg">
       <div className="flex items-center gap-3 mb-4">
-        <Rocket className="text-4xl text-green-500" />
+        <Rocket className="text-4xl text-primary" />
         <Title level={3} className="!mb-0">
           You&apos;re all set!
         </Title>
@@ -31,7 +31,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
 
       <div className="space-y-2 mb-6">
         <div className="flex items-center gap-2">
-          <CircleCheck className="text-green-500" />
+          <CircleCheck className="text-primary" />
           <Text>
             {apiKeysCount > 0
               ? `${apiKeysCount} API key${apiKeysCount > 1 ? 's' : ''} saved`
@@ -39,7 +39,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
           </Text>
         </div>
         <div className="flex items-center gap-2">
-          <CircleCheck className="text-green-500" />
+          <CircleCheck className="text-primary" />
           <Text>
             {mcpCount > 0
               ? `${mcpCount} MCP server${mcpCount > 1 ? 's' : ''} selected for installation`

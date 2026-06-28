@@ -55,7 +55,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
     return (
       <div className="max-w-lg">
         <div className="flex items-center gap-3 mb-4">
-          <Plug className="text-3xl text-blue-500" />
+          <Plug className="text-3xl text-primary" />
           <Title level={3} className="!mb-0">
             AI Providers
           </Title>
@@ -89,7 +89,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 mb-3">
-        <Plug className="text-2xl text-blue-500" />
+        <Plug className="text-2xl text-primary" />
         <Title level={4} className="!mb-0">
           AI Providers
         </Title>

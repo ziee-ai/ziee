@@ -45,7 +45,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
   return (
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
-        <Wrench className="text-3xl text-purple-500" />
+        <Wrench className="text-3xl text-primary" />
         <Title level={3} className="!mb-0">
           MCP Servers
         </Title>
@@ -115,7 +115,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                   className={`flex items-start gap-3 border rounded-lg p-3 ${
                     alreadyInstalled
                       ? 'opacity-50 cursor-not-allowed'
-                      : 'cursor-pointer hover:bg-gray-50'
+                      : 'cursor-pointer hover:bg-accent'
                   }`}
                   onClick={alreadyInstalled ? undefined : () => Stores.McpServersStep.toggleMcpServer(server.name)}
                 >

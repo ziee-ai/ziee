@@ -72,7 +72,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
     return (
       <div className="max-w-lg">
         <div className="flex items-center gap-3 mb-4">
-          <Lightbulb className="text-3xl text-amber-500" />
+          <Lightbulb className="text-3xl text-primary" />
           <Title level={3} className="!mb-0">
             Persistent Memory
           </Title>
@@ -115,7 +115,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
   return (
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
-        <Lightbulb className="text-3xl text-amber-500" />
+        <Lightbulb className="text-3xl text-primary" />
         <Title level={3} className="!mb-0">
           Persistent Memory
         </Title>
@@ -186,7 +186,7 @@ function PickModelScreen({
           onClick={onBack}
           aria-label="Back"
         />
-        <Lightbulb className="text-3xl text-amber-500" />
+        <Lightbulb className="text-3xl text-primary" />
         <Title level={3} className="!mb-0">
           Pick an embedding model
         </Title>
