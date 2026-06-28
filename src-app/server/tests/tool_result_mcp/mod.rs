@@ -111,6 +111,69 @@ async fn seed_tool_result(
 }
 
 #[tokio::test]
+async fn jsonrpc_lifecycle_initialize_tools_list_ping() {
+    // The MCP protocol handshake the chat client performs against the built-in
+    // tool_result server before any tools/call: initialize → tools/list → ping.
+    // Guards handlers.rs:57-75 (none of the prior tests exercise the lifecycle).
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_lifecycle", &[]).await;
+
+    // initialize — protocolVersion + serverInfo.name come straight from the real
+    // handler (no conversation header needed for the lifecycle methods).
+    let res = jsonrpc(&server, &user.token, None, "initialize", json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["jsonrpc"], "2.0");
+    assert_eq!(body["id"], 1);
+    assert_eq!(body["result"]["protocolVersion"], "2025-11-25");
+    assert_eq!(body["result"]["serverInfo"]["name"], "tool_result");
+    assert!(
+        body["result"]["capabilities"]["tools"].is_object(),
+        "initialize must advertise the tools capability: {body}"
+    );
+
+    // tools/list — the single get_tool_result tool with its inputSchema.
+    let res = jsonrpc(&server, &user.token, None, "tools/list", json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    assert_eq!(tools.len(), 1, "exactly one tool: {body}");
+    assert_eq!(tools[0]["name"], "get_tool_result");
+    assert!(
+        tools[0]["inputSchema"].is_object(),
+        "get_tool_result must expose an inputSchema: {body}"
+    );
+
+    // ping — an empty/ok result, no error.
+    let res = jsonrpc(&server, &user.token, None, "ping", json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert!(body["result"].is_object(), "ping returns an ok result: {body}");
+    assert!(body["error"].is_null(), "ping must not error: {body}");
+
+    // An unknown method is a JSON-RPC method-not-found error (still HTTP 200).
+    let res = jsonrpc(&server, &user.token, None, "does/not/exist", json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert!(
+        body["error"].is_object(),
+        "unknown method must return a JSON-RPC error: {body}"
+    );
+}
+
+#[tokio::test]
 async fn get_tool_result_recalls_content_and_structured_content() {
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "tr_recall", &[]).await;
@@ -146,6 +209,66 @@ async fn get_tool_result_recalls_content_and_structured_content() {
     assert!(sc["total_chars"].as_u64().unwrap_or(0) > 0);
     assert_eq!(sc["has_more"], false);
     assert_eq!(sc["tool_use_id"], "toolu_recall1");
+}
+
+#[tokio::test]
+async fn get_tool_result_recalls_web_search_result() {
+    // Cross-subsystem: web_search emits a readable text digest PLUS a typed
+    // `structuredContent` ({provider, results:[{url,title,snippet}]}); once
+    // `clear_old_tool_results` trims the sent block, the model's ONLY way back to
+    // it is `tool_result_mcp::get_tool_result`. This seeds a persisted
+    // web_search-shaped result and proves both the digest text and the typed
+    // provider/results payload round-trip verbatim through recall — the exact
+    // path web_search depends on (the block's `name` is irrelevant to recall,
+    // which is keyed by tool_use_id within the conversation).
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_websearch", &[]).await;
+
+    // Mirror tests/web_search/mcp_test.rs's real structuredContent shape.
+    let structured = json!({
+        "provider": "searxng",
+        "results": [
+            { "url": "https://example.com/a", "title": "Example Result", "snippet": "a snippet about the query" },
+            { "url": "https://example.com/b", "title": "Second Hit", "snippet": "more context here" }
+        ]
+    });
+    let (conv, _msg) = seed_tool_result(
+        &server,
+        &user.user_id,
+        "toolu_websearch1",
+        "Web search via searxng: 2 results for \"rust async\".",
+        Some(structured),
+    )
+    .await;
+
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        Some(&conv.to_string()),
+        "tools/call",
+        json!({ "name": "get_tool_result", "arguments": { "tool_use_id": "toolu_websearch1" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    // The readable digest comes back verbatim ...
+    assert!(text.contains("Web search via searxng: 2 results"), "recall text: {text}");
+    // ... AND the typed web_search structuredContent is surfaced on recall
+    // (provider + per-hit url/title/snippet), never stripped.
+    assert!(text.contains("--- structuredContent ---"), "recall must include structuredContent: {text}");
+    assert!(text.contains("searxng"), "provider recalled: {text}");
+    assert!(text.contains("https://example.com/a"), "result url recalled: {text}");
+    assert!(text.contains("Example Result"), "result title recalled: {text}");
+    assert!(text.contains("a snippet about the query"), "result snippet recalled: {text}");
+
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["tool_use_id"], "toolu_websearch1");
+    assert!(sc["total_chars"].as_u64().unwrap_or(0) > 0);
+    assert_eq!(sc["has_more"], false);
 }
 
 #[tokio::test]
@@ -316,4 +439,73 @@ async fn get_tool_result_is_branch_agnostic() {
         "recall must be branch-agnostic (found on non-active branch): {text}"
     );
     assert_eq!(body["result"]["structuredContent"]["tool_use_id"], "toolu_branch1");
+}
+
+#[tokio::test]
+async fn endpoint_rejects_missing_jwt_with_401() {
+    // The handler is gated by `RequirePermissions<(McpServersRead,)>`, whose
+    // extractor 401s before any tool dispatch when no Authorization header is
+    // present (MISSING_TOKEN). A POST with a well-formed JSON-RPC body but no
+    // bearer token must never reach `get_tool_result`.
+    let server = TestServer::start().await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/tool-result/mcp"))
+        .header("x-conversation-id", Uuid::new_v4().to_string())
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": "get_tool_result", "arguments": { "tool_use_id": "toolu_x" } }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res.status(),
+        401,
+        "no Authorization header must be rejected with 401 UNAUTHORIZED"
+    );
+}
+
+#[tokio::test]
+async fn endpoint_rejects_user_without_mcp_read_with_403() {
+    // The route requires `mcp_servers::read`. A freshly-registered user holds it
+    // via the default group (that's why every other test in this file passes a
+    // `&[]` user and still gets 200). Permissions are resolved LIVE from the DB
+    // on each request (extractors.rs → `get_user_groups`), so stripping the
+    // user's group memberships after registration leaves them authenticated but
+    // unauthorized — the gate must answer 403, not 200/401.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_noperm", &[]).await;
+
+    // Drop every group membership → user now has zero permissions.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let uid = Uuid::parse_str(&user.user_id).unwrap();
+    sqlx::query("DELETE FROM user_groups WHERE user_id = $1")
+        .bind(uid)
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+
+    // Sanity: the token itself is still valid (a permission-bearing user would
+    // get 200 here); only the live permission check should fail.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        Some(&Uuid::new_v4().to_string()),
+        "tools/call",
+        json!({ "name": "get_tool_result", "arguments": { "tool_use_id": "toolu_x" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+
+    assert_eq!(
+        res.status(),
+        403,
+        "an authenticated user lacking mcp_servers::read must be rejected with 403 FORBIDDEN"
+    );
 }
