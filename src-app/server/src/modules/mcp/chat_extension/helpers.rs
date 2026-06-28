@@ -854,6 +854,40 @@ mod tests {
         }
     }
 
+    /// Stream-close DURING the wait: the form is surfaced on the SSE stream,
+    /// then the user closes the chat stream (Stop) before answering. The
+    /// `sse_tx.closed()` arm of the select must fire and produce a NON-error
+    /// "did not respond" marker (so the assistant reasons about it, never
+    /// retries). Distinct from the no-SSE path and from the send-time close.
+    #[tokio::test]
+    async fn ask_user_stream_close_during_wait_returns_non_error_no_response() {
+        use tokio::sync::mpsc;
+        let (tx, mut rx) =
+            mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
+
+        let handle = tokio::spawn(run_ask_user_elicitation(
+            serde_json::json!({ "message": "Pick a color", "schema": { "type": "object" } }),
+            None,
+            None,
+            Some(tx),
+            None,
+        ));
+
+        // Receive the elicitation form first — proves the form was surfaced and
+        // the elicitation is now blocked on the select — THEN drop the receiver
+        // to simulate the chat stream closing before the user answers.
+        let _form = rx.recv().await.expect("elicitation form event surfaced");
+        drop(rx);
+
+        let result = handle.await.expect("elicitation task joins");
+        let (content, is_error) = tool_result_parts(&result);
+        assert!(!is_error, "stream-close mid-wait is not a tool failure");
+        assert!(
+            content.contains("did not respond"),
+            "stream-close must map to the no-response marker; got: {content}"
+        );
+    }
+
     fn make_mcp_tool(name: &str) -> McpToolDef {
         McpToolDef {
             name: name.to_string(),
