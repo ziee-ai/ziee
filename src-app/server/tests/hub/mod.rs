@@ -2861,3 +2861,39 @@ async fn configure_hf_repo_credential(server: &crate::common::TestServer) {
         "configuring the Hugging Face repo credential should succeed"
     );
 }
+
+/// Locale fallback: an unknown/unsupported `lang` must NOT error or return an
+/// empty catalog — the hub falls back to default-locale content so a client
+/// sending an unexpected locale still gets the seeded assistants. The existing
+/// locale test only covers a SUPPORTED locale (zh); this pins the fallback path.
+#[tokio::test]
+async fn test_get_hub_assistants_unknown_locale_falls_back_nonempty() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_locale_fallback",
+        &["hub::assistants::read"],
+    )
+    .await;
+
+    let url = server.api_url("/hub/assistants?lang=zz-nonexistent");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        200,
+        "an unknown locale must not error (it falls back), got {}",
+        response.status()
+    );
+    let body: serde_json::Value = response.json().await.expect("parse JSON");
+    assert!(body.is_array(), "response should be an array: {body}");
+    assert!(
+        !body.as_array().unwrap().is_empty(),
+        "unknown locale must fall back to non-empty default content: {body}"
+    );
+}

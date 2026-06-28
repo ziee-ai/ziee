@@ -120,3 +120,69 @@ async fn subscribe_stream_closes_at_token_expiry() {
         "stream closed well before the 24h fallback (at ~exp); elapsed={elapsed:?}"
     );
 }
+
+/// The sync stream's FIRST frame is the `connected` handshake carrying a valid
+/// UUID `connection_id` — the contract every client depends on to echo
+/// `X-Sync-Connection-Id` back for self-echo suppression. The existing open
+/// test asserts only the 200 + content-type; this validates the handshake
+/// frame's event name + payload shape on the wire.
+#[tokio::test]
+async fn subscribe_first_frame_is_connected_handshake_with_uuid() {
+    use futures_util::StreamExt;
+    use std::time::Duration;
+
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_handshake",
+        &["profile::read"],
+    )
+    .await;
+
+    let resp = reqwest::Client::new()
+        .get(server.api_url("/sync/subscribe"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Read until the first complete SSE frame (blank-line terminated), bounded.
+    let mut stream = resp.bytes_stream();
+    let mut buf = String::new();
+    let deadline = tokio::time::sleep(Duration::from_secs(10));
+    tokio::pin!(deadline);
+    let frame = loop {
+        tokio::select! {
+            _ = &mut deadline => panic!("no handshake frame within 10s; buf={buf:?}"),
+            chunk = stream.next() => match chunk {
+                Some(Ok(b)) => {
+                    buf.push_str(&String::from_utf8_lossy(&b));
+                    if let Some(pos) = buf.find("\n\n") {
+                        break buf[..pos].to_string();
+                    }
+                }
+                Some(Err(e)) => panic!("stream error: {e}"),
+                None => panic!("stream ended before a frame: {buf:?}"),
+            }
+        }
+    };
+
+    // The first frame names the `connected` event ...
+    assert!(
+        frame.lines().any(|l| l.trim() == "event: connected"),
+        "first frame must be the connected handshake: {frame:?}"
+    );
+    // ... and its data payload carries a parseable UUID connection_id.
+    let data_line = frame
+        .lines()
+        .find_map(|l| l.strip_prefix("data:"))
+        .expect("a data: line in the handshake frame");
+    let payload: serde_json::Value =
+        serde_json::from_str(data_line.trim()).expect("handshake data is JSON");
+    let conn = payload["connection_id"].as_str().expect("connection_id present");
+    assert!(
+        uuid::Uuid::parse_str(conn).is_ok(),
+        "connection_id must be a valid UUID, got {conn:?}"
+    );
+}

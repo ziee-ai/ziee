@@ -667,3 +667,64 @@ async fn r10_explicit_reembed_endpoint_resumes_stale_rows() {
     assert_eq!(status["pending_count"], 0);
     assert_eq!(status["in_progress"], false);
 }
+
+// ────────────────────────────────────────────────────────────────────
+// R-forget — the MCP `forget` tool soft-deletes a memory so a later
+// recall no longer surfaces it (real embeddings + real vector search).
+// The existing `test_mcp_forget_requires_memory_id` only covers the
+// missing-arg validation; this exercises the full remember→recall→
+// forget→recall lifecycle end to end.
+// ────────────────────────────────────────────────────────────────────
+#[tokio::test]
+async fn r_forget_removes_memory_from_subsequent_recall() {
+    if h::skip_if_no_keys("r_forget") {
+        return;
+    }
+    let server = crate::common::TestServer::start().await;
+    let _ids = h::setup_real_providers(&server).await;
+    let user = h::memory_user(&server, "r_forget").await;
+
+    // A distinctive, isolated fact so recall is unambiguous.
+    let fact = "The user's emergency contact passphrase is ORCHID-DELTA-77.";
+    let id = h::mcp_remember(&server, &user.token, fact).await;
+    h::wait_for_embedding(&server, &user.token, id).await;
+
+    // Before forgetting: recall surfaces it.
+    let before = h::mcp_recall(&server, &user.token, "emergency contact passphrase", 5).await;
+    assert!(
+        before.iter().any(|m| m.contains("ORCHID-DELTA-77")),
+        "recall must find the memory before forget; got {before:?}"
+    );
+
+    // Forget it via the MCP `forget` tool (soft-delete).
+    let forget: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/memories/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "forget", "arguments": { "memory_id": id.to_string() } },
+        }))
+        .send()
+        .await
+        .expect("forget POST")
+        .json()
+        .await
+        .expect("forget body");
+    assert!(forget["error"].is_null(), "forget must succeed: {forget}");
+
+    // After forgetting: recall no longer surfaces it.
+    let after = h::mcp_recall(&server, &user.token, "emergency contact passphrase", 5).await;
+    assert!(
+        !after.iter().any(|m| m.contains("ORCHID-DELTA-77")),
+        "forgotten memory must NOT reappear in recall; got {after:?}"
+    );
+
+    // And the row is gone from the owner's REST list (soft-deleted).
+    let got = reqwest::Client::new()
+        .get(server.api_url(&format!("/memories/{id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(got.status(), 404, "a forgotten memory must 404 on direct GET");
+}

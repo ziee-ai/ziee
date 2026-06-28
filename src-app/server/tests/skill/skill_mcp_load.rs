@@ -190,3 +190,62 @@ async fn load_skill_response_has_dual_text_and_structured_channels() {
         "text channel mirrors structuredContent"
     );
 }
+
+/// `load_skill` for a skill that is not installed returns a JSON-RPC error
+/// (not_found), never a result — the "skill not installed" resolve-to-None path.
+#[tokio::test]
+async fn load_skill_unknown_name_errors() {
+    let (server, _mock) = server_with_skill_catalog().await;
+    let admin = admin_and_refresh(&server).await;
+    // NOTE: deliberately do NOT install the fixture skill.
+
+    let body: Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "load_skill", "arguments": { "name": "io.github.test/does-not-exist" } }),
+    )
+    .send()
+    .await
+    .expect("load_skill")
+    .json()
+    .await
+    .expect("parse");
+
+    assert!(
+        body["error"].is_object(),
+        "loading an uninstalled skill must error: {body}"
+    );
+    assert!(body["result"].is_null(), "no result on a not-found skill: {body}");
+}
+
+/// `read_skill_file` for a path that doesn't exist WITHIN an installed skill
+/// returns a JSON-RPC error (not_found), never partial/empty content.
+#[tokio::test]
+async fn read_skill_file_missing_path_errors() {
+    let (server, _mock) = server_with_skill_catalog().await;
+    let admin = admin_and_refresh(&server).await;
+    install_fixture_skill(&server, &admin.token).await;
+
+    let body: Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({
+            "name": "read_skill_file",
+            "arguments": { "name": FIXTURE_SKILL_NAME, "path": "references/nope-not-here.md" }
+        }),
+    )
+    .send()
+    .await
+    .expect("read_skill_file")
+    .json()
+    .await
+    .expect("parse");
+
+    assert!(
+        body["error"].is_object(),
+        "reading a missing file inside a skill must error: {body}"
+    );
+    assert!(body["result"].is_null(), "no content on a missing file: {body}");
+}
