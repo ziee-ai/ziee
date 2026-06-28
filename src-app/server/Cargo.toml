@@ -139,7 +139,6 @@ ai-providers = { path = "./ai-providers" }
 
 # MCP client
 rmcp = { version = "0.8", features = ["client", "transport-child-process"] }
-eventsource-client = "0.12"
 # E5: full JSON-Schema validation of elicit submissions. default-features off
 # drops the remote-`$ref` HTTP/file resolvers (no SSRF surface during form
 # validation) — elicit schemas are self-contained.
