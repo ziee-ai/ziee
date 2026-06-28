@@ -399,4 +399,41 @@ mod tests {
         d.push(("S2_API_KEY".to_string(), "k".to_string()));
         assert_ne!(fingerprint(&a), fingerprint(&d));
     }
+
+    /// The recycle decision (`env_fingerprint == fp` in `ensure_healthy`) must
+    /// recycle the sidecar when a key is REMOVED and must NOT recycle on a mere
+    /// header-ordering difference — `current_env` sorts its `(name, value)`
+    /// pairs before fingerprinting precisely so an admin re-saving the same keys
+    /// in a different order doesn't force a spurious respawn. Both properties
+    /// were unasserted by `fingerprint_is_stable_and_value_sensitive` (which only
+    /// covered same/changed/added).
+    #[test]
+    fn fingerprint_recycles_on_removed_key_but_is_order_insensitive_after_sort() {
+        // Two upstream keys, configured in opposite insertion orders. The real
+        // `current_env` sorts before calling `fingerprint`, so model that here.
+        let mut two_ab = vec![
+            ("NCBI_API_KEY".to_string(), "n".to_string()),
+            ("S2_API_KEY".to_string(), "s".to_string()),
+        ];
+        let mut two_ba = vec![
+            ("S2_API_KEY".to_string(), "s".to_string()),
+            ("NCBI_API_KEY".to_string(), "n".to_string()),
+        ];
+        two_ab.sort();
+        two_ba.sort();
+        // Same set of pairs, different original order → identical fingerprint
+        // (no spurious recycle when the admin re-saves the same keys).
+        assert_eq!(fingerprint(&two_ab), fingerprint(&two_ba));
+
+        // Removing a key (admin cleared S2_API_KEY) must change the fingerprint
+        // so the sidecar is recycled and no longer sees the dropped key.
+        let mut one = vec![("NCBI_API_KEY".to_string(), "n".to_string())];
+        one.sort();
+        assert_ne!(fingerprint(&two_ab), fingerprint(&one));
+
+        // The empty env (all keys removed → unauthenticated mode) is distinct
+        // from any keyed config, so dropping the last key also recycles.
+        let none: Vec<(String, String)> = Vec::new();
+        assert_ne!(fingerprint(&one), fingerprint(&none));
+    }
 }
