@@ -60,8 +60,9 @@ Exit 0 = pass. Anything else = fail.
 
 ## Limitations
 
-- macOS only: no DISPLAY needed on macOS for `safaridriver`, but
-  Linux requires X11/Wayland for `webkit2gtk-driver`.
+- Display server: macOS needs no `DISPLAY` for `safaridriver`, but
+  Linux requires X11/Wayland for `webkit2gtk-driver`. (Setup above
+  covers macOS, Linux, and Windows WebDrivers.)
 - No isolation: uses the user's real `~/Library/Application
   Support/com.ziee.chat/` data dir. Don't run while you have a real
   session open (port collision).
