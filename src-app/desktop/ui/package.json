@@ -2,13 +2,11 @@
   "name": "@ziee/desktop-ui",
   "version": "0.1.0",
   "dependencies": {
-    "@ant-design/icons": "^6.2.3",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-opener": "^2.5.4",
-    "antd": "^6.4.3",
     "dayjs": "^1.11.20",
     "i18next": "^26.2.0",
     "i18next-browser-languagedetector": "^8.2.1",
@@ -30,7 +28,6 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@ant-design/cli": "^6.4.3",
     "@axe-core/playwright": "^4.11.3",
     "@biomejs/biome": "^2.4.15",
     "@playwright/test": "^1.60.0",
@@ -53,7 +50,7 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
-    "check": "npm run generate-openapi && tsc && npx --no-install antd doctor && npx --no-install antd lint src",
+    "check": "npm run generate-openapi && tsc",
     "dev": "vite",
     "format": "biome format --write ./src",
     "format:check": "biome check ./src",

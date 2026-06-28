@@ -2,7 +2,6 @@
   "name": "@ziee/ui-core",
   "version": "0.1.0",
   "dependencies": {
-    "@ant-design/icons": "^6.2.3",
     "@hookform/resolvers": "^5.4.0",
     "@radix-ui/react-accordion": "^1.2.14",
     "@radix-ui/react-alert-dialog": "^1.1.17",
@@ -30,7 +29,6 @@
     "@tanstack/react-virtual": "^3.14.4",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
-    "antd": "^6.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -63,7 +61,6 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@ant-design/cli": "^6.4.3",
     "@axe-core/playwright": "^4.11.3",
     "@biomejs/biome": "^2.4.15",
     "@playwright/test": "^1.60.0",
@@ -100,7 +97,7 @@
   "scripts": {
     "build": "npm run generate-openapi && tsc && vite build",
     "build:nocheck": "npm run generate-openapi && vite build",
-    "check": "npm run generate-openapi && tsc && npx --no-install antd doctor && npx --no-install antd lint src",
+    "check": "npm run generate-openapi && tsc",
     "dev": "vite",
     "format": "biome format --write ./src",
     "format:check": "biome check ./src",
