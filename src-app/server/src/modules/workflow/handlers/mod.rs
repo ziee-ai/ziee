@@ -88,6 +88,35 @@ pub fn get_user_workflow_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<Workflow>>()
 }
 
+/// Best-effort cleanup of a single run's on-disk artifacts (run-created file
+/// blobs + the staged run dir). Shared by `delete_run` semantics and the
+/// workflow-delete cascade. A run that belongs to a conversation keeps its
+/// files (they belong to the chat context).
+async fn cleanup_run_artifacts(user_id: Uuid, run_id: Uuid, conversation_id: Option<Uuid>) {
+    if conversation_id.is_none() {
+        let storage = crate::modules::file::storage::manager::get_file_storage();
+        if let Ok(fids) = Repos.file.list_ids_by_workflow_run(run_id).await {
+            for fid in fids {
+                match Repos.file.delete(fid, user_id).await {
+                    Ok(blob_ids) => {
+                        for blob_id in blob_ids {
+                            let _ = storage.delete_all(user_id, blob_id).await;
+                        }
+                    }
+                    Err(e) => tracing::warn!("workflow: delete run artifact {fid} failed: {e}"),
+                }
+            }
+        }
+    }
+    let root = crate::modules::workflow::runner::workflow_workspace_root();
+    let conv_or_run = conversation_id.unwrap_or(run_id);
+    let run_dir = root
+        .join(conv_or_run.to_string())
+        .join("workflow")
+        .join(run_id.to_string());
+    let _ = tokio::fs::remove_dir_all(&run_dir).await;
+}
+
 pub async fn delete_user_workflow(
     auth: RequirePermissions<(WorkflowsManage,)>,
     AxumPath(id): AxumPath<Uuid>,
@@ -101,6 +130,14 @@ pub async fn delete_user_workflow(
             "WORKFLOW_FORBIDDEN",
             "cannot delete non-owned workflow",
         )).into());
+    }
+    // Clean up each run's on-disk artifacts BEFORE the workflow_runs rows
+    // cascade away — `files.workflow_run_id` is `ON DELETE SET NULL`, so
+    // run-created blobs + staged dirs would otherwise be orphaned forever.
+    if let Ok(runs) = repository::list_run_refs_for_workflow(Repos.pool(), id).await {
+        for (run_id, conv_id) in runs {
+            cleanup_run_artifacts(auth.user.id, run_id, conv_id).await;
+        }
     }
     // L4: delete the DB row (source of truth) FIRST, then best-effort rm
     // the extracted bundle dir. Mirrors `skill::handlers::delete_user_skill`

@@ -1016,6 +1016,24 @@ pub async fn list_runs_for_workflow(
 /// A5: hard-delete a run row. The `files.workflow_run_id` FK is
 /// `ON DELETE SET NULL`, so any still-linked files survive — the handler's
 /// cascade removes the run-owned ones first when there's no conversation.
+/// (run_id, conversation_id) for every run of a workflow. Used by the
+/// workflow-delete path to clean up each run's on-disk artifacts before the
+/// `workflow_runs` rows cascade away (which would otherwise orphan run-created
+/// file blobs + staged dirs).
+pub async fn list_run_refs_for_workflow(
+    pool: &PgPool,
+    workflow_id: Uuid,
+) -> Result<Vec<(Uuid, Option<Uuid>)>, AppError> {
+    let rows = sqlx::query!(
+        r#"SELECT id, conversation_id FROM workflow_runs WHERE workflow_id = $1"#,
+        workflow_id
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows.into_iter().map(|r| (r.id, r.conversation_id)).collect())
+}
+
 pub async fn delete_run_row(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
     sqlx::query!("DELETE FROM workflow_runs WHERE id = $1", run_id)
         .execute(pool)
