@@ -208,6 +208,59 @@ test.describe('Chat - Model Access Control', () => {
     await assertDropdownEmpty(page)
   })
 
+  test('dynamic group→provider assignment updates a logged-in user LIVE (no re-login)', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    // Provider P1 (initially assigned) + P2 (assigned LATER while user is online).
+    const p1 = await createProviderViaAPI(apiURL, adminToken, 'Provider Live 1')
+    await createModelViaAPI(apiURL, adminToken, p1, 'model-live-a', 'Model Live A')
+    const p2 = await createProviderViaAPI(apiURL, adminToken, 'Provider Live 2')
+    await createModelViaAPI(apiURL, adminToken, p2, 'model-live-b', 'Model Live B')
+
+    const username = `liveuser_${Date.now()}`
+    const password = 'TestPass123!'
+    const userId = await createTestUser(
+      apiURL,
+      adminToken,
+      username,
+      `${username}@test.com`,
+      password,
+    )
+    const groupId = await createGroupViaAPI(
+      apiURL,
+      adminToken,
+      `live-group-${Date.now()}`,
+      'Live reassignment group',
+    )
+    await assignProviderToGroupViaAPI(apiURL, adminToken, groupId, [p1])
+    await assignUserToGroupViaAPI(apiURL, adminToken, userId, groupId)
+
+    // User logs in: sees Model Live A only.
+    await login(page, baseURL, username, password)
+    await goToNewChatPage(page, baseURL)
+    await assertModelVisibleInDropdown(page, 'Model Live A')
+    await assertModelNotVisibleInDropdown(page, 'Model Live B')
+
+    // Admin DYNAMICALLY adds P2 to the group while the user is online (PUT
+    // replaces the whole list). The user's UserLlmProviders store subscribes to
+    // the sync entity + session signal fanned to group members, so the dropdown
+    // must update WITHOUT a re-login.
+    await assignProviderToGroupViaAPI(apiURL, adminToken, groupId, [p1, p2])
+
+    await expect
+      .poll(async () => await getVisibleModelsInDropdown(page), {
+        timeout: 30000,
+      })
+      .toContain('Model Live B')
+    // P1's model is still there too.
+    await expect(await getVisibleModelsInDropdown(page)).toContain('Model Live A')
+  })
+
   test('disabled models do not appear in dropdown', async ({
     page,
     testInfra,
