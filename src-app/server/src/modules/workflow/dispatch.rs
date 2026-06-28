@@ -1011,12 +1011,11 @@ fn tool_result_text(result: &crate::modules::mcp::client::traits::ToolResult) ->
 /// Resolve a `tool` step's `server` NAME to a server id the running user may
 /// call. Built-ins resolve by stable name (their OWN permission still gates the
 /// call); user/system servers resolve within the user's accessible enabled set.
-pub(crate) async fn resolve_tool_server(
-    user_id: Uuid,
-    server_name: &str,
-) -> Result<Uuid, AppError> {
-    use crate::core::Repos;
-    let builtin = match server_name {
+/// Pure NAME → built-in server-id mapping used by `resolve_tool_server`.
+/// Extracted so the workflow↔built-in wiring (incl. the workflow→memory MCP
+/// seam) is unit-testable without a DB. `None` for non-built-in names.
+pub(crate) fn builtin_server_id_by_name(server_name: &str) -> Option<Uuid> {
+    match server_name {
         "web_search" => Some(crate::modules::web_search::web_search_server_id()),
         "bio" => Some(crate::modules::bio_mcp::bio_mcp_server_id()),
         "lit_search" => Some(crate::modules::lit_search::lit_search_server_id()),
@@ -1025,7 +1024,15 @@ pub(crate) async fn resolve_tool_server(
         "files" => Some(crate::modules::files_mcp::files_mcp_server_id()),
         "code_sandbox" => Some(crate::modules::code_sandbox::code_sandbox_server_id()),
         _ => None,
-    };
+    }
+}
+
+pub(crate) async fn resolve_tool_server(
+    user_id: Uuid,
+    server_name: &str,
+) -> Result<Uuid, AppError> {
+    use crate::core::Repos;
+    let builtin = builtin_server_id_by_name(server_name);
     if let Some(id) = builtin {
         // Built-in: allowed iff registered + enabled. The server's own
         // permission (bio::query / web_search::use / ...) gates the call.
@@ -1703,6 +1710,33 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::path::PathBuf;
+
+    /// Workflow ↔ memory (and other built-in) wiring (gap 91d9): a workflow
+    /// `tool` step with `server: memory` must resolve to the memory MCP
+    /// built-in id, so a workflow can read/write user_memories via remember/
+    /// recall. Also pins the rest of the built-in name map + rejects unknowns.
+    #[test]
+    fn builtin_name_map_includes_memory_and_rejects_unknown() {
+        assert_eq!(
+            builtin_server_id_by_name("memory"),
+            Some(crate::modules::memory_mcp::memory_mcp_server_id()),
+            "workflow must resolve the 'memory' built-in to the memory MCP server id"
+        );
+        // Other built-ins the workflow runner exposes.
+        for (name, id) in [
+            ("web_search", crate::modules::web_search::web_search_server_id()),
+            ("lit_search", crate::modules::lit_search::lit_search_server_id()),
+            ("citations", crate::modules::citations::citations_server_id()),
+            ("files", crate::modules::files_mcp::files_mcp_server_id()),
+            ("code_sandbox", crate::modules::code_sandbox::code_sandbox_server_id()),
+            ("bio", crate::modules::bio_mcp::bio_mcp_server_id()),
+        ] {
+            assert_eq!(builtin_server_id_by_name(name), Some(id), "built-in {name}");
+        }
+        // A user/system server name is NOT a built-in (resolved via the DB path).
+        assert_eq!(builtin_server_id_by_name("some-user-server"), None);
+        assert_eq!(builtin_server_id_by_name(""), None);
+    }
 
     fn bare_ctx() -> RunContext {
         RunContext {
