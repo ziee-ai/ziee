@@ -13,7 +13,7 @@ export interface TabItem {
   closable?: boolean
 }
 
-export interface TabsProps {
+interface TabsBase {
   items: TabItem[]
   value?: string
   defaultValue?: string
@@ -23,21 +23,35 @@ export interface TabsProps {
   disabled?: boolean
   size?: 'sm' | 'default'
   className?: string
-  /** Editable-card mode: renders an add button + a per-tab close affordance (legacy `type="editable-card"`). */
-  editable?: boolean
+  /** Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. */
+  'data-testid': string
+}
+// Editable-card mode renders an add button + per-tab close affordances. The add button
+// has no other handler, so `onEdit` is REQUIRED here — a type error otherwise prevents
+// shipping editable tabs whose add/close buttons silently do nothing.
+interface TabsEditable {
+  /** Editable-card mode (legacy `type="editable-card"`). Requires `onEdit`. */
+  editable: true
+  /** Unified edit handler (legacy antd `onEdit`): action is 'add' (key='') or 'remove'. */
+  onEdit: (action: 'add' | 'remove', key: string) => void
   /** Hide the add button while keeping per-tab close affordances. */
   hideAdd?: boolean
-  /** Unified edit handler (legacy antd `onEdit`): action is 'add' or 'remove'; key is '' for add. */
-  onEdit?: (action: 'add' | 'remove', key: string) => void
-  /** Fires with the key of the tab whose close affordance was activated. */
+  /** Also fires with the key of the tab whose close affordance was activated. */
   onClose?: (key: string) => void
   /** Accessible name for the add button. Falls back to "Add tab" if omitted. */
   addLabel?: string
   /** Accessible name for a tab's close affordance. Falls back to "Close <label>". */
   closeLabel?: (item: TabItem) => string
-  /** Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. */
-  'data-testid': string
 }
+interface TabsStatic {
+  editable?: false
+  onEdit?: never
+  hideAdd?: never
+  onClose?: never
+  addLabel?: never
+  closeLabel?: never
+}
+export type TabsProps = TabsBase & (TabsEditable | TabsStatic)
 
 export function Tabs({
   items, value, defaultValue, onValueChange, onTabClick, disabled, size, className,

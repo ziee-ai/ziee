@@ -433,6 +433,7 @@ export function AddLocalLlmModelUploadDrawer() {
             <List
               dataSource={filteredFiles}
               data-testid="llm-upload-selected-files-list"
+              rowKey={item => item.file.name}
               renderItem={item => (
                 <div className="flex items-center justify-between">
                   <Text className={item.required ? 'font-bold' : undefined}>

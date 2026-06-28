@@ -65,6 +65,7 @@ export function WorkflowRunsList({
   return (
     <List
       data-testid="wf-runs-list"
+      rowKey={run => run.id}
       size="sm"
       loading={!!loading[workflowId] && items.length === 0}
       dataSource={items}

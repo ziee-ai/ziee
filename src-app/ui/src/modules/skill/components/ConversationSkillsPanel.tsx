@@ -70,6 +70,7 @@ export function ConversationSkillsPanel({
     <List
       size="sm"
       data-testid="skill-conversation-list"
+      rowKey={skill => skill.id}
       dataSource={allRows}
       renderItem={(skill, index) => {
         const visible = availableIds.has(skill.id)

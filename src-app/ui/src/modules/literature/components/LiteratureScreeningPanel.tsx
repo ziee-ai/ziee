@@ -192,6 +192,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
         size="sm"
         dataSource={records}
         data-testid="lit-screening-records-list"
+        rowKey={(_, i) => String(i)}
         empty={
           degradedSources.length > 0
             ? `No records — all sources errored or were skipped (${degradedSources.join(', ')}). Try again or ask the model to re-search.`

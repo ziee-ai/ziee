@@ -8,8 +8,9 @@ import { Empty } from './empty'
 export interface ListProps<T> {
   dataSource: T[]
   renderItem: (item: T, index: number) => React.ReactNode
-  /** Row key: a record field name, a function, or omitted (falls back to index). */
-  rowKey?: (keyof T & string) | ((item: T, index: number) => string)
+  /** Row key (REQUIRED, like Table): a record field name or a function. Stable keys avoid
+   *  React reorder/delete bugs — index fallback is intentionally not allowed. */
+  rowKey: (keyof T & string) | ((item: T, index: number) => string)
   header?: React.ReactNode
   footer?: React.ReactNode
   empty?: React.ReactNode

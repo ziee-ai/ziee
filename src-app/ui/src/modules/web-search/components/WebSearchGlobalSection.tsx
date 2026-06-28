@@ -206,6 +206,7 @@ export function WebSearchGlobalSection() {
       ) : (
         <List
           data-testid="websearch-global-chain-list"
+          rowKey={key => key}
           size="sm"
           className="border rounded-md"
           dataSource={chain}
