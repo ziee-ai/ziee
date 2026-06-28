@@ -869,3 +869,44 @@ async fn backfill_does_not_starve_behind_zero_chunk_wall() {
         assert_eq!(chunk_count(&pool, id).await, 0, "whitespace files still yield no chunks");
     }
 }
+
+/// Concurrent re-ingest of the SAME file must not corrupt the chunk set: the
+/// reindex transaction takes a per-file `pg_advisory_xact_lock(file_rag_reindex:$1)`,
+/// so two simultaneous re-index passes serialize and each leaves a consistent
+/// DELETE+INSERT swap (no doubled rows, no lost index). Drives the real
+/// `reindex_file` entrypoint twice concurrently.
+#[tokio::test]
+async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_concurrent_ingest").await;
+    let pool = db_pool(&server).await;
+
+    set_rag_settings(&server, &user, json!({ "enabled": true })).await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "concurrent.txt",
+        "alpha beta gamma delta epsilon\nsecond line of content here\nthird line too\n",
+    )
+    .await;
+    let n = wait_for_chunks(&pool, &file_id, 1).await;
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let file_uuid = Uuid::parse_str(&file_id).unwrap();
+
+    // Two concurrent re-index passes on the same file.
+    let (r1, r2) = tokio::join!(
+        ziee::file_rag_ingest::reindex_file(user_uuid, file_uuid),
+        ziee::file_rag_ingest::reindex_file(user_uuid, file_uuid),
+    );
+    r1.expect("first concurrent reindex must succeed");
+    r2.expect("second concurrent reindex must succeed");
+
+    // The advisory lock serialized the two swaps → the chunk count is the same
+    // single index, not doubled or wiped.
+    assert_eq!(
+        chunk_count(&pool, &file_id).await,
+        n,
+        "concurrent reindex must leave exactly one consistent chunk set"
+    );
+}

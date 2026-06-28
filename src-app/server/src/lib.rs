@@ -178,6 +178,13 @@ pub mod file_routing {
     pub use crate::modules::file::provider_routing::process_file_blocks;
 }
 
+// Re-export the file_rag reindex entrypoint for the integration test that
+// exercises the per-file advisory-lock under concurrent re-ingest.
+#[doc(hidden)]
+pub mod file_rag_ingest {
+    pub use crate::modules::file_rag::ingest::reindex_file;
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`
