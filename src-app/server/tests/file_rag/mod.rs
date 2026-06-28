@@ -1158,3 +1158,188 @@ async fn concurrent_rewrite_same_file_serializes_via_advisory_lock() {
         "exactly one rewrite must win; both markers present => corrupt interleave, neither => lost write"
     );
 }
+
+// ── embed-dispatch failure recovery (cross-module: file_rag ↔ memory) ────────
+//
+// file_rag delegates embedding to `memory::engine::dispatch::embed_batch`
+// (ingest.rs `embed_file_chunks`) and to `dispatch::embed` (retrieval-time
+// query embed + the admin-settings probe). These two tests pin the documented
+// recovery contract when that cross-module dispatch is unavailable / fails:
+//   1. with NO embedder, ingest stores chunks with a NULL embedding yet they
+//      stay fully FTS-searchable (degrade, don't error); and
+//   2. configuring an embedding model whose provider dispatch FAILS is rejected
+//      gracefully (4xx, not a 5xx/panic) — embed_batch's error is handled.
+
+/// Cross-module recovery, ingest+search: a fresh deployment has no embedding
+/// model, so the `file_rag → memory::embed_batch` dispatch never populates
+/// `file_chunks.embedding` (it stays NULL) — yet the chunks are stored and
+/// `semantic_search` still answers via the FTS fallback. Asserts the DB-level
+/// degradation invariant (embedding IS NULL) that the existing FTS tests omit,
+/// tying the ingest-side dispatch outcome to the search-side FTS result.
+#[tokio::test]
+async fn embed_dispatch_absent_keeps_chunks_null_embedded_yet_fts_searchable() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_embedfail").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-embedfail",
+        &[(
+            "mito.txt",
+            "The mitochondrion is the powerhouse of the cell; oxidative phosphorylation \
+             on the cristae membrane drives ATP synthase to produce uniquemarkerzeta.",
+        )],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    let file_uuid = Uuid::parse_str(&file_ids[0]).unwrap();
+
+    // Background ingest produced chunks.
+    let total = wait_for_chunks(&pool, &file_ids[0], 1).await;
+    assert!(total >= 1, "ingest must produce at least one chunk");
+
+    // The cross-module embed dispatch was skipped (no model) → EVERY chunk has a
+    // NULL embedding. This is the ingest-side degradation: chunks are stored
+    // FTS-ready, never blocked on the unavailable embedder.
+    let embedded: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM file_chunks WHERE file_id = $1 AND embedding IS NOT NULL",
+    )
+    .bind(file_uuid)
+    .fetch_one(&pool)
+    .await
+    .expect("count embedded chunks");
+    assert_eq!(
+        embedded, 0,
+        "with no embedder configured the file_rag→memory embed dispatch must leave \
+         embedding NULL (degrade to FTS), not block or partially embed; got {embedded}"
+    );
+
+    // The search-side fallback: despite NULL embeddings, the term is found and
+    // the retrieval mode is FTS (retrieval.rs degrade path), with provenance.
+    let body = semantic_search(&server, &user, conv_uuid, "uniquemarkerzeta").await;
+    assert!(body["error"].is_null(), "semantic_search must not error; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(
+        sc["mode"].as_str().unwrap(),
+        "fts",
+        "no usable embedder → retrieval falls back to FTS mode"
+    );
+    let results = sc["results"].as_array().expect("results array");
+    assert!(
+        !results.is_empty(),
+        "FTS fallback must still return the matching chunk; results={results:?}"
+    );
+    assert_eq!(results[0]["file_id"].as_str().unwrap(), file_ids[0].as_str());
+}
+
+/// Cross-module recovery, configure path: setting an embedding model whose
+/// provider dispatch FAILS must be handled gracefully. The admin-settings
+/// handler probe-embeds via `memory::dispatch::embed` → `embed_batch` →
+/// `embed_remote`; pointing the provider at a closed loopback port makes that
+/// dispatch return `Err` (connection refused). The endpoint must answer a clean
+/// `400 INVALID_EMBEDDING_MODEL`, NOT a 500 / panic — and Document RAG keeps
+/// working in FTS mode (the embedder was never accepted).
+#[tokio::test]
+async fn configured_embedder_with_dead_provider_is_rejected_not_5xx() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_deadembed").await;
+    let http = reqwest::Client::new();
+
+    // A provider whose base_url is a closed loopback port → embed dispatch gets
+    // an instant connection-refused (deterministic, no real network egress).
+    let prov: Value = http
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "Dead Embed Provider",
+            "provider_type": "openai",
+            "enabled": true,
+            "api_key": "sk-test-unused",
+            "base_url": "http://127.0.0.1:1/v1",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let provider_id = prov["id"].as_str().expect("created provider id").to_string();
+
+    // A model FLAGGED embedding-capable (passes the capability check in
+    // embed_batch) but whose provider can't be reached.
+    let model: Value = http
+        .post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "provider_id": provider_id,
+            "name": "dead-embed-model",
+            "display_name": "Dead Embed Model",
+            "description": "embedding-capable but provider is unreachable",
+            "enabled": true,
+            "engine_type": "none",
+            "file_format": "gguf",
+            "capabilities": { "text_embedding": true },
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let model_id = model["id"].as_str().expect("created model id").to_string();
+
+    // Selecting it as the embedding model triggers the server-side probe embed,
+    // which fails at the dead provider. The handler must convert embed_batch's
+    // Err into a clean 400 (provider error logged, not leaked), not a 5xx.
+    let resp = http
+        .put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "embedding_model_id": model_id,
+            "semantic_enabled": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    assert_eq!(
+        status,
+        reqwest::StatusCode::BAD_REQUEST,
+        "a configured-but-unreachable embedder must be rejected with 400, not a 5xx/panic; \
+         got {status}: {body}"
+    );
+    assert!(
+        body.contains("INVALID_EMBEDDING_MODEL"),
+        "rejection should carry the INVALID_EMBEDDING_MODEL code; body={body}"
+    );
+
+    // And the deployment is unharmed: with no embedder accepted, semantic_search
+    // still works in FTS mode on a freshly uploaded file.
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-deadembed",
+        &[("note.txt", "a recoverymarkeromega term that FTS can still locate")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    let pool = db_pool(&server).await;
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+    let search = semantic_search(&server, &user, conv_uuid, "recoverymarkeromega").await;
+    assert!(search["error"].is_null(), "search must succeed post-rejection; body={search}");
+    assert_eq!(
+        search["result"]["structuredContent"]["mode"].as_str().unwrap(),
+        "fts",
+        "rejected embedder leaves retrieval in FTS mode"
+    );
+    assert!(
+        !search["result"]["structuredContent"]["results"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "FTS must still find the term after the embedder was rejected"
+    );
+}
