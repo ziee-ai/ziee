@@ -179,6 +179,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
       >
         <MultiSelect
           className="w-full"
+          aria-label="Restrict to groups"
           placeholder="Select groups (empty = all users)"
           searchPlaceholder="Search groups…"
           value={selectedGroups}

@@ -17,7 +17,7 @@ import {
   message,
 } from '@/components/ui'
 import { z } from 'zod'
-import { UserOutlined } from '@ant-design/icons'
+import { User } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -135,10 +135,10 @@ export function ProfileSettingsPage() {
               className="size-16"
               src={user.avatar_url}
               alt={user.username}
-              fallback={<UserOutlined />}
+              fallback={<User />}
             />
           ) : (
-            <Avatar className="size-16" fallback={<UserOutlined />} />
+            <Avatar className="size-16" fallback={<User />} />
           )}
           <Flex gap="sm" wrap>
             <Tag tone={user.is_admin ? 'warning' : undefined}>

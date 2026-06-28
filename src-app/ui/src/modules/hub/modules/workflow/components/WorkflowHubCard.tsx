@@ -183,6 +183,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
       >
         <MultiSelect
           className="w-full"
+          aria-label="Restrict to groups"
           placeholder="Select groups (empty = all users)"
           searchPlaceholder="Search groups…"
           emptyText="No groups found"

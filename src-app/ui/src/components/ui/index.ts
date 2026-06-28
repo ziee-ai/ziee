@@ -177,3 +177,7 @@ export { Tabs } from './kit/tabs'
 export type { TabsProps, TabItem } from './kit/tabs'
 export { Accordion } from './kit/accordion'
 export type { AccordionProps, AccordionItemDef } from './kit/accordion'
+
+// date
+export { DatePicker } from './kit/date-picker'
+export type { DatePickerProps } from './kit/date-picker'

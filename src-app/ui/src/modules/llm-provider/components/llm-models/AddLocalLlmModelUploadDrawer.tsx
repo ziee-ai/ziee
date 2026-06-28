@@ -1,4 +1,4 @@
-import { UploadOutlined } from '@ant-design/icons'
+import { Upload as UploadIcon } from 'lucide-react'
 import {
   App,
   Button,
@@ -429,7 +429,7 @@ export function AddLocalLlmModelUploadDrawer() {
             disabled={uploading}
           >
             <p className="ant-upload-drag-icon">
-              <UploadOutlined />
+              <UploadIcon />
             </p>
             <p className="ant-upload-text">
               Click or drag folder to select model files

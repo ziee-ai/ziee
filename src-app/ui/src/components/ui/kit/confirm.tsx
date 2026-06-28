@@ -4,6 +4,7 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from '../shadcn/alert-dialog'
 import { Button } from './button'
+import { useControllableState } from './use-controllable-state'
 
 export interface ConfirmProps {
   title: React.ReactNode
@@ -18,13 +19,21 @@ export interface ConfirmProps {
   onCancel?: () => void
   /** Extra props forwarded to the confirm button (legacy `okButtonProps`), e.g. { danger: true }. */
   okButtonProps?: { danger?: boolean; disabled?: boolean }
-  children: React.ReactElement
+  /** Controlled open state. Pair with `onOpenChange`; omit `children` for trigger-less use. */
+  open?: boolean
+  /** Fires when the open state should change (pairs with `open`). */
+  onOpenChange?: (open: boolean) => void
+  /** The trigger element. Optional when driving the dialog via `open`/`onOpenChange`. */
+  children?: React.ReactElement
 }
 
 // Built on AlertDialog (modal + focus-trapped + focus-restoring), not a Popover — an
 // "are you sure?" prompt must trap focus and inert the background.
-export function Confirm({ title, description, okText, cancelText, danger, onConfirm, onCancel, okButtonProps, children }: ConfirmProps) {
-  const [open, setOpen] = React.useState(false)
+export function Confirm({ title, description, okText, cancelText, danger, onConfirm, onCancel, okButtonProps, open, onOpenChange, children }: ConfirmProps) {
+  // Controllable: caller may drive `open` (trigger-less) or let the trigger own it.
+  const [isOpen, setOpen] = useControllableState<boolean>({
+    value: open, defaultValue: false, onChange: onOpenChange,
+  })
   const [busy, setBusy] = React.useState(false)
   const run = async () => {
     setBusy(true)
@@ -39,8 +48,8 @@ export function Confirm({ title, description, okText, cancelText, danger, onConf
   }
   const isDanger = danger || okButtonProps?.danger
   return (
-    <Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) onCancel?.() }}>
-      <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
+    <Root open={isOpen} onOpenChange={(o) => { setOpen(o); if (!o) onCancel?.() }}>
+      {children != null && <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>}
       {/* suppress Radix's missing-description warning when intentionally absent */}
       <AlertDialogContent {...(description == null ? { 'aria-describedby': undefined } : {})}>
         <AlertDialogHeader>
@@ -48,7 +57,8 @@ export function Confirm({ title, description, okText, cancelText, danger, onConf
           {description != null && <AlertDialogDescription>{description}</AlertDialogDescription>}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy} onClick={() => onCancel?.()}>{cancelText}</AlertDialogCancel>
+          {/* onCancel is fired once, from onOpenChange(false) — which also covers Esc + overlay. */}
+          <AlertDialogCancel disabled={busy}>{cancelText}</AlertDialogCancel>
           {/* a plain Button (not AlertDialogAction) so the dialog only closes on success. */}
           <Button variant={isDanger ? 'destructive' : 'default'} disabled={okButtonProps?.disabled} loading={busy} onClick={run}>{okText}</Button>
         </AlertDialogFooter>

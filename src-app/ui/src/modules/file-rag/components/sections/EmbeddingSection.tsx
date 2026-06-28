@@ -17,7 +17,7 @@ import {
   message,
 } from '@/components/ui'
 import { z } from 'zod'
-import { ReloadOutlined } from '@ant-design/icons'
+import { RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -209,7 +209,7 @@ export function EmbeddingSection() {
               Force re-embed all chunks
             </div>
             <Button
-              icon={<ReloadOutlined />}
+              icon={<RotateCw />}
               loading={triggeringReembed}
               onClick={() => setReembedConfirmOpen(true)}
               disabled={!settings.embedding_model_id || !canManage}
