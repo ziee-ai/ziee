@@ -15,6 +15,7 @@
 //!   staleness 410, schema 422) + the schema-valid resume → completed.
 
 mod access_and_durability;
+mod conversation_elicit;
 mod elicit;
 mod elicit_data_seeding;
 mod install_from_hub;
