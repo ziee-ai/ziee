@@ -252,4 +252,24 @@ mod tests {
         assert!(resolve_effective_enabled("inherit", true));
         assert!(!resolve_effective_enabled("inherit", false));
     }
+
+    // audit id all-25660d690d6d — DB-failure fail-soft. When the per-conversation
+    // mode read fails, before/after_llm_call do
+    // `.unwrap_or_else(|_| DEFAULT_SUMMARIZATION_MODE)` and the admin read does
+    // `.unwrap_or(true)`. Lock the resulting decision: the fail-soft default mode
+    // ('inherit') + the admin fail-soft default (TRUE, migration 91) keeps
+    // summarization ENABLED — a transient DB blip must never silently turn it
+    // OFF; with admin explicitly off it stays off.
+    #[test]
+    fn db_failure_fallback_mode_keeps_summarization_on_by_default() {
+        let default_mode = super::super::repository::DEFAULT_SUMMARIZATION_MODE;
+        assert!(
+            resolve_effective_enabled(default_mode, true),
+            "DB-read failure must fail-soft to ENABLED (admin defaults TRUE)"
+        );
+        assert!(
+            !resolve_effective_enabled(default_mode, false),
+            "with admin explicitly off, the fail-soft default mode stays disabled"
+        );
+    }
 }
