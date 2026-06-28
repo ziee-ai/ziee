@@ -89,7 +89,7 @@ export function McpServersHubTab() {
       <div className="text-center py-12">
         <Text tone="danger">Failed to load MCP servers: {error}</Text>
         <div className="mt-4">
-          <Button onClick={() => Stores.HubMcpServers.loadServers()}>
+          <Button onClick={() => Stores.HubMcpServers.loadServers()} data-testid="hub-mcp-retry-btn">
             Retry
           </Button>
         </div>
@@ -103,6 +103,7 @@ export function McpServersHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-mcp-search-input"
             placeholder="Search MCP servers..."
             prefix={<Search />}
             value={searchTerm}
@@ -113,6 +114,7 @@ export function McpServersHubTab() {
           />
 
           <MultiSelect
+            data-testid="hub-mcp-tags-multiselect"
             placeholder="Filter by tags"
             searchPlaceholder="Search tags..."
             emptyText="No tags found"
@@ -128,6 +130,7 @@ export function McpServersHubTab() {
           />
 
           <Combobox
+            data-testid="hub-mcp-sort-combobox"
             placeholder="Sort by"
             value={sortBy}
             onChange={(value: string) => setSortBy(value)}
@@ -159,6 +162,7 @@ export function McpServersHubTab() {
               icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
+              data-testid="hub-mcp-clear-filters-btn"
             >
               Clear all
             </Button>

@@ -29,7 +29,7 @@ export function SkillDetailsDrawer({
           children: (
             <Space wrap size="xs">
               {item.tags.map(t => (
-                <Tag key={t}>{t}</Tag>
+                <Tag key={t} data-testid={`hub-skill-detail-tag-${t}`}>{t}</Tag>
               ))}
             </Space>
           ),
@@ -38,6 +38,7 @@ export function SkillDetailsDrawer({
   ]
   return (
     <Sheet
+      data-testid="hub-skill-detail-sheet"
       open={open}
       onOpenChange={(v) => { if (!v) onClose() }}
       className="!max-w-[600px]"
@@ -46,13 +47,13 @@ export function SkillDetailsDrawer({
           <Title level={5} className="!m-0">
             {item.title ?? item.name}
           </Title>
-          {item.verified && <Tag tone="success">Verified</Tag>}
+          {item.verified && <Tag tone="success" data-testid="hub-skill-detail-verified-tag">Verified</Tag>}
         </Space>
       }
     >
       <div className="flex flex-col gap-4">
         {item.summary && <Paragraph>{item.summary}</Paragraph>}
-        <Descriptions size="sm" column={1} bordered items={items} />
+        <Descriptions size="sm" column={1} bordered items={items} data-testid="hub-skill-detail-descriptions" />
       </div>
     </Sheet>
   )

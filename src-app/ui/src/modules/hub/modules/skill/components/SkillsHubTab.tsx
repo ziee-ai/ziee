@@ -57,6 +57,7 @@ export function SkillsHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-skills-search-input"
             placeholder="Search skills..."
             prefix={<Search />}
             value={searchTerm}
@@ -66,6 +67,7 @@ export function SkillsHubTab() {
             aria-label="Search skills"
           />
           <MultiSelect
+            data-testid="hub-skills-tags-multiselect"
             placeholder="Filter by tags"
             value={selectedTags}
             onChange={setSelectedTags}

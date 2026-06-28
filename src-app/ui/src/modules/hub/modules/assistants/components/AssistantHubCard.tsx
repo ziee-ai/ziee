@@ -132,16 +132,16 @@ for new users.`,
                       compares this against the installed entity's
                       `hub_version` per-row, not per-catalog. */}
                   {assistant.version && (
-                    <Tag className="text-xs !m-0">v{assistant.version}</Tag>
+                    <Tag className="text-xs !m-0" data-testid={`hub-assistant-version-tag-${assistant.name}`}>v{assistant.version}</Tag>
                   )}
                   {assistant.category && (
-                    <Tag tone="info" className="text-xs">
+                    <Tag tone="info" className="text-xs" data-testid={`hub-assistant-category-tag-${assistant.name}`}>
                       {assistant.category}
                     </Tag>
                   )}
-                  {isAlreadyCreated && <Tag tone="success">Created</Tag>}
+                  {isAlreadyCreated && <Tag tone="success" data-testid={`hub-assistant-created-tag-${assistant.name}`}>Created</Tag>}
                   {isAlreadyTemplate && (
-                    <Tag tone="info">Template installed</Tag>
+                    <Tag tone="info" data-testid={`hub-assistant-template-tag-${assistant.name}`}>Template installed</Tag>
                   )}
                 </Flex>
               </div>
@@ -152,6 +152,7 @@ for new users.`,
                     e.stopPropagation()
                     setShowDetails(true)
                   }}
+                  data-testid={`hub-assistant-details-btn-${assistant.name}`}
                 >
                   Details
                 </Button>
@@ -162,6 +163,7 @@ for new users.`,
                       e.stopPropagation()
                       navigate('/settings/assistants')
                     }}
+                    data-testid={`hub-assistant-view-btn-${assistant.name}`}
                   >
                     View Assistant
                   </Button>
@@ -231,7 +233,7 @@ for new users.`,
                     className="gap-1 inline-flex"
                   >
                     {assistant.tags.map(tag => (
-                      <Tag key={tag} className="text-xs">
+                      <Tag key={tag} className="text-xs" data-testid={`hub-assistant-card-tag-${assistant.name}-${tag}`}>
                         {tag}
                       </Tag>
                     ))}
@@ -271,6 +273,7 @@ for new users.`,
                         return (
                           <Tag
                             key={`${dep.kind}-${dep.name}`}
+                            data-testid={`hub-assistant-card-dep-tag-${assistant.name}-${dep.kind}-${dep.name}`}
                             tone={dep.kind === 'model' ? 'success' : 'info'}
                             className="text-xs"
                           >

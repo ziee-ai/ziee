@@ -78,7 +78,7 @@ export function AssistantsHubTab() {
       <div className="text-center py-12">
         <Text type="danger">Failed to load assistants: {error}</Text>
         <div className="mt-4">
-          <Button onClick={() => Stores.HubAssistants.loadAssistants()}>
+          <Button onClick={() => Stores.HubAssistants.loadAssistants()} data-testid="hub-assistants-retry-btn">
             Retry
           </Button>
         </div>
@@ -92,6 +92,7 @@ export function AssistantsHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-assistants-search-input"
             placeholder="Search assistants..."
             prefix={<Search />}
             value={searchTerm}
@@ -102,6 +103,7 @@ export function AssistantsHubTab() {
           />
 
           <MultiSelect
+            data-testid="hub-assistants-tags-multiselect"
             placeholder="Filter by tags"
             searchPlaceholder="Search tags..."
             emptyText="No tags found"
@@ -117,6 +119,7 @@ export function AssistantsHubTab() {
           />
 
           <Combobox
+            data-testid="hub-assistants-sort-combobox"
             placeholder="Sort by"
             searchPlaceholder="Sort by..."
             emptyText="No sort options"
@@ -148,6 +151,7 @@ export function AssistantsHubTab() {
               icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
+              data-testid="hub-assistants-clear-filters-btn"
             >
               Clear all
             </Button>

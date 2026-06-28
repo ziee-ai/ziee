@@ -191,7 +191,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 <Flex className="gap-2 items-center">
                   <Text className="font-medium cursor-pointer">{displayTitle}</Text>
                   {server.version && (
-                    <Tag className="text-xs !m-0">v{server.version}</Tag>
+                    <Tag className="text-xs !m-0" data-testid={`hub-mcp-version-tag-${server.name}`}>v{server.version}</Tag>
                   )}
                   {/* Provenance badge: ingested MCP registry entries
                       carry `_meta["io.modelcontextprotocol.registry"]`. */}
@@ -202,16 +202,16 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     ]
                   ) && (
                     <Tooltip content="From the official Model Context Protocol registry">
-                      <Tag tone="info" className="text-xs !m-0">
+                      <Tag tone="info" className="text-xs !m-0" data-testid={`hub-mcp-registry-tag-${server.name}`}>
                         MCP Registry
                       </Tag>
                     </Tooltip>
                   )}
-                  <Tag className="text-xs">{transportLabel}</Tag>
-                  {installing && <Tag tone="info">Installing...</Tag>}
-                  {isAlreadyInstalled && <Tag tone="success">Installed</Tag>}
+                  <Tag className="text-xs" data-testid={`hub-mcp-transport-tag-${server.name}`}>{transportLabel}</Tag>
+                  {installing && <Tag tone="info" data-testid={`hub-mcp-installing-tag-${server.name}`}>Installing...</Tag>}
+                  {isAlreadyInstalled && <Tag tone="success" data-testid={`hub-mcp-installed-tag-${server.name}`}>Installed</Tag>}
                   {isAlreadyInstalledAsSystem && (
-                    <Tag tone="info">System installed</Tag>
+                    <Tag tone="info" data-testid={`hub-mcp-system-installed-tag-${server.name}`}>System installed</Tag>
                   )}
                 </Flex>
               </div>
@@ -219,6 +219,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 {homepageUrl && (
                   <Button
                     icon={<Globe />}
+                    data-testid={`hub-mcp-homepage-btn-${server.name}`}
                     onClick={e => {
                       e.stopPropagation()
                       window.open(homepageUrl, '_blank')
@@ -228,6 +229,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 {repoUrl && (
                   <Button
                     icon={<GitBranch />}
+                    data-testid={`hub-mcp-repo-btn-${server.name}`}
                     onClick={e => {
                       e.stopPropagation()
                       window.open(repoUrl, '_blank')

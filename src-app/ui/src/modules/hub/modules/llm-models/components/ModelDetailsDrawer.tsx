@@ -81,13 +81,13 @@ export function ModelDetailsDrawer({
             <Title level={5}>Sources</Title>
             <Flex direction="column" className="gap-3">
               {model.sources.map((source, idx) => (
-                <Card key={idx} size="sm">
+                <Card key={idx} size="sm" data-testid={`hub-model-detail-source-card-${idx}`}>
                   <Flex direction="column" className="gap-2">
                     <Flex justify="between" align="center">
                       <Text strong>
                         {source.registryType} · {source.identifier}
                       </Text>
-                      <Tag tone="info">
+                      <Tag tone="info" data-testid={`hub-model-detail-source-format-tag-${idx}`}>
                         {source.fileFormat.toUpperCase()}
                       </Tag>
                     </Flex>
@@ -122,7 +122,7 @@ export function ModelDetailsDrawer({
                               <div>
                                 <Text strong>{q.name}</Text>
                                 {q.isDefault && (
-                                  <Tag tone="info" className="ml-2 text-xs">
+                                  <Tag tone="info" className="ml-2 text-xs" data-testid={`hub-model-detail-quant-default-tag-${q.name}`}>
                                     default
                                   </Tag>
                                 )}
@@ -173,6 +173,7 @@ export function ModelDetailsDrawer({
                 return (
                   <Tag
                     key={`${dep.kind}-${dep.name}`}
+                    data-testid={`hub-model-detail-dep-tag-${dep.kind}-${dep.name}`}
                     tone={dep.kind === 'model' ? 'success' : 'info'}
                   >
                     {leaf} {dep.versionRange}
@@ -189,17 +190,17 @@ export function ModelDetailsDrawer({
             <Title level={5}>Capabilities</Title>
             <Flex wrap className="gap-2">
               {model.capabilities.vision && (
-                <Tag tone="info" icon={<Eye />}>
+                <Tag tone="info" icon={<Eye />} data-testid="hub-model-detail-cap-vision-tag">
                   Vision
                 </Tag>
               )}
               {model.capabilities.tools && (
-                <Tag tone="info" icon={<Wrench />}>
+                <Tag tone="info" icon={<Wrench />} data-testid="hub-model-detail-cap-tools-tag">
                   Function Calling
                 </Tag>
               )}
               {model.capabilities.chat && (
-                <Tag tone="success" icon={<MessageSquare />}>
+                <Tag tone="success" icon={<MessageSquare />} data-testid="hub-model-detail-cap-chat-tag">
                   Chat
                 </Tag>
               )}
@@ -213,7 +214,7 @@ export function ModelDetailsDrawer({
             <Title level={5}>Tags</Title>
             <Flex wrap className="gap-1">
               {model.tags.map(tag => (
-                <Tag key={tag}>
+                <Tag key={tag} data-testid={`hub-model-detail-tag-${tag}`}>
                   {tag}
                 </Tag>
               ))}
@@ -226,7 +227,7 @@ export function ModelDetailsDrawer({
           Object.keys(model.recommended_parameters).length > 0 && (
             <div>
               <Title level={5}>Recommended Parameters</Title>
-              <Card size="sm">
+              <Card size="sm" data-testid="hub-model-detail-params-card">
                 <pre className="text-xs overflow-auto m-0">
                   {JSON.stringify(model.recommended_parameters, null, 2)}
                 </pre>

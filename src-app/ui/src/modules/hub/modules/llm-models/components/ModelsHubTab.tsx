@@ -82,7 +82,7 @@ export function ModelsHubTab() {
       <div className="text-center py-12">
         <Text type="danger">Failed to load models: {error}</Text>
         <div className="mt-4">
-          <Button onClick={() => Stores.HubModels.loadModels()}>Retry</Button>
+          <Button onClick={() => Stores.HubModels.loadModels()} data-testid="hub-models-retry-btn">Retry</Button>
         </div>
       </div>
     )
@@ -94,6 +94,7 @@ export function ModelsHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-models-search-input"
             placeholder="Search models..."
             prefix={<Search />}
             value={searchTerm}
@@ -104,6 +105,7 @@ export function ModelsHubTab() {
           />
 
           <MultiSelect
+            data-testid="hub-models-tags-multiselect"
             placeholder="Filter by tags"
             value={selectedTags}
             onChange={(values: string[]) => setSelectedTags(values)}
@@ -119,6 +121,7 @@ export function ModelsHubTab() {
           />
 
           <Select
+            data-testid="hub-models-sort-select"
             placeholder="Sort by"
             value={sortBy}
             onChange={(value: string) => setSortBy(value)}
@@ -148,6 +151,7 @@ export function ModelsHubTab() {
               icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
+              data-testid="hub-models-clear-filters-btn"
             >
               Clear all
             </Button>

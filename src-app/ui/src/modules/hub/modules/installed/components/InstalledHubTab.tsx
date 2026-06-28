@@ -191,6 +191,7 @@ export function InstalledHubTab() {
     return (
       <div className="px-3 pt-3">
         <Empty
+          data-testid="hub-installed-error-empty"
           description={
             <Text type="secondary">Couldn't load installed list: {error}</Text>
           }
@@ -206,6 +207,7 @@ export function InstalledHubTab() {
         return (
           <Card
             key={card.key}
+            data-testid={`hub-installed-card-${card.key}`}
             title={
               <Flex align="center" gap="small">
                 {card.icon}
@@ -213,13 +215,14 @@ export function InstalledHubTab() {
               </Flex>
             }
             extra={
-              <Tag>
+              <Tag data-testid={`hub-installed-count-tag-${card.key}`}>
                 {rows.length} {rows.length === 1 ? 'install' : 'installs'}
               </Tag>
             }
           >
             {rows.length === 0 ? (
               <Empty
+                data-testid={`hub-installed-empty-${card.key}`}
                 description={
                   <Text type="secondary">{card.emptyHint}</Text>
                 }
@@ -256,7 +259,7 @@ export function InstalledHubTab() {
                               {row.name || row.hub_id}
                             </Text>
                             {row.is_system && (
-                              <Tag tone="info">System</Tag>
+                              <Tag tone="info" data-testid={`hub-installed-system-tag-${row.entity_id}`}>System</Tag>
                             )}
                             <Tooltip
                               content={
@@ -265,7 +268,7 @@ export function InstalledHubTab() {
                                   : `On catalog v${current}`
                               }
                             >
-                              <Tag tone={isOutdated ? 'warning' : 'success'}>
+                              <Tag tone={isOutdated ? 'warning' : 'success'} data-testid={`hub-installed-version-tag-${row.entity_id}`}>
                                 {isOutdated
                                   ? `v${installed ?? 'pre-tracking'} → v${current}`
                                   : `v${current}`}
@@ -295,12 +298,13 @@ export function InstalledHubTab() {
                         <div className="flex gap-2 items-center justify-end">
                           {row.hub_category === 'model' ? (
                             <Tooltip content="Models re-install via the Models tab (pick a provider + quantization)">
-                              <Button icon={<RotateCw />} disabled>
+                              <Button icon={<RotateCw />} disabled data-testid={`hub-installed-reinstall-disabled-btn-${row.entity_id}`}>
                                 Re-install
                               </Button>
                             </Tooltip>
                           ) : (
                             <Confirm
+                              data-testid={`hub-installed-reinstall-confirm-${row.entity_id}`}
                               title="Re-install from current catalog"
                               description={`Re-install "${row.name || row.hub_id}" at v${current}? The existing copy will be replaced.`}
                               okText="Re-install"
@@ -310,12 +314,14 @@ export function InstalledHubTab() {
                               <Button
                                 icon={<RotateCw />}
                                 loading={busyId === row.entity_id}
+                                data-testid={`hub-installed-reinstall-btn-${row.entity_id}`}
                               >
                                 Re-install
                               </Button>
                             </Confirm>
                           )}
                           <Confirm
+                            data-testid={`hub-installed-remove-confirm-${row.entity_id}`}
                             title="Remove this install?"
                             description={
                               row.hub_category === 'model'
@@ -331,6 +337,7 @@ export function InstalledHubTab() {
                               variant="destructive"
                               icon={<Trash2 />}
                               loading={busyId === row.entity_id}
+                              data-testid={`hub-installed-remove-btn-${row.entity_id}`}
                             >
                               Remove
                             </Button>
