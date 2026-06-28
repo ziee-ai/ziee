@@ -1,12 +1,8 @@
 import { Inbox } from 'lucide-react'
-import type { UploadFile } from 'antd'
-import { Alert, App, Button, Modal, Space, Typography, Upload } from 'antd'
+import { Alert, Button, Dialog, Space, Text, Upload, message } from '@/components/ui'
 import { useState } from 'react'
 import type { ValidateWorkflowResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Dragger } = Upload
-const { Text } = Typography
 
 interface ImportWorkflowDialogProps {
   open: boolean
@@ -25,8 +21,7 @@ export function ImportWorkflowDialog({
   onClose,
   system,
 }: ImportWorkflowDialogProps) {
-  const { message } = App.useApp()
-  const [fileList, setFileList] = useState<UploadFile[]>([])
+  const [files, setFiles] = useState<File[]>([])
   const [validation, setValidation] = useState<ValidateWorkflowResponse | null>(
     null,
   )
@@ -34,14 +29,14 @@ export function ImportWorkflowDialog({
   const [validating, setValidating] = useState(false)
 
   const reset = () => {
-    setFileList([])
+    setFiles([])
     setValidation(null)
     setSubmitting(false)
     setValidating(false)
   }
 
   const handleValidate = async () => {
-    const file = fileList[0]?.originFileObj
+    const file = files[0]
     if (!file) {
       message.warning('Select a workflow.yaml or bundle to validate')
       return
@@ -64,7 +59,7 @@ export function ImportWorkflowDialog({
   }
 
   const handleImport = async () => {
-    const file = fileList[0]?.originFileObj
+    const file = files[0]
     if (!file) {
       message.warning('Select a bundle to import')
       return
@@ -89,34 +84,32 @@ export function ImportWorkflowDialog({
   }
 
   return (
-    <Modal
+    <Dialog
       open={open}
       title="Import Workflow"
-      onCancel={() => {
-        reset()
-        onClose()
+      onOpenChange={o => {
+        if (!o) {
+          reset()
+          onClose()
+        }
       }}
-      footer={[
-        <Button key="validate" loading={validating} onClick={handleValidate}>
-          Validate
-        </Button>,
-        <Button
-          key="import"
-          type="primary"
-          loading={submitting}
-          onClick={handleImport}
-        >
-          Import
-        </Button>,
-      ]}
+      footer={
+        <>
+          <Button variant="outline" loading={validating} onClick={handleValidate}>
+            Validate
+          </Button>
+          <Button loading={submitting} onClick={handleImport}>
+            Import
+          </Button>
+        </>
+      }
     >
-      <Space vertical className="w-full" size="middle">
-        <Dragger
-          fileList={fileList}
-          beforeUpload={() => false}
-          maxCount={1}
-          onChange={info => {
-            setFileList(info.fileList.slice(-1))
+      <Space direction="vertical" className="w-full" size="middle">
+        <Upload
+          label="Drop a workflow bundle or workflow.yaml"
+          multiple={false}
+          onFiles={fs => {
+            setFiles(fs.slice(-1))
             setValidation(null)
           }}
         >
@@ -126,15 +119,17 @@ export function ImportWorkflowDialog({
           <p className="ant-upload-text">
             Drop a workflow bundle (.tar.gz) or workflow.yaml here
           </p>
+          {files[0] && (
+            <Text className="text-xs">{files[0].name}</Text>
+          )}
           <Text type="secondary" className="text-xs">
             Imported workflows are marked Dev (mocks honored, tests runnable).
           </Text>
-        </Dragger>
+        </Upload>
 
         {validation && (
           <Alert
-            type={validation.valid ? 'success' : 'error'}
-            showIcon
+            tone={validation.valid ? 'success' : 'error'}
             title={
               validation.valid
                 ? `Valid workflow — ${validation.steps} steps, up to ${validation.est_max_calls} calls`
@@ -161,6 +156,6 @@ export function ImportWorkflowDialog({
           />
         )}
       </Space>
-    </Modal>
+    </Dialog>
   )
 }

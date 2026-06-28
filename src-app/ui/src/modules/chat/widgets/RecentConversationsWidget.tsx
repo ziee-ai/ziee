@@ -1,26 +1,23 @@
 import { useEffect, useState } from 'react'
 import {
-  App,
-  Typography,
   Button,
   Dropdown,
   Empty,
+  Menu,
   Spin,
-  theme,
-} from 'antd'
-import { MessageSquare, Trash2, MoreHorizontal } from 'lucide-react'
+  Text,
+  dialog,
+} from '@/components/ui'
+import type { MenuItem, DropdownItem } from '@/components/ui'
+import { Trash2, MoreHorizontal } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
-import { Menu } from '@/components/ui'
-import type { MenuItem } from '@/components/ui'
 import {
   chatExtensionRegistry,
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
-
-const { Text } = Typography
 
 /**
  * Sidebar list of the user's recent conversations, backed by
@@ -33,7 +30,6 @@ const { Text } = Typography
  * per conversation without this widget knowing about it.
  */
 export function RecentConversationsWidget() {
-  const { token } = theme.useToken()
   const location = useLocation()
   const navigate = useNavigate()
   const { recentConversations, loading, isInitialized } = Stores.ChatHistory
@@ -50,10 +46,7 @@ export function RecentConversationsWidget() {
   // `aria-required-children`. The classes mirror the Menu group-title
   // typography so it reads identically.
   const headerOnly = (
-    <div
-      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide"
-      style={{ color: token.colorTextDescription }}
-    >
+    <div className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide text-muted-foreground">
       Recent chats
     </div>
   )
@@ -63,7 +56,7 @@ export function RecentConversationsWidget() {
       <div className="flex flex-col h-full">
         {headerOnly}
         <div className="flex justify-center items-center py-8">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       </div>
     )
@@ -75,13 +68,11 @@ export function RecentConversationsWidget() {
         {headerOnly}
         <div className="px-2 py-4">
           <Empty
-            image={<MessageSquare className="size-9 text-gray-400" />}
             description={
               <Text type="secondary" className="text-xs">
                 No conversations yet
               </Text>
             }
-            styles={{ image: { height: 40 } }}
           />
         </div>
       </div>
@@ -112,10 +103,7 @@ export function RecentConversationsWidget() {
   ]
 
   return (
-    <div
-      className="flex flex-col h-full min-h-0"
-      style={{ color: token.colorTextBase }}
-    >
+    <div className="flex flex-col h-full min-h-0 text-foreground">
       <DivScrollY className="flex-col flex-1 min-h-0">
         <Menu
           mode="vertical"
@@ -152,8 +140,6 @@ function ConversationRowLabel({
 }: {
   conversation: ConversationResponse
 }) {
-  const { token } = theme.useToken()
-  const { modal } = App.useApp()
   const [deleting, setDeleting] = useState(false)
   // Controlled dropdown open so we can suppress closing while an
   // extension overlay (popconfirm etc.) is showing.
@@ -162,29 +148,28 @@ function ConversationRowLabel({
   const { items: extensionItems, overlays, keepMenuOpen } =
     useConversationMenuContributions(conversation)
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     const title = conversation.title || 'Untitled Conversation'
-    modal.confirm({
+    const ok = await dialog.confirm({
       title: 'Delete conversation?',
-      content: `"${title}" will be permanently deleted.`,
+      description: `"${title}" will be permanently deleted.`,
       okText: 'Delete',
       cancelText: 'Cancel',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        setDeleting(true)
-        try {
-          await Stores.ChatHistory.__state.deleteConversation(conversation.id)
-        } finally {
-          setDeleting(false)
-        }
-      },
+      danger: true,
     })
+    if (!ok) return
+    setDeleting(true)
+    try {
+      await Stores.ChatHistory.__state.deleteConversation(conversation.id)
+    } finally {
+      setDeleting(false)
+    }
   }
 
-  const menuItems = [
-    ...(extensionItems ?? []),
+  const menuItems: DropdownItem[] = [
+    ...((extensionItems ?? []) as DropdownItem[]),
     ...(extensionItems && extensionItems.length > 0
-      ? [{ type: 'divider' as const, key: 'div-delete' }]
+      ? [{ type: 'divider' as const }]
       : []),
     {
       key: 'delete',
@@ -208,21 +193,18 @@ function ConversationRowLabel({
       <div
         className={
           'row-actions flex-shrink-0 opacity-0 group-hover:opacity-100 ' +
-          'transition-opacity duration-150'
-        }
-        // Keep the button visible while its dropdown is open OR while
-        // a delete is in flight — `opacity-0` would otherwise hide it
-        // mid-interaction. Inline style wins over the Tailwind class
-        // because it sets the same property.
-        style={
-          menuOpen || keepMenuOpen || deleting ? { opacity: 1 } : undefined
+          'transition-opacity duration-150 ' +
+          // Keep the button visible while its dropdown is open OR while
+          // a delete is in flight — `opacity-0` would otherwise hide it
+          // mid-interaction.
+          (menuOpen || keepMenuOpen || deleting ? '!opacity-100' : '')
         }
         onClick={e => e.stopPropagation()}
       >
         <Dropdown
-          menu={{ items: menuItems }}
-          trigger={['click']}
-          placement="bottomRight"
+          items={menuItems}
+          side="bottom"
+          align="end"
           open={menuOpen || keepMenuOpen}
           onOpenChange={open => {
             if (!open && keepMenuOpen) return
@@ -230,16 +212,11 @@ function ConversationRowLabel({
           }}
         >
           <Button
-            type="text"
-            size="small"
+            variant="ghost"
+            size="sm"
             icon={<MoreHorizontal />}
             loading={deleting}
-            style={{
-              width: 22,
-              height: 22,
-              padding: 0,
-              color: token.colorText,
-            }}
+            className="w-[22px] h-[22px] min-w-0 p-0 text-foreground"
             aria-label="Conversation options"
           />
         </Dropdown>

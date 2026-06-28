@@ -1,12 +1,8 @@
 import { Inbox } from 'lucide-react'
-import type { UploadFile } from 'antd'
-import { Alert, App, Button, Modal, Space, Typography, Upload } from 'antd'
+import { Alert, Button, Dialog, Space, Text, Upload, message } from '@/components/ui'
 import { useState } from 'react'
 import type { ValidateSkillResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Dragger } = Upload
-const { Text } = Typography
 
 interface ImportSkillDialogProps {
   open: boolean
@@ -26,8 +22,7 @@ export function ImportSkillDialog({
   onClose,
   system,
 }: ImportSkillDialogProps) {
-  const { message } = App.useApp()
-  const [fileList, setFileList] = useState<UploadFile[]>([])
+  const [file, setFile] = useState<File | null>(null)
   const [validation, setValidation] = useState<ValidateSkillResponse | null>(
     null,
   )
@@ -35,14 +30,13 @@ export function ImportSkillDialog({
   const [validating, setValidating] = useState(false)
 
   const reset = () => {
-    setFileList([])
+    setFile(null)
     setValidation(null)
     setSubmitting(false)
     setValidating(false)
   }
 
   const handleValidate = async () => {
-    const file = fileList[0]?.originFileObj
     if (!file) {
       message.warning('Select a SKILL.md or bundle to validate')
       return
@@ -68,7 +62,6 @@ export function ImportSkillDialog({
   }
 
   const handleImport = async () => {
-    const file = fileList[0]?.originFileObj
     if (!file) {
       message.warning('Select a bundle to import')
       return
@@ -93,52 +86,47 @@ export function ImportSkillDialog({
   }
 
   return (
-    <Modal
+    <Dialog
       open={open}
       title="Import Skill"
-      onCancel={() => {
-        reset()
-        onClose()
+      onOpenChange={o => {
+        if (!o) {
+          reset()
+          onClose()
+        }
       }}
-      footer={[
-        <Button key="validate" loading={validating} onClick={handleValidate}>
-          Validate
-        </Button>,
-        <Button
-          key="import"
-          type="primary"
-          loading={submitting}
-          onClick={handleImport}
-        >
-          Import
-        </Button>,
-      ]}
+      footer={
+        <>
+          <Button variant="outline" loading={validating} onClick={handleValidate}>
+            Validate
+          </Button>
+          <Button loading={submitting} onClick={handleImport}>
+            Import
+          </Button>
+        </>
+      }
     >
-      <Space vertical className="w-full" size="middle">
-        <Dragger
-          fileList={fileList}
-          beforeUpload={() => false}
-          maxCount={1}
-          onChange={info => {
-            setFileList(info.fileList.slice(-1))
+      <Space direction="vertical" className="w-full" size="middle">
+        <Upload
+          label="Skill bundle"
+          onFiles={files => {
+            setFile(files[0] ?? null)
             setValidation(null)
           }}
         >
-          <p className="ant-upload-drag-icon">
-            <Inbox />
-          </p>
-          <p className="ant-upload-text">
+          <Inbox />
+          <span className="text-sm">
             Drop a skill bundle (.tar.gz) or SKILL.md here
-          </p>
+          </span>
           <Text type="secondary" className="text-xs">
             Imported skills are marked Dev (mocks honored, no version bumping).
           </Text>
-        </Dragger>
+          {file && <Text className="text-xs">{file.name}</Text>}
+        </Upload>
 
         {validation && (
           <Alert
-            type={validation.valid ? 'success' : 'error'}
-            showIcon
+            tone={validation.valid ? 'success' : 'error'}
             title={validation.valid ? 'Valid skill' : 'Validation failed'}
             description={
               validation.errors.length > 0 || validation.warnings.length > 0 ? (
@@ -161,6 +149,6 @@ export function ImportSkillDialog({
           />
         )}
       </Space>
-    </Modal>
+    </Dialog>
   )
 }
