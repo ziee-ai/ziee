@@ -70,4 +70,35 @@ test.describe('Memory — pagination', () => {
       page.locator('[data-memory-id]').filter({ hasText: /PAGEMEM_0[01] / }),
     ).toHaveCount(2)
   })
+
+  test('the page-size changer reflows all rows onto one page', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    const username = await memoryUser(apiURL, 'mem_pagesize')
+    await login(page, baseURL, username, 'password123')
+    const token = await getCurrentUserToken(page)
+
+    const total = 12
+    for (let i = 0; i < total; i++) {
+      const res = await page.request.post(`${apiURL}/api/memories`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { content: `SIZEMEM_${String(i).padStart(2, '0')} fact ${i}`, kind: 'fact' },
+      })
+      expect(res.status()).toBe(201)
+    }
+
+    await page.goto(`${baseURL}/settings/memory`)
+    // Default pageSize=10 → 12 spill onto 2 pages.
+    await expect(page.getByText(/1-10 of 12 memories/)).toBeVisible({ timeout: 15000 })
+    await expect(page.locator('[data-memory-id]')).toHaveCount(10)
+
+    // Bump the page size to "20 / page" via the antd size changer → all 12 fit.
+    await page.locator('.ant-pagination-options .ant-select').click()
+    await page.getByTitle('20 / page').click()
+
+    await expect(page.getByText(/1-12 of 12 memories/)).toBeVisible()
+    await expect(page.locator('[data-memory-id]')).toHaveCount(12)
+  })
 })

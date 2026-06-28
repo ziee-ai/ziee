@@ -386,4 +386,51 @@ test.describe('Group Membership Management', () => {
     })
     await expect(card().getByText('Inactive', { exact: true })).toBeVisible()
   })
+
+  test('bulk-assigns a user to multiple groups via the AssignGroupDrawer', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    const ts = Date.now()
+    const groupA = `Bulk A ${ts}`
+    const groupB = `Bulk B ${ts}`
+    await createGroupViaAPI(apiURL, adminToken, groupA, 'bulk a', ['profile::read'])
+    await createGroupViaAPI(apiURL, adminToken, groupB, 'bulk b', ['profile::read'])
+    const username = `bulkmember${ts}`
+    await createTestUser(apiURL, adminToken, username, `${username}@example.com`, 'password123', [])
+
+    await navigateToUsers(page, baseURL)
+    await openUserGroupsDrawer(page, username)
+    const groupsDrawer = page.locator('.ant-drawer.ant-drawer-open')
+
+    // Open the bulk AssignGroupDrawer from the header "+" CTA.
+    await groupsDrawer.getByRole('button', { name: 'Assign group' }).click()
+    const assignDrawer = page
+      .locator('.ant-drawer.ant-drawer-open')
+      .filter({ hasText: 'Assign to Group' })
+    await expect(assignDrawer).toBeVisible()
+
+    // Tick BOTH groups (the Checkbox.Group) and submit.
+    await assignDrawer.getByRole('checkbox', { name: groupA }).check()
+    await assignDrawer.getByRole('checkbox', { name: groupB }).check()
+    await assignDrawer.getByRole('button', { name: 'Assign', exact: true }).click()
+
+    // The bulk handler reports the per-call success count.
+    await expect(
+      page.locator('.ant-message-success', { hasText: /assigned to 2 group/i }),
+    ).toBeVisible({ timeout: 5000 })
+
+    // Back in the UserGroupsDrawer both rows now show "Member".
+    await expect(
+      groupsDrawer.locator('.ant-list-item').filter({ hasText: groupA }).getByText('Member'),
+    ).toBeVisible()
+    await expect(
+      groupsDrawer.locator('.ant-list-item').filter({ hasText: groupB }).getByText('Member'),
+    ).toBeVisible()
+  })
+
 })
