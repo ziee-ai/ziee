@@ -24,6 +24,7 @@ pub struct ProxySettings {
     /// and /llm-providers, exposing the proxy credential. Closes
     /// 06-llm-provider F-05 (Medium).
     #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
     pub password: String,
     #[serde(default)]
     pub no_proxy: String,

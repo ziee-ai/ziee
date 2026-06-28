@@ -46,6 +46,7 @@ pub const KNOWN_FLAVORS: &[FlavorMetadata] = &[
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
     #[serde(default = "default_jsonrpc")]
+    #[allow(dead_code)]
     pub jsonrpc: String,
     pub id: Option<serde_json::Value>,
     pub method: String,

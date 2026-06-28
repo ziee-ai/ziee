@@ -47,6 +47,7 @@ impl<T> SecretView<T> {
     }
 
     /// Consume the wrapper and return the plaintext.
+    #[allow(dead_code)]
     pub fn into_inner(self) -> T {
         self.inner
     }
