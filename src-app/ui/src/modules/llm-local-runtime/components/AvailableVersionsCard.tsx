@@ -314,7 +314,12 @@ function DownloadProgressLine({ progress }: { progress: DownloadSnapshot }) {
   const total = progress.total_bytes ?? 0
   const recv = progress.bytes_received
   const pct =
-    progress.percent != null
+    // A completed download (incl. cached/skipped, which complete before any
+    // byte-progress SSE arrives) is 100% — otherwise it renders a stuck 0% bar
+    // with a "success" colour until the first event lands.
+    progress.status === 'completed'
+      ? 100
+      : progress.percent != null
       ? Math.round(progress.percent)
       : total > 0
       ? Math.round((recv / total) * 100)
