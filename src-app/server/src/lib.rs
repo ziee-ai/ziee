@@ -164,6 +164,13 @@ pub mod memory {
     pub use crate::modules::memory::chat_extension::retriever::retrieve_and_inject;
 }
 
+// Re-export the available-files resolver + type for the integration test that
+// exercises checksum dedup through the REAL upload+attach flow.
+#[doc(hidden)]
+pub mod file_available {
+    pub use crate::modules::file::available_files::{resolve_available_files, AvailableFile};
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`

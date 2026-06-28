@@ -1760,3 +1760,119 @@ async fn test_file_content_responses_have_private_bounded_cache_control() {
         );
     }
 }
+
+/// File content-dedup through the REAL upload+attach flow: two uploads of the
+/// SAME bytes get the same checksum, so when both are attached to a project the
+/// `resolve_available_files` resolver (used by the chat replay) collapses them
+/// into ONE entry whose `aka` carries the other filename — the production
+/// behavior the `dedup_by_checksum` unit tests only cover in isolation.
+#[tokio::test]
+async fn dedup_collapses_identical_uploads_in_resolve_available_files() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "dedup_upload",
+        &[
+            "files::upload",
+            "files::read",
+            "projects::create",
+            "projects::edit",
+            "conversations::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Two uploads, IDENTICAL bytes → identical checksum, different filenames.
+    let bytes = b"DEDUP_CONTENT_MARKER identical content for both uploads".to_vec();
+    let upload = |name: &'static str| {
+        let client = client.clone();
+        let token = user.token.clone();
+        let url = server.api_url("/files/upload");
+        let bytes = bytes.clone();
+        async move {
+            let form = multipart::Form::new().part(
+                "file",
+                multipart::Part::bytes(bytes)
+                    .file_name(name)
+                    .mime_str("text/plain")
+                    .unwrap(),
+            );
+            let resp = client
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .multipart(form)
+                .send()
+                .await
+                .expect("upload");
+            assert_eq!(resp.status(), 201, "upload {name} should 201");
+            let v: serde_json::Value = resp.json().await.unwrap();
+            v["id"].as_str().unwrap().to_string()
+        }
+    };
+    let id_a = upload("alpha.txt").await;
+    let id_b = upload("beta.txt").await;
+    assert_ne!(id_a, id_b, "two uploads are two distinct file rows");
+
+    // A project, both files attached.
+    let project: serde_json::Value = client
+        .post(server.api_url("/projects"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "name": "Dedup Project" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let project_id = project["id"].as_str().unwrap().to_string();
+    for fid in [&id_a, &id_b] {
+        let resp = client
+            .post(server.api_url(&format!("/projects/{project_id}/files")))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&serde_json::json!({ "file_id": fid }))
+            .send()
+            .await
+            .unwrap();
+        assert!(resp.status().is_success(), "attach {fid}: {}", resp.status());
+    }
+
+    // A conversation in the project so the resolver unions the project files.
+    let conv: serde_json::Value = client
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "title": "dedup conv", "project_id": project_id }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let conv_id = uuid::Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
+    let user_uuid = uuid::Uuid::parse_str(&user.user_id).unwrap();
+
+    let resolved = ziee::file_available::resolve_available_files(conv_id, user_uuid)
+        .await
+        .expect("resolve_available_files");
+
+    // The two identical-content uploads collapse to ONE available file, with the
+    // second filename surfaced as an alias.
+    let our = resolved
+        .iter()
+        .filter(|f| f.name == "alpha.txt" || f.aka.contains(&"alpha.txt".to_string())
+            || f.name == "beta.txt" || f.aka.contains(&"beta.txt".to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        our.len(),
+        1,
+        "identical-checksum uploads must dedup to one available file; got {our:?}"
+    );
+    let f = our[0];
+    let names: std::collections::HashSet<&str> =
+        std::iter::once(f.name.as_str()).chain(f.aka.iter().map(|s| s.as_str())).collect();
+    assert!(
+        names.contains("alpha.txt") && names.contains("beta.txt"),
+        "both filenames must be reachable on the deduped entry; got name={} aka={:?}",
+        f.name, f.aka
+    );
+}
