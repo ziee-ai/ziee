@@ -471,4 +471,52 @@ mod tests {
         ];
         assert!(run_chain(c, "q", 5).await.is_err());
     }
+
+    #[test]
+    fn chain_resolution_skips_unknown_keeps_known_in_order() {
+        // Mirrors search_via_chain's resolution loop (the DB-free part): a chain
+        // with an UNKNOWN key sandwiched between two configured providers must
+        // skip the unknown ('continue') and resolve the known/configured ones in
+        // chain order — so a mixed chain still produces a working fallback list
+        // instead of failing. Exercises the real descriptor/is_configured/build.
+        let rows = vec![
+            WebSearchProviderRow {
+                provider: "searxng".into(),
+                api_key: None,
+                config: json!({ "base_url": "https://s.example" }),
+            },
+            WebSearchProviderRow {
+                provider: "brave".into(),
+                api_key: Some("BSA-xxx".into()),
+                config: json!({}),
+            },
+        ];
+        let chain = [
+            "searxng".to_string(),
+            "totally-unknown".to_string(),
+            "brave".to_string(),
+        ];
+
+        let mut resolved: Vec<String> = Vec::new();
+        for key in &chain {
+            let Some(d) = descriptor(key) else { continue };
+            let row = rows.iter().find(|r| &r.provider == key);
+            let api_key = row.and_then(|r| r.api_key.clone());
+            let config = row
+                .map(|r| r.config.clone())
+                .unwrap_or_else(|| json!({}));
+            if !is_configured(&d, api_key.as_deref(), &config) {
+                continue;
+            }
+            if build(key, &config, api_key, 10).is_ok() {
+                resolved.push(key.clone());
+            }
+        }
+
+        assert_eq!(
+            resolved,
+            vec!["searxng".to_string(), "brave".to_string()],
+            "unknown key must be skipped; known/configured providers kept in order"
+        );
+    }
 }
