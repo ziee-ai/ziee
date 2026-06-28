@@ -8,7 +8,7 @@ import {
   openGroupMembersDrawer as _openGroupMembersDrawer,
   openUserGroupsDrawer,
 } from './helpers/user-navigation'
-import { createUser } from './helpers/user-actions'
+import { createUser, assignUserToGroups } from './helpers/user-actions'
 import { createGroup, viewGroupMembers } from './helpers/group-actions'
 import {
   assertUserExists as _assertUserExists,
@@ -297,5 +297,39 @@ test.describe('Group Membership Management', () => {
     await expect(
       page.getByRole('heading', { name: /^users$/i, level: 4 })
     ).toBeVisible()
+  })
+
+  // audit id 658cfc658b378128 — the AssignGroupDrawer (Assign-to-Group flow)
+  // had zero E2E coverage. Create a group + user, open the user's groups drawer,
+  // open the Assign drawer, check the group, submit, and verify membership.
+  test('assigns a user to a group via the AssignGroupDrawer', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const ts = Date.now()
+    const groupName = `AssignGrp${ts}`
+    const username = `assignuser${ts}`
+
+    // Create the target group.
+    await navigateToUserGroups(page, baseURL)
+    await openCreateGroupDrawer(page)
+    await createGroup(page, { name: groupName, description: 'assign target' })
+
+    // Create the user.
+    await navigateToUsers(page, baseURL)
+    await openCreateUserDrawer(page)
+    await createUser(page, {
+      username,
+      email: `${username}@example.com`,
+      password: 'password123',
+    })
+
+    // Drive the AssignGroupDrawer (open user groups → Assign → check group →
+    // submit → success toast). The helper asserts the success message.
+    await assignUserToGroups(page, username, [groupName])
+
+    // Verify the membership took: the user shows in the group's members list.
+    await navigateToUserGroups(page, baseURL)
+    await viewGroupMembers(page, groupName)
+    await _assertUserInGroup(page, username)
   })
 })
