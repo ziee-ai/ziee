@@ -28,6 +28,7 @@ mod run_mocked;
 mod run_model;
 mod sandbox_progress;
 mod sandbox_run;
+mod sse_ordering;
 mod sr_real_llm;
 mod sr_workflow;
 mod status_machine;
