@@ -27,11 +27,14 @@ export interface SwitchProps {
   'aria-labelledby'?: string
   'aria-describedby'?: string
   invalid?: boolean
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
 export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function Switch(
   { checked, value, defaultChecked, onCheckedChange, onChange, onBlur, disabled, loading, size, name, id, label, className,
-    'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby, 'aria-describedby': ariaDescribedby, invalid },
+    'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby, 'aria-describedby': ariaDescribedby, invalid,
+    'data-testid': testid },
   ref,
 ) {
   const s = useSurface({ disabled })
@@ -58,6 +61,7 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
       aria-describedby={ariaDescribedby}
       aria-invalid={invalid || undefined}
       aria-busy={loading || undefined}
+      data-testid={testid}
       className={cn(size === 'sm' && 'h-4 w-7 [&>span]:size-3 [&>span]:data-[state=checked]:translate-x-3', className)}
     />
   )

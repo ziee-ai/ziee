@@ -61,6 +61,8 @@ interface SelectBase {
   'aria-label'?: string
   'aria-labelledby'?: string
   'aria-required'?: boolean
+  /** Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. */
+  'data-testid'?: string
 }
 // allowClear adds a clear button → its accessible name (clearLabel) is REQUIRED (no default, for i18n).
 export type SelectProps =
@@ -83,6 +85,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
     disabled, loading, invalid, size, name, id, className, optionRender, labelRender, popupMatchSelectWidth = true,
     'aria-describedby': ariaDescribedby, 'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledby, 'aria-required': ariaRequired,
+    'data-testid': testid,
     ...rest
   },
   ref,
@@ -112,6 +115,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
                 value={opt.value}
                 disabled={opt.disabled}
                 textValue={typeof opt.label === 'string' ? opt.label : opt.value}
+                data-testid={testid ? `${testid}-opt-${opt.value}` : undefined}
               >
                 {optionRender ? optionRender(opt) : opt.label}
               </SelectItem>
@@ -123,12 +127,13 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
             value={o.value}
             disabled={o.disabled}
             textValue={typeof o.label === 'string' ? o.label : o.value}
+            data-testid={testid ? `${testid}-opt-${o.value}` : undefined}
           >
             {optionRender ? optionRender(o) : o.label}
           </SelectItem>
         ),
       ),
-    [options, optionRender],
+    [options, optionRender, testid],
   )
 
   // O(1) selected-option lookup (replaces a per-render flatOptions().find()).
@@ -168,6 +173,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledby}
           aria-required={ariaRequired}
+          data-testid={testid}
           className={cn(triggerH(s.size), 'w-full', className, showClear && 'pr-12', invalid && 'border-destructive focus-visible:ring-destructive')}
         >
           <SelectValue placeholder={placeholder}>{customDisplay}</SelectValue>

@@ -18,10 +18,12 @@ export type UploadProps = {
   label: string
   /** Dropzone body (instructions, icon, current file list). */
   children: React.ReactNode
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
   className?: string} & KitStyleProps
 
 export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function Upload(
-  { onFiles, accept, multiple, directory, disabled, label, children, className, style }, ref,
+  { onFiles, accept, multiple, directory, disabled, label, children, className, style, 'data-testid': testid }, ref,
 ) {
   const s = useSurface({ disabled })
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -39,6 +41,7 @@ export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function U
       tabIndex={locked ? -1 : 0}
       aria-label={label}
       aria-disabled={locked || undefined}
+      data-testid={testid}
       style={style}
       onClick={() => !locked && inputRef.current?.click()}
       onKeyDown={(e) => { if (!locked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); inputRef.current?.click() } }}

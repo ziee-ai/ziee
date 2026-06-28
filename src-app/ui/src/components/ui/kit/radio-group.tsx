@@ -27,11 +27,14 @@ export interface RadioGroupProps {
   'aria-label'?: string
   'aria-labelledby'?: string
   'aria-describedby'?: string
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
 export const RadioGroup = React.forwardRef<HTMLDivElement, RadioGroupProps>(function RadioGroup(
   { options, value, defaultValue, onValueChange, onChange, onBlur, disabled, name, id, invalid, orientation = 'vertical', className,
-    'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby, 'aria-describedby': ariaDescribedby },
+    'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby, 'aria-describedby': ariaDescribedby,
+    'data-testid': testid },
   ref,
 ) {
   const s = useSurface({ disabled })
@@ -61,6 +64,7 @@ export const RadioGroup = React.forwardRef<HTMLDivElement, RadioGroupProps>(func
       aria-labelledby={ariaLabelledby}
       aria-describedby={ariaDescribedby}
       aria-invalid={invalid || undefined}
+      data-testid={testid}
       className={cn(orientation === 'horizontal' ? 'flex flex-wrap gap-4' : 'grid gap-2', className)}
     >
       {options.map((o) => {

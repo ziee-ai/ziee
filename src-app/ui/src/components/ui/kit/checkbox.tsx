@@ -24,11 +24,14 @@ export interface CheckboxProps {
   'aria-labelledby'?: string
   'aria-describedby'?: string
   invalid?: boolean
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
 export const Checkbox = React.forwardRef<HTMLButtonElement, CheckboxProps>(function Checkbox(
   { checked, value, defaultChecked, indeterminate, onCheckedChange, onChange, onBlur, disabled, name, id, label, className,
-    'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby, 'aria-describedby': ariaDescribedby, invalid },
+    'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby, 'aria-describedby': ariaDescribedby, invalid,
+    'data-testid': testid },
   ref,
 ) {
   const s = useSurface({ disabled })
@@ -54,6 +57,7 @@ export const Checkbox = React.forwardRef<HTMLButtonElement, CheckboxProps>(funct
       aria-labelledby={ariaLabelledby}
       aria-describedby={ariaDescribedby}
       aria-invalid={invalid || undefined}
+      data-testid={testid}
       className={className}
     />
   )

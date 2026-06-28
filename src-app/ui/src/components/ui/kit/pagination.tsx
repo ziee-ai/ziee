@@ -28,6 +28,8 @@ interface PaginationBase {
   pageLabel: (page: number) => string
   /** Optional total-summary renderer, e.g. (total,[from,to]) => `${from}-${to} of ${total}`. */
   showTotal?: (total: number, range: [number, number]) => React.ReactNode
+  /** Test selector — forwarded onto the nav <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
 // Page-size dropdown — when enabled, its accessible name + change handler are required.
@@ -70,7 +72,7 @@ export function Pagination({
   total, pageSize = 10, current, onChange, siblingCount = 1, className,
   'aria-label': ariaLabel, previousLabel, nextLabel, pageLabel, showTotal,
   showSizeChanger, pageSizeOptions, pageSizeLabel, onPageSizeChange,
-  showQuickJumper, jumpLabel,
+  showQuickJumper, jumpLabel, 'data-testid': testid,
 }: PaginationProps) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   // Defensive clamp: a parent that changes pageSize without resetting `current` can leave it
@@ -97,7 +99,7 @@ export function Pagination({
     setJump('')
   }
   return (
-    <Base className={cn('flex items-center gap-3', className)} aria-label={ariaLabel}>
+    <Base className={cn('flex items-center gap-3', className)} aria-label={ariaLabel} data-testid={testid}>
       {showTotal != null && <span className="text-sm text-muted-foreground">{showTotal(total, [from, to])}</span>}
       {pageCount > 1 && (
         <PaginationContent>

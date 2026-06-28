@@ -54,6 +54,8 @@ export type DatePickerProps = {
   'aria-describedby'?: string
   'aria-labelledby'?: string
   'aria-required'?: boolean
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 } & KitStyleProps
 
 const triggerH = (size?: 'sm' | 'default' | 'lg') =>
@@ -66,6 +68,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
     disabled, loading, invalid, size, name, id, className, style,
     'aria-label': ariaLabel, 'aria-describedby': ariaDescribedby,
     'aria-labelledby': ariaLabelledby, 'aria-required': ariaRequired,
+    'data-testid': testid,
   },
   ref,
 ) {
@@ -116,6 +119,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
           aria-readonly={s.readOnly || undefined}
           aria-haspopup="dialog"
           aria-expanded={open}
+          data-testid={testid}
           disabled={blocked}
           // form onBlur fires only on real focus-leave of the trigger, never on popover close.
           onBlur={() => onBlur?.()}

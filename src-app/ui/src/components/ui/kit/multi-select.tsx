@@ -32,6 +32,7 @@ function splitOnSeparators(text: string, separators: string[]): { tokens: string
 function VirtualMultiList({
   options, selectedSet, onToggle, searchPlaceholder, emptyText, listboxId,
   allowCreate, tokenSeparators, onCreateToken, createLabel,
+  optionTestid,
 }: {
   options: MultiSelectOption[]
   selectedSet: Set<string>
@@ -43,6 +44,7 @@ function VirtualMultiList({
   tokenSeparators: string[]
   onCreateToken: (value: string) => void
   createLabel: (query: string) => string
+  optionTestid?: (value: string) => string | undefined
 }) {
   const [query, setQuery] = React.useState('')
   const filtered = React.useMemo(() => {
@@ -138,6 +140,7 @@ function VirtualMultiList({
                 <div
                   key={o.value}
                   id={`${listboxId}-${vi.index}`}
+                  data-testid={optionTestid?.(o.value)}
                   role="option"
                   aria-selected={selected}
                   aria-disabled={o.disabled || undefined}
@@ -194,6 +197,8 @@ export type MultiSelectProps = {
   className?: string
   'aria-describedby'?: string
   'aria-required'?: boolean
+  /** Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. */
+  'data-testid'?: string
 } & KitStyleProps &
   // An accessible name is REQUIRED — either an inline label or a referenced one (no silent default).
   (
@@ -205,9 +210,13 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
   { options, value, defaultValue, onValueChange, onChange, onBlur, placeholder, searchPlaceholder, emptyText, removeLabel,
     allowCreate, tokenSeparators = [], createLabel, disabled, loading, invalid, virtual, name, id, className, style,
     'aria-describedby': ariaDescribedby, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby,
-    'aria-required': ariaRequired },
+    'aria-required': ariaRequired, 'data-testid': testid },
   ref,
 ) {
+  const optionTestid = React.useCallback(
+    (v: string) => (testid ? `${testid}-opt-${v}` : undefined),
+    [testid],
+  )
   const s = useSurface({ disabled })
   const listboxId = React.useId()
   const [open, setOpen] = React.useState(false)
@@ -270,6 +279,7 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
           aria-labelledby={ariaLabelledby}
           aria-required={ariaRequired || undefined}
           aria-disabled={locked || undefined}
+          data-testid={testid}
           style={style}
           onKeyDown={(e) => {
             if (locked) return
@@ -303,6 +313,7 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
             options={options} selectedSet={selectedSet} onToggle={toggle}
             searchPlaceholder={searchPlaceholder} emptyText={emptyText} listboxId={listboxId}
             allowCreate={allowCreate} tokenSeparators={tokenSeparators} onCreateToken={addToken} createLabel={resolvedCreateLabel}
+            optionTestid={optionTestid}
           />
         ) : (
           <Command shouldFilter={!allowCreate}>
@@ -322,7 +333,7 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
                 {options
                   .filter((o) => !allowCreate || trimmed === '' || o.label.toLowerCase().includes(trimmed.toLowerCase()))
                   .map((o) => (
-                    <CommandItem key={o.value} value={o.value} keywords={[o.label]} disabled={o.disabled} onSelect={() => toggle(o.value)}>
+                    <CommandItem key={o.value} value={o.value} keywords={[o.label]} disabled={o.disabled} onSelect={() => toggle(o.value)} data-testid={optionTestid(o.value)}>
                       <Check className={cn('mr-2 size-4', selectedSet.has(o.value) ? 'opacity-100' : 'opacity-0')} aria-hidden />
                       {o.label}
                     </CommandItem>

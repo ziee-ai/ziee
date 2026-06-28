@@ -27,13 +27,15 @@ export interface SegmentedProps {
   className?: string
   'aria-label'?: string
   'aria-describedby'?: string
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
 const itemH = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-10' : 'h-8')
 
 export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(function Segmented(
   { options, value, defaultValue, onValueChange, onChange, onBlur, disabled, size, name, id, invalid, className,
-    'aria-label': ariaLabel, 'aria-describedby': ariaDescribedby },
+    'aria-label': ariaLabel, 'aria-describedby': ariaDescribedby, 'data-testid': testid },
   ref,
 ) {
   const s = useSurface({ disabled, size })
@@ -61,6 +63,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
       aria-label={ariaLabel}
       aria-describedby={ariaDescribedby}
       aria-invalid={invalid || undefined}
+      data-testid={testid}
       className={cn('inline-flex rounded-md bg-muted p-0.5', className)}
     >
       {options.map((o) => (

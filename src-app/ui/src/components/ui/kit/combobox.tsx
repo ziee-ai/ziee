@@ -19,6 +19,7 @@ export interface ComboboxOption {
 // filter + arrow-key navigation (aria-activedescendant) + scroll-into-view. Mounted fresh on open.
 function VirtualList({
   options, current, onChoose, searchPlaceholder, emptyText, listboxId,
+  optionTestid,
 }: {
   options: ComboboxOption[]
   current: string | undefined
@@ -26,6 +27,7 @@ function VirtualList({
   searchPlaceholder: string
   emptyText: string
   listboxId: string
+  optionTestid?: (value: string) => string | undefined
 }) {
   const [query, setQuery] = React.useState('')
   const filtered = React.useMemo(() => {
@@ -89,6 +91,7 @@ function VirtualList({
                 <div
                   key={o.value}
                   id={`${listboxId}-${vi.index}`}
+                  data-testid={optionTestid?.(o.value)}
                   role="option"
                   aria-selected={selected}
                   aria-disabled={o.disabled || undefined}
@@ -140,7 +143,9 @@ export type ComboboxProps = {
   className?: string
   'aria-describedby'?: string
   'aria-label'?: string
-  'aria-labelledby'?: string} & KitStyleProps
+  'aria-labelledby'?: string
+  /** Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. */
+  'data-testid'?: string} & KitStyleProps
 
 const triggerH = (size?: 'sm' | 'default' | 'lg') =>
   size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
@@ -148,10 +153,15 @@ const triggerH = (size?: 'sm' | 'default' | 'lg') =>
 export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(function Combobox(
   { options, value, defaultValue, onValueChange, onChange, onBlur, placeholder, searchPlaceholder, emptyText,
     disabled, loading, invalid, virtual, size, name, id, className, style,
-    'aria-describedby': ariaDescribedby, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby },
+    'aria-describedby': ariaDescribedby, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby,
+    'data-testid': testid },
   ref,
 ) {
   const s = useSurface({ disabled, size })
+  const optionTestid = React.useCallback(
+    (v: string) => (testid ? `${testid}-opt-${v}` : undefined),
+    [testid],
+  )
   const listboxId = React.useId()
   const [open, setOpen] = React.useState(false)
   const [current, setCurrent] = useControllableState<string>({
@@ -177,6 +187,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
           aria-describedby={ariaDescribedby}
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledby}
+          data-testid={testid}
           disabled={locked}
           style={style}
           className={cn(
@@ -195,7 +206,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         {virtual ? (
-          <VirtualList options={options} current={current} onChoose={choose} searchPlaceholder={searchPlaceholder} emptyText={emptyText} listboxId={listboxId} />
+          <VirtualList options={options} current={current} onChoose={choose} searchPlaceholder={searchPlaceholder} emptyText={emptyText} listboxId={listboxId} optionTestid={optionTestid} />
         ) : (
           <Command>
             <CommandInput placeholder={searchPlaceholder} />
@@ -203,7 +214,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
               <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>
                 {options.map((o) => (
-                  <CommandItem key={o.value} value={o.value} keywords={[o.label]} disabled={o.disabled} onSelect={() => choose(o.value)}>
+                  <CommandItem key={o.value} value={o.value} keywords={[o.label]} disabled={o.disabled} onSelect={() => choose(o.value)} data-testid={optionTestid(o.value)}>
                     <Check className={cn('mr-2 size-4', current === o.value ? 'opacity-100' : 'opacity-0')} aria-hidden />
                     {o.label}
                   </CommandItem>
