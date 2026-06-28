@@ -373,8 +373,23 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
                     s.installTasks[key] = t
                     if (t.status === 'running') {
                       setAction(s, key, { installing: true })
+                    } else if (
+                      t.status === 'completed' ||
+                      t.status === 'failed'
+                    ) {
+                      // A reconnect snapshot can deliver an ALREADY-terminal task
+                      // whose complete/failed event fired while we were
+                      // disconnected — those won't re-fire, so clear the
+                      // installing flag here or the row stays stuck spinning.
+                      clearAction(s, key)
                     }
                   })
+                  // A terminal-completed task seen via the snapshot also means
+                  // the artifact list is stale; refresh so the row flips to
+                  // "Downloaded" (mirrors the `complete` handler).
+                  if (t.status === 'completed') {
+                    void get().loadStatus()
+                  }
                 },
                 progress: (d: SSEInstallProgressData) => {
                   set(s => {
