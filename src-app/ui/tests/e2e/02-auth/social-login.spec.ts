@@ -332,4 +332,36 @@ test.describe('Social login — provider buttons + callback flow', () => {
       page.getByRole('button', { name: /link and sign in/i }),
     ).toBeDisabled()
   })
+
+  // audit id a895742c6895a7f8 — return-to-PREVIOUS-page after login. The
+  // existing callback test only returns to "/". This proves the returnTo
+  // round-trip lands the user back on the DEEP page they came from
+  // (ProviderButtons stash → AuthCallbackPage navigate(returnTo)).
+  test('/auth/callback returns the user to a deep previous page', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    await page.context().clearCookies()
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'domcontentloaded' })
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+
+    // The user originally tried to reach /settings/about; the callback must
+    // send them back there (not to "/").
+    const target = encodeURIComponent('/settings/about')
+    await page.goto(
+      `${baseURL}/auth/callback#token=${encodeURIComponent(adminToken)}&return_to=${target}`,
+    )
+
+    await page.waitForURL(`${baseURL}/settings/about`, { timeout: 15_000 })
+    expect(page.url()).not.toContain('#token=')
+    // Landed authenticated (not bounced back to /auth).
+    await expect(page).not.toHaveURL(/\/auth(\?|$)/)
+  })
 })
