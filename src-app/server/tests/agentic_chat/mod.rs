@@ -872,3 +872,96 @@ async fn third_party_mcp_server_excluded_when_enable_mcp_false() {
         "the third-party MCP server must record ZERO hits during a disabled-MCP send"
     );
 }
+
+/// Multi-turn model-authored-file workflow: in turn 1 the model AUTHORS a new
+/// file via the files_mcp `create_file` tool, and in a LATER turn of the SAME
+/// conversation it reads that file back by name — proving a model-created file
+/// persists to the store AND stays reusable across turns (it is part of the
+/// conversation's available files on the next turn). Distinct from
+/// `manifest_injected_and_read_file_round_trips`, which reads a pre-uploaded
+/// project file, never one the model itself created.
+#[tokio::test]
+async fn model_authored_file_persists_and_is_reread_across_turns() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_authored").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+
+    const BEACON: &str = "AUTHORED_BEACON_K7Q";
+    let filename = "authored_notes.md";
+
+    // --- Turn 1: the model authors a brand-new file via create_file. ---
+    let t1 = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        &format!(
+            "STUB_PLAN=create_file STUB_FILE={filename} STUB_CONTENT={BEACON} please write my notes"
+        ),
+    )
+    .await;
+    assert!(
+        stub.requests_with_tool("create_file") >= 1,
+        "turn 1 must call the create_file tool; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        t1.contains("Created the file"),
+        "turn 1 answer should confirm creation; body={t1}"
+    );
+
+    // The authored file is a durable, model-created (`created_by="mcp"`) store
+    // artifact owned by the user — independently verifiable, not just an
+    // in-flight handle.
+    let listed: Value = reqwest::Client::new()
+        .get(server.api_url("/files?page=1&per_page=100"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("list files")
+        .json()
+        .await
+        .expect("files json");
+    let authored = listed["files"]
+        .as_array()
+        .expect("files array")
+        .iter()
+        .find(|f| f["filename"].as_str() == Some(filename))
+        .unwrap_or_else(|| {
+            panic!("authored file must be persisted in the user's library; got {listed}")
+        });
+    assert_eq!(
+        authored["created_by"].as_str(),
+        Some("mcp"),
+        "the file must be marked model-authored (created_by=mcp); file={authored}"
+    );
+
+    // --- Turn 2 (same conversation): the model reads the authored file back BY
+    // NAME — succeeds only because the turn-1 file persisted and is part of this
+    // conversation's available files. ---
+    let t2 = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        &format!("STUB_PLAN=read_named STUB_NAME={filename} what did you write?"),
+    )
+    .await;
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "turn 2 must call read_file on the authored file; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        t2.contains(BEACON),
+        "turn 2 must read back the content the model authored in turn 1; body={t2}"
+    );
+}
