@@ -35,6 +35,19 @@
   }
 }
 
+/* Sidebar profile item hover/focus, driven by antd theme tokens passed in
+ * as CSS variables (set inline from `theme.useToken()` in UserProfileWidget).
+ * Declarative :hover/:focus-visible replaces JS onMouseEnter/Leave/Focus/Blur
+ * style mutation. */
+.user-sidebar-item {
+  color: var(--usi-color);
+}
+.user-sidebar-item:hover,
+.user-sidebar-item:focus-visible {
+  background-color: var(--usi-hover-bg);
+  color: var(--usi-hover-color);
+}
+
 /* WCAG AA color contrast overrides for AntD preset Tag colors.
  * Default `color="orange"` renders #d46b08 on #fff7e6 = 3.33:1 (FAIL).
  * Use a darker orange to meet 4.5:1. */

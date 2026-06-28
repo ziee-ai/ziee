@@ -31,24 +31,14 @@ function SidebarItem({
           onClick?.()
         }
       }}
-      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150 focus-visible:outline focus-visible:outline-2"
-      style={{ color: token.colorTextBase }}
-      onMouseEnter={e => {
-        e.currentTarget.style.backgroundColor = token.colorPrimaryHover
-        e.currentTarget.style.color = token.colorTextLightSolid
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.backgroundColor = 'transparent'
-        e.currentTarget.style.color = token.colorTextBase
-      }}
-      onFocus={e => {
-        e.currentTarget.style.backgroundColor = token.colorPrimaryHover
-        e.currentTarget.style.color = token.colorTextLightSolid
-      }}
-      onBlur={e => {
-        e.currentTarget.style.backgroundColor = 'transparent'
-        e.currentTarget.style.color = token.colorTextBase
-      }}
+      className="user-sidebar-item flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150 focus-visible:outline focus-visible:outline-2"
+      style={
+        {
+          '--usi-color': token.colorTextBase,
+          '--usi-hover-bg': token.colorPrimaryHover,
+          '--usi-hover-color': token.colorTextLightSolid,
+        } as React.CSSProperties
+      }
     >
       <div
         aria-hidden="true"
