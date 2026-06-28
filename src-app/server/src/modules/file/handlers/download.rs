@@ -83,15 +83,14 @@ pub(crate) fn content_disposition(filename: &str) -> String {
 pub async fn download_file(
     auth: RequirePermissions<(FilesDownload,)>,
     Path(file_id): Path<Uuid>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     let user_id = auth.user.id;
 
     // Get file and verify ownership
     let file = Repos.file
         .get_by_id_and_user(file_id, user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
 
     // Extract extension
     let extension = file
@@ -106,7 +105,7 @@ pub async fn download_file(
     let file_data = storage
         .load_original(user_id, file.blob_version_id, &extension)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| AppError::not_found("File"))?;
 
     // Build response headers using array of tuples (like reference implementation)
     let headers = [
@@ -128,7 +127,7 @@ pub async fn download_file(
         (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
 
-    Ok((headers, file_data).into_response())
+    Ok((StatusCode::OK, (headers, file_data).into_response()))
 }
 
 /// Generate download token
@@ -188,7 +187,7 @@ pub async fn generate_download_token(
 pub async fn download_with_token(
     Path(file_id): Path<Uuid>,
     Query(query): Query<DownloadTokenQuery>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     // Validate token. Enforces iss + aud=DOWNLOAD_TOKEN_AUDIENCE so a
     // download token cannot be replayed against the access-token
     // validator (which expects aud="ziee-api"). Closes
@@ -202,19 +201,19 @@ pub async fn download_with_token(
         &DecodingKey::from_secret(jwt_config.secret.as_bytes()),
         &validation,
     )
-    .map_err(|_| StatusCode::UNAUTHORIZED)?
+    .map_err(|_| AppError::unauthorized("INVALID_TOKEN", "Invalid or expired download token"))?
     .claims;
 
     // Verify file_id matches
     let token_file_id = Uuid::parse_str(&claims.file_id)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| AppError::unauthorized("INVALID_TOKEN", "Malformed token"))?;
 
     if token_file_id != file_id {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(AppError::forbidden("TOKEN_FILE_MISMATCH", "Token does not match file").into());
     }
 
     let user_id = Uuid::parse_str(&claims.user_id)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| AppError::unauthorized("INVALID_TOKEN", "Malformed token"))?;
 
     // SECURITY: re-check current state at download time. The audit's
     // 05-file F-06 (High) noted the original handler only validated the
@@ -226,19 +225,17 @@ pub async fn download_with_token(
     let user = Repos
         .user
         .get_by_id(user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .await?
+        .ok_or_else(|| AppError::unauthorized("USER_NOT_FOUND", "User no longer exists"))?;
     if !user.is_active {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(AppError::forbidden("USER_INACTIVE", "User account is disabled").into());
     }
     // Re-verify FilesDownload via the same checker the extractor uses,
     // pulling in the user's current group permissions.
     let groups = Repos
         .user
         .get_user_groups(user.id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
     if !user.is_admin
         && !crate::modules::permissions::checker::check_permission_union(
             &user,
@@ -246,15 +243,14 @@ pub async fn download_with_token(
             "files::download",
         )
     {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(AppError::forbidden("PERMISSION_REVOKED", "files::download no longer granted").into());
     }
 
     // Get file (this query already filters by user ownership).
     let file = Repos.file
         .get_by_id_and_user(file_id, user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
 
     // Extract extension (filename is on the parent — stable across versions)
     let extension = file
@@ -271,9 +267,8 @@ pub async fn download_with_token(
             let ver = Repos
                 .file
                 .get_version(file_id, v, user_id)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-                .ok_or(StatusCode::NOT_FOUND)?;
+                .await?
+                .ok_or_else(|| AppError::not_found("File version"))?;
             (ver.blob_version_id, ver.mime_type)
         }
         None => (file.blob_version_id, file.mime_type.clone()),
@@ -284,7 +279,7 @@ pub async fn download_with_token(
     let file_data = storage
         .load_original(user_id, blob_version_id, &extension)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| AppError::not_found("File"))?;
 
     // Build response headers using array of tuples (like reference implementation)
     let headers = [
@@ -306,7 +301,7 @@ pub async fn download_with_token(
         (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
 
-    Ok((headers, file_data).into_response())
+    Ok((StatusCode::OK, (headers, file_data).into_response()))
 }
 
 /// Download file OpenAPI documentation
