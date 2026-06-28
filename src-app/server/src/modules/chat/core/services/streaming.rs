@@ -1375,6 +1375,16 @@ impl DeltaAccumulator {
         .await
         .map_err(AppError::database_error)?;
 
+        // Assign sequence_order from a single running counter rather than
+        // `base + block.index`: the per-block `index` values come from
+        // independent sources (the streamed content blocks AND each extension's
+        // own accumulator), so they can overlap and would collide on
+        // (message_id, sequence_order). Insertion order here already reflects
+        // the intended render order (content blocks first, then extension
+        // content), so a monotonic counter preserves order while guaranteeing
+        // the UNIQUE constraint (migration 124) is never tripped.
+        let mut next_seq = base;
+
         for accumulated in &self.content_blocks {
             // Skip empty content blocks
             if accumulated.content_type.is_empty() {
@@ -1416,11 +1426,12 @@ impl DeltaAccumulator {
                 self.assistant_message_id,
                 accumulated.content_type,
                 content_json,
-                base + accumulated.index as i32
+                next_seq
             )
             .execute(&mut *tx)
             .await
             .map_err(AppError::database_error)?;
+            next_seq += 1;
         }
 
         // Get accumulated content from extensions and persist to database
@@ -1435,14 +1446,14 @@ impl DeltaAccumulator {
                 self.assistant_message_id
             );
 
-            for (index, content_data) in extension_content {
+            for (_index, content_data) in extension_content {
                 let content_type = content_data.content_type();
                 // Use to_api_content() to flatten Extension variants
                 let content_json = content_data.to_api_content();
 
                 tracing::info!(
                     "Persisting extension content at index {}: type={}",
-                    index,
+                    _index,
                     content_type
                 );
 
@@ -1454,11 +1465,12 @@ impl DeltaAccumulator {
                     self.assistant_message_id,
                     content_type,
                     content_json,
-                    base + index as i32
+                    next_seq
                 )
                 .execute(&mut *tx)
                 .await
                 .map_err(AppError::database_error)?;
+                next_seq += 1;
             }
         }
 
