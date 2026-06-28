@@ -565,6 +565,89 @@ async fn test_upload_missing_fields_fails() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
+// audit id all-07fc905ac56b — file-CONTENT validation on upload. The handler
+// runs validate_file_content (uploads.rs:752) and refuses the upload with 400
+// INVALID_MODEL_FILE when a file (a) is empty, or (b) looks like an HTML error
+// page (a stand-in for a download that actually saved an HTTP error body as a
+// ".gguf"). The existing tests cover only missing-field / duplicate-name, not
+// the content checks. Driven through the real HTTP upload path.
+async fn upload_single_file(
+    server: &crate::common::TestServer,
+    token: &str,
+    provider_id: &str,
+    filename: &str,
+    bytes: Vec<u8>,
+) -> reqwest::Response {
+    let file_part = Part::bytes(bytes)
+        .file_name(filename.to_string())
+        .mime_str("application/octet-stream")
+        .unwrap();
+    let form = Form::new()
+        .text("provider_id", provider_id.to_string())
+        .text("name", format!("content-val-{filename}"))
+        .text("display_name", "Content Validation")
+        .text("file_format", "gguf")
+        .text("main_filename", filename.to_string())
+        .part("files", file_part);
+    reqwest::Client::new()
+        .post(server.api_url("/llm-models/upload"))
+        .header("Authorization", format!("Bearer {token}"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn test_upload_rejects_empty_and_html_content() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "uploader",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
+    )
+    .await;
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // (a) Empty file → rejected.
+    let empty = upload_single_file(&server, &user.token, provider_id, "empty.gguf", vec![]).await;
+    assert_eq!(
+        empty.status(),
+        StatusCode::BAD_REQUEST,
+        "an empty model file must be rejected"
+    );
+    let empty_body: serde_json::Value = empty.json().await.unwrap();
+    assert_eq!(empty_body["error_code"].as_str().unwrap(), "INVALID_MODEL_FILE");
+    assert!(
+        empty_body["error"].as_str().unwrap().to_lowercase().contains("empty"),
+        "empty-file error should mention 'empty': {empty_body}"
+    );
+
+    // (b) HTML error-page body saved as a .gguf → rejected. Pad past 1KB so the
+    // "suspiciously small" weight check isn't what fires — the HTML sniff must.
+    let mut html = b"<!DOCTYPE html><html><body>404 Not Found</body></html>".to_vec();
+    html.resize(2048, b' ');
+    let html_res =
+        upload_single_file(&server, &user.token, provider_id, "model.gguf", html).await;
+    assert_eq!(
+        html_res.status(),
+        StatusCode::BAD_REQUEST,
+        "an HTML error-page masquerading as a weight file must be rejected"
+    );
+    let html_body: serde_json::Value = html_res.json().await.unwrap();
+    assert_eq!(html_body["error_code"].as_str().unwrap(), "INVALID_MODEL_FILE");
+    assert!(
+        html_body["error"].as_str().unwrap().to_uppercase().contains("HTML"),
+        "html-content error should mention HTML: {html_body}"
+    );
+}
+
 /// Gap-A regression (the headline of the mistral.rs-parity hardening): a
 /// SHARDED safetensors model with NO `*.index.json` must keep EVERY shard.
 /// determine_files_to_copy -> model_files::select_download_files now grabs
