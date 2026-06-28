@@ -72,7 +72,7 @@ export function RecentConversationsWidget() {
         <div className="px-2 py-4">
           <Empty
             data-testid="chat-recent-empty"
-            image={<MessageSquare className="size-9 text-gray-400" />}
+            image={<MessageSquare className="size-9 text-muted-foreground" />}
             description={
               <Text type="secondary" className="text-xs">
                 No conversations yet
