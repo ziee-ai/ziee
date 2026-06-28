@@ -488,3 +488,66 @@ async fn test_apple_user_json_relay_email_accepted_when_id_token_has_none() {
         "a relay email from the first-auth user JSON must be accepted when the id_token had none"
     );
 }
+
+// audit id all-381d7fed6bb1 — Apple sends the user-JSON blob (name) ONLY on the
+// FIRST authorization. A relogin that re-submits a FORGED user JSON must NOT be
+// allowed to overwrite the established display_name — identity is the id_token
+// `sub`, the form `user` blob is first-auth-only. Security path untested.
+#[tokio::test]
+async fn test_apple_relogin_forged_user_json_does_not_overwrite_name() {
+    let test_server = crate::common::TestServer::start().await;
+    let apple_mock = AppleMockServer::start().await;
+    let pool = sqlx::PgPool::connect(&test_server.database_url).await.unwrap();
+    let services_id = "com.example.forge";
+    let provider_id = seed_apple_provider(&pool, "apple-test", services_id, &apple_mock).await;
+    let sub = "001234.forge-user.9999";
+
+    // First login establishes display_name = "Real Name".
+    let (state1, nonce1) = init_apple_flow(&test_server, "apple-test").await;
+    let now = Utc::now().timestamp();
+    apple_mock
+        .queue_token_response(&apple_mock.sign_id_token(&json!({
+            "iss": apple_mock.base_url, "aud": services_id, "sub": sub,
+            "iat": now, "exp": now + 3600,
+            "email": "forge@privaterelay.appleid.com", "email_verified": "true", "nonce": nonce1,
+        })))
+        .await;
+    let r1 = post_apple_callback(
+        &test_server, "apple-test", "code1", &state1,
+        Some(r#"{"name":{"firstName":"Real","lastName":"Name"},"email":"forge@privaterelay.appleid.com"}"#),
+    )
+    .await;
+    assert!(r1.status().is_redirection());
+
+    // Second login (same sub) with a FORGED user JSON claiming a different name.
+    let (state2, nonce2) = init_apple_flow(&test_server, "apple-test").await;
+    let now = Utc::now().timestamp();
+    apple_mock
+        .queue_token_response(&apple_mock.sign_id_token(&json!({
+            "iss": apple_mock.base_url, "aud": services_id, "sub": sub,
+            "iat": now, "exp": now + 3600,
+            "email": "forge@privaterelay.appleid.com", "email_verified": "true", "nonce": nonce2,
+        })))
+        .await;
+    let r2 = post_apple_callback(
+        &test_server, "apple-test", "code2", &state2,
+        Some(r#"{"name":{"firstName":"Hacker","lastName":"Override"},"email":"forge@privaterelay.appleid.com"}"#),
+    )
+    .await;
+    assert!(r2.status().is_redirection());
+
+    // The display_name must remain the first-auth value, NOT the forged one.
+    let row = sqlx::query!(
+        r#"SELECT u.display_name FROM users u
+           JOIN user_auth_links l ON l.user_id = u.id WHERE l.provider_id = $1"#,
+        provider_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        row.display_name.as_deref(),
+        Some("Real Name"),
+        "a forged relogin user JSON must NOT overwrite the established display_name"
+    );
+}
