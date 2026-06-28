@@ -89,7 +89,7 @@ export function ProjectsNavWidget() {
         <div className="px-2 py-3">
           <Empty
             data-testid="project-nav-empty"
-            image={<Folder className="text-2xl text-gray-400" />}
+            image={<Folder className="text-2xl text-muted-foreground" />}
             description={
               <Text type="secondary" className="text-xs">
                 No projects yet

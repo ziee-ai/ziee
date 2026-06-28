@@ -200,7 +200,7 @@ export function ProjectFormDrawer() {
         onSubmit={handleSubmit}
       >
         {remoteUpdatedWhileEditing && (
-          <div className="mb-3 p-2 rounded border border-orange-300 bg-orange-50">
+          <div className="mb-3 p-2 rounded border border-border bg-muted">
             <Text type="warning" className="text-sm">
               Remote changes detected while you were editing. Your local edits
               are preserved.{' '}
