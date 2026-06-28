@@ -83,6 +83,29 @@ outputs:
     expose: artifact
 "#;
 
+/// Same shape as `REAL_LOGGED_WORKFLOW_YAML` but the sole `expose: artifact`
+/// output declares a BINARY `mime_type` (`application/octet-stream`, which is
+/// not in `is_text_mime`'s allow-list). So `resources/read` of the output must
+/// take the base64 BLOB branch (resources.rs:296-299) rather than the text
+/// branch — even though the underlying bytes are the stub model's plain-text
+/// reply. The declared mime_type wins over `parsed_as`.
+const BINARY_OUTPUT_WORKFLOW_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+expose_logs: always
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: gen
+    kind: llm
+    prompt: "summarize {{ inputs.topic }}"
+    log: full
+outputs:
+  - name: summary
+    from: "{{ gen.output }}"
+    expose: artifact
+    mime_type: application/octet-stream
+"#;
+
 /// Same shape but `expose_logs: never` — the confidentiality control under M6.
 /// Logs are written to disk but `logs_surfaceable` returns false, so
 /// `resources/read` of a log must be refused fail-closed.
@@ -313,6 +336,68 @@ async fn resources_read_returns_captured_log_body() {
     assert!(
         text.contains("Hello from stub"),
         "the captured raw_output log carries the stub model's reply: {body}"
+    );
+}
+
+/// M5 (binary branch): an output declaring a non-text `mime_type` must be
+/// returned as a base64 `blob`, NOT a `text` body — and the base64 must decode
+/// back to the original bytes. Exercises resources.rs:296-299 (the
+/// `else { … encode … "blob" }` arm), which every other resources/read test
+/// (all of which hit text mimes) leaves uncovered.
+#[tokio::test]
+async fn resources_read_returns_binary_output_as_base64_blob() {
+    use base64::Engine as _;
+
+    let server = TestServer::start().await;
+    let user = mcp_user(&server, "wf_res_binblob").await;
+
+    let (run_id, _result, _conv) =
+        run_via_tools_call(&server, &user, "m5-binblob", BINARY_OUTPUT_WORKFLOW_YAML).await;
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(final_run["status"], "completed", "run completed: {final_run}");
+
+    // The `summary` output bytes are the stub model's reply, but the output
+    // declares `mime_type: application/octet-stream` → resources/read must take
+    // the binary blob branch.
+    let uri = format!("ziee://workflow-runs/{run_id}/outputs/summary");
+    let resp = jsonrpc(
+        &server,
+        &user.token,
+        None,
+        "resources/read",
+        json!({ "uri": uri }),
+    )
+    .await;
+    assert_eq!(resp.status(), 200, "resources/read should 200");
+    let body: Json = resp.json().await.unwrap();
+    assert!(body["error"].is_null(), "binary read had no error: {body}");
+    let content = &body["result"]["contents"][0];
+    assert_eq!(
+        content["uri"].as_str(),
+        Some(uri.as_str()),
+        "the content echoes the requested uri: {body}"
+    );
+    assert_eq!(
+        content["mimeType"].as_str(),
+        Some("application/octet-stream"),
+        "the declared binary mime_type is surfaced: {body}"
+    );
+    // The binary branch returns `blob` (base64), NEVER `text`.
+    assert!(
+        content.get("text").is_none(),
+        "a binary-mime resource must NOT be returned as a text body: {body}"
+    );
+    let b64 = content["blob"]
+        .as_str()
+        .unwrap_or_else(|| panic!("binary output returns a base64 `blob` field: {body}"));
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .expect("the blob must be valid base64");
+    // Round-trips back to the original output bytes (the stub's reply).
+    let decoded_text = String::from_utf8(decoded).expect("stub reply bytes are utf-8");
+    assert!(
+        decoded_text.contains("Hello from stub"),
+        "the decoded blob carries the original output bytes (the stub reply): got {decoded_text:?}"
     );
 }
 
