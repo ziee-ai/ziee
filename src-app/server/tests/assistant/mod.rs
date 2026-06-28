@@ -265,6 +265,65 @@ async fn test_delete_user_assistant() {
 // Template Assistant CRUD Tests
 // =====================================================
 
+/// Admin visibility: the template LIST must include DISABLED templates so an
+/// admin can see and re-enable them (repository::list passes no `enabled`
+/// filter for templates — assistant/repository.rs). Chat resolution filters
+/// `enabled = true` separately; this is the management surface.
+#[tokio::test]
+async fn test_list_templates_includes_disabled_templates() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tmpl_admin",
+        &[
+            "assistant_templates::create",
+            "assistant_templates::read",
+            "assistant_templates::edit",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {}", admin.token);
+
+    // Create a template, then disable it.
+    let created = client
+        .post(server.api_url("/assistant-templates"))
+        .header("Authorization", &auth)
+        .json(&json!({ "name": "Disabled Template", "description": "d" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let tmpl: serde_json::Value = created.json().await.unwrap();
+    let tmpl_id = tmpl["id"].as_str().unwrap().to_string();
+
+    let disabled = client
+        .put(server.api_url(&format!("/assistant-templates/{}", tmpl_id)))
+        .header("Authorization", &auth)
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(disabled.status(), StatusCode::OK);
+    assert_eq!(disabled.json::<serde_json::Value>().await.unwrap()["enabled"], false);
+
+    // The admin template list must still surface the disabled template.
+    let list = client
+        .get(server.api_url("/assistant-templates"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let body: serde_json::Value = list.json().await.unwrap();
+    let items = body["assistants"].as_array().expect("assistants array");
+    let found = items
+        .iter()
+        .find(|a| a["id"].as_str() == Some(tmpl_id.as_str()))
+        .expect("disabled template must appear in the admin template list");
+    assert_eq!(found["enabled"], false, "and it is shown as disabled");
+}
+
 #[tokio::test]
 async fn test_create_template_assistant_success() {
     let server = crate::common::TestServer::start().await;
