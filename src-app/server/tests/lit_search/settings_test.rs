@@ -244,3 +244,32 @@ async fn test_settings_update_publishes_sync_event() {
         .expect_event("lit_search_settings", "update", Duration::from_secs(5))
         .await;
 }
+
+/// The SECOND lit_search emit point: a connector config update (PUT
+/// /lit-search/connectors/{connector}) also publishes LitSearchSettings/update
+/// to admins (handlers.rs update_connector), distinct from the settings PUT
+/// covered above. A use-only (non-admin) user must NOT observe it.
+#[tokio::test]
+async fn test_connector_update_publishes_sync_event() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "ls_conn_admin", admin_perms()).await;
+    let plain =
+        create_user_with_permissions(&server, "ls_conn_plain", &["lit_search::use"]).await;
+
+    let mut admin_probe = SyncProbe::open(&server, &admin.token).await;
+    let mut plain_probe = SyncProbe::open(&server, &plain.token).await;
+
+    let r = reqwest::Client::new()
+        .put(server.api_url("/lit-search/connectors/crossref"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "api_key": "cr-secret-123" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200, "connector update should 200");
+
+    admin_probe
+        .expect_event("lit_search_settings", "update", Duration::from_secs(5))
+        .await;
+    plain_probe.expect_silence(Duration::from_secs(2)).await;
+}
