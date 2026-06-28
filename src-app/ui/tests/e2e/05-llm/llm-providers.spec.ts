@@ -18,6 +18,7 @@ import {
   assertProviderDisabled,
   openAddProviderDrawer,
   selectProviderType,
+  createProvider,
 } from './helpers/provider-helpers'
 import { submitProviderForm } from './helpers/form-helpers'
 
@@ -304,6 +305,48 @@ test.describe('LLM Providers - Remote Provider CRUD', () => {
     await page.keyboard.press('Escape')
     await page.click('button:has-text("Cancel")')
   })
+
+  // The visibility test above only proves the 9 types render in the dropdown.
+  // This one actually CREATES a provider of each remote type end-to-end (drawer
+  // → select type → fill → submit → appears in list) and cleans it up, closing
+  // the "only 2 of 9 exercised" gap. `local` + `openai` are already covered by
+  // createLocalProvider/createRemoteProvider elsewhere, so this drives the
+  // remaining keyed types + custom.
+  const REMOTE_TYPES = [
+    'anthropic',
+    'groq',
+    'gemini',
+    'mistral',
+    'deepseek',
+    'huggingface',
+    'custom',
+  ] as const
+
+  for (const type of REMOTE_TYPES) {
+    test(`creates a provider of type "${type}" end-to-end`, async ({
+      page,
+      testInfra,
+    }) => {
+      const { baseURL } = testInfra
+      const providerName = `e2e-${type}-${Date.now()}`
+
+      await loginAsAdmin(page, baseURL)
+
+      // `custom` has no preset base URL, so supply one; keyed SaaS types
+      // default their base URL and just need an API key.
+      await createProvider(
+        page,
+        baseURL,
+        type === 'custom'
+          ? { name: providerName, baseUrl: 'https://api.example.com/v1', apiKey: 'sk-e2e-test' }
+          : { name: providerName, apiKey: 'sk-e2e-test' },
+        type,
+      )
+
+      await assertProviderExists(page, providerName)
+      await deleteProvider(page, providerName)
+    })
+  }
 })
 
 test.describe('LLM Providers - Navigation & Detail Page', () => {
@@ -330,6 +373,41 @@ test.describe('LLM Providers - Navigation & Detail Page', () => {
     await expect(page.locator('.ant-card-head-title:has-text("Models")')).toBeVisible()
 
     // Go back and cleanup
+    await page.goBack()
+    await deleteProvider(page, providerName)
+  })
+
+  test('Models section: empty state + "Add model" opens the remote model drawer', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const providerName = `test-models-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    // A remote provider so "Add model" goes straight to the Add Remote Model drawer.
+    await createRemoteProvider(
+      page,
+      baseURL,
+      providerName,
+      'https://api.openai.com/v1',
+      'sk-test-key',
+    )
+    await clickProviderCard(page, providerName)
+
+    // The Models card renders with the empty state (no models yet).
+    const modelsCard = page.locator('.ant-card:has(.ant-card-head-title:has-text("Models"))')
+    await expect(modelsCard).toBeVisible()
+    await expect(modelsCard.getByText('No models yet')).toBeVisible()
+
+    // Interact: click the "Add model" affordance → the Add Remote Model drawer opens.
+    await modelsCard.getByRole('button', { name: 'Add model' }).click()
+    await expect(
+      page.locator('.ant-drawer-title:has-text("Add Remote Model")'),
+    ).toBeVisible({ timeout: 15000 })
+
+    // Cancel out and clean up.
+    await page.keyboard.press('Escape')
     await page.goBack()
     await deleteProvider(page, providerName)
   })
