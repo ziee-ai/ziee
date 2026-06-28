@@ -163,6 +163,13 @@ pub mod web_search {
     pub use crate::modules::web_search::{web_search_server_id, WebSearchRepository};
 }
 
+// Re-export the bio_mcp supervisor shutdown for the sidecar death+respawn
+// recovery test (kills the running sidecar so the next call must respawn).
+#[doc(hidden)]
+pub mod bio_mcp {
+    pub use crate::modules::bio_mcp::supervisor;
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`

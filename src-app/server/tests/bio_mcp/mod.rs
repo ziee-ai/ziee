@@ -375,3 +375,72 @@ async fn test_bio_mcp_real_llm_tool_call() {
         "the biomcp tool call should have completed (no mcpToolComplete event)"
     );
 }
+
+/// Sidecar death + respawn recovery mid-conversation (gap 3196f8a7c03e).
+/// After a first call spawns the real biomcp sidecar, we kill it via the
+/// supervisor's shutdown path; the NEXT call must detect the dead child and
+/// respawn it (the supervisor's `child.try_wait()`/recovery path), returning a
+/// healthy 200 again. Self-skips when the binary isn't staged (same as the
+/// other Tier-4 tests).
+#[tokio::test]
+async fn test_sidecar_death_then_respawn_recovers() {
+    if !staged_biomcp_is_real() {
+        eprintln!("skipping test_sidecar_death_then_respawn_recovers: biomcp binary not staged");
+        return;
+    }
+
+    let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
+        bio_mcp_enabled: true,
+        ..Default::default()
+    })
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "bio_recover",
+        &["bio::query"],
+    )
+    .await;
+
+    let init = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": { "name": "itest", "version": "1.0" }
+        }
+    });
+    let call = || {
+        let url = server.api_url("/bio/mcp");
+        let token = user.token.clone();
+        let body = init.clone();
+        async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+
+    // First call spawns the sidecar.
+    assert_eq!(call().await, 200, "first initialize spawns + proxies the sidecar");
+
+    // Kill the running sidecar (simulates a mid-conversation sidecar death).
+    ziee::bio_mcp::supervisor::shutdown().await;
+    // Give the OS a moment to reap the killed child.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // The next call must DETECT the dead child and respawn a healthy one.
+    assert_eq!(
+        call().await,
+        200,
+        "after the sidecar dies, the next call must respawn it and proxy 200"
+    );
+}

@@ -869,3 +869,57 @@ async fn backfill_does_not_starve_behind_zero_chunk_wall() {
         assert_eq!(chunk_count(&pool, id).await, 0, "whitespace files still yield no chunks");
     }
 }
+
+/// Unreadable-page tolerance during ingest (gap 7961f6432262, ingest.rs:132-141):
+/// a page that fails to load is warned + skipped, and indexing continues over
+/// the readable pages instead of erroring. We inflate an older version's claimed
+/// text_page_count to 3 (only page 1 exists on disk for that blob), restore to
+/// it (→ spawn_reindex reads the inflated count), and assert the reindex still
+/// produces chunks from the readable page 1 — the missing pages 2/3 are tolerated.
+#[tokio::test]
+async fn reindex_tolerates_unreadable_pages() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_tol").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-tolerance",
+        &[("tol.txt", "alphaunique beta gamma delta body content one two three")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    wait_for_chunks(&pool, &ids[0], 1).await;
+
+    // Make a v2 so v1 becomes a restorable older version.
+    let rewrite = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "rewrite_file",
+        json!({ "id": ids[0], "content": "secondversion entirely different body text here" }),
+    )
+    .await;
+    assert!(rewrite["error"].is_null(), "rewrite_file should succeed; {rewrite}");
+
+    // Inflate v1's claimed page count: it still has only page 1 on disk, so a
+    // reindex of v1 will try (and fail to load) pages 2 and 3.
+    let fid = Uuid::parse_str(&ids[0]).unwrap();
+    sqlx::query("UPDATE file_versions SET text_page_count = 3 WHERE file_id = $1 AND version = 1")
+        .bind(fid)
+        .execute(&pool)
+        .await
+        .expect("inflate v1 page count");
+
+    // Restore to v1 → head=v1 (text_page_count=3) → spawn_reindex over 3 pages,
+    // only page 1 readable.
+    restore_version(&server, &user, &ids[0], 1).await;
+
+    // The reindex tolerated the 2 unreadable pages and still indexed page 1.
+    wait_for_chunk_text(&pool, &ids[0], "alphaunique").await;
+    assert!(chunk_count(&pool, &ids[0]).await >= 1, "page-1 chunks survive the skipped pages");
+    let found = semantic_search(&server, &user, conv_uuid, "alphaunique").await;
+    let r = found["result"]["structuredContent"]["results"].as_array().unwrap();
+    assert!(!r.is_empty(), "v1 page-1 content searchable after tolerant reindex");
+}
