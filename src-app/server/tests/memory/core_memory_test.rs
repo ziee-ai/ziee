@@ -150,3 +150,100 @@ async fn test_core_memory_endpoints_require_permission() {
         .unwrap();
     assert_eq!(delete.status(), 403, "delete must be perm-gated");
 }
+
+/// Combined retrieval + core-memory injection entrypoint: `retrieve_and_inject`
+/// must inject an assistant's core-memory blocks into the ChatRequest as a
+/// front system message (Letta-style always-in-context), independent of vector
+/// recall. Exercises the real production fn (no mocks) end-to-end against a
+/// real assistant + persisted core-memory block, with memory admin enabled.
+#[tokio::test]
+async fn test_retrieve_and_inject_injects_core_memory_block() {
+    use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
+
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_inject",
+        &["assistants::create", "memory::core::read", "memory::core::write"],
+    )
+    .await;
+    let token = &user.token;
+    let client = reqwest::Client::new();
+
+    // Real assistant (satisfies the core-memory FK).
+    let assistant: Value = client
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "name": "Core Inject Assistant" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let assistant_id = assistant["id"].as_str().expect("assistant id");
+    let assistant_uuid = Uuid::parse_str(assistant_id).expect("uuid");
+
+    // Persist a core-memory block for (user, assistant).
+    let up = client
+        .put(server.api_url("/assistants/core-memory"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({
+            "assistant_id": assistant_uuid,
+            "block_label": "persona",
+            "content": "SENTINEL_CORE_FACT: the user prefers metric units.",
+            "char_limit": 1000
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(up.status().as_u16(), 200, "core-memory upsert should succeed with a real assistant");
+
+    // Memory must be enabled deployment-wide or retrieve_and_inject early-returns.
+    ziee::Repos
+        .memory
+        .update_admin_settings(
+            None, None, None, None,
+            Some(true), // enabled
+            None, None, None, None, None, None, None,
+        )
+        .await
+        .expect("enable memory admin");
+
+    // Build a minimal chat request with a single user turn.
+    let mut req = ChatRequest {
+        model: "test-model".to_string(),
+        messages: vec![ChatMessage {
+            role: Role::User,
+            content: vec![ContentBlock::Text { text: "What units should I use?".into() }],
+        }],
+        ..Default::default()
+    };
+
+    let user_uuid = Uuid::parse_str(&user.user_id).expect("user uuid");
+    ziee::memory::retrieve_and_inject(
+        user_uuid,
+        None,
+        Some(assistant_uuid),
+        &mut req,
+    )
+    .await
+    .expect("retrieve_and_inject must not error");
+
+    // The core-memory block is injected as a front system message.
+    let first = req.messages.first().expect("at least one message");
+    assert!(matches!(first.role, Role::System), "core memory must be a front System message");
+    let text: String = first
+        .content
+        .iter()
+        .filter_map(|c| match c {
+            ContentBlock::Text { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(
+        text.contains("Assistant core memory") && text.contains("SENTINEL_CORE_FACT"),
+        "injected system message must contain the assistant core-memory block; got: {text}"
+    );
+}

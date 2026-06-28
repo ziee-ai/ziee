@@ -156,6 +156,14 @@ pub mod workflow_mcp {
     pub use crate::modules::workflow_mcp::{workflow_mcp_server_id, WorkflowMcpRepository};
 }
 
+// Re-export the memory chat-extension retrieval+injection entrypoint for the
+// integration test that exercises the combined recall + core-memory injection
+// flow against a real assistant.
+#[doc(hidden)]
+pub mod memory {
+    pub use crate::modules::memory::chat_extension::retriever::retrieve_and_inject;
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`
