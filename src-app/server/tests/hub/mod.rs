@@ -2861,3 +2861,54 @@ async fn configure_hf_repo_credential(server: &crate::common::TestServer) {
         "configuring the Hugging Face repo credential should succeed"
     );
 }
+
+// =====================================================
+// MODEL-FROM-HUB DUAL-PERMISSION GATE (11-hub F-05)
+// =====================================================
+
+/// `create_model_from_hub` (handlers.rs:1306) is gated by BOTH
+/// `hub::models::download` AND `llm_models::create`. A user holding only
+/// `hub::models::download` (the hub-side permission) must NOT be able to
+/// back-door model creation without `llm_models::create`. Verifies the
+/// second arm of the dual gate is enforced → 403.
+#[tokio::test]
+async fn test_create_model_from_hub_requires_llm_models_create() {
+    let server = crate::common::TestServer::start().await;
+
+    // Has the hub download perm + reads, but deliberately NOT llm_models::create.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_model_partial_perm_user",
+        &[
+            "hub::models::download",
+            "hub::models::read",
+            "llm_providers::read",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    let url = server.api_url("/hub/models/download");
+    let request_body = serde_json::json!({
+        "hub_id": "io.github.phibya/llama-3-1-8b-instruct",
+        "provider_id": uuid::Uuid::new_v4(),
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    // Must be rejected at the permission boundary BEFORE any download work,
+    // proving the LlmModelsCreate arm of the dual gate is required.
+    assert_eq!(
+        response.status(),
+        403,
+        "user without llm_models::create must be forbidden from hub model download"
+    );
+}

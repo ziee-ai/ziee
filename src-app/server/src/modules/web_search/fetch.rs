@@ -200,4 +200,39 @@ mod tests {
         // Title best-effort (readability may derive it from <title> or <h1>).
         assert!(!title.is_empty() || md.contains("Real Heading"));
     }
+
+    /// fetch.rs:122-133 — non-HTML bodies (plain text, XML, a PDF mislabeled
+    /// text/html) must NOT panic and must degrade gracefully: Readability
+    /// fails, we fall back to the htmd conversion of the raw bytes. Title is
+    /// allowed to be empty; the call must return cleanly either way.
+    #[test]
+    fn extract_markdown_handles_non_html_without_panicking() {
+        // Plain text (no HTML structure at all).
+        let (t, _md) = extract_markdown(
+            "Just a plain sentence with no markup whatsoever.",
+            "https://example.com/plain.txt",
+        );
+        // Readability has nothing to extract → title empty is acceptable.
+        let _ = t;
+
+        // XML document (not HTML).
+        let xml = r#"<?xml version="1.0"?><note><to>A</to><body>hi</body></note>"#;
+        let (_t2, _md2) = extract_markdown(xml, "https://example.com/feed.xml");
+
+        // Binary-ish PDF header served as text/html — must not panic.
+        let pdf_ish = "%PDF-1.7\n%\u{0091}\u{0092}\n1 0 obj<<>>endobj";
+        let (t3, _md3) = extract_markdown(pdf_ish, "https://example.com/doc.pdf");
+        // No assertion on content (extractor output is implementation-defined
+        // for garbage); the contract under test is "returns, never panics".
+        let _ = t3;
+    }
+
+    /// Empty body is a valid input — fallback path returns empty strings, no
+    /// panic (guards the `unwrap_or_default()` on the htmd error arm).
+    #[test]
+    fn extract_markdown_empty_body_is_safe() {
+        let (title, md) = extract_markdown("", "https://example.com/empty");
+        assert!(title.is_empty());
+        assert!(md.is_empty());
+    }
 }

@@ -696,3 +696,48 @@ async fn test_edit_file_emits_sync_event_to_owner_only() {
     // Owner-scoped: Bob must NOT receive Alice's event.
     bob_probe.expect_silence(Duration::from_secs(1)).await;
 }
+
+// ============================================================================
+// Realtime-sync emission for files_mcp tool writes (064a)
+//
+// files_mcp create_file / edit tools call `publish_file_changed` (file/sync.rs
+// → SyncEntity::File / Update, owner-scoped). Asserts the owner's subscribed
+// stream observes a `file`/`update` frame carrying the new file's id, and that
+// a second user never sees it (owner-scoped audience).
+// ============================================================================
+
+#[tokio::test]
+async fn create_file_tool_emits_file_sync_to_owner_only() {
+    let server = TestServer::start().await;
+    let owner = power_user(&server, "files_mcp_sync_owner").await;
+    // Second user: baseline subscriber that must NOT see the owner's file event.
+    let other =
+        create_user_with_permissions(&server, "files_mcp_sync_other", &[]).await;
+    let conv = Uuid::parse_str(&create_conversation(&server, &owner).await).unwrap();
+
+    let mut owner_probe = SyncProbe::open(&server, &owner.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    let created = call_tool(
+        &server,
+        &owner,
+        conv,
+        "create_file",
+        json!({ "filename": "sync_note.md", "content": "# hi\n" }),
+    )
+    .await;
+    assert!(created["error"].is_null(), "create_file: {created}");
+    let file_id = created["result"]["structuredContent"]["file_id"]
+        .as_str()
+        .or_else(|| created["result"]["structured_content"]["file_id"].as_str())
+        .expect("file_id in structured content")
+        .to_string();
+
+    let frame = owner_probe
+        .expect_event("file", "update", Duration::from_secs(5))
+        .await;
+    assert_eq!(frame.id, file_id, "frame must carry the new file's id");
+
+    // Owner-scoped: the other user sees nothing.
+    other_probe.expect_silence(Duration::from_secs(1)).await;
+}

@@ -115,3 +115,70 @@ pub fn remove(elicitation_id: Uuid) -> Option<Uuid> {
     };
     entry.and_then(|e| e.content_id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resp() -> ElicitationResponse {
+        ElicitationResponse { action: "accept".to_string(), content: None }
+    }
+
+    /// respond() returns the DB content_id so the handler (handlers.rs:71-85)
+    /// can persist the user's answer to the right message_contents row.
+    #[test]
+    fn respond_returns_bound_content_id() {
+        let eid = Uuid::new_v4();
+        let cid = Uuid::new_v4();
+        let (tx, _rx) = oneshot::channel();
+        register(eid, tx, Some(cid));
+
+        let (found, content_id) = respond(eid, resp());
+        assert!(found, "registered elicitation should be found");
+        assert_eq!(content_id, Some(cid), "must return the bound content_id");
+
+        // Entry consumed: a second respond can't double-deliver.
+        let (found2, _) = respond(eid, resp());
+        assert!(!found2, "respond must consume the entry");
+    }
+
+    /// content_id mismatch / unknown elicitation: respond() on an id never
+    /// registered returns (false, None) so the handler 404s instead of
+    /// updating an unrelated DB row.
+    #[test]
+    fn respond_unknown_id_is_not_found_with_no_content_id() {
+        let unknown = Uuid::new_v4();
+        let (found, content_id) = respond(unknown, resp());
+        assert!(!found);
+        assert_eq!(content_id, None);
+    }
+
+    /// An elicitation started without a message_id has content_id == None;
+    /// respond() reports found but no DB row to persist into.
+    #[test]
+    fn respond_without_content_id_found_but_none() {
+        let eid = Uuid::new_v4();
+        let (tx, _rx) = oneshot::channel();
+        register(eid, tx, None);
+        let (found, content_id) = respond(eid, resp());
+        assert!(found);
+        assert_eq!(content_id, None);
+    }
+
+    /// owner_matches enforces the per-user binding the handler relies on.
+    #[test]
+    fn owner_matches_reflects_binding() {
+        let eid = Uuid::new_v4();
+        let owner = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let (tx, _rx) = oneshot::channel();
+        register(eid, tx, None);
+        // Unbound → None (handler fail-closes to 403).
+        assert_eq!(owner_matches(eid, owner), None);
+        bind_owner(eid, owner);
+        assert_eq!(owner_matches(eid, owner), Some(true));
+        assert_eq!(owner_matches(eid, other), Some(false));
+        // cleanup
+        let _ = respond(eid, resp());
+    }
+}

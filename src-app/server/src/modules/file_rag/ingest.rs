@@ -263,14 +263,25 @@ async fn embed_file_chunks(file_id: Uuid, model_id: Uuid, expected_dim: i32) {
 /// replicas the per-file lock in `reindex_chunks` keeps concurrent indexing of
 /// the same file from corrupting (worst case is redundant work).
 pub async fn run_backfill() {
-    if BACKFILL_IN_PROGRESS
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
+    if !try_begin_backfill() {
         tracing::info!("file_rag.backfill: already running; skipping concurrent run");
         return;
     }
     run_backfill_inner().await;
+    end_backfill();
+}
+
+/// Acquire the process-wide single-flight backfill guard. Returns `true` to
+/// exactly one caller while a backfill is in flight; concurrent callers get
+/// `false` and must skip. Paired with [`end_backfill`].
+fn try_begin_backfill() -> bool {
+    BACKFILL_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+/// Release the single-flight backfill guard so the next run can proceed.
+fn end_backfill() {
     BACKFILL_IN_PROGRESS.store(false, Ordering::Release);
 }
 
@@ -324,5 +335,43 @@ async fn run_backfill_inner() {
                 tracing::warn!("file_rag.backfill: index {} failed: {e}", t.file_id);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod backfill_guard_tests {
+    use super::{end_backfill, try_begin_backfill, BACKFILL_IN_PROGRESS};
+    use std::sync::atomic::Ordering;
+
+    /// The single-flight guard (ingest.rs:265-275) must admit exactly one
+    /// in-flight backfill: a second concurrent acquire fails until the first
+    /// releases. Exercises the real `compare_exchange` guard used by
+    /// `run_backfill`, not a copy.
+    #[test]
+    fn single_flight_admits_one_then_blocks_until_release() {
+        // Reset (tests share the process-static; this test owns it).
+        BACKFILL_IN_PROGRESS.store(false, Ordering::Release);
+
+        // First acquirer wins.
+        assert!(try_begin_backfill(), "first acquire should win");
+        // Concurrent acquirer is rejected while the guard is held.
+        assert!(
+            !try_begin_backfill(),
+            "second concurrent acquire must be rejected"
+        );
+        assert!(
+            !try_begin_backfill(),
+            "guard stays held for every concurrent caller"
+        );
+
+        // After release the next run can proceed.
+        end_backfill();
+        assert!(
+            try_begin_backfill(),
+            "acquire should succeed again after release"
+        );
+
+        // Leave the static clean for any other test in this binary.
+        end_backfill();
     }
 }

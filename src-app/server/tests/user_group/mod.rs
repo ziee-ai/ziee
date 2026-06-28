@@ -786,3 +786,61 @@ async fn test_assign_user_already_in_group_is_idempotent() {
         .count();
     assert_eq!(count, 1, "double-assign must not duplicate the membership row");
 }
+
+/// Concurrent multi-actor group membership edit (gap 4ccbc): two admins assign
+/// the SAME user to the SAME group SIMULTANEOUSLY. The `user_groups` INSERT ...
+/// ON CONFLICT DO NOTHING must serialize cleanly — both requests succeed (204)
+/// and the membership row exists exactly once (no UNIQUE-collision 500, no
+/// duplicate). Existing coverage only assigns sequentially.
+#[tokio::test]
+async fn test_concurrent_assign_same_user_is_race_safe() {
+    let server = crate::common::TestServer::start().await;
+    let admin = helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["groups::create", "groups::read", "users::create", "groups::assign_users"],
+    )
+    .await;
+
+    let group = helpers::create_test_group(&server, &admin.token, "racegroup").await;
+    let group_id = group["id"].as_str().expect("group ID").to_string();
+    let user = helpers::create_test_user_via_api(&server, &admin.token, "raceuser").await;
+    let user_id = user["id"].as_str().expect("user ID").to_string();
+
+    let do_assign = || {
+        let url = server.api_url("/groups/assign");
+        let token = admin.token.clone();
+        let payload = json!({ "user_id": user_id, "group_id": group_id });
+        async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&payload)
+                .send()
+                .await
+                .expect("assign request failed")
+        }
+    };
+
+    // Fire both assigns CONCURRENTLY.
+    let (r1, r2) = tokio::join!(do_assign(), do_assign());
+    assert_eq!(r1.status(), 204, "first concurrent assign must succeed");
+    assert_eq!(r2.status(), 204, "second concurrent assign must succeed (idempotent)");
+
+    let members: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/groups/{}/members", group_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("members request failed")
+        .json()
+        .await
+        .expect("parse members");
+    let count = members["users"]
+        .as_array()
+        .expect("users array")
+        .iter()
+        .filter(|u| u["id"].as_str() == Some(user_id.as_str()))
+        .count();
+    assert_eq!(count, 1, "concurrent double-assign must not duplicate membership");
+}
