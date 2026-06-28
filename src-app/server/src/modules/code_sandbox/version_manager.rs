@@ -269,13 +269,34 @@ pub async fn list_releases() -> Result<Vec<RootfsRelease>, VersionError> {
         .build()
         .map_err(|e| VersionError::GitHubUnreachable(format!("client build: {e}")))?;
     let url = format!("https://api.github.com/repos/{ROOTFS_REPO}/releases");
-    let response = client
-        .get(&url)
-        .header("Accept", "application/vnd.github.v3+json")
-        .header("User-Agent", "ziee/1.0")
-        .send()
-        .await
-        .map_err(|e| VersionError::GitHubUnreachable(format!("GET {url}: {e}")))?;
+    // Retry transient failures (network/timeout, HTTP 5xx, 429) with
+    // exponential backoff so a single hiccup doesn't fail the version probe.
+    let response = {
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let r = client
+                .get(&url)
+                .header("Accept", "application/vnd.github.v3+json")
+                .header("User-Agent", "ziee/1.0")
+                .send()
+                .await;
+            let transient = match &r {
+                Ok(resp) => resp.status().is_server_error() || resp.status().as_u16() == 429,
+                Err(_) => true,
+            };
+            if transient && attempt < MAX_ATTEMPTS {
+                let delay = Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                tracing::warn!(
+                    "GitHub releases {url}: transient failure, retrying in {delay:?} (attempt {attempt}/{MAX_ATTEMPTS})"
+                );
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+            break r.map_err(|e| VersionError::GitHubUnreachable(format!("GET {url}: {e}")))?;
+        }
+    };
     if !response.status().is_success() {
         return Err(VersionError::GitHubUnreachable(format!(
             "GET {url}: HTTP {}",
