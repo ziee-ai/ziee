@@ -29,6 +29,22 @@ const MAX_PAGE_BYTES: usize = 5_000_000;
 /// Files scanned per backfill batch.
 const BACKFILL_BATCH: i64 = 200;
 
+/// Truncate an over-large page in place to at most `MAX_PAGE_BYTES`, cutting on
+/// a UTF-8 char boundary so the result is never invalid UTF-8 (a naive byte cut
+/// could land mid-codepoint and panic on `String::truncate`). Returns whether a
+/// truncation occurred.
+fn truncate_to_max_page_bytes(text: &mut String) -> bool {
+    if text.len() <= MAX_PAGE_BYTES {
+        return false;
+    }
+    let mut cut = MAX_PAGE_BYTES;
+    while cut > 0 && !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    text.truncate(cut);
+    true
+}
+
 /// Resolve the backfill batch size. A debug-only env override
 /// (`FILE_RAG_BACKFILL_BATCH`, compiled out of release builds via
 /// `cfg!(debug_assertions)` — same testability-seam pattern as
@@ -140,12 +156,7 @@ pub async fn index_file_version(
                 continue;
             }
         };
-        if text.len() > MAX_PAGE_BYTES {
-            let mut cut = MAX_PAGE_BYTES;
-            while cut > 0 && !text.is_char_boundary(cut) {
-                cut -= 1;
-            }
-            text.truncate(cut);
+        if truncate_to_max_page_bytes(&mut text) {
             tracing::warn!(
                 "file_rag: page {page} of {file_id} exceeds {MAX_PAGE_BYTES} bytes; truncated for indexing"
             );
@@ -324,5 +335,46 @@ async fn run_backfill_inner() {
                 tracing::warn!("file_rag.backfill: index {} failed: {e}", t.file_id);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod ingest_tests {
+    use super::{truncate_to_max_page_bytes, MAX_PAGE_BYTES};
+
+    #[test]
+    fn under_cap_is_untouched() {
+        let mut s = "short text".to_string();
+        assert!(!truncate_to_max_page_bytes(&mut s));
+        assert_eq!(s, "short text");
+    }
+
+    #[test]
+    fn at_cap_is_untouched() {
+        let mut s = "a".repeat(MAX_PAGE_BYTES);
+        assert!(!truncate_to_max_page_bytes(&mut s));
+        assert_eq!(s.len(), MAX_PAGE_BYTES);
+    }
+
+    #[test]
+    fn oversized_ascii_truncates_to_cap() {
+        let mut s = "a".repeat(MAX_PAGE_BYTES + 1234);
+        assert!(truncate_to_max_page_bytes(&mut s));
+        assert_eq!(s.len(), MAX_PAGE_BYTES, "ASCII cuts exactly at the cap");
+    }
+
+    #[test]
+    fn oversized_multibyte_truncates_on_char_boundary_no_panic() {
+        // '€' is 3 bytes; build a string whose byte length exceeds the cap and
+        // whose codepoints do NOT line up with MAX_PAGE_BYTES, so a naive byte
+        // cut would split a codepoint. The helper must back up to a boundary.
+        let mut s = "€".repeat(MAX_PAGE_BYTES / 3 + 100);
+        assert!(s.len() > MAX_PAGE_BYTES);
+        assert!(truncate_to_max_page_bytes(&mut s));
+        assert!(s.len() <= MAX_PAGE_BYTES, "never exceeds the cap");
+        assert!(s.len() > MAX_PAGE_BYTES - 3, "backs up at most one codepoint");
+        // The result is still valid UTF-8 (it is a String, so this also proves
+        // no mid-codepoint truncation panicked).
+        assert!(s.chars().all(|c| c == '€'));
     }
 }
