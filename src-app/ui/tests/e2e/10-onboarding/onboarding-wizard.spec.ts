@@ -229,4 +229,42 @@ test.describe('First-run admin setup', () => {
     await expect(page).not.toHaveURL(/\/setup/)
     await expect(page.locator('.ant-spin-spinning')).toHaveCount(0)
   })
+
+  test('admin is NOT redirected to onboarding despite incomplete progress', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+
+    // Drive the real /setup form so the admin is freshly created with NO
+    // onboarding progress (we deliberately do NOT call completeOnboarding).
+    await page.goto(`${baseURL}/`)
+    try {
+      await page.waitForSelector('#setup-form_username', { timeout: 8000 })
+    } catch {
+      await page.reload({ waitUntil: 'load' })
+      await page.waitForSelector('#setup-form_username', { timeout: 30000 })
+    }
+    const suffix = Date.now().toString(36)
+    await page.fill('#setup-form_username', `adminobp_${suffix}`)
+    await page.fill('#setup-form_email', `adminobp_${suffix}@ex.com`)
+    await page.fill('#setup-form_password', 'password123')
+    await page.fill('#setup-form_confirm_password', 'password123')
+    await page.getByRole('button', { name: 'Create Admin Account' }).click()
+
+    // OnboardingRedirect bypasses admins (`if (user.is_admin === true) return`),
+    // so even with zero completed guides the admin lands on the app shell, not
+    // the wizard. Wait for the composer (AuthGuard released) then assert URL.
+    await expect(
+      page.getByRole('button', { name: 'Send message' }),
+    ).toBeVisible({ timeout: 20000 })
+    await expect(page).not.toHaveURL(/\/onboarding/)
+
+    // Explicitly visiting home stays on home (no redirect bounce).
+    await page.goto(`${baseURL}/`)
+    await expect(
+      page.getByRole('button', { name: 'Send message' }),
+    ).toBeVisible({ timeout: 20000 })
+    await expect(page).not.toHaveURL(/\/onboarding/)
+  })
 })
