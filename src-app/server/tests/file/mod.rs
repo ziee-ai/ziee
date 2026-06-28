@@ -7,6 +7,7 @@
 // `tests/project/injection_test.rs`).
 mod file_attachments_test;
 mod file_attachments_real_providers_test;
+mod provider_routing_integration_test;
 
 use crate::common::test_helpers;
 use reqwest::multipart;
