@@ -12,25 +12,13 @@ pub enum RuntimeError {
     #[error("Configuration error: {0}")]
     Config(String),
 
-    /// Engine type not found or not supported
-    #[error("Engine not found: {0}")]
-    EngineNotFound(String),
-
     /// Instance ID not found in registry
     #[error("Instance not found: {0}")]
     InstanceNotFound(String),
 
-    /// Instance with this ID already exists
-    #[error("Instance already exists: {0}")]
-    InstanceAlreadyExists(String),
-
     /// Engine binary not found or not executable
     #[error("Binary not found or not executable: {0}")]
     BinaryNotFound(String),
-
-    /// Failed to extract or cache binary
-    #[error("Binary extraction failed: {0}")]
-    BinaryExtractionFailed(String),
 
     /// Failed to start engine process
     #[error("Engine startup failed: {0}")]
@@ -79,21 +67,25 @@ pub enum RuntimeError {
 
 impl RuntimeError {
     /// Create a config error
+    #[allow(dead_code)]
     pub fn config(msg: impl fmt::Display) -> Self {
         Self::Config(msg.to_string())
     }
 
     /// Create a startup failed error
+    #[allow(dead_code)]
     pub fn startup_failed(msg: impl fmt::Display) -> Self {
         Self::StartupFailed(msg.to_string())
     }
 
     /// Create a health check failed error
+    #[allow(dead_code)]
     pub fn health_check_failed(msg: impl fmt::Display) -> Self {
         Self::HealthCheckFailed(msg.to_string())
     }
 
     /// Create a shutdown failed error
+    #[allow(dead_code)]
     pub fn shutdown_failed(msg: impl fmt::Display) -> Self {
         Self::ShutdownFailed(msg.to_string())
     }
@@ -104,6 +96,7 @@ impl RuntimeError {
     }
 
     /// Create a timeout error
+    #[allow(dead_code)]
     pub fn timeout(msg: impl fmt::Display) -> Self {
         Self::Timeout(msg.to_string())
     }

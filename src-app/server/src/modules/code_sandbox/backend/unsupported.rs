@@ -60,10 +60,6 @@ impl SandboxBackend for UnsupportedBackend {
 
     async fn shutdown(&self) {}
 
-    async fn evict_flavor(&self, _cache_dir: &Path, _flavor: &str) -> EvictOutcome {
-        EvictOutcome { bytes_freed: 0, was_cached: false }
-    }
-
     async fn exec_raw_argv(
         &self,
         _argv: Vec<String>,

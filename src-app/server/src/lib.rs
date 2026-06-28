@@ -391,7 +391,10 @@ async fn setup_server(
         // engine auto-start synchronously before returning a
         // Response, so this layer caps the whole spawn + first-byte
         // window. See main.rs for the full rationale.
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)));
+        .layer(tower_http::timeout::TimeoutLayer::with_status_code(
+            axum::http::StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(660),
+        ));
     let app = core::app_builder::apply_rate_limit_layer(app, &config, None);
     let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(

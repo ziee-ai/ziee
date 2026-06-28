@@ -24,6 +24,7 @@ use tokio::time::{sleep, timeout};
 /// Handle to a running `npx @modelcontextprotocol/server-everything` process.
 /// Killed on drop.
 pub struct EverythingServer {
+    #[allow(dead_code)]
     child: Child,
     port: u16,
 }

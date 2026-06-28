@@ -180,10 +180,7 @@ impl ChatStreamProbe {
         }
     }
 
-    pub fn connection_id(&self) -> Uuid {
-        self.connection_id
-    }
-
+    // connection_id() method removed — callers access the field directly.
     /// Scope this connection to `conversation_id` (or `None` to receive
     /// nothing). PUTs the subscription with the handshake connection id; the
     /// server replays the reply-so-far if the conversation is mid-generation.

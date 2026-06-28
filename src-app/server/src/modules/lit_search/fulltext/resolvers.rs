@@ -19,7 +19,6 @@ use super::super::connectors::{
     MAX_BODY_BYTES, build_client, endpoint, read_bytes_capped, read_text_capped,
 };
 use super::cache::{STATUS_FULL_TEXT, STATUS_NOT_FOUND, STATUS_NOT_OA};
-use crate::common::AppError;
 
 /// The identifiers a paper may be addressed by.
 #[derive(Debug, Clone, Default)]
@@ -283,8 +282,6 @@ async fn unpaywall_pdf(
 /// Fetch a PDF and extract its text via the shared pdfium runtime (reused from
 /// the file module). Best-effort: any failure returns None (→ not_open_access).
 async fn pdf_to_text(client: &reqwest::Client, url: &str, timeout: Duration) -> Option<String> {
-    use pdfium_render::prelude::*;
-
     let resp = client.get(url).timeout(timeout).send().await.ok()?;
     if !resp.status().is_success() {
         return None;

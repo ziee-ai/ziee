@@ -121,10 +121,6 @@ impl LlmRepositoryRepository {
         record_health_check(&self.pool, repo_id, status, reason).await
     }
 
-    /// Every `enabled = TRUE` repository for the boot-time probe.
-    pub async fn list_enabled_for_health_check(&self) -> Result<Vec<LlmRepository>, sqlx::Error> {
-        list_enabled_for_health_check(&self.pool).await
-    }
 
     /// Used by the boot probe when the EventBus isn't available yet;
     /// foreground enable-transition reverts go through the normal
@@ -133,12 +129,6 @@ impl LlmRepositoryRepository {
         disable_for_health_failure(&self.pool, repo_id).await
     }
 
-    /// Pool accessor for connection_health (which runs ad-hoc SQL via
-    /// the same connection — mirrors how `mcp::connection_health`
-    /// reaches the pool through `McpRepository::pool()`).
-    pub fn pool(&self) -> &PgPool {
-        &self.pool
-    }
 }
 
 // =====================================================

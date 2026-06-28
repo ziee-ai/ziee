@@ -230,6 +230,7 @@ impl ChatCoreRepository {
         contents::append_content(&self.pool, message_id, content_type, data).await
     }
 
+
     /// Append content with a pre-registered UUID, assigning the next
     /// `sequence_order` atomically (MAX+1). Id-preserving sibling of `append_content`.
     pub async fn append_content_with_id(
