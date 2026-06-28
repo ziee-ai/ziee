@@ -91,6 +91,7 @@ export default function UserLlmProvidersPage() {
 
   const ProviderMenu = () => (
     <Menu
+      data-testid="ullm-provider-menu"
       className="w-full h-full"
       selectedKey={selectedId ?? undefined}
       items={menuItems}
@@ -109,13 +110,14 @@ export default function UserLlmProvidersPage() {
   }
 
   if (error) {
-    return <Alert tone="error" title={error} className="m-6" />
+    return <Alert tone="error" data-testid="ullm-error-alert" title={error} className="m-6" />
   }
 
   const renderContent = () => {
     if (providers.length === 0) {
       return (
         <Empty
+          data-testid="ullm-no-providers-empty"
           description={
             <span>
               No AI providers are available yet.
@@ -131,6 +133,7 @@ export default function UserLlmProvidersPage() {
     if (!currentProvider) {
       return (
         <Empty
+          data-testid="ullm-no-selection-empty"
           description="No provider selected"
         />
       )
@@ -145,7 +148,7 @@ export default function UserLlmProvidersPage() {
           <Title level={4} className="!mb-0">
             {currentProvider.name}
           </Title>
-          <Tag tone={hasUserKey ? 'success' : currentProvider.api_key_configured ? 'info' : 'warning'}>
+          <Tag data-testid="ullm-key-status-tag" tone={hasUserKey ? 'success' : currentProvider.api_key_configured ? 'info' : 'warning'}>
             {hasUserKey ? (
               <><CircleCheck /> Your key configured</>
             ) : currentProvider.api_key_configured ? (
@@ -160,9 +163,9 @@ export default function UserLlmProvidersPage() {
           Your personal key takes priority over the system key when making requests.
         </Text>
 
-        <Form form={form} onSubmit={handleSave} layout="vertical">
+        <Form form={form} data-testid="ullm-key-form" onSubmit={handleSave} layout="vertical">
           <FormField name="apiKey" label="Your API Key">
-            <PasswordInput showLabel="Show" hideLabel="Hide"
+            <PasswordInput data-testid="ullm-key-password-input" showLabel="Show" hideLabel="Hide"
               onFocus={() => {
                 if (keyValue === KEY_DISPLAY_PLACEHOLDER) setKeyValue('')
               }}
@@ -171,6 +174,7 @@ export default function UserLlmProvidersPage() {
           </FormField>
           <Space>
             <Button
+              data-testid="ullm-save-key-button"
               onClick={handleSave}
               loading={savingFor === currentProvider.id || saving}
               disabled={!keyValue.trim() || keyValue === KEY_DISPLAY_PLACEHOLDER}
@@ -179,6 +183,7 @@ export default function UserLlmProvidersPage() {
             </Button>
             {hasUserKey && (
               <Button
+                data-testid="ullm-remove-key-button"
                 variant="destructive"
                 onClick={handleDelete}
                 loading={savingFor === currentProvider.id}
@@ -216,11 +221,12 @@ export default function UserLlmProvidersPage() {
             {windowMinSize.sm && providers.length > 0 && (
               <div className="w-full flex flex-row gap-2 items-center mb-4">
                 <Dropdown
+                  data-testid="ullm-provider-dropdown"
                   items={menuItems}
                   onSelect={(key) => setSelectedId(key)}
                   align="start"
                 >
-                  <Button className="w-fit" size="lg">
+                  <Button className="w-fit" size="lg" data-testid="ullm-provider-dropdown-trigger">
                     {currentProvider ? (
                       <Flex className="gap-2 items-center">
                         {(() => {

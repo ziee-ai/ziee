@@ -62,14 +62,15 @@ export function ProviderApiKeyModal({
   return (
     <Dialog
       open
+      data-testid="ullm-apikey-dialog"
       onOpenChange={v => { if (!v) onCancel() }}
       title={`API Key Required — ${providerName}`}
       footer={
         <>
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" data-testid="ullm-apikey-cancel-button" onClick={onCancel}>
             Cancel
           </Button>
-          <Button onClick={handleOk} loading={saving}>
+          <Button data-testid="ullm-apikey-save-button" onClick={handleOk} loading={saving}>
             Save &amp; Select Model
           </Button>
         </>
@@ -79,9 +80,10 @@ export function ProviderApiKeyModal({
         This provider doesn&apos;t have a system API key configured. Enter your
         own API key to use models from <strong>{providerName}</strong>.
       </Paragraph>
-      <Form form={form} onSubmit={onValidSubmit} layout="vertical">
+      <Form form={form} data-testid="ullm-apikey-form" onSubmit={onValidSubmit} layout="vertical">
         <FormField name="apiKey" label="API Key">
           <PasswordInput
+            data-testid="ullm-apikey-password-input"
             placeholder="sk-..."
             autoFocus
             showLabel="Show API key"
@@ -89,7 +91,7 @@ export function ProviderApiKeyModal({
             onKeyDown={e => { if (e.key === 'Enter') handleOk() }}
           />
         </FormField>
-        {rootError && <Alert tone="error" title={rootError} />}
+        {rootError && <Alert tone="error" data-testid="ullm-apikey-error-alert" title={rootError} />}
       </Form>
       <Text type="secondary" className="text-xs">
         Your key is stored securely and only used for inference. You can manage
