@@ -304,4 +304,32 @@ test.describe('Social login — provider buttons + callback flow', () => {
     await page.waitForTimeout(500)
     expect(callCount).toBeGreaterThanOrEqual(2)
   })
+
+  // audit id 6b495a1b2db6 — the LinkAccountPage missing-token branch (the
+  // useEffect that sets "Missing link token" and disables the form) was the
+  // untested path; the success/wrong-password paths are covered above.
+  test('/auth/link-account with no link_token shows the missing-token error and disables the form', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await page.context().clearCookies()
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+
+    // No `?link_token=` query param.
+    await page.goto(`${baseURL}/auth/link-account`)
+
+    await expect(page.getByText(/Missing link token/i)).toBeVisible({
+      timeout: 10_000,
+    })
+    // Both the password field and the submit button are disabled without a token.
+    await expect(page.getByLabel('Password')).toBeDisabled()
+    await expect(
+      page.getByRole('button', { name: /link and sign in/i }),
+    ).toBeDisabled()
+  })
 })
