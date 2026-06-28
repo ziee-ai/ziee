@@ -207,4 +207,20 @@ test.describe('Server update notification', () => {
     ).toBeVisible({ timeout: 30000 })
     await expect(page.getByText('Ziee 0.2.0 is available')).toHaveCount(0)
   })
+
+  // audit id all-47b5098176ec — the About page's "Release notes" link must open
+  // in a NEW TAB (target=_blank rel=noreferrer) pointing at the release URL
+  // (AboutSettings.tsx:86-89). Not previously asserted.
+  test('About page release-notes link opens in a new tab', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await mockStatus(page, STATUS_AVAILABLE)
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/about`)
+
+    const link = page.getByRole('link', { name: 'Release notes' })
+    await expect(link).toBeVisible({ timeout: 30000 })
+    await expect(link).toHaveAttribute('target', '_blank')
+    await expect(link).toHaveAttribute('rel', /noreferrer/)
+    await expect(link).toHaveAttribute('href', STATUS_AVAILABLE.release_url)
+  })
 })
