@@ -1,29 +1,25 @@
-import {
-  DeleteOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import React from 'react'
 import {
   Button,
-  Form,
+  Checkbox,
+  FormField,
+  FormList,
   Input,
   InputNumber,
   Select,
   Space,
   Switch,
-  Table,
-  Typography,
-} from 'antd'
-import type { TableColumnsType } from 'antd'
-import type { FormInstance, Rule } from 'antd/es/form'
-import { useEffect, useRef, useState } from 'react'
+  Text,
+  useFormContext,
+  useFormState,
+  useWatch,
+} from '@/components/ui'
 import {
   type ArraySchema,
   type FieldSchema,
-  type ListRule,
-  fieldItemRules,
 } from './workflowElicitSchema'
-
-const { Text } = Typography
 
 /** Below this row count the table renders all rows (no virtualization).
  *  At/above it (or when `ui.virtual` is set) we switch antd into virtual
@@ -45,11 +41,11 @@ interface EditableArrayTableProps {
   name: string
   /** The `type: 'array'` schema for the property. */
   schema: ArraySchema
-  /** The form instance, used to read selected-row values for bulk ops. */
-  form: FormInstance
-  /** Array-level rules (required / minItems / maxItems) applied to the
-   *  `Form.List` so an invalid list blocks submit. */
-  listRules?: ListRule[]
+  /** Array-level rules (required / minItems / maxItems) — no longer consumed
+   *  directly; validation is handled by the parent form's zod resolver. Kept
+   *  in the interface for backward-compat so callers that still pass it don't
+   *  get a TS error. */
+  listRules?: unknown[]
   disabled?: boolean
 }
 
@@ -71,70 +67,78 @@ function columnDefs(schema: ArraySchema): ColumnDef[] {
 
 /** A single editable cell, rendered with the same widget logic as the
  *  scalar `renderField` (Input / InputNumber / Switch / Select-from-enum)
- *  driven by the column's `type`/`enum`. Per-cell schema rules are applied
- *  for client-side validation parity. */
+ *  driven by the column's `type`/`enum`. Per-cell zod rules from the parent
+ *  form schema govern client-side validation parity. */
 function EditableCell({
-  rowName,
+  namePrefix,
   col,
   disabled,
 }: {
-  rowName: number
+  /** Full dot-path prefix for this row, e.g. `"tableProp.2"`. */
+  namePrefix: string
   col: ColumnDef
   disabled?: boolean
 }) {
   const { field } = col
-  const rules: Rule[] = fieldItemRules(field, col.required)
+  const fullName = `${namePrefix}.${col.key}`
 
   if (field.enum) {
     return (
-      <Form.Item name={[rowName, col.key]} rules={rules} className="!mb-0">
+      <FormField name={fullName} className="!mb-0">
         <Select
-          size="small"
-          allowClear={!col.required}
           disabled={disabled}
-          options={field.enum.map(v => ({ value: v, label: String(v) }))}
+          options={field.enum.map(v => ({ value: String(v), label: String(v) }))}
         />
-      </Form.Item>
+      </FormField>
     )
   }
   if (field.type === 'boolean') {
     return (
-      <Form.Item
-        name={[rowName, col.key]}
-        valuePropName="checked"
-        className="!mb-0"
-      >
-        <Switch size="small" disabled={disabled} />
-      </Form.Item>
+      <FormField name={fullName} valuePropName="checked" className="!mb-0">
+        <Switch disabled={disabled} />
+      </FormField>
     )
   }
   if (field.type === 'number' || field.type === 'integer') {
     return (
-      <Form.Item name={[rowName, col.key]} rules={rules} className="!mb-0">
+      <FormField name={fullName} className="!mb-0">
         <InputNumber
-          size="small"
           min={field.minimum}
           max={field.maximum}
           precision={field.type === 'integer' ? 0 : undefined}
           disabled={disabled}
-          style={{ width: '100%' }}
+          className="w-full"
         />
-      </Form.Item>
+      </FormField>
     )
   }
   return (
-    <Form.Item name={[rowName, col.key]} rules={rules} className="!mb-0">
-      <Input size="small" disabled={disabled} />
-    </Form.Item>
+    <FormField name={fullName} className="!mb-0">
+      <Input disabled={disabled} />
+    </FormField>
+  )
+}
+
+/** Reads a single cell value reactively for the expand-row display. */
+function ExpandedCell({
+  namePrefix,
+  colKey,
+}: {
+  namePrefix: string
+  colKey: string
+}) {
+  const value = useWatch({ name: `${namePrefix}.${colKey}` })
+  return (
+    <Text className="text-xs whitespace-pre-wrap">{String(value ?? '')}</Text>
   )
 }
 
 /**
- * Renders an editable antd `Table` for a JSON-schema `type: 'array'`
+ * Renders an editable table for a JSON-schema `type: 'array'`
  * property whose `items.type === 'object'` (or that carries an explicit
- * `ui.widget === 'table'`). It is wrapped by the caller in a
- * `<Form.Item name={prop}>`, but the rows live in a `Form.List` keyed on
- * `prop` so the edited rows become the submitted value for that property.
+ * `ui.widget === 'table'`). It is rendered inside a parent `<Form>`; the
+ * rows live in a `<FormList>` keyed on `name` so the edited rows become the
+ * submitted value for that property.
  *
  * Optional `ui:` hint vocabulary (the schema stays valid without it):
  *   array-level  ui.{ widget:'table', virtual?, maxRows? }
@@ -145,23 +149,34 @@ function EditableCell({
  *   that column true/false on the selected rows.
  * - `expand` on a (long-text) column → an expandable row showing the full
  *   text of that cell.
- * - `sortable` / `filterable`        → antd column `sorter` / `filters`.
+ * - `sortable` / `filterable`        → NOTE: not implemented in the kit
+ *   migration (the kit Table does not expose antd sorter/filter; schema
+ *   hints are ignored and the columns render unsorted).
  */
 export function EditableArrayTable({
   name,
   schema,
-  form,
-  listRules,
+  listRules: _listRules, // consumed by parent (kept for compat), ignored here
   disabled,
 }: EditableArrayTableProps) {
+  const form = useFormContext<Record<string, unknown>>()
+  const { errors } = useFormState()
+  const arrayError = (errors as Record<string, { message?: string }>)[name]
+    ?.message as string | undefined
+
   const cols = columnDefs(schema)
   const arrayUi = schema.ui ?? {}
-  const bulkCol = cols.find(c => c.field.ui?.bulkToggle && c.field.type === 'boolean')
+  const bulkCol = cols.find(
+    c => c.field.ui?.bulkToggle && c.field.type === 'boolean',
+  )
   const expandCol = cols.find(c => c.field.ui?.expand)
   const maxRows = arrayUi.maxRows
 
-  // Selection state for bulk operations (keyed by Form.List field key).
-  const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([])
+  // Selection state for bulk operations (keyed by rhf `field.id`).
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+
+  // Expand state (keyed by rhf `field.id`).
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
   // ResizeObserver-driven body height for virtual mode. We seed a sensible
   // non-zero default so the first paint is already virtualized; the
@@ -180,9 +195,18 @@ export function EditableArrayTable({
     return () => ro.disconnect()
   }, [])
 
+  const toggleExpand = (id: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   return (
-    <Form.List name={name} rules={listRules}>
-      {(fields, { add, remove }, { errors }) => {
+    <FormList name={name as any}>
+      {({ fields, append, remove }) => {
         const useVirtual =
           arrayUi.virtual === true || fields.length >= VIRTUAL_ROW_THRESHOLD
 
@@ -190,109 +214,50 @@ export function EditableArrayTable({
         const canRemoveBelowMin =
           schema.minItems === undefined || fields.length > schema.minItems
 
-        // Map each Form.List field to a Table row record. We carry the
-        // antd Form.List `field` so each cell renders a Form.Item bound to
-        // the right `[rowName, colKey]` path; `field.key` is the stable
-        // selection/react key.
-        const dataSource = fields.map(f => ({ key: f.key, field: f }))
-        type Row = (typeof dataSource)[number]
-
         // Bulk-set the bulkToggle column on the selected rows.
         const bulkSet = (value: boolean) => {
           if (!bulkCol) return
           const current =
-            (form.getFieldValue(name) as Array<Record<string, unknown>>) ?? []
+            (form.getValues(name as any) as Array<Record<string, unknown>>) ??
+            []
           const next = current.map((row, idx) => {
             const fieldForIdx = fields[idx]
-            if (fieldForIdx && selectedKeys.includes(fieldForIdx.key)) {
+            if (fieldForIdx && selectedKeys.includes(fieldForIdx.id)) {
               return { ...row, [bulkCol.key]: value }
             }
             return row
           })
-          form.setFieldValue(name, next)
+          form.setValue(name as any, next as any)
         }
 
         const bulkDelete = () => {
           // Remove from the highest index down so earlier removals don't
           // shift the indices of rows still to be removed.
           const toRemove = fields
-            .filter(f => selectedKeys.includes(f.key))
-            .map(f => f.name)
+            .filter(f => selectedKeys.includes(f.id))
+            .map((_, i) => i)
             .sort((a, b) => b - a)
-          toRemove.forEach(n => remove(n))
+          toRemove.forEach(i => remove(i))
           setSelectedKeys([])
         }
 
-        const dataColumns: TableColumnsType<Row> = cols.map(col => {
-          const colUi = col.field.ui ?? {}
-          const column: TableColumnsType<Row>[number] = {
-            title: col.field.title || col.key,
-            key: col.key,
-            dataIndex: col.key,
-            width: colUi.width ?? DEFAULT_COL_WIDTH,
-            render: (_: unknown, row: Row) => (
-              <EditableCell
-                rowName={row.field.name}
-                col={col}
-                disabled={disabled}
-              />
-            ),
-          }
-          if (colUi.sortable) {
-            column.sorter = (a: Row, b: Row) => {
-              const va = form.getFieldValue([name, a.field.name, col.key])
-              const vb = form.getFieldValue([name, b.field.name, col.key])
-              if (typeof va === 'number' && typeof vb === 'number') {
-                return va - vb
-              }
-              return String(va ?? '').localeCompare(String(vb ?? ''))
-            }
-          }
-          if (colUi.filterable) {
-            // Build the filter set from the enum (if any) or the current
-            // distinct cell values.
-            const values =
-              col.field.enum ??
-              Array.from(
-                new Set(
-                  fields
-                    .map(f =>
-                      form.getFieldValue([name, f.name, col.key]),
-                    )
-                    .filter(v => v !== undefined && v !== null && v !== ''),
-                ),
-              ).map(v => String(v))
-            column.filters = values.map(v => ({ text: String(v), value: String(v) }))
-            column.onFilter = (value, row: Row) =>
-              String(form.getFieldValue([name, row.field.name, col.key])) ===
-              String(value)
-          }
-          return column
-        })
+        const allSelected =
+          fields.length > 0 &&
+          fields.every(f => selectedKeys.includes(f.id))
+        const someSelected = selectedKeys.length > 0 && !allSelected
 
-        const actionColumn: TableColumnsType<Row>[number] = {
-          title: '',
-          key: '__actions',
-          width: 48,
-          fixed: 'right',
-          render: (_: unknown, row: Row) => (
-            <Button
-              size="small"
-              type="text"
-              icon={<DeleteOutlined />}
-              disabled={disabled || !canRemoveBelowMin}
-              aria-label="Remove row"
-              onClick={() => remove(row.field.name)}
-            />
-          ),
-        }
+        const colCount =
+          cols.length +
+          (bulkCol ? 1 : 0) +
+          (expandCol ? 1 : 0) +
+          1 // actions
 
-        const columns: TableColumnsType<Row> = [...dataColumns, actionColumn]
-        const scrollX =
-          cols.reduce(
-            (sum, c) => sum + (c.field.ui?.width ?? DEFAULT_COL_WIDTH),
-            0,
-          ) + 48
+        // Total column width for horizontal scroll.
+        const totalWidth =
+          (bulkCol ? 32 : 0) +
+          cols.reduce((s, c) => s + (c.field.ui?.width ?? DEFAULT_COL_WIDTH), 0) +
+          (expandCol ? 32 : 0) +
+          48
 
         return (
           <div className="flex flex-col gap-2">
@@ -301,14 +266,14 @@ export function EditableArrayTable({
                 {bulkCol && (
                   <>
                     <Button
-                      size="small"
+                      size="sm"
                       disabled={disabled || selectedKeys.length === 0}
                       onClick={() => bulkSet(true)}
                     >
                       Set {bulkCol.field.title || bulkCol.key} on
                     </Button>
                     <Button
-                      size="small"
+                      size="sm"
                       disabled={disabled || selectedKeys.length === 0}
                       onClick={() => bulkSet(false)}
                     >
@@ -317,15 +282,14 @@ export function EditableArrayTable({
                   </>
                 )}
                 <Button
-                  size="small"
-                  danger
+                  size="sm"
                   disabled={disabled || selectedKeys.length === 0}
                   onClick={bulkDelete}
                 >
                   Delete selected
                 </Button>
                 {selectedKeys.length > 0 && (
-                  <Text type="secondary" className="text-xs">
+                  <Text className="text-xs text-muted-foreground">
                     {selectedKeys.length} selected
                   </Text>
                 )}
@@ -334,62 +298,167 @@ export function EditableArrayTable({
 
             <div
               ref={wrapRef}
-              style={useVirtual ? { height: 360 } : undefined}
+              className="overflow-x-auto"
+              style={
+                useVirtual
+                  ? { height: bodyHeight + TABLE_HEADER_PX, overflowY: 'auto' }
+                  : undefined
+              }
             >
-              <Table<Row>
-                size="small"
-                rowKey="key"
-                columns={columns}
-                dataSource={dataSource}
-                pagination={false}
-                virtual={useVirtual}
-                scroll={
-                  useVirtual ? { x: scrollX, y: bodyHeight } : { x: scrollX }
-                }
-                rowSelection={
-                  bulkCol
-                    ? {
-                        selectedRowKeys: selectedKeys,
-                        onChange: keys => setSelectedKeys(keys),
-                      }
-                    : undefined
-                }
-                expandable={
-                  expandCol
-                    ? {
-                        expandedRowRender: (row: Row) => (
-                          <Text className="text-xs whitespace-pre-wrap">
-                            {String(
-                              form.getFieldValue([
-                                name,
-                                row.field.name,
-                                expandCol.key,
-                              ]) ?? '',
-                            )}
-                          </Text>
-                        ),
-                      }
-                    : undefined
-                }
-              />
+              <table
+                style={{ minWidth: totalWidth }}
+                className="w-full text-sm border-collapse"
+              >
+                <thead>
+                  <tr className="border-b">
+                    {bulkCol && (
+                      <th className="w-8 px-1 py-1 text-left">
+                        <Checkbox
+                          checked={allSelected}
+                          indeterminate={someSelected}
+                          onChange={checked => {
+                            setSelectedKeys(
+                              checked ? fields.map(f => f.id) : [],
+                            )
+                          }}
+                        />
+                      </th>
+                    )}
+                    {cols.map(col => (
+                      <th
+                        key={col.key}
+                        style={{
+                          width: col.field.ui?.width ?? DEFAULT_COL_WIDTH,
+                        }}
+                        className="px-2 py-1 text-left font-medium text-muted-foreground"
+                      >
+                        {col.field.title || col.key}
+                      </th>
+                    ))}
+                    {expandCol && <th className="w-8 px-1 py-1"></th>}
+                    <th className="w-12 px-1 py-1"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fields.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={colCount}
+                        className="py-4 text-center text-muted-foreground text-sm"
+                      >
+                        No rows
+                      </td>
+                    </tr>
+                  ) : (
+                    fields.map((field, i) => (
+                      <React.Fragment key={field.id}>
+                        <tr className="border-b hover:bg-muted/30">
+                          {bulkCol && (
+                            <td className="px-1 py-1">
+                              <Checkbox
+                                checked={selectedKeys.includes(field.id)}
+                                onChange={checked => {
+                                  setSelectedKeys(prev =>
+                                    checked
+                                      ? [...prev, field.id]
+                                      : prev.filter(k => k !== field.id),
+                                  )
+                                }}
+                              />
+                            </td>
+                          )}
+                          {cols.map(col => (
+                            <td key={col.key} className="px-1 py-1 align-top">
+                              <EditableCell
+                                namePrefix={`${name}.${i}`}
+                                col={col}
+                                disabled={disabled}
+                              />
+                            </td>
+                          ))}
+                          {expandCol && (
+                            <td className="px-1 py-1 align-top">
+                              <Button
+                                size="sm"
+                                type="button"
+                                onClick={() => toggleExpand(field.id)}
+                                aria-label={
+                                  expandedRows.has(field.id)
+                                    ? 'Collapse row'
+                                    : 'Expand row'
+                                }
+                              >
+                                {expandedRows.has(field.id) ? (
+                                  <ChevronUp className="size-3.5" />
+                                ) : (
+                                  <ChevronDown className="size-3.5" />
+                                )}
+                              </Button>
+                            </td>
+                          )}
+                          <td className="px-1 py-1 align-top">
+                            <Button
+                              size="sm"
+                              type="button"
+                              disabled={disabled || !canRemoveBelowMin}
+                              aria-label="Remove row"
+                              onClick={() => remove(i)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                        {expandCol && expandedRows.has(field.id) && (
+                          <tr
+                            key={`${field.id}-expand`}
+                            className="border-b bg-muted/30"
+                          >
+                            <td
+                              colSpan={colCount}
+                              className="px-3 py-2"
+                            >
+                              <ExpandedCell
+                                namePrefix={`${name}.${i}`}
+                                colKey={expandCol.key}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
 
-            <Form.ErrorList errors={errors} />
+            {arrayError && (
+              <Text className="text-destructive text-sm">{arrayError}</Text>
+            )}
 
             <Button
-              type="dashed"
-              size="small"
-              block
-              icon={<PlusOutlined />}
+              type="button"
+              size="sm"
               disabled={disabled || atMax}
-              onClick={() => add(newRow(cols))}
+              onClick={() => append(newRow(cols) as any)}
+              className="w-full border-dashed"
             >
+              <Plus className="size-3.5 mr-1" />
               Add row{atMax ? ` (max ${maxRows})` : ''}
             </Button>
+
+            {/* Expose virtual-mode metrics via data attrs for tests / devtools */}
+            {useVirtual && (
+              <span
+                aria-hidden
+                data-virtual="true"
+                data-body-height={bodyHeight}
+                className="hidden"
+              />
+            )}
           </div>
         )
       }}
-    </Form.List>
+    </FormList>
   )
 }
 
