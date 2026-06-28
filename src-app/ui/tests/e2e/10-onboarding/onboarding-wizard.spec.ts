@@ -72,6 +72,14 @@ test.describe('Onboarding wizard', () => {
 
     // Finish → chat
     await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible()
+
+    // FinishStep summary (FinishStep.tsx): with no keys entered and no MCP
+    // servers selected during this walk-through, both summary lines render their
+    // empty-path text. This verifies the finish-step summary that the wizard
+    // tests never asserted.
+    await expect(page.getByText(/No API keys added/i)).toBeVisible()
+    await expect(page.getByText(/No MCP servers selected/i)).toBeVisible()
+
     await page.getByRole('button', { name: 'Start Chatting' }).click()
 
     await expect(page).toHaveURL(new RegExp(`/chat`), { timeout: 15000 })
