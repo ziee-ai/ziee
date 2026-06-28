@@ -132,8 +132,23 @@ pub async fn create_repository(
     // Validate authentication configuration
     utils::validate_auth_config_for_create(&request)?;
 
-    // Create repository
+    // Create repository. Map the UNIQUE(name)/UNIQUE(url) violations to a clean
+    // 400 conflict instead of an opaque 500 (the url uniqueness is enforced by
+    // migration 116; name by migration 2).
     let repository = Repos.llm_repository.create(request).await.map_err(|e| {
+        if let sqlx::Error::Database(db) = &e
+            && db.is_unique_violation()
+        {
+            let field = match db.constraint() {
+                Some("llm_repositories_url_key") => "URL",
+                Some(c) if c.contains("name") => "name",
+                _ => "name or URL",
+            };
+            return AppError::bad_request(
+                "DUPLICATE_REPOSITORY",
+                format!("A repository with this {field} already exists"),
+            );
+        }
         tracing::error!("Failed to create repository: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
@@ -246,6 +261,19 @@ pub async fn update_repository(
         .update(repository_id, request)
         .await
         .map_err(|e| {
+            if let sqlx::Error::Database(db) = &e
+                && db.is_unique_violation()
+            {
+                let field = match db.constraint() {
+                    Some("llm_repositories_url_key") => "URL",
+                    Some(c) if c.contains("name") => "name",
+                    _ => "name or URL",
+                };
+                return AppError::bad_request(
+                    "DUPLICATE_REPOSITORY",
+                    format!("A repository with this {field} already exists"),
+                );
+            }
             tracing::error!("Failed to update repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
         })?
