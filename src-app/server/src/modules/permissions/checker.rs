@@ -232,4 +232,28 @@ mod tests {
         // Sibling namespace not covered by config::auth::*.
         assert!(!check_permission_union(&user, &groups, "config::proxy::read"));
     }
+
+    // audit id all-e6ee49d03464 — deeply nested (4+ level) hierarchical
+    // wildcards. The prefix loop (checker.rs:45-52) handles arbitrary depth;
+    // existing tests stop at 3 levels (config::auth::*). Pin that a 4-level
+    // wildcard matches a 4-level (and deeper) permission, and that a wildcard
+    // one level too shallow/specific does NOT over- or under-match.
+    #[test]
+    fn deeply_nested_wildcard_matches_four_plus_levels() {
+        let user = create_test_user_with_permissions(vec!["a::b::c::*"]);
+        let groups = vec![];
+        // 4-level exact-prefix match.
+        assert!(check_permission_union(&user, &groups, "a::b::c::read"));
+        // Deeper (5-level) still under the wildcard prefix.
+        assert!(check_permission_union(&user, &groups, "a::b::c::d::execute"));
+        // A sibling at the 3rd level is NOT covered.
+        assert!(!check_permission_union(&user, &groups, "a::b::x::read"));
+        // The wildcard does NOT grant the bare prefix as a leaf permission.
+        assert!(!check_permission_union(&user, &groups, "a::b"));
+
+        // A deeper wildcard must not match a shallower required permission.
+        let deep = create_test_user_with_permissions(vec!["a::b::c::d::*"]);
+        assert!(!check_permission_union(&deep, &groups, "a::b::c::read"));
+        assert!(check_permission_union(&deep, &groups, "a::b::c::d::read"));
+    }
 }
