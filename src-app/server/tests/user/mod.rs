@@ -1355,3 +1355,80 @@ async fn test_update_group_prevents_self_escalation_on_custom_group() {
         res.status()
     );
 }
+
+// ============================================================================
+// Cross-subsystem: default-group auto-assignment on user creation
+// (user/handlers/user.rs:183-191) — a newly created user is auto-joined to
+// the deployment's default group, so they inherit its baseline permissions
+// without any explicit group assignment.
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_user_auto_assigned_to_default_group() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "groups::read"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Resolve the deployment's default group (the seeded "Users" group:
+    // is_default = true) — the group the handler auto-assigns into.
+    let groups_body: serde_json::Value = client
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list groups failed")
+        .json()
+        .await
+        .expect("parse groups");
+    let default_group = groups_body["groups"]
+        .as_array()
+        .expect("groups array")
+        .iter()
+        .find(|g| g["is_default"].as_bool() == Some(true))
+        .expect("a default group must exist for auto-assignment");
+    let default_group_id = default_group["id"].as_str().expect("group id").to_string();
+
+    // Create a brand-new user WITHOUT specifying any groups.
+    let create_body: serde_json::Value = client
+        .post(server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "username": "autojoiner",
+            "email": "autojoiner@example.com",
+            "password": "SecurePass123!",
+            "display_name": "Auto Joiner"
+        }))
+        .send()
+        .await
+        .expect("create user failed")
+        .json()
+        .await
+        .expect("parse created user");
+    let new_user_id = create_body["id"].as_str().expect("new user id").to_string();
+
+    // The new user must appear in the default group's member list — proving
+    // the create handler auto-joined them (no explicit assignment was made).
+    let members_body: serde_json::Value = client
+        .get(server.api_url(&format!("/groups/{}/members", default_group_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list members failed")
+        .json()
+        .await
+        .expect("parse members");
+    let is_member = members_body["users"]
+        .as_array()
+        .expect("members array")
+        .iter()
+        .any(|u| u["id"].as_str() == Some(new_user_id.as_str()));
+    assert!(
+        is_member,
+        "newly created user {new_user_id} must be auto-assigned to the default group {default_group_id}"
+    );
+}
