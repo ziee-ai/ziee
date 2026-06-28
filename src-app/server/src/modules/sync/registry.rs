@@ -503,6 +503,34 @@ mod tests {
         assert!(!got(&mut rx_b), "an unlisted user receives nothing");
     }
 
+    /// audit id 97e64997158 — the session fan-out path (deliver_session_to_users,
+    /// used by group-permission edits to re-bootstrap every member) has its OWN
+    /// stalled-connection prune (registry.rs ~201) distinct from `deliver`'s.
+    /// A member whose bounded queue is full must be pruned here too, so the
+    /// client is forced to reconnect + resync (the SSE auth/permission-loss
+    /// lifecycle). This branch was untested.
+    #[test]
+    fn deliver_session_to_users_prunes_a_lagging_connection() {
+        let reg = empty_registry();
+        let uid = Uuid::new_v4();
+        // Capacity 1, never drained → the second session signal can't enqueue.
+        let (c, _rx) = conn_with_cap(fake_user(uid, false, vec![]), 1);
+        let id = Uuid::new_v4();
+        reg.register(id, c).unwrap();
+
+        // First fan-out fills the 1-slot queue (origin=None so it's delivered).
+        reg.deliver_session_to_users(&[uid], None);
+        assert_eq!(reg.connection_count(), 1);
+
+        // Second fan-out → try_send returns Full → the connection is pruned.
+        reg.deliver_session_to_users(&[uid], None);
+        assert_eq!(
+            reg.connection_count(),
+            0,
+            "a session-fanout target whose bounded queue is full must be pruned",
+        );
+    }
+
     #[test]
     fn lagging_connection_is_pruned() {
         let reg = empty_registry();
