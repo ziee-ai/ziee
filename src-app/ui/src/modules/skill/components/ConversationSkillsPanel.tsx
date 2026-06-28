@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import { deriveHiddenSkills } from '@/modules/skill/stores/ConversationSkills.store'
 import {
+  Button,
   Empty,
   List,
   Spin,
@@ -78,15 +79,16 @@ export function ConversationSkillsPanel({
             className="flex items-center justify-between py-2"
           >
             <div className="flex-1">
-              <button
-                type="button"
-                className="bg-transparent border-0 p-0 cursor-pointer text-left text-inherit font-medium"
+              <Button
+                variant="link"
+                data-testid={`skill-conversation-open-${skill.id}`}
+                className="h-auto p-0 font-medium text-inherit"
                 // Thread conversationId so the detail drawer's "Hide in
                 // this conversation" checkbox is reachable from chat.
                 onClick={() => Stores.SkillDrawer.open(skill, conversationId)}
               >
                 {skill.display_name || skill.name}
-              </button>
+              </Button>
               {skill.description ? (
                 <Text type="secondary" ellipsis>
                   {skill.description}

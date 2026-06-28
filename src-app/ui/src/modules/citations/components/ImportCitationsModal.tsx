@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert } from '@/components/ui'
+import { Alert, Button, Textarea } from '@/components/ui'
 import { Dialog, Paragraph, Text } from '@/components/ui'
 import { message } from '@/components/ui'
 import type { BatchReport, CitationInput } from '@/api-client/types'
@@ -77,12 +77,20 @@ export function ImportCitationsModal({
       }}
       footer={
         <>
-          <button type="button" onClick={() => {
-            setResult(null)
-            setText('')
-            onClose()
-          }}>Cancel</button>
-          <button type="button" disabled={busy} onClick={handleImport}>Import + verify</button>
+          <Button
+            variant="outline"
+            data-testid="cite-import-cancel"
+            onClick={() => {
+              setResult(null)
+              setText('')
+              onClose()
+            }}
+          >
+            Cancel
+          </Button>
+          <Button data-testid="cite-import-submit" disabled={busy} onClick={handleImport}>
+            Import + verify
+          </Button>
         </>
       }
     >
@@ -91,12 +99,13 @@ export function ImportCitationsModal({
         to a real record and verified; fabricated identifiers are reported as
         <Text strong> not found</Text> and not stored.
       </Paragraph>
-      <textarea
+      <Textarea
         rows={6}
         value={text}
+        data-testid="cite-import-textarea"
+        aria-label="Citations to import"
         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setText(e.target.value)}
         placeholder={'10.1038/s41586-021-...\n34121113\n2101.12345'}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
       />
       {result && (
         <Alert

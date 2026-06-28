@@ -3,6 +3,7 @@ import { useApiKeysStepStore } from './ApiKeysStep.store'
 import {
   Spin,
   Alert,
+  Button,
   Tag,
   Flex,
   Text,
@@ -110,18 +111,20 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
         <div className="w-40 flex-shrink-0 pt-1">
           <div className="w-full h-full">
             {menuItems.map(item => (
-              <button
+              <Button
                 key={item.key}
-                type="button"
+                variant="ghost"
+                block
+                data-testid={`onboarding-apikeys-nav-${item.key}`}
                 onClick={() => setSelectedId(item.key)}
-                className={`w-full text-left px-2 h-8 leading-8 rounded flex items-center ${
+                className={`justify-start px-2 h-8 ${
                   currentProvider.id === item.key
                     ? 'bg-accent text-accent-foreground'
                     : 'hover:bg-muted text-foreground'
                 }`}
               >
                 {item.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

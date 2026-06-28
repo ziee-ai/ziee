@@ -327,17 +327,18 @@ function ProjectTagWithRemove({
             {project.name ? `In project: ${project.name}` : 'In project'}
           </Tag>
           <Tooltip title="Remove from project">
-            <button
-              type="button"
-              className="ml-1 inline-flex items-center justify-center rounded-full p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            <Button
+              data-testid="project-trailing-remove-button"
+              variant="ghost"
+              size="icon"
               aria-label="Remove from project"
+              className="ml-1 size-5 rounded-full text-muted-foreground hover:text-foreground"
+              icon={<X className="h-3 w-3" />}
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
                 setRemoveOpen(true)
               }}
-            >
-              <X className="h-3 w-3" />
-            </button>
+            />
           </Tooltip>
         </span>
       </Confirm>

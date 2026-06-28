@@ -111,8 +111,20 @@ export function LlmProviderSettings() {
               ] || PROVIDER_ICONS.custom
             : null
         return (
-          <button
+          <Button
             key={item.key}
+            variant="ghost"
+            block
+            data-testid={`llm-provider-nav-${item.key}`}
+            icon={
+              item.key === 'add-provider' ? (
+                <span className="text-base">
+                  <Plus />
+                </span>
+              ) : (
+                IconComponent && <IconComponent className="text-base" />
+              )
+            }
             onClick={() => {
               if (item.key === 'add-provider') {
                 Stores.LlmProviderDrawer.openLlmProviderDrawer()
@@ -121,24 +133,16 @@ export function LlmProviderSettings() {
               }
             }}
             className={`
-              flex items-center gap-2 px-3 py-1.5 rounded-md text-sm w-full text-left
+              justify-start gap-2 px-3 py-1.5 text-sm
               ${
                 providerId === item.key
                   ? 'bg-accent text-accent-foreground'
                   : 'hover:bg-accent/50 text-foreground'
               }
-              transition-colors
             `}
           >
-            {item.key === 'add-provider' ? (
-              <span className="text-base">
-                <Plus />
-              </span>
-            ) : (
-              IconComponent && <IconComponent className="text-base" />
-            )}
             <span className="flex-1 truncate">{item.label}</span>
-          </button>
+          </Button>
         )
       })}
     </div>
