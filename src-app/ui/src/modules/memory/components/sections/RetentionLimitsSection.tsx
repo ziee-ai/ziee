@@ -12,6 +12,7 @@ import {
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -29,7 +30,7 @@ export function RetentionLimitsSection() {
   const managePermitted = usePermission(MANAGE_PERM)
   const canRead = readPermitted || managePermitted
   const canManage = managePermitted
-  const { settings, saving } = Stores.MemoryAdmin
+  const { settings, saving, error } = Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
@@ -52,7 +53,14 @@ export function RetentionLimitsSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Retention & extraction limits"
+        error={error}
+        onRetry={() => Stores.MemoryAdmin.load()}
+      />
+    )
 
   const handleSubmit = async (values: FormValues) => {
     try {

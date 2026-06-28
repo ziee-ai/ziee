@@ -3,6 +3,7 @@ import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Typography, mess
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -22,7 +23,7 @@ interface FormValues {
 export function ChunkingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.FileRagAdmin
+  const { settings, saving, error } = Stores.FileRagAdmin
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
@@ -47,7 +48,14 @@ export function ChunkingSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Chunking"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
+    )
 
   const handleSubmit = async (values: FormValues) => {
     if (values.chunk_overlap_chars >= values.chunk_chars) {

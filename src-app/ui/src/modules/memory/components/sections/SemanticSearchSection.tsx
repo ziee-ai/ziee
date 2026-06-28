@@ -17,6 +17,7 @@ import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const { Paragraph } = Typography
 
@@ -40,7 +41,7 @@ interface FormValues {
 export function SemanticSearchSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, embeddingModels, saving, loadingModels } =
+  const { settings, embeddingModels, saving, loadingModels, error } =
     Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
@@ -67,7 +68,14 @@ export function SemanticSearchSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Semantic search"
+        error={error}
+        onRetry={() => Stores.MemoryAdmin.load()}
+      />
+    )
 
   // Don't claim "no models" until the fetch has actually completed — otherwise
   // the warning + disabled select flash during the initial load.

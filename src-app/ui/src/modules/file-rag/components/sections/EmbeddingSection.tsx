@@ -18,6 +18,7 @@ import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const { Paragraph } = Typography
 
@@ -41,8 +42,14 @@ interface FormValues {
 export function EmbeddingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, embeddingModels, saving, loadingModels, triggeringReembed } =
-    Stores.FileRagAdmin
+  const {
+    settings,
+    embeddingModels,
+    saving,
+    loadingModels,
+    triggeringReembed,
+    error,
+  } = Stores.FileRagAdmin
   const [form] = Form.useForm<FormValues>()
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
   const [pendingSwap, setPendingSwap] = useState<FormValues | null>(null)
@@ -69,7 +76,14 @@ export function EmbeddingSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Embedding (semantic search)"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
+    )
 
   const noModelsAvailable = embeddingModels.length === 0
 

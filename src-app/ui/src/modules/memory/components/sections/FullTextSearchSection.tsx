@@ -16,6 +16,7 @@ import {
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const { Paragraph } = Typography
 
@@ -74,6 +75,7 @@ export function FullTextSearchSection() {
     saving,
     ftsRebuildStatus,
     triggeringFtsRebuild,
+    error,
   } = Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
   const [pendingDictionary, setPendingDictionary] =
@@ -126,7 +128,14 @@ export function FullTextSearchSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Full-text search"
+        error={error}
+        onRetry={() => Stores.MemoryAdmin.load()}
+      />
+    )
 
   const effectiveFtsEnabled = watchedFtsEnabled ?? settings.fts_enabled
   const bothArmsOff =

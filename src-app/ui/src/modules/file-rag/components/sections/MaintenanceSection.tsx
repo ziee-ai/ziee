@@ -3,6 +3,7 @@ import { DatabaseOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const { Paragraph } = Typography
 
@@ -17,7 +18,7 @@ const MANAGE_PERM = Permissions.FileRagAdminManage
 export function MaintenanceSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, triggeringBackfill } = Stores.FileRagAdmin
+  const { settings, triggeringBackfill, error } = Stores.FileRagAdmin
 
   if (!canRead) {
     return (
@@ -30,7 +31,14 @@ export function MaintenanceSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Maintenance"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
+    )
 
   const handleBackfill = async () => {
     try {

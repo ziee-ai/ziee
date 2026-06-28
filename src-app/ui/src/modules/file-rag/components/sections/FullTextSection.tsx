@@ -3,6 +3,7 @@ import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Switch, message 
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -23,7 +24,7 @@ export function FullTextSection() {
   const canReadPerm = usePermission(READ_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const canRead = canReadPerm || canManage
-  const { settings, saving } = Stores.FileRagAdmin
+  const { settings, saving, error } = Stores.FileRagAdmin
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
@@ -49,7 +50,14 @@ export function FullTextSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Full-text search"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
+    )
 
   const handleSubmit = async (values: FormValues) => {
     try {

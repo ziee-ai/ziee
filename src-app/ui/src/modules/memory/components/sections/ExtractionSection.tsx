@@ -12,6 +12,7 @@ import {
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -28,7 +29,7 @@ interface FormValues {
 export function ExtractionSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, availableModels, saving, loadingModels } =
+  const { settings, availableModels, saving, loadingModels, error } =
     Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
 
@@ -51,7 +52,14 @@ export function ExtractionSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Extraction"
+        error={error}
+        onRetry={() => Stores.MemoryAdmin.load()}
+      />
+    )
 
   const handleSubmit = async (values: FormValues) => {
     try {
