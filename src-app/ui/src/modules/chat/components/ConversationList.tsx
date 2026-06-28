@@ -244,7 +244,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                           body: '!p-2 gap-2 flex justify-center items-center flex-wrap',
                         }}
                       >
-                        <Text type="secondary">
+                        <Text type="secondary" aria-live="polite" role="status">
                           Showing {visibleConversations.length} of {total} conversations
                         </Text>
                         {hasMore && !searchQuery && (
