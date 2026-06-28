@@ -13,6 +13,13 @@ use uuid::Uuid;
 use super::models::{CreateSkill, Skill, UpdateSkill};
 use crate::common::AppError;
 
+/// Upper bound on the number of skills surfaced to the LLM via
+/// `list_available_for_conversation`. Mirrors the system-wide
+/// `PAGINATION_MAX_PER_PAGE` so it tracks the same ceiling the REST
+/// pagination uses; it exists purely to keep an unbounded user-scope
+/// skill set from blowing the prompt budget.
+const AVAILABLE_SKILLS_CONTEXT_CAP: i64 = crate::common::PAGINATION_MAX_PER_PAGE as i64;
+
 pub struct SkillRepository {
     pool: PgPool,
 }
@@ -698,13 +705,24 @@ pub async fn list_available_for_conversation(
             WHERE skill_id = s.id AND conversation_id = $2 AND hidden = TRUE
           )
         ORDER BY s.name ASC
+        LIMIT $3
         "#,
         user_id,
         conversation_id,
+        AVAILABLE_SKILLS_CONTEXT_CAP,
     )
     .fetch_all(pool)
     .await
     .map_err(AppError::database_error)?;
+    if rows.len() as i64 == AVAILABLE_SKILLS_CONTEXT_CAP {
+        tracing::warn!(
+            user_id = %user_id,
+            conversation_id = %conversation_id,
+            cap = AVAILABLE_SKILLS_CONTEXT_CAP,
+            "skill: available-skills listing hit the context cap; some skills \
+             may be omitted from the chat context"
+        );
+    }
     Ok(rows
         .into_iter()
         .map(|r| SkillAvailableEntry {

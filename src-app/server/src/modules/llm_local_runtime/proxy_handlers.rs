@@ -275,7 +275,12 @@ async fn forward_post_with_body(
             Ok(t) => t,
             Err(resp) => return resp,
         };
-    if validation_status == "failed" || validation_status == "invalid" {
+    // Block the known-bad TERMINAL validation states. `error` is a general
+    // failure state in the same family as `failed`/`invalid` (see migration
+    // 0004's CHECK) and must be refused too. NULL/empty (legacy, never
+    // validated) and the transient/ready states fall through to the
+    // running-instance check below.
+    if matches!(validation_status.as_str(), "failed" | "invalid" | "error") {
         return err_engine_failed(format!(
             "model {} validation_status = {}",
             model_name, validation_status
