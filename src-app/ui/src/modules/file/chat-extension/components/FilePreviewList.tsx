@@ -12,8 +12,13 @@ import type { File as FileEntity } from '@/api-client/types'
  */
 export function FilePreviewList() {
   // Access file extension store directly via Stores.Chat (reactive via store proxy)
-  const { selectedFiles, uploadingFiles, removeFile, removeUploadingFile } =
-    Stores.File
+  const {
+    selectedFiles,
+    uploadingFiles,
+    removeFile,
+    removeUploadingFile,
+    retryUpload,
+  } = Stores.File
 
   const hasFiles = selectedFiles.size > 0 || uploadingFiles.size > 0
 
@@ -51,6 +56,7 @@ export function FilePreviewList() {
               <FileCard
                 uploadProgress={progress}
                 onRemove={() => removeUploadingFile(progress.id)}
+                onRetry={() => retryUpload(progress.id)}
                 variant="square"
               />
             </div>
