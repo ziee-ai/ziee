@@ -20,7 +20,7 @@ interface FormValues {
 export function EnableSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.FileRagAdmin
+  const { settings, saving, error } = Stores.FileRagAdmin
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
@@ -48,9 +48,18 @@ export function EnableSection() {
   if (!settings) {
     return (
       <Card title="Document search">
-        <div className="flex justify-center py-16">
-          <Spin />
-        </div>
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            title="Failed to load Document RAG admin settings"
+            description={error}
+          />
+        ) : (
+          <div className="flex justify-center py-16">
+            <Spin />
+          </div>
+        )}
       </Card>
     )
   }
