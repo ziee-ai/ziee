@@ -170,6 +170,19 @@ pub mod bio_mcp {
     pub use crate::modules::bio_mcp::supervisor;
 }
 
+// Re-export the llm_provider_files service + the file storage/repo + provider
+// model surface for the re-upload-after-failure integration test (audit
+// 880298cae9cb): drives the REAL get_or_upload_provider_file against a real
+// FilesystemStorage blob + a mock AIProvider that fails-then-succeeds.
+#[doc(hidden)]
+pub mod llm_provider_files_test_api {
+    pub use crate::modules::file::storage::filesystem::FilesystemStorage;
+    pub use crate::modules::file::storage::FileStorage;
+    pub use crate::modules::file::FileRepository;
+    pub use crate::modules::llm_provider::models::{LlmProvider, ProxySettings};
+    pub use crate::modules::llm_provider_files::service::get_or_upload_provider_file;
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`

@@ -478,3 +478,192 @@ async fn test_cascade_delete_on_provider_deletion() {
 
     assert!(mapping.is_none(), "Mapping should be cascade deleted");
 }
+
+// ============================================================================
+// Service Tests — retry / re-upload after a provider upload failure
+// ============================================================================
+//
+// Gap (audit id 880298cae9cb): the upload error path at
+// `service.rs:118-122` (`upload_file(...).map_err(...)`) and the
+// "test-and-validate" re-upload contract were untested. A failed provider
+// upload must NOT persist a Completed mapping, and a subsequent call must
+// retry the upload (rather than short-circuiting on a stale/half-written
+// mapping). This drives the REAL service function `get_or_upload_provider_file`
+// end-to-end against a real `FilesystemStorage` blob + a mock `AIProvider`
+// whose first `upload_file` fails and second succeeds. Only the external
+// provider boundary is mocked.
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use ai_providers::{
+    AIProvider, ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload,
+    FileUploadResponse, ProviderError, StreamChatChunk,
+};
+use futures::Stream;
+use std::pin::Pin;
+
+/// Mock provider supporting the file API whose `upload_file` fails on the
+/// first invocation and succeeds on every subsequent one.
+struct FlakyUploadProvider {
+    upload_calls: AtomicUsize,
+    succeed_id: String,
+}
+
+impl FlakyUploadProvider {
+    fn new(succeed_id: &str) -> Self {
+        Self {
+            upload_calls: AtomicUsize::new(0),
+            succeed_id: succeed_id.to_string(),
+        }
+    }
+}
+
+#[ziee::async_trait]
+impl AIProvider for FlakyUploadProvider {
+    fn name(&self) -> &str {
+        "flaky-upload"
+    }
+
+    async fn stream_chat(
+        &self,
+        _api_key: &str,
+        _base_url: &str,
+        _request: ChatRequest,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamChatChunk, ProviderError>> + Send>>,
+        ProviderError,
+    > {
+        Err(ProviderError::NotSupported("mock: no chat".into()))
+    }
+
+    async fn embeddings(
+        &self,
+        _api_key: &str,
+        _base_url: &str,
+        _request: EmbeddingsRequest,
+    ) -> Result<EmbeddingsResponse, ProviderError> {
+        Err(ProviderError::NotSupported("mock: no embeddings".into()))
+    }
+
+    fn supports_file_api(&self) -> bool {
+        true
+    }
+
+    async fn upload_file(
+        &self,
+        _api_key: &str,
+        _base_url: &str,
+        _upload: FileUpload,
+    ) -> Result<Option<FileUploadResponse>, ProviderError> {
+        let n = self.upload_calls.fetch_add(1, Ordering::SeqCst);
+        if n == 0 {
+            // First attempt: simulate an upstream provider failure.
+            Err(ProviderError::FileUpload(
+                "simulated transient provider failure".into(),
+            ))
+        } else {
+            Ok(Some(FileUploadResponse {
+                provider_file_id: self.succeed_id.clone(),
+                expires_at: None,
+                metadata: None,
+            }))
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_reupload_after_provider_failure() {
+    use std::sync::Arc;
+    use ziee::llm_provider_files_test_api::{
+        get_or_upload_provider_file, FileRepository, FileStorage, FilesystemStorage, LlmProvider,
+        ProxySettings,
+    };
+
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "reupload_user", &[])
+            .await;
+    let user_id = Uuid::parse_str(&user.user_id).expect("Invalid user ID");
+
+    // A real file row + its v1 blob on disk so `load_original` succeeds and
+    // the upload path is genuinely reached.
+    let filename = "retry.txt";
+    let file_id = create_test_file(&pool, user_id, filename).await;
+
+    let tmp = std::env::temp_dir().join(format!("ziee-reupload-test-{}", Uuid::new_v4()));
+    let storage: Arc<dyn FileStorage> = Arc::new(FilesystemStorage::new(&tmp));
+    storage
+        .save_original(user_id, file_id, "txt", b"hello provider upload retry")
+        .await
+        .expect("save blob");
+
+    let file_repo = FileRepository::new(pool.clone());
+
+    let provider = LlmProvider {
+        id: Uuid::new_v4(),
+        name: "Anthropic Test".to_string(),
+        provider_type: "anthropic".to_string(),
+        enabled: true,
+        api_key: Some("test-api-key-123".to_string()),
+        base_url: Some("https://api.test.example/v1".to_string()),
+        built_in: false,
+        proxy_settings: ProxySettings::default(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        default_runtime_version_id: None,
+    };
+    // Persist the provider row so save_upload_response's FK to llm_providers
+    // is satisfied on the successful (second) attempt.
+    sqlx::query!(
+        r#"INSERT INTO llm_providers (id, name, provider_type, enabled, api_key, base_url)
+           VALUES ($1, $2, $3, true, $4, $5)"#,
+        provider.id,
+        provider.name,
+        provider.provider_type,
+        provider.api_key,
+        provider.base_url,
+    )
+    .execute(&pool)
+    .await
+    .expect("insert provider");
+
+    let ai = FlakyUploadProvider::new("provider-file-retry-ok");
+
+    // First call: upload fails → the service must return an error and MUST NOT
+    // leave a Completed mapping behind.
+    let first = get_or_upload_provider_file(
+        &pool, &file_repo, &storage, file_id, user_id, &provider, &ai,
+    )
+    .await;
+    assert!(
+        first.is_err(),
+        "first upload should surface the provider failure as an error"
+    );
+
+    let completed_after_fail = sqlx::query!(
+        "SELECT upload_status FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2 AND upload_status = 'completed'",
+        file_id,
+        provider.id,
+    )
+    .fetch_optional(&pool)
+    .await
+    .expect("query mapping after failure");
+    assert!(
+        completed_after_fail.is_none(),
+        "a failed upload must not persist a completed provider-file mapping"
+    );
+
+    // Second call: retry — upload succeeds, mapping is saved, id returned.
+    let second = get_or_upload_provider_file(
+        &pool, &file_repo, &storage, file_id, user_id, &provider, &ai,
+    )
+    .await
+    .expect("retry upload should succeed");
+    assert_eq!(second, "provider-file-retry-ok");
+
+    // Cleanup the temp blob dir.
+    let _ = std::fs::remove_dir_all(&tmp);
+}
