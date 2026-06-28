@@ -986,3 +986,78 @@ async fn files_and_memory_built_ins_coexist_in_one_turn() {
         stub.requests()
     );
 }
+
+/// audit id all-78dfbbb87877 — the model recalling a PRIOR tool result via the
+/// built-in `get_tool_result` tool. Turn 1 reads a file (creating a persisted
+/// read_file tool_result); we grab that block's tool_use_id, then Turn 2 drives
+/// the stub to call get_tool_result(tool_use_id) and asserts the recalled
+/// content (the original file body) flows back — the full model→get_tool_result
+/// →tool_result_mcp→stored-history recall roundtrip. Deterministic (stub model).
+#[tokio::test]
+async fn model_recalls_prior_result_via_get_tool_result() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_recall").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let project_id = create_project(&server, &user, "recall-project").await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "notes.txt",
+        "RECALL_MARKER_Q7 the full original tool result body",
+    )
+    .await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // Turn 1: read the file → persists a read_file tool_result.
+    let _ = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        "STUB_PLAN=read_first_file read it",
+    )
+    .await;
+
+    // Find the persisted tool_result block's tool_use_id.
+    let msgs: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{conv_id}/messages")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let mut tool_use_id: Option<String> = None;
+    for m in msgs.as_array().unwrap() {
+        for c in m["contents"].as_array().into_iter().flatten() {
+            if c["content_type"] == "tool_result" {
+                if let Some(id) = c["content"]["tool_use_id"].as_str() {
+                    tool_use_id = Some(id.to_string());
+                }
+            }
+        }
+    }
+    let tool_use_id = tool_use_id.expect("a persisted read_file tool_result with a tool_use_id");
+
+    // Turn 2: the model calls get_tool_result(tool_use_id) to recall the result.
+    let body = send_and_collect(
+        &server, &user, &conv_id, &branch_id, &model_id,
+        &format!("STUB_PLAN=get_tool_result STUB_TOOLUSE={tool_use_id} recall it"),
+    )
+    .await;
+
+    assert!(
+        stub.requests_with_tool("get_tool_result") >= 1,
+        "get_tool_result must be attached + called; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        body.contains("RECALL_MARKER_Q7"),
+        "recalled result must carry the original tool output; body={body}"
+    );
+}

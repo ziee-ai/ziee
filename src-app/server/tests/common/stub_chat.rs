@@ -455,6 +455,22 @@ fn script(
                 _ => (Some("Done — wrote the file twice.".into()), None),
             }
         }
+        // Emit the built-in `get_tool_result` recall tool with the tool_use_id
+        // parsed from `STUB_TOOLUSE=<id>` in the user message; on the
+        // continuation carrying the recalled content, echo it back. Drives the
+        // "model recalls a prior tool result via get_tool_result" flow.
+        "get_tool_result" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "get_tool_result"))
+            {
+                if let Some(id) = parse_token(last_user, "STUB_TOOLUSE=") {
+                    return (None, Some((wire.to_string(), json!({ "tool_use_id": id }))));
+                }
+                return (Some("No tool_use_id provided to recall.".into()), None);
+            }
+            let echoed = last_tool_result_text(messages);
+            (Some(format!("Recalled prior result: {echoed}")), None)
+        }
         // "text" and any unknown plan → a plain answer.
         _ => (Some("Hello from the stub model.".into()), None),
     }
