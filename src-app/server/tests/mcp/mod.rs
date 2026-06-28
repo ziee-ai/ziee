@@ -1434,6 +1434,7 @@ mod test_connection_test;         // Connection-test endpoints (user + system te
 mod http_headers_test;            // Custom-header transmission + trim/validation (create/update/test)
 mod http_connection_reuse_test;   // Stale keep-alive reuse regression (proxy/tunnel reap → fresh conn per request)
 mod sync_emit_test;               // Realtime-sync emission: mcp_server (owner) + system dual-audience
+mod permission_revocation_test;   // all-f44bdb26e811: revoking group membership denies subsequent MCP calls
 mod tool_call_history_test;       // mcp_tool_calls recording + list/scope + retention setting
 
 // ============================================================================
