@@ -712,3 +712,49 @@ async fn test_by_id_404_for_nonexistent_repository() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+// audit id all-a7378e482f49 — a Tier-3 real-LLM (LIVE-credential) test for the
+// llm_repository connection-HEALTH probe. The existing health tests all use
+// wiremock; the only real-HF coverage is the `/test` form endpoint. This
+// exercises the create-flow probe (the same path run at boot) against the LIVE
+// HuggingFace API: creating an ENABLED bearer-token repo with a valid key must
+// probe whoami-v2 for real and persist `healthy` + stay enabled. Env-keyed (not
+// #[ignore]) like the sibling real-HF download tests: source tests/.env.test.
+#[tokio::test]
+async fn create_enabled_huggingface_repo_probes_live_and_persists_healthy() {
+    let api_key = std::env::var("HUGGINGFACE_API_KEY").expect(
+        "HUGGINGFACE_API_KEY not set. Please source tests/.env.test or set the environment variable.",
+    );
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+
+    let body: Value = reqwest::Client::new()
+        .post(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "live-hf",
+            "url": "https://huggingface.co",
+            "auth_type": "bearer_token",
+            "auth_config": {
+                "token": api_key,
+                "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
+            },
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    let repo_id = Uuid::parse_str(body["id"].as_str().expect("repo id")).unwrap();
+
+    // The live probe ran during create; the persisted row must be healthy +
+    // still enabled (a valid key never trips the auto-disable path).
+    let pool = pool_for(&server).await;
+    let (enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
+    assert!(enabled, "valid live credentials must leave the repo enabled");
+    assert_eq!(status, "healthy", "live HF probe must persist healthy (reason: {reason:?})");
+    assert!(at.is_some(), "last_health_check_at must be stamped by the live probe");
+}
