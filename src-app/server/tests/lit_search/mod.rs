@@ -255,3 +255,4 @@ pub async fn start_mock_epmc_fulltext()
     });
     (format!("http://127.0.0.1:{port}"), hits)
 }
+mod cross_subsystem_test;
