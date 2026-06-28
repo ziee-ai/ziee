@@ -66,11 +66,11 @@ export function ProjectMcpSettingsPanel() {
           {serverName(rule.server_id)}
         </Text>
         {allTools ? (
-          <Tag tone={tone}>All tools</Tag>
+          <Tag tone={tone} data-testid={`mcp-project-rule-${tone}-${rule.server_id}`}>All tools</Tag>
         ) : (
           <Space size={[4, 4]} wrap>
             {rule.tools.map(t => (
-              <Tag key={t} tone={tone}>
+              <Tag key={t} tone={tone} data-testid={`mcp-project-rule-${tone}-${rule.server_id}-${t}`}>
                 {t}
               </Tag>
             ))}
@@ -119,6 +119,7 @@ export function ProjectMcpSettingsPanel() {
             icon={<Pencil />}
             onClick={handleConfigure}
             aria-label="Edit MCP defaults"
+            data-testid="mcp-project-edit-btn"
           >
             Edit
           </Button>
@@ -126,6 +127,7 @@ export function ProjectMcpSettingsPanel() {
       }
       className="mb-4"
       data-test-section="mcp-defaults"
+      data-testid="mcp-project-defaults-card"
     >
       <Text type="secondary" className="block mb-4">
         Default MCP approval mode and per-server settings for every NEW
@@ -143,7 +145,7 @@ export function ProjectMcpSettingsPanel() {
             data-test-mcp-approval-mode={approvalMode}
           >
             <Text strong>Approval mode:</Text>
-            <Tag>{approvalLabel}</Tag>
+            <Tag data-testid="mcp-project-approval-tag">{approvalLabel}</Tag>
           </div>
 
           {/* Auto-approved + disabled rule lists. Each section is
@@ -169,6 +171,7 @@ export function ProjectMcpSettingsPanel() {
 
           {noRules && (
             <Empty
+              data-testid="mcp-project-empty"
               description={
                 <Text type="secondary" className="!text-xs">
                   No per-server rules configured.

@@ -45,6 +45,7 @@ export function McpServerGroupsAssignmentCard({
       <Accordion
         ghost
         collapsible
+        data-testid={`mcp-groups-accordion-${serverId}`}
         items={[
           {
             key: 'groups',
@@ -62,6 +63,7 @@ export function McpServerGroupsAssignmentCard({
                         handleManageGroups()
                       }}
                       aria-label="Manage user groups"
+                      data-testid={`mcp-groups-assign-btn-${serverId}`}
                     >
                       Assign
                     </Button>
@@ -73,6 +75,7 @@ export function McpServerGroupsAssignmentCard({
                   <Empty
                     description="No groups assigned"
                     className="!my-2"
+                    data-testid={`mcp-groups-empty-${serverId}`}
                   />
                 ) : (
                   <Flex vertical gap="small" className="w-full">
@@ -85,6 +88,7 @@ export function McpServerGroupsAssignmentCard({
                           key={group.id}
                           tone="info"
                           className="text-[13px] px-2 py-1"
+                          data-testid={`mcp-group-tag-${group.id}`}
                         >
                           {group.name}
                         </Tag>

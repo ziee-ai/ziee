@@ -70,7 +70,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       key: 'status',
       width: 110,
       render: row => (
-        <Tag tone={row.is_error ? 'error' : (STATUS_TONE[row.status] ?? 'default')}>
+        <Tag tone={row.is_error ? 'error' : (STATUS_TONE[row.status] ?? 'default')} data-testid={`mcp-tool-call-status-${row.id}`}>
           {row.status}
         </Tag>
       ),
@@ -80,7 +80,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       key: 'source',
       width: 110,
       render: row => (
-        <Tag tone={SOURCE_TONE[row.source] ?? 'default'}>{row.source}</Tag>
+        <Tag tone={SOURCE_TONE[row.source] ?? 'default'} data-testid={`mcp-tool-call-source-${row.id}`}>{row.source}</Tag>
       ),
     },
     {
@@ -114,10 +114,11 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       ) : null}
       <Table<McpToolCall>
         rowKey="id"
+        data-testid="mcp-tool-calls-table"
         loading={loading}
         dataSource={calls}
         columns={columns}
-        empty={<Empty description="No tool calls recorded yet" />}
+        empty={<Empty description="No tool calls recorded yet" data-testid="mcp-tool-calls-empty" />}
         onRowClick={row =>
           setExpandedId(id => (id === row.id ? null : row.id))
         }
@@ -155,6 +156,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
         current={currentPage}
         pageSize={pageSize}
         total={total}
+        data-testid="mcp-tool-calls-pagination"
         aria-label="Tool-call pages"
         previousLabel="Previous page"
         nextLabel="Next page"

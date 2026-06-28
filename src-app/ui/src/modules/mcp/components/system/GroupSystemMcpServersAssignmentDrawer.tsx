@@ -79,7 +79,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
       size={600}
       footer={
         <div className="flex justify-end gap-2">
-          <Button onClick={handleClose} disabled={saving}>
+          <Button onClick={handleClose} disabled={saving} data-testid="mcp-group-assign-cancel-btn">
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           {canManage && (
@@ -88,6 +88,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
               onClick={handleSave}
               loading={saving}
               disabled={loading}
+              data-testid="mcp-group-assign-save-btn"
             >
               Save
             </Button>
@@ -123,6 +124,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                     key={server.id}
                     role="listitem"
                     data-cursor={canManage ? 'pointer' : 'default'}
+                    data-testid={`mcp-group-assign-card-${server.id}`}
                     onClick={() =>
                       canManage && handleToggle(server.id, !isChecked)
                     }
@@ -134,6 +136,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                           onChange={checked => handleToggle(server.id, checked)}
                           disabled={!canManage}
                           className="mt-0.5"
+                          data-testid={`mcp-group-assign-switch-${server.id}`}
                         />
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
@@ -145,6 +148,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                             tone="info"
                             variant="solid"
                             className="text-xs m-0"
+                            data-testid={`mcp-group-assign-transport-tag-${server.id}`}
                           >
                             {server.transport_type}
                           </Tag>
@@ -153,6 +157,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                               tone="success"
                               variant="solid"
                               className="text-xs m-0"
+                              data-testid={`mcp-group-assign-status-tag-${server.id}`}
                             >
                               Enabled
                             </Tag>
@@ -161,6 +166,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                               tone="warning"
                               variant="solid"
                               className="text-xs m-0"
+                              data-testid={`mcp-group-assign-status-tag-${server.id}`}
                             >
                               Disabled
                             </Tag>

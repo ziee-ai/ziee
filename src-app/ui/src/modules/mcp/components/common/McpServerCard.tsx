@@ -151,9 +151,10 @@ export function McpServerCard({
                 <Wrench aria-hidden="true" className="text-base" />
                 <Text className="font-semibold text-base">{server.display_name}</Text>
                 {!isEditable && server.is_system && (
-                  <Tag tone="info">System</Tag>
+                  <Tag tone="info" data-testid="mcp-server-system-tag">System</Tag>
                 )}
                 <Tag
+                  data-testid="mcp-server-transport-tag"
                   tone={
                     server.transport_type === 'stdio'
                       ? 'info'
@@ -239,6 +240,7 @@ export function McpServerCard({
                         onChange={handleToggleEnable}
                         loading={enableLoading}
                         aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
+                        data-testid="mcp-server-enable-switch"
                       />
                     </Tooltip>
                   )}
@@ -278,6 +280,7 @@ export function McpServerCard({
                       cancelText="Cancel"
                       okButtonProps={{ danger: true }}
                       onConfirm={handleDelete}
+                      data-testid="mcp-server-delete-confirm"
                     >
                       <Button
                         icon={<Trash2 />}
@@ -311,6 +314,7 @@ export function McpServerCard({
             <Alert
               tone="error"
               className="!mb-2"
+              data-testid="mcp-server-health-alert"
               title={
                 server.last_health_check_at
                   ? `Connection test failed at ${new Date(server.last_health_check_at).toLocaleString()}`
@@ -340,7 +344,7 @@ export function McpServerCard({
                 </>
               )}
               {server.command && (
-                <Card size="sm" className={'!mt-2'}>
+                <Card size="sm" className={'!mt-2'} data-testid="mcp-server-command-card">
                   <pre className="text-xs overflow-auto m-0">
                     {server.command}
                     {server.args &&

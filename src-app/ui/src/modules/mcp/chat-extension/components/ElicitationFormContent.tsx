@@ -445,6 +445,7 @@ export function ElicitationFormContent({
       >
         <Alert
           tone="success"
+          data-testid="mcp-elicitation-accepted-alert"
           icon={<CircleCheck />}
           title={
             <div>
@@ -461,6 +462,7 @@ export function ElicitationFormContent({
                 column={1}
                 items={items}
                 className="mt-2"
+                data-testid="mcp-elicitation-summary"
               />
             ) : null
           }
@@ -477,6 +479,7 @@ export function ElicitationFormContent({
       >
         <Alert
           tone="warning"
+          data-testid="mcp-elicitation-declined-alert"
           icon={<CircleX />}
           title={
             <div>
@@ -499,6 +502,7 @@ export function ElicitationFormContent({
       >
         <Alert
           tone="error"
+          data-testid="mcp-elicitation-cancelled-alert"
           icon={<Ban />}
           title={
             <div>
@@ -522,6 +526,7 @@ export function ElicitationFormContent({
     >
       <Alert
         tone="info"
+        data-testid="mcp-elicitation-pending-alert"
         icon={<SquarePen />}
         title={
           <div>
@@ -539,6 +544,7 @@ export function ElicitationFormContent({
               layout="vertical"
               className="mt-3"
               disabled={isSubmitting}
+              data-testid="mcp-elicitation-form"
               onSubmit={async (values) => {
                 setIsSubmitting(true)
                 try {

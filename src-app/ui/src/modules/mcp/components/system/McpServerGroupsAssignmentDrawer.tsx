@@ -91,7 +91,7 @@ export function McpServerGroupsAssignmentDrawer() {
       size={600}
       footer={
         <div className="flex justify-end gap-2">
-          <Button onClick={handleClose} disabled={saving}>
+          <Button onClick={handleClose} disabled={saving} data-testid="mcp-groups-drawer-cancel-btn">
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           {canManage && (
@@ -100,6 +100,7 @@ export function McpServerGroupsAssignmentDrawer() {
               onClick={handleSave}
               loading={saving}
               disabled={loading}
+              data-testid="mcp-groups-drawer-save-btn"
             >
               Save
             </Button>
@@ -131,7 +132,7 @@ export function McpServerGroupsAssignmentDrawer() {
               {groups.map(group => {
                 const isChecked = assignedIds.includes(group.id)
                 return (
-                  <Card key={group.id}>
+                  <Card key={group.id} data-testid={`mcp-groups-drawer-card-${group.id}`}>
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
@@ -139,6 +140,7 @@ export function McpServerGroupsAssignmentDrawer() {
                           onChange={checked => handleToggle(group.id, checked)}
                           disabled={!canManage}
                           className="mt-0.5"
+                          data-testid={`mcp-groups-drawer-switch-${group.id}`}
                         />
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
@@ -151,6 +153,7 @@ export function McpServerGroupsAssignmentDrawer() {
                               tone="info"
                               variant="solid"
                               className="text-[11px] m-0"
+                              data-testid={`mcp-groups-drawer-default-tag-${group.id}`}
                             >
                               Default
                             </Tag>

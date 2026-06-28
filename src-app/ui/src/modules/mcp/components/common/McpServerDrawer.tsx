@@ -834,6 +834,7 @@ export function McpServerDrawer() {
         max={600}
         placeholder="30"
         className="w-full"
+        data-testid="mcp-drawer-timeout-input"
       />
     </FormField>
   )
@@ -1028,6 +1029,7 @@ export function McpServerDrawer() {
             loading={togglingEnable}
             disabled={!canManage || togglingEnable}
             onChange={handleEnabledToggle}
+            data-testid="mcp-drawer-enabled-switch"
           />
         </Tooltip>
       ) : null}
@@ -1043,6 +1045,7 @@ export function McpServerDrawer() {
           editingServer?.last_health_check_status === 'unhealthy' && (
             <Alert
               tone="error"
+              data-testid="mcp-drawer-health-alert"
               title={
                 editingServer.last_health_check_at
                   ? `Connection test failed at ${new Date(editingServer.last_health_check_at).toLocaleString()}`
@@ -1060,6 +1063,7 @@ export function McpServerDrawer() {
           name="mcp-server-form"
           layout="vertical"
           disabled={!canManage}
+          data-testid="mcp-drawer-form"
         >
           {/* Name (only for create mode) */}
           {(mode === 'create' || mode === 'create-system') && (
@@ -1068,7 +1072,7 @@ export function McpServerDrawer() {
               name="name"
               required
             >
-              <Input placeholder="e.g., filesystem, fetch, custom-tool" />
+              <Input placeholder="e.g., filesystem, fetch, custom-tool" data-testid="mcp-drawer-name-input" />
             </FormField>
           )}
 
@@ -1078,7 +1082,7 @@ export function McpServerDrawer() {
             name="display_name"
             required
           >
-            <Input placeholder="e.g., Filesystem Access, Web Fetch" />
+            <Input placeholder="e.g., Filesystem Access, Web Fetch" data-testid="mcp-drawer-display-name-input" />
           </FormField>
 
           {/* Description */}
@@ -1086,6 +1090,7 @@ export function McpServerDrawer() {
             <Textarea
               placeholder="Brief description of what this server does"
               rows={2}
+              data-testid="mcp-drawer-description-textarea"
             />
           </FormField>
 
@@ -1093,6 +1098,7 @@ export function McpServerDrawer() {
           {prefillTransportSwapped && (
             <Alert
               tone="info"
+              data-testid="mcp-drawer-transport-swap-alert"
               title={`Transport changed from "${prefillTransportSwapped.from}" to "${prefillTransportSwapped.to}"`}
               description="Administrator policy doesn't allow the original transport for user-installed MCP servers. The drawer pre-filled the first permitted transport so you can review and save."
               className="mb-3"
@@ -1107,6 +1113,7 @@ export function McpServerDrawer() {
             required
           >
             <Select
+              data-testid="mcp-drawer-transport-select"
               disabled={mode === 'edit' || mode === 'edit-system'}
               options={TRANSPORT_TYPES.filter(type =>
                 isUserMode
@@ -1135,7 +1142,7 @@ export function McpServerDrawer() {
                     : `Allowed on host: ${hostCommands.join(', ')}. Enable "Run in sandbox" to use any command.`
                 }
               >
-                <Input placeholder="e.g., npx, uvx, node" />
+                <Input placeholder="e.g., npx, uvx, node" data-testid="mcp-drawer-command-input" />
               </FormField>
 
               <FormField
@@ -1147,6 +1154,7 @@ export function McpServerDrawer() {
                   placeholder='["-y", "@modelcontextprotocol/server-filesystem"]'
                   rows={3}
                   className="font-mono text-xs"
+                  data-testid="mcp-drawer-args-textarea"
                 />
               </FormField>
 
@@ -1175,7 +1183,7 @@ export function McpServerDrawer() {
                 name="url"
                 required
               >
-                <Input placeholder="https://example.com/mcp" />
+                <Input placeholder="https://example.com/mcp" data-testid="mcp-drawer-url-input" />
               </FormField>
 
               <div className="flex flex-col gap-1.5">
@@ -1212,7 +1220,7 @@ export function McpServerDrawer() {
                     valuePropName="checked"
                     description="For servers requiring OAuth client_credentials. Turning this off on save clears any stored OAuth config."
                   >
-                    <Switch />
+                    <Switch data-testid="mcp-drawer-oauth-enabled-switch" />
                   </FormField>
                   {oauthEnabled ? (
                     <>
@@ -1221,7 +1229,7 @@ export function McpServerDrawer() {
                         name="oauth_client_id"
                         description="Client ID issued by the upstream OAuth server."
                       >
-                        <Input placeholder="client id" autoComplete="off" />
+                        <Input placeholder="client id" autoComplete="off" data-testid="mcp-drawer-oauth-client-id-input" />
                       </FormField>
                       <FormField
                         label="OAuth Client Secret"
@@ -1237,6 +1245,7 @@ export function McpServerDrawer() {
                           autoComplete="new-password"
                           showLabel="Show secret"
                           hideLabel="Hide secret"
+                          data-testid="mcp-drawer-oauth-secret-input"
                         />
                       </FormField>
                       <FormField
@@ -1244,7 +1253,7 @@ export function McpServerDrawer() {
                         name="oauth_scopes"
                         description="Optional, space-separated (e.g. 'mcp read')."
                       >
-                        <Input placeholder="mcp" autoComplete="off" />
+                        <Input placeholder="mcp" autoComplete="off" data-testid="mcp-drawer-oauth-scopes-input" />
                       </FormField>
                     </>
                   ) : null}
@@ -1266,7 +1275,7 @@ export function McpServerDrawer() {
             valuePropName="checked"
             description="Allow this server to request LLM completions inline during tool execution (requires HTTP transport and server support)"
           >
-            <Switch />
+            <Switch data-testid="mcp-drawer-sampling-switch" />
           </FormField>
 
           {/* Sampling sub-fields — only meaningful when sampling is
@@ -1279,6 +1288,7 @@ export function McpServerDrawer() {
                 description="Auto: LLM decides when to call this server. Always: server is called before every LLM request to enrich context."
               >
                 <Select
+                  data-testid="mcp-drawer-usage-mode-select"
                   options={[
                     { label: 'Auto (LLM decides)', value: 'auto' },
                     { label: 'Always (pre-process every prompt)', value: 'always' },
@@ -1291,7 +1301,7 @@ export function McpServerDrawer() {
                 name="max_concurrent_sessions"
                 description="Limit simultaneous sampling sessions. Leave blank for unlimited. Users over the limit receive a friendly error."
               >
-                <InputNumber min={1} placeholder="Unlimited" className="w-full" />
+                <InputNumber min={1} placeholder="Unlimited" className="w-full" data-testid="mcp-drawer-max-sessions-input" />
               </FormField>
             </>
           ) : null}
@@ -1319,7 +1329,7 @@ export function McpServerDrawer() {
                     </>
                   }
                 >
-                  <Switch />
+                  <Switch data-testid="mcp-drawer-run-sandbox-switch" />
                 </FormField>
 
                 {runInSandbox && (
@@ -1328,7 +1338,7 @@ export function McpServerDrawer() {
                     name="sandbox_flavor"
                     description="Rootfs image the sandboxed server runs in. 'full' ships Node (npx), uv (uvx), python3 and R; 'minimal' is python3-only."
                   >
-                    <Select options={flavorOptions} />
+                    <Select options={flavorOptions} data-testid="mcp-drawer-sandbox-flavor-select" />
                   </FormField>
                 )}
               </>
@@ -1339,6 +1349,7 @@ export function McpServerDrawer() {
           {isUserMode && transportType === 'stdio' && (
             <Alert
               tone="info"
+              data-testid="mcp-drawer-sandbox-info-alert"
               title="Stdio MCP servers run inside the sandbox"
               description={
                 <>
@@ -1364,11 +1375,12 @@ export function McpServerDrawer() {
               loading={testing}
               disabled={loading}
               onClick={handleSaveAndTest}
+              data-testid="mcp-drawer-save-test-btn"
             >
               Save &amp; Test Connection
             </Button>
           )}
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleClose} data-testid="mcp-drawer-cancel-btn">
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           {canManage && (
@@ -1376,6 +1388,7 @@ export function McpServerDrawer() {
               loading={loading}
               disabled={testing}
               onClick={handleSubmit}
+              data-testid="mcp-drawer-submit-btn"
             >
               {getButtonText()}
             </Button>
@@ -1392,6 +1405,7 @@ export function McpServerDrawer() {
       {isEditMode && editingServer ? (
         <Tabs
           defaultValue="details"
+          data-testid="mcp-drawer-tabs"
           items={[
             { key: 'details', label: 'Details', children: detailsBody },
             {

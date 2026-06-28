@@ -125,6 +125,7 @@ export function McpUserPolicyCard() {
             ].map(opt => (
               <label key={opt.value} className="flex items-center gap-2">
                 <Checkbox
+                  data-testid={`mcp-policy-transport-${opt.value}`}
                   checked={transports.includes(opt.value)}
                   onCheckedChange={checked => {
                     if (checked) {
@@ -143,6 +144,7 @@ export function McpUserPolicyCard() {
             <Alert
               tone="warning"
               className="mt-2"
+              data-testid="mcp-policy-no-transports-alert"
               title="Users cannot add any MCP server. The MCP tab in the Hub is hidden."
             />
           )}
@@ -158,6 +160,7 @@ export function McpUserPolicyCard() {
             </Paragraph>
             <Select
               className="w-full"
+              data-testid="mcp-policy-flavor-select"
               value={flavor ?? undefined}
               onChange={v => setFlavor(v)}
               options={flavorOptions}
@@ -189,7 +192,7 @@ export function McpUserPolicyCard() {
 
         <div className="flex justify-end">
           <Can permission={Permissions.McpUserPolicyEdit}>
-            <Button loading={saving} onClick={handleSave}>
+            <Button loading={saving} onClick={handleSave} data-testid="mcp-policy-save-btn">
               Save policy
             </Button>
           </Can>

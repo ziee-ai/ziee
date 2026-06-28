@@ -85,6 +85,7 @@ function KeyValueRow({
         <Input
           placeholder={keyPlaceholder}
           className="font-mono text-xs"
+          data-testid={`mcp-kv-${listName}-key-${index}`}
         />
       </FormField>
       <FormField
@@ -103,11 +104,13 @@ function KeyValueRow({
             className="font-mono text-xs"
             showLabel="Show value"
             hideLabel="Hide value"
+            data-testid={`mcp-kv-${listName}-value-${index}`}
           />
         ) : (
           <Input
             placeholder={valuePlaceholder}
             className="font-mono text-xs"
+            data-testid={`mcp-kv-${listName}-value-${index}`}
           />
         )}
       </FormField>
@@ -125,6 +128,7 @@ function KeyValueRow({
           className="!mb-0 shrink-0"
         >
           <Switch
+            data-testid={`mcp-kv-${listName}-secret-${index}`}
             onChange={() => {
               // Toggling the switch wipes the value so
               // the user has to opt-in to whatever the
@@ -146,6 +150,7 @@ function KeyValueRow({
         tooltip={`Remove ${labelSingular}`}
         onClick={() => remove(index)}
         className="shrink-0"
+        data-testid={`mcp-kv-${listName}-remove-${index}`}
       >
         <Trash2 className="h-4 w-4" />
       </Button>
@@ -183,6 +188,7 @@ export function KeyValueSecretEditor({
           <Button
             variant="outline"
             type="button"
+            data-testid={`mcp-kv-${name}-add-btn`}
             onClick={() =>
               append({
                 key: '',

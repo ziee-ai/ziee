@@ -143,6 +143,7 @@ export function ToolCallPendingApprovalContent({
     <div className="my-2" data-testid={`tool-approval-${toolCall.tool_use_id}`}>
       <Alert
         tone="warning"
+        data-testid="mcp-tool-approval-alert"
         icon={<Clock />}
         title={
           <div>

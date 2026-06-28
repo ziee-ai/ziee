@@ -87,6 +87,7 @@ export function SystemMcpServersPage() {
             allowClear
             className="flex-1"
             aria-label="Search system MCP servers"
+            data-testid="mcp-system-search-input"
           />
           <Select
             placeholder="Filter by status"
@@ -96,6 +97,7 @@ export function SystemMcpServersPage() {
             className="min-w-[150px]"
             allowClear
             clearLabel="Clear status filter"
+            data-testid="mcp-system-status-select"
             options={[
               { label: 'All Servers', value: 'all' },
               { label: 'Enabled', value: 'enabled' },
@@ -107,6 +109,7 @@ export function SystemMcpServersPage() {
               variant="default"
               icon={<Plus />}
               onClick={handleCreateServer}
+              data-testid="mcp-system-add-btn"
             >
               Add Server
             </Button>
@@ -129,6 +132,7 @@ export function SystemMcpServersPage() {
               variant="ghost"
               icon={<Eraser />}
               onClick={clearAllFilters}
+              data-testid="mcp-system-clear-filters-btn"
             >
               Clear all
             </Button>
@@ -145,6 +149,7 @@ export function SystemMcpServersPage() {
               className="overflow-hidden"
               data-server-id={server.id}
               data-server-name={server.display_name}
+              data-testid={`mcp-system-server-card-${server.id}`}
             >
               <div className="!p-0">
                 <McpServerCard server={server} isEditable={true} bordered={false} />
@@ -169,6 +174,7 @@ export function SystemMcpServersPage() {
         {systemServersTotal > 0 && (
           <Flex justify="end">
             <Pagination
+              data-testid="mcp-system-pagination"
               aria-label="System MCP servers pagination"
               previousLabel="Previous page"
               nextLabel="Next page"

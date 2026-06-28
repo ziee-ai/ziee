@@ -53,6 +53,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
     <Card
       size="sm"
       className="mb-2 bg-black/2"
+      data-testid={`mcp-toolcall-card-${toolCall.tool_use_id}`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -69,6 +70,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           size="sm"
           variant="ghost"
           onClick={() => setIsExpanded(!isExpanded)}
+          data-testid={`mcp-toolcall-details-btn-${toolCall.tool_use_id}`}
         >
           {isExpanded ? 'Hide' : 'Show'} details
         </Button>
@@ -84,6 +86,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           <Progress
             size="sm"
             aria-label="Tool call progress"
+            data-testid={`mcp-toolcall-progress-${toolCall.tool_use_id}`}
             value={
               toolCall.progress.total && toolCall.progress.total > 0
                 ? Math.min(
@@ -123,6 +126,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
               tone="error"
               title="Error"
               description={toolCall.error}
+              data-testid={`mcp-toolcall-error-alert-${toolCall.tool_use_id}`}
             />
           )}
         </div>
@@ -170,7 +174,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
 
   // Historical view for tool calls loaded from DB (store is empty after reload)
   return (
-    <Card size="sm" className="mb-2 bg-black/2">
+    <Card size="sm" className="mb-2 bg-black/2" data-testid={`mcp-tooluse-card-${toolUseData.id}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {toolResultData?.is_error ? (
@@ -189,7 +193,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
           )}
         </div>
         {hasDetails && (
-          <Button size="sm" variant="ghost" onClick={() => setIsExpanded(!isExpanded)}>
+          <Button size="sm" variant="ghost" onClick={() => setIsExpanded(!isExpanded)} data-testid={`mcp-tooluse-details-btn-${toolUseData.id}`}>
             {isExpanded ? 'Hide' : 'Show'} details
           </Button>
         )}
@@ -208,7 +212,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
             <div className="mb-2">
               <Text strong>Result:</Text>
               {toolResultData.is_error ? (
-                <Alert tone="error" title="Error" description={toolResultData.content} className="mt-1" />
+                <Alert tone="error" title="Error" description={toolResultData.content} className="mt-1" data-testid={`mcp-tooluse-error-alert-${toolUseData.id}`} />
               ) : (
                 <pre className="p-2 rounded mt-1 overflow-auto max-h-40">{toolResultData.content}</pre>
               )}

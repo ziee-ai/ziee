@@ -35,7 +35,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   }
 
   return (
-    <Card data-widget="system-mcp-servers" data-group-id={group.id}>
+    <Card data-widget="system-mcp-servers" data-group-id={group.id} data-testid={`mcp-group-widget-card-${group.id}`}>
       <Flex vertical gap="small" className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -55,6 +55,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
               icon={<Pencil aria-hidden="true" />}
               onClick={handleEdit}
               aria-label={`Edit System MCP Servers for ${group.name}`}
+              data-testid={`mcp-group-widget-edit-btn-${group.id}`}
             >
               Edit
             </Button>
@@ -81,6 +82,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
                 key={server.id}
                 tone={server.enabled ? 'info' : undefined}
                 variant="outline"
+                data-testid={`mcp-group-widget-server-tag-${server.id}`}
               >
                 {server.display_name}
               </Tag>

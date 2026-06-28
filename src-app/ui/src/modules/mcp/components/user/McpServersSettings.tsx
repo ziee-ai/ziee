@@ -91,6 +91,7 @@ export function McpServersSettings() {
           <Text type="danger">Failed to load MCP servers: {error}</Text>
           <div className="mt-4">
             <Button
+              data-testid="mcp-settings-retry-btn"
               onClick={() => {
                 Stores.McpServer.loadMcpServers().catch((err: Error) => {
                   console.error('Failed to load MCP servers:', err)
@@ -122,6 +123,7 @@ export function McpServersSettings() {
             allowClear
             className="flex-1"
             aria-label="Search MCP servers"
+            data-testid="mcp-settings-search-input"
           />
           <Select
             placeholder="Filter by status"
@@ -129,6 +131,7 @@ export function McpServersSettings() {
             onChange={setStatusFilter}
             className="min-w-[150px]"
             aria-label="Filter servers by status"
+            data-testid="mcp-settings-status-select"
             options={[
               { label: 'All Servers', value: 'all' },
               { label: 'Enabled', value: 'enabled' },
@@ -146,6 +149,7 @@ export function McpServersSettings() {
                 variant="default"
                 icon={<Plus />}
                 onClick={handleAddServer}
+                data-testid="mcp-settings-add-btn"
               >
                 Add Server
               </Button>
@@ -169,6 +173,7 @@ export function McpServersSettings() {
               variant="ghost"
               icon={<Eraser />}
               onClick={clearAllFilters}
+              data-testid="mcp-settings-clear-filters-btn"
             >
               Clear all
             </Button>
@@ -201,6 +206,7 @@ export function McpServersSettings() {
         {totalServers > 0 && (
           <div className="flex justify-end">
             <Pagination
+              data-testid="mcp-settings-pagination"
               previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
               current={storePage}
               total={totalServers}

@@ -19,6 +19,7 @@ export function ToolCallPendingApprovalCancelContent({
     <div className="my-2">
       <Alert
         tone="error"
+        data-testid="mcp-tool-approval-cancel-alert"
         icon={<Ban />}
         title={
           <div>
