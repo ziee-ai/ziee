@@ -124,13 +124,15 @@ Once a release ships:
 
 1. Operator updates the server. Layer 1 cosign verify runs
    automatically.
-2. Layer 2 receiver opens a PR updating `known_revisions.toml`
-   with the new sha256s. **Layer 2 is not yet shipped** (see the
-   `receiver` job comment above — it's a follow-up); until then,
-   update `known_revisions.toml` manually from the release page.
-3. PR review confirms the hashes against the release page.
-4. Merge — `allow_unsigned_downloads = false` continues to work
-   for the now-signed release.
+2. The new revision is registered in the DB-backed version catalog
+   (`llm_local_runtime/runtime_version/` + `version_manager.rs`), which
+   records the sha256s the download/verify path checks. The file-based
+   `known_revisions.toml` resolver no longer exists (see the note in
+   **See also** below) — there is no TOML to hand-edit.
+3. The recorded sha256s are confirmed against the release page before
+   the revision is marked available.
+4. With `allow_unsigned_downloads = false`, only the now-signed,
+   sha256-verified release is downloadable.
 
 ## See also
 

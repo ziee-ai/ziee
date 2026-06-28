@@ -80,6 +80,15 @@ export function EnableSection() {
 
   return (
     <Card title="Document search">
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          closable={{ closeIcon: true }}
+          className="!mb-4"
+          message={error}
+        />
+      )}
       <Form
         name="file-rag-admin-master-form"
         form={form}

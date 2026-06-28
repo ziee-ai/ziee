@@ -653,43 +653,30 @@ impl McpRepository {
         })
     }
 
-    // Check if user has access to a server
+    // Check if user has access to a server (single query: ownership + group membership)
     pub async fn can_user_access_server(&self, user_id: Uuid, server_id: Uuid) -> Result<bool, AppError> {
-        // Check if user owns this server
-        let user_server = self.get_user_server(server_id, user_id).await?;
-        if user_server.is_some() {
-            return Ok(true);
-        }
-
-        // Check if user has access via system server and groups
-        // Get user's groups
-        let user_groups = sqlx::query!(
-            "SELECT group_id FROM user_groups WHERE user_id = $1",
-            user_id
-        )
-        .fetch_all(&self.pool)
-        .await?;
-
-        let group_ids: Vec<Uuid> = user_groups.iter().map(|r| r.group_id).collect();
-
-        if group_ids.is_empty() {
-            return Ok(false);
-        }
-
-        // Check if any group has access to this system server
-        let has_access = sqlx::query!(
-            "SELECT EXISTS(
-                SELECT 1 FROM user_group_mcp_servers
-                WHERE mcp_server_id = $1
-                AND group_id = ANY($2)
-            ) as has_access",
+        let has_access = sqlx::query_scalar!(
+            r#"SELECT EXISTS(
+                SELECT 1 FROM mcp_servers
+                WHERE id = $1
+                AND (
+                    user_id = $2
+                    OR EXISTS(
+                        SELECT 1 FROM user_group_mcp_servers ugms
+                        JOIN user_groups ug ON ug.group_id = ugms.group_id
+                        WHERE ugms.mcp_server_id = $1
+                        AND ug.user_id = $2
+                    )
+                )
+            ) as "has_access!""#,
             server_id,
-            &group_ids
+            user_id,
         )
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(AppError::database_error)?;
 
-        Ok(has_access.has_access.unwrap_or(false))
+        Ok(has_access)
     }
 }
 

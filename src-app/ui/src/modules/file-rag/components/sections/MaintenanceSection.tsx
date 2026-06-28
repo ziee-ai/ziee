@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Form, Typography, message } from 'antd'
+import { Alert, Button, Card, Form, Spin, Typography, message } from 'antd'
 import { DatabaseOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -17,7 +17,7 @@ const MANAGE_PERM = Permissions.FileRagAdminManage
 export function MaintenanceSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, triggeringBackfill } = Stores.FileRagAdmin
+  const { settings, triggeringBackfill, error } = Stores.FileRagAdmin
 
   if (!canRead) {
     return (
@@ -30,7 +30,24 @@ export function MaintenanceSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings) {
+    return (
+      <Card title="Maintenance">
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            title="Failed to load maintenance settings"
+            description={error}
+          />
+        ) : (
+          <div className="flex justify-center py-16">
+            <Spin />
+          </div>
+        )}
+      </Card>
+    )
+  }
 
   const handleBackfill = async () => {
     try {
@@ -45,6 +62,15 @@ export function MaintenanceSection() {
 
   return (
     <Card title="Maintenance">
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          closable={{ closeIcon: true }}
+          className="!mb-4"
+          message={error}
+        />
+      )}
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Backfill indexes files that have extracted text but no chunks yet —
         anything uploaded before Document RAG was enabled, or that failed to

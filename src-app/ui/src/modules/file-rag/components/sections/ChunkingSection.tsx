@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Typography, message } from 'antd'
+import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Spin, Typography, message } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -22,7 +22,7 @@ interface FormValues {
 export function ChunkingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.FileRagAdmin
+  const { settings, saving, error } = Stores.FileRagAdmin
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
@@ -47,7 +47,24 @@ export function ChunkingSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings) {
+    return (
+      <Card title="Chunking">
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            title="Failed to load chunking settings"
+            description={error}
+          />
+        ) : (
+          <div className="flex justify-center py-16">
+            <Spin />
+          </div>
+        )}
+      </Card>
+    )
+  }
 
   const handleSubmit = async (values: FormValues) => {
     if (values.chunk_overlap_chars >= values.chunk_chars) {
@@ -80,6 +97,15 @@ export function ChunkingSection() {
 
   return (
     <Card title="Chunking">
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          closable={{ closeIcon: true }}
+          className="!mb-4"
+          message={error}
+        />
+      )}
       <Typography.Paragraph type="secondary" className="!mb-3 text-sm">
         Applies to files indexed after saving; existing files keep their current
         chunking until re-uploaded or edited.

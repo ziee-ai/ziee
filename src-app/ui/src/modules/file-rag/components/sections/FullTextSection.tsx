@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Switch, message } from 'antd'
+import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Spin, Switch, message } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -23,7 +23,7 @@ export function FullTextSection() {
   const canReadPerm = usePermission(READ_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const canRead = canReadPerm || canManage
-  const { settings, saving } = Stores.FileRagAdmin
+  const { settings, saving, error } = Stores.FileRagAdmin
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
@@ -49,7 +49,24 @@ export function FullTextSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings) {
+    return (
+      <Card title="Full-text search">
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            title="Failed to load full-text search settings"
+            description={error}
+          />
+        ) : (
+          <div className="flex justify-center py-16">
+            <Spin />
+          </div>
+        )}
+      </Card>
+    )
+  }
 
   const handleSubmit = async (values: FormValues) => {
     try {
@@ -69,6 +86,15 @@ export function FullTextSection() {
 
   return (
     <Card title="Full-text search">
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          closable={{ closeIcon: true }}
+          className="!mb-4"
+          message={error}
+        />
+      )}
       <Form
         name="file-rag-admin-fts-form"
         form={form}

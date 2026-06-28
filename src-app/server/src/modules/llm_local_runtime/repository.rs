@@ -72,6 +72,9 @@ impl LocalRuntimeRepository {
             r#"
             SELECT id, model_id, provider_id, local_port, base_url, status,
                    error_message, runtime_version_id,
+                   state, state_changed_at as "state_changed_at: _",
+                   restart_attempts, last_failure_reason,
+                   last_used_at as "last_used_at: _",
                    started_at as "started_at: _",
                    last_health_check as "last_health_check: _",
                    stopped_at as "stopped_at: _"
@@ -184,6 +187,9 @@ impl LocalRuntimeRepository {
             r#"
             SELECT id, model_id, provider_id, local_port, base_url, status,
                    error_message, runtime_version_id,
+                   state, state_changed_at as "state_changed_at: _",
+                   restart_attempts, last_failure_reason,
+                   last_used_at as "last_used_at: _",
                    started_at as "started_at: _",
                    last_health_check as "last_health_check: _",
                    stopped_at as "stopped_at: _"
@@ -293,4 +299,11 @@ pub struct RuntimeInstance {
     pub started_at: DateTime<Utc>,
     pub last_health_check: Option<DateTime<Utc>>,
     pub stopped_at: Option<DateTime<Utc>>,
+    // Migration 0066: health state machine columns
+    pub state: String,
+    pub state_changed_at: DateTime<Utc>,
+    pub restart_attempts: i32,
+    pub last_failure_reason: Option<String>,
+    // Migration 0068: last-used timestamp for idle eviction
+    pub last_used_at: DateTime<Utc>,
 }
