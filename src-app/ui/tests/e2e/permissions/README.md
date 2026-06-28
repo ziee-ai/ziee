@@ -17,7 +17,7 @@ See `.claude/PERMISSION_GATING.md` for the gating pattern.
 
 - **`fixtures.ts`** — helpers to create permission-scoped test users
   on the fly (admin creates them via API), then log in as them. The
-  fixtures used:
+  fixtures used (the exported helpers in `fixtures.ts`):
   - `root` — `is_admin: true` (the seeded admin). Verifies bypass.
   - `member` — default `users` group only (no admin perms).
   - `readonly_users` — only `users::read` + `groups::read`. Verifies

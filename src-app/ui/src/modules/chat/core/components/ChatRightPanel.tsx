@@ -136,13 +136,19 @@ export function ChatRightPanel() {
   const panelWidth = rightPanel.panelWidth
   const showDrawer = rightPanel.mobileDrawerOpen && rightPanel.tabs.length > 0 && rightPanel.activeId !== null
 
-  // Mobile drawer: auto-focus the close button when opened for screen reader announcement
+  // Mobile drawer: auto-focus the close button when opened (screen-reader
+  // announcement) and restore focus to the opener when it closes.
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
     if (showDrawer && drawerRef.current) {
+      previouslyFocusedRef.current = document.activeElement as HTMLElement | null
       const closeBtn = drawerRef.current.querySelector<HTMLElement>('[data-testid="chat-right-panel-close"]')
       if (closeBtn) {
         closeBtn.focus()
       }
+    } else if (!showDrawer && previouslyFocusedRef.current) {
+      previouslyFocusedRef.current.focus?.()
+      previouslyFocusedRef.current = null
     }
   }, [showDrawer])
 

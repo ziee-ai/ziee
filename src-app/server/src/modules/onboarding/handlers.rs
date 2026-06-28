@@ -66,6 +66,7 @@ pub fn get_progress_docs(op: TransformOperation) -> TransformOperation {
 pub async fn complete_guide(
     auth: RequirePermissions<(ProfileEdit,)>,
     Path(guide_id): Path<String>,
+    origin: crate::modules::sync::SyncOrigin,
 ) -> ApiResult<Json<OnboardingProgress>> {
     let guide_id = guide_id.trim().to_string();
 
@@ -92,6 +93,17 @@ pub async fn complete_guide(
         .onboarding
         .complete_guide(auth.user.id, &guide_id)
         .await?;
+
+    // Owner-scoped notify so the user's other devices refetch onboarding
+    // progress (a guide completed on one device shouldn't keep showing on
+    // another).
+    crate::modules::sync::publish(
+        crate::modules::sync::SyncEntity::Onboarding,
+        crate::modules::sync::SyncAction::Update,
+        auth.user.id,
+        crate::modules::sync::Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(progress)))
 }

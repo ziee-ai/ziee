@@ -174,7 +174,7 @@ pub async fn import_skill(
     let content = match tokio::fs::read_to_string(&skill_md_path).await {
         Ok(c) => c,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
             return Err(AppError::bad_request(
                 "SKILL_NO_ENTRY_POINT",
                 format!("bundle is missing SKILL.md: {e}"),
@@ -185,7 +185,7 @@ pub async fn import_skill(
     let (frontmatter_json, _body) = match parse_skill_md_frontmatter(&content) {
         Ok(parsed) => parsed,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
             return Err(e.into());
         }
     };
@@ -247,7 +247,7 @@ pub async fn import_skill(
     let skill = match Repos.skill.insert(create).await {
         Ok(s) => s,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
             return Err(e.into());
         }
     };

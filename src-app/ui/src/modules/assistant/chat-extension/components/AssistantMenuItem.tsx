@@ -10,7 +10,7 @@ import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
  */
 export function AssistantMenuItem() {
   const { token } = theme.useToken()
-  const { availableAssistants, selectedAssistantId, selectAssistant } =
+  const { availableAssistants, selectedAssistantId, selectAssistant, loading } =
     Stores.AssistantPicker
   const { close } = usePlusDropdown()
 
@@ -77,7 +77,11 @@ export function AssistantMenuItem() {
         <div className="flex items-center gap-2">
           <RobotOutlined style={{ fontSize: 16 }} />
           <span style={{ fontSize: 14 }}>
-            {selectedAssistant ? selectedAssistant.name : 'Select assistant'}
+            {loading && availableAssistants.length === 0
+              ? 'Loading assistants…'
+              : selectedAssistant
+                ? selectedAssistant.name
+                : 'Select assistant'}
           </span>
         </div>
         <RightOutlined style={{ fontSize: 10, opacity: 0.45 }} />

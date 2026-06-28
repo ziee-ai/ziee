@@ -29,13 +29,15 @@ Each matrix combination produces one archive named exactly:
   (mistralrs fork).
 - `<ext>`: `tar.gz` on Linux/macOS, `zip` on Windows.
 
-These names match `src-app/llm-runtime/src/binary_download.rs:107-116`.
+These names match the engine download/verify code at
+`src-app/server/src/modules/llm_local_runtime/engine/download.rs` (the
+standalone `llm-runtime` crate was folded into the server module).
 
 ## Signing
 
 Cosign keyless signing using the Actions OIDC issuer. Each archive
 gets a sibling `.sig` file uploaded to the same release. The
-verifier in `binary_download.rs::download_binary` (P1.l of this PR)
+verifier in `llm_local_runtime/engine/download.rs` (P1.l of this PR)
 uses the `sigstore` Rust crate to validate against the OIDC issuer
 `https://token.actions.githubusercontent.com` and the cert-identity
 regex `^https://github.com/<repo>/.github/workflows/.*@refs/tags/<tag>$`.
@@ -132,8 +134,8 @@ Once a release ships:
 
 ## See also
 
-- `src-app/llm-runtime/PRE-STAGE-RUNBOOK.md` — operator manual for
-  when fork CI hasn't shipped yet.
-- `src-app/llm-runtime/known_revisions.toml` — versions catalog
-  (auto-updated by the receiver).
+- The engine binary download/extract/cache + version catalog now live
+  under `src-app/server/src/modules/llm_local_runtime/engine/` (the
+  standalone `llm-runtime` crate, along with its `PRE-STAGE-RUNBOOK.md`
+  and `known_revisions.toml`, was folded into the server module).
 - `.github/workflows/code_sandbox.yml` — the exact pattern to copy.

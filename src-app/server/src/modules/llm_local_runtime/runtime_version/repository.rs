@@ -40,7 +40,7 @@ pub async fn create(
         backend: record.backend,
         binary_path: record.binary_path,
         is_system_default: record.is_system_default,
-        created_at: DateTime::from_timestamp(record.created_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(record.created_at.unix_timestamp(), 0).unwrap_or_default(),
     })
 }
 
@@ -68,7 +68,7 @@ pub async fn get_by_id(
         backend: r.backend,
         binary_path: r.binary_path,
         is_system_default: r.is_system_default,
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
     }))
 }
 
@@ -98,7 +98,7 @@ pub async fn get_by_engine_and_version(
         backend: r.backend,
         binary_path: r.binary_path,
         is_system_default: r.is_system_default,
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
     }))
 }
 
@@ -125,7 +125,7 @@ pub async fn list_all(pool: &PgPool) -> Result<Vec<RuntimeVersion>, sqlx::Error>
             backend: r.backend,
             binary_path: r.binary_path,
             is_system_default: r.is_system_default,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
         })
         .collect())
 }
@@ -157,7 +157,7 @@ pub async fn list_by_engine(
             backend: r.backend,
             binary_path: r.binary_path,
             is_system_default: r.is_system_default,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
         })
         .collect())
 }
@@ -188,7 +188,7 @@ pub async fn get_latest_version(
         backend: r.backend,
         binary_path: r.binary_path,
         is_system_default: r.is_system_default,
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
     }))
 }
 
@@ -216,7 +216,7 @@ pub async fn get_system_default(
         backend: r.backend,
         binary_path: r.binary_path,
         is_system_default: r.is_system_default,
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
     }))
 }
 

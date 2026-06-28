@@ -189,8 +189,18 @@ fn policy() -> OutboundUrlPolicy {
 }
 
 fn client() -> Result<reqwest::Client, AppError> {
-    build_validated_client(policy())
-        .map_err(|e| AppError::internal_error(format!("citations http client: {e}")))
+    // Build the validated client once and reuse it — constructing it (TLS +
+    // GuardingResolver) is expensive, and `policy()` is process-stable
+    // (env-driven). `reqwest::Client` is internally Arc-backed, so clone is cheap.
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    if let Some(c) = CLIENT.get() {
+        return Ok(c.clone());
+    }
+    let c = build_validated_client(policy())
+        .map_err(|e| AppError::internal_error(format!("citations http client: {e}")))?;
+    // First successful build wins; a race just discards an equivalent client.
+    let _ = CLIENT.set(c.clone());
+    Ok(c)
 }
 
 fn endpoint(default: &str, env_key: &str) -> String {

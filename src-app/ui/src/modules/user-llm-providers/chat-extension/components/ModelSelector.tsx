@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Select } from 'antd'
+import { useState, useMemo, useEffect } from 'react'
+import { App, Select } from 'antd'
 import { WarningOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { ProviderWithModels } from '@/api-client/types'
@@ -33,9 +33,16 @@ function providerNeedsApiKey(
 }
 
 export function ModelSelector() {
-  const { selectedModelId, providers } = Stores.ModelPicker
+  const { message } = App.useApp()
+  const { selectedModelId, providers, error } = Stores.ModelPicker
   const { sending } = Stores.Chat
   const mainContentMinSize = useMainContentMinSize()
+
+  // Surface provider-load failures (the store captured `error` but nothing
+  // rendered it, so the picker silently showed an empty dropdown).
+  useEffect(() => {
+    if (error) message.error(error)
+  }, [error, message])
   const [pendingProviderForKey, setPendingProviderForKey] = useState<{
     providerId: string
     providerName: string

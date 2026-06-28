@@ -197,7 +197,7 @@ pub async fn delete_user_skill(
     }
     Repos.skill.delete(id).await?;
     // Best-effort cleanup — the bundle dir is per-install, not per-run.
-    let _ = std::fs::remove_dir_all(&existing.extracted_path);
+    let _ = tokio::fs::remove_dir_all(&existing.extracted_path).await;
     crate::modules::skill_mcp::file_cache::invalidate_skill(id);
     events::emit_user_skill(SyncAction::Delete, id, auth.user.id, origin.0);
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
@@ -493,7 +493,7 @@ pub async fn delete_system_skill(
         return Err(AppError::not_found("Skill").into());
     }
     Repos.skill.delete(id).await?;
-    let _ = std::fs::remove_dir_all(&existing.extracted_path);
+    let _ = tokio::fs::remove_dir_all(&existing.extracted_path).await;
     crate::modules::skill_mcp::file_cache::invalidate_skill(id);
     events::emit_system_skill(SyncAction::Delete, id, origin.0);
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))

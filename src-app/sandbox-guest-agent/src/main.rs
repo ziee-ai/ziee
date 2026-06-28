@@ -838,7 +838,10 @@ fn kill_pid(pid: u32) {
     if rc != 0 {
         let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
         if errno != libc::ESRCH {
-            tracing::warn!("agent: kill pid {pid} failed: errno {errno}");
+            tracing::warn!(
+                "agent: kill pid {pid} failed: {}",
+                std::io::Error::from_raw_os_error(errno)
+            );
         }
     }
 }
@@ -1173,7 +1176,10 @@ async fn progress_reader_loop(
             if errno == libc::EINTR {
                 continue;
             }
-            tracing::warn!("agent: progress read errno {errno}; ending");
+            tracing::warn!(
+                "agent: progress read failed: {}; ending",
+                std::io::Error::from_raw_os_error(errno)
+            );
             return;
         }
     }

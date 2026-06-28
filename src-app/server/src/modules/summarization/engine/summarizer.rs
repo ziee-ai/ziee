@@ -594,10 +594,31 @@ async fn call_summarization_llm(
         ..Default::default()
     };
 
-    let mut stream = ai_provider
-        .chat_stream(req)
-        .await
-        .map_err(|e| AppError::internal_error(format!("summary stream: {e}")))?;
+    // Retry the stream INIT a few times with backoff — summarization is a
+    // best-effort background task, so a transient provider blip shouldn't lose
+    // the summary outright.
+    let mut stream = {
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut attempt = 1u32;
+        loop {
+            match ai_provider.chat_stream(req.clone()).await {
+                Ok(s) => break s,
+                Err(e) if attempt < MAX_ATTEMPTS => {
+                    tracing::warn!(
+                        "summarization: stream init failed (attempt {attempt}/{MAX_ATTEMPTS}): {e}; retrying"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        250 * attempt as u64,
+                    ))
+                    .await;
+                    attempt += 1;
+                }
+                Err(e) => {
+                    return Err(AppError::internal_error(format!("summary stream: {e}")));
+                }
+            }
+        }
+    };
     let mut summary_text = String::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| AppError::internal_error(format!("stream chunk: {e}")))?;
