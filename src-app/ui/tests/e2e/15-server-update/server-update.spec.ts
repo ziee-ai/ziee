@@ -177,4 +177,34 @@ test.describe('Server update notification', () => {
     await expect(page.getByText(/is available/)).toHaveCount(0)
     expect(statusCalls).toBe(0)
   })
+
+  // audit id c118d74c3dca — the existing "dismisses" assertion only checks the
+  // banner disappears in-place. Dismissal is persisted to localStorage
+  // (DISMISSED_VERSION_KEY) and re-applied on load (store lines 86-87); that
+  // it STAYS dismissed across a full reload was untested.
+  test('dismissing the banner persists across a reload (localStorage)', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await mockStatus(page, STATUS_AVAILABLE)
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/`)
+    await expect(page.getByText('Ziee 0.2.0 is available')).toBeVisible({
+      timeout: 30000,
+    })
+
+    // Dismiss via the Alert's close icon → persists the dismissed version.
+    await page.locator('.ant-alert-close-icon').first().click()
+    await expect(page.getByText('Ziee 0.2.0 is available')).toHaveCount(0)
+
+    // Full reload: the store re-reads localStorage and keeps the banner hidden
+    // for the same latest_version (no re-appearance).
+    await page.goto(`${baseURL}/`)
+    await expect(
+      page.getByRole('button', { name: 'Send message' }),
+    ).toBeVisible({ timeout: 30000 })
+    await expect(page.getByText('Ziee 0.2.0 is available')).toHaveCount(0)
+  })
 })
