@@ -509,3 +509,162 @@ async fn endpoint_rejects_user_without_mcp_read_with_403() {
         "an authenticated user lacking mcp_servers::read must be rejected with 403 FORBIDDEN"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Malformed-request handling (handlers.rs:30-48 + the tools/call param/arg
+// validation). The endpoint must answer every malformed shape with a graceful
+// JSON-RPC error (the spec codes) and NEVER a 5xx / panic. The lifecycle test
+// above covers a well-formed unknown METHOD (-32601); these cover broken
+// envelopes and bad params/arguments, which no prior test exercises.
+// ---------------------------------------------------------------------------
+
+/// A body that isn't valid JSON at all → HTTP 400 + JSON-RPC parse error
+/// (-32700), id null. The auth gate runs first, so a valid token is required to
+/// reach the parse branch — this asserts the parse branch itself, not the gate.
+#[tokio::test]
+async fn malformed_body_invalid_json_returns_parse_error() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_badjson", &[]).await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/tool-result/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("content-type", "application/json")
+        .header("x-conversation-id", Uuid::new_v4().to_string())
+        .body("{ this is : not json")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res.status(),
+        400,
+        "non-JSON body must be a 400, never a 5xx/panic"
+    );
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["jsonrpc"], "2.0");
+    assert!(body["id"].is_null(), "parse error carries a null id: {body}");
+    assert_eq!(
+        body["error"]["code"], -32700,
+        "invalid JSON must be JSON-RPC parse error -32700: {body}"
+    );
+}
+
+/// Valid JSON that is NOT a JSON-RPC request object (no `method` field) → HTTP
+/// 400 + invalid-request (-32600).
+#[tokio::test]
+async fn valid_json_missing_method_returns_invalid_request() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_nomethod", &[]).await;
+
+    // Has jsonrpc + id but no `method` → JsonRpcRequest deserialization fails.
+    let res = reqwest::Client::new()
+        .post(server.api_url("/tool-result/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("x-conversation-id", Uuid::new_v4().to_string())
+        .json(&json!({ "jsonrpc": "2.0", "id": 1 }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res.status(),
+        400,
+        "a JSON body missing `method` must be a 400, never a 5xx"
+    );
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(
+        body["error"]["code"], -32600,
+        "non-JSON-RPC object must be invalid-request -32600: {body}"
+    );
+}
+
+/// `tools/call` whose params object lacks the required `name` → HTTP 200 +
+/// invalid-params (-32602). (tools/call errors are JSON-RPC errors at HTTP 200.)
+#[tokio::test]
+async fn tools_call_missing_name_returns_invalid_params() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_noname", &[]).await;
+
+    // params has `arguments` but no `name` → ToolCallParams::deserialize fails.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        Some(&Uuid::new_v4().to_string()),
+        "tools/call",
+        json!({ "arguments": { "tool_use_id": "toolu_x" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+
+    assert_eq!(res.status(), 200, "tools/call param errors are HTTP 200");
+    let body: Value = res.json().await.unwrap();
+    assert!(body["result"].is_null(), "no result on a param error: {body}");
+    assert_eq!(
+        body["error"]["code"], -32602,
+        "missing `name` must be invalid-params -32602: {body}"
+    );
+}
+
+/// `tools/call get_tool_result` with NO `tool_use_id` argument → a graceful
+/// JSON-RPC error (never a 5xx/panic). The required-arg validation lives in
+/// `get_tool_result` and surfaces through `from_app_error`.
+#[tokio::test]
+async fn tools_call_missing_required_arg_errors_not_5xx() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_noarg", &[]).await;
+
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        Some(&Uuid::new_v4().to_string()),
+        "tools/call",
+        json!({ "name": "get_tool_result", "arguments": {} }),
+    )
+    .send()
+    .await
+    .unwrap();
+
+    assert!(
+        !res.status().is_server_error(),
+        "a missing required arg must never 5xx: got {}",
+        res.status()
+    );
+    let body: Value = res.json().await.unwrap();
+    assert!(
+        body["error"].is_object(),
+        "missing tool_use_id must return a JSON-RPC error, not a result: {body}"
+    );
+    assert!(body["result"].is_null(), "no result on an arg error: {body}");
+}
+
+/// `tools/call get_tool_result` with a WRONG-TYPED argument (tool_use_id as a
+/// number, offset as a string) → graceful JSON-RPC error, never a 5xx/panic.
+#[tokio::test]
+async fn tools_call_wrong_typed_arg_errors_not_5xx() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_badtype", &[]).await;
+
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        Some(&Uuid::new_v4().to_string()),
+        "tools/call",
+        json!({ "name": "get_tool_result", "arguments": { "tool_use_id": 12345, "offset": "nope" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+
+    assert!(
+        !res.status().is_server_error(),
+        "a wrong-typed arg must never 5xx: got {}",
+        res.status()
+    );
+    let body: Value = res.json().await.unwrap();
+    assert!(
+        body["error"].is_object(),
+        "wrong-typed args must return a JSON-RPC error: {body}"
+    );
+}
