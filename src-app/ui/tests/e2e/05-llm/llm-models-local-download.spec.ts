@@ -865,4 +865,107 @@ test.describe('LLM Models - Local Download - Auto-detect files', () => {
 
     await drawer.locator('button:has-text("Cancel")').click()
   })
+
+  // audit id ad0a9459e69e — only the successful detection paths were tested.
+  // These cover the failure branches of handleDetectFiles.
+
+  test('Detect files with no repository path shows the validation error', async ({
+    page,
+  }) => {
+    await openAddModelDropdown(page)
+    await selectAddModelOption(page, 'download')
+
+    const drawer = page.locator(
+      '.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Download from Repository"))',
+    )
+
+    const repositorySelect = page.locator(
+      '.ant-select:has(input#llm-model-download_repository_id)',
+    )
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
+
+    // Leave the repository path EMPTY and click Detect.
+    await drawer.locator('button:has-text("Detect files")').click()
+
+    await expect(
+      page.getByText('Select a repository and enter a repository path first'),
+    ).toBeVisible({ timeout: 5000 })
+
+    await drawer.locator('button:has-text("Cancel")').click()
+  })
+
+  test('Detect files surfaces a backend error as a toast', async ({ page }) => {
+    // Mock the repository-files endpoint to fail, exercising the catch branch.
+    await page.route(/\/api\/llm-models\/repository-files(\?|$)/, async route => {
+      await route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error_code: 'UPSTREAM_ERROR',
+          error: 'repository host unavailable',
+        }),
+      })
+    })
+
+    await openAddModelDropdown(page)
+    await selectAddModelOption(page, 'download')
+
+    const drawer = page.locator(
+      '.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Download from Repository"))',
+    )
+    const repositorySelect = page.locator(
+      '.ant-select:has(input#llm-model-download_repository_id)',
+    )
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
+    await page.fill('#llm-model-download_repository_path', 'Qwen/whatever')
+
+    await drawer.locator('button:has-text("Detect files")').click()
+
+    await expect(page.getByText(/Failed to detect files:/i)).toBeVisible({
+      timeout: 10000,
+    })
+
+    await drawer.locator('button:has-text("Cancel")').click()
+  })
+
+  test('Detect files with an empty file set warns "No files found"', async ({
+    page,
+  }) => {
+    // Mock a 200 with zero files → the res.files.length === 0 branch.
+    await page.route(/\/api\/llm-models\/repository-files(\?|$)/, async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          files: [],
+          shape: 'gguf',
+          source: 'huggingface',
+          truncated: false,
+        }),
+      })
+    })
+
+    await openAddModelDropdown(page)
+    await selectAddModelOption(page, 'download')
+
+    const drawer = page.locator(
+      '.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Download from Repository"))',
+    )
+    const repositorySelect = page.locator(
+      '.ant-select:has(input#llm-model-download_repository_id)',
+    )
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
+    await page.fill('#llm-model-download_repository_path', 'Qwen/empty-repo')
+
+    await drawer.locator('button:has-text("Detect files")').click()
+
+    await expect(
+      page.getByText('No files found for that repository path / branch.'),
+    ).toBeVisible({ timeout: 10000 })
+
+    await drawer.locator('button:has-text("Cancel")').click()
+  })
 })
