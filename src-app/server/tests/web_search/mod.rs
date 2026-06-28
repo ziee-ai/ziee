@@ -198,6 +198,36 @@ pub async fn start_mock_html() -> String {
                  <article><h1>Big</h1><p>{para}</p></article></body></html>"
             ))
         }),
+    )
+    // Non-HTML content types: the readability extractor is HTML-oriented, so
+    // these exercise the best-effort fallback (fetch_url must still 200 and
+    // surface the body text rather than choking on the wrong content type).
+    .route(
+        "/data.json",
+        get(|| async {
+            (
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                "{\"marker\":\"JSONBODYMARKER\",\"items\":[1,2,3]}",
+            )
+        }),
+    )
+    .route(
+        "/data.csv",
+        get(|| async {
+            (
+                [(axum::http::header::CONTENT_TYPE, "text/csv")],
+                "col_a,col_b\nCSVBODYMARKER,2\nrow,3\n",
+            )
+        }),
+    )
+    .route(
+        "/data.xml",
+        get(|| async {
+            (
+                [(axum::http::header::CONTENT_TYPE, "application/xml")],
+                "<?xml version=\"1.0\"?><root><item>XMLBODYMARKER</item></root>",
+            )
+        }),
     );
     tokio::spawn(async move {
         let _ = axum::serve(listener, app.into_make_service()).await;
