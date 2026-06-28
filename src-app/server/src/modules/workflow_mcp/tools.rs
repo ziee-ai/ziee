@@ -1228,4 +1228,53 @@ mod tests {
             .connect_lazy(&url)
             .expect("lazy pool")
     }
+
+    // ── H2: RunCancelOnDrop (chat Stop cancels the workflow run) ──────────
+    //
+    // Dropping an ARMED guard (the awaiting tool-call future was aborted before
+    // the run reached terminal) must fire the SYNCHRONOUS registry cancel so an
+    // in-flight step's `tokio::select!` preempts immediately; a DISARMED guard
+    // (terminal reached normally → `disarm()` called) must NOT. The async DB CAS
+    // is the external boundary (detached `tokio::spawn`); we assert only the
+    // synchronous registry signal here. Lazy pool → no DB needed at construction.
+    #[tokio::test]
+    async fn run_cancel_on_drop_signals_registry_only_when_armed() {
+        let pool = test_pool().await;
+
+        // ARMED → drop fires registry cancellation.
+        let armed_id = Uuid::new_v4();
+        let h_armed = registry::register(armed_id);
+        assert!(
+            !h_armed.is_cancelled(),
+            "freshly registered run is not cancelled"
+        );
+        {
+            let _g = RunCancelOnDrop {
+                pool: pool.clone(),
+                run_id: armed_id,
+                armed: true,
+            };
+            // guard dropped at end of scope
+        }
+        assert!(
+            h_armed.is_cancelled(),
+            "dropping an ARMED guard must signal registry cancel (chat Stop path)"
+        );
+
+        // DISARMED → drop is a no-op.
+        let disarmed_id = Uuid::new_v4();
+        let h_dis = registry::register(disarmed_id);
+        {
+            let g = RunCancelOnDrop {
+                pool: pool.clone(),
+                run_id: disarmed_id,
+                armed: true,
+            };
+            g.disarm();
+        }
+        assert!(
+            !h_dis.is_cancelled(),
+            "a DISARMED guard (terminal reached normally) must NOT signal cancel"
+        );
+    }
 }
