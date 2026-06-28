@@ -1,5 +1,10 @@
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import {
+  loginAsAdmin,
+  getAdminToken,
+  createTestUser,
+} from '../../common/auth-helpers'
+import { createGroupViaAPI } from '../../common/provider-helpers'
 import {
   navigateToUsers,
   navigateToUserGroups,
@@ -297,5 +302,58 @@ test.describe('Group Membership Management', () => {
     await expect(
       page.getByRole('heading', { name: /^users$/i, level: 4 })
     ).toBeVisible()
+  })
+
+  test('assigns then removes a user from a group via the groups drawer', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    const ts = Date.now()
+    const groupName = `QA Team ${ts}`
+    await createGroupViaAPI(apiURL, adminToken, groupName, 'qa group', [
+      'profile::read',
+    ])
+    const username = `grpmember${ts}`
+    await createTestUser(
+      apiURL,
+      adminToken,
+      username,
+      `${username}@example.com`,
+      'password123',
+      [],
+    )
+
+    await navigateToUsers(page, baseURL)
+    await openUserGroupsDrawer(page, username)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+
+    // The drawer lists every group with a per-row Assign/Remove action.
+    const row = drawer.locator('.ant-list-item').filter({ hasText: groupName })
+    await expect(row).toBeVisible()
+
+    // ASSIGN: the row's "Assign" link → success + the row flips to Member.
+    await row.getByRole('button', { name: 'Assign' }).click()
+    await expect(
+      page.locator('.ant-message-success', { hasText: 'User assigned to group' }),
+    ).toBeVisible({ timeout: 5000 })
+    await expect(row.getByText('Member')).toBeVisible()
+
+    // REMOVE: the row's "Remove" link → Popconfirm → confirm.
+    await row.getByRole('button', { name: 'Remove' }).click()
+    const popconfirm = page.locator('.ant-popconfirm:visible')
+    await expect(popconfirm.getByText('Remove user from this group?')).toBeVisible()
+    await popconfirm.locator('.ant-btn-primary').click()
+    await expect(
+      page.locator('.ant-message-success', {
+        hasText: 'User removed from group successfully',
+      }),
+    ).toBeVisible({ timeout: 5000 })
+
+    // Back to "Assign" — no longer a member.
+    await expect(row.getByRole('button', { name: 'Assign' })).toBeVisible()
   })
 })
