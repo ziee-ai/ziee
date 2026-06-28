@@ -165,3 +165,46 @@ async fn deactivating_a_user_mid_stream_closes_their_sync_stream() {
     // Within a few re-check ticks the server tears the victim's stream down.
     victim_probe.expect_closed(Duration::from_secs(5)).await;
 }
+
+// audit id all-af581ca81a64 — rapid-fire mutations ordering through the REAL
+// HTTP path. The registry delivers events one-at-a-time onto a per-connection
+// bounded FIFO channel (registry.rs:126-182); existing delivery tests only fire
+// a single mutation at a time, so the multi-event ordering guarantee was
+// unverified end-to-end. Here one device fires several owner-scoped creates
+// back-to-back and must observe every resulting `memory/create` frame, in the
+// exact order the rows were created.
+#[tokio::test]
+async fn rapid_fire_mutations_are_delivered_in_order() {
+    let server = crate::common::TestServer::start().await;
+    let alice = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_rapid_alice",
+        &["memory::read", "memory::write"],
+    )
+    .await;
+
+    let mut probe = SyncProbe::open(&server, &alice.token).await;
+
+    // Fire N creates back-to-back (no origin header → the owner's own stream
+    // receives them). Record the server-assigned ids in creation order.
+    const N: usize = 8;
+    let mut created_ids = Vec::with_capacity(N);
+    for i in 0..N {
+        let id = create_memory(&server, &alice.token, &format!("rapid pref {i}"), None).await;
+        created_ids.push(id);
+    }
+
+    // The stream must deliver exactly N memory/create frames, in the SAME order.
+    let mut received_ids = Vec::with_capacity(N);
+    for _ in 0..N {
+        let f = probe.expect_event("memory", "create", EVENT_TIMEOUT).await;
+        received_ids.push(f.id);
+    }
+    assert_eq!(
+        received_ids, created_ids,
+        "rapid-fire creates must be delivered in creation order"
+    );
+
+    // No spurious extra frames after the N expected ones.
+    probe.expect_silence(SILENCE_WINDOW).await;
+}
