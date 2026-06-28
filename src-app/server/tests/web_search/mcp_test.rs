@@ -95,6 +95,53 @@ async fn test_default_users_group_grants_web_search_use() {
 }
 
 #[tokio::test]
+async fn test_web_search_403_after_users_group_permission_revoked() {
+    // Inverse of the migration-098 grant test: if an admin strips
+    // web_search::use from the default Users group, a member whose ONLY source
+    // of the permission was that group must immediately be gated out (403) on
+    // the next call — the gate re-resolves group perms per request.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ws_revoked", &[]).await;
+
+    // Sanity: the grant is in place → passes the gate (200 in-band error).
+    let before = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "web_search", "arguments": { "query": "x" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(before.status(), 200, "grant present → passes gate");
+
+    // Admin action: remove web_search::use from the default Users group.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let affected = sqlx::query(
+        "UPDATE groups SET permissions = array_remove(permissions, 'web_search::use') \
+         WHERE is_default = TRUE",
+    )
+    .execute(&pool)
+    .await
+    .unwrap()
+    .rows_affected();
+    assert!(affected >= 1, "default Users group must exist to strip the perm");
+    pool.close().await;
+
+    // Next call → 403 (no other source of the permission).
+    let after = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "web_search", "arguments": { "query": "x" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(after.status(), 403, "revoking the group perm must gate the user out");
+}
+
+#[tokio::test]
 async fn test_search_with_no_provider_configured_returns_error() {
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "ws_noprov", &["web_search::use"]).await;
