@@ -246,4 +246,35 @@ test.describe('Auth providers — admin CRUD UI', () => {
 
     await page.getByRole('button', { name: /^Cancel$/ }).click()
   })
+
+  // audit id all-0b856b17fa63 — the name slug validation (AuthProviderEditDrawer
+  // Form.Item name rule: pattern /^[a-z0-9-]+$/) was untested via the UI. An
+  // invalid name (uppercase/spaces) must surface the inline rule error and block
+  // Create (client-side, before any request).
+  test('invalid provider name slug is rejected with an inline error', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/auth-providers`)
+
+    await page.getByRole('button', { name: ADD_PROVIDER }).click()
+    await page.getByRole('menuitem', { name: /Generic OIDC/i }).click()
+    await expect(page.getByRole('button', { name: /^Create$/ })).toBeVisible({
+      timeout: 10_000,
+    })
+
+    // An invalid slug: uppercase + space + punctuation.
+    await page.getByLabel(/Name \(URL slug\)/i).fill('Invalid Name!')
+    await page.getByRole('button', { name: /^Create$/ }).click()
+
+    // The antd Form rule fires inline; the drawer stays open (no row created).
+    await expect(
+      page.getByText(/Lowercase letters, digits, and hyphens only/i),
+    ).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByRole('button', { name: /^Create$/ })).toBeVisible()
+
+    await page.getByRole('button', { name: /^Cancel$/ }).click()
+  })
 })
