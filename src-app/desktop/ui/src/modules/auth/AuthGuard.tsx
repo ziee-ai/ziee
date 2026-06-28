@@ -42,7 +42,6 @@
 
 import { Layout, Spin, Typography } from 'antd'
 import { Stores } from '@/core/stores'
-import { useBootstrapStore } from '@ziee/desktop/modules/desktop-base/Bootstrap.store'
 import { isTauriView } from '@ziee/desktop/core/platform'
 import { PhoneAuthPage } from '@ziee/desktop/modules/tunnel-auth/PhoneAuthPage'
 
@@ -54,8 +53,8 @@ interface AuthGuardProps {
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const { isAuthenticated } = Stores.Auth
-  const bootstrapStatus = useBootstrapStore(s => s.status)
-  const bootstrapMessage = useBootstrapStore(s => s.message)
+  const { status: bootstrapStatus, message: bootstrapMessage } =
+    Stores.Bootstrap
 
   if (!isAuthenticated) {
     // Phone-over-tunnel: no Tauri shell, no auto-login coming.
