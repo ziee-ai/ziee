@@ -15,6 +15,7 @@ mod hide_in_conversation;
 mod install_from_hub;
 mod listing_in_chat;
 mod skill_mcp_load;
+mod sync_emit_test;
 
 use serde_json::Value as Json;
 
