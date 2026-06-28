@@ -87,7 +87,15 @@ export function LlmModelsSection() {
       }
     } catch (error) {
       console.error('Failed to toggle model:', error)
-      // Error is handled by the store
+      // Surface an actionable message: the store reverts the Switch optimistic
+      // state, but without a toast the failure is otherwise invisible. Prefer
+      // the backend's readable reason; fall back to a clear generic message.
+      const modelName = llmModels.find(m => m.id === modelId)?.name || 'Model'
+      const reason =
+        error instanceof Error && error.message
+          ? error.message
+          : `Failed to ${enabled ? 'enable' : 'disable'} ${modelName}.`
+      message.error({ content: reason, duration: 8 })
     }
   }
 

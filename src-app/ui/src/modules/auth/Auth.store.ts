@@ -9,6 +9,47 @@ import type {
 } from '@/api-client/types'
 import { type StoreProxy, Stores } from '@/core/stores'
 
+/**
+ * Map an API/login failure to safe, actionable user-facing copy.
+ *
+ * Branches on the backend's stable `error_code` (attached by api-client/core.ts)
+ * so actionable cases (bad credentials, disabled account, OAuth-only account,
+ * field validation) stay meaningful, while unknown 5xx failures show a generic
+ * message instead of leaking the raw backend/DB error string verbatim.
+ */
+function friendlyAuthError(error: unknown): string {
+  const code = (error as { error_code?: string } | null)?.error_code
+  switch (code) {
+    case 'INVALID_CREDENTIALS':
+      return 'Invalid username or password. Please try again.'
+    case 'ACCOUNT_DISABLED':
+      return 'Your account has been disabled. Please contact your administrator.'
+    case 'NO_PASSWORD':
+      return 'This account signs in with a connected provider — use a provider button below.'
+    case 'INVALID_USERNAME':
+    case 'INVALID_EMAIL':
+    case 'INVALID_PASSWORD':
+      // Field-validation errors carry actionable, safe backend copy.
+      return error instanceof Error ? error.message : 'Please check your input.'
+  }
+  // Network / aborted fetch.
+  if (
+    error instanceof TypeError &&
+    /failed to fetch|network|aborted/i.test(error.message)
+  ) {
+    return 'Unable to reach the server. Check your connection and try again.'
+  }
+  // Unknown server-side failure — never surface the raw message (it may carry
+  // internal/DB detail). Show a generic, safe message.
+  const status = (error as { status?: number } | null)?.status
+  if (status && status >= 500) {
+    return 'Something went wrong on our end. Please try again in a moment.'
+  }
+  return error instanceof Error && error.message
+    ? error.message
+    : 'Login failed. Please try again.'
+}
+
 export interface AutoLoginResponse {
   // Nullable: the OAuth callback path passes `null` because the
   // server is the truth (initAuth() re-fetches /me right after).
@@ -133,7 +174,7 @@ export const useAuthStore = create<AuthState>()(
               error instanceof TypeError &&
               /failed to fetch|network|aborted/i.test(error.message)
             const baseError = {
-              error: error instanceof Error ? error.message : 'Login failed',
+              error: friendlyAuthError(error),
               isLoading: false,
               isInitializing: false,
             }
