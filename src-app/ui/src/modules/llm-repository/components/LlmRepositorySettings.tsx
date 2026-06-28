@@ -138,6 +138,7 @@ export function LlmRepositorySettings() {
       actions.push(
         <Switch
           key="enable"
+          data-testid={`llmrepo-toggle-${repository.id}`}
           className="!mr-2"
           checked={repository.enabled}
           onChange={checked => handleToggleRepository(repository.id, checked)}
@@ -153,6 +154,7 @@ export function LlmRepositorySettings() {
       actions.push(
         <Button
           key="test"
+          data-testid={`llmrepo-test-btn-${repository.id}`}
           variant="outline"
           icon={<CloudDownload />}
           loading={testing}
@@ -167,6 +169,7 @@ export function LlmRepositorySettings() {
       actions.push(
         <Button
           key="edit"
+          data-testid={`llmrepo-edit-btn-${repository.id}`}
           variant="outline"
           icon={<Pencil />}
           onClick={() => handleEditRepository(repository)}
@@ -180,13 +183,14 @@ export function LlmRepositorySettings() {
       actions.push(
         <Confirm
           key="delete"
+          data-testid={`llmrepo-delete-confirm-${repository.id}`}
           title="Are you sure?"
           onConfirm={() => handleDeleteRepository(repository.id)}
           okText="Delete"
           cancelText="Cancel"
           okButtonProps={{ danger: true }}
         >
-          <Button variant="destructive" icon={<Trash2 />}>
+          <Button data-testid={`llmrepo-delete-btn-${repository.id}`} variant="destructive" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,
@@ -204,10 +208,12 @@ export function LlmRepositorySettings() {
       {/* Model Repositories */}
       <Card
         title="Model Repositories"
+        data-testid="llmrepo-card"
         extra={
           <Can permission={Permissions.LlmRepositoriesCreate}>
             <Tooltip title="Add repository">
               <Button
+                data-testid="llmrepo-add-btn"
                 variant="outline"
                 size="icon"
                 icon={<Plus />}
@@ -223,6 +229,7 @@ export function LlmRepositorySettings() {
           <div>
             {repositories.length === 0 ? (
               <Empty
+                data-testid="llmrepo-empty"
                 description="No repositories yet"
               >
                 <Text type="secondary">Add a repository to get started</Text>
@@ -286,6 +293,7 @@ export function LlmRepositorySettings() {
                         {repository.last_health_check_status ===
                           'unhealthy' && (
                           <Alert
+                            data-testid={`llmrepo-health-alert-${repository.id}`}
                             tone="error"
                             className="!mt-2"
                             closeLabel="Close"
@@ -319,6 +327,7 @@ export function LlmRepositorySettings() {
               <Separator className="!my-3" />
               <Flex justify="end">
                 <Pagination
+              data-testid="llmrepo-pagination"
               previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
                   current={storePage}
                   total={totalRepositories}

@@ -467,6 +467,7 @@ export function LlmRepositoryDrawer() {
       {mode === 'edit' &&
         repository?.last_health_check_status === 'unhealthy' && (
           <Alert
+            data-testid="llmrepo-drawer-health-alert"
             tone="error"
             className="!mb-4"
             title={
@@ -482,6 +483,7 @@ export function LlmRepositoryDrawer() {
           />
         )}
       <Form
+        data-testid="llmrepo-form"
         name="llm-repository-form"
         form={form}
         layout="vertical"
@@ -497,6 +499,7 @@ export function LlmRepositoryDrawer() {
           required
         >
           <Input
+            data-testid="llmrepo-form-name"
             placeholder="My Custom Repository"
             disabled={repository?.built_in}
           />
@@ -508,6 +511,7 @@ export function LlmRepositoryDrawer() {
           required
         >
           <Input
+            data-testid="llmrepo-form-url"
             placeholder="https://your-custom-repo.com/models"
             disabled={repository?.built_in}
           />
@@ -519,6 +523,7 @@ export function LlmRepositoryDrawer() {
           required
         >
           <Select
+            data-testid="llmrepo-form-auth-type"
             disabled={repository?.built_in}
             options={[
               { value: 'none', label: 'No Authentication' },
@@ -532,6 +537,7 @@ export function LlmRepositoryDrawer() {
         {authType === 'api_key' && (
           <FormField name="api_key" label="API Key">
             <PasswordInput
+              data-testid="llmrepo-form-api-key"
               placeholder="Enter your API key"
               showLabel="Show API key"
               hideLabel="Hide API key"
@@ -542,10 +548,11 @@ export function LlmRepositoryDrawer() {
         {authType === 'basic_auth' && (
           <>
             <FormField name="username" label="Username">
-              <Input placeholder="Enter your username" />
+              <Input data-testid="llmrepo-form-username" placeholder="Enter your username" />
             </FormField>
             <FormField name="password" label="Password">
               <PasswordInput
+                data-testid="llmrepo-form-password"
                 placeholder="Enter your password"
                 showLabel="Show password"
                 hideLabel="Hide password"
@@ -557,6 +564,7 @@ export function LlmRepositoryDrawer() {
         {authType === 'bearer_token' && (
           <FormField name="token" label="Bearer Token">
             <PasswordInput
+              data-testid="llmrepo-form-token"
               placeholder="Enter your bearer token"
               showLabel="Show token"
               hideLabel="Hide token"
@@ -570,6 +578,7 @@ export function LlmRepositoryDrawer() {
           description="Custom endpoint to test authentication. If not provided, the main repository URL will be used for testing."
         >
           <Input
+            data-testid="llmrepo-form-auth-test-endpoint"
             disabled={repository?.built_in}
             placeholder="https://api.example.com/auth/test"
           />
@@ -584,6 +593,7 @@ export function LlmRepositoryDrawer() {
                 accessible
               </Text>
               <Button
+                data-testid="llmrepo-form-test-btn"
                 variant="outline"
                 icon={<CloudDownload />}
                 loading={testing}
@@ -611,6 +621,7 @@ export function LlmRepositoryDrawer() {
          */}
         <FormField name="_enabled_display" label="Enable Repository">
           <Switch
+            data-testid="llmrepo-form-enabled-switch"
             checked={enabledValue}
             disabled={repository?.built_in}
             loading={togglingEnable}
@@ -627,6 +638,7 @@ export function LlmRepositoryDrawer() {
 
         <div className="flex justify-end gap-3 pt-4">
           <Button
+            data-testid="llmrepo-form-cancel-btn"
             variant="outline"
             onClick={handleClose}
             disabled={loading || creating || updating}
@@ -635,6 +647,7 @@ export function LlmRepositoryDrawer() {
           </Button>
           {canSave && (
             <Button
+              data-testid="llmrepo-form-submit-btn"
               type="submit"
               loading={loading || creating || updating}
             >
