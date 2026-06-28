@@ -777,6 +777,67 @@ async fn test_setup_admin_invalid_email() {
     assert_eq!(error_body.get("error_code").unwrap(), "INVALID_EMAIL");
 }
 
+/// Error recovery in the setup flow: a FAILED setup attempt (invalid input)
+/// must NOT leave the system half-initialized. The deployment must still report
+/// `needs_setup: true` afterward, and a subsequent VALID setup must succeed and
+/// flip the status — i.e. the first error is fully recoverable with a retry.
+#[tokio::test]
+async fn test_setup_recovers_after_failed_attempt() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // 1. A bad setup attempt fails with 400 (invalid email).
+    let bad = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "admin",
+            "email": "not-an-email",
+            "password": "SecurePass123!"
+        }))
+        .send()
+        .await
+        .expect("setup request failed");
+    assert_eq!(bad.status(), 400, "invalid setup must be rejected");
+
+    // 2. The failed attempt left NO partial admin → setup is still needed.
+    let status = client
+        .get(server.api_url("/app/setup/status"))
+        .send()
+        .await
+        .expect("status request failed");
+    let body: serde_json::Value = status.json().await.unwrap();
+    assert_eq!(
+        body.get("needs_setup").unwrap(),
+        true,
+        "a failed setup attempt must not create a partial admin"
+    );
+
+    // 3. A subsequent VALID setup succeeds — the flow recovered.
+    let good = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "admin",
+            "email": "admin@example.com",
+            "password": "SecurePass123!",
+            "display_name": "Administrator"
+        }))
+        .send()
+        .await
+        .expect("setup request failed");
+    assert_eq!(good.status(), 201, "retry after a failed attempt must succeed");
+
+    // 4. Status now reflects the completed setup.
+    let after: serde_json::Value = client
+        .get(server.api_url("/app/setup/status"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after.get("needs_setup").unwrap(), false);
+}
+
 #[tokio::test]
 async fn test_setup_admin_invalid_username() {
     let server = crate::common::TestServer::start().await;
