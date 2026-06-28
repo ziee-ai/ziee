@@ -779,6 +779,78 @@ async fn create_user_assistant(
     response.json().await.unwrap()
 }
 
+// The template endpoints must refuse to operate on a non-template
+// (user-owned) assistant: update_template / delete_template both check
+// `!existing.is_template` and return 404 so a user assistant can't be
+// mutated or deleted through the template surface (handlers.rs:498-501,
+// 544-546). A 404 (not 403) is intentional — the row simply isn't a
+// template from the template endpoint's point of view.
+#[tokio::test]
+async fn test_update_template_rejects_non_template_assistant() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tmpl_guard_update",
+        &["assistants::create", "assistant_templates::edit"],
+    )
+    .await;
+
+    // A normal user assistant (is_template = false).
+    let assistant = create_user_assistant(&server, &user.token, "Not A Template").await;
+    let id = assistant["id"].as_str().unwrap();
+    assert_eq!(assistant["is_template"], false);
+
+    // Reaching the template-edit handler (perm passes), but the
+    // is_template guard rejects it with 404.
+    let response = reqwest::Client::new()
+        .put(server.api_url(&format!("/assistant-templates/{}", id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Hijacked" }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_delete_template_rejects_non_template_assistant() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tmpl_guard_delete",
+        &[
+            "assistants::create",
+            "assistants::read",
+            "assistant_templates::delete",
+        ],
+    )
+    .await;
+
+    let assistant = create_user_assistant(&server, &user.token, "Keep Me").await;
+    let id = assistant["id"].as_str().unwrap();
+    assert_eq!(assistant["is_template"], false);
+
+    // Template-delete handler is reached (perm passes), but the
+    // is_template guard rejects with 404 — the user assistant survives.
+    let response = reqwest::Client::new()
+        .delete(server.api_url(&format!("/assistant-templates/{}", id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // Confirm it was NOT deleted — still readable on the user surface.
+    let get = reqwest::Client::new()
+        .get(server.api_url(&format!("/assistants/{}", id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::OK);
+}
+
 async fn create_template_assistant(
     server: &crate::common::TestServer,
     token: &str,
