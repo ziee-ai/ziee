@@ -44,8 +44,9 @@ export function AboutPage() {
 
   return (
     <SettingsPageContainer title="About" subtitle="Application version and updates">
-      <Card>
+      <Card data-testid="desktop-updater-about-card">
         <Descriptions
+          data-testid="desktop-updater-about-descriptions"
           column={1}
           size="sm"
           items={[
@@ -60,6 +61,7 @@ export function AboutPage() {
 
         {error && (
           <Alert
+            data-testid="desktop-updater-about-error-alert"
             tone="error"
             className="mt-4"
             title="Update error"
@@ -69,6 +71,7 @@ export function AboutPage() {
 
         {available && version && (
           <Alert
+            data-testid="desktop-updater-about-available-alert"
             tone="info"
             className="mt-4"
             title={`Version ${version} is available`}
@@ -80,6 +83,7 @@ export function AboutPage() {
           <div className="mt-4">
             <Text type="secondary">Downloading update…</Text>
             <Progress
+              data-testid="desktop-updater-about-progress"
               value={Math.round(progress ?? 0)}
               tone="primary"
               aria-label="Update download progress"
@@ -89,6 +93,7 @@ export function AboutPage() {
 
         <Space className="mt-4" wrap>
           <Button
+            data-testid="desktop-updater-about-check-btn"
             icon={<RotateCw />}
             loading={checking}
             disabled={downloading}
@@ -99,6 +104,7 @@ export function AboutPage() {
 
           {available && !readyToInstall && (
             <Button
+              data-testid="desktop-updater-about-download-btn"
               icon={<Download />}
               loading={downloading}
               onClick={() => Stores.Updater.download()}
@@ -109,6 +115,7 @@ export function AboutPage() {
 
           {readyToInstall && (
             <Button
+              data-testid="desktop-updater-about-install-btn"
               icon={<Rocket />}
               onClick={() => Stores.Updater.install()}
             >

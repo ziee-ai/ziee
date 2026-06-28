@@ -54,6 +54,7 @@ export function UpdateBanner() {
               {readyToInstall ? 'Installing…' : 'Downloading…'}
             </Text>
             <Progress
+              data-testid="desktop-updater-banner-progress"
               value={Math.round(progress ?? 0)}
               size="sm"
               tone="primary"
@@ -62,10 +63,11 @@ export function UpdateBanner() {
           </div>
         ) : (
           <Space size="small" className="w-full">
-            <Button size="sm" onClick={() => Stores.Updater.remindLater()}>
+            <Button data-testid="desktop-updater-banner-remind-btn" size="sm" onClick={() => Stores.Updater.remindLater()}>
               Remind later
             </Button>
             <Button
+              data-testid="desktop-updater-banner-install-btn"
               size="sm"
               onClick={() => Stores.Updater.installAndRestart()}
             >
