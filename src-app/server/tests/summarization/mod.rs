@@ -13,3 +13,4 @@ mod per_conversation_mode_test;
 mod real_llm_helpers;
 mod real_llm_test;
 mod summary_endpoint_test;
+mod sync_emit_test;
