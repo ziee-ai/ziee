@@ -176,6 +176,61 @@ test.describe('Citations library', () => {
     await expect(page.getByText(/1 added/)).toBeVisible({ timeout: 5000 })
   })
 
+  test('import with empty text is a no-op (no request fired)', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const state: State = { entries: [] }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    // Count any import POST that escapes the client-side empty-text guard.
+    let importCalls = 0
+    page.on('request', req => {
+      if (/\/api\/citations\/import$/.test(req.url()) && req.method() === 'POST') {
+        importCalls += 1
+      }
+    })
+    await gotoCitations(page, baseURL)
+
+    await page.getByRole('button', { name: 'Import' }).click()
+    // Leave the textarea empty and click Import + verify.
+    await page.getByRole('button', { name: 'Import + verify' }).click()
+    await page.waitForTimeout(500)
+
+    // The empty-text guard returns before any network call, and no result row
+    // is rendered.
+    expect(importCalls).toBe(0)
+    await expect(page.getByText(/added/)).toHaveCount(0)
+    // The modal stays open (the Import + verify button is still present).
+    await expect(
+      page.getByRole('button', { name: 'Import + verify' }),
+    ).toBeVisible()
+  })
+
+  test('import surfaces an error toast when the request fails', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const state: State = { entries: [] }
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    // Override the import endpoint to fail.
+    await page.route(/\/api\/citations\/import$/, async (route, req) => {
+      if (req.method() === 'POST') {
+        return route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'resolver unavailable' }),
+        })
+      }
+      return route.continue()
+    })
+    await gotoCitations(page, baseURL)
+
+    await page.getByRole('button', { name: 'Import' }).click()
+    await page.getByPlaceholder(/10\.1038/).fill('10.5555/known')
+    await page.getByRole('button', { name: 'Import + verify' }).click()
+
+    // The catch path surfaces an error message.
+    await expect(page.locator('.ant-message-error')).toBeVisible({ timeout: 5000 })
+  })
+
   test('exports the library (download triggered)', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const state: State = { entries: [entry({ title: 'Exportable paper' })] }
