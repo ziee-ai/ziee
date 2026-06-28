@@ -129,6 +129,30 @@ pub enum SummarizeAction {
 /// thresholds, and the previously-persisted summary (if any), decide
 /// what (if anything) to do.
 ///
+/// Apply the fraction-of-window override to the `(trigger, keep_recent)` token
+/// pair before deciding whether to summarize.
+///
+/// - `trigger` is clamped to the SMALLER of the admin cap and the override
+///   (`0.75 × the model's context window`, when known).
+/// - `keep_recent` is then re-clamped strictly below the (possibly lowered)
+///   trigger. Without this, a small-context override below `keep_recent` would
+///   leave `keep_recent >= trigger`, which silently disables summarization (the
+///   keep-recent loop never breaks → cutoff walks to 0 → Noop).
+///
+/// Pure (no I/O) so it's unit-tested in `tests` below.
+pub(crate) fn apply_window_override(
+    trigger: usize,
+    keep_recent: usize,
+    override_: Option<usize>,
+) -> (usize, usize) {
+    let trigger = match override_ {
+        Some(o) => trigger.min(o),
+        None => trigger,
+    };
+    let keep_recent = keep_recent.min(trigger.saturating_sub(1));
+    (trigger, keep_recent)
+}
+
 /// All branches are unit-tested in `tests` below. The function is
 /// pure (no I/O, no clock, no DB) so the tests are fast and stable.
 pub fn decide_summarize_action(
@@ -433,17 +457,9 @@ pub async fn refresh_summary(
         };
 
     // Apply the fraction-of-window override: summarize at the SMALLER of the
-    // admin cap and 0.75× the model's context window.
-    let trigger = match trigger_override {
-        Some(o) => trigger.min(o),
-        None => trigger,
-    };
-    // Preserve keep_recent < trigger after the override. The DB CHECK only
-    // guards the admin row; a fraction-of-window override below keep_recent
-    // (small-context models) would otherwise leave keep_recent >= trigger and
-    // silently disable summarization (the keep-recent loop never breaks and
-    // cutoff walks to 0 → Noop). Re-clamp so summarization still fires.
-    let keep_recent = keep_recent.min(trigger.saturating_sub(1));
+    // admin cap and 0.75× the model's context window, re-clamping keep_recent
+    // so a small-context override can't silently disable summarization.
+    let (trigger, keep_recent) = apply_window_override(trigger, keep_recent, trigger_override);
 
     let pool = Repos.summarization.pool_clone();
     let existing = fetch_summary(&pool, branch_id).await?;
@@ -679,6 +695,39 @@ async fn upsert_summary(
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn window_override_none_is_identity() {
+        // No model context window known → admin thresholds pass through.
+        assert_eq!(apply_window_override(8000, 2000, None), (8000, 2000));
+    }
+
+    #[test]
+    fn window_override_takes_the_smaller_trigger() {
+        // override (0.75×window) below the admin cap → summarize earlier.
+        assert_eq!(apply_window_override(8000, 2000, Some(3000)), (3000, 2000));
+        // override ABOVE the admin cap → admin cap wins, keep_recent untouched.
+        assert_eq!(apply_window_override(8000, 2000, Some(20000)), (8000, 2000));
+    }
+
+    #[test]
+    fn window_override_reclamps_keep_recent_below_trigger() {
+        // Small-context override pushing trigger below keep_recent must NOT
+        // leave keep_recent >= trigger (which would silently disable
+        // summarization). keep_recent is re-clamped to trigger-1.
+        let (trigger, keep_recent) = apply_window_override(8000, 2000, Some(1500));
+        assert_eq!(trigger, 1500);
+        assert_eq!(keep_recent, 1499, "keep_recent re-clamped strictly below trigger");
+        assert!(keep_recent < trigger, "summarization must still be able to fire");
+    }
+
+    #[test]
+    fn window_override_handles_degenerate_tiny_trigger() {
+        // Even a pathologically tiny override can't underflow keep_recent.
+        let (trigger, keep_recent) = apply_window_override(8000, 2000, Some(1));
+        assert_eq!(trigger, 1);
+        assert_eq!(keep_recent, 0);
+    }
 
     fn msg(id: Uuid, role: &str, text: &str) -> SummarizableMessage {
         SummarizableMessage {
