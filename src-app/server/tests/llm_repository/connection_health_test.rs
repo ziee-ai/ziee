@@ -713,6 +713,77 @@ async fn test_by_id_404_for_nonexistent_repository() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
+#[tokio::test]
+async fn test_by_id_concurrent_probes_same_repo_are_race_safe() {
+    // Concurrency / TOCTOU: the test-by-id handler probes the upstream
+    // and then writes the outcome to the row's `last_health_check_*`
+    // columns (via `record_test_outcome`) + refetches the row to emit
+    // an `updated` event. Firing many probes for the SAME repository
+    // at once exercises that shared per-row write path under contention.
+    // A race that corrupted the shared state would surface as a 5xx /
+    // panic / deadlock, or as a final row left in an inconsistent
+    // (non-healthy / unstamped) state. None of the existing test-by-id
+    // specs fire concurrently.
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    // All probes hit a working mock, so every individual probe MUST
+    // succeed — any failure is a genuine race artifact, not an
+    // upstream flip.
+    let upstream = mock_ok().await;
+    let repo_id =
+        seed_disabled_row(&server, &admin.token, "byid-concurrent", &upstream.uri()).await;
+
+    // Fire N genuinely-parallel probes (each its own spawned task +
+    // its own reqwest client → independent connections racing at the
+    // DB), then join them all.
+    const N: usize = 8;
+    let url = server.api_url(&format!("/llm-repositories/{repo_id}/test"));
+    let token = admin.token.clone();
+    let mut handles = Vec::with_capacity(N);
+    for _ in 0..N {
+        let url = url.clone();
+        let token = token.clone();
+        handles.push(tokio::spawn(async move {
+            let resp = reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({}))
+                .send()
+                .await
+                .expect("probe request failed");
+            let status = resp.status();
+            let body: Value = resp.json().await.expect("probe body json");
+            (status, body)
+        }));
+    }
+
+    // Every concurrent probe completes with 200 + success:true — no
+    // 5xx, no panic, no deadlock under contention on the shared row.
+    for h in handles {
+        let (status, body) = h.await.expect("probe task panicked");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "every concurrent probe must return 200 (no race-induced 5xx): {body}"
+        );
+        assert_eq!(
+            body["success"], true,
+            "every concurrent probe against the OK mock must succeed: {body}"
+        );
+    }
+
+    // The shared per-row state converged to a single consistent
+    // outcome: healthy + stamped, and the test button never flipped
+    // `enabled` (it stays at the seeded `false`). A lost-update /
+    // torn-write race would leave a stale or missing health record.
+    let pool = pool_for(&server).await;
+    let (enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
+    assert!(!enabled, "test-by-id never mutates `enabled`, even under concurrency");
+    assert_eq!(status, "healthy", "concurrent probes converge to healthy");
+    assert_eq!(reason, None, "healthy outcome carries no reason");
+    assert!(at.is_some(), "last_health_check_at stamped by the winning write");
+}
+
 /// Tier-3 LIVE-credential connectivity test (the existing suite uses wiremock).
 /// Exercises the real `test_repository_connectivity` path against Hugging Face's
 /// `whoami-v2` endpoint with the real `HUGGINGFACE_API_KEY` (shipped in
