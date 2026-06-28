@@ -181,3 +181,79 @@ async fn editing_project_mcp_does_not_propagate_to_existing_conversations() {
     // This test exists to pin the behavior; richer assertions can be
     // added when a `/conversations/{id}/mcp-settings` GET shape lands.
 }
+
+/// Restart/resume durability of project state (gap f8f24705aab6). All project
+/// state is Postgres-backed, so a server restart must not lose it. We simulate
+/// what a freshly-restarted process sees by reading the PERSISTED rows over a
+/// brand-new pool (bypassing any in-process cache): the project_conversations
+/// join row and the snapshotted conversation_mcp_settings survive.
+#[tokio::test]
+async fn project_state_persists_for_a_restarted_server() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        helpers::full_project_permissions(),
+    )
+    .await;
+
+    let mcp = helpers::create_user_mcp_server(&server, &user, "restart-srv").await;
+    let sid = mcp["id"].as_str().unwrap();
+
+    let p = helpers::create_project(&server, &user, "Restart Proj").await;
+    let pid = p["id"].as_str().unwrap();
+    let put = reqwest::Client::new()
+        .put(server.api_url(&format!("/projects/{}/mcp-settings", pid)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "approval_mode": "auto_approve",
+            "auto_approved_tools": [{"server_id": sid, "tools": ["greet"]}],
+            "disabled_servers": [],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), StatusCode::OK);
+
+    let conv_id = helpers::create_project_conversation(&server, &user, pid).await;
+    let conv_uuid = uuid::Uuid::parse_str(&conv_id).unwrap();
+    let project_uuid = uuid::Uuid::parse_str(pid).unwrap();
+
+    // ── "Restart": read persisted state over a FRESH pool. ──────────────────
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("fresh pool (simulated restart)");
+
+    // 1. The project_conversations join row survives with the right project.
+    let (join_project,): (uuid::Uuid,) = sqlx::query_as(
+        "SELECT project_id FROM project_conversations WHERE conversation_id = $1",
+    )
+    .bind(conv_uuid)
+    .fetch_one(&pool)
+    .await
+    .expect("project_conversations row must persist");
+    assert_eq!(join_project, project_uuid, "conversation stays filed under its project");
+
+    // 2. The conversation row itself survives.
+    let (conv_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM conversations WHERE id = $1")
+            .bind(conv_uuid)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(conv_count, 1, "conversation row must persist across restart");
+
+    // 3. The MCP snapshot taken at create time survives with the snapshotted mode.
+    let (mode,): (String,) = sqlx::query_as(
+        "SELECT approval_mode FROM conversation_mcp_settings WHERE conversation_id = $1",
+    )
+    .bind(conv_uuid)
+    .fetch_one(&pool)
+    .await
+    .expect("snapshotted conversation_mcp_settings row must persist");
+    assert_eq!(mode, "auto_approve", "the snapshot of the project's MCP mode survives");
+
+    pool.close().await;
+}
