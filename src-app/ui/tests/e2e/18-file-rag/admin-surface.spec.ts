@@ -70,6 +70,26 @@ test.describe('Document RAG — admin settings surface', () => {
     await expect(page.getByText(/Embedding model/)).toBeVisible()
   })
 
+  test('FullTextSection saves the RRF k tuning knob', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    // The file-rag FTS card carries the "RRF k" + "Candidate multiplier"
+    // labels (distinct from the master "Document search" card).
+    const ftsCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Candidate multiplier' })
+    await expect(ftsCard).toBeVisible({ timeout: 20000 })
+
+    await ftsCard.getByRole('spinbutton', { name: /RRF k/i }).fill('77')
+    await ftsCard.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Full-text settings saved.')).toBeVisible()
+  })
+
   test('EnableSection master toggle saves the document-search setting', async ({
     page,
     testInfra,
