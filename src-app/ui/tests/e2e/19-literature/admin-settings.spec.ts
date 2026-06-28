@@ -331,4 +331,30 @@ test.describe('Literature search admin settings', () => {
     await expect(page.getByText('Literature search settings saved')).toBeVisible({ timeout: 5000 })
     expect(state.lastSettingsPatch?.max_results).toBe(42)
   })
+
+  // audit id 200f6ab3e2c9 — a connector whose key_field is required and has no
+  // stored key (CORE) carries a required-rule on its api_key field; saving with
+  // it empty must be blocked by inline validation, NOT sent to the server.
+  test("a required-key connector blocks save when the key is empty", async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const state = freshState() // CORE: key_field.required=true, api_key_set=false
+    await loginAsAdmin(page, baseURL)
+    await mockApi(page, state)
+    await gotoLiterature(page, baseURL)
+
+    // CORE shows the "Needs key" tag (the warning state the validation guards).
+    await expect(page.getByText('Needs key')).toBeVisible()
+
+    // Click CORE's Save with the key field left empty.
+    await page
+      .locator('form')
+      .filter({ has: page.getByLabel('CORE API key') })
+      .getByRole('button', { name: 'Save' })
+      .click()
+
+    // Inline required-rule error appears and NO connector PUT was sent.
+    await expect(page.getByText('CORE API key is required')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('CORE saved')).toHaveCount(0)
+    expect(state.lastConnectorPatch).toBeNull()
+  })
 })
