@@ -267,4 +267,32 @@ test.describe('Projects - Knowledge / file attach', () => {
       timeout: 5000,
     })
   })
+
+  test('uploads a file through the real Manage-drawer Upload control', async ({
+    page,
+  }) => {
+    // Drive the actual antd <Upload> control (not page.evaluate + fetch): the
+    // beforeUpload handler → uploadAndAttachFiles → combined upload endpoint.
+    await page.locator('.ant-card', { hasText: 'Knowledge Target' }).click()
+    await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
+
+    await page
+      .getByRole('button', { name: /manage knowledge files/i })
+      .click()
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    await drawer.waitFor({ state: 'visible' })
+
+    // The antd Upload renders a hidden <input type="file"> — set a real file
+    // on it (the genuine UI upload path, exercising beforeUpload).
+    await drawer.locator('input[type="file"]').setInputFiles({
+      name: 'ui-upload.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('uploaded through the real Upload control'),
+    })
+
+    // The uploaded file appears in the drawer's knowledge-file list.
+    await expect(drawer.getByText('ui-upload.txt')).toBeVisible({
+      timeout: 15000,
+    })
+  })
 })
