@@ -262,4 +262,46 @@ mod tests {
         assert!(ris.contains("DO  - 10.1038/abc"));
         assert!(ris.trim_end().ends_with("ER  -"));
     }
+
+    /// The Text export path shells out to `pandoc --csl <style>`. A nonexistent
+    /// style file makes pandoc exit non-zero, exercising the subprocess
+    /// error branch in `run_pandoc`/`export` (the previously-untested pandoc
+    /// failure path). When pandoc itself is unavailable, `find_pandoc` also
+    /// errors — either way `export` must surface an `Err`, never a silent
+    /// empty string.
+    #[tokio::test]
+    async fn export_text_with_missing_csl_style_surfaces_error() {
+        let items = vec![json!({
+            "type": "article-journal",
+            "id": "a",
+            "title": "X"
+        })];
+        let bogus = std::path::PathBuf::from("/nonexistent/ziee-test-style-does-not-exist.csl");
+        let res = export(items, ExportFormat::Text, Some(bogus)).await;
+        assert!(
+            res.is_err(),
+            "a missing CSL style must surface a pandoc error, not an empty Ok"
+        );
+    }
+
+    /// The CslJson + Ris export branches are pure-Rust (no pandoc) and must
+    /// round-trip deterministically through the public `export` dispatch.
+    #[tokio::test]
+    async fn export_csljson_and_ris_need_no_pandoc() {
+        let items = vec![json!({
+            "type": "article-journal",
+            "title": "CRISPR interference in plants",
+            "DOI": "10.1038/abc"
+        })];
+        let cj = export(items.clone(), ExportFormat::CslJson, None)
+            .await
+            .expect("csljson export is infallible for valid items");
+        assert!(cj.contains("CRISPR interference in plants"));
+
+        let ris = export(items, ExportFormat::Ris, None)
+            .await
+            .expect("ris export is infallible");
+        assert!(ris.contains("TY  - JOUR"));
+        assert!(ris.contains("DO  - 10.1038/abc"));
+    }
 }
