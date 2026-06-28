@@ -521,6 +521,89 @@ async fn group_permission_edit_fans_session_out_to_every_member() {
     uninvolved_probe.expect_silence(SILENCE_WINDOW).await;
 }
 
+/// JOINT dual-emit: a SINGLE group-permissions edit must emit BOTH
+/// `group`/`update` (to a groups::read holder) AND `session`/`update` (to each
+/// member) from the same call. The two existing tests verify these halves
+/// separately — group/update on an EMPTY group (no fan-out) and the fan-out
+/// without a groups::read probe — so neither proves the two emits happen
+/// together. Here the editing admin itself holds groups::read (so it's in the
+/// group/update audience) and a member receives the session signal.
+#[tokio::test]
+async fn group_permission_edit_jointly_emits_group_update_and_session_fanout() {
+    let server = crate::common::TestServer::start().await;
+
+    // The admin holds groups::read (→ group/update audience) + the perm it's
+    // granting (users::read, to pass the self-escalation guard).
+    let admin = test_helpers::create_user_with_permissions(&server, "joint_admin", &[
+        "users::create",
+        "users::read",
+        "groups::create",
+        "groups::read",
+        "groups::edit",
+        "groups::assign_users",
+    ])
+    .await;
+
+    let member =
+        test_helpers::create_test_user(&server, &admin.token, "jointmember", "password123").await;
+    let member_id = member["id"].as_str().expect("member id").to_string();
+    let member_token = login_token(&server, "jointmember", "password123").await;
+
+    let group: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": format!("joint-group-{}", uuid::Uuid::new_v4()),
+            "description": "joint group/update + session test",
+            "permissions": []
+        }))
+        .send()
+        .await
+        .expect("create group")
+        .json()
+        .await
+        .expect("parse group");
+    let group_id = group["id"].as_str().expect("group id").to_string();
+
+    let assign = reqwest::Client::new()
+        .post(server.api_url("/groups/assign"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "user_id": member_id, "group_id": group_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(assign.status(), 204, "assign should 204");
+
+    // Subscribe AFTER the assign (its own session frame is already settled).
+    let mut admin_probe = SyncProbe::open(&server, &admin.token).await;
+    let mut member_probe = SyncProbe::open(&server, &member_token).await;
+
+    // ONE permission edit → both emits must fire.
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/groups/{}", group_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "permissions": ["users::read"] }))
+        .send()
+        .await
+        .expect("group permission edit");
+    assert_eq!(res.status(), 200, "group edit should 200");
+
+    // (a) groups::read holder receives group/update with the group id.
+    let g = admin_probe
+        .expect_event("group", "update", EVENT_TIMEOUT)
+        .await;
+    assert_eq!(g.id, group_id, "group/update must carry the group id");
+
+    // (b) the member receives session/update with their OWN user id.
+    let s = member_probe
+        .expect_event("session", "update", EVENT_TIMEOUT)
+        .await;
+    assert_eq!(
+        s.id, member_id,
+        "session/update must carry the member's own user id (Owner-scoped fan-out)"
+    );
+}
+
 // ============================================================================
 // `profile` entity — Owner(edited user)
 // ============================================================================
