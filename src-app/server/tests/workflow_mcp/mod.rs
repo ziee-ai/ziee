@@ -267,3 +267,83 @@ async fn tools_call_without_execute_permission_is_forbidden() {
         "a caller lacking workflows::execute must be 403 on the workflow MCP server"
     );
 }
+
+/// Two DIFFERENT users invoke their OWN workflow concurrently via tools/call.
+/// Both runs must complete successfully and produce distinct run rows, each
+/// scoped to its own user's conversation — proving concurrent multi-user runs
+/// don't cross-contaminate (per-user model snapshot + conversation scoping).
+#[tokio::test]
+async fn concurrent_multi_user_tools_call_runs_are_isolated() {
+    let server = TestServer::start().await;
+
+    // Per-user setup: perms + stub model + conversation + imported workflow.
+    async fn setup(
+        server: &TestServer,
+        name: &str,
+    ) -> (String, Uuid, String) {
+        let user = mcp_user(server, name).await;
+        let (_stub, model) = crate::chat::helpers::create_stub_model(server, &user.user_id).await;
+        let model_id = Uuid::parse_str(model["id"].as_str().unwrap()).unwrap();
+        let conv = crate::chat::helpers::create_conversation(
+            server,
+            &user.token,
+            Some(model_id),
+            Some("concurrent wf conv"),
+        )
+        .await;
+        let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
+        let wf = import_dev_workflow(server, &user.token, name, MCP_WORKFLOW_YAML).await;
+        let leaf = wf_tool_name(wf["name"].as_str().unwrap());
+        (user.token, conv_id, leaf)
+    }
+
+    let (tok_a, conv_a, leaf_a) = setup(&server, "wf_conc_a").await;
+    let (tok_b, conv_b, leaf_b) = setup(&server, "wf_conc_b").await;
+
+    // Fire both tools/call invocations concurrently.
+    let call_a = jsonrpc(
+        &server,
+        &tok_a,
+        Some(conv_a),
+        "tools/call",
+        json!({ "name": leaf_a, "arguments": { "topic": "alpha" } }),
+    );
+    let call_b = jsonrpc(
+        &server,
+        &tok_b,
+        Some(conv_b),
+        "tools/call",
+        json!({ "name": leaf_b, "arguments": { "topic": "beta" } }),
+    );
+    let (resp_a, resp_b) = tokio::join!(call_a, call_b);
+    assert_eq!(resp_a.status(), 200);
+    assert_eq!(resp_b.status(), 200);
+    let body_a: Json = resp_a.json().await.unwrap();
+    let body_b: Json = resp_b.json().await.unwrap();
+    assert_eq!(body_a["result"]["isError"], json!(false), "A: {body_a}");
+    assert_eq!(body_b["result"]["isError"], json!(false), "B: {body_b}");
+
+    let run_a = Uuid::parse_str(
+        body_a["result"]["structuredContent"]["metadata"]["run_id"].as_str().unwrap(),
+    )
+    .unwrap();
+    let run_b = Uuid::parse_str(
+        body_b["result"]["structuredContent"]["metadata"]["run_id"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_ne!(run_a, run_b, "concurrent runs must be distinct rows");
+
+    // Each run is scoped to its own user's conversation (no cross-binding).
+    let pool = db_pool(&server).await;
+    for (run, conv) in [(run_a, conv_a), (run_b, conv_b)] {
+        let row = sqlx::query_as::<_, (String, Option<Uuid>)>(
+            "SELECT invocation_source, conversation_id FROM workflow_runs WHERE id = $1",
+        )
+        .bind(run)
+        .fetch_one(&pool)
+        .await
+        .expect("run row");
+        assert_eq!(row.0, "conversation");
+        assert_eq!(row.1, Some(conv), "run {run} must bind to its own conversation");
+    }
+}
