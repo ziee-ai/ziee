@@ -11,7 +11,6 @@ import {
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
-import { hasPermissionNow } from '@/core/permissions'
 import {
   emitAssistantCreated,
   emitAssistantDeleted,

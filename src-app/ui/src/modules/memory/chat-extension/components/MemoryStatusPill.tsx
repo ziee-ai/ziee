@@ -114,7 +114,6 @@ export function MemoryStatusPill() {
         <Tag
           role="button"
           tabIndex={0}
-          aria-label="Per-conversation memory retrieval override"
           color={colorByMode[mode]}
           icon={mode === 'off' ? <EyeInvisibleOutlined /> : <BulbOutlined />}
           aria-label={`Memory mode: ${labelByMode[mode]}`}
