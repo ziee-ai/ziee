@@ -178,6 +178,71 @@ async fn get_tool_result_pages_large_content() {
 }
 
 #[tokio::test]
+async fn get_tool_result_multi_page_recall_cycle() {
+    // A model recalling a large tool result walks it page-by-page: it reads
+    // `has_more` + the echoed `offset`, then re-calls with the next offset
+    // until `has_more` is false, reassembling the full content. This exercises
+    // the FULL offset-based pagination cycle (the existing test only fetched a
+    // single window).
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_cycle", &[]).await;
+    let total = 500usize;
+    let big = "A".repeat(total);
+    let (conv, _msg) =
+        seed_tool_result(&server, &user.user_id, "toolu_cycle", &big, None).await;
+
+    let page_size = 120u64;
+    let mut offset = 0u64;
+    let mut accumulated = String::new();
+    let mut pages = 0;
+    loop {
+        let res = jsonrpc(
+            &server,
+            &user.token,
+            Some(&conv.to_string()),
+            "tools/call",
+            json!({ "name": "get_tool_result",
+                    "arguments": { "tool_use_id": "toolu_cycle",
+                                   "offset": offset, "max_chars": page_size } }),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(res.status(), 200);
+        let body: Value = res.json().await.unwrap();
+        let sc = &body["result"]["structuredContent"];
+
+        // The page echoes the requested offset + the canonical total.
+        assert_eq!(sc["offset"].as_u64().unwrap(), offset, "offset echoed: {body}");
+        assert_eq!(sc["total_chars"].as_u64().unwrap(), total as u64);
+
+        let returned = sc["returned_chars"].as_u64().unwrap();
+        assert!(returned > 0 && returned <= page_size, "page bounded: {body}");
+
+        // Accumulate the CONTENT (the window before the continuation marker).
+        let text = body["result"]["content"][0]["text"].as_str().unwrap();
+        let content = text.split("\n[…").next().unwrap_or(text);
+        accumulated.push_str(content);
+
+        pages += 1;
+        assert!(pages <= 10, "must terminate, not loop forever");
+
+        if sc["has_more"].as_bool().unwrap() {
+            // Advance to exactly where this page ended.
+            offset += returned;
+        } else {
+            break;
+        }
+    }
+
+    // The walk reassembled the entire result and took the expected number of
+    // pages (ceil(500/120) = 5).
+    assert_eq!(pages, 5, "500 chars / 120 per page = 5 pages");
+    assert_eq!(accumulated.chars().count(), total, "full content reassembled");
+    assert!(accumulated.chars().all(|c| c == 'A'), "content intact across pages");
+}
+
+#[tokio::test]
 async fn get_tool_result_rejects_other_users_conversation() {
     // Block lives in user A's conversation; user B passing A's conversation id
     // must get NOT_FOUND (scoping — can't read another user's tool results).
