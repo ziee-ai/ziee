@@ -141,4 +141,43 @@ test.describe('Local Runtime — model engine settings form', () => {
     expect(model.engine_settings?.llamacpp?.ctx_size).toBe(4096)
     expect(model.engine_settings?.llamacpp?.batch_size).toBe(1024)
   })
+
+  test('llamacpp persists n_gpu_layers from the GPU Configuration card', async ({
+    page,
+    testInfra,
+  }) => {
+    // ctx_size / batch_size are covered above; the GPU Configuration card's
+    // n_gpu_layers field (placeholder "0", non-unique → addressed via its
+    // "GPU Layers" label) was untested.
+    await loginAsAdmin(page, testInfra.baseURL)
+    const token = await getCurrentUserToken(page)
+    const providerId = await seedLocalProvider(testInfra.baseURL, token)
+    const name = `e2e-lc-gpu-${Date.now()}`
+    const modelId = await seedLocalModel(testInfra.baseURL, token, providerId, name, 'llamacpp')
+
+    await page.goto(`${testInfra.baseURL}/settings/llm-providers/${providerId}`)
+    await page.waitForLoadState('load')
+    await openEditModelDrawer(page, `E2E ${name}`)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+
+    // The n_gpu_layers InputNumber lives in the "GPU Layers" ResponsiveConfigItem
+    // (placeholder "0" is shared, so scope by the label's ancestor Flex).
+    const gpu = drawer
+      .getByText('GPU Layers', { exact: true })
+      .locator('xpath=../..')
+      .getByRole('spinbutton')
+    await gpu.fill('24')
+    await gpu.blur()
+
+    await drawer.locator('.ant-btn-primary[type="submit"], .ant-btn-primary').last().click()
+    await page.getByText('Model updated successfully').waitFor({ timeout: 15000 })
+
+    const res = await page.request.get(
+      `${testInfra.baseURL}/api/llm-models/${modelId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    expect(res.ok()).toBeTruthy()
+    const model = await res.json()
+    expect(model.engine_settings?.llamacpp?.n_gpu_layers).toBe(24)
+  })
 })

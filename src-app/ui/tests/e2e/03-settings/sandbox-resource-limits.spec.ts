@@ -252,4 +252,37 @@ test.describe('Sandbox resource limits admin settings', () => {
       timeout: 10000,
     })
   })
+
+  // The earlier edit→Save test only touches the core cgroup fields; the VM-tuning
+  // half of the form (SandboxResourceLimitsSection.tsx:333-424 — idle-evict,
+  // per-VM concurrency, mac vCPUs/RAM) was never exercised through the UI.
+  test('edits the VM-tuning fields and the Save PATCH carries them', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const state = { current: defaults(), lastPatch: null as Partial<Row> | null }
+    await loginAsAdmin(page, baseURL)
+    await mockLimits(page, state)
+    await gotoResourceLimits(page, baseURL)
+
+    await page.getByLabel('Idle-evict timeout').fill('1200')
+    await page.getByLabel('Concurrent execs per VM / distro').fill('4')
+    await page.getByLabel('vCPUs').fill('8')
+    await page.getByLabel('RAM ceiling').fill('8192')
+
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Resource limits saved')).toBeVisible({ timeout: 5000 })
+
+    expect(state.lastPatch).not.toBeNull()
+    expect(state.lastPatch?.vm_idle_evict_secs).toBe(1200)
+    expect(state.lastPatch?.vm_max_concurrent_execs).toBe(4)
+    expect(state.lastPatch?.mac_vm_vcpus).toBe(8)
+    expect(state.lastPatch?.mac_vm_ram_mib).toBe(8192)
+
+    // Reload → fresh GET → the VM-tuning values persisted in the form.
+    await gotoResourceLimits(page, baseURL)
+    await expect(page.getByLabel('Idle-evict timeout')).toHaveValue('1200')
+    await expect(page.getByLabel('vCPUs')).toHaveValue('8')
+  })
 })
