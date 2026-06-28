@@ -924,3 +924,50 @@ async fn backfill_does_not_starve_behind_zero_chunk_wall() {
         assert_eq!(chunk_count(&pool, id).await, 0, "whitespace files still yield no chunks");
     }
 }
+
+/// Permission re-gating: a user holding `file_rag::admin::read` can read the
+/// RAG admin settings, but once that permission is revoked (admin demotes them
+/// / strips the group grant) the very next read is 403 — the settings cannot
+/// be re-fetched with stale authority. This is the deterministic core of the
+/// "permission-denied mid-stream (RAG settings become stale)" concern: the
+/// gate re-resolves the caller's permissions per request, so a revoked user
+/// can never pull fresh settings after losing access. (The SSE stream's own
+/// 60s liveness re-check is the eventual teardown; this asserts the
+/// authoritative per-request gate it relies on.)
+#[tokio::test]
+async fn rag_admin_settings_regate_on_permission_revocation() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "rag_revoke", &["file_rag::admin::read"]).await;
+    let pool = db_pool(&server).await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", user.token);
+
+    // With the permission → 200.
+    let ok = client
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status(), 200, "holder can read RAG admin settings");
+
+    // Admin revokes file_rag::admin::read from every group the user belongs to.
+    let uid = Uuid::parse_str(&user.user_id).unwrap();
+    sqlx::query(
+        "UPDATE groups SET permissions = array_remove(permissions, 'file_rag::admin::read') \
+         WHERE id IN (SELECT group_id FROM user_groups WHERE user_id = $1)",
+    )
+    .bind(uid)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Next read is denied — no stale-authority fetch.
+    let denied = client
+        .get(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), 403, "revoked user must be re-gated out (403)");
+}
