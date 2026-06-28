@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
+  login,
   getAdminToken,
   createTestUser,
   loginExpectingOnboarding,
@@ -104,6 +105,29 @@ test.describe('Onboarding wizard', () => {
     await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
     // Sanity: not still on the welcome step.
     await expect(page.getByRole('heading', { name: /Welcome/ })).toBeHidden()
+  })
+
+  test('a user who already completed onboarding is NOT redirected to the wizard', async ({ page, testInfra }) => {
+    // Negative case (bypass): once the guide is complete, AuthGuard must land
+    // the user in the app and NOT trap them at /onboarding — even on a direct
+    // navigation to /onboarding. Guards the OnboardingRedirect early-return.
+    const { baseURL, apiURL } = testInfra
+    const { username } = await freshUser(apiURL, 'bypass')
+
+    // `login` marks the guide complete via the API, then navigates home.
+    await login(page, baseURL, username, 'password123')
+
+    // Landed in the app, not bounced to the wizard.
+    await expect(page).not.toHaveURL(/\/onboarding/)
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible({
+      timeout: 15000,
+    })
+
+    // Direct navigation to /onboarding must redirect AWAY (completed guide is
+    // not re-entered), not strand the user on the wizard.
+    await page.goto(`${baseURL}/onboarding`)
+    await page.waitForLoadState('load')
+    await expect(page).not.toHaveURL(/\/onboarding/)
   })
 
   test('the AI Providers step omits local providers from the key list', async ({ page, testInfra }) => {
