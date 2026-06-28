@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { App, Button } from 'antd'
+import { Button, message } from '@/components/ui'
 import { Check, Copy as CopyIcon } from 'lucide-react'
 import {
   createExtension,
-  
+
   type ChatExtension,
   type ContentRendererProps,
 } from '@/modules/chat/core/extensions'
@@ -12,7 +12,6 @@ import {
  * Code block component with copy functionality
  */
 function CodeBlock({ code, language }: { code: string; language?: string }) {
-  const { message } = App.useApp()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -32,8 +31,8 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
       <div className="flex items-center justify-between px-3 py-1 text-xs rounded-t">
         <span>{language || 'code'}</span>
         <Button
-          size="small"
-          type="text"
+          size="sm"
+          variant="ghost"
           icon={copied ? <Check /> : <CopyIcon />}
           onClick={handleCopy}
           className=" opacity-0 group-hover:opacity-100 transition-opacity"

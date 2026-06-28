@@ -1168,11 +1168,11 @@ export const chatExtensionRegistry = new ChatExtensionRegistry()
 export function useConversationMenuContributions(
   conversation: import('@/api-client/types').Conversation,
 ): {
-  items: import('antd').MenuProps['items']
+  items: import('@/components/ui').DropdownItem[]
   overlays: React.ReactNode[]
   keepMenuOpen: boolean
 } {
-  const items: NonNullable<import('antd').MenuProps['items']> = []
+  const items: import('@/components/ui').DropdownItem[] = []
   const overlays: React.ReactNode[] = []
   let keepMenuOpen = false
   const extensions = chatExtensionRegistry

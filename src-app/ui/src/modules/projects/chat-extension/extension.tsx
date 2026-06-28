@@ -1,7 +1,7 @@
 import { X, FolderOpen, CircleMinus, CirclePlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, Confirm, Spin, Tag, Tooltip, message, dialog } from '@/components/ui'
-import type { MenuProps } from 'antd'
+import type { DropdownItem } from '@/components/ui'
 import type { Conversation } from '@/api-client/types'
 import { useNavigate } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
@@ -488,7 +488,7 @@ function ProjectMembershipTrailing({
  * the card trailing — no second round-trip.
  */
 function useProjectMenuContribution(conversation: Conversation): {
-  items: MenuProps['items']
+  items: DropdownItem[]
   overlays: React.ReactNode
   keepMenuOpen: boolean
 } {
@@ -576,7 +576,7 @@ function useProjectMenuContribution(conversation: Conversation): {
     })
   }
 
-  const items: MenuProps['items'] = project
+  const items: DropdownItem[] = project
     ? [
         {
           key: 'project-open',

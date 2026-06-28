@@ -1,4 +1,4 @@
-import { Button, Dropdown, Flex, Result, theme, Typography } from 'antd'
+import { Button, Dropdown, Flex, Result, Title, Text } from '@/components/ui'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -28,7 +28,6 @@ export default function SettingsPage() {
   // itself drops below the comfortable two-column width, not at
   // the much tighter `xs` (≤480) which the page rarely hits.
   const useMobileLayout = minSize.sm
-  const { token } = theme.useToken()
 
   const { slots } = Stores.ModuleSystem
   const { user, permissions } = Stores.Auth
@@ -82,26 +81,40 @@ export default function SettingsPage() {
       : []),
   ]
 
-  // Antd-format items kept for the mobile Dropdown (antd Dropdown, out of scope).
+  // Kit Dropdown items for the mobile trigger.
   const dropdownItems = [
     ...userSettingsItems.map(item => ({
       key: item.path,
       icon: item.icon,
-      label: item.label,
+      label: (
+        <Flex className={'gap-2 items-center'}>
+          {item.icon}
+          {item.label}
+        </Flex>
+      ),
     })),
     ...(adminSettingsItems.length > 0
       ? [
           { type: 'divider' as const },
           {
-            key: 'admin',
-            icon: <IoMdSettings />,
-            label: 'Admin',
-            type: 'group' as const,
+            type: 'label' as const,
+            label: (
+              <div className={'-ml-1'}>
+                <Text strong type={'secondary'} className={'!text-xs'}>
+                  Admin
+                </Text>
+              </div>
+            ),
           },
           ...adminSettingsItems.map(item => ({
             key: item.path,
             icon: item.icon,
-            label: item.label,
+            label: (
+              <Flex className={'gap-2 items-center'}>
+                {item.icon}
+                {item.label}
+              </Flex>
+            ),
           })),
         ]
       : []),
@@ -175,61 +188,29 @@ export default function SettingsPage() {
       {/* Page Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
-          <Typography.Title level={4} className="!m-0 !leading-tight truncate">
+          <Title level={4} className="!m-0 !leading-tight truncate">
             Settings
-          </Typography.Title>
+          </Title>
           {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
-                styles={{
-                  root: {
-                    border: '1px solid ' + token.colorBorderSecondary,
-                  },
+                items={dropdownItems.map((item: any) => {
+                  if ('type' in item && item.type === 'divider') {
+                    return { type: 'divider' as const }
+                  }
+                  if ('type' in item && item.type === 'label') {
+                    return { type: 'label' as const, label: item.label }
+                  }
+                  return {
+                    key: item.key,
+                    label: item.label,
+                  }
+                })}
+                onSelect={(key) => {
+                  handleMenuClick(key)
                 }}
-                classNames={{
-                  root: `
-                  rounded-md
-                  `,
-                }}
-                menu={{
-                  items: dropdownItems.map((item: any) => {
-                    if ('type' in item && item.type === 'divider') {
-                      return { type: 'divider' }
-                    }
-                    if ('type' in item && item.type === 'group') {
-                      return {
-                        type: 'group',
-                        label: (
-                          <div className={'-ml-1'}>
-                            <Typography.Text
-                              strong
-                              type={'secondary'}
-                              className={'!text-xs'}
-                            >
-                              {item.label}
-                            </Typography.Text>
-                          </div>
-                        ),
-                      }
-                    }
-                    return {
-                      key: item.key,
-                      label: (
-                        <Flex className={'gap-2 items-center'}>
-                          {item.icon}
-                          {item.label}
-                        </Flex>
-                      ),
-                    }
-                  }),
-                  onClick: ({ key }) => {
-                    handleMenuClick(key)
-                  },
-                  selectedKeys: [currentSection || validSections[0]],
-                }}
-                trigger={['click']}
               >
-                <Button type="text" className={'mt-[2px]'}>
+                <Button variant="ghost" className={'mt-[2px]'}>
                   {getCurrentSectionInfo().icon} {getCurrentSectionInfo().label}{' '}
                   <IoIosArrowDown />
                 </Button>
@@ -258,7 +239,7 @@ export default function SettingsPage() {
             <Result
               status="403"
               title="Not authorized"
-              subTitle={`You don't have permission to view "${forbiddenSection.label}".`}
+              subtitle={`You don't have permission to view "${forbiddenSection.label}".`}
             />
           ) : (
             <Outlet />

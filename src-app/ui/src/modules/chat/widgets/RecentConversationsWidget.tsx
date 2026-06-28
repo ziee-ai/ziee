@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import {
-  App,
-  Typography,
   Button,
   Dropdown,
   Empty,
   Spin,
-  theme,
-} from 'antd'
+  Text,
+  dialog,
+} from '@/components/ui'
+import type { DropdownItem } from '@/components/ui'
 import { MessageSquare, Trash2, MoreHorizontal } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
@@ -20,8 +20,6 @@ import {
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
 
-const { Text } = Typography
-
 /**
  * Sidebar list of the user's recent conversations, backed by
  * `Stores.ChatHistory.recentConversations`. Renders as a kit
@@ -33,7 +31,6 @@ const { Text } = Typography
  * per conversation without this widget knowing about it.
  */
 export function RecentConversationsWidget() {
-  const { token } = theme.useToken()
   const location = useLocation()
   const navigate = useNavigate()
   const { recentConversations, loading, isInitialized } = Stores.ChatHistory
@@ -51,8 +48,7 @@ export function RecentConversationsWidget() {
   // typography so it reads identically.
   const headerOnly = (
     <div
-      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide"
-      style={{ color: token.colorTextDescription }}
+      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide text-muted-foreground"
     >
       Recent chats
     </div>
@@ -63,7 +59,7 @@ export function RecentConversationsWidget() {
       <div className="flex flex-col h-full">
         {headerOnly}
         <div className="flex justify-center items-center py-8">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       </div>
     )
@@ -81,7 +77,6 @@ export function RecentConversationsWidget() {
                 No conversations yet
               </Text>
             }
-            styles={{ image: { height: 40 } }}
           />
         </div>
       </div>
@@ -112,10 +107,7 @@ export function RecentConversationsWidget() {
   ]
 
   return (
-    <div
-      className="flex flex-col h-full min-h-0"
-      style={{ color: token.colorTextBase }}
-    >
+    <div className="flex flex-col h-full min-h-0 text-foreground">
       <DivScrollY className="flex-col flex-1 min-h-0">
         <Menu
           mode="vertical"
@@ -152,8 +144,6 @@ function ConversationRowLabel({
 }: {
   conversation: ConversationResponse
 }) {
-  const { token } = theme.useToken()
-  const { modal } = App.useApp()
   const [deleting, setDeleting] = useState(false)
   // Controlled dropdown open so we can suppress closing while an
   // extension overlay (popconfirm etc.) is showing.
@@ -162,26 +152,26 @@ function ConversationRowLabel({
   const { items: extensionItems, overlays, keepMenuOpen } =
     useConversationMenuContributions(conversation)
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     const title = conversation.title || 'Untitled Conversation'
-    modal.confirm({
+    const ok = await dialog.confirm({
       title: 'Delete conversation?',
-      content: `"${title}" will be permanently deleted.`,
+      description: `"${title}" will be permanently deleted.`,
       okText: 'Delete',
       cancelText: 'Cancel',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        setDeleting(true)
-        try {
-          await Stores.ChatHistory.__state.deleteConversation(conversation.id)
-        } finally {
-          setDeleting(false)
-        }
-      },
+      danger: true,
     })
+    if (ok) {
+      setDeleting(true)
+      try {
+        await Stores.ChatHistory.__state.deleteConversation(conversation.id)
+      } finally {
+        setDeleting(false)
+      }
+    }
   }
 
-  const menuItems = [
+  const menuItems: DropdownItem[] = [
     ...(extensionItems ?? []),
     ...(extensionItems && extensionItems.length > 0
       ? [{ type: 'divider' as const, key: 'div-delete' }]
@@ -220,9 +210,9 @@ function ConversationRowLabel({
         onClick={e => e.stopPropagation()}
       >
         <Dropdown
-          menu={{ items: menuItems }}
-          trigger={['click']}
-          placement="bottomRight"
+          items={menuItems}
+          side="bottom"
+          align="end"
           open={menuOpen || keepMenuOpen}
           onOpenChange={open => {
             if (!open && keepMenuOpen) return
@@ -230,17 +220,13 @@ function ConversationRowLabel({
           }}
         >
           <Button
-            type="text"
-            size="small"
+            variant="ghost"
+            size="icon"
             icon={<MoreHorizontal />}
             loading={deleting}
-            style={{
-              width: 22,
-              height: 22,
-              padding: 0,
-              color: token.colorText,
-            }}
+            className="w-[22px] h-[22px] p-0"
             aria-label="Conversation options"
+            tooltip="Conversation options"
           />
         </Dropdown>
       </div>

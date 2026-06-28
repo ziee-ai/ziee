@@ -1,24 +1,21 @@
-import { Pencil } from 'lucide-react'
-import {
-  App,
-  Button,
-  Collapse,
-  Empty,
-  Flex,
-  Select,
-  Space,
-  Spin,
-  Tag,
-  Typography,
-} from 'antd'
+import { Pencil, ChevronDown, ChevronRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ApiClient } from '@/api-client'
 import type { Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
+import {
+  message,
+  Button,
+  Empty,
+  Flex,
+  MultiSelect,
+  Space,
+  Spin,
+  Tag,
+  Text,
+} from '@/components/ui'
 
 interface AdminSkillGroupAssignmentProps {
   skillId: string
@@ -33,7 +30,6 @@ interface AdminSkillGroupAssignmentProps {
 export function AdminSkillGroupAssignment({
   skillId,
 }: AdminSkillGroupAssignmentProps) {
-  const { message } = App.useApp()
   const entry = Stores.SystemSkill.groups[skillId]
   const assignedIds = entry?.groupIds ?? []
   const loading = entry?.loading ?? false
@@ -76,51 +72,64 @@ export function AdminSkillGroupAssignment({
 
   const nameFor = (id: string) => allGroups.find(g => g.id === id)?.name ?? id
 
+  const [open, setOpen] = useState(false)
+
   return (
     <div className="pb-3" data-skill-id={skillId}>
-      <Collapse
-        ghost
-        size="small"
-        items={[
-          {
-            key: 'groups',
-            label: <Text className="font-medium text-sm">User Groups</Text>,
-            extra: canAssign ? (
-              <Button
-                type="text"
-                size="small"
-                icon={<Pencil aria-hidden="true" />}
-                onClick={e => {
-                  e.stopPropagation()
-                  void startEdit()
-                }}
-                aria-label="Manage user groups"
-              >
-                Assign
-              </Button>
-            ) : null,
-            children: loading ? (
-              <Spin size="small" />
+      {/* Lightweight disclosure (was an antd Collapse with a header `extra`
+          action — kit Accordion has no extra slot + nests a <button> in its
+          trigger, so a manual header row is used instead). */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setOpen(o => !o)}
+          aria-expanded={open}
+          aria-label={open ? 'Collapse user groups' : 'Expand user groups'}
+          icon={open ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+        >
+          <Text className="font-medium text-sm">User Groups</Text>
+        </Button>
+        <div className="ml-auto">
+          {canAssign ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Pencil aria-hidden="true" />}
+              onClick={() => { setOpen(true); void startEdit() }}
+              aria-label="Manage user groups"
+            >
+              Assign
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      {open && (
+        <div className="pt-2">
+          {loading ? (
+              <Spin size="sm" label="Loading" />
             ) : editing ? (
-              <Space vertical className="w-full">
-                <Select
-                  mode="multiple"
+              <Space direction="vertical" className="w-full">
+                <MultiSelect
                   className="w-full"
                   placeholder="Restrict to specific groups (empty = all users)"
+                  searchPlaceholder="Search groups"
+                  emptyText="No groups found"
+                  removeLabel={label => `Remove ${label}`}
                   value={draft}
                   onChange={setDraft}
                   options={allGroups.map(g => ({
                     label: g.name,
                     value: g.id,
                   }))}
+                  aria-label="Select groups"
                 />
-                <Flex gap={8} justify="end">
-                  <Button size="small" onClick={() => setEditing(false)}>
+                <Flex gap="small" justify="end">
+                  <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
                     Cancel
                   </Button>
                   <Button
-                    size="small"
-                    type="primary"
+                    size="sm"
                     loading={saving}
                     onClick={save}
                   >
@@ -131,21 +140,19 @@ export function AdminSkillGroupAssignment({
             ) : assignedIds.length === 0 ? (
               <Empty
                 description="Available to all users"
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
                 className="!my-2"
               />
             ) : (
               <Space wrap size="small">
                 {assignedIds.map(id => (
-                  <Tag key={id} color="blue">
+                  <Tag key={id} tone="info">
                     {nameFor(id)}
                   </Tag>
                 ))}
               </Space>
-            ),
-          },
-        ]}
-      />
+            )}
+        </div>
+      )}
     </div>
   )
 }

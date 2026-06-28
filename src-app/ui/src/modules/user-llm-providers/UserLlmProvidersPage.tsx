@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react'
 import {
-  Typography,
-  Form,
-  Input,
   Button,
   Space,
   Spin,
@@ -11,22 +8,24 @@ import {
   Flex,
   Dropdown,
   Empty,
-} from 'antd'
+  Title,
+  Text,
+  Form,
+  FormField,
+  useForm,
+  PasswordInput,
+  Menu,
+} from '@/components/ui'
 import { CircleCheck } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
-import { Menu } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
-const { Title, Text } = Typography
-
-// Displayed in the input when a key is already saved — long enough to look like a real key
 const KEY_DISPLAY_PLACEHOLDER = '••••••••••••••••••••••••'
 
 export default function UserLlmProvidersPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [keyValue, setKeyValue] = useState('')
   const [savingFor, setSavingFor] = useState<string | null>(null)
 
   const providers = Stores.UserLlmProviders.providers
@@ -35,6 +34,11 @@ export default function UserLlmProvidersPage() {
   const error = Stores.UserLlmProviders.error
   const saving = Stores.UserLlmProviders.saving
   const windowMinSize = useWindowMinSize()
+
+  const form = useForm<{ apiKey: string }>({ defaultValues: { apiKey: '' } })
+  // Shadow the old state variable so downstream logic is unchanged
+  const keyValue = form.watch('apiKey') ?? ''
+  const setKeyValue = (v: string) => form.setValue('apiKey', v)
 
   // Set initial selected provider once providers load
   useEffect(() => {
@@ -78,7 +82,7 @@ export default function UserLlmProvidersPage() {
         <Flex className="flex-row gap-2 items-center h-full">
           <IconComponent className="text-lg" />
           <div className="flex-1 flex items-center h-full overflow-x-hidden">
-            <Typography.Text ellipsis>{provider.name}</Typography.Text>
+            <Text ellipsis>{provider.name}</Text>
           </div>
         </Flex>
       ),
@@ -99,13 +103,13 @@ export default function UserLlmProvidersPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-32">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
 
   if (error) {
-    return <Alert type="error" title={error} showIcon className="m-6" />
+    return <Alert tone="error" title={error} className="m-6" />
   }
 
   const renderContent = () => {
@@ -120,7 +124,6 @@ export default function UserLlmProvidersPage() {
               can configure keys here.
             </span>
           }
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )
     }
@@ -129,7 +132,6 @@ export default function UserLlmProvidersPage() {
       return (
         <Empty
           description="No provider selected"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )
     }
@@ -138,12 +140,12 @@ export default function UserLlmProvidersPage() {
 
     return (
       <div className="max-w-lg">
-        <Flex align="center" gap={10} className="mb-1">
+        <Flex align="center" gap="small" className="mb-1">
           <IconComponent className="text-2xl" />
           <Title level={4} className="!mb-0">
             {currentProvider.name}
           </Title>
-          <Tag color={hasUserKey ? 'green' : currentProvider.api_key_configured ? 'blue' : 'orange'}>
+          <Tag tone={hasUserKey ? 'success' : currentProvider.api_key_configured ? 'info' : 'warning'}>
             {hasUserKey ? (
               <><CircleCheck /> Your key configured</>
             ) : currentProvider.api_key_configured ? (
@@ -158,20 +160,17 @@ export default function UserLlmProvidersPage() {
           Your personal key takes priority over the system key when making requests.
         </Text>
 
-        <Form layout="vertical">
-          <Form.Item label="Your API Key">
-            <Input.Password
-              value={keyValue}
-              onChange={e => setKeyValue(e.target.value)}
+        <Form form={form} onSubmit={handleSave} layout="vertical">
+          <FormField name="apiKey" label="Your API Key">
+            <PasswordInput showLabel="Show" hideLabel="Hide"
               onFocus={() => {
                 if (keyValue === KEY_DISPLAY_PLACEHOLDER) setKeyValue('')
               }}
               placeholder={hasUserKey ? 'Enter new key to replace' : 'Enter your API key (e.g. sk-...)'}
             />
-          </Form.Item>
+          </FormField>
           <Space>
             <Button
-              type="primary"
               onClick={handleSave}
               loading={savingFor === currentProvider.id || saving}
               disabled={!keyValue.trim() || keyValue === KEY_DISPLAY_PLACEHOLDER}
@@ -180,7 +179,7 @@ export default function UserLlmProvidersPage() {
             </Button>
             {hasUserKey && (
               <Button
-                danger
+                variant="destructive"
                 onClick={handleDelete}
                 loading={savingFor === currentProvider.id}
               >
@@ -217,15 +216,11 @@ export default function UserLlmProvidersPage() {
             {windowMinSize.sm && providers.length > 0 && (
               <div className="w-full flex flex-row gap-2 items-center mb-4">
                 <Dropdown
-                  className="w-full"
-                  menu={{
-                    items: menuItems,
-                    onClick: ({ key }) => setSelectedId(key),
-                    selectedKeys: selectedId ? [selectedId] : [],
-                  }}
-                  trigger={['click']}
+                  items={menuItems}
+                  onSelect={(key) => setSelectedId(key)}
+                  align="start"
                 >
-                  <Button className="w-fit" size="large">
+                  <Button className="w-fit" size="lg">
                     {currentProvider ? (
                       <Flex className="gap-2 items-center">
                         {(() => {

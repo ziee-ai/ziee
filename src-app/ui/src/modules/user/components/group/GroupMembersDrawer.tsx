@@ -1,8 +1,8 @@
 import { User } from 'lucide-react'
-import { List, Tag } from 'antd'
 import { useEffect } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
+import { List, Tag } from '@/components/ui'
 
 export function GroupMembersDrawer() {
   const { isOpen: open, selectedGroup: group } = Stores.GroupMembersDrawer
@@ -30,21 +30,20 @@ export function GroupMembersDrawer() {
       <List
         loading={loadingGroupMembers}
         dataSource={currentGroupMembers}
+        rowKey="id"
         renderItem={user => (
-          <List.Item>
-            <List.Item.Meta
-              avatar={<User aria-hidden="true" />}
-              title={user.username}
-              description={
-                <div>
-                  <div>{user.email}</div>
-                  <Tag color={user.is_active ? 'green' : 'red'}>
-                    {user.is_active ? 'Active' : 'Inactive'}
-                  </Tag>
-                </div>
-              }
-            />
-          </List.Item>
+          <div className="flex items-start gap-3">
+            <User aria-hidden="true" className="mt-0.5 shrink-0" />
+            <div className="flex flex-col gap-1">
+              <span className="font-medium">{user.username}</span>
+              <div>
+                <div>{user.email}</div>
+                <Tag tone={user.is_active ? 'success' : 'error'}>
+                  {user.is_active ? 'Active' : 'Inactive'}
+                </Tag>
+              </div>
+            </div>
+          </div>
         )}
       />
     </Drawer>

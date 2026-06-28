@@ -1,28 +1,31 @@
 import { useState } from 'react'
+import { z } from 'zod'
 import {
   Alert,
   Button,
   DatePicker,
   Descriptions,
   Form,
+  FormField,
   Input,
+  PasswordInput,
   InputNumber,
+  MultiSelect,
   Select,
   Space,
   Switch,
-  Typography,
-} from 'antd'
+  Text,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
 import {
   CircleCheck,
   CircleX,
   SquarePen,
   Ban,
 } from 'lucide-react'
-import dayjs, { type Dayjs } from 'dayjs'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
-
-const { Text } = Typography
 
 interface ElicitationData {
   type: 'elicitation_request'
@@ -99,15 +102,92 @@ function getOptions(
   return []
 }
 
+/** Build a zod schema for a single field. */
+function buildFieldZodSchema(fieldSchema: FieldSchema, required: boolean): z.ZodTypeAny {
+  const label = fieldSchema.title ?? 'This field'
+  const isMultiSelect =
+    fieldSchema.type === 'array' &&
+    !!(
+      fieldSchema.items?.enum ||
+      fieldSchema.items?.anyOf ||
+      fieldSchema.items?.oneOf
+    )
+  const isSelectField =
+    isMultiSelect ||
+    (fieldSchema.type === 'string' &&
+      !!(fieldSchema.enum || fieldSchema.anyOf || fieldSchema.oneOf))
+
+  let schema: z.ZodTypeAny
+
+  if (isMultiSelect) {
+    let s = z.array(z.string())
+    if (fieldSchema.minItems != null)
+      s = s.min(fieldSchema.minItems, `Select at least ${fieldSchema.minItems} item(s)`)
+    if (fieldSchema.maxItems != null)
+      s = s.max(fieldSchema.maxItems, `Select at most ${fieldSchema.maxItems} item(s)`)
+    schema = required ? s.min(1, `${label} is required`) : s.optional()
+    return schema
+  }
+
+  if (isSelectField) {
+    schema = required
+      ? z.string().min(1, `${label} is required`)
+      : z.string().optional()
+    return schema
+  }
+
+  if (fieldSchema.type === 'boolean') {
+    schema = z.boolean()
+    return required ? schema : schema.optional()
+  }
+
+  if (fieldSchema.type === 'number' || fieldSchema.type === 'integer') {
+    let s = z.number({ error: `${label} must be a number` })
+    if (fieldSchema.type === 'integer') s = s.int(`${label} must be a whole number`)
+    if (fieldSchema.minimum != null) s = s.min(fieldSchema.minimum, `${label} must be at least ${fieldSchema.minimum}`)
+    if (fieldSchema.maximum != null) s = s.max(fieldSchema.maximum, `${label} must be at most ${fieldSchema.maximum}`)
+    schema = required ? s : s.optional()
+    return schema
+  }
+
+  // String (including date / date-time / email / uri / password)
+  let s = z.string()
+  if (fieldSchema.minLength != null)
+    s = s.min(fieldSchema.minLength, `${label} must be at least ${fieldSchema.minLength} character(s)`)
+  if (fieldSchema.maxLength != null)
+    s = s.max(fieldSchema.maxLength, `${label} must be at most ${fieldSchema.maxLength} character(s)`)
+  if (fieldSchema.pattern) {
+    try {
+      s = s.regex(new RegExp(fieldSchema.pattern), `${label} must match the required pattern`)
+    } catch {
+      // Server sent a malformed regex — skip the constraint rather than crashing.
+    }
+  }
+  if (fieldSchema.format === 'email') s = s.email('Enter a valid email address')
+  if (fieldSchema.format === 'uri') s = s.url('Enter a valid URL')
+
+  schema = required ? s.min(1, `${label} is required`) : s.optional()
+  return schema
+}
+
+/** Build a zod object schema from all property schemas. */
+function buildFormSchema(
+  properties: Record<string, FieldSchema>,
+  requiredFields: Set<string>,
+): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  const shape: Record<string, z.ZodTypeAny> = {}
+  for (const [name, fieldSchema] of Object.entries(properties)) {
+    shape[name] = buildFieldZodSchema(fieldSchema as FieldSchema, requiredFields.has(name))
+  }
+  return z.object(shape)
+}
+
 function renderField(
   name: string,
   fieldSchema: FieldSchema,
   required: boolean,
 ): React.ReactNode {
   const label = fieldSchema.title || name
-  const rules: object[] = required
-    ? [{ required: true, message: `${label} is required` }]
-    : []
   const testId = `elicitation-field-${name}`
 
   // Select fields (single or multi)
@@ -126,158 +206,135 @@ function renderField(
   if (isSelectField) {
     const options = getOptions(fieldSchema)
     if (isMultiSelect) {
-      if (
-        fieldSchema.minItems !== undefined ||
-        fieldSchema.maxItems !== undefined
-      ) {
-        rules.push({
-          type: 'array',
-          min: fieldSchema.minItems,
-          max: fieldSchema.maxItems,
-        })
-      }
+      return (
+        <FormField
+          key={name}
+          name={name}
+          label={label}
+          required={required}
+          description={fieldSchema.description}
+        >
+          <MultiSelect
+            options={options}
+            placeholder={`Select ${label.toLowerCase()}`}
+            searchPlaceholder="Search…"
+            emptyText="No options"
+            removeLabel={v => `Remove ${v}`}
+            aria-label={label}
+            data-testid={testId}
+          />
+        </FormField>
+      )
     }
     return (
-      <Form.Item
+      <FormField
         key={name}
         name={name}
         label={label}
-        rules={rules}
-        extra={fieldSchema.description}
+        required={required}
+        description={fieldSchema.description}
       >
         <Select
           options={options}
-          mode={isMultiSelect ? 'multiple' : undefined}
           placeholder={`Select ${label.toLowerCase()}`}
           data-testid={testId}
         />
-      </Form.Item>
+      </FormField>
     )
   }
 
   if (fieldSchema.type === 'boolean') {
     return (
-      <Form.Item
+      <FormField
         key={name}
         name={name}
         label={label}
         valuePropName="checked"
-        extra={fieldSchema.description}
+        description={fieldSchema.description}
       >
         <Switch data-testid={testId} />
-      </Form.Item>
+      </FormField>
     )
   }
 
   if (fieldSchema.type === 'number' || fieldSchema.type === 'integer') {
     return (
-      <Form.Item
+      <FormField
         key={name}
         name={name}
         label={label}
-        rules={rules}
-        extra={fieldSchema.description}
+        required={required}
+        description={fieldSchema.description}
       >
         <InputNumber
           min={fieldSchema.minimum}
           max={fieldSchema.maximum}
           precision={fieldSchema.type === 'integer' ? 0 : undefined}
-          style={{ width: '100%' }}
+          className="w-full"
           data-testid={testId}
         />
-      </Form.Item>
+      </FormField>
     )
   }
 
   // ─── String formats with dedicated pickers ─────────────────────────────
-  // DatePicker stores Dayjs objects in form state; handleSubmit converts to
-  // ISO strings before submission so the MCP server receives the expected
-  // JSON Schema `date` / `date-time` shape.
+  // DatePicker stores an ISO string in form state; no dayjs conversion needed.
+  // NOTE: the kit DatePicker is date-only (no showTime); date-time fields get
+  // date-only selection and the time component will be T00:00:00 in the emitted
+  // ISO string. See FLAG: DatePicker showTime below.
   if (fieldSchema.type === 'string' && fieldSchema.format === 'date') {
     return (
-      <Form.Item
+      <FormField
         key={name}
         name={name}
         label={label}
-        rules={rules}
-        extra={fieldSchema.description}
+        required={required}
+        description={fieldSchema.description}
       >
         <DatePicker
-          format="YYYY-MM-DD"
-          style={{ width: '100%' }}
+          placeholder={`Select ${label.toLowerCase()}`}
+          aria-label={label}
+          valueFormat="yyyy-MM-dd"
+          className="w-full"
           data-testid={testId}
         />
-      </Form.Item>
+      </FormField>
     )
   }
 
   if (fieldSchema.type === 'string' && fieldSchema.format === 'date-time') {
+    // FLAG: kit DatePicker has no showTime — time will be T00:00:00 in the
+    // emitted value. Full datetime picking requires a future kit component.
     return (
-      <Form.Item
+      <FormField
         key={name}
         name={name}
         label={label}
-        rules={rules}
-        extra={fieldSchema.description}
+        required={required}
+        description={fieldSchema.description}
       >
         <DatePicker
-          showTime
-          format="YYYY-MM-DD HH:mm:ss"
-          style={{ width: '100%' }}
+          placeholder={`Select ${label.toLowerCase()}`}
+          aria-label={label}
+          valueFormat="yyyy-MM-dd'T'HH:mm:ss"
+          className="w-full"
           data-testid={testId}
         />
-      </Form.Item>
+      </FormField>
     )
-  }
-
-  // ─── String constraints ────────────────────────────────────────────────
-  if (
-    fieldSchema.minLength !== undefined ||
-    fieldSchema.maxLength !== undefined
-  ) {
-    rules.push({ min: fieldSchema.minLength, max: fieldSchema.maxLength })
-  }
-
-  if (fieldSchema.pattern) {
-    try {
-      const re = new RegExp(fieldSchema.pattern)
-      rules.push({
-        pattern: re,
-        message: `${label} must match the required pattern`,
-      })
-    } catch {
-      // Server sent a malformed regex — surface it as a soft validation
-      // failure rather than crashing the form render.
-      rules.push({
-        validator: (_: unknown, value: string) =>
-          value
-            ? Promise.reject(
-                new Error('Server sent an invalid pattern for this field'),
-              )
-            : Promise.resolve(),
-      })
-    }
-  }
-
-  if (fieldSchema.format === 'email') {
-    rules.push({ type: 'email', message: 'Enter a valid email address' })
-  }
-
-  if (fieldSchema.format === 'uri') {
-    rules.push({ type: 'url', message: 'Enter a valid URL' })
   }
 
   if (fieldSchema.format === 'password') {
     return (
-      <Form.Item
+      <FormField
         key={name}
         name={name}
         label={label}
-        rules={rules}
-        extra={fieldSchema.description}
+        required={required}
+        description={fieldSchema.description}
       >
-        <Input.Password data-testid={testId} />
-      </Form.Item>
+        <PasswordInput showLabel="Show" hideLabel="Hide" data-testid={testId} />
+      </FormField>
     )
   }
 
@@ -289,15 +346,15 @@ function renderField(
         : 'text'
 
   return (
-    <Form.Item
+    <FormField
       key={name}
       name={name}
       label={label}
-      rules={rules}
-      extra={fieldSchema.description}
+      required={required}
+      description={fieldSchema.description}
     >
       <Input type={inputType} data-testid={testId} />
-    </Form.Item>
+    </FormField>
   )
 }
 
@@ -316,7 +373,6 @@ function renderField(
 export function ElicitationFormContent({
   content: data,
 }: ContentRendererProps) {
-  const [form] = Form.useForm()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const elicitation = data.content as unknown as ElicitationData
@@ -339,64 +395,22 @@ export function ElicitationFormContent({
   const properties = schema?.properties || {}
   const requiredFields = new Set(schema?.required || [])
 
-  // Date/date-time defaults come from the server as ISO strings; convert to
-  // dayjs so AntD DatePicker can display them. Other defaults pass through.
-  const initialValues = Object.fromEntries(
+  // Build a dynamic zod schema from the elicitation field specs.
+  const formSchema = buildFormSchema(properties, requiredFields)
+
+  // Date/date-time defaults come from the server as ISO strings; the kit
+  // DatePicker accepts ISO strings directly — no dayjs conversion needed.
+  const defaultValues = Object.fromEntries(
     Object.entries(properties).map(([key, field]) => {
       const fs = field as FieldSchema
-      const def = fs.default
-      if (
-        typeof def === 'string' &&
-        fs.type === 'string' &&
-        (fs.format === 'date' || fs.format === 'date-time')
-      ) {
-        const d = dayjs(def)
-        return [key, d.isValid() ? d : undefined]
-      }
-      return [key, def]
+      return [key, fs.default ?? undefined]
     }),
   )
 
-  const handleSubmit = async () => {
-    let values: Record<string, unknown>
-    try {
-      values = await form.validateFields()
-    } catch {
-      // Validation failed — form shows inline errors, stay interactive
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      // Convert dayjs values back to ISO strings per the field's schema format
-      // so the MCP server receives the canonical JSON Schema representation.
-      const submitValues: Record<string, unknown> = {}
-      for (const [key, val] of Object.entries(values)) {
-        const fs = properties[key] as FieldSchema | undefined
-        if (val != null && dayjs.isDayjs(val)) {
-          const d = val as Dayjs
-          submitValues[key] =
-            fs?.format === 'date' ? d.format('YYYY-MM-DD') : d.toISOString()
-        } else {
-          submitValues[key] = val
-        }
-      }
-      await Stores.McpComposer.resolveElicitation(
-        elicitation.elicitation_id,
-        'accept',
-        submitValues,
-      )
-    } catch (e) {
-      // The store rolls status back to 'pending' on POST failure so the
-      // user can retry; swallow here so the error doesn't bubble to the
-      // chat error boundary.
-      console.warn('mcp.elicitation resolve failed', e)
-    } finally {
-      // On success the resolved card replaces this form (no-op); on
-      // failure the catch above kept us interactive — either way,
-      // make sure the submit button is re-enabled.
-      setIsSubmitting(false)
-    }
-  }
+  const form = useForm<Record<string, unknown>>({
+    resolver: zodResolver(formSchema),
+    defaultValues,
+  })
 
   const handleDecline = async () => {
     setIsSubmitting(true)
@@ -430,9 +444,8 @@ export function ElicitationFormContent({
         data-testid={`elicitation-accepted-${elicitation.elicitation_id}`}
       >
         <Alert
-          type="success"
+          tone="success"
           icon={<CircleCheck />}
-          showIcon
           title={
             <div>
               <Text strong>{elicitation.server}</Text>
@@ -444,7 +457,7 @@ export function ElicitationFormContent({
           description={
             items.length > 0 ? (
               <Descriptions
-                size="small"
+                size="sm"
                 column={1}
                 items={items}
                 className="mt-2"
@@ -463,9 +476,8 @@ export function ElicitationFormContent({
         data-testid={`elicitation-declined-${elicitation.elicitation_id}`}
       >
         <Alert
-          type="warning"
+          tone="warning"
           icon={<CircleX />}
-          showIcon
           title={
             <div>
               <Text strong>{elicitation.server}</Text>
@@ -486,9 +498,8 @@ export function ElicitationFormContent({
         data-testid={`elicitation-cancelled-${elicitation.elicitation_id}`}
       >
         <Alert
-          type="error"
+          tone="error"
           icon={<Ban />}
-          showIcon
           title={
             <div>
               <Text strong>{elicitation.server}</Text>
@@ -510,9 +521,8 @@ export function ElicitationFormContent({
       data-testid={`elicitation-pending-${elicitation.elicitation_id}`}
     >
       <Alert
-        type="info"
+        tone="info"
         icon={<SquarePen />}
-        showIcon
         title={
           <div>
             <Text strong>{elicitation.server}</Text>
@@ -527,9 +537,28 @@ export function ElicitationFormContent({
             <Form
               form={form}
               layout="vertical"
-              initialValues={initialValues}
               className="mt-3"
               disabled={isSubmitting}
+              onSubmit={async (values) => {
+                setIsSubmitting(true)
+                try {
+                  await Stores.McpComposer.resolveElicitation(
+                    elicitation.elicitation_id,
+                    'accept',
+                    values as Record<string, unknown>,
+                  )
+                } catch (e) {
+                  // The store rolls status back to 'pending' on POST failure so the
+                  // user can retry; swallow here so the error doesn't bubble to the
+                  // chat error boundary.
+                  console.warn('mcp.elicitation resolve failed', e)
+                } finally {
+                  // On success the resolved card replaces this form (no-op); on
+                  // failure the catch above kept us interactive — either way,
+                  // make sure the submit button is re-enabled.
+                  setIsSubmitting(false)
+                }
+              }}
             >
               {Object.entries(properties).map(([name, fieldSchema]) =>
                 renderField(
@@ -538,26 +567,27 @@ export function ElicitationFormContent({
                   requiredFields.has(name),
                 ),
               )}
+              <Space className="mt-2">
+                <Button
+                  type="submit"
+                  loading={isSubmitting}
+                  size="sm"
+                  data-testid="elicitation-submit"
+                >
+                  Submit
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDecline}
+                  loading={isSubmitting}
+                  size="sm"
+                  data-testid="elicitation-decline"
+                >
+                  Decline
+                </Button>
+              </Space>
             </Form>
-            <Space className="mt-2">
-              <Button
-                type="primary"
-                onClick={handleSubmit}
-                loading={isSubmitting}
-                size="small"
-                data-testid="elicitation-submit"
-              >
-                Submit
-              </Button>
-              <Button
-                onClick={handleDecline}
-                loading={isSubmitting}
-                size="small"
-                data-testid="elicitation-decline"
-              >
-                Decline
-              </Button>
-            </Space>
           </div>
         }
       />

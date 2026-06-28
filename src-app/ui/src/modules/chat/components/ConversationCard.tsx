@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react'
-import { App, Button, Card, Checkbox, Divider, Popconfirm, theme, Typography } from 'antd'
+import { Button, Card, Checkbox, Confirm, Separator, Text } from '@/components/ui'
+import { message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { Trash2 } from 'lucide-react'
@@ -10,8 +11,6 @@ import type { ConversationResponse } from '@/api-client/types'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 
 dayjs.extend(relativeTime)
-
-const { Text } = Typography
 
 interface ConversationCardProps {
   conversation: ConversationResponse
@@ -42,9 +41,7 @@ export function ConversationCard({
   isInSelectionMode = false,
   trailing,
 }: ConversationCardProps) {
-  const { message } = App.useApp()
   const navigate = useNavigate()
-  const { token } = theme.useToken()
   const [popconfirmOpen, setPopconfirmOpen] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
   // Lazy-render the trailing area only after first hover so extensions
@@ -77,8 +74,7 @@ export function ConversationCard({
     }
   }
 
-  const handleSelectChange = (e: any) => {
-    e.domEvent?.stopPropagation()
+  const handleSelectChange = () => {
     if (onSelect) {
       onSelect(conversation.id)
     }
@@ -99,19 +95,13 @@ export function ConversationCard({
       onMouseEnter={() => {
         if (!hoveredOnce) setHoveredOnce(true)
       }}
-      className="cursor-pointer relative group hover:!shadow-md transition-shadow"
-      classNames={{
-        body: '!px-3 !py-2',
-      }}
+      className={`cursor-pointer relative group hover:!shadow-md transition-shadow${isSelected ? ' border-primary' : ''}`}
       hoverable
-      style={{
-        borderColor: isSelected ? token.colorPrimary : undefined,
-      }}
     >
       <div className="flex flex-col gap-2 pb-6">
         {/* Title and metadata */}
         <div className="flex items-start justify-between gap-2">
-          <Text strong className="text-base flex-1 min-w-0" ellipsis={{ tooltip: true }}>
+          <Text strong className="text-base flex-1 min-w-0" ellipsis>
             {conversation.title || 'Untitled Conversation'}
           </Text>
           <div className="flex items-center gap-x-1 flex-shrink-0">
@@ -120,7 +110,7 @@ export function ConversationCard({
                 <Text type="secondary" className="text-xs">
                   {conversation.message_count} message{conversation.message_count !== 1 ? 's' : ''}
                 </Text>
-                <Divider orientation="vertical" className="!mx-1" />
+                <Separator orientation="vertical" className="!mx-1" />
               </>
             )}
             <Text type="secondary" className="whitespace-nowrap text-xs">
@@ -154,10 +144,9 @@ export function ConversationCard({
         {/* Delete button — hidden in selection mode (bulk-delete in
             the toolbar replaces per-row deletes). */}
         {canDelete && !isInSelectionMode && (
-          <Popconfirm
+          <Confirm
             title="Delete conversation?"
             description="This will permanently delete the conversation and all its messages."
-            open={popconfirmOpen}
             onConfirm={async () => {
               await handleDeleteConversation()
               setPopconfirmOpen(false)
@@ -165,23 +154,20 @@ export function ConversationCard({
             onCancel={() => setPopconfirmOpen(false)}
             okText="Delete"
             cancelText="Cancel"
-            okButtonProps={{ loading: false }}
           >
             <Button
-              className={`transition-opacity ${
+              className={`transition-opacity bg-card ${
                 popconfirmOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
               }`}
-              type="text"
-              size="small"
-              danger
+              variant="ghost"
+              size="sm"
               icon={<Trash2 />}
-              style={{ backgroundColor: token.colorBgContainer }}
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
                 setPopconfirmOpen(true)
               }}
             />
-          </Popconfirm>
+          </Confirm>
         )}
 
         {/* Selection checkbox — visible on hover OR when selected. */}
@@ -190,11 +176,11 @@ export function ConversationCard({
             className={`transition-opacity ${
               isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
+            onClick={e => e.stopPropagation()}
           >
             <Checkbox
               checked={isSelected}
               onChange={handleSelectChange}
-              onClick={e => e.stopPropagation()}
             />
           </div>
         )}
