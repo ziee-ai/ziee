@@ -2,7 +2,13 @@ import { createModule } from '@/core'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 import { useAuthProvidersStore } from '@/modules/auth/AuthProviders.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { AuthGuard } from './AuthGuard'
+// Import via the `@/` alias (NOT a relative './AuthGuard') so the desktop
+// build's vite-plugin-local-override can redirect this to the desktop
+// AuthGuard override (the plugin only rewrites `@/`-prefixed specifiers;
+// a relative import would always bind core's AuthGuard, even on desktop —
+// bypassing the deliberate desktop divergence). Resolves to core's
+// AuthGuard.tsx on the web build.
+import { AuthGuard } from '@/modules/auth/AuthGuard'
 
 const AuthPage = lazyWithPreload(() =>
   import('./AuthPage').then(m => ({ default: m.AuthPage })),
