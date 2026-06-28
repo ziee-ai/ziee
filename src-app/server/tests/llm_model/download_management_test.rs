@@ -824,3 +824,84 @@ async fn test_sse_sends_update_events_during_download() {
         if complete_event_received { "Yes" } else { "No" }
     );
 }
+
+// =====================================================
+// Delete download — INVALID_STATE (non-terminal) guard
+// =====================================================
+
+/// A download in a NON-terminal state (`pending`/`downloading`) must NOT be
+/// deletable — the handler returns 400 INVALID_STATE rather than tearing down
+/// an in-flight download. Only terminal (completed/failed/cancelled) rows
+/// delete. Seeds a real `downloading` row via SQL so the guard is exercised
+/// end-to-end through the HTTP path.
+#[tokio::test]
+async fn test_delete_active_download_returns_invalid_state() {
+    use uuid::Uuid;
+
+    let server = TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "dl_invalid_state",
+        &["llm_models::downloads_delete"],
+    )
+    .await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+
+    // Minimal provider + repository to satisfy the download_instances FKs.
+    let provider_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in)
+         VALUES ($1, 'DL Test Provider', 'huggingface', true, false)",
+    )
+    .bind(provider_id)
+    .execute(&pool)
+    .await
+    .expect("insert provider");
+
+    let repository_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO llm_repositories (id, name, url, auth_type, enabled, built_in)
+         VALUES ($1, 'DL Test Repo', 'https://huggingface.co', 'none', true, false)",
+    )
+    .bind(repository_id)
+    .execute(&pool)
+    .await
+    .expect("insert repository");
+
+    // A genuinely non-terminal download.
+    let download_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO download_instances (id, provider_id, repository_id, request_data, status)
+         VALUES ($1, $2, $3, '{}'::jsonb, 'downloading')",
+    )
+    .bind(download_id)
+    .bind(provider_id)
+    .bind(repository_id)
+    .execute(&pool)
+    .await
+    .expect("insert downloading download");
+    pool.close().await;
+
+    let resp = reqwest::Client::new()
+        .delete(server.api_url(&format!("/llm-models/downloads/{download_id}")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("delete request failed");
+
+    assert_eq!(
+        resp.status(),
+        400,
+        "deleting a non-terminal (downloading) download must be 400 INVALID_STATE"
+    );
+    let body: serde_json::Value = resp.json().await.unwrap_or_default();
+    assert_eq!(
+        body["error_code"], "INVALID_STATE",
+        "error_code should be INVALID_STATE, got body: {body}"
+    );
+}
