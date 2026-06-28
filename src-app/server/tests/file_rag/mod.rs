@@ -923,3 +923,43 @@ async fn reindex_tolerates_unreadable_pages() {
     let r = found["result"]["structuredContent"]["results"].as_array().unwrap();
     assert!(!r.is_empty(), "v1 page-1 content searchable after tolerant reindex");
 }
+
+// audit id all-5b0035643293 — the file_rag admin-settings handler's VALIDATION
+// branches (update_admin_settings: chunk_chars range, overlap >= 0,
+// max_chunks_per_file > 0, and the cross-field overlap < chunk_chars) had no
+// rejection test — existing tests only set VALID values. Drive each invalid
+// case through the real PUT handler (reusing put_settings_raw above) and assert
+// 400 VALIDATION_ERROR.
+#[tokio::test]
+async fn admin_settings_validation_rejects_bad_values() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "frag_validation").await;
+
+    // chunk_chars out of range (200..=8000).
+    let resp = put_settings_raw(&server, &user, json!({ "chunk_chars": 100 })).await;
+    assert_eq!(resp.status(), 400, "chunk_chars below range must be 400");
+    assert_eq!(
+        resp.json::<Value>().await.unwrap_or_default()["error_code"],
+        "VALIDATION_ERROR"
+    );
+
+    let resp = put_settings_raw(&server, &user, json!({ "chunk_chars": 9000 })).await;
+    assert_eq!(resp.status(), 400, "chunk_chars above range must be 400");
+
+    // max_chunks_per_file must be > 0.
+    let resp = put_settings_raw(&server, &user, json!({ "max_chunks_per_file": 0 })).await;
+    assert_eq!(resp.status(), 400, "max_chunks_per_file 0 must be 400");
+
+    // Cross-field: overlap must be < chunk_chars.
+    let resp = put_settings_raw(
+        &server,
+        &user,
+        json!({ "chunk_chars": 1000, "chunk_overlap_chars": 1000 }),
+    )
+    .await;
+    assert_eq!(resp.status(), 400, "overlap >= chunk_chars must be 400");
+    assert_eq!(
+        resp.json::<Value>().await.unwrap_or_default()["error_code"],
+        "VALIDATION_ERROR"
+    );
+}
