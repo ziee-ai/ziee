@@ -206,6 +206,35 @@ mod tests {
         assert_eq!(r.sandbox_flavor, None);
     }
 
+    // ── force-sandbox enforcement: stdio is refused when sandbox is off ──────
+    // (gap 05e1eecb2c6e) — the create/update gate is what guarantees a user
+    // stdio server can NEVER reach the chat run path un-sandboxed: it either
+    // gets run_in_sandbox forced true, or (sandbox disabled) is rejected
+    // outright. In unit tests `code_sandbox::config::get_state()` is None, so
+    // the stdio branch hits `require_sandbox_state` → MCP_SANDBOX_DISABLED.
+
+    #[test]
+    fn stdio_create_rejected_when_sandbox_disabled() {
+        let mut r = req(TransportType::Stdio);
+        let p = policy(&["stdio"], Some("minimal")); // stdio allowed + flavor set
+        let err = enforce_on_user_create(&mut r, &p).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "MCP_SANDBOX_DISABLED",
+            "an allowed stdio server must be refused when code_sandbox is off, \
+             so it can never run un-sandboxed in chat"
+        );
+    }
+
+    #[test]
+    fn stdio_update_rejected_when_sandbox_disabled() {
+        let mut r = upd();
+        let p = policy(&["http", "stdio"], Some("full"));
+        let err =
+            enforce_on_user_transport_change(&mut r, &TransportType::Stdio, &p).unwrap_err();
+        assert_eq!(err.error_code(), "MCP_SANDBOX_DISABLED");
+    }
+
     // Silences dead_code warnings if used only via integration tests.
     fn _unused(_: Uuid) {}
 }

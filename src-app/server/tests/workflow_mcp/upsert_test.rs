@@ -178,3 +178,44 @@ async fn upsert_builtin_server_sets_expected_identity_columns() {
     assert_eq!(row.max_concurrent_sessions, Some(8));
     pool.close().await;
 }
+
+/// Registration-failure recovery (gap 2771baf0493b). The boot registration is
+/// a fire-and-forget `tokio::spawn` that only LOGS on failure (mod.rs:90-114),
+/// so recovery relies on re-registration being self-healing. Model a "lost"
+/// registration by DELETING the built-in row, then re-upsert: the row must be
+/// re-created (exactly one), proving a failed/lost registration is recoverable
+/// rather than permanently broken.
+#[tokio::test]
+async fn upsert_builtin_server_recreates_a_lost_registration() {
+    let server = TestServer::start().await;
+    let pool = pool(&server).await;
+    let id = workflow_mcp_server_id();
+    wait_for_boot_row(&pool, id).await;
+
+    // Simulate a lost / never-completed registration.
+    sqlx::query("DELETE FROM mcp_servers WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .expect("delete built-in row");
+    let (gone,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM mcp_servers WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(gone, 0, "row must be gone before recovery");
+
+    // Re-init / retry recovers it.
+    let repo = WorkflowMcpRepository::new(pool.clone());
+    repo.upsert_builtin_server(id, LOOPBACK_URL)
+        .await
+        .expect("recovery upsert must succeed");
+
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM mcp_servers WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "re-upsert must re-create exactly one built-in row");
+    pool.close().await;
+}
