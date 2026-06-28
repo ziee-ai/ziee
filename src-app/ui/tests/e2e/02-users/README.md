@@ -58,29 +58,23 @@ Comprehensive end-to-end tests for the user management module, covering users an
 - ✅ System entity protection (admin user, system groups)
 - ✅ Empty state handling
 
-## Known Issues
+## Test setup
 
-### Authentication Required
+These tests require admin authentication before reaching the user-management
+pages. Each spec authenticates via the shared test-context fixture and
+`loginAsAdmin`, and the navigation helpers take an explicit `baseURL`:
 
-All tests require admin authentication before accessing user management pages. The tests need to be updated to:
+```typescript
+import { test, expect } from '../../fixtures/test-context'
+import { loginAsAdmin } from '../../common/auth-helpers'
 
-1. Import from test context fixture:
-   ```typescript
-   import { test, expect } from '../../fixtures/test-context'
-   import { loginAsAdmin } from '../../common/auth-helpers'
-   ```
-
-2. Use `testInfra` fixture for `baseURL`:
-   ```typescript
-   test('example test', async ({ page, testInfra }) => {
-     const { baseURL } = testInfra
-     await loginAsAdmin(page, baseURL)
-     await navigateToUsers(page, baseURL)
-     // ...
-   })
-   ```
-
-3. Update navigation helpers to accept `baseURL` parameter (✅ DONE)
+test('example test', async ({ page, testInfra }) => {
+  const { baseURL } = testInfra
+  await loginAsAdmin(page, baseURL)
+  await navigateToUsers(page, baseURL)
+  // ...
+})
+```
 
 ## Running the Tests
 
