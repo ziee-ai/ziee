@@ -633,3 +633,44 @@ async fn ask_user_accept_persists_status_and_response_content_to_db() {
         "the submitted values must be persisted under response_content; row={content}"
     );
 }
+
+/// elicitation_mcp repository upsert IDEMPOTENCY (repository.rs:24-61). The
+/// built-in row is upserted at boot; calling `upsert_builtin_server` again with
+/// a DIFFERENT loopback url must (a) not create a duplicate row (ON CONFLICT (id)
+/// is idempotent) and (b) re-assert the url (its port changes across restarts).
+/// Drives the REAL repository function, not a mirrored SQL string.
+#[tokio::test]
+async fn elicitation_builtin_upsert_is_idempotent_and_reasserts_url() {
+    let server = crate::common::TestServer::start().await;
+    let pool = ziee::Repos.pool().clone();
+    let repo = ziee::ElicitationMcpRepository::new(pool.clone());
+    let id = ziee::elicitation_mcp_server_id();
+
+    // Re-run the upsert twice with distinct loopback urls.
+    repo.upsert_builtin_server(id, "http://127.0.0.1:11111/elicitation/mcp")
+        .await
+        .expect("first upsert");
+    repo.upsert_builtin_server(id, "http://127.0.0.1:22222/elicitation/mcp")
+        .await
+        .expect("second upsert");
+
+    // Exactly one row for the deterministic id (no duplicate).
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_servers WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "upsert must be idempotent — exactly one row");
+
+    // The url was re-asserted to the latest value, and identity columns hold.
+    let row = sqlx::query!(
+        "SELECT url, is_built_in, is_system, transport_type FROM mcp_servers WHERE id = $1",
+        id
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.url.as_deref(), Some("http://127.0.0.1:22222/elicitation/mcp"));
+    assert!(row.is_built_in && row.is_system);
+    assert_eq!(row.transport_type, "http");
+}

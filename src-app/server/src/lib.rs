@@ -31,6 +31,10 @@ pub use modules::mcp::events::McpServerEvent;
 // Re-exported so integration tests can drive the REAL retention reaper tick
 // (`memory::reaper::run_once`) instead of mirroring its SQL.
 pub use modules::memory::reaper::run_once as memory_reaper_run_once;
+// Re-exported so integration tests can drive the REAL elicitation_mcp built-in
+// upsert (idempotency / url re-assertion) instead of mirroring its SQL.
+pub use modules::elicitation_mcp::elicitation_mcp_server_id;
+pub use modules::elicitation_mcp::repository::ElicitationMcpRepository;
 // Re-export the LLM repository connection-health entry points so the
 // integration tests can drive the boot path directly without going
 // through the module's `init` hook.

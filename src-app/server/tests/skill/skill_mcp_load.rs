@@ -190,3 +190,39 @@ async fn load_skill_response_has_dual_text_and_structured_channels() {
         "text channel mirrors structuredContent"
     );
 }
+
+/// Auth boundary on the skill_mcp JSON-RPC handler (handlers.rs:29-33,
+/// `RequirePermissions<(SkillsRead,)>`). All other tests use valid admin tokens;
+/// these assert the gate: NO token → 401, a token WITHOUT skills::read → 403.
+#[tokio::test]
+async fn jsonrpc_requires_authentication() {
+    let (server, _mock) = server_with_skill_catalog().await;
+
+    // No Authorization header → 401.
+    let res = reqwest::Client::new()
+        .post(server.api_url("/skills/mcp"))
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }))
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(res.status(), 401, "missing token must be 401");
+}
+
+#[tokio::test]
+async fn jsonrpc_requires_skills_read_permission() {
+    let (server, _mock) = server_with_skill_catalog().await;
+
+    // A user WITHOUT skills::read.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "skillmcp_noperm",
+        &[],
+    )
+    .await;
+
+    let res = jsonrpc(&server, &user.token, "tools/list", json!({}))
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(res.status(), 403, "a token lacking skills::read must be 403");
+}
