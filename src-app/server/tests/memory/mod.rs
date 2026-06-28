@@ -15,3 +15,4 @@ mod real_llm_test;
 mod retention_test;
 // `summarization_test` moved to `tests/summarization/` (migration 91).
 mod sync_emit_test;
+mod recall_fts_test;
