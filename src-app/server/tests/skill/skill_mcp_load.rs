@@ -260,3 +260,91 @@ async fn skill_mcp_rejects_user_without_skills_read_with_403() {
         "an authenticated user lacking skills::read must be rejected with 403 FORBIDDEN"
     );
 }
+
+/// `tools/call` error branches in `dispatch_tool_call` (handlers.rs:122-160) —
+/// every existing test drives only success/path-traversal. This pins the three
+/// untested error paths, each of which must surface as a clean JSON-RPC error
+/// result (200 envelope, `error` object, NO `result`/content), never a panic or
+/// raw 500:
+///   1. `load_skill` for a skill that is not installed → `not_found`
+///      ("skill not installed", tools.rs:205) — the bad-name path.
+///   2. `load_skill` with an empty `name` → `VALIDATION_ERROR` (tools.rs:87).
+///   3. `tools/call` for an unknown tool name → `method_not_found`
+///      ("skill tool: …", handlers.rs:148).
+#[tokio::test]
+async fn tools_call_error_branches_surface_as_jsonrpc_errors() {
+    let (server, _mock) = server_with_skill_catalog().await;
+    let admin = admin_and_refresh(&server).await;
+    // NOTE: deliberately do NOT install the fixture skill — so a load_skill for
+    // it resolves to "not installed".
+
+    // 1. Unknown / not-installed skill name → not_found error, no content leaked.
+    let missing: Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "load_skill", "arguments": { "name": "no-such-skill-xyz" } }),
+    )
+    .send()
+    .await
+    .expect("load_skill missing")
+    .json()
+    .await
+    .expect("parse");
+    assert!(
+        missing["error"].is_object(),
+        "loading a non-installed skill must be a JSON-RPC error: {missing}"
+    );
+    assert!(
+        missing["result"].is_null(),
+        "no result/content on a not-found skill: {missing}"
+    );
+    let msg = missing["error"]["message"]
+        .as_str()
+        .unwrap_or("")
+        .to_lowercase();
+    assert!(
+        msg.contains("not installed") || msg.contains("not found"),
+        "rejection names the missing skill: {missing}"
+    );
+
+    // 2. Empty `name` → validation error (the empty-name guard at tools.rs:87).
+    let empty: Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "load_skill", "arguments": { "name": "" } }),
+    )
+    .send()
+    .await
+    .expect("load_skill empty")
+    .json()
+    .await
+    .expect("parse");
+    assert!(
+        empty["error"].is_object() && empty["result"].is_null(),
+        "an empty skill name must be a validation error with no result: {empty}"
+    );
+
+    // 3. Unknown tool name → method_not_found (the `other =>` arm).
+    let unknown: Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "definitely_not_a_real_tool", "arguments": {} }),
+    )
+    .send()
+    .await
+    .expect("unknown tool")
+    .json()
+    .await
+    .expect("parse");
+    assert!(
+        unknown["error"].is_object() && unknown["result"].is_null(),
+        "an unknown tool name must be a method-not-found error: {unknown}"
+    );
+    assert_eq!(
+        unknown["error"]["code"], -32601,
+        "unknown tool → JSON-RPC method-not-found code (-32601): {unknown}"
+    );
+}
