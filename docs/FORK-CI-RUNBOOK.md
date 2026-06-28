@@ -101,10 +101,12 @@ jobs:
             ${{ env.ARCHIVE }}.sig
 
   receiver:
-    # Optional: trigger a `repository_dispatch` to the main ziee-chat
-    # repo so its receiver workflow (Layer 2) opens an auto-PR
-    # updating known_revisions.toml. See ziee-chat/.github/workflows
-    # for the receiver shape (not yet shipped — Layer 2 follow-up).
+    # Optional: trigger a `repository_dispatch` to the main ziee repo so an
+    # operator/admin is notified to register the new engine version. Engine
+    # revisions are NOT tracked in a file — the DB-backed version manager
+    # (`llm_local_runtime/runtime_version/`) records each downloaded+verified
+    # engine version at runtime. This dispatch is informational only
+    # (not yet shipped — Layer 2 follow-up).
     needs: release
     runs-on: ubuntu-22.04
     steps:
@@ -122,27 +124,25 @@ jobs:
 
 Once a release ships:
 
-1. Operator updates the server. Layer 1 cosign verify runs
-   automatically.
-2. Layer 2 receiver opens a PR updating `known_revisions.toml`
-   with the new sha256s. **Layer 2 is not yet shipped** (see the
-   `receiver` job comment above — it's a follow-up); until then,
-   update `known_revisions.toml` manually from the release page.
-3. PR review confirms the hashes against the release page.
-4. Merge — `allow_unsigned_downloads = false` continues to work
-   for the now-signed release.
+1. Operator updates the server. The download path's cosign verify runs
+   automatically against the new signed release.
+2. An admin downloads + registers the new engine version through the
+   local-runtime UI (or the `POST /versions/download` API). The
+   DB-backed version manager (`llm_local_runtime/runtime_version/`)
+   stores the verified version — there is no file to update.
+3. The sha256 + cosign signature are verified in-process at download
+   time against the release page artifacts.
+4. `allow_unsigned_downloads = false` continues to work for the
+   now-signed release.
 
 ## See also
 
-- The engine binary download/extract/cache + version catalog now live
-  under `src-app/server/src/modules/llm_local_runtime/engine/` (the
-  standalone `llm-runtime` crate, along with its `PRE-STAGE-RUNBOOK.md`
-  and `known_revisions.toml`, was folded into the server module).
+- The engine binary download/extract/cache + version catalog live under
+  `src-app/server/src/modules/llm_local_runtime/engine/` and the
+  DB-backed version registry under
+  `src-app/server/src/modules/llm_local_runtime/runtime_version/`. The
+  former standalone `llm-runtime` crate (and its file-based
+  `known_revisions.toml` resolver) was folded into the server module and
+  replaced by this runtime version manager, so neither that crate path
+  nor a `known_revisions.toml`/`PRE-STAGE-RUNBOOK.md` exists anymore.
 - `.github/workflows/code_sandbox.yml` — the exact pattern to copy.
-
-> Note: earlier revisions of this runbook pointed at
-> `src-app/llm-runtime/PRE-STAGE-RUNBOOK.md` and
-> `src-app/llm-runtime/known_revisions.toml`. The standalone `llm-runtime`
-> crate was folded into `server` and the file-based `known_revisions.toml`
-> resolver was replaced by the DB-backed version manager
-> (`code_sandbox/version_manager.rs`), so those paths no longer exist.
