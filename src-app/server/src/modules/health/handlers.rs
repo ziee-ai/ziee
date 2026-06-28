@@ -28,3 +28,36 @@ pub fn health_check_docs(op: TransformOperation) -> TransformOperation {
         .tag("health")
         .response::<200, Json<HealthResponse>>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The handler is a pure function (no DB / no auth) — drive it directly and
+    /// assert it yields exactly `200 OK` + the documented `{ "status": "ok" }`
+    /// body. The HTTP-level wiring is covered by
+    /// `tests/health/mod.rs::health_endpoint_returns_ok_without_auth`; this is
+    /// the in-source unit the module previously lacked entirely.
+    #[tokio::test]
+    async fn health_check_returns_200_and_ok_status() {
+        let (status, Json(body)) = health_check().await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.status, "ok");
+    }
+
+    /// `HealthResponse` must serialize to the exact wire shape clients/load
+    /// balancers depend on (`{"status":"..."}`) and round-trip back, so a
+    /// field rename can't silently break the contract.
+    #[test]
+    fn health_response_serde_round_trips_to_status_object() {
+        let resp = HealthResponse {
+            status: "ok".to_string(),
+        };
+        let json = serde_json::to_value(&resp).expect("serialize HealthResponse");
+        assert_eq!(json, serde_json::json!({ "status": "ok" }));
+
+        let back: HealthResponse =
+            serde_json::from_value(json).expect("deserialize HealthResponse");
+        assert_eq!(back.status, "ok");
+    }
+}
