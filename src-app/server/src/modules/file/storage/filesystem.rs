@@ -291,3 +291,86 @@ impl FileStorage for FilesystemStorage {
         hex::encode(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn storage() -> (tempfile::TempDir, FilesystemStorage) {
+        let dir = tempfile::tempdir().unwrap();
+        let s = FilesystemStorage::new(dir.path());
+        (dir, s)
+    }
+
+    #[tokio::test]
+    async fn save_then_load_original_roundtrips_bytes() {
+        let (_dir, s) = storage();
+        let user = Uuid::new_v4();
+        let file = Uuid::new_v4();
+        let data = b"hello core file bytes";
+
+        let path = s.save_original(user, file, "txt", data).await.unwrap();
+        assert!(path.exists(), "saved file must exist on disk");
+
+        let loaded = s.load_original(user, file, "txt").await.unwrap();
+        assert_eq!(loaded, data, "load must return exactly the saved bytes");
+    }
+
+    #[tokio::test]
+    async fn load_missing_original_is_not_found() {
+        let (_dir, s) = storage();
+        let res = s
+            .load_original(Uuid::new_v4(), Uuid::new_v4(), "txt")
+            .await;
+        assert!(res.is_err(), "loading a nonexistent file must error");
+    }
+
+    #[tokio::test]
+    async fn delete_all_removes_the_original() {
+        let (_dir, s) = storage();
+        let user = Uuid::new_v4();
+        let file = Uuid::new_v4();
+        s.save_original(user, file, "txt", b"x").await.unwrap();
+
+        s.delete_all(user, file).await.unwrap();
+
+        assert!(
+            s.load_original(user, file, "txt").await.is_err(),
+            "the original must be gone after delete_all"
+        );
+    }
+
+    #[test]
+    fn calculate_checksum_is_sha256_hex() {
+        let (_dir, s) = storage();
+        // Known vector: sha256("hello").
+        assert_eq!(
+            s.calculate_checksum(b"hello"),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    /// Security (F-15): a symlink planted in the storage tree must NOT be
+    /// followed on load — the read is refused.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn load_refuses_to_follow_a_symlink() {
+        let (dir, s) = storage();
+        let user = Uuid::new_v4();
+        let file = Uuid::new_v4();
+
+        // A secret outside the storage tree the symlink would point at.
+        let secret = dir.path().join("secret.txt");
+        tokio::fs::write(&secret, b"TOP SECRET").await.unwrap();
+
+        // Plant a symlink AT the path load_original will compute.
+        let target = s.get_original_path(user, file, "txt");
+        if let Some(parent) = target.parent() {
+            tokio::fs::create_dir_all(parent).await.unwrap();
+        }
+        std::os::unix::fs::symlink(&secret, &target).unwrap();
+
+        let res = s.load_original(user, file, "txt").await;
+        assert!(res.is_err(), "a symlinked original must be refused, not followed");
+    }
+}
