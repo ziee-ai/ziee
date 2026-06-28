@@ -54,7 +54,6 @@ http.workspace = true
 tempfile.workspace = true
 mime_guess.workspace = true
 which.workspace = true
-include-flate.workspace = true
 tar.workspace = true
 # Engine-binary archive extraction (folded in from the llm-runtime crate's
 # binary downloader): tar.gz via flate2 + zip for the Windows path. Also
