@@ -1944,3 +1944,65 @@ async fn provider_routing_enforces_ownership_and_routes_text_file() {
         "a text file must route to at least one content block"
     );
 }
+
+/// GET /files/{id}/versions/{version}/preview (`preview_version`): a pinned
+/// version's preview image is served, and a non-existent version 404s. The
+/// versioning suite covers download_version + text_version but never the
+/// preview_version handler.
+#[tokio::test]
+async fn versioned_preview_endpoint_serves_image_and_404s_unknown_version() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "ver_preview",
+        &["files::upload", "files::read", "files::preview"],
+    )
+    .await;
+
+    // Upload a PDF (the processing pipeline renders preview images for it).
+    let bytes = std::fs::read(test_data_path("test.pdf")).expect("read test.pdf");
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(bytes)
+            .file_name("doc.pdf")
+            .mime_str("application/pdf")
+            .unwrap(),
+    );
+    let up: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload")
+        .json()
+        .await
+        .unwrap();
+    assert!(up["preview_page_count"].as_i64().unwrap_or(0) >= 1, "PDF must have a preview");
+    let file_id = up["id"].as_str().unwrap().to_string();
+
+    // v1 preview is served as a JPEG image.
+    let ok = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/versions/1/preview")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("preview request");
+    assert_eq!(ok.status(), 200, "v1 preview should be served");
+    assert_eq!(
+        ok.headers().get("content-type").and_then(|v| v.to_str().ok()),
+        Some("image/jpeg"),
+        "preview is a JPEG"
+    );
+    let img = ok.bytes().await.unwrap();
+    assert!(!img.is_empty(), "preview image bytes must be non-empty");
+
+    // A non-existent version → 404 (the version_and_file guard).
+    let missing = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/versions/999/preview")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("preview request");
+    assert_eq!(missing.status(), 404, "unknown version preview must 404");
+}
