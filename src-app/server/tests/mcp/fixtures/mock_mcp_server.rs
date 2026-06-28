@@ -383,6 +383,13 @@ async fn handle_post(
         .and_then(|v| if v.is_empty() { None } else { Some(v.remove(0)) });
 
     if let Some(r) = response {
+        // `DelayedJsonOk` carries a real wire delay used by timeout tests. The
+        // sync `render` can't await, so apply the sleep here in the async
+        // handler before rendering — a genuine slow upstream response (the
+        // client's own per-call timeout is what's under test, never mocked).
+        if let MockResponse::DelayedJsonOk { delay_ms, .. } = &r {
+            tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+        }
         return render(r, id, state.clone());
     }
 
@@ -641,10 +648,10 @@ fn render(response: MockResponse, id: Option<i64>, state: Arc<MockState>) -> Res
                 .unwrap()
         }
         MockResponse::DelayedJsonOk { delay_ms, value } => {
-            // We can't easily await inside this sync fn — caller would have
-            // to make this whole function async. Skip for now; if we need
-            // timeout tests we'll route differently.
-            let _ = (delay_ms, state); // silence unused
+            // The wire delay is applied by the async `handle_post` dispatch
+            // BEFORE calling this sync `render` (see the method-dispatch site),
+            // so by here the sleep has already happened — we just emit the body.
+            let _ = (delay_ms, state); // delay handled upstream
             let body = serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,
