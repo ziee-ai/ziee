@@ -110,12 +110,10 @@ pub async fn ensure_healthy() -> Result<String, AppError> {
                 let _ = old.child.start_kill();
             }
         }
-        if let Some(t) = st.last_failure {
-            if t.elapsed() < SPAWN_BACKOFF {
-                return Err(AppError::internal_error(
-                    "BioMCP sidecar recently failed to start; retry shortly",
-                ));
-            }
+        if flap_backoff_active(st.last_failure) {
+            return Err(AppError::internal_error(
+                "BioMCP sidecar recently failed to start; retry shortly",
+            ));
         }
     }
 
@@ -188,6 +186,13 @@ fn is_unsafe_env_name(name: &str) -> bool {
     PROTECTED.contains(&upper.as_str())
         || upper.starts_with("LD_")
         || upper.starts_with("DYLD_")
+}
+
+/// Flap guard: after a failed spawn we refuse to re-spawn for `SPAWN_BACKOFF`.
+/// Extracted from `ensure_healthy` so the timing decision is unit-testable (the
+/// surrounding spawn path needs a real sidecar binary + config to drive).
+fn flap_backoff_active(last_failure: Option<Instant>) -> bool {
+    matches!(last_failure, Some(t) if t.elapsed() < SPAWN_BACKOFF)
 }
 
 fn fingerprint(env: &[(String, String)]) -> u64 {
@@ -352,7 +357,8 @@ pub async fn shutdown() {
 
 #[cfg(test)]
 mod tests {
-    use super::{fingerprint, shutdown, spawn_idle_reaper, STATE};
+    use super::{fingerprint, flap_backoff_active, shutdown, spawn_idle_reaper, SPAWN_BACKOFF, STATE};
+    use std::time::{Duration, Instant};
 
     /// The idle reaper's first `interval.tick()` fires immediately, so spawning
     /// it runs one iteration right away. Over an EMPTY state (no sidecar in this
@@ -405,5 +411,15 @@ mod tests {
         let mut d = a.clone();
         d.push(("S2_API_KEY".to_string(), "k".to_string()));
         assert_ne!(fingerprint(&a), fingerprint(&d));
+    }
+
+    /// Flap guard: refuse re-spawn only while a recent failure is inside the
+    /// SPAWN_BACKOFF window; no failure (None) or an old one never backs off.
+    #[test]
+    fn flap_backoff_window() {
+        assert!(!flap_backoff_active(None), "no prior failure → never back off");
+        assert!(flap_backoff_active(Some(Instant::now())), "a just-now failure must back off");
+        let old = Instant::now().checked_sub(SPAWN_BACKOFF + Duration::from_secs(1)).unwrap();
+        assert!(!flap_backoff_active(Some(old)), "a failure older than SPAWN_BACKOFF must NOT back off");
     }
 }
