@@ -4,6 +4,7 @@ import { Skeleton } from '../shadcn/skeleton'
 import { useSurface } from './surface'
 import { useControllableState } from './use-controllable-state'
 import { cn } from '@/lib/utils'
+import type { ValueBinding } from './value-binding'
 
 export interface SegmentedOption {
   label: React.ReactNode
@@ -11,13 +12,8 @@ export interface SegmentedOption {
   disabled?: boolean
 }
 
-export interface SegmentedProps {
+interface SegmentedBase {
   options: SegmentedOption[]
-  value?: string
-  defaultValue?: string
-  onValueChange?: (value: string) => void
-  /** Alias of onValueChange for FormField binding. */
-  onChange?: (value: string) => void
   onBlur?: () => void
   disabled?: boolean
   size?: 'sm' | 'default' | 'lg'
@@ -30,6 +26,8 @@ export interface SegmentedProps {
   /** Test selector — forwarded onto <root> (i18n-safe). */
   'data-testid': string
 }
+// Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
+export type SegmentedProps = SegmentedBase & ValueBinding<string>
 
 const itemH = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-10' : 'h-8')
 

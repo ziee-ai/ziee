@@ -229,7 +229,7 @@ _No always-required props._
 
 </details>
 
-## Checkbox
+## Checkbox _(discriminated union — see source for variant-specific props)_
 
 **Required:**
 
@@ -254,9 +254,9 @@ _No always-required props._
 | `label` | `ReactNode` |  |
 | `name` | `string | undefined` |  |
 | `onBlur` | `(() => void) | undefined` |  |
-| `onChange` | `((checked: boolean) => void) | undefined` | Alias of onCheckedChange for FormField binding (valuePropName="checked"). |
-| `onCheckedChange` | `((checked: boolean) => void) | undefined` |  |
-| `value` | `boolean | undefined` | Alias of `checked` so FormField's default valuePropName='value' also binds. |
+| `onChange` | `((checked: boolean) => void) | ((checked: boolean) => void) | ((checked: boolean) => vo…` |  |
+| `onCheckedChange` | `((checked: boolean) => void) | ((checked: boolean) => void) | ((checked: boolean) => vo…` |  |
+| `value` | `boolean | undefined` |  |
 
 </details>
 
@@ -288,8 +288,8 @@ _No always-required props._
 | `loading` | `boolean | undefined` |  |
 | `name` | `string | undefined` |  |
 | `onBlur` | `(() => void) | undefined` |  |
-| `onChange` | `((value: string) => void) | undefined` | Alias of onValueChange for FormField binding. |
-| `onValueChange` | `((value: string) => void) | undefined` |  |
+| `onChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
+| `onValueChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
 | `size` | `"default" | "sm" | "lg" | undefined` |  |
 | `style` | `CSSProperties | undefined` |  |
 | `value` | `string | undefined` |  |
@@ -682,8 +682,9 @@ _No always-required props._
 | `data-testid` | `string` | Test selector — forwarded onto <root>. Rows derive `${testid}-row-${rowKey}`. |
 | `dataSource` | `T[]` |  |
 | `renderItem` | `(item: T, index: number) => ReactNode` |  |
+| `rowKey` | `(keyof T & string) | ((item: T, index: number) => string)` | Row key (REQUIRED, like Table): a record field name or a function. Stable keys avoid React reorder/delete bugs — index fallback is intent… |
 
-<details><summary>Optional props (8)</summary>
+<details><summary>Optional props (7)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -693,7 +694,6 @@ _No always-required props._
 | `footer` | `ReactNode` |  |
 | `header` | `ReactNode` |  |
 | `loading` | `boolean | undefined` | Own busy state (legacy `loading`) → skeleton rows. Region loading (surface) also applies. |
-| `rowKey` | `(keyof T & string) | ((item: T, index: number) => string) | undefined` | Row key: a record field name, a function, or omitted (falls back to index). |
 | `size` | `"default" | "sm" | "lg" | undefined` |  |
 
 </details>
@@ -755,8 +755,8 @@ _No always-required props._
 | `loading` | `boolean | undefined` |  |
 | `name` | `string | undefined` |  |
 | `onBlur` | `(() => void) | undefined` |  |
-| `onChange` | `((value: string[]) => void) | undefined` | Alias of onValueChange for FormField binding. |
-| `onValueChange` | `((value: string[]) => void) | undefined` |  |
+| `onChange` | `((value: string[]) => void) | ((value: string[]) => void) | ((value: string[]) => void)…` |  |
+| `onValueChange` | `((value: string[]) => void) | ((value: string[]) => void) | ((value: string[]) => void)…` |  |
 | `style` | `CSSProperties | undefined` |  |
 | `tokenSeparators` | `string[] | undefined` | Characters that commit the typed text as a token (e.g. [',']). Used with `allowCreate`. |
 | `value` | `string[] | undefined` |  |
@@ -884,7 +884,7 @@ _No always-required props._
 
 </details>
 
-## RadioGroup
+## RadioGroup _(discriminated union — see source for variant-specific props)_
 
 **Required:**
 
@@ -907,8 +907,8 @@ _No always-required props._
 | `invalid` | `boolean | undefined` |  |
 | `name` | `string | undefined` |  |
 | `onBlur` | `(() => void) | undefined` |  |
-| `onChange` | `((value: string) => void) | undefined` | Alias of onValueChange for FormField binding. |
-| `onValueChange` | `((value: string) => void) | undefined` |  |
+| `onChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
+| `onValueChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
 | `orientation` | `"vertical" | "horizontal" | undefined` |  |
 | `value` | `string | undefined` |  |
 
@@ -949,7 +949,7 @@ _No always-required props._
 
 </details>
 
-## Segmented
+## Segmented _(discriminated union — see source for variant-specific props)_
 
 **Required:**
 
@@ -971,8 +971,8 @@ _No always-required props._
 | `invalid` | `boolean | undefined` |  |
 | `name` | `string | undefined` |  |
 | `onBlur` | `(() => void) | undefined` |  |
-| `onChange` | `((value: string) => void) | undefined` | Alias of onValueChange for FormField binding. |
-| `onValueChange` | `((value: string) => void) | undefined` |  |
+| `onChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
+| `onValueChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
 | `size` | `"default" | "sm" | "lg" | undefined` |  |
 | `value` | `string | undefined` |  |
 
@@ -1006,8 +1006,8 @@ _No always-required props._
 | `loading` | `boolean | undefined` |  |
 | `name` | `string | undefined` |  |
 | `onBlur` | `(() => void) | undefined` |  |
-| `onChange` | `((value: string) => void) | undefined` | Alias of onValueChange, for FormField binding. |
-| `onValueChange` | `((value: string) => void) | undefined` |  |
+| `onChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
+| `onValueChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
 | `optionRender` | `((option: SelectOption) => ReactNode) | undefined` | Custom content for each dropdown row. Receives the option. |
 | `placeholder` | `string | undefined` |  |
 | `popupMatchSelectWidth` | `boolean | undefined` | Constrain the dropdown to the trigger's width (legacy `popupMatchSelectWidth`). Default true (exact match); false lets the dropdown grow … |
@@ -1160,7 +1160,7 @@ _No always-required props._
 
 </details>
 
-## Switch
+## Switch _(discriminated union — see source for variant-specific props)_
 
 **Required:**
 
@@ -1185,10 +1185,10 @@ _No always-required props._
 | `loading` | `boolean | undefined` | Own busy state (legacy `loading`): disables + shows a spinner. NOT the region skeleton. |
 | `name` | `string | undefined` |  |
 | `onBlur` | `(() => void) | undefined` |  |
-| `onChange` | `((checked: boolean) => void) | undefined` | Alias of onCheckedChange for FormField binding (valuePropName="checked"). |
-| `onCheckedChange` | `((checked: boolean) => void) | undefined` |  |
+| `onChange` | `((checked: boolean) => void) | ((checked: boolean) => void) | ((checked: boolean) => vo…` |  |
+| `onCheckedChange` | `((checked: boolean) => void) | ((checked: boolean) => void) | ((checked: boolean) => vo…` |  |
 | `size` | `"default" | "sm" | undefined` |  |
-| `value` | `boolean | undefined` | Alias of `checked` so FormField's default valuePropName='value' also binds. |
+| `value` | `boolean | undefined` |  |
 
 </details>
 
@@ -1215,7 +1215,7 @@ _No always-required props._
 
 </details>
 
-## Tabs
+## Tabs _(discriminated union — see source for variant-specific props)_
 
 **Required:**
 
@@ -1233,10 +1233,10 @@ _No always-required props._
 | `closeLabel` | `((item: TabItem) => string) | undefined` | Accessible name for a tab's close affordance. Falls back to "Close <label>". |
 | `defaultValue` | `string | undefined` |  |
 | `disabled` | `boolean | undefined` |  |
-| `editable` | `boolean | undefined` | Editable-card mode: renders an add button + a per-tab close affordance (legacy `type="editable-card"`). |
+| `editable` | `boolean | undefined` | Editable-card mode (legacy `type="editable-card"`). Requires `onEdit`. |
 | `hideAdd` | `boolean | undefined` | Hide the add button while keeping per-tab close affordances. |
-| `onClose` | `((key: string) => void) | undefined` | Fires with the key of the tab whose close affordance was activated. |
-| `onEdit` | `((action: "remove" | "add", key: string) => void) | undefined` | Unified edit handler (legacy antd `onEdit`): action is 'add' or 'remove'; key is '' for add. |
+| `onClose` | `((key: string) => void) | undefined` | Also fires with the key of the tab whose close affordance was activated. |
+| `onEdit` | `((action: "remove" | "add", key: string) => void) | undefined` | Unified edit handler (legacy antd `onEdit`): action is 'add' (key='') or 'remove'. |
 | `onTabClick` | `((key: string) => void) | undefined` | Fires when a tab trigger is clicked (legacy `onTabClick`), even if already active. |
 | `onValueChange` | `((value: string) => void) | undefined` |  |
 | `size` | `"default" | "sm" | undefined` |  |

@@ -7,6 +7,7 @@ import { Skeleton } from '../shadcn/skeleton'
 import { useSurface } from './surface'
 import { useControllableState } from './use-controllable-state'
 import { type KitStyleProps } from './style-guard'
+import type { ValueBinding } from './value-binding'
 import { cn } from '@/lib/utils'
 
 export interface ComboboxOption {
@@ -118,13 +119,8 @@ function VirtualList({
 
 // Searchable single-select (legacy Select showSearch). Radix Select can't filter, so this is
 // a Popover + Command (cmdk). Form-bindable: value + onChange + onBlur + name + id + ref.
-export type ComboboxProps = {
+interface ComboboxBase {
   options: ComboboxOption[]
-  value?: string
-  defaultValue?: string
-  onValueChange?: (value: string) => void
-  /** Alias of onValueChange for FormField binding. */
-  onChange?: (value: string) => void
   onBlur?: () => void
   /** Trigger text when nothing is selected (required — caller owns it for i18n). */
   placeholder: string
@@ -145,7 +141,10 @@ export type ComboboxProps = {
   'aria-label'?: string
   'aria-labelledby'?: string
   /** Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. */
-  'data-testid': string} & KitStyleProps
+  'data-testid': string
+}
+// Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
+export type ComboboxProps = ComboboxBase & ValueBinding<string> & KitStyleProps
 
 const triggerH = (size?: 'sm' | 'default' | 'lg') =>
   size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'

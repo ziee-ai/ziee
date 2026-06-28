@@ -8,6 +8,7 @@ import { Tag } from './tag'
 import { useSurface } from './surface'
 import { useControllableState } from './use-controllable-state'
 import { type KitStyleProps } from './style-guard'
+import type { ValueBinding } from './value-binding'
 import { cn } from '@/lib/utils'
 
 export interface MultiSelectOption {
@@ -168,13 +169,8 @@ function VirtualMultiList({
 // Multi-select with searchable list + removable tags (legacy Select mode="multiple").
 // `allowCreate` enables free-text tokens not present in `options` (legacy Select mode="tags").
 // Form-bindable: value:string[] + onChange(string[]) + name + id + ref.
-export type MultiSelectProps = {
+interface MultiSelectBase {
   options: MultiSelectOption[]
-  value?: string[]
-  defaultValue?: string[]
-  onValueChange?: (value: string[]) => void
-  /** Alias of onValueChange for FormField binding. */
-  onChange?: (value: string[]) => void
   onBlur?: () => void
   placeholder: string
   searchPlaceholder: string
@@ -199,7 +195,11 @@ export type MultiSelectProps = {
   'aria-required'?: boolean
   /** Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. */
   'data-testid': string
-} & KitStyleProps &
+}
+// Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
+export type MultiSelectProps = MultiSelectBase &
+  ValueBinding<string[]> &
+  KitStyleProps &
   // An accessible name is REQUIRED — either an inline label or a referenced one (no silent default).
   (
     | { 'aria-label': string; 'aria-labelledby'?: never }

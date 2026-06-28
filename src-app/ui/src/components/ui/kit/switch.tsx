@@ -4,15 +4,9 @@ import { Switch as Base } from '../shadcn/switch'
 import { Skeleton } from '../shadcn/skeleton'
 import { useSurface } from './surface'
 import { cn } from '@/lib/utils'
+import type { CheckedBinding } from './value-binding'
 
-export interface SwitchProps {
-  checked?: boolean
-  /** Alias of `checked` so FormField's default valuePropName='value' also binds. */
-  value?: boolean
-  defaultChecked?: boolean
-  onCheckedChange?: (checked: boolean) => void
-  /** Alias of onCheckedChange for FormField binding (valuePropName="checked"). */
-  onChange?: (checked: boolean) => void
+interface SwitchBase {
   onBlur?: () => void
   disabled?: boolean
   /** Own busy state (legacy `loading`): disables + shows a spinner. NOT the region skeleton. */
@@ -30,6 +24,8 @@ export interface SwitchProps {
   /** Test selector — forwarded onto <root> (i18n-safe). */
   'data-testid': string
 }
+// Controlled `checked` requires a change handler (see CheckedBinding); FormField stays valid.
+export type SwitchProps = SwitchBase & CheckedBinding
 
 export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function Switch(
   { checked, value, defaultChecked, onCheckedChange, onChange, onBlur, disabled, loading, size, name, id, label, className,

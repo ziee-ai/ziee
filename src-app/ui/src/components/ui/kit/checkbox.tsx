@@ -3,17 +3,11 @@ import { Checkbox as Base } from '../shadcn/checkbox'
 import { Skeleton } from '../shadcn/skeleton'
 import { useSurface } from './surface'
 import { cn } from '@/lib/utils'
+import type { CheckedBinding } from './value-binding'
 
-export interface CheckboxProps {
-  checked?: boolean
-  /** Alias of `checked` so FormField's default valuePropName='value' also binds. */
-  value?: boolean
-  defaultChecked?: boolean
+interface CheckboxBase {
   /** Mixed state (legacy `indeterminate`); overrides `checked` visually until toggled. */
   indeterminate?: boolean
-  onCheckedChange?: (checked: boolean) => void
-  /** Alias of onCheckedChange for FormField binding (valuePropName="checked"). */
-  onChange?: (checked: boolean) => void
   onBlur?: () => void
   disabled?: boolean
   name?: string
@@ -27,6 +21,8 @@ export interface CheckboxProps {
   /** Test selector — forwarded onto <root> (i18n-safe). */
   'data-testid': string
 }
+// Controlled `checked` requires a change handler (see CheckedBinding); FormField stays valid.
+export type CheckboxProps = CheckboxBase & CheckedBinding
 
 export const Checkbox = React.forwardRef<HTMLButtonElement, CheckboxProps>(function Checkbox(
   { checked, value, defaultChecked, indeterminate, onCheckedChange, onChange, onBlur, disabled, name, id, label, className,

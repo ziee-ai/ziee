@@ -3,6 +3,7 @@ import { RadioGroup as Base, RadioGroupItem } from '../shadcn/radio-group'
 import { Skeleton } from '../shadcn/skeleton'
 import { useSurface } from './surface'
 import { cn } from '@/lib/utils'
+import type { ValueBinding } from './value-binding'
 
 export interface RadioOption {
   label: React.ReactNode
@@ -10,13 +11,8 @@ export interface RadioOption {
   disabled?: boolean
 }
 
-export interface RadioGroupProps {
+interface RadioGroupBase {
   options: RadioOption[]
-  value?: string
-  defaultValue?: string
-  onValueChange?: (value: string) => void
-  /** Alias of onValueChange for FormField binding. */
-  onChange?: (value: string) => void
   onBlur?: () => void
   disabled?: boolean
   name?: string
@@ -30,6 +26,8 @@ export interface RadioGroupProps {
   /** Test selector — forwarded onto <root> (i18n-safe). */
   'data-testid': string
 }
+// Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
+export type RadioGroupProps = RadioGroupBase & ValueBinding<string>
 
 export const RadioGroup = React.forwardRef<HTMLDivElement, RadioGroupProps>(function RadioGroup(
   { options, value, defaultValue, onValueChange, onChange, onBlur, disabled, name, id, invalid, orientation = 'vertical', className,
