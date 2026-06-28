@@ -229,4 +229,41 @@ test.describe('First-run admin setup', () => {
     await expect(page).not.toHaveURL(/\/setup/)
     await expect(page.locator('.ant-spin-spinning')).toHaveCount(0)
   })
+
+  // audit id d81b0b365ee059f2 — AuthGuard × OnboardingRedirect interaction:
+  // an authenticated but onboarding-INCOMPLETE non-admin who deep-links to a
+  // protected route must be redirected to /onboarding (OnboardingRedirect.tsx
+  // :39-51), not allowed to land on the deep page. Existing specs only land via
+  // the post-login redirect, never a direct deep-link.
+  test('incomplete non-admin deep-linking a protected route is redirected to onboarding', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    const { username } = await freshUser(apiURL, 'deeplink')
+
+    await loginExpectingOnboarding(page, baseURL, username, 'password123')
+    await expect(page).toHaveURL(new RegExp('/onboarding'))
+
+    // Attempt to deep-link straight to a protected settings page.
+    await page.goto(`${baseURL}/settings/about`)
+    await page.waitForLoadState('load')
+
+    // OnboardingRedirect bounces the incomplete user back into the wizard.
+    await expect(page).toHaveURL(new RegExp('/onboarding'), { timeout: 15000 })
+  })
+
+  // The admin bypass (`user.is_admin === true → return`): an admin is NEVER
+  // forced into onboarding and can reach a protected route directly.
+  test('admin is not redirected to onboarding on a protected route', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/about`)
+    await page.waitForLoadState('load')
+    await expect(page).not.toHaveURL(/\/onboarding/)
+    await expect(page).toHaveURL(/\/settings\/about/)
+  })
 })
