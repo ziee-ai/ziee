@@ -102,4 +102,36 @@ test.describe('Hub version activation (admin)', () => {
         .first(),
     ).toBeVisible({ timeout: 10000 })
   })
+
+  // audit id all-702f5a449150 — version-picker edge case: SWITCHING BACK to an
+  // older version. The existing tests only activate forward (v0.0.1 → v0.0.2);
+  // nothing exercises reverse activation. We activate v0.0.2-alpha then select
+  // v0.0.1-alpha again and assert the rotate succeeds + the header reflects it.
+  test('admin can switch back to an older catalog version', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await navigateToHub(page, baseURL, 'models')
+    await waitForHubDataLoad(page)
+
+    // Forward: activate v0.0.2-alpha.
+    await page.getByRole('button', { name: /select hub catalog version/i }).click()
+    const v2 = page.getByRole('menuitem', { name: /v0\.0\.2-alpha/ })
+    await expect(v2).toBeVisible({ timeout: 15000 })
+    await v2.click()
+    await expect(page.getByText(/activated hub catalog v0\.0\.2-alpha/i)).toBeVisible({
+      timeout: 30000,
+    })
+    await waitForHubDataLoad(page)
+
+    // Reverse: switch BACK to v0.0.1-alpha.
+    await page.getByRole('button', { name: /select hub catalog version/i }).click()
+    const v1 = page.getByRole('menuitem', { name: /v0\.0\.1-alpha/ })
+    await expect(v1).toBeVisible({ timeout: 15000 })
+    await v1.click()
+    await expect(page.getByText(/activated hub catalog v0\.0\.1-alpha/i)).toBeVisible({
+      timeout: 30000,
+    })
+    await expect(
+      page.getByRole('button', { name: /select hub catalog version/i }),
+    ).toContainText('v0.0.1-alpha')
+  })
 })
