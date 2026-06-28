@@ -696,3 +696,59 @@ async fn test_edit_file_emits_sync_event_to_owner_only() {
     // Owner-scoped: Bob must NOT receive Alice's event.
     bob_probe.expect_silence(Duration::from_secs(1)).await;
 }
+
+/// Multi-turn model-authored-file workflow: the model AUTHORS a file via
+/// `create_file`, and that file is then available to LATER tool calls in the
+/// SAME conversation — `list_files` enumerates it and `read_file` returns its
+/// authored content. Exercises the production files_mcp write→read loop the
+/// model drives across turns (deterministic via call_tool, no LLM).
+#[tokio::test]
+async fn test_model_authored_file_is_readable_in_later_turn() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_authored").await;
+    let conv_id = create_conversation(&server, &user).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    // Turn 1 — the model authors a file.
+    let created = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "create_file",
+        json!({ "filename": "authored.md", "content": "AUTHORED_MARKER first line\nsecond line\n" }),
+    )
+    .await;
+    assert!(created["error"].is_null(), "create_file should succeed; body={created}");
+    let file_id = created["result"]["structuredContent"]["file_id"]
+        .as_str()
+        .expect("file_id")
+        .to_string();
+
+    // Turn 2 — the authored file is now in the conversation's manifest.
+    let listed = call_tool(&server, &user, conv_uuid, "list_files", json!({})).await;
+    assert!(listed["error"].is_null(), "list_files should succeed; body={listed}");
+    let files = listed["result"]["structuredContent"]["files"]
+        .as_array()
+        .expect("files array");
+    assert!(
+        files.iter().any(|f| f["id"].as_str() == Some(file_id.as_str())
+            && f["name"].as_str() == Some("authored.md")),
+        "the model-authored file must appear in a later turn's manifest; files={files:?}"
+    );
+
+    // Turn 3 — read the authored content back by id.
+    let read = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "read_file",
+        json!({ "id": file_id }),
+    )
+    .await;
+    assert!(read["error"].is_null(), "read_file should succeed; body={read}");
+    let text = read["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("AUTHORED_MARKER"),
+        "read_file must return the model-authored content; got: {text}"
+    );
+}
