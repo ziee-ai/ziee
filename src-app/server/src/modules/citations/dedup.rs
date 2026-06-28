@@ -99,6 +99,37 @@ mod tests {
         assert_eq!(a, "crispr interference|smith|2021");
     }
 
+    /// Cross-module contract (lit_search → citations): citations' resolver +
+    /// dedup canonicalize DOIs via the SAME `lit_search::dedup::normalize_doi`
+    /// the lit_search connectors use (see resolve.rs imports). So a paper found
+    /// by lit_search and added to the citations library dedups to ONE entry no
+    /// matter which DOI representation each path surfaced — bare, doi.org-URL,
+    /// uppercase, `doi:`-prefixed, or whitespace-padded. This guards the seam
+    /// that makes lit_search discoveries usable by the citation library.
+    #[test]
+    fn lit_search_doi_variants_normalize_to_one_canonical_for_citations_dedup() {
+        use crate::modules::lit_search::dedup::normalize_doi;
+        let canonical = "10.1038/s41586-021-03819-2";
+        let variants = [
+            "10.1038/s41586-021-03819-2",
+            "https://doi.org/10.1038/s41586-021-03819-2",
+            "http://doi.org/10.1038/S41586-021-03819-2",
+            "doi.org/10.1038/s41586-021-03819-2",
+            "doi:10.1038/s41586-021-03819-2",
+            "  10.1038/S41586-021-03819-2  ",
+        ];
+        for v in variants {
+            assert_eq!(
+                normalize_doi(v).as_deref(),
+                Some(canonical),
+                "lit_search DOI variant {v:?} must canonicalize for citations dedup"
+            );
+        }
+        // A non-DOI string is rejected (so it can't masquerade as a DOI key).
+        assert_eq!(normalize_doi("not-a-doi"), None);
+        assert_eq!(normalize_doi(""), None);
+    }
+
     #[test]
     fn first_author_from_family_and_literal() {
         let csl = json!({ "author": [{ "family": "Doe", "given": "A." }] });
