@@ -1,3 +1,4 @@
+import { LayoutGrid, Download, CircleAlert, Eye, FileText, Key, Lock, MessageSquare, Image, RotateCw, Search, Wrench } from 'lucide-react'
 import {
   App,
   Card,
@@ -9,20 +10,6 @@ import {
   Select,
   Tooltip,
 } from 'antd'
-import {
-  AppstoreOutlined,
-  DownloadOutlined,
-  ExclamationCircleOutlined,
-  EyeOutlined,
-  FileTextOutlined,
-  KeyOutlined,
-  LockOutlined,
-  MessageOutlined,
-  PictureOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-  ToolOutlined,
-} from '@ant-design/icons'
 import { formatSpeed, formatTime } from '@/utils/downloadUtils'
 import {
   Permissions,
@@ -338,7 +325,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
                 <Flex className="gap-2 items-center">
-                  <AppstoreOutlined />
+                  <LayoutGrid />
                   <Text className="font-medium cursor-pointer">
                     {model.display_name}
                   </Text>
@@ -350,13 +337,13 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       full-width bar at the bottom carries that).
                       Precedence: active > downloaded > failed. */}
                   {isModelBeingDownloaded ? (
-                    <Tag color="blue" icon={<DownloadOutlined />}>
+                    <Tag color="blue" icon={<Download />}>
                       Downloading
                     </Tag>
                   ) : isModelDownloaded ? (
                     <Tag color="geekblue-inverse">Downloaded</Tag>
                   ) : failedDownload ? (
-                    <Tag color="error" icon={<ExclamationCircleOutlined />}>
+                    <Tag color="error" icon={<CircleAlert />}>
                       Download Failed
                     </Tag>
                   ) : null}
@@ -372,9 +359,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                         color={model.source_auth_configured ? 'orange' : 'volcano'}
                         icon={
                           model.source_auth_configured ? (
-                            <LockOutlined />
+                            <Lock />
                           ) : (
-                            <KeyOutlined />
+                            <Key />
                           )
                         }
                       >
@@ -394,7 +381,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     (the seed always sets one). */}
                 {model.repository?.url || primarySource ? (
                   <Button
-                    icon={<FileTextOutlined />}
+                    icon={<FileText />}
                     onClick={e => {
                       e.stopPropagation()
                       const fallback =
@@ -414,7 +401,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                 {canDownload && !failedDownload && (
                   <Button
                     type="primary"
-                    icon={<DownloadOutlined />}
+                    icon={<Download />}
                     onClick={e => {
                       e.stopPropagation()
                       handleDownload()
@@ -456,7 +443,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     {model.capabilities.vision && (
                       <Tag
                         color="purple"
-                        icon={<EyeOutlined />}
+                        icon={<Eye />}
                         className="text-xs"
                       >
                         Vision
@@ -465,7 +452,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     {model.capabilities.tools && (
                       <Tag
                         color="blue"
-                        icon={<ToolOutlined />}
+                        icon={<Wrench />}
                         className="text-xs"
                       >
                         Tools
@@ -474,7 +461,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     {model.capabilities.code_interpreter && (
                       <Tag
                         color="orange"
-                        icon={<AppstoreOutlined />}
+                        icon={<LayoutGrid />}
                         className="text-xs"
                       >
                         Code
@@ -483,7 +470,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     {model.capabilities.chat && (
                       <Tag
                         color="green"
-                        icon={<MessageOutlined />}
+                        icon={<MessageSquare />}
                         className="text-xs"
                       >
                         Chat
@@ -492,7 +479,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     {model.capabilities.text_embedding && (
                       <Tag
                         color="cyan"
-                        icon={<SearchOutlined />}
+                        icon={<Search />}
                         className="text-xs"
                       >
                         Embedding
@@ -501,7 +488,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     {model.capabilities.image_generator && (
                       <Tag
                         color="magenta"
-                        icon={<PictureOutlined />}
+                        icon={<Image />}
                         className="text-xs"
                       >
                         Image Gen
@@ -675,7 +662,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               <div className="flex justify-end mt-1">
                 <Button
                   size="small"
-                  icon={<ReloadOutlined />}
+                  icon={<RotateCw />}
                   onClick={e => {
                     e.stopPropagation()
                     // Reuse the existing gates-and-probe pre-flight

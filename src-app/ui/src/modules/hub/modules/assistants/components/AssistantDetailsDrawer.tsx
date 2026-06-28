@@ -1,6 +1,6 @@
+import { Copy, Bot } from 'lucide-react'
 import { Sheet } from '@/components/ui'
 import { Button, Flex, Tag, Text, Title, Card } from '@/components/ui'
-import { CopyOutlined, RobotOutlined } from '@ant-design/icons'
 import { Permissions, type HubAssistant } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 
@@ -47,7 +47,7 @@ export function AssistantDetailsDrawer({
         {!isAlreadyCreated && canCreate && onUseAssistant && (
           <Button
             variant="default"
-            icon={<RobotOutlined />}
+            icon={<Bot />}
             loading={isCreating}
             disabled={isCreating || isCreatingTemplate}
             onClick={onUseAssistant}
@@ -58,7 +58,7 @@ export function AssistantDetailsDrawer({
         )}
         {canCreate && canCreateTemplate && onUseAsTemplate && (
           <Button
-            icon={<CopyOutlined />}
+            icon={<Copy />}
             loading={isCreatingTemplate}
             disabled={
               isCreating || isCreatingTemplate || isAlreadyTemplate

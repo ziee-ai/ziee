@@ -1,5 +1,5 @@
+import { Bot } from 'lucide-react'
 import { createModule } from '@/core'
-import { RobotOutlined } from '@ant-design/icons'
 import { Permissions } from '@/api-client/types'
 import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -29,7 +29,7 @@ export default createModule({
       {
         id: 'assistants',
         label: 'Assistants',
-        icon: <RobotOutlined />,
+        icon: <Bot />,
         component: AssistantsHubTab,
         order: 20,
         permissions: {

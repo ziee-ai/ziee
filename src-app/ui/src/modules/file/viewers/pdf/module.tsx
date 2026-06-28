@@ -1,5 +1,5 @@
+import { FileText } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { FilePdfOutlined, FileWordOutlined } from '@ant-design/icons'
 import { PdfBody } from './body'
 import { PdfHeader } from './header'
 
@@ -16,7 +16,7 @@ export const viewers: FileViewerModule[] = [
       body: PdfBody,
       headerActions: PdfHeader,
       label: 'PDF',
-      icon: <FilePdfOutlined />,
+      icon: <FileText />,
     },
   },
   {
@@ -40,7 +40,7 @@ export const viewers: FileViewerModule[] = [
       body: PdfBody,
       headerActions: PdfHeader,
       label: 'Document',
-      icon: <FileWordOutlined />,
+      icon: <FileText />,
     },
   },
 ]
