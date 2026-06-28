@@ -786,3 +786,57 @@ async fn test_assign_user_already_in_group_is_idempotent() {
         .count();
     assert_eq!(count, 1, "double-assign must not duplicate the membership row");
 }
+
+/// Assigning a user who is ALREADY in the group is an idempotent no-op:
+/// the second assign still succeeds (204, ON CONFLICT DO NOTHING) and the
+/// group still has exactly ONE membership row for that user (no duplicate).
+#[tokio::test]
+async fn test_assign_user_already_in_group_is_noop() {
+    let server = crate::common::TestServer::start().await;
+    let admin = helpers::create_user_with_permissions(
+        &server,
+        "noop_admin",
+        &["groups::create", "users::create", "groups::assign_users", "groups::read"],
+    )
+    .await;
+
+    let group = helpers::create_test_group(&server, &admin.token, "noopgroup").await;
+    let group_id = group["id"].as_str().expect("group id");
+    let user = helpers::create_test_user_via_api(&server, &admin.token, "noopuser").await;
+    let user_id = user["id"].as_str().expect("user id");
+
+    let assign = || {
+        let url = server.api_url("/groups/assign");
+        let token = admin.token.clone();
+        async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "user_id": user_id, "group_id": group_id }))
+                .send()
+                .await
+                .expect("assign")
+        }
+    };
+
+    assert_eq!(assign().await.status(), 204, "first assign");
+    assert_eq!(assign().await.status(), 204, "second assign is an idempotent no-op");
+
+    // Exactly one membership row — the no-op did not duplicate it.
+    let members: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/groups/{group_id}/members?page=1&per_page=100")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("members")
+        .json()
+        .await
+        .expect("members body");
+    let count = members["users"]
+        .as_array()
+        .expect("users array")
+        .iter()
+        .filter(|u| u["id"].as_str() == Some(user_id))
+        .count();
+    assert_eq!(count, 1, "double-assign must not duplicate the membership: {members}");
+}
