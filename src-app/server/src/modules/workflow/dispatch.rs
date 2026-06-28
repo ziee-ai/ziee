@@ -1188,8 +1188,10 @@ impl StepDispatcher for ToolDispatcher {
             }
         };
 
-        // Log the raw result (gated).
-        let raw = serde_json::to_string(&tool_result.content).unwrap_or_default();
+        // Log the raw result (gated). On a serialize failure, record the
+        // error context rather than a silent empty string.
+        let raw = serde_json::to_string(&tool_result.content)
+            .unwrap_or_else(|e| format!("<failed to serialize tool result content: {e}>"));
         let _ = log_io::write_text_log(ctx, &step.id, "raw_output", &raw, step.log).await;
 
         if tool_result.is_error {
