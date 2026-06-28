@@ -982,3 +982,84 @@ async fn test_is_template_is_immutable_on_update() {
         .unwrap();
     assert_eq!(got["is_template"], false, "GET must also show is_template still false");
 }
+
+// =====================================================
+// Concurrency: only-one-default invariant under a race
+// =====================================================
+
+// Two admins/devices concurrently set DIFFERENT assistants as the user's
+// default. `update_assistant` clears every other default for the same user
+// inside the same transaction before setting this one (repository.rs:563,620),
+// so the two transactions must serialize on the overlapping rows and converge
+// to EXACTLY ONE default — never two (torn clear-then-set) and never zero.
+#[tokio::test]
+async fn test_concurrent_set_default_converges_to_exactly_one() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create", "assistants::edit", "assistants::read"],
+    )
+    .await;
+
+    // Two fresh user assistants, both is_default = false.
+    let a = create_user_assistant(&server, &user.token, "Assistant A").await;
+    let b = create_user_assistant(&server, &user.token, "Assistant B").await;
+    let a_id = a["id"].as_str().unwrap().to_string();
+    let b_id = b["id"].as_str().unwrap().to_string();
+
+    // Fire the two "set me as default" requests concurrently, each on its own
+    // reqwest::Client (independent connections → a genuine DB-level race), one
+    // making A the default and the other making B the default.
+    let set_default = |id: String, token: String, base: String| async move {
+        reqwest::Client::new()
+            .put(format!("{base}/assistants/{id}"))
+            .header("Authorization", format!("Bearer {token}"))
+            .json(&json!({ "is_default": true }))
+            .send()
+            .await
+            .unwrap()
+    };
+    let base = server.api_url("");
+    let (ra, rb) = tokio::join!(
+        set_default(a_id.clone(), user.token.clone(), base.clone()),
+        set_default(b_id.clone(), user.token.clone(), base.clone()),
+    );
+
+    // Neither request may 5xx/panic on the race; the upsert resolves it.
+    assert!(
+        ra.status().is_success(),
+        "set-A-default must succeed under the race, got {}",
+        ra.status()
+    );
+    assert!(
+        rb.status().is_success(),
+        "set-B-default must succeed under the race, got {}",
+        rb.status()
+    );
+
+    // Re-read both assistants and assert EXACTLY ONE is the default — the
+    // atomic clear-then-set inside the update transaction prevents both rows
+    // ending up default (a broken clear) and prevents zero defaults.
+    let read_is_default = |id: String, token: String, base: String| async move {
+        let body: serde_json::Value = reqwest::Client::new()
+            .get(format!("{base}/assistants/{id}"))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        body["is_default"].as_bool().unwrap()
+    };
+    let a_default = read_is_default(a_id, user.token.clone(), base.clone()).await;
+    let b_default = read_is_default(b_id, user.token.clone(), base.clone()).await;
+
+    let default_count = [a_default, b_default].iter().filter(|d| **d).count();
+    assert_eq!(
+        default_count, 1,
+        "exactly one of the two assistants must be the default after a \
+         concurrent set-default race (A={a_default}, B={b_default})"
+    );
+}
