@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Paragraph } from '@/components/ui'
 import { message } from '@/components/ui'
-import { DatabaseOutlined } from '@ant-design/icons'
+import { Database } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -53,7 +53,7 @@ export function MaintenanceSection() {
         <div className="flex items-center gap-4">
           <span className="text-sm font-medium w-40">Backfill existing files</span>
           <Button
-            icon={<DatabaseOutlined />}
+            icon={<Database />}
             loading={triggeringBackfill}
             disabled={!settings.enabled || !canManage}
             onClick={handleBackfill}

@@ -33,11 +33,11 @@ const memoryFormSchema = z.object({
   kind: z.string(),
 })
 import {
-  DeleteOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+  Trash2,
+  Download,
+  Pencil,
+  Plus,
+} from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -105,7 +105,7 @@ export function MyMemoriesSection() {
           <Tooltip title="Add memory">
             <Button
               variant="ghost"
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               onClick={() => setCreating(true)}
               aria-label="Add memory"
             />
@@ -164,7 +164,7 @@ export function MyMemoriesSection() {
           * naturally. */}
         <div className="flex-1" />
         <Dropdown items={exportMenu.items}>
-          <Button icon={<DownloadOutlined />}>Export</Button>
+          <Button icon={<Download />}>Export</Button>
         </Dropdown>
         {canWrite && (
           <Confirm
@@ -214,7 +214,7 @@ export function MyMemoriesSection() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              icon={<EditOutlined />}
+                              icon={<Pencil />}
                               onClick={() => setEditing(row)}
                               aria-label="Edit memory"
                             />
@@ -241,7 +241,7 @@ export function MyMemoriesSection() {
                               <Button
                                 variant="destructive"
                                 size="sm"
-                                icon={<DeleteOutlined />}
+                                icon={<Trash2 />}
                                 aria-label={`Delete memory ${row.id}`}
                               />
                             </Tooltip>

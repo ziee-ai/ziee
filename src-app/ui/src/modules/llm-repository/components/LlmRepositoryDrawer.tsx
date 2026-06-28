@@ -1,6 +1,6 @@
 import {
-  CloudDownloadOutlined,
-} from '@ant-design/icons'
+  CloudDownload,
+} from 'lucide-react'
 import {
   Alert,
   Button,
@@ -585,7 +585,7 @@ export function LlmRepositoryDrawer() {
               </Text>
               <Button
                 variant="outline"
-                icon={<CloudDownloadOutlined />}
+                icon={<CloudDownload />}
                 loading={testing}
                 onClick={testRepositoryFromForm}
               >

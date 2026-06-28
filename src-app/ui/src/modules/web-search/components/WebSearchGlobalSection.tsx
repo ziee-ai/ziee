@@ -19,7 +19,7 @@ import {
   message,
   useForm,
 } from '@/components/ui'
-import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined } from '@ant-design/icons'
+import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -221,7 +221,7 @@ export function WebSearchGlobalSection() {
                       variant="ghost"
                       size="sm"
                       aria-label={`Move ${nameOf(key)} up`}
-                      icon={<ArrowUpOutlined />}
+                      icon={<ArrowUp />}
                       disabled={i === 0 || savingChain}
                       onClick={() => move(i, -1)}
                     />
@@ -231,7 +231,7 @@ export function WebSearchGlobalSection() {
                       variant="ghost"
                       size="sm"
                       aria-label={`Move ${nameOf(key)} down`}
-                      icon={<ArrowDownOutlined />}
+                      icon={<ArrowDown />}
                       disabled={i === chain.length - 1 || savingChain}
                       onClick={() => move(i, 1)}
                     />
@@ -241,7 +241,7 @@ export function WebSearchGlobalSection() {
                       variant="destructive"
                       size="sm"
                       aria-label={`Remove ${nameOf(key)} from chain`}
-                      icon={<DeleteOutlined />}
+                      icon={<Trash2 />}
                       disabled={savingChain}
                       onClick={() => remove(i)}
                     />

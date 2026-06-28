@@ -1,4 +1,4 @@
-import { SearchOutlined } from '@ant-design/icons'
+import { Search } from 'lucide-react'
 import { Input, Switch, Textarea, Tree, Text } from '@/components/ui'
 import type { TreeProps } from '@/components/ui'
 import { useMemo, useState } from 'react'
@@ -173,7 +173,7 @@ export function PermissionsField({
             size="sm"
             allowClear
             disabled={disabled}
-            prefix={<SearchOutlined aria-hidden="true" />}
+            prefix={<Search aria-hidden="true" />}
             placeholder="Search permissions"
             aria-label="Search permissions"
             value={search}

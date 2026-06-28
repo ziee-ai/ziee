@@ -10,7 +10,7 @@ import {
   Paragraph,
   PasswordInput,
 } from '@/components/ui'
-import { ApiOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { Plug, CircleCheck } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
@@ -54,7 +54,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
     return (
       <div className="max-w-lg">
         <div className="flex items-center gap-3 mb-4">
-          <ApiOutlined className="text-3xl text-blue-500" />
+          <Plug className="text-3xl text-blue-500" />
           <Title level={3} className="!mb-0">
             AI Providers
           </Title>
@@ -88,7 +88,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 mb-3">
-        <ApiOutlined className="text-2xl text-blue-500" />
+        <Plug className="text-2xl text-blue-500" />
         <Title level={4} className="!mb-0">
           AI Providers
         </Title>
@@ -135,7 +135,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
             })()}
             <Text strong className="text-base">{currentProvider.name}</Text>
             {(currentProvider.api_key_configured || hasUserKey) && (
-              <Tag icon={<CheckCircleOutlined />} tone="success">
+              <Tag icon={<CircleCheck />} tone="success">
                 {hasUserKey ? 'Your key configured' : 'Admin key configured'}
               </Tag>
             )}

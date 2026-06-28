@@ -13,7 +13,7 @@ import {
   zodResolver,
 } from '@/components/ui'
 import { z } from 'zod'
-import { LockOutlined } from '@ant-design/icons'
+import { Lock } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 
@@ -92,7 +92,7 @@ export const LinkAccountPage: React.FC = () => {
                 label="Password"
               >
                 <PasswordInput
-                  prefix={<LockOutlined />}
+                  prefix={<Lock />}
                   placeholder="Your existing password"
                   autoComplete="current-password"
                   disabled={!linkToken}

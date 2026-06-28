@@ -19,7 +19,7 @@ import {
   Empty,
   InputNumber,
 } from '@/components/ui'
-import { DeleteOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
+import { Trash2, Plus, Pencil } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { CoreMemoryBlock } from '@/api-client/types'
 
@@ -59,7 +59,7 @@ export function CoreMemoryBlocksEditor({
       extra={
         <Button
           size="sm"
-          icon={<PlusOutlined />}
+          icon={<Plus />}
           onClick={() => setCreating(true)}
         >
           Add block
@@ -92,7 +92,7 @@ export function CoreMemoryBlocksEditor({
                 </div>
                 <Space>
                   <Button
-                    icon={<EditOutlined />}
+                    icon={<Pencil />}
                     size="sm"
                     onClick={() => setEditing(b)}
                   />
@@ -119,7 +119,7 @@ export function CoreMemoryBlocksEditor({
                     }}
                   >
                     <Button
-                      icon={<DeleteOutlined />}
+                      icon={<Trash2 />}
                       size="sm"
                       variant="destructive"
                       aria-label={`Delete block ${b.block_label}`}
