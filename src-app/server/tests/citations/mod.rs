@@ -521,6 +521,119 @@ async fn test_project_attach_then_detach_keeps_entry_in_library() {
 }
 
 #[tokio::test]
+async fn test_mcp_add_then_remove_with_project_id_links_and_unlinks() {
+    // The MCP tools accept an optional `project_id`: `add_citations` with it
+    // must create the library entry AND link it to that project's reference
+    // list in one call; `remove_citations` with it must UNLINK from the
+    // project (not delete) — leaving the library entry intact. Only the
+    // REST attach/detach endpoints were covered before; the MCP project_id
+    // path (handlers.rs add_one→attach_to_project / remove→detach_from_project)
+    // had no test. Uses a DOI-less CSL item so no resolver upstream is hit.
+    let server = server_with_mock_resolver().await;
+    let perms = &[
+        "citations::use",
+        "projects::create",
+        "projects::read",
+        "projects::edit",
+        "projects::delete",
+    ];
+    let user = create_user_with_permissions(&server, "cit_mcp_proj", perms).await;
+    let project_id = create_project(&server, &user.token, "MCP Manuscript").await;
+
+    // MCP add_citations WITH project_id → entry created + linked to the project.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "add_citations", "arguments": {
+            "project_id": project_id,
+            "items": [{ "csl": {
+                "type": "book",
+                "title": "MCP-Linked Reference With No DOI",
+                "author": [{ "family": "Lamport", "given": "L." }],
+                "issued": { "date-parts": [[1978]] }
+            } }]
+        } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: Value = res.json().await.unwrap();
+    let result = &body["result"]["structuredContent"]["results"][0];
+    assert_eq!(result["verification_status"], "unverified", "{body}");
+    let entry_id = result["entry_id"]
+        .as_str()
+        .expect("MCP add must persist a library entry")
+        .to_string();
+
+    // The project reference list (MCP list_citations scoped by project_id) has it.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "list_citations", "arguments": { "project_id": project_id } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let plist: Value = res.json().await.unwrap();
+    let entries = plist["result"]["structuredContent"]["entries"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(entries.len(), 1, "MCP add with project_id must link to the project: {plist}");
+    assert_eq!(entries[0]["id"].as_str().unwrap(), entry_id);
+
+    // MCP remove_citations WITH project_id → unlink from the project only.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "remove_citations", "arguments": {
+            "project_id": project_id,
+            "ids": [entry_id]
+        } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let rbody: Value = res.json().await.unwrap();
+    assert_eq!(rbody["result"]["structuredContent"]["removed"], 1, "{rbody}");
+    // The MCP text verb is "unlinked" (not "deleted") when project_id is set.
+    assert!(
+        rbody["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("unlinked"),
+        "remove with project_id must unlink, not delete: {rbody}"
+    );
+
+    // Project list now empty …
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "list_citations", "arguments": { "project_id": project_id } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let plist: Value = res.json().await.unwrap();
+    assert_eq!(
+        plist["result"]["structuredContent"]["entries"].as_array().unwrap().len(),
+        0,
+        "MCP remove with project_id must empty the project list: {plist}"
+    );
+
+    // … but the library entry survives (unlink ≠ delete).
+    assert_eq!(
+        list_entries(&server, &user.token).await.len(),
+        1,
+        "MCP project unlink must NOT delete the library entry"
+    );
+}
+
+#[tokio::test]
 async fn test_rest_manage_endpoints_require_manage_permission() {
     // The use/manage split is a real authorization boundary: a user with ONLY
     // citations::use can read/list/export/verify but must be blocked (403) from
