@@ -5,9 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="./index.css" />
     <title>Ziee</title>
+    <style>
+      /* Startup skeleton shown inside #root BEFORE the JS bundle parses and
+         React mounts. On desktop the gap (bundle load + the auto-login retry
+         loop) would otherwise be a blank white flash. React's
+         createRoot().render() replaces this markup on its first commit. Pure
+         CSS, no deps, theme-neutral via prefers-color-scheme. */
+      #app-startup-skeleton {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+      }
+      #app-startup-skeleton .spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid rgba(22, 119, 255, 0.2);
+        border-top-color: #1677ff;
+        border-radius: 50%;
+        animation: app-startup-spin 0.8s linear infinite;
+      }
+      @keyframes app-startup-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        #app-startup-skeleton {
+          background: #141414;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="app-startup-skeleton" role="status" aria-label="Loading">
+        <div class="spinner"></div>
+      </div>
+    </div>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>
