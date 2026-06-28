@@ -1,4 +1,4 @@
-import { App, Button, Form } from 'antd'
+import { Button, Form, useForm, message } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useState } from 'react'
 import {} from '@/modules/llm-provider/stores'
@@ -9,45 +9,51 @@ import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm
 import { BASIC_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
 
 export function AddRemoteLlmModelDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
+  const form = useForm<Record<string, unknown>>({
+    defaultValues: {
+      enabled: true,
+      vision: false,
+      audio: false,
+      tools: false,
+      codeInterpreter: false,
+    },
+  })
 
   // Get modal state from drawer store
   const { open, providerId } = Stores.AddRemoteLlmModelDrawer
   const canCreate = usePermission(Permissions.LlmModelsCreate)
 
-  const handleSubmit = async () => {
+  const onValid = async (values: Record<string, unknown>) => {
     if (!providerId) return
 
     try {
       setLoading(true)
       Stores.LlmProvider.clearLlmProviderStoreError()
-      const values = await form.validateFields()
 
       // Create model via the store (which calls the API + updates
       // local provider state + refreshes the providers list).
       // Note: engine_type and file_format are required by the API
       // but only relevant for local models.
       await Stores.LlmProvider.createLlmModel(providerId, {
-        name: values.name,
-        display_name: values.display_name,
-        description: values.description,
+        name: values.name as string,
+        display_name: values.display_name as string,
+        description: values.description as string,
         enabled: true,
         engine_type: 'mistralrs',
         file_format: 'safetensors',
         capabilities: {
-          vision: values.vision || false,
-          audio: values.audio || false,
-          tools: values.tools || false,
-          code_interpreter: values.codeInterpreter || false,
-          chat: values.chat !== false,
-          text_embedding: values.text_embedding || false,
-          image_generator: values.image_generator || false,
+          vision: (values.vision as boolean) || false,
+          audio: (values.audio as boolean) || false,
+          tools: (values.tools as boolean) || false,
+          code_interpreter: (values.codeInterpreter as boolean) || false,
+          chat: (values.chat as boolean) !== false,
+          text_embedding: (values.text_embedding as boolean) || false,
+          image_generator: (values.image_generator as boolean) || false,
         },
       })
 
-      form.resetFields()
+      form.reset()
       Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()
 
       message.success('Model added successfully')
@@ -60,7 +66,7 @@ export function AddRemoteLlmModelDrawer() {
   }
 
   const handleCancel = () => {
-    form.resetFields()
+    form.reset()
     Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()
   }
 
@@ -70,15 +76,14 @@ export function AddRemoteLlmModelDrawer() {
       open={open}
       onClose={handleCancel}
       footer={[
-        <Button key="cancel" onClick={handleCancel}>
+        <Button key="cancel" variant="outline" onClick={handleCancel}>
           {canCreate ? 'Cancel' : 'Close'}
         </Button>,
         canCreate && (
           <Button
             key="submit"
-            type="primary"
             loading={loading}
-            onClick={handleSubmit}
+            onClick={() => form.handleSubmit(onValid)()}
           >
             Add
           </Button>
@@ -89,14 +94,8 @@ export function AddRemoteLlmModelDrawer() {
     >
       <Form
         form={form}
+        onSubmit={onValid}
         layout="vertical"
-        initialValues={{
-          enabled: true,
-          vision: false,
-          audio: false,
-          tools: false,
-          codeInterpreter: false,
-        }}
       >
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />
       </Form>

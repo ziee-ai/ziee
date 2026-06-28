@@ -1,4 +1,4 @@
-import { Form, Select } from 'antd'
+import { FormField, Select } from '@/components/ui'
 import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants/localLlmModelTypes'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { LOCAL_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
@@ -21,16 +21,10 @@ export function LocalLlmModelCommonFields() {
     <>
       <LlmModelParametersSection parameters={LOCAL_MODEL_FIELDS} />
 
-      <Form.Item
+      <FormField
         name="engine_type"
         label="Engine Type"
-        rules={[
-          {
-            required: true,
-            message: 'Please select an engine type',
-          },
-        ]}
-        initialValue="mistralrs"
+        required
       >
         <Select
           placeholder="Select Engine Type"
@@ -40,18 +34,12 @@ export function LocalLlmModelCommonFields() {
             disabled: option.value === 'llamacpp', // Disable LlamaCpp for now
           }))}
         />
-      </Form.Item>
+      </FormField>
 
-      <Form.Item
+      <FormField
         name="file_format"
         label="File Format"
-        rules={[
-          {
-            required: true,
-            message: 'Please select a file format',
-          },
-        ]}
-        initialValue="safetensors"
+        required
       >
         <Select
           placeholder="Select file format"
@@ -61,7 +49,7 @@ export function LocalLlmModelCommonFields() {
             description: option.description,
           }))}
         />
-      </Form.Item>
+      </FormField>
     </>
   )
 }

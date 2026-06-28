@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react'
 import {
-  App,
-  AutoComplete,
   Button,
   Card,
   Form,
+  FormField,
   Input,
   Progress,
   Select,
-  Typography,
-} from 'antd'
+  Text,
+  useForm,
+  message,
+} from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
@@ -18,25 +19,9 @@ import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm
 import {
   Permissions,
   type FileFormat,
+  type EngineType,
   type RepositoryFileListResponse,
 } from '@/api-client/types'
-
-const { Text } = Typography
-
-// Last path segment, e.g. "sub/model.safetensors" -> "model.safetensors".
-const baseName = (p: string): string => p.split('/').pop() || p
-
-const humanSize = (n: number): string => {
-  if (!n || n <= 0) return ''
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let v = n
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i++
-  }
-  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`
-}
 
 const formatForShape = (shape: string): FileFormat | undefined => {
   if (shape === 'gguf') return 'gguf'
@@ -65,24 +50,19 @@ const SOURCE_LABEL: Record<string, string> = {
   unknown: '',
 }
 
-// Prefix before a `-NNNNN-of-MMMMM` / `_NNNNN_of_MMMMM_` shard infix
-// (mirrors the backend model_files::shard_prefix), or null when not sharded.
-const shardPrefix = (name: string): string | null => {
-  // Match the backend model_files::shard_prefix grammar exactly: a
-  // CONSISTENT separator, `-NNN-of-NNN` or `_NNN_of_NNN` (no mixing).
-  const bn = name.split('/').pop() || name
-  const m = bn.match(/^(.+?)-\d+-of-\d+/i) || bn.match(/^(.+?)_\d+_of_\d+/i)
-  return m ? m[1] : null
-}
-
 export function AddLocalLlmModelDownloadDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [detecting, setDetecting] = useState(false)
   const [detected, setDetected] = useState<RepositoryFileListResponse | null>(
     null,
   )
+  const form = useForm<Record<string, unknown>>({
+    defaultValues: {
+      file_format: 'safetensors',
+      main_filename: '',
+      repository_branch: 'main',
+    },
+  })
 
   const { open: addMode, providerId } = Stores.AddLocalLlmModelDownloadDrawer
   const { open: viewMode, downloadId } = Stores.ViewDownloadDrawer
@@ -103,9 +83,9 @@ export function AddLocalLlmModelDownloadDrawer() {
   const open = viewMode || addMode
 
   // Get selected repository from form
-  const selectedRepository = Form.useWatch('repository_id', form)
-  const watchedPath = Form.useWatch('repository_path', form)
-  const watchedBranch = Form.useWatch('repository_branch', form)
+  const selectedRepository = form.watch('repository_id') as string | undefined
+  const watchedPath = form.watch('repository_path')
+  const watchedBranch = form.watch('repository_branch')
 
   // Invalidate a prior detection when the target repo / path / branch
   // changes, so the picker + the auto-filled main filename / format never
@@ -117,7 +97,7 @@ export function AddLocalLlmModelDownloadDrawer() {
       // Clear only the now-stale auto-filled filename. Leave file_format
       // untouched — resetting it to 'safetensors' would wrongly clobber a
       // gguf/pytorch choice; a re-detect sets it correctly anyway.
-      form.setFieldsValue({ main_filename: '' })
+      form.setValue('main_filename', '')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRepository, watchedPath, watchedBranch])
@@ -145,16 +125,16 @@ export function AddLocalLlmModelDownloadDrawer() {
     Stores.ViewDownloadDrawer.closeViewDownloadDrawer()
     setLoading(false)
     setDetected(null)
-    form.resetFields()
+    form.reset()
   }
 
   // Detect the model files in the selected repository so the user can pick
   // the main file (GGUF quant) or have the safetensors set auto-selected,
   // instead of typing the filename blind.
   const handleDetectFiles = async () => {
-    const repositoryId = form.getFieldValue('repository_id')
-    const path = (form.getFieldValue('repository_path') || '').trim()
-    const branch = form.getFieldValue('repository_branch') || 'main'
+    const repositoryId = form.getValues('repository_id') as string | undefined
+    const path = ((form.getValues('repository_path') as string) || '').trim()
+    const branch = (form.getValues('repository_branch') as string) || 'main'
     if (!repositoryId || !path) {
       message.error('Select a repository and enter a repository path first')
       return
@@ -184,12 +164,12 @@ export function AddLocalLlmModelDownloadDrawer() {
       setDetected(res)
       // Pre-fill the main filename + file format from the detection.
       const fmt = formatForShape(res.shape)
-      form.setFieldsValue({
-        ...(res.suggested_main_filename
-          ? { main_filename: res.suggested_main_filename }
-          : {}),
-        ...(fmt ? { file_format: fmt } : {}),
-      })
+      if (res.suggested_main_filename) {
+        form.setValue('main_filename', res.suggested_main_filename)
+      }
+      if (fmt) {
+        form.setValue('file_format', fmt)
+      }
       const sourceLabel = SOURCE_LABEL[res.source]
       message.success(
         `Detected ${res.files.length}${res.truncated ? '+' : ''} files${
@@ -217,32 +197,6 @@ export function AddLocalLlmModelDownloadDrawer() {
   const shapeWeightCount = weightFiles.filter(
     f => f.file_format === shapeFormat,
   ).length
-  const mainFileOptions = isGguf
-    ? // One entry per quant. A sharded GGUF set (`*-00001-of-00003.gguf`)
-      // downloads as a group, so collapse it to a single option (the first
-      // shard) instead of listing every shard.
-      (() => {
-        const seen = new Set<string>()
-        const opts: { value: string; label: string }[] = []
-        // Sort by path so a sharded set collapses to its first shard
-        // (`-00001-of-*`) deterministically rather than upstream-list order.
-        const ggufFiles = weightFiles
-          .filter(f => f.path.toLowerCase().endsWith('.gguf'))
-          .sort((a, b) => a.path.localeCompare(b.path))
-        for (const f of ggufFiles) {
-          const key = shardPrefix(f.path) ?? baseName(f.path)
-          if (seen.has(key)) continue
-          seen.add(key)
-          opts.push({
-            value: baseName(f.path),
-            label: `${baseName(f.path)}  ${humanSize(f.size_bytes)}`.trim(),
-          })
-        }
-        return opts
-      })()
-    : detected?.suggested_main_filename
-      ? [{ value: detected.suggested_main_filename, label: detected.suggested_main_filename }]
-      : []
   // Truncation only affects the *picker options* (GGUF), where the visible
   // list drives the choice. For safetensors/pickle the backend grabs the
   // whole weight set from the clone regardless of the listing, so no warning.
@@ -261,14 +215,13 @@ export function AddLocalLlmModelDownloadDrawer() {
             ? `Detected a ${shapeWeightCount}-file ${detected.shape} model — the full weight set downloads automatically.`
             : 'Enter the main weight filename.') + truncatedNote
 
-  const handleSubmit = async () => {
+  const onValid = async (values: Record<string, unknown>) => {
     try {
       setLoading(true)
       Stores.LlmProvider.clearLlmProviderStoreError()
-      const values = await form.validateFields()
 
       // Auto-generate model ID from display name
-      const modelId = generateModelId(values.display_name || 'model')
+      const modelId = generateModelId((values.display_name as string) || 'model')
 
       if (!values.repository_id) {
         message.error('Repository is required')
@@ -310,22 +263,22 @@ export function AddLocalLlmModelDownloadDrawer() {
         await Stores.LlmModelDownload.downloadLlmModelFromRepository(
           {
             provider_id: providerId!,
-            repository_id: values.repository_id,
-            repository_path: values.repository_path,
-            main_filename: values.main_filename,
-            repository_branch: values.repository_branch || 'main',
+            repository_id: values.repository_id as string,
+            repository_path: values.repository_path as string,
+            main_filename: values.main_filename as string,
+            repository_branch: (values.repository_branch as string) || 'main',
             name: modelId,
-            display_name: values.display_name,
-            description: values.description,
+            display_name: values.display_name as string,
+            description: values.description as string,
             // Format follows the chosen file's extension (falling back to the
             // dropdown only when the extension is unrecognized, e.g. an index).
             file_format:
-              formatForFilename(values.main_filename) ??
+              formatForFilename(values.main_filename as string) ??
               (values.file_format as FileFormat),
-            capabilities: values.capabilities || {},
-            parameters: values.parameters || {},
-            engine_type: values.engine_type || 'mistralrs',
-            engine_settings: values.engine_settings || {},
+            capabilities: (values.capabilities as Record<string, unknown>) || {},
+            parameters: (values.parameters as Record<string, unknown>) || {},
+            engine_type: ((values.engine_type as string) || 'mistralrs') as EngineType,
+            engine_settings: (values.engine_settings as Record<string, unknown>) || {},
           },
           Stores.ViewDownloadDrawer.openViewDownloadDrawer,
         )
@@ -354,7 +307,7 @@ export function AddLocalLlmModelDownloadDrawer() {
       if (viewDownload) {
         // In view mode, populate form with download data from request_data
         const requestData = viewDownload.request_data
-        form.setFieldsValue({
+        form.reset({
           display_name: requestData.display_name,
           description: requestData.description || '',
           file_format: requestData.file_format,
@@ -369,7 +322,7 @@ export function AddLocalLlmModelDownloadDrawer() {
         })
       } else if (!viewMode) {
         // In add mode, set default values
-        form.setFieldsValue({
+        form.reset({
           display_name: 'TinyLlama Chat Model',
           description:
             'Small 1.1B parameter chat model for quick testing (~637MB)',
@@ -382,7 +335,7 @@ export function AddLocalLlmModelDownloadDrawer() {
         })
       }
     }
-  }, [open, viewMode, viewDownload, form])
+  }, [open, viewMode, viewDownload])
 
   return (
     <Drawer
@@ -392,7 +345,7 @@ export function AddLocalLlmModelDownloadDrawer() {
       footer={
         viewMode
           ? [
-              <Button key="close" onClick={handleCloseModal}>
+              <Button key="close" variant="outline" onClick={handleCloseModal}>
                 Close
               </Button>,
               canCancelDownload &&
@@ -401,7 +354,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                   viewDownload.status === 'pending') && (
                   <Button
                     key="cancel-download"
-                    danger
+                    variant="destructive"
                     onClick={async () => {
                       try {
                         await Stores.LlmModelDownload.cancelLlmModelDownload(
@@ -421,15 +374,14 @@ export function AddLocalLlmModelDownloadDrawer() {
                 ),
             ].filter(Boolean)
           : [
-              <Button key="cancel" onClick={handleCancel}>
+              <Button key="cancel" variant="outline" onClick={handleCancel}>
                 {canCreate ? 'Cancel' : 'Close'}
               </Button>,
               canCreate && (
                 <Button
                   key="submit"
-                  type="primary"
                   loading={loading}
-                  onClick={handleSubmit}
+                  onClick={() => form.handleSubmit(onValid)()}
                 >
                   Download
                 </Button>
@@ -441,7 +393,7 @@ export function AddLocalLlmModelDownloadDrawer() {
     >
       <div>
         {viewDownload && (
-          <Card title="Download Progress" style={{ marginBottom: 16 }}>
+          <Card title="Download Progress" className="mb-4">
             {viewDownload.status === 'failed' && viewDownload.error_message ? (
               <Text type="danger">{viewDownload.error_message}</Text>
             ) : (
@@ -452,30 +404,31 @@ export function AddLocalLlmModelDownloadDrawer() {
                   </Text>
                 )}
                 <Progress
-                  percent={Math.round(
+                  value={Math.round(
                     ((viewDownload.progress_data?.current || 0) /
                       (viewDownload.progress_data?.total || 1)) *
                       100,
                   )}
-                  status={
+                  tone={
                     viewDownload.status === 'downloading'
-                      ? 'active'
+                      ? 'primary'
                       : viewDownload.status === 'completed'
                         ? 'success'
                         : viewDownload.status === 'failed'
-                          ? 'exception'
-                          : 'normal'
+                          ? 'error'
+                          : 'primary'
                   }
                   format={percent => `${percent}%`}
+                  aria-label="Download progress"
                 />
                 {viewDownload.progress_data && (
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                  <Text type="secondary" className="text-xs">
                     {viewDownload.progress_data.message || ''}
                   </Text>
                 )}
                 {viewDownload.progress_data?.speed_bps && (
-                  <div style={{ marginTop: 8 }}>
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                  <div className="mt-2">
+                    <Text type="secondary" className="text-xs">
                       Speed:{' '}
                       {Math.round(
                         (viewDownload.progress_data.speed_bps / 1024 / 1024) *
@@ -503,46 +456,31 @@ export function AddLocalLlmModelDownloadDrawer() {
         <Form
           name="llm-model-download"
           form={form}
+          onSubmit={onValid}
           layout="vertical"
           disabled={viewMode}
-          initialValues={{
-            file_format: 'safetensors',
-            main_filename: '',
-            repository_branch: 'main',
-          }}
         >
           <LocalLlmModelCommonFields />
 
-          <Form.Item
+          <FormField
             name="repository_id"
             label="Repository"
-            rules={[
-              {
-                required: true,
-                message: 'Repository is required',
-              },
-            ]}
+            required
           >
             <Select
               placeholder="Select repository"
               loading={loadingRepositories}
-              showSearch={{ optionFilterProp: 'children' }}
               options={repositories.map(repo => ({
                 value: repo.id,
                 label: `${repo.name} (${repo.url})`,
               }))}
             />
-          </Form.Item>
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="repository_path"
             label="Repository Path"
-            rules={[
-              {
-                required: true,
-                message: 'Repository path is required',
-              },
-            ]}
+            required
           >
             <Input
               placeholder="microsoft/DialoGPT-medium"
@@ -553,36 +491,28 @@ export function AddLocalLlmModelDownloadDrawer() {
                   : 'Repository'
               }
             />
-          </Form.Item>
+          </FormField>
 
           {!viewMode && (
-            <Form.Item>
-              <Button onClick={handleDetectFiles} loading={detecting}>
+            <div className="mb-4">
+              <Button variant="outline" onClick={handleDetectFiles} loading={detecting}>
                 Detect files
               </Button>
-            </Form.Item>
+            </div>
           )}
 
-          <Form.Item
+          <FormField
             name="main_filename"
             label="Main Filename"
-            rules={[
-              {
-                required: true,
-                message: 'Main filename is required',
-              },
-            ]}
-            extra={viewMode ? undefined : detectHelp}
+            required
+            description={viewMode ? undefined : detectHelp}
           >
-            <AutoComplete
-              placeholder="model.safetensors"
-              options={mainFileOptions}
-            />
-          </Form.Item>
+            <Input placeholder="model.safetensors" />
+          </FormField>
 
-          <Form.Item name="repository_branch" label="Branch">
+          <FormField name="repository_branch" label="Branch">
             <Input placeholder="main" />
-          </Form.Item>
+          </FormField>
 
           {/*
            * Clear-cache toggle removed — the backend's

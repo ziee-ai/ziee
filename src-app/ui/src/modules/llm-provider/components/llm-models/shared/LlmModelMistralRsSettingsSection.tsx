@@ -1,16 +1,17 @@
+import * as React from 'react'
 import {
   Card,
-  Divider,
+  Separator,
   Flex,
-  Form,
+  FormField,
   InputNumber,
   Select,
   Switch,
-  Typography,
-} from 'antd'
+  Text,
+  useWatch,
+  useFormContext,
+} from '@/components/ui'
 import { useEffect, useMemo } from 'react'
-
-const { Text } = Typography
 
 // Quantization options based on mistral.rs ISQ documentation
 const QUANTIZATION_OPTIONS = {
@@ -57,16 +58,14 @@ const ALL_QUANTIZATION_OPTIONS = [
 ]
 
 export function LlmModelMistralRsSettingsSection() {
-  const form = Form.useFormInstance()
+  const form = useFormContext()
 
   // Watch for device type changes
   const selectedDeviceType =
-    Form.useWatch(['engine_settings', 'mistralrs', 'device_type'], form) ||
-    'cpu'
-  const currentQuantization = Form.useWatch(
-    ['engine_settings', 'mistralrs', 'in_situ_quant'],
-    form,
-  )
+    useWatch({ name: 'engine_settings.mistralrs.device_type' }) || 'cpu'
+  const currentQuantization = useWatch({
+    name: 'engine_settings.mistralrs.in_situ_quant',
+  })
 
   // Filter quantization options based on device type
   const availableQuantizationOptions = useMemo(() => {
@@ -86,19 +85,16 @@ export function LlmModelMistralRsSettingsSection() {
       )?.deviceTypes.includes(selectedDeviceType)
 
       if (!isCurrentQuantizationCompatible) {
-        form.setFieldValue(
-          ['engine_settings', 'mistralrs', 'in_situ_quant'],
+        form.setValue(
+          'engine_settings.mistralrs.in_situ_quant',
           undefined,
         )
       }
     }
   }, [selectedDeviceType, currentQuantization, form])
 
-  const getFieldName = (field: string) => [
-    'engine_settings',
-    'mistralrs',
-    field,
-  ]
+  const getFieldName = (field: string) =>
+    `engine_settings.mistralrs.${field}`
 
   const ResponsiveConfigItem = ({
     title,
@@ -109,7 +105,7 @@ export function LlmModelMistralRsSettingsSection() {
     description: string
     children: React.ReactNode
   }) => (
-    <Flex justify="space-between">
+    <Flex justify="between">
       <div>
         <Text strong>{title}</Text>
         <div>
@@ -129,11 +125,10 @@ export function LlmModelMistralRsSettingsSection() {
             title="Device Type"
             description="Hardware backend to run the model on. Leave empty to auto-select; CPU runs inference on the CPU."
           >
-            <Form.Item name={getFieldName('device_type')} style={{ margin: 0 }}>
+            <FormField name={getFieldName('device_type')} className="m-0">
               <Select
                 placeholder="Auto"
-                style={{ width: 120 }}
-                allowClear
+                className="w-[120px]"
                 options={[
                   { value: 'cpu', label: 'CPU' },
                   { value: 'cuda', label: 'CUDA' },
@@ -142,7 +137,7 @@ export function LlmModelMistralRsSettingsSection() {
                   { value: 'vulkan', label: 'Vulkan' },
                 ]}
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
         </Flex>
       </Card>
@@ -154,29 +149,29 @@ export function LlmModelMistralRsSettingsSection() {
             title="Max Sequences"
             description="Maximum running sequences at any time (default: 16)"
           >
-            <Form.Item name={getFieldName('max_seqs')}>
+            <FormField name={getFieldName('max_seqs')}>
               <InputNumber
                 min={1}
                 max={1024}
                 placeholder="16"
-                style={{ width: '100%' }}
+                className="w-full"
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
 
-          <Divider style={{ margin: 0 }} />
+          <Separator />
 
           <ResponsiveConfigItem
             title="No KV Cache"
             description="Use no KV cache"
           >
-            <Form.Item
+            <FormField
               name={getFieldName('no_kv_cache')}
               valuePropName="checked"
-              style={{ margin: 0 }}
+              className="m-0"
             >
               <Switch />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
         </Flex>
       </Card>
@@ -188,93 +183,93 @@ export function LlmModelMistralRsSettingsSection() {
             title="PagedAttention GPU Memory (MB)"
             description="GPU memory to allocate for KV cache with PagedAttention in MBs"
           >
-            <Form.Item name={getFieldName('paged_attn_gpu_mem')}>
+            <FormField name={getFieldName('paged_attn_gpu_mem')}>
               <InputNumber
                 min={128}
                 max={65536}
                 placeholder="Auto"
-                style={{ width: '100%' }}
+                className="w-full"
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
 
-          <Divider style={{ margin: 0 }} />
+          <Separator />
 
           <ResponsiveConfigItem
             title="PagedAttention GPU Memory Usage"
             description="Percentage of GPU memory to utilize after allocation of KV cache with PagedAttention, from 0 to 1 (default: 0.9 on CUDA)"
           >
-            <Form.Item name={getFieldName('paged_attn_gpu_mem_usage')}>
+            <FormField name={getFieldName('paged_attn_gpu_mem_usage')}>
               <InputNumber
                 min={0.1}
                 max={1.0}
                 step={0.1}
                 placeholder="0.9"
-                style={{ width: '100%' }}
+                className="w-full"
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
 
-          <Divider style={{ margin: 0 }} />
+          <Separator />
 
           <ResponsiveConfigItem
             title="PagedAttention Context Length"
             description="Total context length to allocate the KV cache for (total number of tokens which the KV cache can hold)"
           >
-            <Form.Item name={getFieldName('paged_ctxt_len')}>
+            <FormField name={getFieldName('paged_ctxt_len')}>
               <InputNumber
                 min={512}
                 max={131072}
                 placeholder="Auto"
-                style={{ width: '100%' }}
+                className="w-full"
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
 
-          <Divider style={{ margin: 0 }} />
+          <Separator />
 
           <ResponsiveConfigItem
             title="PagedAttention Block Size"
             description="Block size (number of tokens per block) for PagedAttention (default: 32 on CUDA)"
           >
-            <Form.Item name={getFieldName('paged_attn_block_size')}>
+            <FormField name={getFieldName('paged_attn_block_size')}>
               <InputNumber
                 min={1}
                 max={512}
                 placeholder="32"
-                style={{ width: '100%' }}
+                className="w-full"
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
 
-          <Divider style={{ margin: 0 }} />
+          <Separator />
 
           <ResponsiveConfigItem
             title="Disable PagedAttention"
             description="Disable PagedAttention on CUDA (PagedAttention is automatically activated on CUDA but not on Metal)"
           >
-            <Form.Item
+            <FormField
               name={getFieldName('no_paged_attn')}
               valuePropName="checked"
-              style={{ margin: 0 }}
+              className="m-0"
             >
               <Switch />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
 
-          <Divider style={{ margin: 0 }} />
+          <Separator />
 
           <ResponsiveConfigItem
             title="Enable PagedAttention on Metal"
             description="Enable PagedAttention on Metal (PagedAttention is automatically activated on CUDA but not on Metal)"
           >
-            <Form.Item
+            <FormField
               name={getFieldName('paged_attn')}
               valuePropName="checked"
-              style={{ margin: 0 }}
+              className="m-0"
             >
               <Switch />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
         </Flex>
       </Card>
@@ -286,14 +281,14 @@ export function LlmModelMistralRsSettingsSection() {
             title="Prefix Cache Count"
             description="Number of prefix caches to hold on the device. Other caches are evicted to the CPU based on a LRU strategy (default: 16)"
           >
-            <Form.Item name={getFieldName('prefix_cache_n')}>
+            <FormField name={getFieldName('prefix_cache_n')}>
               <InputNumber
                 min={1}
                 max={128}
                 placeholder="16"
-                style={{ width: '100%' }}
+                className="w-full"
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
         </Flex>
       </Card>
@@ -305,11 +300,10 @@ export function LlmModelMistralRsSettingsSection() {
             title="Data Type"
             description="Model data type (default: auto)"
           >
-            <Form.Item name={getFieldName('dtype')}>
+            <FormField name={getFieldName('dtype')}>
               <Select
                 placeholder="auto"
-                style={{ width: '100%' }}
-                allowClear
+                className="w-full"
                 options={[
                   { value: 'auto', label: 'Auto' },
                   { value: 'f16', label: 'Float16' },
@@ -317,39 +311,38 @@ export function LlmModelMistralRsSettingsSection() {
                   { value: 'bf16', label: 'BFloat16' },
                 ]}
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
 
-          <Divider style={{ margin: 0 }} />
+          <Separator />
 
           <ResponsiveConfigItem
             title="In-Situ Quantization"
             description={`In-situ quantization to apply (${selectedDeviceType.toUpperCase()})`}
           >
-            <Form.Item name={getFieldName('in_situ_quant')}>
+            <FormField name={getFieldName('in_situ_quant')}>
               <Select
                 placeholder="None"
-                style={{ width: '100%' }}
-                allowClear
+                className="w-full"
                 options={availableQuantizationOptions}
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
 
-          <Divider style={{ margin: 0 }} />
+          <Separator />
 
           <ResponsiveConfigItem
             title="Random Seed"
             description="Integer seed to ensure reproducible random number generation"
           >
-            <Form.Item name={getFieldName('seed')}>
+            <FormField name={getFieldName('seed')}>
               <InputNumber
                 min={0}
                 max={4294967295}
                 placeholder="Random"
-                style={{ width: '100%' }}
+                className="w-full"
               />
-            </Form.Item>
+            </FormField>
           </ResponsiveConfigItem>
         </Flex>
       </Card>

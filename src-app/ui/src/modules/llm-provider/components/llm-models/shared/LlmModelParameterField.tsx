@@ -1,20 +1,26 @@
-import { Form, Input, InputNumber, Select, Tag } from 'antd'
 import { useState } from 'react'
-
-const { TextArea } = Input
+import {
+  FormField,
+  Input,
+  PasswordInput,
+  InputNumber,
+  Select,
+  Tag,
+  Textarea,
+} from '@/components/ui'
 
 interface StringArrayInputProps {
   value?: string[]
   onChange?: (value: string[]) => void
   placeholder?: string
-  style?: React.CSSProperties
+  className?: string
 }
 
 function StringArrayInput({
   value = [],
   onChange,
   placeholder,
-  style,
+  className,
 }: StringArrayInputProps) {
   const [inputValue, setInputValue] = useState('')
 
@@ -26,11 +32,6 @@ function StringArrayInput({
     }
   }
 
-  const handleRemoveTag = (tagToRemove: string) => {
-    const newValue = value.filter(tag => tag !== tagToRemove)
-    onChange?.(newValue)
-  }
-
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
@@ -39,14 +40,17 @@ function StringArrayInput({
   }
 
   return (
-    <div style={style}>
-      <div style={{ marginBottom: 8 }}>
+    <div className={className}>
+      <div className="mb-2">
         {value?.map(tag => (
           <Tag
             key={tag}
-            closable
-            onClose={() => handleRemoveTag(tag)}
-            style={{ marginBottom: 4 }}
+            onClose={() => {
+              const newValue = value.filter(t => t !== tag)
+              onChange?.(newValue)
+            }}
+            closeLabel="Remove"
+            className="mb-1"
           >
             {tag}
           </Tag>
@@ -58,7 +62,7 @@ function StringArrayInput({
         onKeyPress={handleKeyPress}
         onBlur={handleAddTag}
         placeholder={placeholder || 'Press Enter to add'}
-        style={{ width: '100%' }}
+        className="w-full"
       />
     </div>
   )
@@ -91,52 +95,53 @@ export function LlmModelParameterField({
   step,
   required,
   options,
-  rules = [],
 }: LlmModelParameterFieldProps) {
-  const fieldRules = [
-    ...(required ? [{ required: true, message: `${label} is required` }] : []),
-    ...rules,
-  ]
+  // Convert string[] name to dot-notation for react-hook-form
+  const fieldName = Array.isArray(name) ? name.join('.') : name
 
   const renderInput = () => {
-    const commonStyle = { width: '100%' }
-
     switch (type) {
       case 'number':
         return (
           <InputNumber
             placeholder={placeholder}
-            style={commonStyle}
+            className="w-full"
             min={min}
             max={max}
             step={step}
           />
         )
       case 'password':
-        return <Input.Password placeholder={placeholder} style={commonStyle} />
+        return <PasswordInput showLabel="Show" hideLabel="Hide" placeholder={placeholder} className="w-full" />
       case 'textarea':
-        return <TextArea placeholder={placeholder} rows={3} />
+        return <Textarea placeholder={placeholder} rows={3} />
       case 'select':
         return (
           <Select
             placeholder={placeholder}
-            style={commonStyle}
-            options={options}
+            className="w-full"
+            options={(options ?? []).map(o => ({ value: String(o.value), label: o.label }))}
           />
         )
       case 'string-array':
         return (
-          <StringArrayInput placeholder={placeholder} style={commonStyle} />
+          <StringArrayInput placeholder={placeholder} className="w-full" />
         )
       case 'text':
       default:
-        return <Input placeholder={placeholder} style={commonStyle} />
+        return <Input placeholder={placeholder} className="w-full" />
     }
   }
 
   return (
-    <Form.Item name={name} label={label} extra={help} rules={fieldRules}>
+    <FormField
+      name={fieldName}
+      label={label}
+      description={help}
+      required={required}
+      valuePropName={type === 'string-array' ? 'value' : undefined}
+    >
       {renderInput()}
-    </Form.Item>
+    </FormField>
   )
 }
