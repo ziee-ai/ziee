@@ -329,7 +329,7 @@ export function McpConfigModal() {
                   )}
                 </div>
                 {tool.description && (
-                  <div className="text-xs text-gray-500 mt-1">{tool.description}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{tool.description}</div>
                 )}
               </div>
             </div>

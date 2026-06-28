@@ -30,11 +30,11 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
   const getStatusIcon = () => {
     switch (toolCall.status) {
       case 'started':
-        return <Wrench className="text-blue-500 animate-spin" />
+        return <Wrench className="text-primary animate-spin" />
       case 'completed':
-        return <CircleCheck className="text-green-500" />
+        return <CircleCheck className="text-primary" />
       case 'error':
-        return <CircleX className="text-red-500" />
+        return <CircleX className="text-destructive" />
     }
   }
 
@@ -178,11 +178,11 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {toolResultData?.is_error ? (
-            <CircleX className="text-red-500" />
+            <CircleX className="text-destructive" />
           ) : toolResultData ? (
-            <CircleCheck className="text-green-500" />
+            <CircleCheck className="text-primary" />
           ) : (
-            <Wrench className="text-blue-500" />
+            <Wrench className="text-primary" />
           )}
           <Text strong>{toolUseData.name || 'Tool Call'}</Text>
           <Text type="secondary" className="text-xs">({serverName})</Text>

@@ -40,7 +40,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Space size="small">
-            <Plug className="text-blue-500" aria-hidden="true" />
+            <Plug className="text-primary" aria-hidden="true" />
             <Text strong>System MCP Servers</Text>
             {loading ? (
               <Spin size="sm" label="Loading" />
