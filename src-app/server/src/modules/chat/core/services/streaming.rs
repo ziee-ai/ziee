@@ -2159,4 +2159,29 @@ mod trim_tests {
             );
         }
     }
+
+    // audit id all-643c33d76832 — trimming→recall ROUNDTRIP handoff. Existing
+    // tests assert a cleared block merely contains "cleared"; this asserts the
+    // placeholder names the EXACT tool_use_id in a get_tool_result(...) call so
+    // the model can recall the full result from stored history (the bridge to
+    // tool_result_mcp::get_tool_result). A wrong/missing id = a dead pointer.
+    #[test]
+    fn cleared_placeholder_carries_get_tool_result_recall_pointer() {
+        let mut msgs: Vec<ChatMessage> = (0..10)
+            .map(|i| tool_result_msg(&format!("tu-{i}"), &"x".repeat(2000)))
+            .collect();
+        clear_old_tool_results(&mut msgs, 100, 2);
+
+        let ContentBlock::ToolResult { content, .. } = &msgs[0].content[0] else {
+            panic!("expected a ToolResult block");
+        };
+        let ContentBlock::Text { text } = &content[0] else {
+            panic!("cleared content should be a single Text placeholder");
+        };
+        let needle = format!("get_tool_result(tool_use_id=\"{}\")", "tu-0");
+        assert!(
+            text.contains(&needle),
+            "placeholder must carry the recall pointer for its own tool_use_id: {text}"
+        );
+    }
 }
