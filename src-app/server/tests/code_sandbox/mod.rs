@@ -54,6 +54,7 @@ mod tier6_host_mount;
 // sandbox at runtime. Self-skips without rootfs.
 mod tier6_install_env;
 mod tier6_version_swap;
+mod tier6_concurrent_multiuser;
 
 // Tier 8 — TRULY-PUBLISHED MCP package smoke. Pip-installs
 // `mcp-server-fetch` from PyPI into the sandbox, then exec's it via
