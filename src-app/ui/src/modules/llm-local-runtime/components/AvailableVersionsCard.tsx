@@ -15,7 +15,7 @@ import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import type { DownloadSnapshot } from '@/api-client/types'
+import type { DownloadSnapshot, GpuDetectionResponse } from '@/api-client/types'
 import type { RuntimeAvailableVersion, RuntimeEngine } from '../types'
 import { HoverRow, formatBytes } from './_engineVersionsShared'
 
@@ -191,7 +191,7 @@ function PlatformRow({
   gpu,
   loadingGpu,
 }: {
-  gpu: ReturnType<typeof useGpu>
+  gpu: GpuDetectionResponse | null
   loadingGpu: boolean
 }) {
   if (loadingGpu && !gpu) {
@@ -217,7 +217,7 @@ function BackendsRow({
   gpu,
   loadingGpu,
 }: {
-  gpu: ReturnType<typeof useGpu>
+  gpu: GpuDetectionResponse | null
   loadingGpu: boolean
 }) {
   if (loadingGpu && !gpu) {
@@ -245,10 +245,6 @@ function BackendsRow({
       </Space>
     </Flex>
   )
-}
-
-function useGpu() {
-  return Stores.RuntimeConfig.gpu
 }
 
 function AvailableVersionRow({
