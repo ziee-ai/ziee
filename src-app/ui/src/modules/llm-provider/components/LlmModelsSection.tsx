@@ -18,7 +18,9 @@ import {
 } from 'antd'
 import { Loading } from '@/core/components/Loading'
 import { useParams } from 'react-router-dom'
+import { useState } from 'react'
 import { Stores } from '@/core/stores'
+import { ApiClient } from '@/api-client'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type LlmModel } from '@/api-client/types'
 
@@ -27,6 +29,10 @@ const { Text } = Typography
 export function LlmModelsSection() {
   const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
+  // Per-model in-flight flag for the local-runtime start/stop button.
+  const [llmModelOperations, setLlmModelOperations] = useState<
+    Record<string, boolean>
+  >({})
 
   // Store data
   const { llmModelsLoading } = Stores.LlmProvider
@@ -103,12 +109,31 @@ export function LlmModelsSection() {
     }
   }
 
-  // TODO: Wire up the start/stop UI for local models — the backend now
-  // supports it via /api/local-runtime (start/stop instance handlers).
-  // const handleStartStopLlmModel = async (modelId: string, is_active: boolean) => {
-  //   if (!currentProvider || currentProvider.provider_type !== 'local') return
-  //   ...
-  // }
+  // Start/stop a local model's runtime instance via /api/local-runtime, then
+  // refresh the provider's models so is_active/port reflect the new state.
+  const handleStartStopLlmModel = async (modelId: string, start: boolean) => {
+    if (!currentProvider || currentProvider.provider_type !== 'local') return
+    setLlmModelOperations(prev => ({ ...prev, [modelId]: true }))
+    try {
+      if (start) {
+        await ApiClient.LocalRuntime.startModel({ model_id: modelId }, undefined)
+        message.success('Model starting')
+      } else {
+        await ApiClient.LocalRuntime.stopModel({ model_id: modelId }, undefined)
+        message.success('Model stopped')
+      }
+      await Stores.LlmProvider.loadModelsForProvider(currentProvider.id)
+    } catch (error) {
+      console.error('Failed to start/stop model:', error)
+      message.error(
+        error instanceof Error
+          ? error.message
+          : `Failed to ${start ? 'start' : 'stop'} model`,
+      )
+    } finally {
+      setLlmModelOperations(prev => ({ ...prev, [modelId]: false }))
+    }
+  }
 
   const handleAddLlmModel = () => {
     if (!currentProvider) return
@@ -146,26 +171,25 @@ export function LlmModelsSection() {
       )
     }
 
-    // TODO: Add Start/Stop button for local models — backend now supports it via /api/local-runtime.
-    // if (currentProvider?.provider_type === 'local') {
-    //   actions.push(
-    //     <Button
-    //       key="start-stop"
-    //       type={llmModel.is_active ? 'default' : 'primary'}
-    //       loading={llmModelOperations?.[llmModel.id] || false}
-    //       disabled={llmModelOperations?.[llmModel.id] || false}
-    //       onClick={() => handleStartStopLlmModel(llmModel.id, !llmModel.is_active)}
-    //     >
-    //       {llmModelOperations?.[llmModel.id]
-    //         ? llmModel.is_active
-    //           ? 'Stopping...'
-    //           : 'Starting...'
-    //         : llmModel.is_active
-    //           ? 'Stop'
-    //           : 'Start'}
-    //     </Button>,
-    //   )
-    // }
+    // Start/Stop the local-runtime instance (local providers only, edit perm).
+    if (canEditModels && currentProvider?.provider_type === 'local') {
+      const busy = llmModelOperations[llmModel.id] || false
+      actions.push(
+        <Button
+          key="start-stop"
+          size="small"
+          type={llmModel.is_active ? 'default' : 'primary'}
+          loading={busy}
+          disabled={busy}
+          onClick={() =>
+            handleStartStopLlmModel(llmModel.id, !llmModel.is_active)
+          }
+          aria-label={`${llmModel.is_active ? 'Stop' : 'Start'} ${llmModel.display_name} model`}
+        >
+          {llmModel.is_active ? 'Stop' : 'Start'}
+        </Button>,
+      )
+    }
 
     if (canEditModels) {
       actions.push(
@@ -290,8 +314,7 @@ export function LlmModelsSection() {
                     <Text type="secondary" className="text-xs block">
                       Model ID: {llmModel.name}
                     </Text>
-                    {/* TODO: Display running status — backend now supports local model execution via /api/local-runtime. */}
-                    {/* {llmModel.is_active && llmModel.port && (
+                    {llmModel.is_active && llmModel.port && (
                       <Text type="secondary" className="text-xs block">
                         Running on:{' '}
                         <a
@@ -302,7 +325,7 @@ export function LlmModelsSection() {
                           http://127.0.0.1:{llmModel.port}
                         </a>
                       </Text>
-                    )} */}
+                    )}
                     {llmModel.description && (
                       <Text type="secondary" className="block">
                         {llmModel.description}
