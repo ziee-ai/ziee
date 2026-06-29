@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Citations export FORMAT variety (audit gap all-c004e702401e).
@@ -104,7 +105,7 @@ async function gotoCitations(page: Page, baseURL: string) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await page.goto(`${baseURL}/settings/citations`)
-      await expect(page.getByRole('heading', { name: 'Citations' })).toBeVisible({ timeout: 10000 })
+      await expect(byTestId(page, 'cite-settings-card')).toBeVisible({ timeout: 10000 })
       return
     } catch (e) {
       if (attempt === 3) throw e
@@ -159,8 +160,8 @@ test.describe('Citations export — format variety', () => {
       await gotoCitations(page, baseURL)
 
       const downloadPromise = page.waitForEvent('download')
-      await page.getByRole('button', { name: 'Export' }).click()
-      await page.getByText(c.menu).click()
+      await byTestId(page, 'cite-settings-export-button').click()
+      await byTestId(page, `cite-settings-export-dropdown-item-${c.format}`).click()
       const download = await downloadPromise
 
       // (1) the UI sent the correct format to the real export endpoint

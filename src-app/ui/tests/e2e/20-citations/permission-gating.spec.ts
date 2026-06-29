@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid'
 
 /**
  * E2E — citations `use` vs `manage` permission gating of UI actions.
@@ -15,6 +16,8 @@ import { Permissions } from '../../../src/api-client/types'
  * deterministically; the gating itself is real (driven by usePermission).
  */
 
+const ENTRY_ID = '00000000-0000-4000-8000-0000000c1701'
+
 async function mockOneEntry(page: Page) {
   await page.route(/\/api\/citations(\?.*)?$/, async (route, req) => {
     if (req.method() === 'GET') {
@@ -24,7 +27,7 @@ async function mockOneEntry(page: Page) {
         body: JSON.stringify({
           entries: [
             {
-              id: crypto.randomUUID(),
+              id: ENTRY_ID,
               csl_json: { type: 'article-journal', title: 'A paper' },
               doi: '10.5555/known',
               pmid: null,
@@ -59,22 +62,16 @@ test.describe('Citations — use vs manage gating', () => {
     await loginWithPerms(page, baseURL, apiURL, [Permissions.CitationsUse])
 
     await page.goto(`${baseURL}/settings/citations`)
-    // The card list renders (the entry's citation key is shown).
-    await expect(page.getByText('smith2021')).toBeVisible({ timeout: 30000 })
+    // The card list renders (the seeded entry's card is shown).
+    await expect(byTestId(page, `cite-card-${ENTRY_ID}`)).toBeVisible({ timeout: 30000 })
 
     // Import is hidden for a non-manage user.
-    await expect(
-      page.getByRole('button', { name: 'Import', exact: true }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'cite-settings-import-button')).toHaveCount(0)
 
     // "Verify all" is present but disabled.
-    await expect(
-      page.getByRole('button', { name: /Verify all/i }),
-    ).toBeDisabled()
+    await expect(byTestId(page, 'cite-settings-verify-all-button')).toBeDisabled()
 
     // The per-entry delete affordance is hidden.
-    await expect(
-      page.getByRole('button', { name: 'Delete smith2021' }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, `cite-card-delete-button-${ENTRY_ID}`)).toHaveCount(0)
   })
 })

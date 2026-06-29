@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Project Bibliography Manage Panel "Import into project" button opens the
@@ -26,15 +27,16 @@ test.describe('Citations — project bibliography import', () => {
     await page.goto(`${baseURL}/projects/${projectId}`)
 
     // Open the knowledge "Manage" drawer (hosts the References manage panel).
-    await page.getByRole('button', { name: /manage knowledge files/i }).click()
-    await page
-      .locator('.ant-drawer.ant-drawer-open')
-      .waitFor({ state: 'visible' })
+    await byTestId(page, 'project-knowledge-manage-button').click()
 
-    // The References panel's "Import into project" button opens the modal.
-    await page.getByRole('button', { name: 'Import into project' }).click()
-    const modal = page.getByRole('dialog', { name: 'Import citations' })
+    // The References panel's "Import into project" button opens the modal
+    // (its visibility confirms the drawer opened).
+    const importBtn = byTestId(page, 'cite-bib-panel-import-button')
+    await expect(importBtn).toBeVisible({ timeout: 10000 })
+    await importBtn.click()
+
+    const modal = byTestId(page, 'cite-import-modal')
     await expect(modal).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByRole('button', { name: 'Import + verify' })).toBeVisible()
+    await expect(byTestId(page, 'cite-import-submit')).toBeVisible()
   })
 })
