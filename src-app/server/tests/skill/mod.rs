@@ -129,19 +129,13 @@ pub async fn install_fixture_skill(server: &TestServer, token: &str) -> Json {
 /// Create an admin who can refresh the catalog + install user + system
 /// skills, then refresh so the mock catalog is active.
 pub async fn admin_and_refresh(server: &TestServer) -> crate::common::test_helpers::TestUser {
-    let admin = create_user_with_permissions(
-        server,
-        "skill_admin",
-        &[
-            "hub::catalog::read",
-            "hub::catalog::manage",
-            "skills::read",
-            "skills::install",
-            "skills::manage",
-            "skills::manage_system",
-        ],
-    )
-    .await;
+    // Full admin: this is the positive-path admin for skill tests, several of
+    // which also register a stub provider/model (register_stub_model) and the
+    // cross-subsystem coexistence test enables memory (MemoryAdminManage). The
+    // narrow per-perm list kept growing as those subsystems were added; `&["*"]`
+    // matches the stub-model caller convention (agentic_chat, bio_mcp). The
+    // negative-path user (skill_sync_other) is created separately + stays narrow.
+    let admin = create_user_with_permissions(server, "skill_admin", &["*"]).await;
     refresh_catalog(server, &admin.token).await;
     admin
 }

@@ -95,6 +95,11 @@ async fn admin(server: &TestServer, name: &str) -> TestUser {
             "llm_providers::read",
             "llm_models::create",
             "llm_models::read",
+            // register_stub_model also creates + assigns a group; without these
+            // POST /groups returned no id and the helper panicked on unwrap.
+            "llm_providers::assign_groups",
+            "groups::create",
+            "groups::assign_users",
         ],
     )
     .await

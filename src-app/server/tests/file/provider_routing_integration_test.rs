@@ -43,19 +43,15 @@ async fn upload(
 #[tokio::test]
 async fn text_attachment_is_inlined_verbatim_binary_becomes_placeholder() {
     let server = crate::common::TestServer::start().await;
+    // Full perms: this user is also the admin passed to register_stub_model,
+    // which additionally creates a group (POST /groups → groups::create) and
+    // assigns it (groups::edit, llm_providers::assign_groups). The narrow list
+    // above lacked the group perms, so POST /groups returned no id and the
+    // helper panicked on unwrap. Matches the `&["*"]` stub-model convention.
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "routing_user",
-        &[
-            "conversations::create",
-            "messages::create",
-            "files::upload",
-            "llm_models::read",
-            "llm_models::create",
-            "llm_providers::read",
-            "llm_providers::create",
-            "llm_providers::edit",
-        ],
+        &["*"],
     )
     .await;
 

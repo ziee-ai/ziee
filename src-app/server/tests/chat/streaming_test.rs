@@ -338,19 +338,15 @@ async fn test_assistant_instructions_reach_the_model_prompt() {
 
     let server = crate::common::TestServer::start().await;
     let stub = StubChat::start().await;
+    // Full perms: this user is also the admin passed to register_stub_model,
+    // which creates a provider/model/group (needs llm_providers::create,
+    // llm_models::create, groups::create/edit, llm_providers::assign_groups).
+    // Matches the established `&["*"]` convention for stub-model callers
+    // (agentic_chat, bio_mcp). The test asserts no permission boundary.
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "assistant_inject",
-        &[
-            "conversations::create",
-            "conversations::read",
-            "conversations::edit",
-            "messages::create",
-            "messages::read",
-            "llm_models::read",
-            "assistants::create",
-            "assistants::read",
-        ],
+        &["*"],
     )
     .await;
     let model_id_str =

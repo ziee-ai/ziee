@@ -652,8 +652,10 @@ fn sse_chunk(model: &str, delta: Value, finish: Option<&str>) -> Event {
 /// string). `tools` controls `capabilities.tools`; `context_length` (when set)
 /// seeds `capabilities.context_length` for the summarizer window tests.
 ///
-/// `admin_token` must carry `llm_providers::{read,edit}` + `llm_models::{read,
-/// create}` + group-management permissions.
+/// `admin_token` must carry the full stub-model admin set:
+/// `llm_providers::create`, `llm_providers::assign_groups`, `llm_models::create`,
+/// `groups::create`, `groups::assign_users`. The simplest way is `&["*"]` (see
+/// agentic_chat / bio_mcp callers).
 pub async fn register_stub_model(
     server: &crate::common::TestServer,
     admin_token: &str,
@@ -722,7 +724,7 @@ pub async fn register_stub_model(
     let model_id = model["id"].as_str().unwrap().to_string();
 
     // 3. Grant the user access: fresh group → user → provider.
-    let group: Value = client
+    let group_resp = client
         .post(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {admin_token}"))
         .json(&json!({
@@ -732,10 +734,15 @@ pub async fn register_stub_model(
         }))
         .send()
         .await
-        .unwrap()
-        .json()
-        .await
         .unwrap();
+    assert_eq!(
+        group_resp.status(),
+        StatusCode::CREATED,
+        "stub group create failed (admin_token needs groups::create / \
+         groups::assign_users / llm_providers::assign_groups): {}",
+        group_resp.text().await.unwrap_or_default()
+    );
+    let group: Value = group_resp.json().await.unwrap();
     let group_id = group["id"].as_str().unwrap();
 
     let r = client
