@@ -43,19 +43,20 @@ test.describe('MCP — SSE transport persistence', () => {
 
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, data)
+    // submitMcpServerForm waits for the drawer to close on success; assert it.
     await submitMcpServerForm(page, 'create', true)
-    await expect(
-      page.locator('.ant-message-success, .ant-message-warning').first(),
-    ).toBeVisible({ timeout: 5000 })
+    await expect(page.getByTestId('mcp-drawer-form')).toHaveCount(0)
 
     // Re-open the created server's Edit drawer and assert the SSE config
     // persisted.
     await clickEditServerButton(page, data.displayName, true)
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    const drawer = page.getByTestId('mcp-drawer-form')
 
-    await expect(
-      drawer.locator('.ant-form-item:has-text("Transport Type")'),
-    ).toContainText('Server-Sent Events')
-    await expect(drawer.getByLabel('URL')).toHaveValue(data.url!)
+    // Transport persisted as SSE (the select trigger shows its label) and the
+    // URL field (only rendered for http/sse) carries the saved value.
+    await expect(drawer.getByTestId('mcp-drawer-transport-select')).toContainText(
+      'Server-Sent Events',
+    )
+    await expect(drawer.getByTestId('mcp-drawer-url-input')).toHaveValue(data.url!)
   })
 })
