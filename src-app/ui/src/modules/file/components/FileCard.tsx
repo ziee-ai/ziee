@@ -216,17 +216,40 @@ export function FileCard({
             style={{ aspectRatio: '1' }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
-            <Spin label="Uploading" />
+            {uploadProgress.status === 'error' ? (
+              onRetry && (
+                <Tooltip content="Retry upload">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<RotateCw />}
+                    onClick={() => onRetry()}
+                    aria-label={`Retry upload ${uploadProgress.filename}`}
+                    data-testid="file-card-square-retry-btn"
+                  />
+                </Tooltip>
+              )
+            ) : (
+              <Spin label="Uploading" />
+            )}
           </div>
           {onRemove && (
-            <Tooltip content="Cancel upload">
+            <Tooltip
+              content={
+                uploadProgress.status === 'error' ? 'Dismiss' : 'Cancel upload'
+              }
+            >
               <Button
                 variant="ghost"
                 size="sm"
                 icon={<X />}
                 onClick={() => onRemove()}
                 className="!absolute top-1 right-1"
-                aria-label="Cancel upload"
+                aria-label={
+                  uploadProgress.status === 'error'
+                    ? `Dismiss ${uploadProgress.filename}`
+                    : 'Cancel upload'
+                }
                 data-testid="file-card-cancel-btn"
               />
             </Tooltip>
