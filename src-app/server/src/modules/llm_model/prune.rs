@@ -40,6 +40,15 @@ pub async fn run_prune_loop(pool: PgPool) {
         DOWNLOAD_RETENTION_DAYS,
         CACHE_UNUSED_DAYS,
     );
+    // One-shot boot reconcile: a download task runs in-process, so any row left
+    // in a non-terminal state (`pending`/`downloading`) is an orphan from a
+    // previous process that died mid-download — its task no longer exists. Left
+    // alone, `find_existing_in_progress_download` dedupes new requests onto the
+    // dead row and blocks re-download forever. Reset such rows to `failed` so
+    // the UI shows a terminal state and re-download is unblocked. Safe to run at
+    // init: this fires before any download request is served this process, so no
+    // live in-progress row exists yet to be clobbered.
+    reconcile_interrupted_downloads(&pool).await;
     loop {
         prune_download_instances(&pool).await;
         evict_caches(&pool).await;
@@ -70,6 +79,36 @@ async fn prune_download_instances(pool: &PgPool) {
         }
         Ok(_) => {}
         Err(e) => tracing::warn!("llm_model::prune: download_instances prune failed: {e}"),
+    }
+}
+
+/// Reset download rows orphaned by a server restart (non-terminal status with
+/// no live in-process task) to `failed`. Run once at boot. See the call site in
+/// [`run_prune_loop`] for why this is safe to do unconditionally at init.
+async fn reconcile_interrupted_downloads(pool: &PgPool) {
+    match sqlx::query!(
+        r#"
+        UPDATE download_instances
+        SET status = 'failed',
+            error_message = 'download interrupted by server restart',
+            completed_at = NOW(),
+            updated_at = NOW()
+        WHERE status IN ('pending', 'downloading')
+        "#,
+    )
+    .execute(pool)
+    .await
+    {
+        Ok(res) if res.rows_affected() > 0 => {
+            tracing::warn!(
+                "llm_model::prune: reconciled {} interrupted download_instances row(s) to 'failed' (orphaned by a prior restart)",
+                res.rows_affected()
+            );
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(
+            "llm_model::prune: interrupted-download reconcile failed: {e}"
+        ),
     }
 }
 
