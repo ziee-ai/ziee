@@ -192,7 +192,7 @@ export function AuthProvidersListSection() {
           <Flex className="flex-col gap-4">
             <div>
               {providers.map((row, index) => (
-                <div key={row.id}>
+                <div key={row.id} data-testid={`authprov-row-${row.id}`}>
                   <div className="flex items-start gap-3 flex-wrap">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">

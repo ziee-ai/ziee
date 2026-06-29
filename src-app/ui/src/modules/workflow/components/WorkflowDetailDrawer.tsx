@@ -208,7 +208,7 @@ export function WorkflowDetailDrawer() {
         </div>
 
         <div className="border-t pt-3">
-          <Text strong className="block mb-2">
+          <Text strong className="block mb-2" data-testid="wf-runs-heading">
             Runs
           </Text>
           <WorkflowRunsList

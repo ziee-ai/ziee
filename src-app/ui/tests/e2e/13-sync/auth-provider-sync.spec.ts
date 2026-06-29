@@ -18,7 +18,7 @@ async function gotoAuthProviders(
   // The seeded google row's toggle is the stable "page mounted + store loaded"
   // signal (migration 47 pre-seeds google/microsoft/apple).
   await expect(
-    page.getByRole('switch', { name: 'Toggle google' }),
+    page.getByTestId(/^authprov-row-/).filter({ hasText: 'google' }).getByTestId(/^authprov-toggle-switch-/),
   ).toBeVisible({ timeout: 30_000 })
 }
 
@@ -44,7 +44,7 @@ test.describe('Realtime sync — auth_provider', () => {
 
       // Sanity: device B does not yet show the soon-to-be-created provider.
       await expect(
-        pageB.getByRole('switch', { name: `Toggle ${name}` }),
+        pageB.getByTestId(/^authprov-row-/).filter({ hasText: name }).getByTestId(/^authprov-toggle-switch-/),
       ).toHaveCount(0)
 
       // Device A creates a new OIDC provider via REST (enabled:false → no probe)
@@ -76,7 +76,7 @@ test.describe('Realtime sync — auth_provider', () => {
 
       // Device B's list must gain the new provider's toggle WITHOUT a reload.
       await expect(
-        pageB.getByRole('switch', { name: `Toggle ${name}` }),
+        pageB.getByTestId(/^authprov-row-/).filter({ hasText: name }).getByTestId(/^authprov-toggle-switch-/),
       ).toBeVisible({ timeout: 45_000 })
     } finally {
       await ctxB.close()

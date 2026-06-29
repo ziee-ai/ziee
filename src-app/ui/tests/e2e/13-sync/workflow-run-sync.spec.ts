@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -96,7 +97,7 @@ test.describe('Realtime sync — workflow run transitions', () => {
       await loginAsAdmin(pageB, baseURL)
       await goToWorkflowsSettingsPage(pageB, baseURL)
       await openWorkflowCard(pageB, 'e2e-run-sync')
-      await expect(pageB.getByText('Runs', { exact: true })).toBeVisible()
+      await expect(byTestId(pageB, 'wf-runs-heading')).toBeVisible()
 
       // Device A starts the run (screen mocked → no tokens; pauses on elicit).
       const runResp = await request.post(
@@ -118,7 +119,7 @@ test.describe('Realtime sync — workflow run transitions', () => {
       // Device B sees the new run appear live (sync:workflow_run → reload), no
       // manual reload.
       await expect(
-        pageB.getByText('Workflow page', { exact: true }).first(),
+        byTestId(pageB, `wf-run-status-tag-${runId}`),
       ).toBeVisible({ timeout: 20000 })
 
       // Device A cancels the run.
@@ -130,8 +131,8 @@ test.describe('Realtime sync — workflow run transitions', () => {
 
       // Device B reflects the terminal `cancelled` status live.
       await expect(
-        pageB.getByText('cancelled', { exact: true }).first(),
-      ).toBeVisible({ timeout: 20000 })
+        byTestId(pageB, `wf-run-status-tag-${runId}`),
+      ).toContainText('cancelled', { timeout: 20000 })
     } finally {
       await ctxB.close()
     }

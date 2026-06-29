@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   login,
@@ -32,30 +33,24 @@ import {
 // Navigate to the user MCP servers page WITHOUT networkidle.
 async function goToUserMcpPage(page: import('@playwright/test').Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/mcp-servers`)
-  // The user page heading + the "Add Server" button are the stable
-  // "page is ready" signals used by the existing 07-mcp suite.
-  await page
-    .getByRole('heading', { name: 'MCP Servers', exact: true })
-    .waitFor({ state: 'visible', timeout: 30_000 })
-  await page
-    .locator('button:has-text("Add Server")')
-    .waitFor({ state: 'visible', timeout: 15_000 })
+  // The Add button only renders once the page data has loaded — a stable
+  // "page is ready" signal (same as the 07-mcp nav helpers).
+  await byTestId(page, 'mcp-settings-add-btn').waitFor({ state: 'visible', timeout: 30_000 })
 }
 
 // Navigate to the admin (system) MCP servers page WITHOUT networkidle.
 async function goToAdminMcpPage(page: import('@playwright/test').Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/mcp-admin`)
-  await page
-    .getByRole('heading', { name: 'System MCP Servers' })
-    .waitFor({ state: 'visible', timeout: 30_000 })
-  await page
-    .locator('button:has-text("Add Server")')
-    .waitFor({ state: 'visible', timeout: 15_000 })
+  await byTestId(page, 'mcp-system-add-btn').waitFor({ state: 'visible', timeout: 30_000 })
 }
 
-// The server card surfaces the server's display_name.
+// The server card surfaces the server's display_name (user: mcp-server-card-<id>,
+// admin: mcp-system-server-card-<id>).
 function getServerCard(page: import('@playwright/test').Page, displayName: string) {
-  return page.locator(`.ant-card:has-text("${displayName}")`).first()
+  return page
+    .getByTestId(/^mcp-(system-)?server-card-/)
+    .filter({ hasText: displayName })
+    .first()
 }
 
 test.describe('Realtime sync — MCP', () => {
