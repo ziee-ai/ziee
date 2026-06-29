@@ -1418,6 +1418,15 @@ fn merge_apple_user_json(auth_result: &mut AuthResult, user_json_str: &str) {
         if !id_token_had_email && looks_like_relay {
             auth_result.external_email = Some(email.clone());
             auth_result.attributes.email = email;
+            // Apple only sends the `user` blob on the FIRST authorization and
+            // the relay address is Apple-controlled (it can't target a victim's
+            // local account), so once it passes the relay gate above treat it
+            // as verified — otherwise the downstream "drop unverified email"
+            // guard would strip it and force OAUTH_EMAIL_REQUIRED.
+            if !auth_result.metadata.is_object() {
+                auth_result.metadata = serde_json::json!({});
+            }
+            auth_result.metadata["email_verified"] = serde_json::json!(true);
         }
     }
     if let Some(name) = parsed.name {
