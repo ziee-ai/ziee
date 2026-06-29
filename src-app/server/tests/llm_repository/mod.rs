@@ -1272,14 +1272,17 @@ async fn test_list_llm_repositories_pagination_edge_cases() {
         "with the clamped 100-row window the whole (small) set is returned"
     );
 
-    // 4) page<1 and per_page<1 → clamped to the defaults (page=1, per_page=20), 200.
+    // 4) page<1 → 1 and per_page<1 → 1 (the documented `PaginationQuery`
+    // deserialize clamp: page<1→1 avoids a negative offset; per_page<1→1
+    // avoids divide-by-zero in callers. The default of 20 applies only when
+    // the param is ABSENT, not when it is explicitly <1).
     let (len, t, p, pp) = page_of(&client, &base, &admin.token, "page=0&per_page=0").await;
-    assert_eq!((p, pp), (1, 20), "page<1 and per_page<1 must clamp to the defaults");
+    assert_eq!((p, pp), (1, 1), "page<1 and per_page<1 must clamp to 1");
     assert_eq!(t, total, "total is independent of clamping");
     assert_eq!(
         len,
-        (total as usize).min(20),
-        "the clamped default 20-row window returns the whole small set"
+        (total as usize).min(1),
+        "the clamped 1-row window returns at most one row"
     );
 }
 

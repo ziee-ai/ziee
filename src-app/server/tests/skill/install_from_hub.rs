@@ -319,13 +319,14 @@ async fn skill_mcp_coexists_with_memory_builtin() {
 }
 
 /// CHARACTERIZATION (documents CURRENT behavior + a known gap): deleting a
-/// hub-installed SKILL does NOT remove its `hub_entities` tracking row — unlike
-/// assistants/MCP servers, the event-driven CleanupHubEntitiesHandler does not
-/// subscribe to skill deletion and there is no FK cascade, so the row leaks.
-/// This pins the current state so a future fix (wiring skill-delete cleanup)
-/// flips this assertion. See /tmp/discovered-claude-live4.md.
+/// Deleting a hub-installed SKILL removes its `hub_entities` tracking row.
+/// `skill::repository::delete` issues an in-transaction
+/// `DELETE FROM hub_entities WHERE entity_type = 'skill'` (idempotent for
+/// non-hub skills, rolled back if the skill did not exist), so the row no
+/// longer leaks the way it once did for assistants/MCP servers via the
+/// event-driven CleanupHubEntitiesHandler.
 #[tokio::test]
-async fn deleting_hub_skill_currently_leaves_hub_entities_row() {
+async fn deleting_hub_skill_cleans_up_hub_entities_row() {
     use sqlx::postgres::PgPoolOptions;
 
     let (server, _mock) = server_with_skill_catalog().await;
@@ -359,7 +360,7 @@ async fn deleting_hub_skill_currently_leaves_hub_entities_row() {
     assert_eq!(del.status(), 204, "skill delete should 204");
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
-    // CURRENT behavior: the tracking row LEAKS (no cleanup wired for skills).
+    // The skill-delete path now cleans up the tracking row.
     let after: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM hub_entities WHERE entity_type = 'skill' AND entity_id = $1",
     )
@@ -368,9 +369,8 @@ async fn deleting_hub_skill_currently_leaves_hub_entities_row() {
     .await
     .unwrap();
     assert_eq!(
-        after, 1,
-        "CURRENT (buggy) behavior: the hub_entities row is NOT cleaned up on \
-         skill deletion. When skill-delete cleanup is wired, flip this to 0."
+        after, 0,
+        "deleting a hub-installed skill must remove its hub_entities tracking row"
     );
     pool.close().await;
 }

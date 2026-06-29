@@ -442,7 +442,10 @@ async fn test_user_cannot_read_other_users_assistant() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    // Owner-scoped read returns 404 (not 403) for another user's assistant:
+    // the handler's `get_for_user` hides existence rather than leaking it via
+    // a Forbidden. Either way the cross-user read is denied.
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
