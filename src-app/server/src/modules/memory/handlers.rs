@@ -681,6 +681,20 @@ pub async fn update_admin_settings(
         }
     }
 
+    // Memory is a RUNTIME (DB-only) toggle, so the built-in memory MCP server row
+    // — which auto-attaches the `remember`/`recall`/`forget` tools to tool-capable
+    // chats — must be registered HERE when an admin flips memory on after boot.
+    // The startup registration in memory_mcp::init only fires when memory was
+    // already enabled at boot; without this an enable-at-runtime deployment never
+    // gets the server row and `remember` is never offered (regression).
+    if row.enabled {
+        if let Err(e) =
+            crate::modules::memory_mcp::register_builtin_server(&Repos.memory.pool_clone()).await
+        {
+            tracing::error!("memory.admin: failed to register built-in memory MCP server: {e:?}");
+        }
+    }
+
     sync_publish(
         SyncEntity::MemoryAdminSettings,
         SyncAction::Update,

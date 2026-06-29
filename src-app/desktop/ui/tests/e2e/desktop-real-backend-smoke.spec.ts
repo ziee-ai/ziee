@@ -61,7 +61,7 @@ test.describe('desktop real-backend smoke', () => {
     // Once auto-login completes, the SPA leaves the bootstrap spinner.
     // Watching for the "Starting up…" text to DISAPPEAR is the
     // contract; what comes next depends on whether onboarding fires.
-    await expect(page.getByText(/starting up/i)).toBeHidden({
+    await expect(page.getByTestId('desktop-bootstrap-starting')).toBeHidden({
       timeout: 15_000,
     })
     await expect(

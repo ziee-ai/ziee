@@ -173,17 +173,13 @@ test.describe('desktop hub card buttons', () => {
   }) => {
     await page.goto('/hub/assistants')
 
-    // Wait for the card to render — the display_name is the stable
-    // signal that the assistant fixture made it through the store.
-    await expect(
-      page.getByText('Test Assistant').first(),
-    ).toBeVisible({ timeout: 15_000 })
-
-    // Use Assistant button MUST be present (this is the surviving
-    // affordance after the desktop strip).
+    // Wait for the card to render — its surviving "Use Assistant"
+    // affordance is the stable signal that the assistant fixture made
+    // it through the store. (This is also the MUST-be-present
+    // assertion below.)
     await expect(
       page.getByTestId('hub-assistant-use-btn'),
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 15_000 })
 
     // Use as Template MUST NOT render on desktop — the JSX is wrapped
     // in `Stores.AppMode.multiUserMode` which the desktop bootstrap
@@ -198,15 +194,14 @@ test.describe('desktop hub card buttons', () => {
   }) => {
     await page.goto('/hub/mcp-servers')
 
-    await expect(
-      page.getByText('Test MCP Server').first(),
-    ).toBeVisible({ timeout: 15_000 })
-
-    // Install for the system MUST remain — it's the surviving
-    // affordance on desktop where every install is system-scope.
+    // Wait for the card to render — its surviving "Install for the
+    // system" affordance is the stable signal that the MCP fixture
+    // made it through the store. (Also the MUST-remain assertion: it's
+    // the surviving affordance on desktop where every install is
+    // system-scope.)
     await expect(
       page.getByTestId('hub-mcp-install-as-system-btn'),
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 15_000 })
 
     // Install for me (user-scope) MUST be hidden. Same multiUserMode
     // gate as the assistant case. The "View Server" button (which

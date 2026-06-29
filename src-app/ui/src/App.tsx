@@ -73,11 +73,13 @@ function App() {
        * isolates to that module — other modules + the shell keep
        * working. The outer boundary in main.tsx catches anything that
        * escapes this layer (e.g. a ThemeProvider throw). */}
-      {sortedComponents.map(comp => (
-        <AppErrorBoundary key={comp.id} label={comp.id} fallback={() => null}>
-          <ConditionalComponent registration={comp} />
-        </AppErrorBoundary>
-      ))}
+      <div data-testid="app-root" className="h-full">
+        {sortedComponents.map(comp => (
+          <AppErrorBoundary key={comp.id} label={comp.id} fallback={() => null}>
+            <ConditionalComponent registration={comp} />
+          </AppErrorBoundary>
+        ))}
+      </div>
     </ThemeProvider>
   )
 }

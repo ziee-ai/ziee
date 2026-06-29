@@ -34,6 +34,28 @@ pub fn memory_mcp_server_id() -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_URL, b"memory.ziee.internal")
 }
 
+/// Process-global loopback URL for the built-in memory MCP endpoint, captured at
+/// module init. Memory is toggled at RUNTIME (DB-only `memory_admin_settings`,
+/// unlike the deploy-level Config gates used by lit_search/bio_mcp), so the
+/// admin-settings PUT handler must be able to register the built-in server row
+/// AFTER startup — which means it needs this URL without a `ModuleContext`.
+static MEMORY_MCP_LOOPBACK_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Register (or re-enable) the built-in memory MCP server row so it auto-attaches
+/// to tool-capable chats. Called both at startup (when memory is already enabled)
+/// and from `update_admin_settings` when an admin enables memory at runtime.
+/// Without this runtime path the server row never exists for a deployment that
+/// flips memory on after boot, so `auto_attach_builtin_ids` finds nothing and the
+/// `remember` tool is never offered.
+pub async fn register_builtin_server(pool: &PgPool) -> Result<(), crate::common::AppError> {
+    let Some(url) = MEMORY_MCP_LOOPBACK_URL.get() else {
+        // init() hasn't run (e.g. memory_mcp module not loaded) — nothing to do.
+        return Ok(());
+    };
+    let repo = repository::MemoryMcpRepository::new(pool.clone());
+    repo.upsert_builtin_server(memory_mcp_server_id(), url).await
+}
+
 #[distributed_slice(MODULE_ENTRIES)]
 static MEMORY_MCP_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
     name: "memory_mcp",
@@ -84,6 +106,10 @@ impl AppModule for MemoryMcpModule {
             "http://{host}:{port}/api/memories/mcp",
             port = ctx.config.server.port,
         );
+
+        // Stash the URL so the runtime admin-settings PUT path can register the
+        // server when memory is enabled after boot (see register_builtin_server).
+        let _ = MEMORY_MCP_LOOPBACK_URL.set(loopback_url.clone());
 
         let server_id = memory_mcp_server_id();
         let pool = ctx.db_pool.clone();

@@ -77,7 +77,14 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
       <Layout className="min-h-screen" data-testid="desktop-auth-bootstrap-layout">
         <Content className="flex flex-col items-center justify-center gap-4" data-testid="desktop-auth-bootstrap-content">
           <Spin size="lg" label="Loading" />
-          <Text type={bootstrapStatus === 'failed' ? 'danger' : 'secondary'}>
+          <Text
+            data-testid={
+              bootstrapStatus === 'failed'
+                ? 'desktop-bootstrap-failed'
+                : 'desktop-bootstrap-starting'
+            }
+            type={bootstrapStatus === 'failed' ? 'danger' : 'secondary'}
+          >
             {caption}
           </Text>
         </Content>

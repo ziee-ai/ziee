@@ -25,12 +25,12 @@ test.describe('desktop typography', () => {
 
     const computed = await page.evaluate(() => {
       const body = getComputedStyle(document.body)
-      // Sample an antd-rendered surface too (the sidebar mounts antd
+      // Sample a kit-rendered surface too (the sidebar mounts kit
       // Typography). Find the first <a> in the sidebar, fall back to
-      // any Typography Text on the page.
+      // the sidebar container itself, then the page body.
       const sidebarLink =
         document.querySelector('#app-sidebar a') ||
-        document.querySelector('.ant-typography') ||
+        document.querySelector('#app-sidebar') ||
         document.body
       const sidebar = getComputedStyle(sidebarLink as Element)
       return {
@@ -95,10 +95,9 @@ test.describe('desktop typography', () => {
     // is: no profile chip on screen, no stray divider.
     expect(moduleNames).not.toContain('user-profile')
 
-    // Belt-and-suspenders: assert there's no anchor or text in the
-    // sidebar that matches the admin username (UserProfileWidget
-    // renders `<UserOutlined /> {user.username}`).
-    const sidebar = page.locator('#app-sidebar')
-    await expect(sidebar.getByText(/admin/i)).toHaveCount(0)
+    // Belt-and-suspenders: the UserProfileWidget (which renders the
+    // admin username chip) must not be mounted at all — desktop's
+    // loader blocklists the `user-profile` module.
+    await expect(page.getByTestId('user-profile-widget')).toHaveCount(0)
   })
 })
