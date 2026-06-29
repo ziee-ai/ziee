@@ -1,6 +1,7 @@
 import { test, expect } from './no-403'
 import { loginAsHubMcpOnly, loginAsMember, loginWithPerms } from './fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid'
 
 test.describe('hub module — permission gating', () => {
   test('non-admin without any hub::*::read: sidebar entry hidden + /hub renders inline 403', async ({
@@ -13,13 +14,13 @@ test.describe('hub module — permission gating', () => {
     // `HUB_READ_PERM` anyOf in hub/module.tsx.
     await page.goto(`${testInfra.baseURL}/`)
     await expect(
-      page.getByRole('link', { name: /^Hub$/i }),
+      byTestId(page, 'layout-sidebar-tools-menu-item-hub'),
     ).toHaveCount(0)
 
     // Deep-link directly to /hub — RoutePermissionGate should render
     // the inline 403 (URL preserved, no redirect to a different page).
     await page.goto(`${testInfra.baseURL}/hub`)
-    await expect(page.getByText(/Not authorized/i)).toBeVisible()
+    await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/hub')
   })
 
@@ -31,25 +32,19 @@ test.describe('hub module — permission gating', () => {
 
     // The route-level gate should pass — they have hub::mcp_servers::read.
     await page.goto(`${testInfra.baseURL}/hub`)
-    await expect(page.getByText(/Not authorized/i)).toHaveCount(0)
+    await expect(byTestId(page, 'router-route-forbidden-result')).toHaveCount(0)
 
-    // Sidebar entry should be present. SidebarItem renders as a
-    // <Link>, so the accessible role is `link`, not `menuitem` (the
-    // existing users.spec.ts uses `menuitem` but its toHaveCount(0)
-    // assertion passes for the wrong reason — see audit follow-up).
+    // Sidebar entry should be present.
     await expect(
-      page.getByRole('link', { name: /^Hub$/i }).first(),
+      byTestId(page, 'layout-sidebar-tools-menu-item-hub'),
     ).toBeVisible()
 
-    // The Segmented control inside the Hub renders one item per
-    // visible tab. Scope assertions to the segmented control (by its
-    // antd class — it has no accessible name) so a sidebar entry with
-    // the same label (e.g. "Assistants") can't satisfy the count-0
-    // checks for absent tabs.
-    const tabs = page.locator('.ant-segmented')
-    await expect(tabs.getByText(/MCP Servers/i)).toBeVisible()
-    await expect(tabs.getByText('Models', { exact: true })).toHaveCount(0)
-    await expect(tabs.getByText('Assistants', { exact: true })).toHaveCount(0)
+    // The Segmented control renders one item per visible tab (derived
+    // `hub-tabs-segmented-opt-<tabId>` ids). The MCP-servers tab is present;
+    // the Models + Assistants tabs are gated out.
+    await expect(byTestId(page, 'hub-tabs-segmented-opt-mcp-servers')).toBeVisible()
+    await expect(byTestId(page, 'hub-tabs-segmented-opt-models')).toHaveCount(0)
+    await expect(byTestId(page, 'hub-tabs-segmented-opt-assistants')).toHaveCount(0)
   })
 
   test('hub-models-only user accessing forbidden tab via URL: inline 403 (URL preserved)', async ({
@@ -73,9 +68,7 @@ test.describe('hub module — permission gating', () => {
     // Available" / "You don't have permission to view this Hub tab."
     // Either copy is acceptable — match the subtitle which is more
     // specific.
-    await expect(
-      page.getByText(/don't have permission to view this Hub tab/i),
-    ).toBeVisible()
+    await expect(byTestId(page, 'hub-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/hub/assistants')
   })
 
@@ -97,7 +90,6 @@ test.describe('hub module — permission gating', () => {
     // refresh button rather than its specific selector — the button
     // either isn't mounted (gated out) or is disabled. Use a generous
     // poll because the tab body is lazy-loaded.
-    const refreshBtn = page.getByRole('button', { name: /refresh/i })
-    await expect(refreshBtn).toHaveCount(0)
+    await expect(byTestId(page, 'hub-refresh-btn')).toHaveCount(0)
   })
 })

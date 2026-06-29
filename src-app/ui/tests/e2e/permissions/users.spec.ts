@@ -1,5 +1,6 @@
 import { test, expect } from './no-403'
 import { loginAsMember, loginAsUsersReadOnly } from './fixtures'
+import { byTestId } from '../testid'
 
 test.describe('users module — permission gating', () => {
   test('non-admin: Users settings entry is hidden + deep-link renders 403', async ({
@@ -13,18 +14,16 @@ test.describe('users module — permission gating', () => {
     // settings menu for a non-admin.
     await page.goto(`${testInfra.baseURL}/settings`)
     await expect(
-      page.getByRole('menuitem', { name: /^Users$/ }),
+      byTestId(page, 'settings-nav-menu-item-users'),
     ).toHaveCount(0)
     await expect(
-      page.getByRole('menuitem', { name: /^User Groups$/ }),
+      byTestId(page, 'settings-nav-menu-item-user-groups'),
     ).toHaveCount(0)
 
     // Deep-link directly to the page — should render the inline 403,
-    // URL preserved. Ant Design's <Result status="403"> renders "403"
-    // inside an SVG, not as a text node, so assert against the title /
-    // subtitle text the router-level RoutePermissionGate emits.
+    // URL preserved (the settings route gate emits settings-forbidden-result).
     await page.goto(`${testInfra.baseURL}/settings/users`)
-    await expect(page.getByText(/Not authorized/i)).toBeVisible()
+    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/settings/users')
   })
 
@@ -35,23 +34,16 @@ test.describe('users module — permission gating', () => {
     await loginAsUsersReadOnly(page, testInfra.baseURL, testInfra.apiURL)
 
     await page.goto(`${testInfra.baseURL}/settings/users`)
-    await expect(page.getByText(/users/i).first()).toBeVisible()
+    // The users list renders for a read-only holder.
+    await expect(byTestId(page, 'user-list-card')).toBeVisible()
 
-    // Create user '+' button — gated on users::create
-    await expect(
-      page.getByRole('button', { name: /create user/i }),
-    ).toHaveCount(0)
+    // Create user button — gated on users::create
+    await expect(byTestId(page, 'user-create-open-button')).toHaveCount(0)
 
-    // Per-row actions — none of these should appear without ::edit /
-    // ::delete / ::reset_password
-    await expect(
-      page.getByRole('button', { name: /^edit$/i }),
-    ).toHaveCount(0)
-    await expect(
-      page.getByRole('button', { name: /reset password/i }),
-    ).toHaveCount(0)
-    await expect(
-      page.getByRole('button', { name: /^delete/i }),
-    ).toHaveCount(0)
+    // Per-row actions (derived ids `user-{edit,reset-password,delete}-button-<id>`)
+    // — none should appear without ::edit / ::reset_password / ::delete.
+    await expect(page.getByTestId(/^user-edit-button-/)).toHaveCount(0)
+    await expect(page.getByTestId(/^user-reset-password-button-/)).toHaveCount(0)
+    await expect(page.getByTestId(/^user-delete-button-/)).toHaveCount(0)
   })
 })

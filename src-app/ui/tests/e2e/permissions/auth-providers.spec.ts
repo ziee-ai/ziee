@@ -20,6 +20,7 @@ import {
   loginAsMember,
 } from './fixtures'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 test.describe('auth-providers — permission gating', () => {
   test('member: settings menu entry hidden + deep-link 403', async ({
@@ -31,12 +32,12 @@ test.describe('auth-providers — permission gating', () => {
     // Menu entry hidden.
     await page.goto(`${testInfra.baseURL}/settings`)
     await expect(
-      page.getByRole('menuitem', { name: /^Auth Providers$/ }),
+      byTestId(page, 'settings-nav-menu-item-auth-providers'),
     ).toHaveCount(0)
 
     // Deep-link → inline 403, URL preserved.
     await page.goto(`${testInfra.baseURL}/settings/auth-providers`)
-    await expect(page.getByText(/Not authorized/i)).toBeVisible()
+    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/settings/auth-providers')
   })
 
@@ -52,25 +53,17 @@ test.describe('auth-providers — permission gating', () => {
 
     await page.goto(`${testInfra.baseURL}/settings/auth-providers`)
 
-    // The page title + table render — readers see the data.
-    await expect(
-      page.getByRole('heading', { name: /Auth providers/i }),
-    ).toBeVisible({ timeout: 10_000 })
+    // The page + list card render — readers see the data.
+    await expect(byTestId(page, 'authprov-list-card')).toBeVisible({ timeout: 10_000 })
 
-    // The pre-seeded google/microsoft/apple entries from migration 47
-    // are visible to readers (proof the GET list endpoint worked under
-    // their read permission). The list renders each provider as a
-    // <Card> with the name inside an antd `<Text>` (span.ant-typography)
-    // — not a `<tr>`. We anchor on the typography span specifically
-    // because the row ALSO renders the provider_type as an antd <Tag>
-    // (span.ant-tag), and for the Apple OIDC seed the type string is
-    // ALSO "apple" — a bare `getByText('apple', { exact: true })`
-    // hits strict-mode (2 matches: name span + tag span).
-    const providerName = (name: string) =>
-      page.locator('span.ant-typography').getByText(name, { exact: true })
-    await expect(providerName('google')).toBeVisible()
-    await expect(providerName('microsoft')).toBeVisible()
-    await expect(providerName('apple')).toBeVisible()
+    // The pre-seeded google/microsoft/apple entries from migration 47 are
+    // visible to readers (proof the GET list endpoint worked under their read
+    // permission). Provider names are dynamic seed data — asserted inside the
+    // list-card testid scope.
+    const listCard = byTestId(page, 'authprov-list-card')
+    await expect(listCard).toContainText('google')
+    await expect(listCard).toContainText('microsoft')
+    await expect(listCard).toContainText('apple')
 
     // All mutating + test controls hidden — every <Can permission=
     // Permissions.AuthProvidersManage> wrapper should render null.
@@ -81,13 +74,11 @@ test.describe('auth-providers — permission gating', () => {
     //                    "Delete <name>" — the aria-label overrides the
     //                    visible "Test"/"Edit"/"Delete" text, so match the
     //                    "<verb> " prefix.
-    await expect(
-      page.getByRole('button', { name: /^Add authentication provider$/i }),
-    ).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^Edit /i })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^Delete /i })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^Test /i })).toHaveCount(0)
-    await expect(page.getByRole('switch')).toHaveCount(0)
+    await expect(byTestId(page, 'authprov-add-button')).toHaveCount(0)
+    await expect(page.getByTestId(/^authprov-edit-button-/)).toHaveCount(0)
+    await expect(page.getByTestId(/^authprov-delete-button-/)).toHaveCount(0)
+    await expect(page.getByTestId(/^authprov-test-button-/)).toHaveCount(0)
+    await expect(page.getByTestId(/^authprov-toggle-switch-/)).toHaveCount(0)
   })
 
   test('manager: all controls visible', async ({ page, testInfra }) => {
@@ -98,30 +89,18 @@ test.describe('auth-providers — permission gating', () => {
     )
 
     await page.goto(`${testInfra.baseURL}/settings/auth-providers`)
-    await expect(
-      page.getByRole('heading', { name: /Auth providers/i }),
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'authprov-list-card')).toBeVisible({ timeout: 10_000 })
 
     // Add Provider dropdown visible.
-    await expect(
-      page.getByRole('button', { name: /^Add authentication provider$/i }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'authprov-add-button')).toBeVisible()
 
-    // Per-row controls — at least one of each on the pre-seeded rows.
-    // The buttons carry aria-label "Edit <name>" / "Test <name>" /
-    // "Delete <name>" (which overrides the visible verb text), so match
-    // the "<verb> " prefix rather than the bare verb.
-    await expect(
-      page.getByRole('button', { name: /^Edit / }).first(),
-    ).toBeVisible()
-    await expect(
-      page.getByRole('button', { name: /^Test / }).first(),
-    ).toBeVisible()
-    await expect(
-      page.getByRole('button', { name: /^Delete / }).first(),
-    ).toBeVisible()
+    // Per-row controls — at least one of each on the pre-seeded rows
+    // (derived `authprov-{edit,test,delete}-button-<id>` / toggle-switch ids).
+    await expect(page.getByTestId(/^authprov-edit-button-/).first()).toBeVisible()
+    await expect(page.getByTestId(/^authprov-test-button-/).first()).toBeVisible()
+    await expect(page.getByTestId(/^authprov-delete-button-/).first()).toBeVisible()
     // 3 pre-seeded rows × 1 switch each = at least 3.
-    expect(await page.getByRole('switch').count()).toBeGreaterThanOrEqual(3)
+    expect(await page.getByTestId(/^authprov-toggle-switch-/).count()).toBeGreaterThanOrEqual(3)
   })
 
   test('root admin (wildcard): all controls visible', async ({
@@ -131,15 +110,9 @@ test.describe('auth-providers — permission gating', () => {
     await loginAsAdmin(page, testInfra.baseURL)
 
     await page.goto(`${testInfra.baseURL}/settings/auth-providers`)
-    await expect(
-      page.getByRole('heading', { name: /Auth providers/i }),
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'authprov-list-card')).toBeVisible({ timeout: 10_000 })
 
-    await expect(
-      page.getByRole('button', { name: /^Add authentication provider$/i }),
-    ).toBeVisible()
-    await expect(
-      page.getByRole('button', { name: /^Edit / }).first(),
-    ).toBeVisible()
+    await expect(byTestId(page, 'authprov-add-button')).toBeVisible()
+    await expect(page.getByTestId(/^authprov-edit-button-/).first()).toBeVisible()
   })
 })
