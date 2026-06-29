@@ -6,6 +6,7 @@ import {
   login,
   clearAuthState,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the settings menu permission filter (SettingsPage.tsx `isAllowed`).
@@ -28,7 +29,7 @@ test.describe('Settings — permission-filtered menu', () => {
     const adminToken = await getAdminToken(apiURL)
     await page.goto(`${baseURL}/settings/profile`)
     await expect(
-      page.getByRole('menuitem', { name: 'Hardware' }),
+      byTestId(page, 'settings-nav-menu-item-hardware'),
     ).toBeVisible({ timeout: 30000 })
 
     // Regular user without hardware::read: the section is filtered out.
@@ -44,13 +45,13 @@ test.describe('Settings — permission-filtered menu', () => {
     await clearAuthState(page)
     await login(page, baseURL, uname, 'password123')
     await page.goto(`${baseURL}/settings/profile`)
-    await expect(
-      page.getByRole('heading', { name: 'Profile' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible({
+      timeout: 30000,
+    })
 
     // The Hardware menu item is NOT rendered for this user.
     await expect(
-      page.getByRole('menuitem', { name: 'Hardware' }),
+      byTestId(page, 'settings-nav-menu-item-hardware'),
     ).toHaveCount(0)
   })
 })

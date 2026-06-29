@@ -46,7 +46,7 @@ export function McpServerDetailsDrawer({
 
   return (
     <Drawer title={displayTitle} open={open} onClose={onClose}>
-      <Flex vertical className="gap-4">
+      <Flex vertical className="gap-4" data-testid="hub-mcp-detail-sheet">
         {/* Basic Info */}
         <div>
           <Title level={3} className="!m-0 !mb-2">

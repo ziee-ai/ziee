@@ -30,19 +30,17 @@ test.describe('App layout — drawer resize handle', () => {
     await clickProviderCard(page, providerName)
 
     // Open the Add Remote Model drawer (uses the app-layout Drawer wrapper).
-    const modelsCard = page.locator(
-      '.ant-card:has(.ant-card-head-title:has-text("Models"))',
-    )
-    await modelsCard.getByRole('button', { name: 'Add model' }).click()
+    const modelsCard = page.getByTestId('llm-models-section-card')
+    await modelsCard.getByTestId('llm-models-add-remote-btn').click()
     await expect(
-      page.locator('.ant-drawer-title:has-text("Add Remote Model")'),
+      page.getByTestId('llm-add-remote-model-form'),
     ).toBeVisible({ timeout: 15000 })
 
-    const wrapper = page.locator('.ant-drawer-content-wrapper').last()
+    const wrapper = page.getByTestId('layout-drawer-content').last()
     const before = (await wrapper.boundingBox())!.width
 
     // Drag the resize handle leftward to widen the (right-side) drawer.
-    const handle = page.locator('[data-testid="drawer-resize-handle"]').last()
+    const handle = page.getByTestId('drawer-resize-handle').last()
     const hb = (await handle.boundingBox())!
     await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
     await page.mouse.down()

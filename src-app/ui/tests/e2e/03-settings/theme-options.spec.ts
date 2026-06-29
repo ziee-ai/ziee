@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { isDarkMode } from '../../utils/theme'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-helpers'
+import { goToSettingsPage, waitForSettingsPageLoad, selectThemeOption } from './helpers/navigation-helpers'
 
 /**
  * E2E — ThemeSettings 'Light' and 'System' options (settings.spec only ever
@@ -9,14 +9,11 @@ import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-
  * `prefers-color-scheme` (emulated here) rather than a fixed value.
  */
 
-async function selectTheme(page: import('@playwright/test').Page, label: string) {
-  await page.locator('#theme-form [aria-label="Theme"]').first().click()
-  await page
-    .getByRole('listbox')
-    .or(page.locator('.ant-select-dropdown'))
-    .first()
-    .waitFor({ state: 'visible' })
-  await page.getByTitle(label, { exact: true }).click()
+async function selectTheme(
+  page: import('@playwright/test').Page,
+  value: 'light' | 'dark' | 'system',
+) {
+  await selectThemeOption(page, value)
   await page.waitForTimeout(300)
 }
 
@@ -29,17 +26,17 @@ test.describe('Settings — theme Light/System options', () => {
 
   test('selecting Light disables dark mode', async ({ page }) => {
     // Start from Dark so the switch to Light is observable.
-    await selectTheme(page, 'Dark')
+    await selectTheme(page, 'dark')
     expect(await isDarkMode(page)).toBe(true)
 
-    await selectTheme(page, 'Light')
+    await selectTheme(page, 'light')
     expect(await isDarkMode(page)).toBe(false)
   })
 
   test('selecting System follows the OS prefers-color-scheme', async ({ page }) => {
     // Emulate an OS dark preference → System theme must resolve to dark.
     await page.emulateMedia({ colorScheme: 'dark' })
-    await selectTheme(page, 'System')
+    await selectTheme(page, 'system')
     await expect.poll(() => isDarkMode(page)).toBe(true)
 
     // Flip the OS preference to light → System resolves to light.

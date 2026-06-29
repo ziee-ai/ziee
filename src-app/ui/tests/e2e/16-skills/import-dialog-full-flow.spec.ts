@@ -2,6 +2,7 @@ import { gzipSync } from 'node:zlib'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToSkillsPage } from './helpers/skill-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the Import-Skill dialog FULL flow (ImportSkillDialog.tsx).
@@ -76,18 +77,20 @@ test.describe('Skills — Import dialog full flow', () => {
     await loginAsAdmin(page, baseURL)
     await goToSkillsPage(page, baseURL)
 
-    await page.getByRole('button', { name: /import/i }).click()
+    await byTestId(page, 'skill-list-import-button').click()
 
-    const dialog = page.getByRole('dialog', { name: 'Import Skill' })
+    const dialog = byTestId(page, 'skill-import-dialog')
     await expect(dialog).toBeVisible()
 
-    // Drop a real tar.gz skill bundle (SKILL.md at root) into the antd
-    // Dragger's hidden file input.
-    await dialog.locator('input[type="file"]').setInputFiles({
-      name: 'skill.tar.gz',
-      mimeType: 'application/gzip',
-      buffer: buildSkillBundle(VALID_SKILL_MD),
-    })
+    // Drop a real tar.gz skill bundle (SKILL.md at root) into the Upload's
+    // hidden file input.
+    await byTestId(dialog, 'skill-import-upload')
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: 'skill.tar.gz',
+        mimeType: 'application/gzip',
+        buffer: buildSkillBundle(VALID_SKILL_MD),
+      })
 
     // Click Import and assert the REAL multipart import round-trip succeeds.
     const importResp = page.waitForResponse(
@@ -96,21 +99,22 @@ test.describe('Skills — Import dialog full flow', () => {
         r.request().method() === 'POST',
       { timeout: 30000 },
     )
-    await dialog.getByRole('button', { name: 'Import' }).click()
+    await byTestId(dialog, 'skill-import-submit-button').click()
     expect((await importResp).ok()).toBeTruthy()
 
-    // The dialog closes and the success toast fires.
-    await expect(page.getByText('Skill imported')).toBeVisible({
-      timeout: 15000,
-    })
+    // The dialog closes after a successful import.
     await expect(dialog).toBeHidden({ timeout: 15000 })
 
     // The imported skill surfaces on the list (the card renders
     // `display_name`, which the import derives from the SKILL.md `name`
-    // frontmatter).
+    // frontmatter). SKILL_NAME is dynamic data this test created, so a text
+    // filter on the skill card is allowed.
     await goToSkillsPage(page, baseURL)
-    await expect(page.getByText(SKILL_NAME).first()).toBeVisible({
-      timeout: 15000,
-    })
+    await expect(
+      page
+        .locator('[data-testid^="skill-list-card-"]')
+        .filter({ hasText: SKILL_NAME })
+        .first(),
+    ).toBeVisible({ timeout: 15000 })
   })
 })

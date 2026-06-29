@@ -7,6 +7,7 @@ import {
   clearAuthState,
 } from '../../common/auth-helpers'
 import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — non-admin access to /settings/general (audit gap all-f7a7970e0c82).
@@ -55,15 +56,11 @@ test.describe('Settings — non-admin access to /settings/general', () => {
 
     // Not denied: the real General settings render for this non-admin user.
     await waitForSettingsPageLoad(page, 'General')
-    await expect(page.getByText('Appearance')).toBeVisible()
-    await expect(
-      page.locator('#theme-form [aria-label="Theme"]').first(),
-    ).toBeVisible()
+    await expect(byTestId(page, 'settingsgen-appearance-card')).toBeVisible()
+    await expect(byTestId(page, 'settingsgen-theme-select')).toBeVisible()
 
     // And no inline 403/forbidden Result is shown.
-    await expect(
-      page.getByText(/don't have permission|not authorized|403/i),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'settings-forbidden-result')).toHaveCount(0)
   })
 
   test('positive control: an admin also sees General settings', async ({
@@ -74,6 +71,6 @@ test.describe('Settings — non-admin access to /settings/general', () => {
     await loginAsAdmin(page, baseURL)
     await goToSettingsPage(page, baseURL, 'general')
     await waitForSettingsPageLoad(page, 'General')
-    await expect(page.getByText('Appearance')).toBeVisible()
+    await expect(byTestId(page, 'settingsgen-appearance-card')).toBeVisible()
   })
 })

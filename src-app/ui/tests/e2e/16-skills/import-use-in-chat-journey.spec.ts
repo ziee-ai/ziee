@@ -11,6 +11,7 @@ import {
   waitForChatPageLoad,
   selectModelInDropdown,
 } from '../09-chat/helpers/chat-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E (real-LLM) — the FULL skill journey: import a skill → confirm it is
@@ -150,12 +151,14 @@ test.describe('Skills — import → use in conversation → observe effect (rea
     // Open the "+" dropdown → "Skills in this chat". The imported skill is
     // available-by-default (Path B opt-in), so its row is present with the
     // visibility switch ON — i.e. it WILL be injected for this conversation.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByRole('button', { name: 'Skills in this chat' }).click()
-    await expect(page.getByText(SKILL_NAME).first()).toBeVisible({
-      timeout: 15000,
-    })
-    const skillSwitch = page.getByRole('switch').first()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'skill-conversation-menu-item').click()
+    // SKILL_NAME is dynamic data this test created — assert it on the panel.
+    const skillList = byTestId(page, 'skill-conversation-list')
+    await expect(skillList).toContainText(SKILL_NAME, { timeout: 15000 })
+    const skillSwitch = skillList
+      .locator('[data-testid^="skill-conversation-switch-"]')
+      .first()
     await expect(skillSwitch).toBeVisible({ timeout: 15000 })
     await expect(skillSwitch).toBeChecked()
 
@@ -166,10 +169,10 @@ test.describe('Skills — import → use in conversation → observe effect (rea
     // (Only one model is accessible, so it auto-selects; select defensively.)
     await selectModelInDropdown(page, modelName).catch(() => {})
 
-    const textarea = page.locator('textarea[placeholder*="Type your message"]')
+    const textarea = byTestId(page, 'chat-message-textarea').first()
     await textarea.click()
     await textarea.fill('Follow every available skill protocol, then greet me.')
-    const send = page.getByRole('button', { name: 'Send message' })
+    const send = byTestId(page, 'chat-input-send-btn')
     await expect(send).toBeEnabled({ timeout: 10000 })
     await send.click()
 

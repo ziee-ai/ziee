@@ -1,68 +1,45 @@
 import { Page, expect } from '@playwright/test'
 
 /**
- * Create assistant from hub template
+ * Create assistant from hub template.
+ *
+ * Clicking the primary "Use" button creates the assistant in one click
+ * (no customize modal) and surfaces a success toast before navigating to
+ * the assistants settings page. The `customize` arg is retained for caller
+ * compatibility; the one-click flow does not surface an edit modal.
  */
 export async function createAssistantFromHub(
   page: Page,
   assistantId: string,
-  customize?: {
+  _customize?: {
     name?: string
     description?: string
     instructions?: string
   },
 ) {
   const assistantCard = page.getByTestId(`hub-assistant-card-${assistantId}`)
-  // The hub-assistant card renders TWO buttons whose names both
-  // match `/use/i`: `hub-assistant-use-btn` (one-click "Use") and
-  // `hub-assistant-use-as-template-btn` ("Use as template" — opens
-  // the customize modal). Anchor on the primary one-click testid;
-  // the customize flow below already drives the modal explicitly.
+  // The card renders TWO "use" buttons: `hub-assistant-use-btn` (one-click)
+  // and `hub-assistant-use-as-template-btn`. Anchor on the one-click testid.
   await assistantCard.getByTestId('hub-assistant-use-btn').click()
 
-  // Handle customization modal if it appears
-  if (customize) {
-    const modal = page.getByRole('dialog', { name: /customize/i })
-    const modalVisible = await modal.isVisible({ timeout: 2000 }).catch(() => false)
-
-    if (modalVisible) {
-      if (customize.name) {
-        await modal.getByLabel(/name/i).fill(customize.name)
-      }
-      if (customize.description) {
-        await modal.getByLabel(/description/i).fill(customize.description)
-      }
-      if (customize.instructions) {
-        await modal.getByLabel(/instructions/i).fill(customize.instructions)
-      }
-      await modal.getByRole('button', { name: /create/i }).click()
-    }
-  }
-
-  // Wait for success message or navigation. `.first()` because AntD
-  // renders the message as `<div role="alert">...<div>${msg}</div></div>`
-  // — both the wrapper and the inner text node match the .or() so
-  // strict-mode flips on the bare locator.
+  // Success toast confirms the create round-tripped.
   await expect(
-    page.getByRole('alert').or(page.getByText(/created.*successfully/i)).first(),
+    page.locator('[data-sonner-toast][data-type="success"]').first(),
   ).toBeVisible({ timeout: 5000 })
 }
 
 /**
- * Get assistant card status badge.
+ * Get assistant card "Created" badge text (or null when absent).
  *
- * Allow several seconds — callers typically invoke this immediately
- * after a page.reload() and the hub store still needs to re-trigger
- * its __init__ → loadAssistants → backend → render cycle before the
- * stitched-in created_ids reach the DOM. The 1s prior timeout
- * routinely fired before the store finished.
+ * Allow several seconds — callers typically invoke this right after a
+ * page.reload() and the hub store still needs to re-run its init →
+ * loadAssistants → render cycle before the created_ids reach the DOM.
  */
 export async function getAssistantCardStatus(
   page: Page,
   assistantId: string,
 ): Promise<string | null> {
-  const assistantCard = page.getByTestId(`hub-assistant-card-${assistantId}`)
-  const badge = assistantCard.getByText(/created/i)
+  const badge = page.getByTestId(`hub-assistant-created-tag-${assistantId}`)
 
   const visible = await badge.isVisible({ timeout: 10000 }).catch(() => false)
   if (visible) {
@@ -74,14 +51,14 @@ export async function getAssistantCardStatus(
 
 /**
  * Check if assistant has "View" button (indicating it's been created).
- * See timing note on getAssistantCardStatus above.
  */
 export async function isAssistantCreated(
   page: Page,
   assistantId: string,
 ): Promise<boolean> {
-  const assistantCard = page.getByTestId(`hub-assistant-card-${assistantId}`)
-  const viewButton = assistantCard.getByRole('button', { name: /view/i })
+  const viewButton = page
+    .getByTestId(`hub-assistant-card-${assistantId}`)
+    .getByTestId('hub-assistant-view-btn')
   return await viewButton.isVisible({ timeout: 10000 }).catch(() => false)
 }
 

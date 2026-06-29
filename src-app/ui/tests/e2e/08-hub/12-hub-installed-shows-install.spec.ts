@@ -36,10 +36,16 @@ test.describe('Hub — Installed tab shows tracked installs', () => {
     await expect(page).toHaveURL(/\/hub\/installed/)
 
     // The Assistants category no longer shows its empty hint, and the installed
-    // assistant's name is listed.
+    // assistant's name is listed in a tracked row. (`assistant.name` is dynamic
+    // data this test created, so filtering a row by it is allowed.)
     await expect(
-      page.getByText('No assistants installed from the hub yet.'),
+      page.getByTestId('hub-installed-empty-assistant'),
     ).toHaveCount(0, { timeout: 15000 })
-    await expect(page.getByText(assistant.name).first()).toBeVisible({ timeout: 15000 })
+    await expect(
+      page
+        .getByTestId(/^hub-installed-row-/)
+        .filter({ hasText: assistant.name })
+        .first(),
+    ).toBeVisible({ timeout: 15000 })
   })
 })

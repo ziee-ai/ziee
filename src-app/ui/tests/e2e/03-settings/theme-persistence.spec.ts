@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-helpers'
+import { goToSettingsPage, waitForSettingsPageLoad, selectThemeOption } from './helpers/navigation-helpers'
 
 /**
  * E2E — the theme preference persists across browser SESSIONS (audit 5978d294cf2a).
@@ -13,7 +13,7 @@ import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-
  * JS state but the persisted profile) — the theme must come back up from the
  * persisted preference alone, without ever re-visiting settings.
  *
- * This drives the real `#theme-form` selector to set Dark, captures the
+ * This drives the real theme Select (`settingsgen-theme-select`) to set Dark, captures the
  * persisted `storageState` (the faithful "reopened browser" snapshot), opens
  * a NEW context from it, and asserts `<html>` carries `dark` on first paint of
  * a non-settings route — and, as a control, that a fresh context WITHOUT the
@@ -21,15 +21,7 @@ import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-
  */
 
 async function pickTheme(page: import('@playwright/test').Page, title: 'Dark' | 'Light') {
-  await page.locator('#theme-form [aria-label="Theme"]').first().click()
-  await page
-    .getByRole('listbox')
-    .or(page.locator('.ant-select-dropdown'))
-    .first()
-    .waitFor({ state: 'visible' })
-  const option = page.getByTitle(title, { exact: true })
-  await option.waitFor({ state: 'visible', timeout: 5000 })
-  await option.click()
+  await selectThemeOption(page, title.toLowerCase() as 'dark' | 'light')
   await page.waitForTimeout(400) // let the ThemeProvider effect run + persist
 }
 

@@ -1,8 +1,9 @@
 import { test, expect } from '../../fixtures/test-context'
-import type { Page } from '@playwright/test'
+import type { Page, Locator } from '@playwright/test'
 import { loginAsAdmin, getCurrentUserToken } from '../../common/auth-helpers'
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid.ts'
 import {
   gotoRuntimeSettings,
   seedLocalProvider,
@@ -14,16 +15,13 @@ import {
 /**
  * Frontend permission gating for the Local Runtime settings page. Verifies the
  * UI mirrors the backend's per-endpoint `RequirePermissions` model — i.e. a
- * principal only sees the affordances for permissions it actually holds. The
- * backend enforces every endpoint regardless, so these are UX/consistency
- * guarantees, not the security boundary.
+ * principal only sees the affordances for permissions it actually holds.
  *
  * Covered:
  *  - `versions_read` gates the version-catalogue / update-checker / per-version
  *    usage sections (the page route only requires `read`).
  *  - `manage` gates the model start/stop/restart/swap controls.
- *  - `logs` gates the Logs control INDEPENDENTLY of `manage` (a logs-only user
- *    sees Logs but not Stop; a manage-only user sees Stop but not Logs).
+ *  - `logs` gates the Logs control INDEPENDENTLY of `manage`.
  */
 const HF_KEY = process.env.HUGGINGFACE_API_KEY
 
@@ -32,15 +30,11 @@ const HF_KEY = process.env.HUGGINGFACE_API_KEY
 // the only variable for the version sections.
 const BASE_READS = [Permissions.LocalRuntimeRead, Permissions.RuntimeSettingsRead]
 
-// The Installed versions card is the row-level surface for
-// model start/stop/swap controls now (the standalone "Models by
-// engine version" card was folded in). Engine-backed permission
-// tests scope assertions to this card.
-function installedCard(page: Page) {
-  return page
-    .locator('.ant-tabs-tabpane-active')
-    .locator('.ant-card')
-    .filter({ hasText: 'Installed versions' })
+// The Installed versions card is the row-level surface for model
+// start/stop/swap controls now. Engine-backed permission tests scope
+// assertions to this per-engine card.
+function installedCard(page: Page, engine: 'llamacpp' | 'mistralrs' = 'llamacpp'): Locator {
+  return byTestId(page, `llmrt-installed-versions-card-${engine}`)
 }
 
 // ── engine-free: versions_read gates whole sections ──────────────────────
@@ -51,19 +45,16 @@ test.describe('Local Runtime — permission gating (engine-free)', () => {
   }) => {
     const { baseURL, apiURL } = testInfra
 
-    // read (no versions_read): page loads, but both per-engine
-    // cards are hidden — they're gated together on versions_read
-    // (detect-gpu + check-updates + version list all need it).
+    // read (no versions_read): page loads, but both per-engine cards are hidden.
     await loginWithPerms(page, baseURL, apiURL, BASE_READS, 'lrt-noversions')
     await gotoRuntimeSettings(page, baseURL)
-    await expect(page.getByRole('tab', { name: 'Llama.cpp' })).toBeVisible()
-    await expect(page.getByText(/Available backends:/i)).toHaveCount(0)
-    await expect(page.getByText(/Available versions/i)).toHaveCount(0)
-    await expect(page.getByText(/Installed versions/i)).toHaveCount(0)
+    await expect(byTestId(page, 'llmrt-engine-tabs-tab-llamacpp')).toBeVisible()
+    await expect(byTestId(page, 'llmrt-available-versions-card')).toHaveCount(0)
+    await expect(byTestId(page, 'llmrt-installed-versions-card-llamacpp')).toHaveCount(0)
+    await expect(byTestId(page, 'llmrt-check-updates-btn')).toHaveCount(0)
 
-    // + versions_read: both cards appear, and the Available versions
-    // card surfaces a manual "Check for updates" button in its
-    // `extra` slot.
+    // + versions_read: both cards appear, and the Available versions card
+    // surfaces a manual "Check for updates" button in its `extra` slot.
     await loginWithPerms(
       page,
       baseURL,
@@ -72,14 +63,11 @@ test.describe('Local Runtime — permission gating (engine-free)', () => {
       'lrt-versions'
     )
     await gotoRuntimeSettings(page, baseURL)
-    await expect(page.getByText(/Available backends:/i).first()).toBeVisible({
+    await expect(byTestId(page, 'llmrt-available-versions-card')).toBeVisible({
       timeout: 30000,
     })
-    await expect(page.getByText(/Available versions/i).first()).toBeVisible()
-    await expect(page.getByText(/Installed versions/i).first()).toBeVisible()
-    await expect(
-      page.getByRole('button', { name: /Check for updates/i }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'llmrt-installed-versions-card-llamacpp')).toBeVisible()
+    await expect(byTestId(page, 'llmrt-check-updates-btn')).toBeVisible()
   })
 
   test('settings_manage gates the Runtime configuration Save control', async ({
@@ -89,16 +77,11 @@ test.describe('Local Runtime — permission gating (engine-free)', () => {
     const { baseURL, apiURL } = testInfra
 
     // settings_read (no settings_manage): the Runtime configuration card renders
-    // but its Save button is hidden + the form is disabled (RuntimeConfigCard
-    // canManage gate).
+    // but its Save button is hidden + the form is disabled.
     await loginWithPerms(page, baseURL, apiURL, BASE_READS, 'lrt-cfg-nomanage')
     await gotoRuntimeSettings(page, baseURL)
-    await expect(
-      page.getByText('Runtime configuration').first(),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(
-      page.getByRole('button', { name: 'Save', exact: true }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'llmrt-runtime-config-card')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'llmrt-config-save-btn')).toHaveCount(0)
 
     // + settings_manage: the Save control appears.
     await loginWithPerms(
@@ -109,12 +92,8 @@ test.describe('Local Runtime — permission gating (engine-free)', () => {
       'lrt-cfg-manage',
     )
     await gotoRuntimeSettings(page, baseURL)
-    await expect(
-      page.getByText('Runtime configuration').first(),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(
-      page.getByRole('button', { name: 'Save', exact: true }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'llmrt-runtime-config-card')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'llmrt-config-save-btn')).toBeVisible()
   })
 })
 
@@ -129,7 +108,7 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
     const adminToken = await getCurrentUserToken(page)
     await downloadEngineViaApi(baseURL, adminToken, 'llamacpp', 'v0.0.1-alpha', true)
     const providerId = await seedLocalProvider(baseURL, adminToken)
-    await seedLocalModel(baseURL, adminToken, providerId, `e2e-gate-${Date.now()}`)
+    const modelId = await seedLocalModel(baseURL, adminToken, providerId, `e2e-gate-${Date.now()}`)
 
     // read + versions_read, NO manage: model row visible, no Start button.
     await loginWithPerms(
@@ -140,9 +119,9 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
       'lrt-nomanage'
     )
     await gotoRuntimeSettings(page, baseURL)
-    const card = installedCard(page)
-    await expect(card.getByText(/E2E e2e-gate-/)).toBeVisible({ timeout: 15000 })
-    await expect(card.getByRole('button', { name: 'Start' })).toHaveCount(0)
+    const card = installedCard(page, 'llamacpp')
+    await expect(byTestId(card, `llmrt-model-row-${modelId}`)).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(card, `llmrt-model-start-${modelId}`)).toHaveCount(0)
 
     // + manage: the Start control appears.
     await loginWithPerms(
@@ -154,13 +133,12 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
     )
     await gotoRuntimeSettings(page, baseURL)
     await expect(
-      installedCard(page).getByRole('button', { name: 'Start' }).first()
+      byTestId(installedCard(page, 'llamacpp'), `llmrt-model-start-${modelId}`)
     ).toBeVisible({ timeout: 15000 })
   })
 
   test('logs gates the Logs control independently of manage', async ({ page, testInfra }) => {
-    // Full real-engine spawn + cold-CPU first-token; bump the test
-    // budget to 10 min so the 180s locator timeouts aren't truncated.
+    // Full real-engine spawn + cold-CPU first-token; bump the test budget.
     test.setTimeout(600000)
     const { baseURL, apiURL } = testInfra
     // Admin downloads a real engine + GGUF and starts the model so the row
@@ -169,16 +147,17 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
     const adminToken = await getCurrentUserToken(page)
     await downloadEngineViaApi(baseURL, adminToken, 'llamacpp', 'v0.0.1-alpha', true)
     const providerId = await seedLocalProvider(baseURL, adminToken)
-    await downloadGgufModelViaApi(baseURL, adminToken, providerId) // ~670 MB
+    const model = await downloadGgufModelViaApi(baseURL, adminToken, providerId) // ~670 MB
+    const modelId = model.id
 
     await gotoRuntimeSettings(page, baseURL)
-    const card = installedCard(page)
-    await expect(card.getByText('E2E TinyLlama')).toBeVisible({ timeout: 30000 })
-    const startBtn = card.getByRole('button', { name: 'Start' })
+    const card = installedCard(page, 'llamacpp')
+    await expect(byTestId(card, `llmrt-model-row-${modelId}`)).toBeVisible({ timeout: 30000 })
+    const startBtn = byTestId(card, `llmrt-model-start-${modelId}`)
     if (await startBtn.isVisible().catch(() => false)) {
       await startBtn.click()
     }
-    await expect(card.getByRole('button', { name: 'Stop' }).first()).toBeVisible({
+    await expect(byTestId(card, `llmrt-model-stop-${modelId}`)).toBeVisible({
       timeout: 480000
     })
 
@@ -191,10 +170,10 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
       'lrt-logsonly'
     )
     await gotoRuntimeSettings(page, baseURL)
-    const c1 = installedCard(page)
-    await expect(c1.getByText('E2E TinyLlama')).toBeVisible({ timeout: 15000 })
-    await expect(c1.getByRole('button', { name: 'Logs' }).first()).toBeVisible()
-    await expect(c1.getByRole('button', { name: 'Stop' })).toHaveCount(0)
+    const c1 = installedCard(page, 'llamacpp')
+    await expect(byTestId(c1, `llmrt-model-row-${modelId}`)).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(c1, `llmrt-model-logs-${modelId}`)).toBeVisible()
+    await expect(byTestId(c1, `llmrt-model-stop-${modelId}`)).toHaveCount(0)
 
     // manage-without-logs: Stop/Restart shown, Logs hidden.
     await loginWithPerms(
@@ -205,8 +184,8 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
       'lrt-managenologs'
     )
     await gotoRuntimeSettings(page, baseURL)
-    const c2 = installedCard(page)
-    await expect(c2.getByRole('button', { name: 'Stop' }).first()).toBeVisible({ timeout: 15000 })
-    await expect(c2.getByRole('button', { name: 'Logs' })).toHaveCount(0)
+    const c2 = installedCard(page, 'llamacpp')
+    await expect(byTestId(c2, `llmrt-model-stop-${modelId}`)).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(c2, `llmrt-model-logs-${modelId}`)).toHaveCount(0)
   })
 })

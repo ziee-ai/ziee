@@ -6,6 +6,7 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import { seedAssistantWithToolResult } from '../09-chat/fixtures/mock-tool-result'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the full web-search journey: an admin CONFIGURES web search on the
@@ -31,22 +32,18 @@ test.describe('Web search — configure then chat journey', () => {
 
     // ── Phase 1: configure web search on the real settings backend ──
     await page.goto(`${baseURL}/settings/web-search`)
-    await expect(
-      page.getByRole('heading', { name: 'Web Search' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'websearch-global-card')).toBeVisible({
+      timeout: 30000,
+    })
 
-    const toggle = page.getByRole('switch').first()
+    const toggle = byTestId(page, 'websearch-global-enabled')
     if (!(await toggle.isChecked())) {
       await toggle.click()
     }
-    await page
-      .locator('form')
-      .filter({ has: page.getByLabel('Max results per search') })
-      .getByRole('button', { name: 'Save' })
-      .click()
-    await expect(page.getByText('Web search settings saved')).toBeVisible({
-      timeout: 10000,
-    })
+    await byTestId(page, 'websearch-global-save').click()
+    await expect(
+      page.locator('[data-sonner-toast][data-type="success"]').first(),
+    ).toBeVisible({ timeout: 10000 })
 
     // ── Phase 2: seed a chat turn backed by a web_search tool_result ──
     const token = await page.evaluate(() =>

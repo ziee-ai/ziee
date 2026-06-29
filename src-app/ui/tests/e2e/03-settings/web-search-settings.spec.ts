@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 // ---------------------------------------------------------------------------
 // Route mocks. web_search admin settings = a singleton settings row + a
@@ -123,7 +124,7 @@ async function gotoWebSearch(page: Page, baseURL: string) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await page.goto(`${baseURL}/settings/web-search`)
-      await expect(page.getByRole('heading', { name: 'Web Search' })).toBeVisible({ timeout: 10000 })
+      await expect(byTestId(page, 'websearch-global-card')).toBeVisible({ timeout: 10000 })
       return
     } catch (e) {
       if (attempt === 3) throw e
@@ -132,14 +133,17 @@ async function gotoWebSearch(page: Page, baseURL: string) {
   }
 }
 
-const globalSave = (page: Page) =>
-  page
-    .locator('form')
-    .filter({ has: page.getByLabel('Max results per search') })
-    .getByRole('button', { name: 'Save' })
+const globalSave = (page: Page) => byTestId(page, 'websearch-global-save')
+const braveSave = (page: Page) => byTestId(page, 'websearch-provider-brave-save')
+const enabledSwitch = (page: Page) => byTestId(page, 'websearch-global-enabled')
+const savedToast = (page: Page) =>
+  page.locator('[data-sonner-toast][data-type="success"]')
 
-const braveSave = (page: Page) =>
-  page.locator('form').filter({ has: page.getByLabel('API key') }).getByRole('button', { name: 'Save' })
+// Chain rows derive `${listTestid}-row-${providerKey}`.
+const chainRows = (page: Page) =>
+  byTestId(page, 'websearch-global-chain-list').locator(
+    '[data-testid^="websearch-global-chain-list-row-"]',
+  )
 
 // ---------------------------------------------------------------------------
 
@@ -158,9 +162,16 @@ test.describe('Web search admin settings', () => {
     await mockApi(page, state)
     await gotoWebSearch(page, baseURL)
 
-    await expect(page.getByRole('switch')).toBeChecked()
-    await expect(page.getByText('1. SearXNG (self-hosted)')).toBeVisible()
-    await expect(page.getByText('2. Brave Search')).toBeVisible()
+    await expect(enabledSwitch(page)).toBeChecked()
+    // Chain order: SearXNG #1, Brave #2.
+    await expect(chainRows(page).nth(0)).toHaveAttribute(
+      'data-testid',
+      'websearch-global-chain-list-row-searxng',
+    )
+    await expect(chainRows(page).nth(1)).toHaveAttribute(
+      'data-testid',
+      'websearch-global-chain-list-row-brave',
+    )
   })
 
   test('toggle enabled → Save persists across reload', async ({ page, testInfra }) => {
@@ -175,13 +186,13 @@ test.describe('Web search admin settings', () => {
     await mockApi(page, state)
     await gotoWebSearch(page, baseURL)
 
-    await page.getByRole('switch').click() // true → false
+    await enabledSwitch(page).click() // true → false
     await globalSave(page).click()
-    await expect(page.getByText('Web search settings saved')).toBeVisible({ timeout: 5000 })
+    await expect(savedToast(page).first()).toBeVisible({ timeout: 5000 })
     expect(state.lastSettingsPatch?.enabled).toBe(false)
 
     await gotoWebSearch(page, baseURL)
-    await expect(page.getByRole('switch')).not.toBeChecked()
+    await expect(enabledSwitch(page)).not.toBeChecked()
   })
 
   test('setting a provider API key never echoes the secret + shows configured', async ({ page, testInfra }) => {
@@ -197,16 +208,18 @@ test.describe('Web search admin settings', () => {
     await mockApi(page, state)
     await gotoWebSearch(page, baseURL)
 
-    await page.getByLabel('API key').fill(SECRET)
+    await byTestId(page, 'websearch-provider-brave-api-key').fill(SECRET)
     await braveSave(page).click()
-    await expect(page.getByText('Brave Search saved')).toBeVisible({ timeout: 5000 })
+    await expect(savedToast(page).first()).toBeVisible({ timeout: 5000 })
 
     expect(state.lastProviderPatch?.provider).toBe('brave')
     expect(state.lastProviderPatch?.body.api_key).toBe(SECRET)
     // The secret must never be rendered back into the DOM.
     await expect(page.getByText(SECRET)).toHaveCount(0)
     // Brave section reflects the configured state after the catalog refresh.
-    await expect(page.getByText('Configured').first()).toBeVisible({ timeout: 5000 })
+    await expect(
+      byTestId(page, 'websearch-provider-brave-status'),
+    ).toHaveAttribute('data-configured', 'true', { timeout: 5000 })
   })
 
   test('reordering the provider chain persists the new order', async ({ page, testInfra }) => {
@@ -222,14 +235,24 @@ test.describe('Web search admin settings', () => {
     await gotoWebSearch(page, baseURL)
 
     // Initially SearXNG is #1, Brave #2.
-    await expect(page.getByText('1. SearXNG (self-hosted)')).toBeVisible()
+    await expect(chainRows(page).nth(0)).toHaveAttribute(
+      'data-testid',
+      'websearch-global-chain-list-row-searxng',
+    )
 
     // The chain editor saves each reorder imperatively (no Save button, no
     // success toast — the visual reorder IS the feedback). Assert the observable
     // effect: the list re-renders from the persisted settings with Brave first.
-    await page.getByRole('button', { name: 'Move SearXNG (self-hosted) down' }).click()
-    await expect(page.getByText('1. Brave Search')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('2. SearXNG (self-hosted)')).toBeVisible()
+    await byTestId(page, 'websearch-chain-searxng-down').click()
+    await expect(chainRows(page).nth(0)).toHaveAttribute(
+      'data-testid',
+      'websearch-global-chain-list-row-brave',
+      { timeout: 5000 },
+    )
+    await expect(chainRows(page).nth(1)).toHaveAttribute(
+      'data-testid',
+      'websearch-global-chain-list-row-searxng',
+    )
     expect(state.lastSettingsPatch?.provider_chain).toEqual(['brave', 'searxng'])
   })
 
@@ -249,13 +272,7 @@ test.describe('Web search admin settings', () => {
     await gotoWebSearch(page, baseURL)
 
     // The master switch reflects the disabled state (web tools won't attach).
-    // Scope to the "Web search" card's form (the only Switch on the page).
-    const enableSwitch = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Enable web search' })
-      .getByRole('switch')
-      .first()
-    await expect(enableSwitch).toHaveAttribute('aria-checked', 'false')
+    await expect(enabledSwitch(page)).toHaveAttribute('aria-checked', 'false')
   })
 
   test('unconfigured providers show a "Not configured" status', async ({
@@ -275,9 +292,16 @@ test.describe('Web search admin settings', () => {
     await mockApi(page, state)
     await gotoWebSearch(page, baseURL)
 
-    // Both per-provider cards advertise the unconfigured state, and NEITHER is
-    // marked Configured yet.
-    await expect(page.getByText('Not configured')).toHaveCount(2)
-    await expect(page.getByText('Configured', { exact: true })).toHaveCount(0)
+    // Both per-provider status badges advertise the unconfigured state, and
+    // NEITHER is marked configured yet.
+    await expect(
+      byTestId(page, 'websearch-provider-searxng-status'),
+    ).toHaveAttribute('data-configured', 'false')
+    await expect(
+      byTestId(page, 'websearch-provider-brave-status'),
+    ).toHaveAttribute('data-configured', 'false')
+    await expect(
+      page.locator('[data-testid$="-status"][data-configured="true"]'),
+    ).toHaveCount(0)
   })
 })

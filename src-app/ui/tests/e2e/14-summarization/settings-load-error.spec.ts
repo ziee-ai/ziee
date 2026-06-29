@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Summarization admin settings page renders the ERROR state (not a
@@ -36,14 +37,13 @@ test.describe('Summarization — admin settings load error', () => {
 
     await page.goto(`${testInfra.baseURL}/settings/summarization-admin`)
 
-    await expect(
-      page.getByText('Failed to load summarization settings'),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'summ-settings-error-card')).toBeVisible({
+      timeout: 30000,
+    })
+    await expect(byTestId(page, 'summ-settings-error-alert')).toBeVisible()
 
     // The threshold form fields must NOT render in the error state — the
     // card short-circuits to the Alert before the <Form>.
-    await expect(
-      page.getByLabel('Summarize after N tokens'),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'summ-after-tokens-input')).toHaveCount(0)
   })
 })

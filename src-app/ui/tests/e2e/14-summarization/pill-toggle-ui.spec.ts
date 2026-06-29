@@ -5,6 +5,7 @@ import {
   createTestUser,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — `SummarizationStatusPill` driven through the chat UI.
@@ -51,7 +52,7 @@ test.describe('Summarization — composer pill (UI)', () => {
     await page.goto(`${baseURL}/chat/${conv.id}`)
 
     // Default mode is `inherit` → label "Summary: auto".
-    const pill = page.getByLabel(/Summarization override:/)
+    const pill = byTestId(page, 'summ-mode-tag')
     await expect(pill).toBeVisible({ timeout: 30000 })
     await expect(pill).toHaveAttribute(
       'aria-label',
@@ -60,12 +61,10 @@ test.describe('Summarization — composer pill (UI)', () => {
 
     // Open the dropdown and choose "always summarize".
     await pill.click()
-    await page
-      .getByRole('menuitem', { name: /Always summarize this conversation/i })
-      .click()
+    await byTestId(page, 'summ-mode-dropdown-item-on').click()
 
     // The pill relabels to "Summary: on".
-    await expect(page.getByLabel(/Summarization override:/)).toHaveAttribute(
+    await expect(byTestId(page, 'summ-mode-tag')).toHaveAttribute(
       'aria-label',
       /Summary: on/,
       { timeout: 10000 },
@@ -80,7 +79,7 @@ test.describe('Summarization — composer pill (UI)', () => {
     expect(((await modeResp.json()) as { summarization_mode: string }).summarization_mode).toBe('on')
 
     await page.reload()
-    await expect(page.getByLabel(/Summarization override:/)).toHaveAttribute(
+    await expect(byTestId(page, 'summ-mode-tag')).toHaveAttribute(
       'aria-label',
       /Summary: on/,
       { timeout: 30000 },

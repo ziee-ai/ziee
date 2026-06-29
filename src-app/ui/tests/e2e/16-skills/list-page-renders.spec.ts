@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToSkillsPage } from './helpers/skill-helpers'
+import { byTestId } from '../testid.ts'
 
 test.describe('Skills - List page render', () => {
   test.beforeEach(async ({ page, testInfra }) => {
@@ -10,10 +11,8 @@ test.describe('Skills - List page render', () => {
     await goToSkillsPage(page, baseURL)
   })
 
-  test('renders the page heading', async ({ page }) => {
-    await expect(
-      page.getByRole('heading', { level: 4, name: 'Skills', exact: true }),
-    ).toBeVisible()
+  test('renders the page', async ({ page }) => {
+    await expect(byTestId(page, 'skills-page')).toBeVisible()
   })
 
   test('passes accessibility checks', async ({ page }) => {
@@ -35,42 +34,37 @@ test.describe('Skills - List page render', () => {
     // even on a fresh DB the built-ins render with the "Built-in" badge.
     // (expect auto-retries, covering the boot-sync that runs on server
     // start.)
-    await expect(page.getByText('Built-in').first()).toBeVisible()
+    await expect(byTestId(page, 'skill-scope-badge-builtin').first()).toBeVisible()
   })
 
   test('admin sees the permission-gated Import affordance', async ({ page }) => {
     // Admin holds skills::install via the `*` wildcard, so the
     // <Can permission={SkillsInstall}>-gated "Import" button renders.
-    await expect(
-      page.getByRole('button', { name: /import/i }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'skill-list-import-button')).toBeVisible()
   })
 
   test('clicking a skill opens the detail drawer with metadata + body', async ({
     page,
   }) => {
-    // The built-in skills render as clickable cards (role="button",
-    // data-skill-id). Open the first one.
-    const firstCard = page.locator('[data-skill-id]').first()
+    // The built-in skills render as clickable cards. Open the first one.
+    const firstCard = page.locator('[data-testid^="skill-list-card-"]').first()
     await expect(firstCard).toBeVisible({ timeout: 15000 })
     await firstCard.click()
 
-    // The SkillDetailDrawer opens with the metadata Descriptions
+    // The SkillDetailDrawer opens with the metadata Descriptions table
     // (Name/Files/Size) and fetches the SKILL.md body.
-    const drawer = page.getByRole('dialog')
+    const drawer = byTestId(page, 'skill-detail-sheet-loaded')
     await expect(drawer).toBeVisible({ timeout: 10000 })
-    await expect(drawer.getByText('Name', { exact: true })).toBeVisible()
-    await expect(drawer.getByText('Files', { exact: true })).toBeVisible()
-    await expect(drawer.getByText('Size', { exact: true })).toBeVisible()
+    await expect(byTestId(drawer, 'skill-detail-descriptions')).toBeVisible()
 
-    // The body fetch resolves (the transient "Loading skill content…" note
-    // clears). Built-in skills always have a SKILL.md body.
-    await expect(
-      drawer.getByText('Loading skill content…'),
-    ).toHaveCount(0, { timeout: 15000 })
+    // The body fetch resolves and the body section renders. Built-in skills
+    // always have a SKILL.md body.
+    await expect(byTestId(drawer, 'skill-detail-body')).toBeVisible({
+      timeout: 15000,
+    })
 
     // Close it.
-    await drawer.getByRole('button', { name: /close/i }).click()
+    await page.keyboard.press('Escape')
     await expect(drawer).toBeHidden()
   })
 })

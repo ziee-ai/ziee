@@ -33,11 +33,14 @@ export async function waitForHubDataLoad(page: Page) {
   // Wait for either cards to appear or "Loading..." to disappear
   // Hub uses LazyComponentRenderer which shows "Loading..." fallback
   try {
-    // Wait for at least one card OR a "no results" message
+    // Wait for at least one hub card to appear, else fall back to a timeout
+    // (an empty/no-results tab simply renders no cards).
     await Promise.race([
-      page.locator('[data-testid^="hub-"]').first().waitFor({ state: 'visible', timeout: 5000 }),
-      page.getByText(/no.*results|no.*found/i).waitFor({ state: 'visible', timeout: 5000 }),
-      page.waitForTimeout(2000) // Fallback timeout
+      page
+        .locator('[data-testid*="-card-"]')
+        .first()
+        .waitFor({ state: 'visible', timeout: 5000 }),
+      page.waitForTimeout(2000), // Fallback timeout
     ])
   } catch (error) {
     // If all fail, just wait a bit and continue - page might have loaded already
@@ -60,7 +63,7 @@ export async function getActiveHubTab(page: Page): Promise<HubTab> {
  */
 export async function refreshHubData(page: Page) {
   try {
-    const refreshButton = page.getByRole('button', { name: /refresh/i })
+    const refreshButton = page.getByTestId('hub-refresh-btn')
     const visible = await refreshButton.isVisible({ timeout: 2000 }).catch(() => false)
     if (visible) {
       await refreshButton.click()

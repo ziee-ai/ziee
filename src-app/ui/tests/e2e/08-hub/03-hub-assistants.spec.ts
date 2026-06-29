@@ -30,7 +30,7 @@ test.describe('Hub Assistants', () => {
     const firstCard = assistantCards.first()
 
     // Should have "Use Assistant" button
-    await expect(firstCard.getByRole('button', { name: /use.*assistant/i })).toBeVisible()
+    await expect(firstCard.getByTestId('hub-assistant-use-btn')).toBeVisible()
 
     // Card should have content (text visible)
     await expect(firstCard).toContainText(/.+/)
@@ -58,9 +58,9 @@ test.describe('Hub Assistants', () => {
     // Create assistant
     await createAssistantFromHub(page, assistantId)
 
-    // Should show success message (use .first() to handle Ant Design duplicates)
+    // Should show success toast
     await expect(
-      page.getByText(/created.*successfully|assistant.*created/i).first(),
+      page.locator('[data-sonner-toast][data-type="success"]').first(),
     ).toBeVisible({ timeout: 5000 })
 
     // The card navigates away to /settings/assistants on success; go
@@ -93,9 +93,9 @@ test.describe('Hub Assistants', () => {
       description: 'Custom description for testing',
     })
 
-    // Should show success message (use .first() to handle Ant Design duplicates)
+    // Should show success toast
     await expect(
-      page.getByText(/created.*successfully|assistant.*created/i).first(),
+      page.locator('[data-sonner-toast][data-type="success"]').first(),
     ).toBeVisible({ timeout: 5000 })
 
     // Verify assistant was created
@@ -128,7 +128,7 @@ test.describe('Hub Assistants', () => {
 
     // Should have "View" button instead of "Use"
     const card = page.getByTestId(`hub-assistant-card-${assistantId}`)
-    await expect(card.getByRole('button', { name: /view/i })).toBeVisible()
+    await expect(card.getByTestId('hub-assistant-view-btn')).toBeVisible()
 
     // "Use Assistant" is replaced by View once the assistant exists. But
     // "Use as Template" is a separate admin affordance gated on permissions
@@ -198,7 +198,7 @@ test.describe('Hub Assistants', () => {
 
     // Click "View" button
     const card = page.getByTestId(`hub-assistant-card-${createdAssistantId}`)
-    await card.getByRole('button', { name: /view/i }).click()
+    await card.getByTestId('hub-assistant-view-btn').click()
 
     // View navigates to /settings/assistants (the user's own assistants
     // list) per AssistantHubCard. Sanity-check by URL after navigation
@@ -206,7 +206,7 @@ test.describe('Hub Assistants', () => {
     // its event hook reliably).
     await page.waitForLoadState('load').catch(() => {})
     const urlChanged = !page.url().includes('/hub/')
-    const drawer = page.getByRole('dialog', { name: /assistant/i })
+    const drawer = page.getByTestId('hub-assistant-detail-sheet')
     const drawerVisible = await drawer.isVisible({ timeout: 2000 }).catch(() => false)
 
     expect(urlChanged || drawerVisible).toBe(true)
@@ -232,7 +232,7 @@ test.describe('Hub Assistants', () => {
     const cardCount = await cards.count()
     if (cardCount > 0) {
       await expect(
-        cards.first().getByRole('button', { name: /use.*assistant/i }),
+        cards.first().getByTestId('hub-assistant-use-btn'),
       ).toHaveCount(0)
     }
   })

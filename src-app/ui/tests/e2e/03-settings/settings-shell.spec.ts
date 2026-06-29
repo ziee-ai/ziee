@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * Settings shell routing.
@@ -30,12 +31,14 @@ test.describe('Settings shell', () => {
     // Bare /settings redirects to the first permitted section (not stuck at /settings).
     await expect(page).toHaveURL(/\/settings\/[a-z-]+/, { timeout: 15000 })
 
-    // The settings content rendered (a section heading is shown).
-    await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15000 })
+    // The settings content rendered (the section title is shown).
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible({
+      timeout: 15000,
+    })
 
-    // Exactly one AppLayout sider (#app-sidebar is unique to AppLayout) — i.e.
+    // Exactly one AppLayout sider (app-sidebar is unique to AppLayout) — i.e.
     // the settings layout is not nested inside a second AppLayout.
-    await expect(page.locator('#app-sidebar')).toHaveCount(1)
+    await expect(byTestId(page, 'app-sidebar')).toHaveCount(1)
   })
 
   test('mobile layout swaps the section rail for a dropdown picker', async ({
@@ -49,19 +52,17 @@ test.describe('Settings shell', () => {
     await page.goto(`${testInfra.baseURL}/settings`)
     await expect(page).toHaveURL(/\/settings\/[a-z-]+/, { timeout: 15000 })
 
-    const picker = page.getByRole('button', {
-      name: 'Select settings section',
-    })
+    const picker = byTestId(page, 'settings-mobile-dropdown-trigger')
     await expect(picker).toBeVisible({ timeout: 15000 })
 
-    // Opening it reveals the section menu; pick a different section and the
-    // route follows.
+    // Opening it reveals the section menu; pick a section that differs from the
+    // current one and the route follows.
     await picker.click()
-    const menu = page.getByRole('menu')
-    await expect(menu).toBeVisible()
+    await expect(byTestId(page, 'settings-mobile-dropdown')).toBeVisible()
     const before = page.url()
-    // Click the second selectable menu item (the first is the current section).
-    await menu.getByRole('menuitem').nth(1).click()
+    // General and Profile are always present; pick whichever isn't current.
+    const targetPath = before.includes('/general') ? 'profile' : 'general'
+    await byTestId(page, `settings-mobile-dropdown-item-${targetPath}`).click()
     await expect
       .poll(() => page.url(), { timeout: 15000 })
       .not.toBe(before)
@@ -76,19 +77,17 @@ test.describe('Settings shell', () => {
     // mobile dropdown.
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(`${testInfra.baseURL}/settings/profile`)
-    await expect(
-      page.getByRole('heading', { name: 'Profile' }),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible({
+      timeout: 15000,
+    })
 
     // Click the "MCP Servers" section in the sidebar → route + content follow.
-    await page.getByRole('menuitem', { name: 'MCP Servers' }).click()
+    await byTestId(page, 'settings-nav-menu-item-mcp-servers').click()
     await expect(page).toHaveURL(/\/settings\/mcp-servers$/)
 
     // And back to Profile via the sidebar.
-    await page.getByRole('menuitem', { name: 'Profile' }).click()
+    await byTestId(page, 'settings-nav-menu-item-profile').click()
     await expect(page).toHaveURL(/\/settings\/profile$/)
-    await expect(
-      page.getByRole('heading', { name: 'Profile' }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible()
   })
 })

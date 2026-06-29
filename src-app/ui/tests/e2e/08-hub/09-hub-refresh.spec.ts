@@ -36,10 +36,12 @@ test.describe('Hub refresh', () => {
     await navigateToHub(page, baseURL)
     await waitForHubDataLoad(page)
 
-    await page.getByRole('button', { name: 'Refresh' }).click()
+    await page.getByTestId('hub-refresh-btn').click()
 
     await expect(
-      page.getByText(/Hub catalog refreshed to v/),
+      page
+        .locator('[data-sonner-toast]')
+        .filter({ hasText: /Hub catalog refreshed to v/ }),
     ).toBeVisible({ timeout: 10000 })
   })
 })

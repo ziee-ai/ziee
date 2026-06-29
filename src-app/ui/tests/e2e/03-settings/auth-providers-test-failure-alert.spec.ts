@@ -1,12 +1,13 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the row-level `last_test_ok === false` error Alert
- * (AuthProvidersListSection.tsx:222-237). The crud spec covers the DRAWER's
- * inline "Test config" result; the persisted row Alert that renders after the
- * row's "Test <name>" action fails was never asserted. Real backend, no mocks:
- * an empty-config OIDC provider fails discovery deterministically, the server
+ * (AuthProvidersListSection.tsx). The crud spec covers the DRAWER's inline
+ * "Test config" result; the persisted row Alert that renders after the row's
+ * "Test <name>" action fails was never asserted. Real backend, no mocks: an
+ * empty-config OIDC provider fails discovery deterministically, the server
  * persists `last_test_ok=false`, the row reloads and shows the Alert.
  */
 
@@ -34,12 +35,11 @@ test.describe('Auth providers — failed Test surfaces the row error Alert', () 
     await page.goto(`${baseURL}/settings/auth-providers`)
 
     // Click the row's Test action; the backend tries discovery and fails.
-    await page.getByRole('button', { name: `Test ${name}` }).click()
+    await byTestId(page, `authprov-test-button-${name}`).click()
 
-    // The row reloads with last_test_ok=false → the error Alert renders.
-    const alert = page.locator('.ant-alert-error').filter({
-      hasText: 'Connection test failed',
-    })
-    await expect(alert.first()).toBeVisible({ timeout: 20000 })
+    // The row reloads with last_test_ok=false → the persisted error Alert renders.
+    await expect(
+      byTestId(page, `authprov-test-failed-alert-${name}`),
+    ).toBeVisible({ timeout: 20000 })
   })
 })

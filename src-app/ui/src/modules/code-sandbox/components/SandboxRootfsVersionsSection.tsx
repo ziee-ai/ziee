@@ -160,6 +160,7 @@ export function SandboxRootfsVersionsSection() {
         ),
         okText: 'Set as default and wipe caches',
         cancelText: 'Cancel',
+        testid: 'sandbox-major-bump-confirm',
         onConfirm: () => doSetPin(version),
       })
     } else {

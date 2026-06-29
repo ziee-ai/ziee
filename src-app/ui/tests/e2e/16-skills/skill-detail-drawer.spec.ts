@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — SkillDetailDrawer view + async SKILL.md body loading + error state
@@ -27,17 +28,17 @@ test.describe('Skills — detail drawer', () => {
     await installSeedSkill(apiURL, await getAdminToken(apiURL))
 
     await page.goto(`${baseURL}/skills`)
-    const card = page.locator('.ant-card[role], .ant-card').filter({ hasText: /.+/ }).first()
+    const card = page.locator('[data-testid^="skill-list-card-"]').first()
     await expect(card).toBeVisible({ timeout: 30000 })
     await card.click()
 
-    // The drawer opens and the SKILL.md body resolves (success heading).
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    // The drawer opens and the SKILL.md body resolves (body section renders).
+    const drawer = byTestId(page, 'skill-detail-sheet-loaded')
     await expect(drawer).toBeVisible({ timeout: 10000 })
-    await expect(
-      drawer.getByText('Skill content (SKILL.md)'),
-    ).toBeVisible({ timeout: 15000 })
-    await expect(drawer.getByText("Couldn’t load skill content.")).toHaveCount(0)
+    await expect(byTestId(drawer, 'skill-detail-body')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(byTestId(drawer, 'skill-detail-body-error')).toHaveCount(0)
   })
 
   test('a failed SKILL.md fetch shows the error state', async ({
@@ -61,14 +62,14 @@ test.describe('Skills — detail drawer', () => {
     })
 
     await page.goto(`${baseURL}/skills`)
-    const card = page.locator('.ant-card').filter({ hasText: /.+/ }).first()
+    const card = page.locator('[data-testid^="skill-list-card-"]').first()
     await expect(card).toBeVisible({ timeout: 30000 })
     await card.click()
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    const drawer = byTestId(page, 'skill-detail-sheet-loaded')
     await expect(drawer).toBeVisible({ timeout: 10000 })
-    await expect(
-      drawer.getByText("Couldn’t load skill content."),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(drawer, 'skill-detail-body-error')).toBeVisible({
+      timeout: 15000,
+    })
   })
 })

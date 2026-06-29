@@ -1,7 +1,12 @@
 import { test, expect } from '../../fixtures/test-context'
 import type { Page } from '@playwright/test'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 import { gotoRuntimeSettings } from './helpers/local-runtime-helpers'
+
+// The mocked demo model's id (modelUsage().id) — the swap Select + model row
+// derive their testids from it.
+const MODEL_ID = '00000000-0000-0000-0000-0000000000aa'
 
 /**
  * Deterministic coverage for the version-swap Select in
@@ -111,20 +116,12 @@ test.describe('Local Runtime — version-swap dropdown (deterministic, engine-fr
     await gotoRuntimeSettings(page, testInfra.baseURL)
 
     // The model row renders under the single installed version.
-    await expect(page.getByText(MODEL_NAME, { exact: true })).toBeVisible({
+    await expect(byTestId(page, `llmrt-model-row-${MODEL_ID}`)).toBeVisible({
       timeout: 15000,
     })
 
-    const disabledSelect = page.getByLabel(
-      `Engine version for ${MODEL_NAME} — swapping disabled, only one engine version installed; install another to swap`,
-      { exact: true },
-    )
-    await expect(disabledSelect).toBeVisible()
-    // antd marks the disabled Select container with `ant-select-disabled`.
-    const container = disabledSelect.locator(
-      'xpath=ancestor-or-self::div[contains(@class,"ant-select")][1]',
-    )
-    await expect(container).toHaveClass(/ant-select-disabled/)
+    // With a single installed version the swap Select is disabled.
+    await expect(byTestId(page, `llmrt-model-version-select-${MODEL_ID}`)).toBeDisabled()
   })
 
   test('two installed versions → swap Select is enabled and lists both versions', async ({
@@ -137,27 +134,22 @@ test.describe('Local Runtime — version-swap dropdown (deterministic, engine-fr
     ])
     await gotoRuntimeSettings(page, testInfra.baseURL)
 
-    await expect(page.getByText(MODEL_NAME, { exact: true })).toBeVisible({
+    await expect(byTestId(page, `llmrt-model-row-${MODEL_ID}`)).toBeVisible({
       timeout: 15000,
     })
 
-    // With ≥2 versions the plain label is used and the Select is enabled.
-    const enabledSelect = page.getByLabel(`Engine version for ${MODEL_NAME}`, {
-      exact: true,
-    })
-    await expect(enabledSelect).toBeVisible()
-    const container = enabledSelect.locator(
-      'xpath=ancestor-or-self::div[contains(@class,"ant-select")][1]',
-    )
-    await expect(container).not.toHaveClass(/ant-select-disabled/)
+    // With ≥2 versions the Select is enabled.
+    const enabledSelect = byTestId(page, `llmrt-model-version-select-${MODEL_ID}`)
+    await expect(enabledSelect).toBeEnabled()
 
-    // Opening it surfaces BOTH installed versions as swap targets.
-    await container.click()
+    // Opening it surfaces BOTH installed versions as swap targets (options
+    // derive `${selectTestid}-opt-${versionId}`).
+    await enabledSelect.click()
     await expect(
-      page.locator('.ant-select-item-option').filter({ hasText: 'v1.0.0' }),
+      byTestId(page, `llmrt-model-version-select-${MODEL_ID}-opt-ver-a`),
     ).toBeVisible({ timeout: 5000 })
     await expect(
-      page.locator('.ant-select-item-option').filter({ hasText: 'v1.1.0' }),
+      byTestId(page, `llmrt-model-version-select-${MODEL_ID}-opt-ver-b`),
     ).toBeVisible()
   })
 })

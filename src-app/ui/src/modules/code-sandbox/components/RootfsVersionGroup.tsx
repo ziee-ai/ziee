@@ -200,11 +200,17 @@ function FlavorSubRow({
             icon={<CircleCheck />}
             tone="success"
             data-testid={`sandbox-status-tag-${version}-${f.flavor}`}
+            data-state="downloaded"
           >
             Downloaded
           </Tag>
         ) : (
-          <Tag data-testid={`sandbox-status-tag-${version}-${f.flavor}`}>Available</Tag>
+          <Tag
+            data-testid={`sandbox-status-tag-${version}-${f.flavor}`}
+            data-state="available"
+          >
+            Available
+          </Tag>
         )}
         {f.live > 0 && (
           <Tag

@@ -25,7 +25,7 @@ export function SkillsList() {
       title="Skills"
       subtitle="Reusable knowledge bundles the assistant can load on demand"
     >
-      <div className="flex flex-col gap-3 h-full">
+      <div className="flex flex-col gap-3 h-full" data-testid="skills-page">
         <Flex justify="end">
           <Can permission={Permissions.SkillsInstall}>
             <Button

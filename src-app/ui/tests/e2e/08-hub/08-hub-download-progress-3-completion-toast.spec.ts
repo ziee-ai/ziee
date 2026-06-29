@@ -245,25 +245,29 @@ test('SSE update transitioning to completed fires the success toast', async ({
   await waitForHubDataLoad(page)
 
   const firstCard = (await getModelCards(page)).first()
-  await firstCard.getByRole('button', { name: /download/i }).click()
+  const modelName = (await firstCard.getAttribute('data-testid'))!.replace(
+    'hub-model-card-',
+    '',
+  )
+  await firstCard.getByTestId(`hub-model-download-btn-${modelName}`).click()
 
-  // Skip any quantization modal that the model happens to offer.
-  const quantModal = page
-    .getByRole('dialog')
-    .filter({ hasText: 'Select Quantization' })
+  // Skip any quantization dialog that the model happens to offer.
+  const quantModal = page.getByTestId('hub-model-download-quant-dialog')
   if (await quantModal.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await quantModal.getByRole('button', { name: 'Continue' }).click()
+    await page.getByTestId('hub-model-download-quant-dialog-ok-btn').click()
   }
 
   // Initial "Download started" message confirms the POST landed.
-  await expect(page.getByText(/Download started/i)).toBeVisible({
-    timeout: 10_000,
-  })
+  await expect(
+    page
+      .locator('[data-sonner-toast][data-type="success"]')
+      .filter({ hasText: /Download started/i }),
+  ).toBeVisible({ timeout: 10_000 })
 
   // Completion toast: "Downloaded <SENTINEL>". The notification
   // component sets `duration: 5` so we have 5s to assert.
   await expect(
-    page.locator('.ant-message-success').filter({
+    page.locator('[data-sonner-toast][data-type="success"]').filter({
       hasText: new RegExp(`Downloaded ${SENTINEL}`),
     }),
   ).toBeVisible({ timeout: 10_000 })

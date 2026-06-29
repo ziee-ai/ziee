@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — UserLlmProvidersPage error state (UserLlmProvidersPage.tsx:110-112). A
@@ -30,6 +31,6 @@ test.describe('User LLM Providers — error state', () => {
     await page.goto(`${baseURL}/settings/user-llm-providers`)
 
     // The page renders an error Alert rather than the provider UI.
-    await expect(page.locator('.ant-alert-error')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'ullm-error-alert')).toBeVisible({ timeout: 30000 })
   })
 })

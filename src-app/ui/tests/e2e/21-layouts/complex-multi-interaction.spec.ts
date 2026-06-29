@@ -29,26 +29,25 @@ test.describe('App layout — complex multi-interaction sequence', () => {
     await clickProviderCard(page, providerName)
 
     // 1) Collapse the sidebar.
-    const collapseBtn = page.getByRole('button', { name: 'Close navigation menu' })
-    await expect(collapseBtn).toBeVisible({ timeout: 30000 })
-    await collapseBtn.click()
-    await expect(
-      page.getByRole('button', { name: 'Open navigation menu' }),
-    ).toBeVisible({ timeout: 10000 })
+    const toggleBtn = page.getByTestId('layout-sidebar-toggle-button')
+    await expect(toggleBtn).toBeVisible({ timeout: 30000 })
+    await expect(toggleBtn).toHaveAttribute('aria-expanded', 'true')
+    await toggleBtn.click()
+    await expect(toggleBtn).toHaveAttribute('aria-expanded', 'false', {
+      timeout: 10000,
+    })
 
     // 2) Open the Add Remote Model drawer (app-layout custom Drawer).
-    const modelsCard = page.locator(
-      '.ant-card:has(.ant-card-head-title:has-text("Models"))',
-    )
-    await modelsCard.getByRole('button', { name: 'Add model' }).click()
+    const modelsCard = page.getByTestId('llm-models-section-card')
+    await modelsCard.getByTestId('llm-models-add-remote-btn').click()
     await expect(
-      page.locator('.ant-drawer-title:has-text("Add Remote Model")'),
+      page.getByTestId('llm-add-remote-model-form'),
     ).toBeVisible({ timeout: 15000 })
 
     // 3) Resize the drawer wider via its handle.
-    const wrapper = page.locator('.ant-drawer-content-wrapper').last()
+    const wrapper = page.getByTestId('layout-drawer-content').last()
     const before = (await wrapper.boundingBox())!.width
-    const handle = page.locator('[data-testid="drawer-resize-handle"]').last()
+    const handle = page.getByTestId('drawer-resize-handle').last()
     const hb = (await handle.boundingBox())!
     await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
     await page.mouse.down()
@@ -61,14 +60,17 @@ test.describe('App layout — complex multi-interaction sequence', () => {
     // 4) Close the drawer + navigate to another settings section.
     await page.keyboard.press('Escape')
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+    await expect(
+      page.getByTestId('hardware-settings-connection-card'),
+    ).toBeAttached({ timeout: 30000 })
 
     // 5) The collapsed sidebar persisted across navigation; restore it.
-    const expandBtn = page.getByRole('button', { name: 'Open navigation menu' })
+    const expandBtn = page.getByTestId('layout-sidebar-toggle-button')
     await expect(expandBtn).toBeVisible({ timeout: 10000 })
+    await expect(expandBtn).toHaveAttribute('aria-expanded', 'false')
     await expandBtn.click()
-    await expect(
-      page.getByRole('button', { name: 'Close navigation menu' }),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(expandBtn).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 10000,
+    })
   })
 })

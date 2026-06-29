@@ -22,20 +22,28 @@ test.describe('Hub Skills — install for me', () => {
     await expect(page).toHaveURL(/\/hub\/skills/)
     await waitForHubDataLoad(page)
 
-    const card = page.locator('[data-testid^="hub-skill-card-"]').first()
+    const card = page.getByTestId(/^hub-skill-card-/).first()
     await expect(card).toBeVisible({ timeout: 30000 })
 
-    // The admin Dropdown.Button's primary action is "Install (for me)".
-    await card.getByRole('button', { name: 'Install', exact: true }).click()
+    // The admin split button's primary action is "Install (for me)".
+    await card
+      .locator(
+        '[data-testid^="hub-skill-install-dropdown-btn-"], [data-testid^="hub-skill-install-btn-"]',
+      )
+      .click()
+    await page.keyboard.press('Escape')
 
-    // Success toast for the for-me install.
-    await expect(page.getByText(/^Installed "/).first()).toBeVisible({
-      timeout: 15000,
-    })
+    // Success toast for the for-me install — message reads `Installed "<title>"`.
+    await expect(
+      page
+        .locator('[data-sonner-toast][data-type="success"]')
+        .filter({ hasText: 'Installed' })
+        .first(),
+    ).toBeVisible({ timeout: 15000 })
 
     // The card now carries the green "Installed" badge (state → user install).
-    await expect(card.getByText('Installed', { exact: true })).toBeVisible({
-      timeout: 15000,
-    })
+    await expect(
+      card.locator('[data-testid^="hub-skill-installed-tag-"]'),
+    ).toBeVisible({ timeout: 15000 })
   })
 })

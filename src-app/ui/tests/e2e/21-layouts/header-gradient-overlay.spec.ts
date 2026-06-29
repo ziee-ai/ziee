@@ -16,22 +16,20 @@ test.describe('App layout — header fade gradient overlay', () => {
   }) => {
     await loginAsAdmin(page, testInfra.baseURL)
 
-    // The app shell (with the header bar) is mounted; find an aria-hidden
-    // overlay whose computed background image is a linear gradient.
+    // The app shell (with the header bar) is mounted; the fade overlay is an
+    // aria-hidden div carrying a linear-gradient background positioned at the
+    // header's bottom edge (top: 100%).
+    const overlay = page.getByTestId('layout-header-fade-overlay').first()
+    await expect(overlay).toBeAttached({ timeout: 30000 })
     await expect
       .poll(
         async () =>
-          page.evaluate(() => {
-            const nodes = Array.from(
-              document.querySelectorAll('div[aria-hidden="true"]'),
+          overlay.evaluate(n => {
+            const s = getComputedStyle(n as HTMLElement)
+            return (
+              s.backgroundImage.includes('linear-gradient') &&
+              (n as HTMLElement).style.top === '100%'
             )
-            return nodes.some(n => {
-              const s = getComputedStyle(n as HTMLElement)
-              return (
-                s.backgroundImage.includes('linear-gradient') &&
-                (n as HTMLElement).style.top === '100%'
-              )
-            })
           }),
         { timeout: 30000 },
       )

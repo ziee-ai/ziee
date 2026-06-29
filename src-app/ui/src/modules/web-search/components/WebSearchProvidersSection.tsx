@@ -149,6 +149,8 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
       <Paragraph
         type={entry.configured ? 'success' : 'secondary'}
         className="text-xs !mb-2"
+        data-testid={`websearch-provider-${entry.key}-status`}
+        data-configured={entry.configured ? 'true' : 'false'}
       >
         {entry.configured ? 'Configured' : 'Not configured'}
       </Paragraph>

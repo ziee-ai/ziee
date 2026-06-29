@@ -10,9 +10,10 @@
  */
 import { test } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 test.describe('Auth providers — visual smoke', () => {
-  test('list page + edit drawer + delete popconfirm', async ({
+  test('list page + edit drawer + delete confirm', async ({
     page,
     testInfra,
   }) => {
@@ -28,9 +29,7 @@ test.describe('Auth providers — visual smoke', () => {
     })
 
     // 2. Open Add menu (template dropdown — a `+` icon button).
-    await page
-      .getByRole('button', { name: 'Add authentication provider' })
-      .click()
+    await byTestId(page, 'authprov-add-button').click()
     await page.waitForTimeout(300) // let dropdown animation settle
     await page.screenshot({
       path: 'test-results/visual-add-menu.png',
@@ -38,7 +37,7 @@ test.describe('Auth providers — visual smoke', () => {
     })
 
     // 3. Click Generic OIDC → drawer opens with the form.
-    await page.getByRole('menuitem', { name: /Generic OIDC/i }).click()
+    await byTestId(page, 'authprov-add-dropdown-item-oidc-generic').click()
     await page.waitForLoadState('load')
     await page.screenshot({
       path: 'test-results/visual-edit-drawer-empty.png',
@@ -46,17 +45,19 @@ test.describe('Auth providers — visual smoke', () => {
     })
 
     // 4. Drawer with fields filled (pre-create state).
-    await page.getByLabel(/Name \(URL slug\)/i).fill('visual-test')
-    await page.getByLabel(/Client ID/i).fill('my-client-id')
-    await page.locator('input[type="password"]').first().fill('my-secret')
-    await page.getByLabel(/Issuer URL/i).fill('https://example.invalid/oidc')
+    await byTestId(page, 'authprov-name-input').fill('visual-test')
+    await byTestId(page, 'authprov-oidc-client-id-input').fill('my-client-id')
+    await byTestId(page, 'authprov-oidc-client-secret-input').fill('my-secret')
+    await byTestId(page, 'authprov-oidc-issuer-url-input').fill(
+      'https://example.invalid/oidc',
+    )
     await page.screenshot({
       path: 'test-results/visual-edit-drawer-filled.png',
       fullPage: true,
     })
 
     // 5. Click Test config → shows inline result alert.
-    await page.getByRole('button', { name: /test config/i }).click()
+    await byTestId(page, 'authprov-test-config-button').click()
     await page.waitForTimeout(2000)
     await page.screenshot({
       path: 'test-results/visual-edit-drawer-tested.png',
@@ -64,13 +65,11 @@ test.describe('Auth providers — visual smoke', () => {
     })
 
     // 6. Cancel back to the list.
-    await page.getByRole('button', { name: /^Cancel$/ }).click()
+    await byTestId(page, 'authprov-drawer-cancel-button').click()
     await page.waitForTimeout(300)
 
-    // 7. Open delete popconfirm for the apple row (was a Modal in
-    // an earlier revision; now an inline Popconfirm). The per-row
-    // delete carries aria-label "Delete <name>".
-    await page.getByRole('button', { name: 'Delete apple' }).click()
+    // 7. Open the delete confirm for the apple row (inline confirm dialog).
+    await byTestId(page, 'authprov-delete-button-apple').click()
     await page.waitForTimeout(300)
     await page.screenshot({
       path: 'test-results/visual-delete-popconfirm.png',

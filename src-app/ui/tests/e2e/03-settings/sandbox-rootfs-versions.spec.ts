@@ -6,6 +6,7 @@ import {
   createTestUser,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 // ---------------------------------------------------------------------------
 // Admin UI for the rootfs **version** lifecycle (version-grouped two-card
@@ -173,12 +174,15 @@ async function captureInstalls(page: Page): Promise<InstallReq[]> {
 }
 
 async function gotoSandbox(page: Page, baseURL: string) {
-  const heading = page.getByRole('heading', { name: 'Code Sandbox' })
+  // The resource-limits card renders for everyone who reaches the page (its own
+  // section gate aside), so it's a stable readiness signal independent of the
+  // rootfs section's per-perm rendering.
+  const ready = byTestId(page, 'sandbox-resource-limits-card')
   for (let attempt = 1; attempt <= 3; attempt++) {
     await page.goto(`${baseURL}/settings/sandbox`)
     await page.waitForLoadState('load').catch(() => {})
     try {
-      await expect(heading).toBeVisible({ timeout: 10000 })
+      await expect(ready).toBeVisible({ timeout: 10000 })
       return
     } catch (e) {
       if (attempt === 3) throw e
@@ -231,13 +235,13 @@ test.describe('Sandbox rootfs versions admin', () => {
     // It's the default → "Default" tag, and no Set-as-Default / Delete buttons.
     await expect(dlGroup(page, '0.0.3').getByTestId('default-tag')).toBeVisible()
     await expect(
-      dlGroup(page, '0.0.3').getByRole('button', { name: 'Set as Default' }),
+      dlGroup(page, '0.0.3').getByTestId('rootfs-set-default-0.0.3'),
     ).toHaveCount(0)
 
     // 0.0.4 (nothing downloaded) → Available card, with a Download button.
     await expect(availGroup(page, '0.0.4')).toBeVisible()
     await expect(
-      availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }),
+      availGroup(page, '0.0.4').getByTestId('rootfs-download-0.0.4'),
     ).toBeVisible()
   })
 
@@ -274,7 +278,7 @@ test.describe('Sandbox rootfs versions admin', () => {
     const installed = await captureInstalls(page)
     await gotoSandbox(page, baseURL)
 
-    await availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }).click()
+    await availGroup(page, '0.0.4').getByTestId('rootfs-download-0.0.4').click()
 
     // Both flavors of 0.0.4 are requested (atomic over flavors).
     await expect
@@ -319,17 +323,13 @@ test.describe('Sandbox rootfs versions admin', () => {
     await expect(availGroup(page, '0.0.6')).toBeVisible()
     await expect(downloadedCard(page).getByTestId('rootfs-version-group-0.0.6')).toHaveCount(0)
     await expect(
-      availGroup(page, '0.0.6')
-        .getByTestId('rootfs-row-0.0.6-minimal')
-        .getByText('Downloaded', { exact: true }),
-    ).toBeVisible()
+      availGroup(page, '0.0.6').getByTestId('sandbox-status-tag-0.0.6-minimal'),
+    ).toHaveAttribute('data-state', 'downloaded')
     await expect(
-      availGroup(page, '0.0.6')
-        .getByTestId('rootfs-row-0.0.6-full')
-        .getByText('Available', { exact: true }),
-    ).toBeVisible()
+      availGroup(page, '0.0.6').getByTestId('sandbox-status-tag-0.0.6-full'),
+    ).toHaveAttribute('data-state', 'available')
 
-    await availGroup(page, '0.0.6').getByRole('button', { name: 'Download' }).click()
+    await availGroup(page, '0.0.6').getByTestId('rootfs-download-0.0.6').click()
     // Only the missing flavor (full) is installed — NOT minimal again.
     await expect.poll(() => installed.length).toBe(1)
     expect(installed[0]).toMatchObject({ version: '0.0.6', flavor: 'full' })
@@ -366,11 +366,9 @@ test.describe('Sandbox rootfs versions admin', () => {
     await gotoSandbox(page, baseURL)
 
     // 0.0.3 → 0.0.5 is a patch bump (same major 0) → no confirm modal.
-    await dlGroup(page, '0.0.5')
-      .getByRole('button', { name: 'Set as Default' })
-      .click()
+    await dlGroup(page, '0.0.5').getByTestId('rootfs-set-default-0.0.5').click()
     await expect.poll(() => pinnedTo).toBe('0.0.5')
-    await expect(page.getByText(/major version bump/i)).toHaveCount(0)
+    await expect(byTestId(page, 'sandbox-major-bump-confirm')).toHaveCount(0)
   })
 
   test('Set as Default across a MAJOR bump shows a confirm + wipe warning', async ({
@@ -408,29 +406,20 @@ test.describe('Sandbox rootfs versions admin', () => {
     await gotoSandbox(page, baseURL)
 
     // First: open the modal and CANCEL — no set-pin call should fire.
-    await dlGroup(page, '1.0.0')
-      .getByRole('button', { name: 'Set as Default' })
-      .click()
-    // antd v6 renders the confirm title twice — a visually-hidden
-    // .ant-modal-title (the dialog's aria-label) + the visible
-    // .ant-modal-confirm-title. Match the dialog by its accessible name rather
-    // than a title text node (the hidden one fails toBeVisible).
-    const modal = page.getByRole('dialog', { name: /major version bump/i })
+    await dlGroup(page, '1.0.0').getByTestId('rootfs-set-default-1.0.0').click()
+    const modal = byTestId(page, 'sandbox-major-bump-confirm')
     await expect(modal).toBeVisible()
+    // The warning surfaces the affected-workspace counts (data the mock set:
+    // 3 conversation workspaces, 1 sandboxed MCP server workspace).
     await expect(modal.getByText(/3 conversation workspaces/i)).toBeVisible()
     await expect(modal.getByText(/1 sandboxed MCP server workspace/i)).toBeVisible()
-    await modal.getByRole('button', { name: 'Cancel' }).click()
+    await byTestId(page, 'sandbox-major-bump-confirm-cancel-btn').click()
     await page.waitForTimeout(300)
     expect(pinCalls).toBe(0)
 
     // Then: open again and CONFIRM → set-pin to 1.0.0.
-    await dlGroup(page, '1.0.0')
-      .getByRole('button', { name: 'Set as Default' })
-      .click()
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: /Set as default and wipe caches/i })
-      .click()
+    await dlGroup(page, '1.0.0').getByTestId('rootfs-set-default-1.0.0').click()
+    await byTestId(page, 'sandbox-major-bump-confirm-ok-btn').click()
     await expect.poll(() => pinnedTo).toBe('1.0.0')
 
     // The swap returned in-flight sessions → draining indicator surfaces.
@@ -508,11 +497,8 @@ test.describe('Sandbox rootfs versions admin', () => {
     )
     await gotoSandbox(page, baseURL)
 
-    await dlGroup(page, '0.0.5').getByRole('button', { name: 'Delete' }).click()
-    await page
-      .locator('.ant-popconfirm, .ant-popover')
-      .getByRole('button', { name: 'Delete' })
-      .click()
+    await dlGroup(page, '0.0.5').getByTestId('rootfs-delete-0.0.5').click()
+    await byTestId(page, 'sandbox-delete-confirm-0.0.5-confirm').click()
 
     // Both 0.0.5 artifacts (minimal id ...51, full id ...52) are deleted...
     await expect.poll(() => deleted.length).toBe(2)
@@ -556,7 +542,7 @@ test.describe('Sandbox rootfs versions admin', () => {
     await expect(group(page, '0.1.1')).toHaveCount(0)
     // The tar.zst release parses + offers a Download.
     await expect(availGroup(page, '0.2.2')).toBeVisible()
-    await availGroup(page, '0.2.2').getByRole('button', { name: 'Download' }).click()
+    await availGroup(page, '0.2.2').getByTestId('rootfs-download-0.2.2').click()
     await expect.poll(() => installed.filter(i => i.version === '0.2.2').length).toBe(2)
     // parseAssetName resolved the .tar.zst suffix → package routed through.
     expect(installed.filter(i => i.version === '0.2.2').every(i => i.package === 'tar.zst')).toBe(true)
@@ -606,7 +592,7 @@ test.describe('Sandbox rootfs versions admin', () => {
     ).toHaveCount(1)
 
     // The host package (squashfs) is chosen for the Download, not tar.zst.
-    await availGroup(page, '0.7.0').getByRole('button', { name: 'Download' }).click()
+    await availGroup(page, '0.7.0').getByTestId('rootfs-download-0.7.0').click()
     await expect.poll(() => installed.filter(i => i.version === '0.7.0').length).toBe(2)
     expect(
       installed.filter(i => i.version === '0.7.0').every(i => i.package === 'squashfs'),
@@ -690,7 +676,7 @@ test.describe('Sandbox rootfs versions admin', () => {
     const installed = await captureInstalls(page)
     await gotoSandbox(page, baseURL)
 
-    await availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }).click()
+    await availGroup(page, '0.0.4').getByTestId('rootfs-download-0.0.4').click()
     await expect.poll(() => installed.filter(i => i.version === '0.0.4').length).toBe(2)
     // Server-authoritative host package (tar.zst) chosen, not squashfs default.
     expect(
@@ -772,7 +758,7 @@ test.describe('Sandbox rootfs versions admin', () => {
     const installed = await captureInstalls(page)
     await gotoSandbox(page, baseURL)
 
-    await availGroup(page, '0.0.7').getByRole('button', { name: 'Download' }).click()
+    await availGroup(page, '0.0.7').getByTestId('rootfs-download-0.0.7').click()
     await expect.poll(() => installed.filter(i => i.version === '0.0.7').length).toBe(2)
     // The host-arch filter offered aarch64 flavors, not the x86_64 default.
     expect(installed.filter(i => i.version === '0.0.7').every(i => i.arch === 'aarch64')).toBe(true)
@@ -790,12 +776,9 @@ test.describe('Sandbox rootfs versions admin', () => {
 
     // Downloaded versions still render (installed is unchanged).
     await expect(dlGroup(page, '0.0.3')).toBeVisible()
-    // Available card shows the GitHub-unreachable guidance (no enabled hint).
+    // Available card shows the GitHub-unreachable empty guidance.
     await expect(
-      availableCard(page).getByText(/No versions available to download/i),
-    ).toBeVisible()
-    await expect(
-      availableCard(page).getByText(/api\.github\.com/i),
+      availableCard(page).getByTestId('sandbox-available-empty'),
     ).toBeVisible()
   })
 
@@ -830,13 +813,13 @@ test.describe('Sandbox rootfs versions admin', () => {
 
     // Read-only: groups render, but Download / Set-as-Default / Delete disabled.
     await expect(
-      availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }),
+      availGroup(page, '0.0.4').getByTestId('rootfs-download-0.0.4'),
     ).toBeDisabled()
     await expect(
-      dlGroup(page, '0.0.5').getByRole('button', { name: 'Set as Default' }),
+      dlGroup(page, '0.0.5').getByTestId('rootfs-set-default-0.0.5'),
     ).toBeDisabled()
     await expect(
-      dlGroup(page, '0.0.5').getByRole('button', { name: 'Delete' }),
+      dlGroup(page, '0.0.5').getByTestId('rootfs-delete-0.0.5'),
     ).toBeDisabled()
   })
 
@@ -861,7 +844,7 @@ test.describe('Sandbox rootfs versions admin', () => {
     // Page rendered (route admitted), but the rootfs section shows its own
     // gate rather than the version cards.
     await expect(
-      page.getByText(/don't have permission to view rootfs versions/i),
+      byTestId(page, 'sandbox-rootfs-noperm-alert'),
     ).toBeVisible()
     await expect(downloadedCard(page)).toHaveCount(0)
   })
@@ -892,9 +875,9 @@ test.describe('Sandbox rootfs versions admin', () => {
 
     await gotoSandbox(page, baseURL)
 
-    // The disconnect error surfaces.
+    // The disconnect error surfaces (top-level rootfs error Alert).
     await expect(
-      page.getByText(/SSE disconnected; reconnecting/),
+      byTestId(page, 'sandbox-rootfs-error-alert'),
     ).toBeVisible({ timeout: 15000 })
 
     // A bounded reconnect fires (delay is 3s) — the store re-subscribes.
@@ -917,13 +900,11 @@ test.describe('Sandbox rootfs versions admin', () => {
 
     await expect(downloadedCard(page)).toBeVisible()
     await expect(
-      downloadedCard(page).getByText(
-        'No rootfs versions downloaded yet. Download one from the Available versions list below.',
-      ),
+      downloadedCard(page).getByTestId('sandbox-downloaded-empty'),
     ).toBeVisible()
     // The Available card still lists a downloadable release.
     await expect(
-      availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }),
+      availGroup(page, '0.0.4').getByTestId('rootfs-download-0.0.4'),
     ).toBeVisible()
   })
 
@@ -936,7 +917,9 @@ test.describe('Sandbox rootfs versions admin', () => {
     await login(page, baseURL, uname, 'password123')
 
     await page.goto(`${baseURL}/settings/sandbox`)
-    await expect(page.getByText(/Not authorized/i)).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible({
+      timeout: 10000,
+    })
     expect(page.url()).toContain('/settings/sandbox')
   })
 })

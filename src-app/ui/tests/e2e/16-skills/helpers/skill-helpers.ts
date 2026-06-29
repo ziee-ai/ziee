@@ -1,4 +1,5 @@
 import { Page, expect } from '@playwright/test'
+import { byTestId } from '../../testid.ts'
 
 /**
  * Navigation helpers for the Skills E2E suite. Mirrors the shape of
@@ -21,18 +22,12 @@ import { Page, expect } from '@playwright/test'
 // need is already in flight.
 export async function goToSkillsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/skills`)
-  await page
-    .getByRole('heading', { level: 4, name: 'Skills', exact: true })
-    .first()
-    .waitFor({ timeout: 15000 })
+  await byTestId(page, 'skills-page').waitFor({ timeout: 15000 })
 }
 
 export async function goToAdminSkillsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/skills-admin`)
-  await page
-    .getByRole('heading', { level: 4, name: 'System Skills', exact: true })
-    .first()
-    .waitFor({ timeout: 15000 })
+  await byTestId(page, 'skills-admin-page').waitFor({ timeout: 15000 })
 }
 
 /**
@@ -41,9 +36,7 @@ export async function goToAdminSkillsPage(page: Page, baseURL: string) {
  * `SkillsList.tsx`).
  */
 export async function assertSkillsEmptyState(page: Page) {
-  await expect(
-    page.getByText(/no skills installed yet/i),
-  ).toBeVisible()
+  await expect(byTestId(page, 'skill-list-empty')).toBeVisible()
 }
 
 /**
@@ -51,7 +44,5 @@ export async function assertSkillsEmptyState(page: Page) {
  * from the user list (see `admin/AdminSkillsPage.tsx`).
  */
 export async function assertAdminSkillsEmptyState(page: Page) {
-  await expect(
-    page.getByText(/no system skills installed/i),
-  ).toBeVisible()
+  await expect(byTestId(page, 'skill-admin-empty')).toBeVisible()
 }

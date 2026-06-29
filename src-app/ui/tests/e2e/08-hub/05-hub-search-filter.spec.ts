@@ -93,9 +93,7 @@ test.describe('Hub Search and Filters', () => {
       expect(filteredCount).toBe(0)
 
       // Should show a "no match" message (catalog has models, none match)
-      await expect(
-        page.getByText(/no models match|no.*results|no.*found/i),
-      ).toBeVisible()
+      await expect(page.getByTestId('hub-models-empty')).toBeVisible()
     })
 
     test('should clear search and show all results', async ({ page, testInfra }) => {
@@ -215,7 +213,7 @@ test.describe('Hub Search and Filters', () => {
       await waitForHubDataLoad(page)
 
       // Search should be cleared on tab switch (or persisted, depending on design)
-      const searchInput = page.getByRole('textbox', { name: /search/i })
+      const searchInput = page.locator('[data-testid60"-search-input"]').first()
       const searchValue = await searchInput.inputValue()
 
       // Either empty (cleared) or still has value (persisted)
@@ -273,7 +271,7 @@ test.describe('Hub Search and Filters', () => {
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
 
-      const searchInput = page.getByRole('textbox', { name: /search/i })
+      const searchInput = page.locator('[data-testid60"-search-input"]').first()
 
       // Type quickly
       await searchInput.fill('l')
@@ -307,7 +305,7 @@ test.describe('Hub Search and Filters', () => {
       await waitForHubDataLoad(page)
 
       // Check if search persisted (depends on implementation)
-      const searchInput = page.getByRole('textbox', { name: /search/i })
+      const searchInput = page.locator('[data-testid60"-search-input"]').first()
       const newSearchValue = await searchInput.inputValue()
 
       // Either persisted or cleared is acceptable

@@ -5,10 +5,10 @@ import { waitForHubDataLoad } from './helpers/hub-navigation'
 /**
  * E2E — Skill hub card "Install for groups…" modal (admin distribution path).
  *
- * `SkillHubCard` gives `canManageSystem` admins a `Dropdown.Button` whose
- * "Install for groups…" item opens a Modal ("Install for groups") with a
- * multi-select of user groups; OK calls `HubSkills.installForGroups`. None of
- * the modal flow was exercised. This drives it end-to-end against the seeded
+ * `SkillHubCard` gives `canManageSystem` admins a split Dropdown button whose
+ * "Install for groups…" item opens a Dialog ("Install for groups") with a
+ * multi-select of user groups; submit calls `HubSkills.installForGroups`. None
+ * of the modal flow was exercised. This drives it end-to-end against the seeded
  * hub skill catalog.
  */
 
@@ -24,36 +24,40 @@ test.describe('Hub Skills — install for groups', () => {
     await expect(page).toHaveURL(/\/hub\/skills/)
     await waitForHubDataLoad(page)
 
-    const card = page.locator('[data-testid^="hub-skill-card-"]').first()
+    const card = page.getByTestId(/^hub-skill-card-/).first()
     await expect(card).toBeVisible({ timeout: 30000 })
+    const name = (await card.getAttribute('data-testid'))!.slice(
+      'hub-skill-card-'.length,
+    )
 
-    // Open the admin install dropdown (the arrow part of the Dropdown.Button).
-    await card.locator('.ant-dropdown-trigger').click()
+    // Open the admin install dropdown (the split button is also the menu trigger).
+    await page.getByTestId(`hub-skill-install-dropdown-btn-${name}`).click()
 
-    // Pick "Install for groups…" from the menu.
-    await page
-      .getByRole('menuitem', { name: /Install for groups/i })
-      .click()
+    // Pick "Install for groups…" from the menu (kit Dropdown item key 'groups').
+    await page.getByTestId(`hub-skill-admin-dropdown-${name}-item-groups`).click()
 
-    // The modal opens with the group multi-select.
-    const modal = page.getByRole('dialog', { name: 'Install for groups' })
-    await expect(modal).toBeVisible({ timeout: 10000 })
+    // The dialog opens with the group multi-select.
+    const dialog = page.getByTestId(`hub-skill-groups-dialog-${name}`)
+    await expect(dialog).toBeVisible({ timeout: 10000 })
 
     // Select the first available group.
-    await modal.locator('.ant-select').click()
+    await page.getByTestId(`hub-skill-groups-multiselect-${name}`).click()
     await page
-      .locator('.ant-select-dropdown:visible .ant-select-item-option')
+      .locator(`[data-testid^="hub-skill-groups-multiselect-${name}-opt-"]`)
       .first()
       .click()
     // Close the option overlay.
     await page.keyboard.press('Escape')
 
     // Confirm install.
-    await modal.getByRole('button', { name: 'Install', exact: true }).click()
+    await page.getByTestId(`hub-skill-groups-install-btn-${name}`).click()
 
-    // Success toast for the group-scoped install.
+    // Success toast for the group-scoped install (`... for selected groups`).
     await expect(
-      page.getByText(/for selected groups/i).first(),
+      page
+        .locator('[data-sonner-toast][data-type="success"]')
+        .filter({ hasText: 'for selected groups' })
+        .first(),
     ).toBeVisible({ timeout: 15000 })
   })
 })

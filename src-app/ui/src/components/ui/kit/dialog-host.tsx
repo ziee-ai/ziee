@@ -20,6 +20,7 @@ interface DialogItem {
   cancelText?: string
   danger?: boolean
   tone?: Tone
+  testid?: string
   resolve: (ok: boolean) => void
 }
 
@@ -43,11 +44,15 @@ export interface ConfirmOptions {
   okText: string
   cancelText: string
   danger?: boolean
+  /** Optional stable test id stamped on the dialog content + OK/Cancel actions. */
+  testid?: string
 }
 export interface AlertOptions {
   title: React.ReactNode
   description?: React.ReactNode
   okText: string
+  /** Optional stable test id stamped on the dialog content + OK action. */
+  testid?: string
 }
 
 export const dialog = {
@@ -82,7 +87,7 @@ export function DialogHost() {
   const Icon = it.cancelText == null ? toneIcon[it.tone ?? 'default'] : null
   return (
     <AlertDialog key={it.id} open onOpenChange={(o) => { if (!o) close(it, false) }}>
-      <AlertDialogContent {...(it.description == null ? { 'aria-describedby': undefined } : {})}>
+      <AlertDialogContent data-testid={it.testid} {...(it.description == null ? { 'aria-describedby': undefined } : {})}>
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             {Icon != null && <Icon className={cn('size-5 shrink-0', toneColor[it.tone ?? 'default'])} aria-hidden />}
@@ -92,9 +97,10 @@ export function DialogHost() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           {it.cancelText != null && (
-            <AlertDialogCancel onClick={() => close(it, false)}>{it.cancelText}</AlertDialogCancel>
+            <AlertDialogCancel data-testid={it.testid ? `${it.testid}-cancel-btn` : undefined} onClick={() => close(it, false)}>{it.cancelText}</AlertDialogCancel>
           )}
           <AlertDialogAction
+            data-testid={it.testid ? `${it.testid}-ok-btn` : undefined}
             onClick={() => close(it, true)}
             className={cn(it.danger && 'bg-destructive text-destructive-foreground hover:bg-destructive/90')}
           >

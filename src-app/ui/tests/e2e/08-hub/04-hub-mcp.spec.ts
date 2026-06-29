@@ -62,9 +62,13 @@ test.describe('Hub MCP Servers', () => {
     // Install MCP server
     await installMcpServerFromHub(page, mcpServerId)
 
-    // Should show success message (use .first() to handle Ant Design duplicates)
+    // Should show success/warning toast (the create round-tripped)
     await expect(
-      page.getByText(/installed.*successfully|mcp.*server.*installed/i).first(),
+      page
+        .locator(
+          '[data-sonner-toast][data-type="success"], [data-sonner-toast][data-type="warning"]',
+        )
+        .first(),
     ).toBeVisible({ timeout: 5000 })
 
     await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
@@ -88,9 +92,13 @@ test.describe('Hub MCP Servers', () => {
       description: 'Custom description for testing',
     })
 
-    // Should show success message (use .first() to handle Ant Design duplicates)
+    // Should show success/warning toast (the create round-tripped)
     await expect(
-      page.getByText(/installed.*successfully|mcp.*server.*installed/i).first(),
+      page
+        .locator(
+          '[data-sonner-toast][data-type="success"], [data-sonner-toast][data-type="warning"]',
+        )
+        .first(),
     ).toBeVisible({ timeout: 5000 })
 
     await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
@@ -181,7 +189,7 @@ test.describe('Hub MCP Servers', () => {
 
     // Click "View" button
     const card = page.getByTestId(`hub-mcp-card-${installedMcpId}`)
-    await card.getByRole('button', { name: /view/i }).click()
+    await card.getByTestId('hub-mcp-view-btn').click()
 
     // The View button navigates to /settings/mcp-servers (user MCP
     // page) per McpServerHubCard. We're satisfied if we leave the
@@ -191,7 +199,7 @@ test.describe('Hub MCP Servers', () => {
     // under Playwright's history hooks).
     await page.waitForLoadState('load').catch(() => {})
     const urlChanged = !page.url().includes('/hub/')
-    const drawer = page.getByRole('dialog', { name: /mcp.*server/i })
+    const drawer = page.getByTestId('hub-mcp-detail-sheet')
     const drawerVisible = await drawer.isVisible({ timeout: 2000 }).catch(() => false)
 
     expect(urlChanged || drawerVisible).toBe(true)
@@ -217,7 +225,7 @@ test.describe('Hub MCP Servers', () => {
     const cardCount = await cards.count()
     if (cardCount > 0) {
       await expect(
-        cards.first().getByRole('button', { name: /^install$/i }),
+        cards.first().getByTestId('hub-mcp-install-btn'),
       ).toHaveCount(0)
     }
   })
@@ -226,8 +234,8 @@ test.describe('Hub MCP Servers', () => {
     const mcpCards = await getMcpServerCards(page)
     const firstCard = mcpCards.first()
 
-    // MCP servers should have tags displayed
-    const tags = firstCard.locator('[class*="tag"]').or(firstCard.locator('.ant-tag'))
+    // MCP servers should have tags displayed (transport / version / registry)
+    const tags = firstCard.locator('[data-testid*="-tag-"]')
     const tagCount = await tags.count()
 
     // Should have at least some tags (varies by MCP server)
@@ -247,7 +255,11 @@ test.describe('Hub MCP Servers', () => {
 
     await installMcpServerFromHub(page, HTTP_HUB_MCP_ID)
     await expect(
-      page.getByText(/installed.*successfully|mcp.*server.*installed/i).first(),
+      page
+        .locator(
+          '[data-sonner-toast][data-type="success"], [data-sonner-toast][data-type="warning"]',
+        )
+        .first(),
     ).toBeVisible({ timeout: 15000 })
 
     // A conversation so the composer's "Skills/MCP in this chat" entries render.
@@ -263,10 +275,16 @@ test.describe('Hub MCP Servers', () => {
     await page.waitForSelector('textarea[placeholder*="Type your message"]', { timeout: 30000 })
 
     // Open the composer "+" → MCP config modal → the installed server is listed.
-    await page.getByRole('button', { name: 'Add attachment' }).first().click()
-    await page.getByText('MCP tools & servers').click()
-    const modal = page.getByRole('dialog').filter({ hasText: 'MCP Configuration' })
+    await page.getByTestId('chat-input-add-btn').first().click()
+    await page.getByTestId('chat-mcp-menu-item').click()
+    const modal = page.getByTestId('mcp-config-modal')
     await expect(modal).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByText(/brave/i).first()).toBeVisible({ timeout: 10000 })
+    // The installed server (display name contains "brave") appears in the
+    // servers accordion — dynamic data the install produced.
+    await expect(
+      page
+        .getByTestId('mcp-config-servers-accordion')
+        .filter({ hasText: /brave/i }),
+    ).toBeVisible({ timeout: 10000 })
   })
 })

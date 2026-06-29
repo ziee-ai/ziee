@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import type { APIRequestContext } from '@playwright/test'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — conversation-switch race in the summarization read-model.
@@ -104,14 +105,17 @@ test.describe('Summarization — conversation-switch race', () => {
     await page.goto(`${baseURL}/chat/${b.convId}`)
 
     // B's boundary divider must reflect B's summary.
-    const dividerB = page
-      .locator(`[data-message-id="${b.anchorId}"]`)
-      .getByText(/condensed into a summary/i)
+    const dividerB = byTestId(
+      page.locator(`[data-message-id="${b.anchorId}"]`),
+      'summ-boundary-toggle',
+    )
     await expect(dividerB).toBeVisible({ timeout: 30000 })
     await dividerB.click()
-    await expect(page.getByText(summaryB)).toBeVisible({ timeout: 5000 })
+    const summaryCard = byTestId(page, 'summ-boundary-card')
+    await expect(summaryCard).toBeVisible({ timeout: 5000 })
+    await expect(summaryCard).toContainText(summaryB)
 
     // A's summary must NOT have leaked into B's view.
-    await expect(page.getByText(summaryA)).toHaveCount(0)
+    await expect(summaryCard).not.toContainText(summaryA)
   })
 })

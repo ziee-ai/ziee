@@ -66,19 +66,22 @@ test('clicking Download on a disabled-repo model shows the disabled modal + open
   // repo we just disabled).
   const firstCard = (await getModelCards(page)).first()
   await expect(firstCard).toBeVisible()
-  await firstCard.getByRole('button', { name: /download/i }).click()
+  const modelName = (await firstCard.getAttribute('data-testid'))!.replace(
+    'hub-model-card-',
+    '',
+  )
+  await firstCard.getByTestId(`hub-model-download-btn-${modelName}`).click()
 
-  // "Repository Disabled" modal appears. The probe never runs because
-  // the enabled-gate fires first.
-  const modal = page.getByRole('dialog').filter({ hasText: 'Repository Disabled' })
+  // "Repository Disabled" gate dialog appears. The probe never runs
+  // because the enabled-gate fires first.
+  const modal = page.getByTestId('hub-download-gate-disabled')
   await expect(modal).toBeVisible({ timeout: 10_000 })
 
-  // Primary button → opens the LlmRepositoryDrawer. The drawer's
-  // title contains "Edit" since the disabled HF repo is built-in.
-  await modal.getByRole('button', { name: 'Open Repository Settings' }).click()
-  await expect(
-    page.locator('.ant-drawer.ant-drawer-open .ant-drawer-title').last(),
-  ).toContainText(/Built-in Repository/, { timeout: 10_000 })
+  // Primary button → opens the LlmRepositoryDrawer in place.
+  await page.getByTestId('hub-download-gate-disabled-ok-btn').click()
+  await expect(page.getByTestId('llmrepo-form')).toBeVisible({
+    timeout: 10_000,
+  })
 
   // NO download POST was fired.
   expect(getHits()).toBe(0)
@@ -100,17 +103,19 @@ test('the disabled-repo modal Cancel path dismisses without opening settings or 
 
   const firstCard = (await getModelCards(page)).first()
   await expect(firstCard).toBeVisible()
-  await firstCard.getByRole('button', { name: /download/i }).click()
+  const modelName = (await firstCard.getAttribute('data-testid'))!.replace(
+    'hub-model-card-',
+    '',
+  )
+  await firstCard.getByTestId(`hub-model-download-btn-${modelName}`).click()
 
-  const modal = page
-    .getByRole('dialog')
-    .filter({ hasText: 'Repository Disabled' })
+  const modal = page.getByTestId('hub-download-gate-disabled')
   await expect(modal).toBeVisible({ timeout: 10_000 })
 
-  // Cancel → the modal closes; the repository drawer is NOT opened.
-  await modal.getByRole('button', { name: 'Cancel' }).click()
+  // Cancel → the dialog closes; the repository drawer is NOT opened.
+  await page.getByTestId('hub-download-gate-disabled-cancel-btn').click()
   await expect(modal).toBeHidden({ timeout: 10_000 })
-  await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0)
+  await expect(page.getByTestId('llmrepo-form')).toHaveCount(0)
 
   // Still no download POST.
   expect(getHits()).toBe(0)

@@ -1,7 +1,8 @@
 import { test, expect } from '../../fixtures/test-context'
 import { isDarkMode } from '../../utils/theme'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-helpers'
+import { goToSettingsPage, waitForSettingsPageLoad, selectThemeOption } from './helpers/navigation-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the REAL ThemeSettings "Appearance" UI (ThemeSettings.tsx). The existing
@@ -21,17 +22,15 @@ test.describe('Settings — Appearance theme switcher (real UI)', () => {
     await goToSettingsPage(page, baseURL, 'general')
     await waitForSettingsPageLoad(page, 'General')
 
-    const themeSelect = page.getByLabel('Theme')
+    const themeSelect = byTestId(page, 'settingsgen-theme-select')
     await expect(themeSelect).toBeVisible({ timeout: 15000 })
 
     // Choose Dark via the UI → the document gains the `dark` class.
-    await themeSelect.click()
-    await page.getByRole('option', { name: 'Dark', exact: true }).click()
+    await selectThemeOption(page, 'dark')
     await expect.poll(() => isDarkMode(page), { timeout: 10000 }).toBe(true)
 
     // Choose Light via the UI → the `dark` class is removed.
-    await themeSelect.click()
-    await page.getByRole('option', { name: 'Light', exact: true }).click()
+    await selectThemeOption(page, 'light')
     await expect.poll(() => isDarkMode(page), { timeout: 10000 }).toBe(false)
   })
 })

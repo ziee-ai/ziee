@@ -276,7 +276,7 @@ export function InstalledHubTab() {
                   return (
                     <Fragment key={`${row.entity_type}:${row.entity_id}`}>
                       {i > 0 && <Separator className="!my-3" />}
-                      <div className="flex items-start gap-3 flex-wrap">
+                      <div className="flex items-start gap-3 flex-wrap" data-testid={`hub-installed-row-${row.entity_id}`}>
                         <div className="flex-1 min-w-48">
                           {/* Title row — name + scope tag + version tag. */}
                           <Flex align="center" gap="small" wrap>

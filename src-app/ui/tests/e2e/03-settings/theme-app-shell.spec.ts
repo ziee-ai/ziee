@@ -4,7 +4,9 @@ import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   goToSettingsPage,
   waitForSettingsPageLoad,
+  selectThemeOption,
 } from './helpers/navigation-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * Theme changes propagate beyond the settings page into the app shell + chat
@@ -23,39 +25,23 @@ test.describe('Theme — applies across the app shell', () => {
     await waitForSettingsPageLoad(page, 'General')
 
     // Pick Dark via the real theme selector.
-    await page.locator('#theme-form [aria-label="Theme"]').first().click()
-    await page
-      .getByRole('listbox')
-      .or(page.locator('.ant-select-dropdown'))
-      .first()
-      .waitFor({ state: 'visible' })
-    await page.getByTitle('Dark').click()
+    await selectThemeOption(page, 'dark')
     await page.waitForTimeout(500)
     expect(await isDarkMode(page)).toBe(true)
 
     // Navigate to the app shell / new chat surface — the dark class persists.
     await page.goto(`${baseURL}/`)
-    await expect(
-      page.getByRole('button', { name: 'Send message' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'app-sidebar')).toBeVisible({ timeout: 30000 })
     expect(await isDarkMode(page)).toBe(true)
 
     // Switch back to Light from settings → the chat shell goes light too.
     await goToSettingsPage(page, baseURL, 'general')
     await waitForSettingsPageLoad(page, 'General')
-    await page.locator('#theme-form [aria-label="Theme"]').first().click()
-    await page
-      .getByRole('listbox')
-      .or(page.locator('.ant-select-dropdown'))
-      .first()
-      .waitFor({ state: 'visible' })
-    await page.getByTitle('Light').click()
+    await selectThemeOption(page, 'light')
     await page.waitForTimeout(500)
 
     await page.goto(`${baseURL}/`)
-    await expect(
-      page.getByRole('button', { name: 'Send message' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'app-sidebar')).toBeVisible({ timeout: 30000 })
     expect(await isDarkMode(page)).toBe(false)
   })
 })

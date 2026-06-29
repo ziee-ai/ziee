@@ -40,38 +40,43 @@ test.describe('Hub — Installed tab actions', () => {
     await page.goto(`${baseURL}/hub/installed`)
     await expect(page).toHaveURL(/\/hub\/installed/)
 
-    const row = page
-      .locator('.ant-card', { hasText: 'Assistants' })
-      .getByText(installedName, { exact: true })
-    await expect(row).toBeVisible({ timeout: 15000 })
-
-    // The Remove button lives in the same flex row as the name.
+    // Locate the tracked row by the name this test created (dynamic data,
+    // so a hasText filter is allowed). The Remove button lives in the row.
     const rowContainer = page
-      .locator('div.flex.items-start', { hasText: installedName })
+      .getByTestId(/^hub-installed-row-/)
+      .filter({ hasText: installedName })
       .first()
-    const removeBtn = rowContainer.getByRole('button', { name: /^Remove$/ })
+    await expect(rowContainer).toBeVisible({ timeout: 15000 })
+
+    const removeBtn = rowContainer.getByTestId(/^hub-installed-remove-btn-/)
     await expect(removeBtn).toBeVisible()
 
-    // --- Drive the real Remove action: Popconfirm → confirm ---
+    // --- Drive the real Remove action: Confirm dialog → confirm ---
     await removeBtn.click()
-    const popconfirm = page.locator('.ant-popconfirm:visible').last()
-    await expect(popconfirm).toBeVisible({ timeout: 5000 })
+    const confirm = page.getByTestId(/^hub-installed-remove-confirm-/)
+    await expect(confirm).toBeVisible({ timeout: 5000 })
 
     const deleteResp = page.waitForResponse(
       r =>
         /\/api\/assistants\//.test(r.url()) && r.request().method() === 'DELETE',
       { timeout: 15000 },
     )
-    // The confirm button carries okText "Remove" with danger styling.
-    await popconfirm.getByRole('button', { name: /^Remove$/ }).click()
+    // The confirm OK button derives `${confirmTestid}-confirm`.
+    await page
+      .locator(
+        '[data-testid^="hub-installed-remove-confirm-"][data-testid$="-confirm"]',
+      )
+      .click()
 
     const resp = await deleteResp
     expect(resp.status()).toBeLessThan(300)
 
     // Success toast + the row clears from the Installed tab.
-    await expect(page.getByText(/Removed/).first()).toBeVisible({ timeout: 10000 })
     await expect(
-      page.getByText(installedName, { exact: true }),
+      page.locator('[data-sonner-toast][data-type="success"]').first(),
+    ).toBeVisible({ timeout: 10000 })
+    await expect(
+      page.getByTestId(/^hub-installed-row-/).filter({ hasText: installedName }),
     ).toHaveCount(0, { timeout: 15000 })
   })
 })

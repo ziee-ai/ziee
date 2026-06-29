@@ -89,7 +89,7 @@ test.describe('Hub — Workflows tab', () => {
     await expect(page).toHaveURL(/\/hub\/workflows/)
     // The tab's own search input proves the WorkflowsHubTab component mounted.
     await expect(
-      page.getByPlaceholder('Search workflows...'),
+      page.getByTestId('hub-workflows-search-input'),
     ).toBeVisible({ timeout: 30000 })
   })
 
@@ -118,14 +118,15 @@ test.describe('Hub — Workflows tab', () => {
     })
 
     await page.goto(`${baseURL}/hub/workflows`)
-    const card = page.locator('.ant-card').filter({ hasText: 'Demo Workflow' })
+    const card = page.getByTestId('hub-workflow-card-demo-workflow')
     await expect(card).toBeVisible({ timeout: 30000 })
 
     // Admin sees the split "Install" button — its main segment installs-for-me.
-    await card.getByRole('button', { name: 'Install', exact: true }).click()
+    await page.getByTestId('hub-workflow-install-dropdown-btn-demo-workflow').click()
+    await page.keyboard.press('Escape')
 
-    await expect(card.getByText('Installed', { exact: true })).toBeVisible({
-      timeout: 10000,
-    })
+    await expect(
+      page.getByTestId('hub-workflow-installed-tag-demo-workflow'),
+    ).toBeVisible({ timeout: 10000 })
   })
 })

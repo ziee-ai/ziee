@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToSkillsPage } from './helpers/skill-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the user-scope Import-Skill dialog (ImportSkillDialog.tsx).
@@ -31,21 +32,24 @@ test.describe('Skills — user Import dialog validate', () => {
     await loginAsAdmin(page, baseURL)
     await goToSkillsPage(page, baseURL)
 
-    await page.getByRole('button', { name: /import/i }).click()
+    await byTestId(page, 'skill-list-import-button').click()
 
-    const dialog = page.getByRole('dialog', { name: 'Import Skill' })
+    const dialog = byTestId(page, 'skill-import-dialog')
     await expect(dialog).toBeVisible()
 
-    await dialog.locator('input[type="file"]').setInputFiles({
-      name: 'SKILL.md',
-      mimeType: 'text/markdown',
-      buffer: Buffer.from(VALID_SKILL_MD, 'utf8'),
-    })
+    await byTestId(dialog, 'skill-import-upload')
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: 'SKILL.md',
+        mimeType: 'text/markdown',
+        buffer: Buffer.from(VALID_SKILL_MD, 'utf8'),
+      })
 
-    await dialog.getByRole('button', { name: 'Validate' }).click()
+    await byTestId(dialog, 'skill-import-validate-button').click()
 
-    await expect(dialog.getByText('Valid skill')).toBeVisible({
-      timeout: 30000,
-    })
+    // tone="success" → the Alert renders role="status" (i18n-safe).
+    const alert = byTestId(dialog, 'skill-import-validation-alert')
+    await expect(alert).toBeVisible({ timeout: 30000 })
+    await expect(alert).toHaveAttribute('role', 'status')
   })
 })

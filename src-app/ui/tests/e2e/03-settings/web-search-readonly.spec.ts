@@ -6,6 +6,7 @@ import {
   login,
   clearAuthState,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the read-only permission path on the Web Search admin settings page.
@@ -45,12 +46,14 @@ test.describe('Web search settings — read-only permission path', () => {
     await page.goto(`${baseURL}/settings/web-search`)
 
     // The read-only Alert renders (the !canManage branch).
-    await expect(page.getByText('Read-only view')).toBeVisible({ timeout: 15000 })
+    await expect(
+      byTestId(page, 'websearch-global-readonly-alert'),
+    ).toBeVisible({ timeout: 15000 })
 
     // The Save button is present but disabled (no manage permission).
-    await expect(
-      page.getByRole('button', { name: 'Save' }),
-    ).toBeDisabled({ timeout: 10000 })
+    await expect(byTestId(page, 'websearch-global-save')).toBeDisabled({
+      timeout: 10000,
+    })
   })
 
   test('a manage user is NOT read-only (positive control)', async ({
@@ -63,9 +66,11 @@ test.describe('Web search settings — read-only permission path', () => {
 
     // Admin holds `*`, so the read-only Alert must be absent and the
     // settings Card is rendered editable.
-    await expect(page.getByText('Web search').first()).toBeVisible({
+    await expect(byTestId(page, 'websearch-global-card')).toBeVisible({
       timeout: 15000,
     })
-    await expect(page.getByText('Read-only view')).toHaveCount(0)
+    await expect(
+      byTestId(page, 'websearch-global-readonly-alert'),
+    ).toHaveCount(0)
   })
 })

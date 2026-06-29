@@ -7,6 +7,7 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import { goToSkillsPage } from './helpers/skill-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * Journey: import a skill (dev bundle) → it appears in the library → it is
@@ -86,10 +87,15 @@ test.describe('Skills - import → use-in-conversation journey', () => {
     ).toBe(201)
 
     // 2. It shows up in the user skills library.
+    // SKILL_NAME is dynamic data this test created — a text filter on the
+    // skill card is allowed.
     await goToSkillsPage(page, baseURL)
-    await expect(page.getByText(SKILL_NAME).first()).toBeVisible({
-      timeout: 15000,
-    })
+    await expect(
+      page
+        .locator('[data-testid^="skill-list-card-"]')
+        .filter({ hasText: SKILL_NAME })
+        .first(),
+    ).toBeVisible({ timeout: 15000 })
 
     // 3. It is available to USE inside a conversation. Seed a model + a
     //    conversation, open the chat, then the per-conversation skills panel.
@@ -117,12 +123,16 @@ test.describe('Skills - import → use-in-conversation journey', () => {
     await page.goto(`${baseURL}/chat/${conversationId}`)
 
     // Open the "+" dropdown → "Skills in this chat".
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByRole('button', { name: 'Skills in this chat' }).click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'skill-conversation-menu-item').click()
 
-    // The modal lists every available skill, including the imported one.
-    const modal = page.getByRole('dialog', { name: 'Skills in this conversation' })
+    // The modal lists every available skill, including the imported one
+    // (SKILL_NAME is dynamic data this test created).
+    const modal = byTestId(page, 'skill-conversation-dialog')
     await expect(modal).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByText(SKILL_NAME)).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'skill-conversation-list')).toContainText(
+      SKILL_NAME,
+      { timeout: 10000 },
+    )
   })
 })

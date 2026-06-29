@@ -21,21 +21,30 @@ test.describe('Hub Workflows', () => {
   })
 
   test('lists hub workflows and installs one for the current user', async ({ page }) => {
-    const card = page.locator('[data-testid^="hub-workflow-card-"]').first()
+    const card = page.getByTestId(/^hub-workflow-card-/).first()
     await expect(card).toBeVisible({ timeout: 20000 })
 
     // Not yet installed.
-    await expect(card.getByText('Installed', { exact: true })).toHaveCount(0)
+    await expect(
+      card.locator('[data-testid^="hub-workflow-installed-tag-"]'),
+    ).toHaveCount(0)
 
-    // The card's install action (Dropdown.Button primary / "Install for me").
-    await card.getByTestId('hub-workflow-install-btn').click()
+    // The card's install action (admin split-button primary / "Install for me").
+    await card
+      .locator(
+        '[data-testid^="hub-workflow-install-dropdown-btn-"], [data-testid^="hub-workflow-install-btn-"]',
+      )
+      .click()
+    await page.keyboard.press('Escape')
 
     // Real install → success toast.
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 10000 })
+    await expect(
+      page.locator('[data-sonner-toast][data-type="success"]').first(),
+    ).toBeVisible({ timeout: 10000 })
 
     // Card reflects the installed state.
-    await expect(card.getByText('Installed', { exact: true })).toBeVisible({
-      timeout: 10000,
-    })
+    await expect(
+      card.locator('[data-testid^="hub-workflow-installed-tag-"]'),
+    ).toBeVisible({ timeout: 10000 })
   })
 })

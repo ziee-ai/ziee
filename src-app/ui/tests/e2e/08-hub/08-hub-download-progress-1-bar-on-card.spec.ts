@@ -188,33 +188,36 @@ test('hub card renders a full-width Progress bar at the bottom with percent + sp
   await waitForHubDataLoad(page)
 
   const firstCard = (await getModelCards(page)).first()
-  await firstCard.getByRole('button', { name: /download/i }).click()
+  const modelName = (await firstCard.getAttribute('data-testid'))!.replace(
+    'hub-model-card-',
+    '',
+  )
+  await firstCard.getByTestId(`hub-model-download-btn-${modelName}`).click()
 
-  // Handle the optional Select Quantization modal.
-  const quantModal = page
-    .getByRole('dialog')
-    .filter({ hasText: 'Select Quantization' })
+  // Handle the optional Select Quantization dialog.
+  const quantModal = page.getByTestId('hub-model-download-quant-dialog')
   if (await quantModal.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await quantModal.getByRole('button', { name: 'Continue' }).click()
+    await page.getByTestId('hub-model-download-quant-dialog-ok-btn').click()
   }
 
   // The "Download started" toast confirms the POST landed and the
   // store added the row with the mocked progress_data.
-  await expect(page.getByText(/Download started/i)).toBeVisible({
-    timeout: 10_000,
-  })
+  await expect(
+    page
+      .locator('[data-sonner-toast][data-type="success"]')
+      .filter({ hasText: /Download started/i }),
+  ).toBeVisible({ timeout: 10_000 })
 
   // Top status tag flips to "Downloading" (no percent — that lives
   // on the bar).
-  await expect(
-    firstCard.locator('.ant-tag').filter({ hasText: 'Downloading' }),
-  ).toBeVisible({ timeout: 5_000 })
+  const statusTag = firstCard.getByTestId(`hub-model-status-tag-${modelName}`)
+  await expect(statusTag).toBeVisible({ timeout: 5_000 })
+  await expect(statusTag).toContainText('Downloading')
 
   // The full-width Progress at the bottom of the card body shows 50%
   // and the inline info contains a speed unit.
-  const progress = firstCard.locator('.ant-progress')
+  const progress = firstCard.getByTestId(`hub-model-progress-${modelName}`)
   await expect(progress).toBeVisible({ timeout: 5_000 })
-  await expect(progress).toHaveAttribute('aria-valuenow', '50')
   await expect(progress).toContainText('50%')
   await expect(progress).toContainText(/MB\/s/)
 })

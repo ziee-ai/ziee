@@ -140,8 +140,8 @@ test.describe('Hub Navigation', () => {
     // Navigate to hub
     await page.goto(`${baseURL}/hub/models`)
 
-    // Should show loading spinner initially
-    const spinner = page.getByRole('progressbar').or(page.locator('.ant-spin'))
+    // Should show loading spinner initially (kit Spin renders role="status")
+    const spinner = page.getByRole('status')
 
     // Either loading is visible, or data loads so fast we miss it
     const spinnerVisible = await spinner.isVisible({ timeout: 500 }).catch(() => false)

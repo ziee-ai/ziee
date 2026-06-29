@@ -1,6 +1,7 @@
 import { gzipSync } from 'zlib'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the per-conversation ConversationSkillsPanel hide/unhide toggle
@@ -83,11 +84,13 @@ test.describe('Skills — per-conversation panel toggle', () => {
     await page.goto(`${baseURL}/chat/${convId}`)
 
     // Open the "+" dropdown → "Skills in this chat".
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByRole('button', { name: 'Skills in this chat' }).click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'skill-conversation-menu-item').click()
 
     // The panel lists the imported skill with a visibility Switch (on).
-    const sw = page.getByRole('switch').first()
+    const sw = byTestId(page, 'skill-conversation-list')
+      .locator('[data-testid^="skill-conversation-switch-"]')
+      .first()
     await expect(sw).toBeVisible({ timeout: 15000 })
     await expect(sw).toBeChecked()
 

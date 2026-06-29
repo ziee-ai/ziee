@@ -21,13 +21,25 @@ test.describe('Hub Workflows — install for me', () => {
     await expect(page).toHaveURL(/\/hub\/workflows/)
     await waitForHubDataLoad(page)
 
-    const card = page.locator('[data-testid^="hub-workflow-card-"]').first()
+    const card = page.getByTestId(/^hub-workflow-card-/).first()
     await expect(card).toBeVisible({ timeout: 30000 })
 
-    // Admin Dropdown.Button primary action is "Install" (for me).
-    await card.getByRole('button', { name: 'Install', exact: true }).click()
+    // Admin split-button primary action is "Install" (for me).
+    await card
+      .locator(
+        '[data-testid^="hub-workflow-install-dropdown-btn-"], [data-testid^="hub-workflow-install-btn-"]',
+      )
+      .click()
+    await page.keyboard.press('Escape')
 
-    await expect(page.getByText(/^Installed "/).first()).toBeVisible({ timeout: 15000 })
-    await expect(card.getByText('Installed', { exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(
+      page
+        .locator('[data-sonner-toast][data-type="success"]')
+        .filter({ hasText: 'Installed' })
+        .first(),
+    ).toBeVisible({ timeout: 15000 })
+    await expect(
+      card.locator('[data-testid^="hub-workflow-installed-tag-"]'),
+    ).toBeVisible({ timeout: 15000 })
   })
 })

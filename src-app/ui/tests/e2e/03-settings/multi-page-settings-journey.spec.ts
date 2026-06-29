@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — a multi-page settings navigation journey.
@@ -18,27 +19,30 @@ test.describe('Settings — multi-page journey', () => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/profile`)
-    await expect(
-      page.getByRole('heading', { name: 'Profile' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible({
+      timeout: 30000,
+    })
 
     // Profile → General (client-side route via the settings menu).
-    await page.getByRole('menuitem', { name: 'General' }).click()
+    await byTestId(page, 'settings-nav-menu-item-general').click()
     await expect(page).toHaveURL(/\/settings\/general$/)
-    await expect(page.getByRole('heading', { name: 'General' })).toBeVisible({
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible({
       timeout: 30000,
     })
 
     // General → Hardware.
-    await page.getByRole('menuitem', { name: 'Hardware' }).click()
+    await byTestId(page, 'settings-nav-menu-item-hardware').click()
     await expect(page).toHaveURL(/\/settings\/hardware$/)
-    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+    await byTestId(page, 'settings-page-title').waitFor({
+      state: 'visible',
+      timeout: 30000,
+    })
 
     // Hardware → back to Profile (the menu persists across pages).
-    await page.getByRole('menuitem', { name: 'Profile' }).click()
+    await byTestId(page, 'settings-nav-menu-item-profile').click()
     await expect(page).toHaveURL(/\/settings\/profile$/)
-    await expect(
-      page.getByRole('heading', { name: 'Profile' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible({
+      timeout: 30000,
+    })
   })
 })

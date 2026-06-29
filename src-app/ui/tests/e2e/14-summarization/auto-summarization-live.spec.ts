@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   createProviderViaAPI,
   createModelViaAPI,
@@ -104,8 +105,8 @@ test.describe('Summarization — automatic trigger during a real chat', () => {
     // then poll for the boundary divider that only renders when a summary row
     // exists (auto-created, never seeded here).
     await page.reload()
-    await expect(
-      page.getByText(/condensed into a summary/i).first(),
-    ).toBeVisible({ timeout: 60_000 })
+    await expect(byTestId(page, 'summ-boundary-toggle').first()).toBeVisible({
+      timeout: 60_000,
+    })
   })
 })

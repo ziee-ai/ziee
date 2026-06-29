@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — a NON-admin user can reach /settings/general.
@@ -25,9 +26,9 @@ test.describe('Settings — general page (non-admin)', () => {
 
     await page.goto(`${baseURL}/settings/general`)
 
-    // The General settings page renders for a non-admin (theme form present).
-    await expect(
-      page.locator('#theme-form [aria-label="Theme"]').first(),
-    ).toBeVisible({ timeout: 30000 })
+    // The General settings page renders for a non-admin (theme select present).
+    await expect(byTestId(page, 'settingsgen-theme-select')).toBeVisible({
+      timeout: 30000,
+    })
   })
 })

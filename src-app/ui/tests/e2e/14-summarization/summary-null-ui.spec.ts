@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // audit id all-2c8186fe48a3 — the null-summary case was only asserted via the
 // API (GET /summary → null). Through the UI, SummaryBoundaryMarker bails on a
@@ -35,8 +36,6 @@ test.describe('Summarization — null summary in the chat UI', () => {
       timeout: 30000,
     })
     // ...and NO condensed-conversation summary marker is shown.
-    await expect(
-      page.getByRole('button', { name: /condensed-conversation summary/i }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'summ-boundary-toggle')).toHaveCount(0)
   })
 })
