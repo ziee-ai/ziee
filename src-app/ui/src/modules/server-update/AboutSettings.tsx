@@ -35,7 +35,14 @@ export default function AboutSettings() {
     error,
   } = Stores.ServerUpdate
 
-  if (loading && currentVersion == null) {
+  // Show the loading state until the first status load resolves — not
+  // only while `loading` is explicitly true. The store sets `loading`
+  // via an async __init__, so the very first synchronous render has
+  // loading=false + currentVersion=null; without this the card would
+  // flash em-dash placeholders before the fetch kicks in. An error
+  // (currentVersion still null) falls through to render the card so the
+  // error Alert is visible.
+  if (currentVersion == null && error == null) {
     return (
       <SettingsPageContainer title="About" subtitle="Server version and updates">
         <div className="flex justify-center py-12">

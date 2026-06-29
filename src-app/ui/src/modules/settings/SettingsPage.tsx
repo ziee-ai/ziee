@@ -1,8 +1,14 @@
-import { Button, Dropdown, Flex, Result, Title, Text } from '@/components/ui'
+import { Button, Dropdown, Flex, Link, Result, Title, Text } from '@/components/ui'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
+import { BookOpen, Compass, ExternalLink } from 'lucide-react'
+
+// Help destination. `ziee-chat-new` is the opaque external GitHub repo
+// URL (the one place the legacy name legitimately survives per CLAUDE.md);
+// its README is the de-facto operator documentation.
+const HELP_DOCS_URL = 'https://github.com/phibya/ziee-chat-new#readme'
 import { useEffect, useRef, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
@@ -121,6 +127,26 @@ export default function SettingsPage() {
           })),
         ]
       : []),
+    // Help + onboarding guidance (reserved keys handled in onSelect).
+    { type: 'divider' as const },
+    {
+      key: '__onboarding__',
+      label: (
+        <Flex className={'gap-2 items-center'}>
+          <Compass />
+          Onboarding guide
+        </Flex>
+      ),
+    },
+    {
+      key: '__help__',
+      label: (
+        <Flex className={'gap-2 items-center'}>
+          <BookOpen />
+          Help &amp; documentation
+        </Flex>
+      ),
+    },
   ]
 
   // For permission checks on deep-linked URLs we need the flat valid section keys.
@@ -212,6 +238,14 @@ export default function SettingsPage() {
                   }
                 })}
                 onSelect={(key) => {
+                  if (key === '__onboarding__') {
+                    navigate('/onboarding')
+                    return
+                  }
+                  if (key === '__help__') {
+                    window.open(HELP_DOCS_URL, '_blank', 'noopener,noreferrer')
+                    return
+                  }
                   handleMenuClick(key)
                 }}
                 onOpenChange={setMobileMenuOpen}
@@ -242,11 +276,37 @@ export default function SettingsPage() {
             paints below itself. */}
         {!useMobileLayout && (
           <div
-            className="w-fit pt-1"
+            className="w-fit pt-1 flex flex-col h-full"
             role="navigation"
             aria-label="Settings sections"
           >
-            <SettingsMenu />
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <SettingsMenu />
+            </div>
+            {/* Help + onboarding guidance, pinned to the bottom of the nav. */}
+            <div className="border-t border-border p-2 flex flex-col gap-1">
+              <Button
+                data-testid="settings-onboarding-link"
+                variant="ghost"
+                size="sm"
+                icon={<Compass />}
+                className="justify-start"
+                onClick={() => navigate('/onboarding')}
+              >
+                Onboarding guide
+              </Button>
+              <Link
+                data-testid="settings-help-link"
+                href={HELP_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 px-2 py-1 text-sm"
+              >
+                <BookOpen className="h-4 w-4" />
+                Help &amp; documentation
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
           </div>
         )}
 

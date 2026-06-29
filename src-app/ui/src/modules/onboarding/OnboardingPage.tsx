@@ -104,13 +104,30 @@ export default function OnboardingPage() {
 
   if (!guide) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-4 p-8 bg-background">
-        <Title level={4}>No onboarding guides available</Title>
-        <Text type="secondary" className="text-center max-w-md">
-          The onboarding content has not been configured yet. Check back later or
-          contact your administrator.
+      <div
+        data-testid="onboarding-empty-state"
+        className="flex flex-col items-center justify-center h-screen gap-4 p-8 bg-background text-center"
+      >
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <Book className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <Title level={4} className="!mb-0">
+          No onboarding guides available
+        </Title>
+        <Text type="secondary" className="max-w-md">
+          Onboarding guides walk you through first-time setup — connecting a model
+          provider, configuring tools, and personalizing your workspace. None have
+          been configured for this deployment yet.
         </Text>
-        <Button data-testid="onboarding-no-guides-go-to-chat" onClick={() => navigate('/chat')}>
+        <Text type="secondary" className="max-w-md text-sm">
+          Check back after your administrator finishes setup, or jump straight into
+          chat to get started.
+        </Text>
+        <Button
+          data-testid="onboarding-no-guides-go-to-chat"
+          variant="default"
+          onClick={() => navigate('/chat')}
+        >
           Go to Chat
         </Button>
       </div>
@@ -125,9 +142,11 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Left pane: guide list */}
-      <div className="w-64 flex-shrink-0 border-r overflow-y-auto p-4 flex flex-col gap-2 border-border bg-card">
+    <div className="flex flex-col md:flex-row h-screen overflow-hidden bg-background">
+      {/* Left pane: guide list. On small screens it collapses into a
+          height-capped, scrollable strip above the step viewer (the
+          two-pane row stacks vertically below the md breakpoint). */}
+      <div className="w-full md:w-64 flex-shrink-0 max-h-44 md:max-h-none border-b md:border-r overflow-y-auto p-4 flex flex-col gap-2 border-border bg-card">
         <div className="flex items-center gap-2 mb-2">
           <Book className="text-lg" />
           <Text strong>Onboarding</Text>
@@ -170,7 +189,7 @@ export default function OnboardingPage() {
       {/* Right pane: step viewer */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header with steps */}
-        <div className="p-6 border-b border-border bg-card">
+        <div className="p-4 md:p-6 border-b border-border bg-card">
           <Title level={4} className="!mb-3">
             {guide.title}
           </Title>
@@ -184,7 +203,7 @@ export default function OnboardingPage() {
         </div>
 
         {/* Step content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {nextError && (
             <Alert
               data-testid="onboarding-page-next-error-alert"
