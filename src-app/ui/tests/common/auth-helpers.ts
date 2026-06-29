@@ -171,7 +171,13 @@ export async function loginAsAdmin(
   // Onboarding is API-marked complete above and admins are never redirected by
   // OnboardingRedirect, so a single fresh goto won't bounce. NOT `networkidle`:
   // the realtime-sync SSE stream keeps the network busy so it never settles.
-  const appShell = page.getByRole('button', { name: /New Chat/ })
+  // On desktop the "New Chat" button is visible in the sidebar; on a mobile
+  // viewport the sidebar is collapsed behind the toggle, so New Chat is hidden.
+  // Wait for EITHER signal so the helper is viewport-agnostic.
+  const appShell = page
+    .getByRole('button', { name: /New Chat/ })
+    .or(page.getByTestId('layout-sidebar-toggle-button'))
+    .first()
   await page.goto(`${baseURL}/`)
   await page.waitForLoadState('load')
   await appShell.waitFor({ state: 'visible', timeout: 45000 })

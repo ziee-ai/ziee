@@ -54,6 +54,16 @@ export async function createProviderViaAPI(
     process.env.ZIEE_TEST_LLM_BASE_URL ||
     baseUrlMap[providerType]
 
+  // The backend rejects an enabled REMOTE provider with an empty api_key
+  // ("API key is required for enabled remote providers"). Structural specs
+  // (routing, group assignment, …) only need a provider row to exist and don't
+  // actually call the upstream, so fall back to a placeholder key when the
+  // env key is unset. Real-LLM specs set the env/bridge key, which takes
+  // precedence here. Local providers need no key.
+  const apiKey =
+    apiKeyMap[providerType] ??
+    (providerType === 'local' ? undefined : 'sk-test-placeholder')
+
   const response = await fetch(`${apiURL}/api/llm-providers`, {
     method: 'POST',
     headers: {
@@ -65,7 +75,7 @@ export async function createProviderViaAPI(
       provider_type: providerType,
       enabled: true,
       base_url: baseUrl,
-      api_key: apiKeyMap[providerType],
+      api_key: apiKey,
     }),
   })
 
