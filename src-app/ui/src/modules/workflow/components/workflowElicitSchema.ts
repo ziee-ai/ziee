@@ -48,10 +48,17 @@ export interface FieldSchema {
   title?: string
   description?: string
   default?: unknown
+  /** JSON-schema string `format` (date, date-time, email, uri, password). */
+  format?: string
   // scalar constraints
   minimum?: number
   maximum?: number
   enum?: unknown[]
+  /** Parallel labels for `enum` values (legacy `enumNames`). */
+  enumNames?: string[]
+  /** Titled single-select choices (top-level `anyOf`/`oneOf`). */
+  anyOf?: TitledChoice[]
+  oneOf?: TitledChoice[]
   const?: unknown
   pattern?: string
   minLength?: number
@@ -64,11 +71,22 @@ export interface FieldSchema {
   ui?: FieldUiHints
 }
 
-/** The `items` of an `array` whose elements are objects. */
+/** A titled enum choice: a JSON-schema `anyOf`/`oneOf` entry `{const, title?}`. */
+export interface TitledChoice {
+  const: string
+  title?: string
+}
+
+/** The `items` of an `array`. For a table the elements are objects
+ *  (`properties`); for a multi-select they carry `enum`/`anyOf`/`oneOf`. */
 export interface ObjectItemsSchema {
   type?: string
   properties?: Record<string, FieldSchema>
   required?: string[]
+  /** Multi-select choices (primitive-array items). */
+  enum?: unknown[]
+  anyOf?: TitledChoice[]
+  oneOf?: TitledChoice[]
 }
 
 /** A property the form should render as an editable table. */
