@@ -233,7 +233,7 @@ test.describe('Inline file previews — per-viewer rendering', () => {
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
     await expect(body).toContainText(/failed to load/i, { timeout: 10000 })
-    await expect(body.locator('.ant-spin')).toHaveCount(0)
+    await expect(body.getByRole('status')).toHaveCount(0)
   })
 
   // ── tabular (CSV / TSV) ───────────────────────────────────────────────────
@@ -247,11 +247,11 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     const body = page
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
-    await expect(body.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
-    // AntD Table v6 renders a measure row + dual <table> elements
-    // for fixed-header scroll. Use AntD's `.ant-table-row` class
-    // which only marks actual data rows.
-    expect(await body.locator('.ant-table-row').count()).toBe(2)
+    await expect(body.locator('[data-testid^="file-delimited-table-row-"]').first()).toBeVisible({ timeout: 10000 })
+    // The kit Table derives `${tableTestid}-row-${rowKey}` on each data row,
+    // so the prefixed data-testid selector only matches actual data rows
+    // (not measure/header scaffolding).
+    expect(await body.locator('[data-testid^="file-delimited-table-row-"]').count()).toBe(2)
   })
 
   test('tsv: renders as table', async ({ page, testInfra }) => {
@@ -263,8 +263,8 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     const body = page
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
-    await expect(body.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
-    expect(await body.locator('.ant-table-row').count()).toBe(1)
+    await expect(body.locator('[data-testid^="file-delimited-table-row-"]').first()).toBeVisible({ timeout: 10000 })
+    expect(await body.locator('[data-testid^="file-delimited-table-row-"]').count()).toBe(1)
   })
 
   test('csv with quoted commas inside fields preserves them', async ({
@@ -288,12 +288,11 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     const body = page
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
-    const rows = body.locator('.ant-table-row')
+    const rows = body.locator('[data-testid^="file-delimited-table-row-"]')
     await expect(rows).toHaveCount(1, { timeout: 10000 })
     // The first data row must contain the quoted-comma name as one contiguous
     // value — if the CSV parser had split on the comma inside the quotes, the
     // "Smith, J." substring (comma + space) would not survive in a single cell.
-    // (AntD's virtual Table renders cells as `.ant-table-cell` divs, not <td>.)
     await expect(rows.first()).toContainText('Smith, J.')
   })
 

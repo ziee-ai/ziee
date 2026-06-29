@@ -124,7 +124,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     })
     const preview = page.locator('[data-testid="inline-file-preview"]').first()
     await expect(preview).toBeVisible({ timeout: 10000 })
-    await expect(preview.locator('[data-testid="inline-file-preview-body"] .ant-table-row').first()).toBeVisible({ timeout: 10000 })
+    await expect(preview.locator('[data-testid="inline-file-preview-body"] [data-testid^="file-delimited-table-row-"]').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('viewer matched by mime wildcard (image/heic) renders inline', async ({
@@ -173,7 +173,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     // The viewer's icon is rendered (AntD's PictureOutlined). Match by
     // presence of an aria-label or a known antd icon class anywhere
     // in the header.
-    await expect(preview.locator('.anticon').first()).toBeVisible()
+    await expect(preview.locator('[data-testid="inline-file-preview-icon"]').first()).toBeVisible()
   })
 
   test('body in inline context receives the {source} variant of FileViewerSlotProps', async ({
@@ -195,7 +195,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     await expect(img).toHaveAttribute('src', uri)
     // No spinner — confirms the source branch fired (not the file
     // branch's thumbnailUrls path which would be empty).
-    await expect(preview.locator('.ant-spin')).toHaveCount(0)
+    await expect(preview.getByRole('status')).toHaveCount(0)
   })
 
   test('chat code contains no hardcoded MIME literals', async () => {

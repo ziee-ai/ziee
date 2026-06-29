@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -74,7 +75,7 @@ test.describe('Inline file previews — per-block positioning', () => {
     await selectModelInDropdown(page, 'GPT-4o Mini')
     const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
     await textarea.fill('say hi')
-    await page.getByRole('button', { name: 'Send message' }).click()
+    await byTestId(page, 'chat-input-send-btn').click()
 
     const bubble = page.locator(`[data-testid="chat-message"][data-message-id="${assistantMsgId}"]`)
     await expect(bubble).toBeVisible({ timeout: 15000 })

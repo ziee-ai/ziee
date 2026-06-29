@@ -55,7 +55,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
       resourceLinks: [{ uri, name: 'data.csv', mime_type: 'text/csv' }],
     })
     const preview = page.locator('[data-testid="inline-file-preview"]').first()
-    await expect(preview.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
+    await expect(preview.locator('[data-testid^="file-delimited-table-row-"]').first()).toBeVisible({ timeout: 10000 })
     expect(mock.callCount(uri)).toBe(1)
     // Collapse + re-expand a few times — should not trigger refetches.
     const chevron = preview.locator('[data-testid="inline-file-preview-chevron"]')
@@ -63,7 +63,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
       await chevron.click()
       await chevron.click()
     }
-    await expect(preview.locator('.ant-table-row').first()).toBeVisible()
+    await expect(preview.locator('[data-testid^="file-delimited-table-row-"]').first()).toBeVisible()
     expect(mock.callCount(uri)).toBe(1)
   })
 
@@ -80,7 +80,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
     await expect(body).toContainText(/failed to load/i, { timeout: 10000 })
-    await expect(body.locator('.ant-spin')).toHaveCount(0)
+    await expect(body.getByRole('status')).toHaveCount(0)
   })
 
   test('after page reload, files re-render identically from DB', async ({
@@ -102,7 +102,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
       .locator(`[data-testid="chat-message"][data-message-id="${assistantMessageId}"]`)
       .locator('[data-testid="inline-file-preview"]')
       .first()
-    await expect(preview.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
+    await expect(preview.locator('[data-testid^="file-delimited-table-row-"]').first()).toBeVisible({ timeout: 10000 })
 
     // The page reload would re-hit /messages from the backend (NOT the
     // mock above, which is per-page-context). In v1 we don't have a
@@ -122,7 +122,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
       .locator(`[data-testid="chat-message"][data-message-id="${assistantMessageId}"]`)
       .locator('[data-testid="inline-file-preview"]')
       .first()
-    await expect(previewAfter.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
+    await expect(previewAfter.locator('[data-testid^="file-delimited-table-row-"]').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('tool_result with no resource_links renders no inline files', async ({

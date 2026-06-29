@@ -120,7 +120,7 @@ test.describe('Inline file previews — backend-owned artifacts (file_id)', () =
     // AntD Table v6 renders dual `<table>` elements for fixed-header
     // scroll (one in the header, one in the body) — strict-mode-safe
     // selector targets only the BODY table where data rows live.
-    const table = preview.locator('.ant-table-row').first()
+    const table = preview.locator('[data-testid^="file-delimited-table-row-"]').first()
     await expect(table).toBeVisible()
     await expect(table).toContainText('Hanoi')
     await expect(preview).not.toContainText('Failed to load file content.')
