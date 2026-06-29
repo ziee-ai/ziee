@@ -226,6 +226,36 @@ impl HealthStateMachine {
         }
     }
 
+    /// Rebuild a state machine from the persisted DB columns
+    /// (`llm_runtime_instances.state` / `restart_attempts` /
+    /// `last_failure_reason`) so the flap/give-up history survives a server
+    /// restart. Without this the in-memory map starts empty on boot and a
+    /// model the flap cap had already marked `failed` would be auto-respawned.
+    ///
+    /// Only the two terminal states (`Failed` / `Stopped`) are reconstructed
+    /// verbatim — they carry no `Instant`. Every other persisted state is
+    /// transient (the engine is not running just after a restart anyway), so
+    /// we fall back to a fresh `Starting` state while still preserving the
+    /// `restart_attempts` counter as the backstop against immediate re-flap.
+    pub fn from_persisted(
+        max_restart_attempts: u32,
+        state_name: &str,
+        restart_attempts: i32,
+        last_failure_reason: Option<String>,
+    ) -> Self {
+        let mut sm = Self::new(max_restart_attempts);
+        sm.restart_attempts = restart_attempts.max(0) as u32;
+        sm.state = match state_name {
+            "failed" => InstanceState::Failed {
+                reason: last_failure_reason
+                    .unwrap_or_else(|| "failed (restored from persisted state)".to_string()),
+            },
+            "stopped" => InstanceState::Stopped,
+            _ => InstanceState::Starting,
+        };
+        sm
+    }
+
     /// Feed an event; mutate state; return what the supervisor
     /// should do.
     pub fn on_event(&mut self, event: HealthEvent) -> Transition {
