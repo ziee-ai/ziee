@@ -21,7 +21,7 @@ inputs:
 steps:
   - id: write
     kind: llm
-    prompt: "Write a sentence about {{ topic }}"
+    prompt: "Write a sentence about {{ inputs.topic }}"
 outputs:
   - name: result
     from: "{{ write.output }}"

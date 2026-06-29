@@ -176,6 +176,18 @@ pub async fn plain_server() -> TestServer {
     TestServer::start().await
 }
 
+/// Like `plain_server`, but relaxes the resource_link external-fetch SSRF
+/// policy (debug-only `MCP_RESOURCE_LINK_ALLOW_LOOPBACK` seam) so a workflow
+/// tool step can ingest a `resource_link` served by a loopback mock download
+/// server. Mirrors the option used by `tool_step.rs` / `sync_emit_test.rs`.
+pub async fn plain_server_allow_loopback() -> TestServer {
+    TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: vec![("MCP_RESOURCE_LINK_ALLOW_LOOPBACK".into(), "1".into())],
+        ..Default::default()
+    })
+    .await
+}
+
 /// A minimal valid 1-step llm workflow (no sandbox flavor reqs). Shared
 /// across the access/durability + system-endpoint tests.
 pub const SIMPLE_OK_YAML: &str = r#"inputs:

@@ -17,7 +17,8 @@ use serde_json::{Value as Json, json};
 use uuid::Uuid;
 
 use super::{
-    SIMPLE_OK_YAML, count_files_for_run, db_pool, import_dev_workflow, plain_server, poll_run,
+    SIMPLE_OK_YAML, count_files_for_run, db_pool, import_dev_workflow, plain_server,
+    plain_server_allow_loopback, poll_run,
     register_mock_as_user_server, run_workflow, stub_conversation, stub_model_for, workflow_user,
 };
 use crate::common::test_helpers::create_user_with_permissions;
@@ -288,7 +289,9 @@ async fn delete_run_cross_user_is_forbidden() {
 
 #[tokio::test]
 async fn delete_no_conversation_run_cascades_created_files_keeps_referenced() {
-    let server = plain_server().await;
+    // The tool step ingests a `resource_link` served by a loopback mock, so
+    // relax the resource_link external-fetch SSRF policy.
+    let server = plain_server_allow_loopback().await;
     let user = run_user(&server, "wf_del_noconv").await;
     let (_stub, model_id) = stub_model_for(&server, &user.user_id).await;
 
@@ -364,7 +367,9 @@ async fn delete_no_conversation_run_cascades_created_files_keeps_referenced() {
 
 #[tokio::test]
 async fn delete_with_conversation_run_keeps_files_nulling_run_link() {
-    let server = plain_server().await;
+    // The tool step ingests a `resource_link` served by a loopback mock, so
+    // relax the resource_link external-fetch SSRF policy.
+    let server = plain_server_allow_loopback().await;
     let user = run_user(&server, "wf_del_conv").await;
     // A conversation (also supplies the model snapshot).
     let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
