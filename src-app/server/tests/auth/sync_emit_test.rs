@@ -56,7 +56,11 @@ async fn auth_provider_create_update_delete_emit_to_read_holder_only() {
         .json()
         .await
         .unwrap();
-    let id = created["id"].as_str().expect("create returns id").to_string();
+    // Create response is an envelope: { provider, connection_warning }.
+    let id = created["provider"]["id"]
+        .as_str()
+        .expect("create returns id")
+        .to_string();
 
     let ev = actor_probe
         .expect_event("auth_provider", "create", EVENT_TIMEOUT)

@@ -1847,8 +1847,15 @@ async fn test_upload_unprocessable_pdf_degrades_gracefully() {
 /// into ONE entry whose `aka` carries the other filename — the production
 /// behavior the `dedup_by_checksum` unit tests only cover in isolation.
 #[tokio::test]
+#[serial_test::serial(repos, file_storage)]
 async fn dedup_collapses_identical_uploads_in_resolve_available_files() {
     let server = crate::common::TestServer::start().await;
+    // This test calls `resolve_available_files` in-process, which reads via the
+    // process-global `Repos` factory + file storage; point both at THIS test's
+    // DB/store so the in-process resolver sees the HTTP-uploaded files.
+    // (Re-init-able factory + `#[serial(repos, file_storage)]`.)
+    ziee::init_repositories(sqlx::PgPool::connect(&server.database_url).await.unwrap());
+    ziee::init_file_storage(server.data_dir().join("files"));
     let user = test_helpers::create_user_with_permissions(
         &server,
         "dedup_upload",

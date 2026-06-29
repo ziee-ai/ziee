@@ -62,11 +62,12 @@ async fn builtin_skills_are_synced_listed_and_not_deletable() {
         "built-in description carries its frontmatter: {builtin}"
     );
 
-    // All 10 ziee capability skills are present.
+    // All 13 ziee capability skills are present (3 life-science skills were
+    // added to the embedded `resources/builtin-skills/` set).
     let builtin_count = skills.iter().filter(|s| s["scope"] == "built_in").count();
     assert_eq!(
-        builtin_count, 10,
-        "all 10 built-in capability skills synced; got {builtin_count}"
+        builtin_count, 13,
+        "all 13 built-in capability skills synced; got {builtin_count}"
     );
 
     // Not uninstallable: DELETE /skills/{id} is rejected (not user-scope / owner).

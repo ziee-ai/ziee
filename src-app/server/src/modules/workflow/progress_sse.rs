@@ -149,8 +149,11 @@ pub async fn subscribe(
         };
 
     let s = stream! {
-        yield Ok::<Event, Infallible>(connected_axum);
+        // Documented contract (see module header + endpoint docs): the stream
+        // OPENS with the snapshot frame, then the connected handshake, then
+        // live per-step events.
         yield Ok::<Event, Infallible>(snapshot_axum);
+        yield Ok::<Event, Infallible>(connected_axum);
         if let Some((client_id, mut rx)) = live {
             while let Some(item) = rx.recv().await {
                 match item {

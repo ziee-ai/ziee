@@ -17,7 +17,9 @@ async fn create_repository(
         .header("Authorization", format!("Bearer {token}"))
         .json(&json!({
             "name": name,
-            "url": "https://example.com/test",
+            // Unique per call: migration 116 added UNIQUE(url), so repeated
+            // creates with a fixed URL collide (DUPLICATE_REPOSITORY).
+            "url": format!("https://example.com/{}", name.replace(' ', "-").to_lowercase()),
             "auth_type": "api_key",
             "auth_config": { "api_key": "test-api-key-12345" },
             "enabled": true
@@ -25,8 +27,10 @@ async fn create_repository(
         .send()
         .await
         .expect("create repository request failed");
-    assert_eq!(res.status(), 201, "repository create should return 201");
-    let row: serde_json::Value = res.json().await.unwrap();
+    let st = res.status();
+    let body = res.text().await.unwrap();
+    assert_eq!(st, 201, "repository create should return 201; body={body}");
+    let row: serde_json::Value = serde_json::from_str(&body).unwrap();
     row["id"].as_str().unwrap().to_string()
 }
 

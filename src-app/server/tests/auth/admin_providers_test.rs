@@ -133,8 +133,9 @@ async fn test_admin_providers_crud_happy_path() {
         .unwrap();
     assert_eq!(r.status(), 201);
     let created: serde_json::Value = r.json().await.unwrap();
-    let id = created["id"].as_str().unwrap().to_string();
-    assert_eq!(created["config"]["client_secret"], json!("••••••"));
+    // Create response is now an envelope: { provider, connection_warning }.
+    let id = created["provider"]["id"].as_str().unwrap().to_string();
+    assert_eq!(created["provider"]["config"]["client_secret"], json!("••••••"));
 
     // 2. List — secret still masked.
     let r = client
@@ -319,6 +320,19 @@ async fn test_public_providers_list_no_secrets() {
         .await
         .unwrap();
 
+    // The create-time health probe (token-exchange against the live OIDC
+    // endpoint) downgrades the row to enabled=false because these are
+    // throwaway test credentials. That probe is not what this test exercises
+    // (it covers public-list filtering + secret redaction), so force the
+    // enabled provider back on directly in the DB to simulate a healthy row.
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE auth_providers SET enabled = true WHERE name = 'google-test'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
     // Public endpoint — no auth.
     let pub_client = reqwest::Client::new();
     let r = pub_client
@@ -420,7 +434,7 @@ async fn test_admin_providers_test_persists_result() {
         .await
         .unwrap();
     assert_eq!(r.status(), 201);
-    let id = r.json::<serde_json::Value>().await.unwrap()["id"]
+    let id = r.json::<serde_json::Value>().await.unwrap()["provider"]["id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -581,7 +595,7 @@ async fn create_auth_provider_emits_sync_to_admins_only() {
         .unwrap();
     assert_eq!(r.status(), 201);
     let created: serde_json::Value = r.json().await.unwrap();
-    let id = created["id"].as_str().unwrap().to_string();
+    let id = created["provider"]["id"].as_str().unwrap().to_string();
 
     let frame = admin_probe
         .expect_event("auth_provider", "create", Duration::from_secs(5))

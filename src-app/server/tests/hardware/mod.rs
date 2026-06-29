@@ -543,10 +543,16 @@ async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
             match response.chunk().await.expect("stream chunk") {
                 Some(bytes) => {
                     buf.push_str(&String::from_utf8_lossy(&bytes));
-                    if let Some(line) = buf
-                        .lines()
-                        .find(|l| l.starts_with("data:") && l.contains('{'))
-                    {
+                    // Skip the `connected` handshake frame (a message-only
+                    // payload, covered by the sibling test) and wait for a real
+                    // usage frame carrying cpu/memory/timestamp fields.
+                    if let Some(line) = buf.lines().find(|l| {
+                        l.starts_with("data:")
+                            && l.contains('{')
+                            && (l.contains("cpu")
+                                || l.contains("memory")
+                                || l.contains("timestamp"))
+                    }) {
                         return line.trim_start_matches("data:").trim().to_string();
                     }
                 }

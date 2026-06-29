@@ -593,7 +593,9 @@ async fn test_delete_provider_not_found() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    // DELETE is idempotent: deleting an absent provider is a no-op success
+    // (204), not a spurious 404. See `delete_provider` in handlers/admin.rs.
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
 // =====================================================

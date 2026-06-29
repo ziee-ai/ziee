@@ -191,22 +191,16 @@ pub async fn get_user_assistant(
 
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Assistant>> {
+    // Owner-facing read: `get_for_user` enforces ownership AND the
+    // `enabled = true` filter, so a soft-disabled assistant 404s here (it
+    // remains manageable via the update path). Closes the disabled-filter gap.
     let assistant = Repos
         .assistant
-        .get_any(id)
+        .get_for_user(id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 
-    // Check ownership
-    if assistant.created_by != Some(auth.user.id) {
-        return Err(AppError::forbidden(
-            "ACCESS_DENIED",
-            "You can only access your own assistants",
-        )
-        .into());
-    }
-
-    // Ensure it's not a template
+    // Ensure it's not a template (this endpoint serves user assistants only).
     if assistant.is_template {
         return Err(AppError::not_found("Assistant").into());
     }

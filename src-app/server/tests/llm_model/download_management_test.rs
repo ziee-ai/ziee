@@ -230,7 +230,8 @@ async fn test_delete_download_requires_permission() {
 
     let url = server.api_url("/llm-models/downloads/00000000-0000-0000-0000-000000000000");
 
-    // Admin can access (will get 404)
+    // Admin passes the permission gate; DELETE is idempotent so an absent
+    // download id is a no-op success (204), not 404 (see delete_download).
     let response = reqwest::Client::new()
         .delete(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -238,7 +239,7 @@ async fn test_delete_download_requires_permission() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404);
+    assert_eq!(response.status(), 204);
 
     // Regular user should get 403
     let response = reqwest::Client::new()
@@ -864,9 +865,13 @@ async fn test_delete_active_download_returns_invalid_state() {
     let repository_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO llm_repositories (id, name, url, auth_type, enabled, built_in)
-         VALUES ($1, 'DL Test Repo', 'https://huggingface.co', 'none', true, false)",
+         VALUES ($1, 'DL Test Repo', $2, 'none', true, false)",
     )
     .bind(repository_id)
+    // Unique per-run URL: migration 116 added a UNIQUE(url) constraint and
+    // migration 2 already seeds the built-in 'https://huggingface.co' repo,
+    // so a hardcoded duplicate would collide.
+    .bind(format!("https://example.test/repo/{repository_id}"))
     .execute(&pool)
     .await
     .expect("insert repository");
@@ -1013,9 +1018,13 @@ async fn test_orphaned_downloading_row_survives_restart_unreconciled() {
     let repository_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO llm_repositories (id, name, url, auth_type, enabled, built_in)
-         VALUES ($1, 'Orphan Restart Repo', 'https://huggingface.co', 'none', true, false)",
+         VALUES ($1, 'Orphan Restart Repo', $2, 'none', true, false)",
     )
     .bind(repository_id)
+    // Unique per-run URL: migration 116 added a UNIQUE(url) constraint and
+    // migration 2 already seeds the built-in 'https://huggingface.co' repo,
+    // so a hardcoded duplicate would collide.
+    .bind(format!("https://example.test/repo/{repository_id}"))
     .execute(&pool)
     .await
     .expect("insert repository");
@@ -1115,9 +1124,13 @@ async fn test_cancel_active_download_marks_cancelled() {
     let repository_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO llm_repositories (id, name, url, auth_type, enabled, built_in)
-         VALUES ($1, 'DL Cancel Repo', 'https://huggingface.co', 'none', true, false)",
+         VALUES ($1, 'DL Cancel Repo', $2, 'none', true, false)",
     )
     .bind(repository_id)
+    // Unique per-run URL: migration 116 added a UNIQUE(url) constraint and
+    // migration 2 already seeds the built-in 'https://huggingface.co' repo,
+    // so a hardcoded duplicate would collide.
+    .bind(format!("https://example.test/repo/{repository_id}"))
     .execute(&pool)
     .await
     .expect("insert repository");
