@@ -315,6 +315,20 @@ pub fn start_install_task(
                     duration_ms: stats.duration_ms,
                     cosign_verified: stats.cosign_verified,
                 }));
+                // Cross-device sync: a newly-installed rootfs version changed
+                // the version list → other admin devices refetch. This is a
+                // detached background task (no originating request), so
+                // origin = None. Audience matches the read perm that gates the
+                // version-list refetch endpoint, mirroring delete_version_handler.
+                crate::modules::sync::publish(
+                    crate::modules::sync::SyncEntity::CodeSandboxRootfsVersion,
+                    crate::modules::sync::SyncAction::Create,
+                    artifact.id,
+                    crate::modules::sync::Audience::perm::<
+                        crate::modules::code_sandbox::permissions::CodeSandboxEnvironmentsRead,
+                    >(),
+                    None,
+                );
             }
             Err(e) => {
                 let err_str = e.to_string();
