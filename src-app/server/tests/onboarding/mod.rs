@@ -422,6 +422,11 @@ async fn test_completion_cardinality_cap_rejects_over_256() {
 #[serial_test::serial(repos)]
 async fn completion_cardinality_cap_is_enforced_in_the_repository() {
     let server = crate::common::TestServer::start().await;
+    // `ziee::Repos` runs IN-PROCESS against the global factory; point it at
+    // THIS test's DB so the in-process repository sees the HTTP-created user.
+    // (The factory is now re-init-able; `#[serial(repos)]` keeps the global
+    // single-writer-at-a-time.)
+    ziee::init_repositories(sqlx::PgPool::connect(&server.database_url).await.unwrap());
     let user =
         crate::common::test_helpers::create_user_with_permissions(&server, "onb_cap", &[]).await;
     let uid = uuid::Uuid::parse_str(&user.user_id).unwrap();

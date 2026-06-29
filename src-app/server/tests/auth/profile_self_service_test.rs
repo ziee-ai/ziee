@@ -805,8 +805,16 @@ async fn me_has_password_false_for_external_account() {
 /// users table. (The 999-attempt exhaustion-→500 cap is the same loop's terminal;
 /// seeding 999 users is impractical, but the retry mechanism is what this drives.)
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn test_ensure_unique_username_collision_retry() {
     let server = crate::common::TestServer::start().await;
+    // `auth_ensure_unique_username` runs IN-PROCESS against the global
+    // `Repos` factory, so it must be pointed at THIS test's database — and
+    // the in-process-Repos tests must be serialized (the factory is a single
+    // process global). Same canonical pattern as
+    // `auth::mod::test_ensure_unique_username_collision_suffix_and_defaults`.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    ziee::init_repositories(pool);
 
     // Free base → returned unchanged.
     let fresh = ziee::auth_ensure_unique_username("brandnewbase")

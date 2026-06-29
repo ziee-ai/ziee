@@ -419,6 +419,8 @@ async fn test_retrieve_and_inject_injects_core_memory_block() {
     use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 
     let server = crate::common::TestServer::start().await;
+    // In-process `Repos.memory` below must target THIS test's DB.
+    ziee::init_repositories(sqlx::PgPool::connect(&server.database_url).await.unwrap());
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "core_inject",
@@ -630,6 +632,8 @@ async fn test_file_attachment_and_memory_inject_coexist_in_one_request() {
     use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 
     let server = crate::common::TestServer::start().await;
+    // In-process `Repos.memory` below must target THIS test's DB.
+    ziee::init_repositories(sqlx::PgPool::connect(&server.database_url).await.unwrap());
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "file_mem_chat",
