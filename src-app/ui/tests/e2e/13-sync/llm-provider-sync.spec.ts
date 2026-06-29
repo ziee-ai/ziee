@@ -4,6 +4,7 @@ import {
   login,
   loginAsAdmin,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import { expect, test } from '../../fixtures/test-context'
 
 // Realtime sync for the LLM provider / model area. These three entities are
@@ -29,8 +30,6 @@ import { expect, test } from '../../fixtures/test-context'
 // navigates inline and waits on stable selectors, keeping it self-contained on
 // the live app shell rather than coupling to the 05-llm nav helpers.
 
-const ADD_PROVIDER_DRAWER = '.ant-drawer.ant-drawer-open'
-
 /** Navigate to the admin LLM providers list WITHOUT a networkidle wait. */
 async function gotoProvidersList(
   page: import('@playwright/test').Page,
@@ -39,18 +38,14 @@ async function gotoProvidersList(
   await page.goto(`${baseURL}/settings/llm-providers`)
   await page.waitForLoadState('load')
   // The "Add Provider" menu item is the page's stable landmark.
-  await expect(
-    page.locator('.ant-menu-item:has-text("Add Provider")'),
-  ).toBeVisible({ timeout: 15_000 })
+  await expect(byTestId(page, 'llm-provider-nav-add-provider')).toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 /** A provider's sidebar menu entry (how providers render in the list). */
 function providerMenuItem(page: import('@playwright/test').Page, name: string) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return page
-    .locator('[role="menu"]')
-    .getByRole('menuitem')
-    .filter({ hasText: new RegExp(`^${escaped}$`) })
+  return page.getByTestId(/^llm-provider-nav-/).filter({ hasText: name })
 }
 
 /**
@@ -179,36 +174,22 @@ test.describe('Realtime sync — LLM provider / model (admin + cross-role)', () 
       // keep this cross-device spec self-contained rather than reusing the
       // 05-llm create helpers).
       const name = `Sync Provider ${Date.now()}`
-      await page.click('.ant-menu-item:has-text("Add Provider")')
-      await page.waitForSelector('.ant-drawer-title:has-text("Add Provider")', {
-        timeout: 15_000,
-      })
+      await byTestId(page, 'llm-provider-nav-add-provider').click()
+      await byTestId(page, 'llm-provider-form').waitFor({ state: 'visible', timeout: 15_000 })
 
       // Provider Type select → "Custom" is the last option (index 8). The
       // combobox is readonly, so navigate with the keyboard (mirrors
       // 05-llm/helpers/provider-helpers `selectProviderType`).
-      const combobox = page
-        .locator(ADD_PROVIDER_DRAWER)
-        .locator('.ant-form-item:has-text("Provider Type")')
-        .first()
-        .getByRole('combobox')
-      await combobox.click()
-      await page.waitForTimeout(300)
-      await combobox.press('Home')
-      for (let i = 0; i < 8; i++) await combobox.press('ArrowDown') // → Custom
-      await combobox.press('Enter')
+      await byTestId(page, 'llm-provider-type-select').click()
+      await byTestId(page, 'llm-provider-type-select-opt-custom').click()
 
-      await page.fill('#llm-provider-form_name', name)
+      await byTestId(page, 'llm-provider-name-input').fill(name)
 
       // Submit via the drawer's primary submit button (verb-only "Add" label;
       // scope by class so the "Add Provider" menu item can't collide).
-      const submit = page
-        .locator(ADD_PROVIDER_DRAWER)
-        .last()
-        .locator('.ant-btn-primary[type="submit"]')
-      await submit.focus()
-      await submit.press('Enter')
-      await expect(page.getByText('Provider added successfully')).toBeVisible({
+      await byTestId(page, 'llm-provider-submit-btn').click()
+      // Success closes the drawer.
+      await expect(byTestId(page, 'llm-provider-form')).toHaveCount(0, {
         timeout: 15_000,
       })
 
@@ -261,11 +242,11 @@ test.describe('Realtime sync — LLM provider / model (admin + cross-role)', () 
       await loginAsAdmin(pageB, baseURL)
       await pageB.goto(`${baseURL}/settings/llm-providers/${provider.id}`)
       await pageB.waitForLoadState('load')
-      await expect(
-        pageB.locator('.ant-card-head-title:has-text("Models")'),
-      ).toBeVisible({ timeout: 15_000 })
+      await expect(byTestId(pageB, 'llm-models-section-card')).toBeVisible({
+        timeout: 15_000,
+      })
       // Confirm the empty state first so the later assertion is meaningful.
-      await expect(pageB.getByText('No models yet')).toBeVisible({
+      await expect(byTestId(pageB, 'llm-models-empty')).toBeVisible({
         timeout: 10_000,
       })
 
@@ -281,7 +262,7 @@ test.describe('Realtime sync — LLM provider / model (admin + cross-role)', () 
 
       // Device B's detail page shows the model's display name WITHOUT a
       // reload — the model name renders as plain text in the Models card.
-      await expect(pageB.getByText(displayName)).toBeVisible({
+      await expect(byTestId(pageB, 'llm-models-section-card')).toContainText(displayName, {
         timeout: 15_000,
       })
     } finally {
@@ -362,7 +343,6 @@ test.describe('Realtime sync — LLM provider / model (admin + cross-role)', () 
       // so once the `sync:user_llm_provider` event lands and the store reloads,
       // the model shows as the selected value in the picker. Assert that text:
       // it's robust to antd's internal Select DOM (v6 renders
-      // `.ant-select-content`, not v5's `.ant-select-selector`).
       await expect(selector).toContainText(displayName, { timeout: 15_000 })
     } finally {
       await ctxUser.close()
