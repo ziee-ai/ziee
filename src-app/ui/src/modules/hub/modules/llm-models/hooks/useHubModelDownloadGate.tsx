@@ -62,17 +62,25 @@ export function useHubModelDownloadGate() {
   const showRepoGateModal = (
     title: string,
     body: React.ReactNode,
-    _repository: LlmRepository,
+    repository: LlmRepository,
+    testid: string,
   ) => {
     if (gateModalOpen) return
     gateModalOpen = true
-    dialog.info({
-      title,
-      description: body,
-      okText: 'OK',
-    }).then(() => {
-      gateModalOpen = false
-    })
+    dialog
+      .confirm({
+        title,
+        description: body,
+        okText: 'Open Repository Settings',
+        cancelText: 'Cancel',
+        testid,
+      })
+      .then(confirmed => {
+        gateModalOpen = false
+        // Primary button opens the LlmRepositoryDrawer for that repo so
+        // the user can fix the gate (enable / add credential) in place.
+        if (confirmed) Stores.LlmRepositoryDrawer.openDrawer(repository)
+      })
   }
 
   const showRepoDisabledModal = (model: HubModel, repository: LlmRepository) =>
@@ -84,6 +92,7 @@ export function useHubModelDownloadGate() {
         its settings and turn it on, then try again.
       </Text>,
       repository,
+      'hub-download-gate-disabled',
     )
 
   const showAuthRequiredModal = (
@@ -99,6 +108,7 @@ export function useHubModelDownloadGate() {
         again.
       </Text>,
       repository,
+      'hub-download-gate-auth-required',
     )
 
   const showCannotConnectModal = (
@@ -122,6 +132,7 @@ export function useHubModelDownloadGate() {
         )}
       </>,
       repository,
+      'hub-download-gate-cannot-connect',
     )
 
   const showRepoNotConfiguredModal = (_model: HubModel, registryUrl: string) => {
@@ -137,6 +148,7 @@ export function useHubModelDownloadGate() {
         </Text>
       ),
       okText: 'OK',
+      testid: 'hub-download-gate-not-configured',
     }).then(() => {
       gateModalOpen = false
     })

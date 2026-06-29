@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — SettingsPage sidebar permission filtering (SettingsPage.tsx:34-53). The
@@ -26,13 +27,15 @@ test.describe('Settings — permission visibility', () => {
 
     // Ungated user section is present.
     await expect(
-      page.getByRole('menuitem', { name: 'General' }),
+      byTestId(page, 'settings-nav-menu-item-general'),
     ).toBeVisible({ timeout: 15000 })
 
     // Admin/permission-gated sections are NOT in this user's sidebar.
-    await expect(page.getByRole('menuitem', { name: 'Hardware' })).toHaveCount(0)
     await expect(
-      page.getByRole('menuitem', { name: 'Web Search' }),
+      byTestId(page, 'settings-nav-menu-item-hardware'),
+    ).toHaveCount(0)
+    await expect(
+      byTestId(page, 'settings-nav-menu-item-web-search'),
     ).toHaveCount(0)
   })
 })

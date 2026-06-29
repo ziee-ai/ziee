@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — clicking the mobile overlay mask closes the sidebar
@@ -21,20 +22,20 @@ test.describe('Layout — mobile sidebar mask', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/profile`)
 
-    const sidebar = page.locator('#app-sidebar')
+    const sidebar = byTestId(page, 'app-sidebar')
     // Mobile: the sidebar starts collapsed (aria-hidden=true).
     await expect(sidebar).toHaveAttribute('aria-hidden', 'true', {
       timeout: 30000,
     })
 
     // Open the overlay.
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await byTestId(page, 'layout-sidebar-toggle-button').click()
     await expect(sidebar).toHaveAttribute('aria-hidden', 'false', {
       timeout: 10000,
     })
 
     // Click the mask → the overlay closes.
-    await page.locator('[data-sidebar-mask]').click()
+    await byTestId(page, 'layout-sidebar-mask').click()
     await expect(sidebar).toHaveAttribute('aria-hidden', 'true', {
       timeout: 10000,
     })

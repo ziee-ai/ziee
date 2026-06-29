@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 import { gotoRuntimeSettings } from './helpers/local-runtime-helpers'
 
 /**
@@ -127,21 +128,19 @@ test.describe('Local Runtime — in-progress download survives a page reload', (
 
     await gotoRuntimeSettings(page, baseURL)
 
-    const pane = page.locator('.ant-tabs-tabpane-active')
-    await expect(pane.getByText(/Available versions/i).first()).toBeVisible({
+    await expect(byTestId(page, 'llmrt-available-versions-card')).toBeVisible({
       timeout: 30_000,
     })
 
-    // The mocked available version row renders (its Install button carries the
-    // aria-label `Install <version>`), and the in-flight snapshot paints a
-    // progress bar at 40% under it.
-    await expect(
-      pane.getByRole('button', { name: `Install ${VERSION}` }),
-    ).toBeVisible({ timeout: 30_000 })
-    await expect(pane.locator('.ant-progress').first()).toBeVisible({
+    // The mocked available version row renders (its Install button derives
+    // `llmrt-version-install-<version>`), and the in-flight snapshot paints a
+    // progress bar at 40% under it (derived `llmrt-download-progress-<key>`).
+    await expect(byTestId(page, `llmrt-version-install-${VERSION}`)).toBeVisible({
       timeout: 30_000,
     })
-    await expect(pane.getByText('40%').first()).toBeVisible({ timeout: 30_000 })
+    const progress = byTestId(page, `llmrt-download-progress-${KEY}`)
+    await expect(progress).toBeVisible({ timeout: 30_000 })
+    await expect(progress).toContainText('40%', { timeout: 30_000 })
 
     expect(
       downloadsListFetches,
@@ -153,22 +152,18 @@ test.describe('Local Runtime — in-progress download survives a page reload', (
     await page.reload()
     await expect(page).toHaveURL(/\/settings\/llm-runtime$/)
 
-    const paneAfter = page.locator('.ant-tabs-tabpane-active')
-    await expect(paneAfter.getByText(/Available versions/i).first()).toBeVisible({
+    await expect(byTestId(page, 'llmrt-available-versions-card')).toBeVisible({
       timeout: 30_000,
     })
 
     // The progress bar reappears AFTER the reload — it can only have come from
     // a fresh loadActive() re-fetch, since the reload wiped the in-memory map.
-    await expect(
-      paneAfter.getByRole('button', { name: `Install ${VERSION}` }),
-    ).toBeVisible({ timeout: 30_000 })
-    await expect(paneAfter.locator('.ant-progress').first()).toBeVisible({
+    await expect(byTestId(page, `llmrt-version-install-${VERSION}`)).toBeVisible({
       timeout: 30_000,
     })
-    await expect(paneAfter.getByText('40%').first()).toBeVisible({
-      timeout: 30_000,
-    })
+    const progressAfter = byTestId(page, `llmrt-download-progress-${KEY}`)
+    await expect(progressAfter).toBeVisible({ timeout: 30_000 })
+    await expect(progressAfter).toContainText('40%', { timeout: 30_000 })
 
     expect(
       downloadsListFetches,

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 import { gotoRuntimeSettings } from './helpers/local-runtime-helpers'
 
 /**
@@ -17,8 +18,8 @@ test.describe('Local Runtime — settings page', () => {
 
   test('renders at /settings/llm-runtime with engine tabs', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    await expect(page.getByRole('tab', { name: 'Llama.cpp' })).toBeVisible()
-    await expect(page.getByRole('tab', { name: 'Mistral.rs' })).toBeVisible()
+    await expect(byTestId(page, 'llmrt-engine-tabs-tab-llamacpp')).toBeVisible()
+    await expect(byTestId(page, 'llmrt-engine-tabs-tab-mistralrs')).toBeVisible()
   })
 
   test('shows the available-versions card with platform + backends', async ({ page, testInfra }) => {
@@ -27,13 +28,10 @@ test.describe('Local Runtime — settings page', () => {
     // (the store retries) — give the card time to render. Platform + Available
     // backends are now inside the Available versions card (they're the
     // precondition for "what's installable for this host").
-    const card = page
-      .locator('.ant-card')
-      .filter({ hasText: /Available versions/i })
-      .first()
+    const card = byTestId(page, 'llmrt-available-versions-card')
     await expect(card).toBeVisible({ timeout: 30000 })
-    await expect(card.getByText(/Platform:/i)).toBeVisible({ timeout: 30000 })
-    await expect(card.getByText(/Available backends:/i)).toBeVisible()
+    await expect(byTestId(card, 'llmrt-platform-row')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(card, 'llmrt-backends-row')).toBeVisible()
   })
 
   test('shows installed-versions card with empty state', async ({ page, testInfra }) => {
@@ -41,14 +39,9 @@ test.describe('Local Runtime — settings page', () => {
     // No engine downloaded in a fresh test DB → the dedicated
     // "Installed versions" card shows an empty state hinting at the
     // Available versions card below.
-    const card = page
-      .locator('.ant-card')
-      .filter({ hasText: /Installed versions/i })
-      .first()
+    const card = byTestId(page, 'llmrt-installed-versions-card-llamacpp')
     await expect(card).toBeVisible()
-    await expect(
-      card.getByText(/No versions installed yet/i),
-    ).toBeVisible()
+    await expect(byTestId(card, 'llmrt-installed-empty-llamacpp')).toBeVisible()
   })
 
   test('available-versions card auto-runs the update check (Check-for-updates lives in the card extra)', async ({ page, testInfra }) => {
@@ -56,23 +49,13 @@ test.describe('Local Runtime — settings page', () => {
     // The update check runs automatically on mount. The
     // "Check for updates" button now lives in the Available versions
     // card's `extra` slot for a manual re-run; we just assert the
-    // card renders. On a backend without network access the body
-    // renders "Could not reach the upstream release feed." instead —
-    // both are acceptable signals that the card mounted.
-    const card = page
-      .locator('.ant-card')
-      .filter({ hasText: /Available versions/i })
-      .first()
-    await expect(card).toBeVisible({ timeout: 30000 })
-    await expect(
-      card.getByRole('button', { name: /Check for updates/i }),
-    ).toBeVisible()
+    // card + its action render.
+    await expect(byTestId(page, 'llmrt-available-versions-card')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'llmrt-check-updates-btn')).toBeVisible()
   })
 
   test('shows the runtime configuration card', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    await expect(
-      page.locator('.ant-card').filter({ hasText: /Runtime configuration/i }).first(),
-    ).toBeVisible()
+    await expect(byTestId(page, 'llmrt-runtime-config-card')).toBeVisible()
   })
 })

@@ -13,6 +13,7 @@ import {
   mockUserMessage,
 } from '../helpers/sse-mock-helpers'
 import { goToNewChatPage, selectModelInDropdown } from '../09-chat/helpers/chat-helpers'
+import { byTestId } from '../testid.ts'
 
 // audit id c3b03b06dba6 — the only skills E2E specs were admin-gating + the
 // settings list/detail load; the in-CHAT skill surface (the "+" dropdown →
@@ -48,30 +49,28 @@ test.describe('Skills — in-chat per-conversation opt-out', () => {
     // "+" item is hidden until a conversation exists).
     await goToNewChatPage(page, baseURL)
     await selectModelInDropdown(page, 'GPT-4o Mini')
-    const textarea = page
-      .locator('textarea[placeholder*="Type your message"]')
-      .first()
-    await textarea.fill('hello')
-    await page.getByRole('button', { name: 'Send message' }).click()
+    await byTestId(page, 'chat-message-textarea').first().fill('hello')
+    await byTestId(page, 'chat-input-send-btn').click()
     await page
       .locator('[data-testid="chat-message"][data-message-id="amsg_skill_1"]')
       .first()
       .waitFor({ state: 'visible', timeout: 15000 })
 
     // Open the "+" dropdown → "Skills in this chat".
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByRole('button', { name: 'Skills in this chat' }).click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'skill-conversation-menu-item').click()
 
     // The per-conversation skills modal opens and lists the boot-synced skills.
-    const modal = page.locator('.ant-modal-content', {
-      has: page.getByText('Skills in this conversation'),
+    const modal = byTestId(page, 'skill-conversation-dialog')
+    await expect(modal).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'skill-conversation-list')).toBeVisible({
+      timeout: 10000,
     })
-    await expect(
-      modal.getByText('Skills in this conversation'),
-    ).toBeVisible({ timeout: 10000 })
 
     // At least one skill row with a visibility toggle (boot-synced built-ins).
-    const firstSwitch = modal.getByRole('switch').first()
+    const firstSwitch = modal
+      .locator('[data-testid^="skill-conversation-switch-"]')
+      .first()
     await expect(firstSwitch).toBeVisible({ timeout: 10000 })
 
     // The skill is visible (available) by default → toggling it off hides it for

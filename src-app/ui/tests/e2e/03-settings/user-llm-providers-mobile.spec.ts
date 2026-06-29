@@ -5,6 +5,7 @@ import {
   createModelViaAPI,
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — mobile responsive rendering of the user LLM providers page. On a small
@@ -34,26 +35,18 @@ test.describe('User LLM Providers — mobile layout', () => {
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
 
-    // On the phone viewport the provider picker is a Dropdown Button showing the
-    // current provider; the desktop sidebar Title is hidden.
-    const picker = page
-      .getByRole('button')
-      .filter({ hasText: /Mobile Provider (One|Two)/ })
-      .first()
+    // On the phone viewport the provider picker is a Dropdown trigger button
+    // showing the current provider; the desktop sidebar is hidden.
+    const picker = byTestId(page, 'ullm-provider-dropdown-trigger')
     await expect(picker).toBeVisible({ timeout: 30000 })
 
-    // Opening it reveals BOTH providers as menu items, and selecting the other
-    // switches the active provider.
+    // Opening it reveals BOTH providers as menu items (derived `${dropdown}-item-${id}`),
+    // and selecting the other switches the active provider — the trigger then
+    // shows "Mobile Provider Two" (dynamic data this test created).
     await picker.click()
-    await expect(
-      page.getByRole('menuitem', { name: /Mobile Provider Two/ }),
-    ).toBeVisible({ timeout: 10000 })
-    await page.getByRole('menuitem', { name: /Mobile Provider Two/ }).click()
-    await expect(
-      page
-        .getByRole('button')
-        .filter({ hasText: /Mobile Provider Two/ })
-        .first(),
-    ).toBeVisible({ timeout: 10000 })
+    const p2Item = byTestId(page, `ullm-provider-dropdown-item-${p2}`)
+    await expect(p2Item).toBeVisible({ timeout: 10000 })
+    await p2Item.click()
+    await expect(picker).toContainText('Mobile Provider Two', { timeout: 10000 })
   })
 })

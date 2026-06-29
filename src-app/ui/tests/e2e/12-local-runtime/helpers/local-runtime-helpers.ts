@@ -1,4 +1,5 @@
 import { Page, expect } from '@playwright/test'
+import { byTestId } from '../../testid.ts'
 
 /**
  * Shared helpers for the Local Runtime E2E specs.
@@ -24,19 +25,17 @@ export async function gotoRuntimeSettings(page: Page, baseURL: string) {
 export async function openAddLocalProvider(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/llm-providers`)
   await page.waitForLoadState('load')
-  await page.locator('.ant-menu-item:has-text("Add Provider")').first().click()
-  await expect(page.locator('.ant-drawer.ant-drawer-open')).toBeVisible()
-  // Provider type select → "Local".
-  const typeSelect = page.locator('.ant-drawer.ant-drawer-open .ant-select').first()
-  await typeSelect.click()
-  await page.locator('.ant-select-item:has-text("Local")').first().click()
+  await byTestId(page, 'llm-provider-nav-add-provider').click()
+  // The provider create form mounts inside the drawer.
+  await expect(byTestId(page, 'llm-provider-form')).toBeVisible()
+  // Provider type select → "Local" (option derives `${selectTestid}-opt-${value}`).
+  await byTestId(page, 'llm-provider-type-select').click()
+  await byTestId(page, 'llm-provider-type-select-opt-local').click()
 }
 
-/** Submit the currently-open drawer via its primary submit button. */
+/** Submit the currently-open provider drawer via its primary submit button. */
 export async function submitOpenDrawer(page: Page) {
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  const submit = drawer.locator('.ant-btn-primary[type="submit"], .ant-btn-primary').last()
-  await submit.click()
+  await byTestId(page, 'llm-provider-submit-btn').click()
 }
 
 // ── API seeding (engine-dependent specs) ────────────────────────────────

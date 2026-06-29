@@ -38,26 +38,20 @@ test.describe('Hub Search — special characters and edge cases', () => {
     // compiled as a regex (a regex bug would return `initialCount`).
     await searchHubResources(page, '.*')
     expect(await (await getModelCards(page)).count()).toBe(0)
-    await expect(
-      page.getByText(/no models match|no.*results|no.*found/i),
-    ).toBeVisible()
+    await expect(page.getByTestId('hub-models-empty')).toBeVisible()
 
     // (b) An invalid-regex string (unbalanced bracket). If this were ever fed to
     // `new RegExp(...)` it would throw and break the list; as a literal
     // substring it simply matches nothing and renders the empty state.
     await searchHubResources(page, 'a.*[b(c+')
     expect(await (await getModelCards(page)).count()).toBe(0)
-    await expect(
-      page.getByText(/no models match|no.*results|no.*found/i),
-    ).toBeVisible()
+    await expect(page.getByTestId('hub-models-empty')).toBeVisible()
 
     // (c) Unicode + a very long no-match query — must stay robust (no crash,
     // empty state), not error out.
     await searchHubResources(page, 'zürich—🤖' + 'x'.repeat(500))
     expect(await (await getModelCards(page)).count()).toBe(0)
-    await expect(
-      page.getByText(/no models match|no.*results|no.*found/i),
-    ).toBeVisible()
+    await expect(page.getByTestId('hub-models-empty')).toBeVisible()
 
     // (d) Clearing the search restores the full catalog (empty query => no
     // filter applied), proving the edge-case queries left no sticky state.

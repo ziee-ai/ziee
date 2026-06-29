@@ -16,8 +16,7 @@
  */
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
-
-const ADD_PROVIDER = 'Add authentication provider'
+import { byTestId } from '../testid.ts'
 
 test.describe('Auth providers — Add button disabled when all types taken', () => {
   test('configuring every remaining template disables the Add menu', async ({
@@ -57,7 +56,7 @@ test.describe('Auth providers — Add button disabled when all types taken', () 
 
       // Pre-condition: with only the 3 seeded templates taken, two
       // generic templates remain → the Add button is ENABLED.
-      const addBtn = page.getByRole('button', { name: ADD_PROVIDER })
+      const addBtn = byTestId(page, 'authprov-add-button')
       await expect(addBtn).toBeVisible({ timeout: 10_000 })
       await expect(addBtn).toBeEnabled()
 
@@ -86,20 +85,18 @@ test.describe('Auth providers — Add button disabled when all types taken', () 
 
       // Both new rows are present (the create round-tripped).
       await expect(
-        page.getByRole('switch', { name: 'Toggle oidc-generic' }),
+        byTestId(page, 'authprov-toggle-switch-oidc-generic'),
       ).toBeVisible({ timeout: 10_000 })
       await expect(
-        page.getByRole('switch', { name: 'Toggle oauth2-generic' }),
+        byTestId(page, 'authprov-toggle-switch-oauth2-generic'),
       ).toBeVisible()
 
-      // All templates taken → the Add button is now DISABLED, and its
-      // tooltip explains why.
-      const disabledAdd = page.getByRole('button', { name: ADD_PROVIDER })
+      // All templates taken → the Add button is now DISABLED, and hovering
+      // it surfaces its explanatory tooltip.
+      const disabledAdd = byTestId(page, 'authprov-add-button')
       await expect(disabledAdd).toBeDisabled()
       await disabledAdd.hover()
-      await expect(
-        page.getByText('All providers taken', { exact: true }),
-      ).toBeVisible({ timeout: 5_000 })
+      await expect(page.getByRole('tooltip')).toBeVisible({ timeout: 5_000 })
     } finally {
       // Restore the empty-available-types state so the rest of the
       // suite sees the default seeded-only providers.

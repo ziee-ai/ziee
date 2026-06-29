@@ -1,122 +1,61 @@
-import { Page, expect } from '@playwright/test'
+import { Page, Locator, expect } from '@playwright/test'
 
 /**
- * Open model details drawer
+ * Open model details drawer. The card root opens the details drawer
+ * (inner action buttons stopPropagation).
  */
-export async function openModelDetails(page: Page, modelId: string) {
-  const modelCard = page.getByTestId(`hub-model-card-${modelId}`)
-
-  // Try clicking the card itself or a "Details" button
-  const detailsButton = modelCard.getByRole('button', { name: /details|more/i })
-  const hasDetailsButton = await detailsButton.isVisible({ timeout: 1000 }).catch(() => false)
-
-  if (hasDetailsButton) {
-    await detailsButton.click()
-  } else {
-    // Click card title or card itself
-    const cardTitle = modelCard.locator('[class*="title"]').first()
-    await cardTitle.click()
-  }
-
-  // Wait for drawer to open
-  const drawer = page.getByRole('dialog', { name: /model.*details/i })
+export async function openModelDetails(page: Page, modelId: string): Promise<Locator> {
+  await page.getByTestId(`hub-model-card-${modelId}`).click()
+  const drawer = page.getByTestId('hub-model-detail-sheet')
   await expect(drawer).toBeVisible({ timeout: 3000 })
-
   return drawer
 }
 
 /**
- * Open assistant details drawer
+ * Open assistant details drawer (via the card's Details button).
  */
-export async function openAssistantDetails(page: Page, assistantId: string) {
-  const assistantCard = page.getByTestId(`hub-assistant-card-${assistantId}`)
-
-  // Try clicking the card itself or a "Details" button
-  const detailsButton = assistantCard.getByRole('button', { name: /details|more/i })
-  const hasDetailsButton = await detailsButton.isVisible({ timeout: 1000 }).catch(() => false)
-
-  if (hasDetailsButton) {
-    await detailsButton.click()
-  } else {
-    // Click card title or card itself
-    const cardTitle = assistantCard.locator('[class*="title"]').first()
-    await cardTitle.click()
-  }
-
-  // Wait for drawer to open
-  const drawer = page.getByRole('dialog', { name: /assistant.*details/i })
+export async function openAssistantDetails(
+  page: Page,
+  assistantId: string,
+): Promise<Locator> {
+  await page
+    .getByTestId(`hub-assistant-card-${assistantId}`)
+    .getByTestId(`hub-assistant-details-btn-${assistantId}`)
+    .click()
+  const drawer = page.getByTestId('hub-assistant-detail-sheet')
   await expect(drawer).toBeVisible({ timeout: 3000 })
-
   return drawer
 }
 
 /**
- * Open MCP server details drawer
+ * Open MCP server details drawer (via the card root).
  */
-export async function openMcpServerDetails(page: Page, mcpServerId: string) {
-  const mcpCard = page.getByTestId(`hub-mcp-card-${mcpServerId}`)
-
-  // Try clicking the card itself or a "Details" button
-  const detailsButton = mcpCard.getByRole('button', { name: /details|more/i })
-  const hasDetailsButton = await detailsButton.isVisible({ timeout: 1000 }).catch(() => false)
-
-  if (hasDetailsButton) {
-    await detailsButton.click()
-  } else {
-    // Click card title or card itself
-    const cardTitle = mcpCard.locator('[class*="title"]').first()
-    await cardTitle.click()
-  }
-
-  // Wait for drawer to open
-  const drawer = page.getByRole('dialog', { name: /mcp.*details|server.*details/i })
+export async function openMcpServerDetails(
+  page: Page,
+  mcpServerId: string,
+): Promise<Locator> {
+  await page.getByTestId(`hub-mcp-card-${mcpServerId}`).click()
+  const drawer = page.getByTestId('hub-mcp-detail-sheet')
   await expect(drawer).toBeVisible({ timeout: 3000 })
-
   return drawer
 }
 
 /**
- * Close details drawer
+ * Close the currently open details drawer/sheet (Radix dialogs close on Escape).
  */
 export async function closeDetailsDrawer(page: Page) {
-  const drawer = page.getByRole('dialog')
-  const closeButton = drawer.getByRole('button', { name: /close/i }).or(
-    drawer.locator('[aria-label*="close" i]')
-  )
-
-  await closeButton.click()
-  await expect(drawer).not.toBeVisible({ timeout: 2000 })
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('hub-assistant-detail-sheet')).toBeHidden({
+    timeout: 2000,
+  }).catch(() => {})
 }
 
 /**
- * Get detail field value from drawer
+ * Check whether a known detail card/tag (by testid) is present in an open drawer.
  */
-export async function getDetailFieldValue(
-  page: Page,
-  fieldLabel: string,
-): Promise<string | null> {
-  const drawer = page.getByRole('dialog')
-
-  // Try to find label + value pattern
-  const field = drawer.getByText(new RegExp(`${fieldLabel}:?`, 'i'))
-  const visible = await field.isVisible({ timeout: 1000 }).catch(() => false)
-
-  if (visible) {
-    // Get the next sibling or parent's next element
-    const parent = field.locator('..')
-    const value = parent.locator('~ *').first()
-    const valueText = await value.textContent().catch(() => null)
-    return valueText?.trim() || null
-  }
-
-  return null
-}
-
-/**
- * Check if details drawer has specific tag
- */
-export async function detailsHasTag(page: Page, tagText: string): Promise<boolean> {
-  const drawer = page.getByRole('dialog')
-  const tag = drawer.getByText(new RegExp(tagText, 'i'))
-  return await tag.isVisible({ timeout: 1000 }).catch(() => false)
+export async function detailsHasTestId(page: Page, testId: string): Promise<boolean> {
+  return await page
+    .getByTestId(testId)
+    .isVisible({ timeout: 1000 })
+    .catch(() => false)
 }

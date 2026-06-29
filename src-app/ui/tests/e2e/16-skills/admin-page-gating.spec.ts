@@ -3,6 +3,7 @@ import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid.ts'
 import {
   assertAdminSkillsEmptyState,
   goToAdminSkillsPage,
@@ -14,13 +15,7 @@ test.describe('Skills - Admin page gating', () => {
     await loginAsAdmin(page, baseURL)
     await goToAdminSkillsPage(page, baseURL)
 
-    await expect(
-      page.getByRole('heading', {
-        level: 4,
-        name: 'System Skills',
-        exact: true,
-      }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'skills-admin-page')).toBeVisible()
 
     // Fresh DB → no system skills installed.
     await assertAdminSkillsEmptyState(page)
@@ -47,9 +42,7 @@ test.describe('Skills - Admin page gating', () => {
 
     await page.goto(`${baseURL}/settings/skills-admin`)
 
-    await expect(page.getByText(/not authorized/i)).toBeVisible()
-    await expect(
-      page.getByRole('heading', { name: 'System Skills', exact: true }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible()
+    await expect(byTestId(page, 'skills-admin-page')).toHaveCount(0)
   })
 })

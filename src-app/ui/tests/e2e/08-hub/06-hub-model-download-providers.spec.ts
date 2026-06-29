@@ -134,12 +134,17 @@ async function mockDownloadStart(page: Page): Promise<() => number> {
 async function clickDownloadOnFirstCard(page: Page) {
   const firstCard = (await getModelCards(page)).first()
   await expect(firstCard).toBeVisible()
-  await firstCard.getByRole('button', { name: /download/i }).click()
+  const name =
+    (await firstCard.getAttribute('data-testid'))?.replace(
+      'hub-model-card-',
+      '',
+    ) || ''
+  await firstCard.getByTestId(`hub-model-download-btn-${name}`).click()
 
-  // A "Select Quantization" modal appears only for models with >1 option.
-  const quantModal = page.getByRole('dialog').filter({ hasText: 'Select Quantization' })
-  if (await quantModal.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await quantModal.getByRole('button', { name: 'Continue' }).click()
+  // A "Select Quantization" dialog appears only for models with >1 option.
+  const quantDialog = page.getByTestId('hub-model-download-quant-dialog')
+  if (await quantDialog.isVisible({ timeout: 1500 }).catch(() => false)) {
+    await page.getByTestId('hub-model-download-quant-dialog-ok-btn').click()
   }
 }
 
@@ -164,7 +169,11 @@ test.describe('Hub Model Download — local providers', () => {
 
     await clickDownloadOnFirstCard(page)
 
-    await expect(page.getByText(/No local provider found/i)).toBeVisible({ timeout: 5000 })
+    await expect(
+      page
+        .locator('[data-sonner-toast][data-type="error"]')
+        .filter({ hasText: /No local provider found/i }),
+    ).toBeVisible({ timeout: 5000 })
     expect(downloadHits()).toBe(0)
   })
 
@@ -180,7 +189,11 @@ test.describe('Hub Model Download — local providers', () => {
     await clickDownloadOnFirstCard(page)
 
     // Exactly one provider → no provider-select modal; download starts directly.
-    await expect(page.getByText(/Download started/i)).toBeVisible({ timeout: 5000 })
+    await expect(
+      page
+        .locator('[data-sonner-toast][data-type="success"]')
+        .filter({ hasText: /Download started/i }),
+    ).toBeVisible({ timeout: 5000 })
     expect(downloadHits()).toBe(1)
   })
 
@@ -196,12 +209,16 @@ test.describe('Hub Model Download — local providers', () => {
 
     await clickDownloadOnFirstCard(page)
 
-    // >1 providers → a "Select Local Provider" modal must appear first.
-    const providerModal = page.getByRole('dialog').filter({ hasText: 'Select Local Provider' })
-    await expect(providerModal).toBeVisible({ timeout: 5000 })
-    await providerModal.getByRole('button', { name: 'Continue' }).click()
+    // >1 providers → a "Select Local Provider" dialog must appear first.
+    const providerDialog = page.getByTestId('hub-model-download-provider-dialog')
+    await expect(providerDialog).toBeVisible({ timeout: 5000 })
+    await page.getByTestId('hub-model-download-provider-dialog-ok-btn').click()
 
-    await expect(page.getByText(/Download started/i)).toBeVisible({ timeout: 5000 })
+    await expect(
+      page
+        .locator('[data-sonner-toast][data-type="success"]')
+        .filter({ hasText: /Download started/i }),
+    ).toBeVisible({ timeout: 5000 })
     expect(downloadHits()).toBe(1)
   })
 })

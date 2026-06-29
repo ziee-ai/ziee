@@ -7,6 +7,7 @@ import {
   getCurrentUserToken,
   completeOnboarding,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * The user-profile widget dropdown's "Profile" item is gated on
@@ -43,14 +44,16 @@ test.describe('Profile - widget dropdown permission gating', () => {
     await completeOnboarding(baseURL, token)
     await page.goto(`${baseURL}/`)
 
-    const widget = page.getByTestId('user-profile-widget')
+    const widget = byTestId(page, 'user-profile-widget')
     await expect(widget).toBeVisible({ timeout: 30000 })
     await widget.click()
 
     // Logout is always offered; Profile is gated out for this user.
-    await expect(page.getByRole('menuitem', { name: 'Logout' })).toBeVisible()
     await expect(
-      page.getByRole('menuitem', { name: 'Profile' }),
+      byTestId(page, 'userprofile-menu-dropdown-item-logout'),
+    ).toBeVisible()
+    await expect(
+      byTestId(page, 'userprofile-menu-dropdown-item-profile'),
     ).toHaveCount(0)
   })
 })

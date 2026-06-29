@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 import { gotoRuntimeSettings } from './helpers/local-runtime-helpers'
 
 /**
@@ -63,14 +64,12 @@ test.describe('Local Runtime — engine download error', () => {
 
     await gotoRuntimeSettings(page, baseURL)
 
-    const pane = page.locator('.ant-tabs-tabpane-active')
-    const installBtn = pane
-      .getByRole('button', { name: /^Install v9\.9\.9-test/i })
-      .first()
+    const installBtn = byTestId(page, 'llmrt-version-install-v9.9.9-test')
     await expect(installBtn).toBeVisible({ timeout: 30000 })
     await installBtn.click()
 
-    await expect(page.locator('.ant-message-error')).toBeVisible({
+    // The failed POST surfaces an error toast.
+    await expect(page.locator('[data-sonner-toast][data-type="error"]')).toBeVisible({
       timeout: 15000,
     })
   })

@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-helpers'
+import { goToSettingsPage, waitForSettingsPageLoad, selectThemeOption } from './helpers/navigation-helpers'
 
 /**
  * E2E — a theme change actually REFLECTS in the rendered app shell.
@@ -14,7 +14,7 @@ import { goToSettingsPage, waitForSettingsPageLoad } from './helpers/navigation-
  * theme by (a) toggling the `dark`/`light` class on `document.documentElement`
  * and (b) writing the active theme's `colorBgContainer` token into the
  * `<meta name="theme-color">` content — a concrete, theme-specific shell
- * signal. This spec drives the real `#theme-form` selector and asserts BOTH
+ * signal. This spec drives the real theme Select (`settingsgen-theme-select`) and asserts BOTH
  * signals flip when switching dark↔light, that they revert, and that the
  * choice survives a page reload. Nothing is mocked.
  */
@@ -32,15 +32,7 @@ async function readThemeSignals(page: import('@playwright/test').Page) {
 }
 
 async function pickTheme(page: import('@playwright/test').Page, title: 'Dark' | 'Light') {
-  await page.locator('#theme-form [aria-label="Theme"]').first().click()
-  await page
-    .getByRole('listbox')
-    .or(page.locator('.ant-select-dropdown'))
-    .first()
-    .waitFor({ state: 'visible' })
-  const option = page.getByTitle(title, { exact: true })
-  await option.waitFor({ state: 'visible', timeout: 5000 })
-  await option.click()
+  await selectThemeOption(page, title.toLowerCase() as 'dark' | 'light')
   await page.waitForTimeout(400) // let the ThemeProvider effect run
 }
 

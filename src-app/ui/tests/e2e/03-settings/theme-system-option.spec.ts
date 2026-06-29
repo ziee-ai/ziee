@@ -1,6 +1,8 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { isDarkMode, getTheme } from '../../utils/theme'
+import { byTestId } from '../testid.ts'
+import { selectThemeOption } from './helpers/navigation-helpers'
 
 /**
  * Selecting the "System" theme THROUGH THE UI (the Theme Select on
@@ -18,13 +20,12 @@ test.describe('Settings — System theme option', () => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/general`)
-    await expect(page.getByRole('heading', { name: 'General' })).toBeVisible({
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible({
       timeout: 15000,
     })
 
-    // Open the antd Theme Select and pick "System".
-    await page.getByLabel('Theme').click()
-    await page.getByRole('option', { name: 'System' }).click()
+    // Open the Theme Select and pick "System".
+    await selectThemeOption(page, 'system')
 
     // The persisted preference is now `system`.
     await expect.poll(() => getTheme(page)).toBe('system')

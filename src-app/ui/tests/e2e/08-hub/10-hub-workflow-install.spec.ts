@@ -21,17 +21,25 @@ test.describe('Hub - workflow install', () => {
     await waitForHubDataLoad(page)
 
     // The embedded seed ships several workflows; grab the first card + its
-    // install button.
+    // install button (admin split-button primary or plain install).
     const card = page.getByTestId(/^hub-workflow-card-/).first()
     await expect(card).toBeVisible({ timeout: 30000 })
-    const installBtn = card.getByTestId('hub-workflow-install-btn')
+    const installBtn = card.locator(
+      '[data-testid^="hub-workflow-install-dropdown-btn-"], [data-testid^="hub-workflow-install-btn-"]',
+    )
     await expect(installBtn).toBeVisible()
     await installBtn.click()
+    await page.keyboard.press('Escape')
 
-    // Success toast, then the card flips to the "Installed" state.
-    await expect(page.getByText(/^Installed "/)).toBeVisible({ timeout: 10000 })
-    await expect(card.getByText('Installed', { exact: true })).toBeVisible({
-      timeout: 10000,
-    })
+    // Success toast (`Installed "<title>"`), then the card flips to "Installed".
+    await expect(
+      page
+        .locator('[data-sonner-toast][data-type="success"]')
+        .filter({ hasText: 'Installed' })
+        .first(),
+    ).toBeVisible({ timeout: 10000 })
+    await expect(
+      card.locator('[data-testid^="hub-workflow-installed-tag-"]'),
+    ).toBeVisible({ timeout: 10000 })
   })
 })

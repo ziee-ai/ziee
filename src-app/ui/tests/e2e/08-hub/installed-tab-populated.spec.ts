@@ -44,35 +44,44 @@ test.describe('Hub — Installed tab populated + Re-install', () => {
     await expect(page).toHaveURL(/\/hub\/installed/)
 
     const rowContainer = page
-      .locator('div.flex.items-start', { hasText: installedName })
+      .getByTestId(/^hub-installed-row-/)
+      .filter({ hasText: installedName })
       .first()
     await expect(rowContainer).toBeVisible({ timeout: 15000 })
 
     // (1) Populated-render coverage: the version Tag (`v{current}` or
     // `v{installed} → v{current}`) the empty-state-only test never reached.
     await expect(
-      rowContainer.locator('.ant-tag').filter({ hasText: /^v/ }).first(),
+      rowContainer.getByTestId(/^hub-installed-version-tag-/).first(),
     ).toBeVisible({ timeout: 10000 })
+    await expect(
+      rowContainer.getByTestId(/^hub-installed-version-tag-/).first(),
+    ).toContainText(/^v/)
 
-    // (2) Re-install action: Popconfirm → confirm → replace install.
-    const reinstallBtn = rowContainer.getByRole('button', {
-      name: /^Re-install$/,
-    })
+    // (2) Re-install action: Confirm dialog → confirm → replace install.
+    const reinstallBtn = rowContainer.getByTestId(/^hub-installed-reinstall-btn-/)
     await expect(reinstallBtn).toBeVisible()
     await expect(reinstallBtn).toBeEnabled()
     await reinstallBtn.click()
 
-    const popconfirm = page.locator('.ant-popconfirm:visible').last()
-    await expect(popconfirm).toBeVisible({ timeout: 5000 })
-    await popconfirm.getByRole('button', { name: /^Re-install$/ }).click()
+    const confirm = page.getByTestId(/^hub-installed-reinstall-confirm-/)
+    await expect(confirm).toBeVisible({ timeout: 5000 })
+    await page
+      .locator(
+        '[data-testid^="hub-installed-reinstall-confirm-"][data-testid$="-confirm"]',
+      )
+      .click()
 
-    // The reinstall() handler shows a "Re-installed …" success message
-    // and reloads the Installed tab; the row remains present afterwards.
-    await expect(page.getByText(/Re-installed/).first()).toBeVisible({
-      timeout: 15000,
-    })
+    // The reinstall() handler shows a "Re-installed …" success toast and
+    // reloads the Installed tab; the row remains present afterwards.
     await expect(
-      page.getByText(installedName, { exact: true }).first(),
+      page.locator('[data-sonner-toast][data-type="success"]').first(),
+    ).toBeVisible({ timeout: 15000 })
+    await expect(
+      page
+        .getByTestId(/^hub-installed-row-/)
+        .filter({ hasText: installedName })
+        .first(),
     ).toBeVisible({ timeout: 15000 })
   })
 })

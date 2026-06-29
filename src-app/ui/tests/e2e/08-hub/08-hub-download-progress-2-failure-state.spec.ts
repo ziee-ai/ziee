@@ -101,27 +101,32 @@ test('hub card surfaces failure state with red tag, exception bar, and Retry but
   await page.reload()
   await waitForHubDataLoad(page)
 
-  // The card's filter picks up the failed row + renders failure state.
-  await expect(
-    firstCard.locator('.ant-tag').filter({ hasText: 'Download Failed' }),
-  ).toBeVisible({ timeout: 5_000 })
+  // The card's filter picks up the failed row + renders failure state:
+  // the top status tag flips to the error "Download Failed" tag.
+  const statusTag = firstCard.getByTestId(
+    `hub-model-status-tag-${cardModelId}`,
+  )
+  await expect(statusTag).toBeVisible({ timeout: 5_000 })
+  await expect(statusTag).toContainText('Download Failed')
 
-  const progress = firstCard.locator('.ant-progress')
+  // The dedicated failed-progress bar (tone="error") renders only in the
+  // failure state — its presence is the exception affordance.
+  const progress = firstCard.getByTestId(
+    `hub-model-failed-progress-${cardModelId}`,
+  )
   await expect(progress).toBeVisible({ timeout: 5_000 })
-  // antd applies `.ant-progress-status-exception` for `status="exception"`.
-  await expect(progress).toHaveClass(/ant-progress-status-exception/)
   // Inline reason is clipped to ~50 chars; full reason is in the tooltip
   // (we just check the visible truncation contains the error word).
   await expect(progress).toContainText(/failed|503/i)
 
   // Retry button appears under the bar.
   await expect(
-    firstCard.getByRole('button', { name: /retry/i }),
+    firstCard.getByTestId(`hub-model-retry-btn-${cardModelId}`),
   ).toBeVisible({ timeout: 5_000 })
 
   // Primary Download button is hidden — the user only sees Retry as the
   // forward action when a download has failed.
   await expect(
-    firstCard.getByRole('button', { name: /^download$/i }),
+    firstCard.getByTestId(`hub-model-download-btn-${cardModelId}`),
   ).toHaveCount(0)
 })

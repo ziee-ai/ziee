@@ -293,7 +293,7 @@ export function ProfileSettingsPage() {
               </Flex>
             </Form>
           ) : (
-            <Text type="secondary">
+            <Text type="secondary" data-testid="profile-no-password-notice">
               You sign in through an external provider, so there is no password
               to change here.
             </Text>

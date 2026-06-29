@@ -5,6 +5,7 @@ import {
   createTestUser,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the SandboxResourceLimitsSection permission states.
@@ -20,7 +21,7 @@ import {
 async function gotoSandbox(page: import('@playwright/test').Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/sandbox`)
   await expect(
-    page.getByRole('heading', { name: 'Code Sandbox' }),
+    byTestId(page, 'sandbox-resource-limits-card'),
   ).toBeVisible({ timeout: 30000 })
 }
 
@@ -44,12 +45,11 @@ test.describe('Code Sandbox — resource-limits permission states', () => {
     await login(page, baseURL, uname, 'password123')
     await gotoSandbox(page, baseURL)
 
-    await expect(page.getByText('Read-only view')).toBeVisible({
-      timeout: 30000,
-    })
+    await expect(
+      byTestId(page, 'sandbox-resource-limits-readonly-alert'),
+    ).toBeVisible({ timeout: 30000 })
     // The section's Save control is disabled (form disabled={!canManage}).
-    const card = page.locator('.ant-card:has-text("Read-only view")')
-    await expect(card.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await expect(byTestId(page, 'sandbox-rl-save-btn')).toBeDisabled()
   })
 
   test('an admin without resource_limits read sees the section denial', async ({
@@ -73,9 +73,7 @@ test.describe('Code Sandbox — resource-limits permission states', () => {
     await gotoSandbox(page, baseURL)
 
     await expect(
-      page.getByText(
-        /don't have permission to view sandbox resource limits/i,
-      ),
+      byTestId(page, 'sandbox-resource-limits-noperm-alert'),
     ).toBeVisible({ timeout: 30000 })
   })
 })

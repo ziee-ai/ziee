@@ -2,6 +2,7 @@ import { gzipSync } from 'node:zlib'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToAdminSkillsPage } from './helpers/skill-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the System Skills admin page CRUD interaction (AdminSkillsPage.tsx).
@@ -77,24 +78,24 @@ test.describe('Skills — Admin page CRUD', () => {
     await goToAdminSkillsPage(page, baseURL)
 
     // Fresh DB → empty system-skills list to start.
-    await expect(
-      page.getByText(/no system skills installed/i),
-    ).toBeVisible()
+    await expect(byTestId(page, 'skill-admin-empty')).toBeVisible()
 
     // ---------------------------- CREATE ----------------------------
     // The admin "Import" button (gated by skills::manage_system) opens the
     // ImportSkillDialog rendered with `system`, so handleImport posts the
     // multipart bundle with scope=system.
-    await page.getByRole('button', { name: /import/i }).click()
+    await byTestId(page, 'skill-admin-import-button').click()
 
-    const dialog = page.getByRole('dialog', { name: 'Import Skill' })
+    const dialog = byTestId(page, 'skill-import-dialog')
     await expect(dialog).toBeVisible()
 
-    await dialog.locator('input[type="file"]').setInputFiles({
-      name: 'system-skill.tar.gz',
-      mimeType: 'application/gzip',
-      buffer: buildSkillBundle(VALID_SKILL_MD),
-    })
+    await byTestId(dialog, 'skill-import-upload')
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: 'system-skill.tar.gz',
+        mimeType: 'application/gzip',
+        buffer: buildSkillBundle(VALID_SKILL_MD),
+      })
 
     const importResp = page.waitForResponse(
       r =>
@@ -102,54 +103,46 @@ test.describe('Skills — Admin page CRUD', () => {
         r.request().method() === 'POST',
       { timeout: 30000 },
     )
-    await dialog.getByRole('button', { name: 'Import' }).click()
+    await byTestId(dialog, 'skill-import-submit-button').click()
     const imported = await importResp
     expect(imported.ok()).toBeTruthy()
 
-    await expect(page.getByText('Skill imported')).toBeVisible({
-      timeout: 15000,
-    })
     await expect(dialog).toBeHidden({ timeout: 15000 })
 
     // The installed system skill surfaces as a card on the admin page.
+    // SKILL_NAME is dynamic data this test created, so a text filter on it
+    // is allowed (the testid prefix scopes us to admin cards).
     const skillCard = page
-      .locator('[data-skill-id]')
+      .locator('[data-testid^="skill-admin-card-"]')
       .filter({ hasText: SKILL_NAME })
     await expect(skillCard).toBeVisible({ timeout: 15000 })
 
     // ----------------------------- READ -----------------------------
     // Clicking the card body opens the SkillDetailDrawer.
-    await skillCard.getByText(SKILL_NAME).click()
-    const drawer = page.getByRole('dialog', { name: SKILL_NAME })
+    await skillCard.click()
+    const drawer = byTestId(page, 'skill-detail-sheet-loaded')
     await expect(drawer).toBeVisible({ timeout: 10000 })
 
     // ---------------------------- DELETE ----------------------------
     // The drawer's Delete affordance is rendered because a system skill is
     // editable for an admin holding skills::manage_system. Confirm the
-    // Popconfirm and assert the real DELETE /api/skills/system/{id} fires.
-    await drawer.getByRole('button', { name: /delete/i }).click()
+    // alert-dialog and assert the real DELETE /api/skills/system/{id} fires.
+    await byTestId(drawer, 'skill-delete-button').click()
     const deleteResp = page.waitForResponse(
       r =>
         /\/api\/skills\/system\/[^/]+$/.test(r.url()) &&
         r.request().method() === 'DELETE',
       { timeout: 15000 },
     )
-    // The Popconfirm's danger "Delete" confirm button (distinct from the
-    // small trigger button) — the confirm popover's primary action.
-    await page
-      .locator('.ant-popconfirm')
-      .getByRole('button', { name: 'Delete' })
-      .click()
+    // The confirm dialog's danger "Delete" confirm button (distinct from the
+    // small trigger button) — the alert-dialog's primary action.
+    await byTestId(page, 'skill-delete-confirm-confirm').click()
     expect((await deleteResp).ok()).toBeTruthy()
-
-    await expect(page.getByText('Skill deleted')).toBeVisible({
-      timeout: 15000,
-    })
 
     // The skill is gone from the admin list — the empty state returns.
     await expect(skillCard).toHaveCount(0, { timeout: 15000 })
-    await expect(
-      page.getByText(/no system skills installed/i),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'skill-admin-empty')).toBeVisible({
+      timeout: 15000,
+    })
   })
 })

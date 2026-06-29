@@ -6,6 +6,7 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import { seedAssistantWithToolResult } from '../09-chat/fixtures/mock-tool-result'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the UI counterpart to `per-conversation-toggle.spec.ts`'s
@@ -57,13 +58,8 @@ test.describe('Summarization — boundary marker hidden when summary is null', (
     ).toBeVisible({ timeout: 15000 })
 
     // The conversation has no summary row → `current.summary` is null →
-    // SummaryBoundaryMarker returns null for every message. Neither the
-    // expandable divider control nor its label text may appear.
-    await expect(
-      page.getByRole('button', { name: /condensed-conversation summary/i }),
-    ).toHaveCount(0)
-    await expect(
-      page.getByText(/messages condensed into a summary/i),
-    ).toHaveCount(0)
+    // SummaryBoundaryMarker returns null for every message. The expandable
+    // divider control must not appear in the thread.
+    await expect(byTestId(page, 'summ-boundary-toggle')).toHaveCount(0)
   })
 })

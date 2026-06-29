@@ -17,6 +17,7 @@ import {
   goToNewChatPage,
   selectModelInDropdown,
 } from '../09-chat/helpers/chat-helpers'
+import { byTestId } from '../testid.ts'
 
 // Deterministic in-chat rendering of a `web_search` tool result. The
 // web-search-settings spec only covers the admin settings page; this exercises
@@ -100,25 +101,29 @@ test.describe('Web search in-chat tool result', () => {
 
     await goToNewChatPage(page, baseURL)
     await selectModelInDropdown(page, 'GPT-4o Mini')
-    const textarea = page
-      .locator('textarea[placeholder*="Type your message"]')
+    await byTestId(page, 'chat-message-textarea')
       .first()
-    await textarea.fill('search the web for ziee release notes')
-    await page.getByRole('button', { name: 'Send message' }).click()
+      .fill('search the web for ziee release notes')
+    await byTestId(page, 'chat-input-send-btn').click()
 
     const assistantMsg = page
       .locator(`[data-testid="chat-message"][data-message-id="${assistantMessageId}"]`)
       .first()
     await assistantMsg.waitFor({ state: 'visible', timeout: 15000 })
 
-    // The MCP tool-use renderer shows the web_search tool name + a Completed
-    // status for the matched tool_result.
-    await expect(assistantMsg.getByText('web_search').first()).toBeVisible()
-    await expect(assistantMsg.getByText('Completed').first()).toBeVisible()
+    // The MCP tool-use renderer shows the web_search tool-use card (the tool
+    // name `web_search` is dynamic data the mock provided) + a Completed status
+    // for the matched tool_result.
+    const toolCard = byTestId(assistantMsg, `mcp-tooluse-card-${toolUseId}`)
+    await expect(toolCard).toBeVisible()
+    await expect(toolCard.getByText('web_search').first()).toBeVisible()
+    await expect(
+      byTestId(assistantMsg, `mcp-tooluse-status-${toolUseId}`),
+    ).toHaveAttribute('data-status', 'completed')
 
     // Expand details → the digest text (the readable web_search result channel)
-    // renders inline.
-    await assistantMsg.getByRole('button', { name: /Show details/ }).click()
+    // renders inline (SENTINEL_WS_RESULT is dynamic data set on the tool_result).
+    await byTestId(assistantMsg, `mcp-tooluse-details-btn-${toolUseId}`).click()
     await expect(assistantMsg.getByText(/SENTINEL_WS_RESULT/)).toBeVisible()
   })
 })

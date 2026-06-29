@@ -7,6 +7,7 @@ import {
   getCurrentUserToken,
   completeOnboarding,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * Deep-linking to a settings section that EXISTS (registered slot) but the
@@ -42,9 +43,9 @@ test.describe('Settings - forbidden section deep-link', () => {
     await page.goto(`${baseURL}/settings/users`)
 
     // The inline 403 panel renders (not a redirect away from /settings/users).
-    await expect(page.getByText('Not authorized')).toBeVisible({ timeout: 30000 })
-    await expect(
-      page.getByText(/don't have permission to view/i),
-    ).toBeVisible()
+    const forbidden = byTestId(page, 'settings-forbidden-result')
+    await expect(forbidden).toBeVisible({ timeout: 30000 })
+    // Its subtitle names the section the user may not view.
+    await expect(forbidden).toContainText(/don't have permission to view/i)
   })
 })

@@ -4,6 +4,7 @@ import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   goToSettingsPage,
   waitForSettingsPageLoad,
+  selectThemeOption,
 } from './helpers/navigation-helpers'
 
 /**
@@ -29,13 +30,7 @@ test.describe('Settings — System theme follows OS', () => {
     await waitForSettingsPageLoad(page, 'General')
 
     // Pick the "System" theme option.
-    await page.locator('#theme-form [aria-label="Theme"]').first().click()
-    await page
-      .getByRole('listbox')
-      .or(page.locator('.ant-select-dropdown'))
-      .first()
-      .waitFor({ state: 'visible' })
-    await page.getByTitle('System').click()
+    await selectThemeOption(page, 'system')
     await page.waitForTimeout(500)
 
     // OS is dark → app is dark.

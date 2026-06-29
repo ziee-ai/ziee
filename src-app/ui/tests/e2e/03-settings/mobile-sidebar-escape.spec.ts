@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 // audit id all-6b38bee63550 — pressing Escape closes the mobile sidebar
 // (AppLayout.tsx:268-272: onKeyDown Escape → setSidebarCollapsed(true)); no E2E
@@ -13,12 +14,12 @@ test.describe('Mobile sidebar — Escape to close', () => {
     await page.setViewportSize({ width: 400, height: 800 })
     await page.goto(`${baseURL}/`)
 
-    const sidebar = page.locator('#app-sidebar')
+    const sidebar = byTestId(page, 'app-sidebar')
     // Mobile boot → sidebar is auto-collapsed.
     await expect(sidebar).toHaveAttribute('aria-hidden', 'true', { timeout: 10000 })
 
-    // Open it via the toggle button (semantic aria-label).
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    // Open it via the toggle button.
+    await byTestId(page, 'layout-sidebar-toggle-button').click()
     await expect(sidebar).not.toHaveAttribute('aria-hidden', 'true', { timeout: 10000 })
 
     // Escape must collapse it again.

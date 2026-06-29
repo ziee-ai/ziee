@@ -137,7 +137,7 @@ function ModelRow({
   }, [expanded, model.running, model.id])
 
   return (
-    <Flex direction="column" gap="small" className="py-1">
+    <Flex direction="column" gap="small" className="py-1" data-testid={`llmrt-model-row-${model.id}`}>
       <Flex align="center" justify="between" gap="small">
         <Space>
           <span className={`inline-block size-2 rounded-full ${model.running ? 'bg-primary' : 'bg-muted-foreground/40'}`} aria-hidden />

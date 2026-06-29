@@ -1,10 +1,11 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — auth-provider list-page enable/disable Switch INTERACTION
- * (AuthProvidersListSection.tsx:54-69, 111-115). The crud spec only asserts the
- * seeded providers START disabled; it never clicks the toggle. Enabling an
+ * (AuthProvidersListSection.tsx). The crud spec only asserts the seeded
+ * providers START disabled; it never clicks the toggle. Enabling an
  * UNCONFIGURED provider triggers the backend enable-transition health probe,
  * which fails (AUTH_PROVIDER_ENABLE_FAILED_HEALTH_CHECK) → an error toast + the
  * Switch snaps back to OFF (the store emits auth_provider.auto_disabled).
@@ -19,7 +20,7 @@ test.describe('Auth providers — enable/disable toggle', () => {
     await page.goto(`${testInfra.baseURL}/settings/auth-providers`)
 
     // The migration-47-seeded "google" OIDC provider starts disabled (no config).
-    const toggle = page.getByRole('switch', { name: 'Toggle google' })
+    const toggle = byTestId(page, 'authprov-toggle-switch-google')
     await expect(toggle).toBeVisible({ timeout: 30000 })
     await expect(toggle).toHaveAttribute('aria-checked', 'false')
 
@@ -27,9 +28,9 @@ test.describe('Auth providers — enable/disable toggle', () => {
     await toggle.click()
 
     // An error toast surfaces the probe failure reason…
-    await expect(page.locator('.ant-message-error').first()).toBeVisible({
-      timeout: 15000,
-    })
+    await expect(
+      page.locator('[data-sonner-toast][data-type="error"]').first(),
+    ).toBeVisible({ timeout: 15000 })
     // …and the Switch snaps back to OFF (auto-disabled — never silently enabled).
     await expect(toggle).toHaveAttribute('aria-checked', 'false', {
       timeout: 15000,

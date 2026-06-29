@@ -17,26 +17,22 @@ test.describe('App layout — sidebar toggle', () => {
   }) => {
     await loginAsAdmin(page, testInfra.baseURL)
 
-    // Sidebar starts expanded — the toggle reads "Close navigation menu".
-    const collapseBtn = page.getByRole('button', {
-      name: 'Close navigation menu',
-    })
-    await expect(collapseBtn).toBeVisible({ timeout: 30000 })
-    await expect(collapseBtn).toHaveAttribute('aria-expanded', 'true')
-    await expect(collapseBtn).toHaveAttribute('aria-controls', 'app-sidebar')
+    // Sidebar starts expanded — the toggle exposes aria-expanded="true".
+    const toggleBtn = page.getByTestId('layout-sidebar-toggle-button')
+    await expect(toggleBtn).toBeVisible({ timeout: 30000 })
+    await expect(toggleBtn).toHaveAttribute('aria-expanded', 'true')
+    await expect(toggleBtn).toHaveAttribute('aria-controls', 'app-sidebar')
 
-    // Collapse → the accessible name flips to "Open navigation menu".
-    await collapseBtn.click()
-    const expandBtn = page.getByRole('button', {
-      name: 'Open navigation menu',
+    // Collapse → aria-expanded flips to "false".
+    await toggleBtn.click()
+    await expect(toggleBtn).toHaveAttribute('aria-expanded', 'false', {
+      timeout: 10000,
     })
-    await expect(expandBtn).toBeVisible({ timeout: 10000 })
-    await expect(expandBtn).toHaveAttribute('aria-expanded', 'false')
 
-    // Expand again → back to the collapse affordance.
-    await expandBtn.click()
-    await expect(
-      page.getByRole('button', { name: 'Close navigation menu' }),
-    ).toBeVisible({ timeout: 10000 })
+    // Expand again → back to the expanded state.
+    await toggleBtn.click()
+    await expect(toggleBtn).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 10000,
+    })
   })
 })

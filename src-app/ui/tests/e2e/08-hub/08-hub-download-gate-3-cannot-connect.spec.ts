@@ -97,18 +97,20 @@ test('Download on a credentialed-but-unreachable repo shows the cannot-connect m
   // fires regardless of the model's auth_required flag.
   const firstCard = (await getModelCards(page)).first()
   await expect(firstCard).toBeVisible()
-  await firstCard.getByRole('button', { name: /download/i }).click()
+  const modelName = (await firstCard.getAttribute('data-testid'))!.replace(
+    'hub-model-card-',
+    '',
+  )
+  await firstCard.getByTestId(`hub-model-download-btn-${modelName}`).click()
 
-  const modal = page
-    .getByRole('dialog')
-    .filter({ hasText: 'Cannot Connect to Repository' })
+  const modal = page.getByTestId('hub-download-gate-cannot-connect')
   await expect(modal).toBeVisible({ timeout: 15_000 })
   expect(probeHits()).toBeGreaterThanOrEqual(1)
 
-  await modal.getByRole('button', { name: 'Open Repository Settings' }).click()
-  await expect(
-    page.locator('.ant-drawer.ant-drawer-open .ant-drawer-title').last(),
-  ).toContainText(/Built-in Repository/, { timeout: 10_000 })
+  await page.getByTestId('hub-download-gate-cannot-connect-ok-btn').click()
+  await expect(page.getByTestId('llmrepo-form')).toBeVisible({
+    timeout: 10_000,
+  })
 
   expect(dlHits()).toBe(0)
 })

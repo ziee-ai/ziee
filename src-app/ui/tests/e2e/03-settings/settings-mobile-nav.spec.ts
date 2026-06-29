@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the Settings page mobile section-navigation dropdown.
@@ -33,23 +34,21 @@ test.describe('Settings — mobile section navigation', () => {
 
     // Mobile layout active → the section-select Button is present
     // (the desktop sidebar Menu is not rendered at this width).
-    const sectionButton = page.getByRole('button', {
-      name: 'Select settings section',
-    })
+    const sectionButton = byTestId(page, 'settings-mobile-dropdown-trigger')
     await expect(sectionButton).toBeVisible({ timeout: 15_000 })
 
     // Open the dropdown and jump to the "Profile" section. Both
     // "General" and "Profile" are core user-level settings pages
     // always present for any authenticated user.
     await sectionButton.click()
-    await page.getByRole('menuitem', { name: 'Profile' }).click()
+    await byTestId(page, 'settings-mobile-dropdown-item-profile').click()
 
     // The click must have driven a real route change.
     await expect(page).toHaveURL(/\/settings\/profile$/, { timeout: 10_000 })
 
     // The dropdown trigger reflects the now-current section.
     await expect(
-      page.getByRole('button', { name: 'Select settings section' }),
+      byTestId(page, 'settings-mobile-dropdown-trigger'),
     ).toContainText('Profile')
   })
 })

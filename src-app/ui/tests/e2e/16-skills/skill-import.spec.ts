@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — ImportSkillDialog (user-scope skill import): the drag-drop → validate
@@ -17,13 +18,13 @@ test.describe('Skills — import dialog validate flow', () => {
     await page.goto(`${testInfra.baseURL}/skills`)
 
     // Open the Import dialog.
-    await page.getByRole('button', { name: 'Import' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Import Skill' })
+    await byTestId(page, 'skill-list-import-button').click()
+    const dialog = byTestId(page, 'skill-import-dialog')
     await expect(dialog).toBeVisible({ timeout: 15000 })
 
     // Attach a deliberately MALFORMED SKILL.md (no required frontmatter) to the
-    // Dragger's hidden file input.
-    await dialog
+    // upload's hidden file input.
+    await byTestId(dialog, 'skill-import-upload')
       .locator('input[type="file"]')
       .setInputFiles({
         name: 'SKILL.md',
@@ -31,10 +32,11 @@ test.describe('Skills — import dialog validate flow', () => {
         buffer: Buffer.from('just a body with no frontmatter at all\n'),
       })
 
-    // Validate → the server rejects it; the dialog shows the failure Alert.
-    await dialog.getByRole('button', { name: 'Validate' }).click()
-    await expect(dialog.getByText('Validation failed')).toBeVisible({
-      timeout: 15000,
-    })
+    // Validate → the server rejects it; the dialog shows the failure Alert
+    // (tone="error" → role="alert").
+    await byTestId(dialog, 'skill-import-validate-button').click()
+    const alert = byTestId(dialog, 'skill-import-validation-alert')
+    await expect(alert).toBeVisible({ timeout: 15000 })
+    await expect(alert).toHaveAttribute('role', 'alert')
   })
 })

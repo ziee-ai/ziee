@@ -42,6 +42,7 @@ export function SummaryBoundaryMarker() {
     <div className="mt-3 mb-1">
       <Separator>
         <Flex
+          data-testid="summ-boundary-toggle"
           align="center"
           gap="middle"
           className="cursor-pointer select-none"

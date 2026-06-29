@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * HeaderBarContainer renders a soft-fade overlay just below the header — an
@@ -18,7 +19,7 @@ test.describe('App shell — header fade overlay', () => {
     await loginAsAdmin(page, baseURL)
     // Any authenticated page carries the app-shell header.
     await page.goto(`${baseURL}/settings/general`)
-    await expect(page.getByRole('heading', { name: 'General' })).toBeVisible({
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible({
       timeout: 15000,
     })
 

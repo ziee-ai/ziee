@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToSkillsPage } from './helpers/skill-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * End-to-end skill flow (gap cae1aa1ca1ca): the built-in capability skills are
@@ -20,20 +21,20 @@ test.describe('Skills - install → list → load content', () => {
   test('opening a built-in skill loads and renders its SKILL.md body', async ({
     page,
   }) => {
-    // The skill rows are clickable cards (role="button") carrying a "Built-in"
-    // badge; the Import button has no such badge, so this targets a skill row.
+    // The skill rows are clickable cards carrying a "Built-in" scope badge;
+    // the Import button has no such badge, so this targets a skill row.
     const skillRow = page
-      .locator('[role="button"]')
-      .filter({ hasText: 'Built-in' })
+      .locator('[data-testid^="skill-list-card-"]')
+      .filter({ has: byTestId(page, 'skill-scope-badge-builtin') })
       .first()
     await expect(skillRow).toBeVisible({ timeout: 15000 })
     await skillRow.click()
 
     // The detail drawer opens and fetches the on-disk SKILL.md body; once
-    // loaded it renders under the "Skill content (SKILL.md)" heading.
-    await expect(
-      page.getByRole('heading', { name: /skill content \(SKILL\.md\)/i }),
-    ).toBeVisible({ timeout: 15000 })
+    // loaded it renders the body section (frontmatter-independent).
+    await expect(byTestId(page, 'skill-detail-body')).toBeVisible({
+      timeout: 15000,
+    })
   })
 
   // audit id 0f5dfc6c8a9d — the detail drawer's metadata view (the Descriptions
@@ -41,17 +42,15 @@ test.describe('Skills - install → list → load content', () => {
   // test above only asserts the SKILL.md body heading.
   test('the skill detail drawer shows the metadata table', async ({ page }) => {
     const skillRow = page
-      .locator('[role="button"]')
-      .filter({ hasText: 'Built-in' })
+      .locator('[data-testid^="skill-list-card-"]')
+      .filter({ has: byTestId(page, 'skill-scope-badge-builtin') })
       .first()
     await expect(skillRow).toBeVisible({ timeout: 15000 })
     await skillRow.click()
 
-    const drawer = page.locator('.ant-drawer-content')
+    const drawer = byTestId(page, 'skill-detail-sheet-loaded')
     await expect(drawer).toBeVisible({ timeout: 15000 })
-    // The Descriptions metadata rows render their labels.
-    await expect(drawer.getByText('Name', { exact: true })).toBeVisible()
-    await expect(drawer.getByText('Files', { exact: true })).toBeVisible()
-    await expect(drawer.getByText('Size', { exact: true })).toBeVisible()
+    // The Descriptions metadata table (Name / Files / Size rows) renders.
+    await expect(byTestId(drawer, 'skill-detail-descriptions')).toBeVisible()
   })
 })

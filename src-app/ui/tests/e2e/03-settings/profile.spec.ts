@@ -9,6 +9,13 @@ import {
   login,
 } from '../../common/auth-helpers'
 import { waitForSettingsPageLoad } from './helpers/navigation-helpers'
+import { byTestId } from '../testid.ts'
+
+// Sonner toast feedback (i18n-safe: select by toast type, not message text).
+const successToast = (page: Page) =>
+  page.locator('[data-sonner-toast][data-type="success"]')
+const errorToast = (page: Page) =>
+  page.locator('[data-sonner-toast][data-type="error"]')
 
 /**
  * Self-service profile page (`/settings/profile`).
@@ -65,9 +72,7 @@ async function loginAsFreshUser(
 
 async function gotoProfile(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/profile`)
-  await page
-    .getByRole('heading', { name: 'Profile' })
-    .waitFor({ timeout: 30000 })
+  await byTestId(page, 'settings-page-title').waitFor({ timeout: 30000 })
 }
 
 test.describe('Settings - Profile (self-service)', () => {
@@ -85,11 +90,11 @@ test.describe('Settings - Profile (self-service)', () => {
     const { baseURL, apiURL } = testInfra
     await loginAsFreshUser(page, baseURL, apiURL, 'nav')
 
-    await page.getByTestId('user-profile-widget').click()
-    await page.getByRole('menuitem', { name: 'Profile' }).click()
+    await byTestId(page, 'user-profile-widget').click()
+    await byTestId(page, 'userprofile-menu-dropdown-item-profile').click()
 
     await expect(page).toHaveURL(/\/settings\/profile$/)
-    await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible()
+    await expect(byTestId(page, 'settings-page-title')).toBeVisible()
   })
 
   test('shows the read-only account info card', async ({
@@ -101,11 +106,12 @@ test.describe('Settings - Profile (self-service)', () => {
     await gotoProfile(page, baseURL)
 
     // The account-info Descriptions surface the user's email + temporal stats.
-    await expect(page.getByText(user.email)).toBeVisible()
-    await expect(page.getByText('Member since')).toBeVisible()
-    await expect(page.getByText('Last login')).toBeVisible()
-    // A fresh local registration is not email-verified.
-    await expect(page.getByText(/Email (verified|unverified)/)).toBeVisible()
+    const descriptions = byTestId(page, 'profile-account-descriptions')
+    await expect(descriptions).toContainText(user.email)
+    await expect(descriptions).toContainText('Member since')
+    await expect(descriptions).toContainText('Last login')
+    // A fresh local registration renders the email-verified status tag.
+    await expect(byTestId(page, 'profile-email-verified-tag')).toBeVisible()
   })
 
   test('edits display name and persists across reload', async ({
@@ -117,13 +123,15 @@ test.describe('Settings - Profile (self-service)', () => {
     await gotoProfile(page, baseURL)
 
     const newName = 'Edited Display Name'
-    await page.getByLabel('Display name').fill(newName)
-    await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Profile saved.')).toBeVisible()
+    await byTestId(page, 'profile-display-name-input').fill(newName)
+    await byTestId(page, 'profile-save-button').click()
+    await expect(successToast(page)).toBeVisible()
 
     await page.reload()
     await gotoProfile(page, baseURL)
-    await expect(page.getByLabel('Display name')).toHaveValue(newName)
+    await expect(byTestId(page, 'profile-display-name-input')).toHaveValue(
+      newName,
+    )
   })
 
   test('edits username and the sidebar widget reflects it', async ({
@@ -135,14 +143,14 @@ test.describe('Settings - Profile (self-service)', () => {
     await gotoProfile(page, baseURL)
 
     const newUsername = `${user.username}_renamed`
-    await page.getByLabel('Username').fill(newUsername)
-    await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Profile saved.')).toBeVisible()
+    await byTestId(page, 'profile-username-input').fill(newUsername)
+    await byTestId(page, 'profile-save-button').click()
+    await expect(successToast(page)).toBeVisible()
 
     // The sidebar widget renders the username — refreshCurrentUser should
     // update it without a reload. Assert on text content (not visibility:
     // a collapsed sidebar renders the label with opacity 0).
-    await expect(page.getByTestId('user-profile-widget')).toContainText(
+    await expect(byTestId(page, 'user-profile-widget')).toContainText(
       newUsername,
     )
   })
@@ -180,11 +188,11 @@ test.describe('Settings - Profile (self-service)', () => {
     await login(page, baseURL, me, PASSWORD)
     await gotoProfile(page, baseURL)
 
-    await page.getByLabel('Username').fill(taken)
-    await page.getByRole('button', { name: 'Save' }).click()
+    await byTestId(page, 'profile-username-input').fill(taken)
+    await byTestId(page, 'profile-save-button').click()
 
-    // 409 → message.error (a 409 is NOT a 403, so the no-403 fixture is happy).
-    await expect(page.locator('.ant-message-error')).toBeVisible()
+    // 409 → error toast (a 409 is NOT a 403, so the no-403 fixture is happy).
+    await expect(errorToast(page)).toBeVisible()
   })
 
   test('changes password and can log in with the new one', async ({
@@ -196,11 +204,11 @@ test.describe('Settings - Profile (self-service)', () => {
     await gotoProfile(page, baseURL)
 
     const newPassword = 'BrandNewStrongPass456!'
-    await page.getByLabel('Current password').fill(user.password)
-    await page.getByLabel('New password', { exact: true }).fill(newPassword)
-    await page.getByLabel('Confirm new password').fill(newPassword)
-    await page.getByRole('button', { name: 'Change password' }).click()
-    await expect(page.getByText('Password changed.')).toBeVisible()
+    await byTestId(page, 'profile-current-password-input').fill(user.password)
+    await byTestId(page, 'profile-new-password-input').fill(newPassword)
+    await byTestId(page, 'profile-confirm-password-input').fill(newPassword)
+    await byTestId(page, 'profile-change-password-button').click()
+    await expect(successToast(page)).toBeVisible()
 
     // The new password authenticates against the backend.
     const res = await page.request.post(`${apiURL}/api/auth/login`, {
@@ -217,14 +225,16 @@ test.describe('Settings - Profile (self-service)', () => {
     await loginAsFreshUser(page, baseURL, apiURL, 'cpwrong')
     await gotoProfile(page, baseURL)
 
-    await page.getByLabel('Current password').fill('not-my-password')
-    await page
-      .getByLabel('New password', { exact: true })
-      .fill('AnotherStrongPass789!')
-    await page.getByLabel('Confirm new password').fill('AnotherStrongPass789!')
-    await page.getByRole('button', { name: 'Change password' }).click()
+    await byTestId(page, 'profile-current-password-input').fill('not-my-password')
+    await byTestId(page, 'profile-new-password-input').fill(
+      'AnotherStrongPass789!',
+    )
+    await byTestId(page, 'profile-confirm-password-input').fill(
+      'AnotherStrongPass789!',
+    )
+    await byTestId(page, 'profile-change-password-button').click()
 
-    await expect(page.locator('.ant-message-error')).toBeVisible()
+    await expect(errorToast(page)).toBeVisible()
   })
 
   test('saving the profile form with no changes still succeeds (no-op save)', async ({
@@ -237,13 +247,15 @@ test.describe('Settings - Profile (self-service)', () => {
 
     // Don't touch any field — just save. The form submits the unchanged
     // values and the backend treats it as an idempotent update.
-    await page.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Profile saved.')).toBeVisible()
+    await byTestId(page, 'profile-save-button').click()
+    await expect(successToast(page)).toBeVisible()
 
     // The username is unchanged after the no-op save.
     await page.reload()
     await gotoProfile(page, baseURL)
-    await expect(page.getByLabel('Username')).toHaveValue(user.username)
+    await expect(byTestId(page, 'profile-username-input')).toHaveValue(
+      user.username,
+    )
   })
 
   test('OAuth/password-less account hides the change-password form', async ({
@@ -266,13 +278,9 @@ test.describe('Settings - Profile (self-service)', () => {
     await page.reload()
     await gotoProfile(page, baseURL)
 
+    await expect(byTestId(page, 'profile-no-password-notice')).toBeVisible()
     await expect(
-      page.getByText(
-        'You sign in through an external provider, so there is no password to change here.',
-      ),
-    ).toBeVisible()
-    await expect(
-      page.getByRole('button', { name: 'Change password' }),
+      byTestId(page, 'profile-change-password-button'),
     ).toHaveCount(0)
   })
 
@@ -301,12 +309,10 @@ test.describe('Settings - Profile (self-service)', () => {
 
     // The read-only notice renders, the form fields are disabled, and the
     // edit-only actions (Save / Change password) are gone.
-    await expect(
-      page.getByText(/Fields are read-only/),
-    ).toBeVisible()
-    await expect(page.getByLabel('Display name')).toBeDisabled()
-    await expect(page.getByLabel('Username')).toBeDisabled()
-    await expect(page.getByRole('button', { name: 'Save' })).toHaveCount(0)
+    await expect(byTestId(page, 'profile-readonly-alert')).toBeVisible()
+    await expect(byTestId(page, 'profile-display-name-input')).toBeDisabled()
+    await expect(byTestId(page, 'profile-username-input')).toBeDisabled()
+    await expect(byTestId(page, 'profile-save-button')).toHaveCount(0)
   })
 
   test('blocks weak new password and mismatched confirmation client-side', async ({
@@ -317,22 +323,28 @@ test.describe('Settings - Profile (self-service)', () => {
     const user = await loginAsFreshUser(page, baseURL, apiURL, 'cpval')
     await gotoProfile(page, baseURL)
 
-    // Too short (< 8) → field rule blocks submit.
-    await page.getByLabel('Current password').fill(user.password)
-    await page.getByLabel('New password', { exact: true }).fill('short')
-    await page.getByLabel('Confirm new password').fill('short')
-    await page.getByRole('button', { name: 'Change password' }).click()
-    await expect(
-      page.getByText('Password must be at least 8 characters'),
-    ).toBeVisible()
+    // Too short (< 8) → the new-password field rule blocks submit (the field
+    // is flagged invalid and no success toast fires).
+    await byTestId(page, 'profile-current-password-input').fill(user.password)
+    await byTestId(page, 'profile-new-password-input').fill('short')
+    await byTestId(page, 'profile-confirm-password-input').fill('short')
+    await byTestId(page, 'profile-change-password-button').click()
+    await expect(byTestId(page, 'profile-new-password-input')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    )
+    await expect(successToast(page)).toHaveCount(0)
 
-    // Mismatched confirm → confirm rule blocks submit.
-    await page
-      .getByLabel('New password', { exact: true })
-      .fill('GoodStrongPass123!')
-    await page.getByLabel('Confirm new password').fill('DifferentPass123!')
-    await page.getByRole('button', { name: 'Change password' }).click()
-    await expect(page.getByText('Passwords do not match')).toBeVisible()
+    // Mismatched confirm → the confirm-password field rule blocks submit.
+    await byTestId(page, 'profile-new-password-input').fill('GoodStrongPass123!')
+    await byTestId(page, 'profile-confirm-password-input').fill(
+      'DifferentPass123!',
+    )
+    await byTestId(page, 'profile-change-password-button').click()
+    await expect(
+      byTestId(page, 'profile-confirm-password-input'),
+    ).toHaveAttribute('aria-invalid', 'true')
+    await expect(successToast(page)).toHaveCount(0)
   })
 
   /// UserProfileWidget logout (UserProfileWidget.tsx:109-112). The widget
@@ -345,12 +357,12 @@ test.describe('Settings - Profile (self-service)', () => {
     const { baseURL, apiURL } = testInfra
     await loginAsFreshUser(page, baseURL, apiURL, 'logout')
 
-    await page.getByTestId('user-profile-widget').click()
-    await page.getByRole('menuitem', { name: 'Logout' }).click()
+    await byTestId(page, 'user-profile-widget').click()
+    await byTestId(page, 'userprofile-menu-dropdown-item-logout').click()
 
     // Logged out → redirected to /auth; the widget is gone.
     await expect(page).toHaveURL(/\/auth(\b|\/|$)/, { timeout: 15000 })
-    await expect(page.getByTestId('user-profile-widget')).toHaveCount(0)
+    await expect(byTestId(page, 'user-profile-widget')).toHaveCount(0)
   })
 
   /// /settings/general is gated only by `requiresAuth` (no permission), so a
@@ -365,8 +377,10 @@ test.describe('Settings - Profile (self-service)', () => {
 
     await page.goto(`${baseURL}/settings/general`)
     await waitForSettingsPageLoad(page, 'General')
-    await expect(page.getByText(/Not authorized/i)).toHaveCount(0)
-    // The Appearance theme card (always on the General page) renders.
-    await expect(page.getByLabel('Theme')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'settings-forbidden-result')).toHaveCount(0)
+    // The Appearance theme select (always on the General page) renders.
+    await expect(byTestId(page, 'settingsgen-theme-select')).toBeVisible({
+      timeout: 15000,
+    })
   })
 })

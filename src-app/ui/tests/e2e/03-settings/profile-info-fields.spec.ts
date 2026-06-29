@@ -7,6 +7,7 @@ import {
   clearAuthState,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * Profile page (`/settings/profile`) — user-info DISPLAY fields.
@@ -56,24 +57,24 @@ test.describe('Settings - Profile (info display fields)', () => {
     const user = await loginAsFreshUser(page, baseURL, apiURL)
 
     await page.goto(`${baseURL}/settings/profile`)
-    await page
-      .getByRole('heading', { name: 'Profile' })
-      .waitFor({ timeout: 30000 })
+    await byTestId(page, 'settings-page-title').waitFor({ timeout: 30000 })
 
     // Email shown in the Descriptions block matches the actual account.
-    await expect(page.getByText(user.email, { exact: true })).toBeVisible()
+    const descriptions = byTestId(page, 'profile-account-descriptions')
+    await expect(descriptions).toContainText(user.email)
 
     // Username form input is pre-filled with the account's username.
-    await expect(page.getByLabel('Username')).toHaveValue(user.username)
+    await expect(byTestId(page, 'profile-username-input')).toHaveValue(
+      user.username,
+    )
 
     // A non-admin account renders the "User" role tag (not Administrator).
-    await expect(page.getByText('User', { exact: true })).toBeVisible()
-    await expect(
-      page.getByText('Administrator', { exact: true }),
-    ).toHaveCount(0)
+    const roleTag = byTestId(page, 'profile-role-tag')
+    await expect(roleTag).toContainText('User')
+    await expect(roleTag).not.toContainText('Administrator')
 
-    // The identity Descriptions render their labels (Member since / Last login).
-    await expect(page.getByText('Member since', { exact: true })).toBeVisible()
-    await expect(page.getByText('Last login', { exact: true })).toBeVisible()
+    // The identity Descriptions render their temporal label fields.
+    await expect(descriptions).toContainText('Member since')
+    await expect(descriptions).toContainText('Last login')
   })
 })

@@ -1,10 +1,16 @@
 import { Page } from '@playwright/test'
 
 /**
+ * Selectors are tab-agnostic: only the active hub tab is mounted, so the
+ * suffix-matched testid (`hub-<tab>-search-input`, `-sort-select`,
+ * `-tags-multiselect`, `-clear-filters-btn`) resolves to a single element.
+ */
+
+/**
  * Search hub resources by name or description
  */
 export async function searchHubResources(page: Page, query: string) {
-  const searchInput = page.getByRole('textbox', { name: /search/i })
+  const searchInput = page.locator('[data-testid$="-search-input"]').first()
   await searchInput.clear()
   await searchInput.fill(query)
   // Wait for debounced search
@@ -12,47 +18,42 @@ export async function searchHubResources(page: Page, query: string) {
 }
 
 /**
- * Filter hub resources by tags
+ * Filter hub resources by tags. The kit MultiSelect opens a popover whose
+ * options derive `${testid}-opt-${value}`.
  */
 export async function filterByTags(page: Page, tags: string[]) {
-  // Ant Design Select with mode="multiple" renders as a combobox
-  const tagFilter = page.getByRole('combobox', { name: /filter.*tag/i })
+  const tagFilter = page.locator('[data-testid$="-tags-multiselect"]').first()
   await tagFilter.click()
 
-  // Wait for dropdown to appear
-  const dropdown = page.locator('.ant-select-dropdown:visible')
-  await dropdown.waitFor({ state: 'visible' })
-
   for (const tag of tags) {
-    // Click each option in the dropdown
-    await page.locator('.ant-select-item-option', { hasText: new RegExp(`^${tag}$`, 'i') }).click()
+    await page
+      .locator(`[data-testid$="-tags-multiselect-opt-${tag}"]`)
+      .first()
+      .click()
   }
 
-  // Close dropdown by pressing Escape or clicking outside
+  // Close popover
   await page.keyboard.press('Escape')
 }
 
 /**
- * Sort hub resources
+ * Sort hub resources. The kit Select options derive `${testid}-opt-${value}`.
  */
 export async function sortHubResources(
   page: Page,
   sortBy: 'popular' | 'name' | 'size',
 ) {
-  // Ant Design Select renders as a combobox
-  // Use force: true because the selected value span intercepts pointer events
-  const sortSelect = page.getByRole('combobox', { name: /sort/i })
-  await sortSelect.click({ force: true })
+  const sortSelect = page
+    .locator('[data-testid$="-sort-select"], [data-testid$="-sort-combobox"]')
+    .first()
+  await sortSelect.click()
 
-  // Wait for dropdown to appear
-  const dropdown = page.locator('.ant-select-dropdown').last()
-  await dropdown.waitFor({ state: 'visible' })
-
-  // Click the option matching the sortBy value
-  const option = dropdown.locator('.ant-select-item-option', {
-    hasText: new RegExp(`^${sortBy}$`, 'i')
-  })
-  await option.click()
+  await page
+    .locator(
+      `[data-testid$="-sort-select-opt-${sortBy}"], [data-testid$="-sort-combobox-opt-${sortBy}"]`,
+    )
+    .first()
+    .click()
 
   // Wait for re-render
   await page.waitForTimeout(300)
@@ -62,16 +63,15 @@ export async function sortHubResources(
  * Clear all filters (search and tags)
  */
 export async function clearAllFilters(page: Page) {
-  // Clear search
-  const searchInput = page.getByRole('textbox', { name: /search/i })
+  const searchInput = page.locator('[data-testid$="-search-input"]').first()
   await searchInput.clear()
 
-  // Clear tag filters if clear button exists
-  const clearButton = page.getByRole('button', { name: /clear.*filter/i })
-  if (await clearButton.isVisible()) {
+  const clearButton = page
+    .locator('[data-testid$="-clear-filters-btn"]')
+    .first()
+  if (await clearButton.isVisible().catch(() => false)) {
     await clearButton.click()
   }
 
-  // Wait for filters to clear
   await page.waitForTimeout(500)
 }

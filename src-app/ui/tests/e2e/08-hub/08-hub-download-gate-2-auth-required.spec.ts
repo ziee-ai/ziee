@@ -98,21 +98,19 @@ test('Download on an auth-required model with no credential shows the auth-requi
   // Find that specific model's card. The card uses
   // data-testid="hub-model-card-<id>" (per ModelHubCard.tsx) so we can
   // target it directly even if the catalog has many entries.
-  const card = page.locator(`[data-testid="hub-model-card-${targetModel.id}"]`)
+  const card = page.getByTestId(`hub-model-card-${targetModel.id}`)
   await expect(card).toBeVisible({ timeout: 10_000 })
-  await card.getByRole('button', { name: /download/i }).click()
+  await card.getByTestId(`hub-model-download-btn-${targetModel.id}`).click()
 
   // The probe runs (mock returns failure). Auth-required branch fires.
-  const modal = page
-    .getByRole('dialog')
-    .filter({ hasText: 'Authentication Required' })
+  const modal = page.getByTestId('hub-download-gate-auth-required')
   await expect(modal).toBeVisible({ timeout: 15_000 })
   expect(probeHits()).toBeGreaterThanOrEqual(1)
 
-  await modal.getByRole('button', { name: 'Open Repository Settings' }).click()
-  await expect(
-    page.locator('.ant-drawer.ant-drawer-open .ant-drawer-title').last(),
-  ).toContainText(/Built-in Repository/, { timeout: 10_000 })
+  await page.getByTestId('hub-download-gate-auth-required-ok-btn').click()
+  await expect(page.getByTestId('llmrepo-form')).toBeVisible({
+    timeout: 10_000,
+  })
 
   expect(dlHits()).toBe(0)
 })

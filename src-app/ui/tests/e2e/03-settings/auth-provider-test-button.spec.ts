@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — the per-row "Test <name>" button on the Auth Providers list
@@ -12,8 +13,6 @@ import { loginAsAdmin } from '../../common/auth-helpers'
  * surfacing the `<name>: <reason>` error toast (real onTest path).
  */
 
-const ADD_PROVIDER = /Add provider/i
-
 test.describe('Auth providers — per-row Test button', () => {
   test('clicking the row Test button surfaces a result toast', async ({
     page,
@@ -24,30 +23,34 @@ test.describe('Auth providers — per-row Test button', () => {
     await page.goto(`${baseURL}/settings/auth-providers`)
 
     const providerName = `e2e-rowtest-${Date.now()}`
-    await page.getByRole('button', { name: ADD_PROVIDER }).click()
-    await page.getByRole('menuitem', { name: /Generic OIDC/i }).click()
-    await expect(
-      page.getByRole('button', { name: /^Create$/ }),
-    ).toBeVisible({ timeout: 10_000 })
-    await page.getByLabel(/Name \(URL slug\)/i).fill(providerName)
-    await page.getByLabel(/Client ID/i).fill('e2e-client-id')
-    await page.locator('input[type="password"]').first().fill('e2e-secret')
-    await page.getByLabel(/Issuer URL/i).fill('https://nonexistent.invalid/oidc')
-    await page.getByRole('button', { name: /^Create$/ }).click()
+    await byTestId(page, 'authprov-add-button').click()
+    await byTestId(page, 'authprov-add-dropdown-item-oidc-generic').click()
+    await expect(byTestId(page, 'authprov-drawer-save-button')).toBeVisible({
+      timeout: 10_000,
+    })
+    await byTestId(page, 'authprov-name-input').fill(providerName)
+    await byTestId(page, 'authprov-oidc-client-id-input').fill('e2e-client-id')
+    await byTestId(page, 'authprov-oidc-client-secret-input').fill('e2e-secret')
+    await byTestId(page, 'authprov-oidc-issuer-url-input').fill(
+      'https://nonexistent.invalid/oidc',
+    )
+    await byTestId(page, 'authprov-drawer-save-button').click()
 
-    // The per-row Test button (aria-label "Test <slug>").
-    const testButton = page.getByRole('button', { name: `Test ${providerName}` })
+    // The per-row Test button.
+    const testButton = byTestId(page, `authprov-test-button-${providerName}`)
     await expect(testButton).toBeVisible({ timeout: 10_000 })
     await testButton.click()
 
     // Bogus issuer → discovery probe fails → "<name>: <reason>" error toast.
-    await expect(page.locator('.ant-message-error')).toBeVisible({
-      timeout: 15_000,
-    })
+    await expect(
+      page.locator('[data-sonner-toast][data-type="error"]'),
+    ).toBeVisible({ timeout: 15_000 })
 
     // Cleanup.
-    await page.getByRole('button', { name: `Delete ${providerName}` }).click()
-    const popover = page.locator('.ant-popover:visible').last()
-    await popover.locator('.ant-btn-primary').click()
+    await byTestId(page, `authprov-delete-button-${providerName}`).click()
+    await byTestId(
+      page,
+      `authprov-delete-confirm-${providerName}-confirm`,
+    ).click()
   })
 })

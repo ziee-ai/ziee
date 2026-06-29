@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the SummarizationStatusPill in the chat composer (the in-app UI for
@@ -30,8 +31,8 @@ test.describe('Summarization — composer pill UI', () => {
 
     await page.goto(`${baseURL}/chat/${convId}`)
 
-    // The pill renders in the composer (aria-label starts "Summarization override:").
-    const pill = page.getByLabel(/Summarization override:/).first()
+    // The pill renders in the composer.
+    const pill = byTestId(page, 'summ-mode-tag').first()
     await expect(pill).toBeVisible({ timeout: 30000 })
     await pill.click()
 
@@ -42,9 +43,7 @@ test.describe('Summarization — composer pill UI', () => {
         r.request().method() === 'PUT',
       { timeout: 30000 },
     )
-    await page
-      .getByRole('menuitem', { name: /Never summarize this conversation/ })
-      .click()
+    await byTestId(page, 'summ-mode-dropdown-item-off').click()
     expect((await putResp).status()).toBeLessThan(400)
   })
 })

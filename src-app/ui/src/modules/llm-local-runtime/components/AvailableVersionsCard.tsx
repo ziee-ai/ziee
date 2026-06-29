@@ -195,7 +195,7 @@ function PlatformRow({
 }) {
   if (loadingGpu && !gpu) {
     return (
-      <div>
+      <div data-testid="llmrt-platform-row">
         <Text type="secondary">Platform: </Text>
         <Spin size="sm" label="Loading platform" />
       </div>
@@ -203,7 +203,7 @@ function PlatformRow({
   }
   if (!gpu) return null
   return (
-    <div>
+    <div data-testid="llmrt-platform-row">
       <Text type="secondary">Platform: </Text>
       <Text strong>
         {gpu.platform}/{gpu.arch}
@@ -221,7 +221,7 @@ function BackendsRow({
 }) {
   if (loadingGpu && !gpu) {
     return (
-      <Flex align="center" gap="small" wrap>
+      <Flex align="center" gap="small" wrap data-testid="llmrt-backends-row">
         <Text type="secondary">Available backends:</Text>
         <Spin size="sm" label="Loading backends" />
       </Flex>
@@ -229,7 +229,7 @@ function BackendsRow({
   }
   if (!gpu) return null
   return (
-    <Flex align="center" gap="small" wrap>
+    <Flex align="center" gap="small" wrap data-testid="llmrt-backends-row">
       <Text type="secondary">Available backends:</Text>
       <Space size="small" wrap>
         {gpu.available.map(b => (

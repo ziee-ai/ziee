@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 import { gotoRuntimeSettings } from './helpers/local-runtime-helpers'
 
 /**
@@ -53,7 +54,7 @@ test.describe('Local Runtime — in-progress download reload survival', () => {
     // Reload → the app re-mounts, the store re-inits, and loadActive() runs
     // again, rehydrating the in-flight download.
     await page.reload()
-    await expect(page.getByRole('tab', { name: 'Llama.cpp' })).toBeVisible({
+    await expect(byTestId(page, 'llmrt-engine-tabs-tab-llamacpp')).toBeVisible({
       timeout: 30000,
     })
     await expect

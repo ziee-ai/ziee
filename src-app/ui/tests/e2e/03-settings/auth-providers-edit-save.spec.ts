@@ -1,12 +1,13 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — AuthProviderEditDrawer primary SAVE success path (the disabled-save
- * branch, AuthProviderEditDrawer.tsx:240-245 → "Saved <name>"). The crud spec
- * opens the edit drawer but only Cancels; it never asserts a successful save.
- * (The enable-save-with-probe success needs a real OIDC issuer, so this covers
- * the config-edit save that admins use day-to-day.)
+ * branch → "Saved <name>"). The crud spec opens the edit drawer but only
+ * Cancels; it never asserts a successful save. (The enable-save-with-probe
+ * success needs a real OIDC issuer, so this covers the config-edit save that
+ * admins use day-to-day.)
  */
 
 test.describe('Auth providers — edit + save', () => {
@@ -31,16 +32,18 @@ test.describe('Auth providers — edit + save', () => {
     expect(res.ok).toBeTruthy()
 
     await page.goto(`${baseURL}/settings/auth-providers`)
-    await page.getByRole('button', { name: `Edit ${name}` }).click()
+    await byTestId(page, `authprov-edit-button-${name}`).click()
 
     // The name (URL slug) is immutable in edit mode; change a config field.
-    await expect(page.getByLabel(/Name \(URL slug\)/i)).toBeDisabled({
+    await expect(byTestId(page, 'authprov-name-input')).toBeDisabled({
       timeout: 10000,
     })
-    await page.getByLabel(/Client ID/i).fill('edited-client-id')
+    await byTestId(page, 'authprov-oidc-client-id-input').fill('edited-client-id')
 
     // Save (disabled-save path — no enable probe) → "Saved <name>".
-    await page.getByRole('button', { name: /^Save$/ }).click()
+    await byTestId(page, 'authprov-drawer-save-button').click()
+    // `name` is dynamic data this test created → asserting it in the toast is
+    // legitimate (not chrome).
     await expect(page.getByText(`Saved ${name}`)).toBeVisible({ timeout: 10000 })
   })
 })

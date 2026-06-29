@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid.ts'
 import { gotoRuntimeSettings } from './helpers/local-runtime-helpers'
 
 /**
@@ -19,30 +20,23 @@ test.describe('Local Runtime — auto-start timeout config', () => {
     await loginAsAdmin(page, baseURL)
     await gotoRuntimeSettings(page, baseURL)
 
-    const card = page
-      .locator('.ant-card')
-      .filter({ hasText: /Runtime configuration/i })
-      .first()
+    const card = byTestId(page, 'llmrt-runtime-config-card')
     await expect(card).toBeVisible({ timeout: 30000 })
 
-    const field = card.getByLabel('Auto-start timeout (seconds)')
+    const field = byTestId(card, 'llmrt-config-autostart-timeout')
     await field.click()
     await field.press('ControlOrMeta+a')
     await field.fill('45')
 
-    await card.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText(/saved|updated/i).first()).toBeVisible({
+    await byTestId(card, 'llmrt-config-save-btn').click()
+    await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({
       timeout: 10000,
     })
 
     await page.reload()
     await page.waitForLoadState('load')
     await expect(
-      page
-        .locator('.ant-card')
-        .filter({ hasText: /Runtime configuration/i })
-        .first()
-        .getByLabel('Auto-start timeout (seconds)'),
+      byTestId(byTestId(page, 'llmrt-runtime-config-card'), 'llmrt-config-autostart-timeout'),
     ).toHaveValue('45', { timeout: 30000 })
   })
 })

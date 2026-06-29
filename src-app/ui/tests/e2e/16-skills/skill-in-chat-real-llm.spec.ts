@@ -10,6 +10,7 @@ import {
   selectModelInDropdown,
   sendChatMessage,
 } from '../09-chat/helpers/chat-helpers'
+import { byTestId } from '../testid.ts'
 
 /**
  * E2E — a user installs a skill and the model LOADS it in chat via skill_mcp's
@@ -59,6 +60,10 @@ test.describe('Skills — load/use in chat (real LLM)', () => {
     )
 
     // The skill_mcp load_skill tool call surfaces in the chat transcript.
-    await expect(page.getByText(/load_skill/i).first()).toBeVisible({ timeout: 90_000 })
+    // ("load_skill" is dynamic transcript data — assert it on the messages
+    // container rather than via getByText on chrome.)
+    await expect(byTestId(page, 'chat-messages')).toContainText('load_skill', {
+      timeout: 90_000,
+    })
   })
 })
