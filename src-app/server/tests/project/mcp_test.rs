@@ -244,13 +244,16 @@ async fn project_state_persists_for_a_restarted_server() {
     assert_eq!(conv_count, 1, "conversation row must persist across restart");
 
     // 3. The MCP snapshot taken at create time survives with the snapshotted mode.
+    //    Migration 78 (unify_mcp_settings) folded `conversation_mcp_settings`
+    //    into the unified `mcp_settings` table, where the conversation-scoped
+    //    snapshot is the row whose `conversation_id` FK is set.
     let (mode,): (String,) = sqlx::query_as(
-        "SELECT approval_mode FROM conversation_mcp_settings WHERE conversation_id = $1",
+        "SELECT approval_mode FROM mcp_settings WHERE conversation_id = $1",
     )
     .bind(conv_uuid)
     .fetch_one(&pool)
     .await
-    .expect("snapshotted conversation_mcp_settings row must persist");
+    .expect("snapshotted conversation-scoped mcp_settings row must persist");
     assert_eq!(mode, "auto_approve", "the snapshot of the project's MCP mode survives");
 
     pool.close().await;

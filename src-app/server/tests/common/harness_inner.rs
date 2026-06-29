@@ -721,6 +721,18 @@ secrets:
     pub fn api_url(&self, path: &str) -> String {
         format!("{}/api{}", self.base_url, path)
     }
+
+    /// The spawned server process's per-test `app.data_dir`.
+    ///
+    /// An in-process test that drives a file-reading helper directly
+    /// (e.g. `ziee::file_routing::process_file_blocks`, which calls the
+    /// process-global `get_file_storage()`) must point that global at the
+    /// SAME directory the spawned server wrote the HTTP-uploaded bytes to:
+    /// `init_file_storage(server.data_dir().join("files"))`. The file store's
+    /// base path is `<app_data_dir>/files` (see `file::mod` init).
+    pub fn data_dir(&self) -> &std::path::Path {
+        self._data_tempdir.path()
+    }
 }
 
 impl Drop for TestServer {

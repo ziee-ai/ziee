@@ -627,13 +627,17 @@ async fn test_core_memory_blocks_are_isolated_per_user() {
 /// assistant's core-memory as a front System message) — on one request and
 /// assert both survive. Deterministic (no LLM).
 #[tokio::test]
-#[serial_test::serial(repos)]
+#[serial_test::serial(repos, file_storage)]
 async fn test_file_attachment_and_memory_inject_coexist_in_one_request() {
     use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 
     let server = crate::common::TestServer::start().await;
     // In-process `Repos.memory` below must target THIS test's DB.
     ziee::init_repositories(sqlx::PgPool::connect(&server.database_url).await.unwrap());
+    // `process_file_blocks` reads the uploaded file via the process-global
+    // `get_file_storage()`; point it at the spawned server's file store so the
+    // in-process read sees the HTTP-uploaded notes. (`#[serial(file_storage)]`.)
+    ziee::init_file_storage(server.data_dir().join("files"));
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "file_mem_chat",
