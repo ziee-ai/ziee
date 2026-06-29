@@ -144,27 +144,19 @@ Once a release ships:
    the revision is marked available.
 4. With `allow_unsigned_downloads = false`, only the now-signed,
    sha256-verified release is downloadable.
-2. `known_revisions.toml` is updated with the new sha256s. For the
-   engine/server-release fork pipeline this is **manual** today —
-   there is no cross-repo Layer-2 receiver workflow in this tree (the
-   `receiver:` job above is an illustrative, disabled sketch). The
-   shipped auto-PR pattern lives in `code_sandbox.yml` (its `auto-PR
-   known_revisions.toml` job edits the file in the same run); replicate
-   that in-workflow approach if/when you automate this pipeline. Until
-   then, update `known_revisions.toml` manually from the release page.
-3. PR review confirms the hashes against the release page.
-4. Merge — `allow_unsigned_downloads = false` continues to work
-   for the now-signed release.
-1. Operator updates the server. The download path's cosign verify runs
-   automatically against the new signed release.
-2. An admin downloads + registers the new engine version through the
-   local-runtime UI (or the `POST /versions/download` API). The
-   DB-backed version manager (`llm_local_runtime/runtime_version/`)
-   stores the verified version — there is no file to update.
-3. The sha256 + cosign signature are verified in-process at download
-   time against the release page artifacts.
-4. `allow_unsigned_downloads = false` continues to work for the
-   now-signed release.
+
+For the **engine/server-release fork pipeline** there is likewise no
+file to hand-edit: an admin downloads + registers the new engine
+version through the local-runtime UI (or `POST /versions/download`),
+the DB-backed version manager (`llm_local_runtime/runtime_version/`)
+stores the verified version, and the sha256 + cosign signature are
+verified in-process at download time against the release artifacts.
+There is **no cross-repo Layer-2 receiver workflow** in this tree (the
+`receiver:` job above is an illustrative, disabled sketch); the only
+shipped auto-PR-a-revisions-file pattern is the sandbox-rootfs one in
+`code_sandbox.yml` (`auto-PR known_revisions.toml` job), which edits
+`src-app/server/src/modules/code_sandbox/known_revisions.toml` — that
+file is specific to the sandbox rootfs, not the engine pipeline.
 
 ## See also
 
