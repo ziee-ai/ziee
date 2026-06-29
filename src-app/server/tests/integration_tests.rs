@@ -41,4 +41,3 @@ mod workflow_mcp;
 // `desktop/tauri/tests/remote_access/`. Run via
 // `cd src-app/desktop/tauri && cargo test --test integration_tests`.
 mod user;
-mod user_group;
