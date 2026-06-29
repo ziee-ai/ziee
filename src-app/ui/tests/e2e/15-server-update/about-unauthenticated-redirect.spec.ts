@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, clearAuthState } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // ---------------------------------------------------------------------------
 // The Settings → About page route (`/settings/about`) is registered with
@@ -28,12 +29,10 @@ test.describe('About page — unauthenticated access', () => {
     // AuthGuard redirects any protected route to /auth when isAuthenticated
     // is false, and the login form renders.
     await page.waitForURL(/\/auth/, { timeout: 30000 })
-    await expect(page.locator('#login_username')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 15000 })
 
     // The About content must NOT be exposed to the anonymous visitor.
-    await expect(
-      page.getByText('Current version', { exact: false }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'serverupd-about-card')).toHaveCount(0)
   })
 
   test('positive control: an authenticated admin reaches the About page', async ({
@@ -61,8 +60,6 @@ test.describe('About page — unauthenticated access', () => {
 
     // No redirect to /auth, and the About content renders.
     await expect(page).not.toHaveURL(/\/auth/)
-    await expect(
-      page.getByText('Current version', { exact: false }).first(),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'serverupd-about-card')).toBeVisible({ timeout: 30000 })
   })
 })

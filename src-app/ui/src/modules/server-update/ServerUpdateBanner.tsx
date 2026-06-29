@@ -52,7 +52,7 @@ function ServerUpdateBannerInner() {
           {releaseUrl && (
             <>
               {' · '}
-              <Link href={releaseUrl} target="_blank" rel="noreferrer">
+              <Link data-testid="serverupd-banner-release-notes-link" href={releaseUrl} target="_blank" rel="noreferrer">
                 Release notes
               </Link>
             </>

@@ -51,6 +51,7 @@ export function Alert({ tone = 'info', title, description, icon, className, chil
           type="button"
           onClick={onClose}
           aria-label={closeLabel}
+          data-testid={`${testid}-close`}
           className="absolute right-2 top-2 rounded-sm p-1 text-foreground/60 hover:text-foreground hover:bg-foreground/10"
         >
           <X className="size-4" aria-hidden />

@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // ---------------------------------------------------------------------------
 // ServerUpdateBanner "Release notes" link (ServerUpdateBanner.tsx:53-58).
@@ -44,12 +45,14 @@ test.describe('Server update banner — release notes link', () => {
     await mockStatus(page, STATUS_AVAILABLE)
     await loginAsAdmin(page, baseURL)
 
-    // The banner lives in AppLayout on every authenticated page.
-    await expect(page.getByText('Ziee 0.2.0 is available')).toBeVisible({
+    // The banner lives in AppLayout on every authenticated page. '0.2.0' is
+    // dynamic data from the mocked status payload.
+    await expect(byTestId(page, 'serverupd-banner-alert')).toBeVisible({
       timeout: 30000,
     })
+    await expect(byTestId(page, 'serverupd-banner-alert')).toContainText('0.2.0')
 
-    const releaseLink = page.getByRole('link', { name: 'Release notes' })
+    const releaseLink = byTestId(page, 'serverupd-banner-release-notes-link')
     await expect(releaseLink).toBeVisible()
     await expect(releaseLink).toHaveAttribute('href', RELEASE_URL)
     // Opens in a new tab without leaking the referrer (external GitHub page).
@@ -67,13 +70,12 @@ test.describe('Server update banner — release notes link', () => {
     await mockStatus(page, { ...STATUS_AVAILABLE, release_url: null })
     await loginAsAdmin(page, baseURL)
 
-    await expect(page.getByText('Ziee 0.2.0 is available')).toBeVisible({
+    await expect(byTestId(page, 'serverupd-banner-alert')).toBeVisible({
       timeout: 30000,
     })
+    await expect(byTestId(page, 'serverupd-banner-alert')).toContainText('0.2.0')
     // The banner still shows "How to update" but not the external link.
-    await expect(page.getByText('How to update')).toBeVisible()
-    await expect(
-      page.getByRole('link', { name: 'Release notes' }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'serverupd-banner-howto-btn')).toBeVisible()
+    await expect(byTestId(page, 'serverupd-banner-release-notes-link')).toHaveCount(0)
   })
 })
