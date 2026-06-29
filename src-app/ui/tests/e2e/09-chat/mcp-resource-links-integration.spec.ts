@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -52,7 +53,7 @@ test.describe('Inline file previews — existing-feature integration', () => {
     // components (the copy/regenerate buttons) is present in this
     // bubble, since the message_actions extension slot itself is empty
     // when no extension registers a component for it.
-    await expect(bubble.locator('[data-testid="message-actions"], .anticon-copy').first())
+    await expect(bubble.locator('[data-testid="message-actions"], [data-testid="inline-file-preview-icon"]-copy').first())
       .toBeVisible()
   })
 
@@ -110,7 +111,7 @@ test.describe('Inline file previews — existing-feature integration', () => {
     await selectModelInDropdown(page, 'GPT-4o Mini')
     const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
     await textarea.fill('hi again')
-    await page.getByRole('button', { name: 'Send message' }).click()
+    await byTestId(page, 'chat-input-send-btn').click()
     await expect(
       page.locator(`[data-testid="chat-message"][data-message-id="${newAssistantMsgId}"]`),
     ).toBeVisible({ timeout: 15000 })
@@ -135,8 +136,8 @@ test.describe('Inline file previews — existing-feature integration', () => {
     const bubble = page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
     await expect(bubble.locator('[data-testid="inline-file-preview"]').first()).toBeVisible({ timeout: 10000 })
     // Find the copy button. The MessageActions component renders one
-    // per assistant message. Use aria-label.
-    const copyButton = bubble.getByRole('button', { name: /copy/i }).first()
+    // per assistant message (stable testid, i18n-safe).
+    const copyButton = byTestId(bubble, 'chat-message-copy-btn').first()
     if ((await copyButton.count()) === 0) {
       // Some chat-action layouts hide the button behind hover/focus —
       // skip if it isn't reachable in this test profile.

@@ -48,7 +48,7 @@ test.describe('Inline file previews — payload variations', () => {
       resourceLinks: [{ uri, name: 'data.csv' /* no mime_type */ }],
     })
     const preview = page.locator('[data-testid="inline-file-preview"]').first()
-    await expect(preview.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
+    await expect(preview.locator('[data-testid^="file-delimited-table-row-"]').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('resource_link without name falls back to URI tail', async ({

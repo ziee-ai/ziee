@@ -126,7 +126,7 @@ test.describe('Inline file previews — collapse UX', () => {
     await expect(preview).toBeVisible({ timeout: 10000 })
     await expect(preview).toContainText('plot.png')
     await expect(preview).toContainText('Image') // viewer label
-    await expect(preview.locator('.anticon').first()).toBeVisible() // icon
+    await expect(preview.locator('[data-testid="inline-file-preview-icon"]').first()).toBeVisible() // icon
     await expect(preview.locator('[data-testid="inline-file-preview-open"]')).toBeVisible()
     // Header still present after collapsing.
     await preview.locator('[data-testid="inline-file-preview-chevron"]').click()

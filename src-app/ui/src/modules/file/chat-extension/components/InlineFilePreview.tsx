@@ -151,6 +151,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
         <span
           className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground"
           style={{ width: 20, height: 20 }}
+          data-testid="inline-file-preview-icon"
         >
           {Icon}
         </span>
