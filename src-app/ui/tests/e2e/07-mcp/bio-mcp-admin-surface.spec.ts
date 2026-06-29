@@ -45,7 +45,8 @@ test.describe('MCP — BioMCP built-in admin surface', () => {
     page,
   }) => {
     const bioCard = page
-      .locator(`.ant-card:has-text("${BIO_DISPLAY_NAME}")`)
+      .getByTestId(/^mcp-system-server-card-/)
+      .filter({ hasText: BIO_DISPLAY_NAME })
       .first()
 
     // The row registers asynchronously at boot (a spawned upsert). If it
@@ -62,28 +63,28 @@ test.describe('MCP — BioMCP built-in admin surface', () => {
 
     // It is a BUILT-IN row: no Delete affordance (built-ins cannot be
     // deleted), but — unlike the zero-config built-ins — it IS editable.
-    await expect(bioCard.getByRole('button', { name: 'Edit' })).toBeVisible()
+    await expect(bioCard.getByTestId('mcp-server-edit-btn')).toBeVisible()
 
     // --- Open the edit drawer: the generic system-server editor. ---
     await clickEditServerButton(page, BIO_DISPLAY_NAME, true)
-    const drawer = page.locator('.ant-drawer-content:visible').last()
+    const drawer = page.getByTestId('mcp-drawer-form')
 
     // The HTTP Headers secret-editor is the surface where an admin sets the
     // upstream API keys (NCBI_API_KEY, S2_API_KEY, …) as encrypted entries.
-    await expect(drawer.getByText('HTTP Headers')).toBeVisible()
-    await expect(drawer.getByRole('button', { name: /Add header/i })).toBeVisible()
+    // The HTTP Headers secret-editor's Add button proves the editor is present.
+    await expect(drawer.getByTestId('mcp-kv-headers_entries-add-btn')).toBeVisible()
 
     // Add an API-key header (a real edit through the secret editor), then
     // close without persisting — we only need to prove the editor accepts
     // the bio API-key configuration the admin would enter.
-    await drawer.getByRole('button', { name: /Add header/i }).click()
-    const keyInput = drawer.getByPlaceholder('Authorization').last()
+    await drawer.getByTestId('mcp-kv-headers_entries-add-btn').click()
+    const keyInput = drawer.getByTestId(/^mcp-kv-headers_entries-key-/).last()
     await keyInput.fill('NCBI_API_KEY')
     await expect(keyInput).toHaveValue('NCBI_API_KEY')
 
     // Close the drawer without saving (Escape on an antd Drawer).
     await page.keyboard.press('Escape')
-    await expect(page.locator('.ant-drawer-content:visible')).toHaveCount(0, {
+    await expect(page.getByTestId('mcp-drawer-form')).toHaveCount(0, {
       timeout: 5_000,
     })
 

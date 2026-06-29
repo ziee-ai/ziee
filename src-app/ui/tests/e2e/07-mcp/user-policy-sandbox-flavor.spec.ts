@@ -27,32 +27,41 @@ test.describe('MCP user policy — stdio sandbox flavor', () => {
     const card = page.getByTestId('mcp-user-policy-card')
 
     // Enable the sandboxed-stdio transport → the flavor Select appears.
-    await card.getByRole('checkbox', { name: 'Standard I/O (sandboxed)' }).check()
-    const flavorSelect = card.getByText('Pick a flavor')
-    await expect(flavorSelect).toBeVisible()
+    await card.getByTestId('mcp-policy-transport-stdio').check()
+    await expect(card.getByTestId('mcp-policy-flavor-select')).toBeVisible()
 
-    // Saving with stdio allowed but NO flavor picked is rejected client-side.
-    await card.getByRole('button', { name: 'Save policy' }).click()
-    await expect(
-      page.getByText('Pick a sandbox flavor when stdio is allowed for users.'),
-    ).toBeVisible()
+    // Saving with stdio allowed but NO flavor picked is rejected client-side —
+    // handleSave returns early (toast only), so NO policy PUT is sent.
+    let putFired = false
+    page.on('response', r => {
+      if (/\/api\/mcp\/user-policy$/.test(r.url()) && r.request().method() === 'PUT') {
+        putFired = true
+      }
+    })
+    await card.getByTestId('mcp-policy-save-btn').click()
+    await page.waitForTimeout(1000)
+    expect(putFired).toBe(false)
   })
 
   test('picking a flavor from the SandboxFlavors catalog saves the policy', async ({
     page,
   }) => {
     const card = page.getByTestId('mcp-user-policy-card')
-    await card.getByRole('checkbox', { name: 'Standard I/O (sandboxed)' }).check()
+    await card.getByTestId('mcp-policy-transport-stdio').check()
 
     // Open the flavor Select (options come from the SandboxFlavors store —
     // the admin /api/code-sandbox/flavors catalog, or the full/minimal
-    // fallback) and choose the first one.
-    await card.locator('.ant-select').click()
-    const option = page.locator('.ant-select-item-option').first()
+    // fallback) and choose the first one (derived -opt-<value> id).
+    await card.getByTestId('mcp-policy-flavor-select').click()
+    const option = page.getByTestId(/^mcp-policy-flavor-select-opt-/).first()
     await expect(option).toBeVisible()
     await option.click()
 
-    await card.getByRole('button', { name: 'Save policy' }).click()
-    await expect(page.getByText('MCP user policy updated')).toBeVisible()
+    // Saving persists the policy — assert the PUT round-trip succeeds.
+    const saved = page.waitForResponse(
+      r => /\/api\/mcp\/user-policy$/.test(r.url()) && r.request().method() === 'PUT',
+    )
+    await card.getByTestId('mcp-policy-save-btn').click()
+    expect((await saved).status()).toBe(200)
   })
 })
