@@ -693,11 +693,14 @@ async fn test_duplicate_project_requires_all_permissions_and_logic() {
 #[tokio::test]
 async fn test_permission_escalation_takes_effect_mid_session() {
     let server = crate::common::TestServer::start().await;
-    // In a per-test group with ZERO permissions (not the default Users group).
+    // In a per-test group WITHOUT conversations::create (and not the default
+    // Users group). A harmless `profile::read` ensures the per-test group is
+    // actually created + assigned (an empty list creates no group, leaving
+    // nothing for the mid-session grant to target).
     let user = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "escalate",
-        &[],
+        &["profile::read"],
     )
     .await;
 

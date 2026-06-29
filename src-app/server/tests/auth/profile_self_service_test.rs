@@ -823,14 +823,33 @@ async fn test_ensure_unique_username_collision_retry() {
     assert_eq!(fresh, "brandnewbase");
 
     // Register a user that OCCUPIES "collide" so the next derivation must bump.
-    crate::common::test_helpers::create_user_with_permissions(&server, "collide", &[]).await;
+    // (`create_user_with_permissions` appends a unique suffix, so register
+    // directly to occupy the EXACT username.)
+    let register_exact = |uname: &str| {
+        let url = server.api_url("/auth/register");
+        let uname = uname.to_string();
+        async move {
+            let r = reqwest::Client::new()
+                .post(&url)
+                .json(&serde_json::json!({
+                    "username": uname,
+                    "email": format!("{uname}@example.com"),
+                    "password": "password123",
+                }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(r.status(), 201, "register {uname} should 201");
+        }
+    };
+    register_exact("collide").await;
     let bumped = ziee::auth_ensure_unique_username("collide")
         .await
         .expect("taken base resolves to a numbered variant");
     assert_eq!(bumped, "collide2", "a taken base must derive base2");
 
     // Occupy "collide2" too → must skip to "collide3".
-    crate::common::test_helpers::create_user_with_permissions(&server, "collide2", &[]).await;
+    register_exact("collide2").await;
     let bumped3 = ziee::auth_ensure_unique_username("collide")
         .await
         .expect("resolves past the second collision");
