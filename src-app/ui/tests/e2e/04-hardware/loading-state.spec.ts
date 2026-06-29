@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * HardwareSettings renders a Loading spinner ("Loading hardware information...")
@@ -29,18 +30,11 @@ test.describe('Hardware — loading state', () => {
 
     await page.goto(`${baseURL}/settings/hardware`)
 
-    // The fetch is held → the loading tip renders.
-    await expect(
-      page.getByText('Loading hardware information...'),
-    ).toBeVisible({ timeout: 15000 })
+    // The fetch is held → the loading spinner renders (Loading → Spin role=status).
+    await expect(page.getByRole('status').first()).toBeVisible({ timeout: 15000 })
 
     // Release → the loading branch is replaced by the real page content.
     release()
-    await expect(
-      page.getByText('Loading hardware information...'),
-    ).toBeHidden({ timeout: 15000 })
-    await expect(
-      page.getByRole('heading', { name: 'Hardware' }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'hardware-os-card')).toBeVisible({ timeout: 15000 })
   })
 })

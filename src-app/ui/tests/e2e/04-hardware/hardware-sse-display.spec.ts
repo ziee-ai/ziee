@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // audit id all-bd78e9797f84 — the hardware-monitoring SSE flow + real-time
 // display was completely untested: Hardware.store subscribes to
@@ -63,8 +64,8 @@ test.describe('Hardware monitoring — SSE real-time display', () => {
 
     await page.goto(`${baseURL}/settings/hardware`)
 
-    // The CPU usage card + the live percentage from the SSE `update` frame.
-    await expect(page.getByText('CPU Usage')).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText('42.5%')).toBeVisible({ timeout: 15000 })
+    // The CPU usage progress + the live percentage from the SSE `update` frame.
+    await expect(byTestId(page, 'hardware-cpu-usage-progress')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'hardware-cpu-usage-progress')).toContainText('42.5%', { timeout: 15000 })
   })
 })

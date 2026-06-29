@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import { setTheme, isDarkMode } from '../../utils/theme'
 
 /**
@@ -20,8 +21,8 @@ test.describe('Hardware monitor popup — dark mode', () => {
     await setTheme(page, 'dark')
     await page.goto(`${baseURL}/hardware-monitor`)
 
-    // The monitor card renders its real-time status label.
-    await expect(page.getByText('Real-time Monitoring:')).toBeVisible({
+    // The monitor card renders its real-time status.
+    await expect(byTestId(page, 'hardware-connection-card')).toBeVisible({
       timeout: 30000,
     })
 

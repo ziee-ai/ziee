@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Real-time hardware monitoring (SSE) flow.
@@ -25,11 +26,11 @@ test.describe('Hardware - real-time SSE monitoring', () => {
 
     // These cards are gated on `currentUsage` (the first SSE frame). Their
     // visibility is the proof that the store subscribed and received data.
-    await expect(page.getByText('CPU Usage')).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText('Memory Usage')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'hardware-cpu-card')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'hardware-memory-card')).toBeVisible({ timeout: 30000 })
 
     // The "Last update:" timestamp is rendered from the received frame's
     // `timestamp`, confirming a real frame (not just a mounted shell).
-    await expect(page.getByText(/Last update:/)).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'hardware-last-update')).toBeVisible({ timeout: 30000 })
   })
 })

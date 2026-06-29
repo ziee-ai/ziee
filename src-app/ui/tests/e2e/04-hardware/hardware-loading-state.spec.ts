@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // audit id all-b42fa45789cb — the hardware page's loading state
 // (HardwareSettings.tsx:68-74: a "Loading hardware information..." spinner while
@@ -38,16 +39,12 @@ test.describe('Hardware settings loading state', () => {
 
     await page.goto(`${baseURL}/settings/hardware`)
 
-    // The loading tip must appear while the request is in flight.
-    await expect(
-      page.getByText('Loading hardware information...'),
-    ).toBeVisible({ timeout: 5000 })
+    // The loading spinner must appear while the request is in flight
+    // (Loading → Spin role=status).
+    await expect(page.getByRole('status').first()).toBeVisible({ timeout: 5000 })
 
     // Once the response resolves, the spinner is replaced by real content.
-    await expect(
-      page.getByText('Loading hardware information...'),
-    ).toHaveCount(0, { timeout: 15000 })
-    await expect(page.getByText('Operating System')).toBeVisible({
+    await expect(byTestId(page, 'hardware-os-card')).toBeVisible({
       timeout: 15000,
     })
   })

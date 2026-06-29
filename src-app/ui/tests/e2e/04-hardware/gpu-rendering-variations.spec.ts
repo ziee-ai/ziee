@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — HardwareSettings.renderGPUCards branches (HardwareSettings.tsx:231-300):
@@ -40,9 +41,9 @@ test.describe('Hardware — GPU rendering variations', () => {
     await loginAsAdmin(page, testInfra.baseURL)
     await mockHardware(page, [])
     await page.goto(`${testInfra.baseURL}/settings/hardware`)
-    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+    await byTestId(page, 'hardware-os-card').waitFor({ timeout: 30000 })
 
-    await expect(page.getByText('No GPU devices detected')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'hardware-gpu-none-card')).toBeVisible({ timeout: 15000 })
   })
 
   test('multiple GPUs (NVIDIA + AMD) → a card per device with vendor/driver', async ({
@@ -69,13 +70,16 @@ test.describe('Hardware — GPU rendering variations', () => {
       },
     ])
     await page.goto(`${testInfra.baseURL}/settings/hardware`)
-    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+    await byTestId(page, 'hardware-os-card').waitFor({ timeout: 30000 })
 
-    // Both GPU cards render, titled by device name, with their vendor + driver.
-    await expect(page.getByText('NVIDIA RTX 4090')).toBeVisible({ timeout: 15000 })
-    await expect(page.getByText('AMD Radeon RX 7900')).toBeVisible()
-    await expect(page.getByText('NVIDIA', { exact: true })).toBeVisible()
-    await expect(page.getByText('AMD', { exact: true })).toBeVisible()
-    await expect(page.getByText('550.54')).toBeVisible()
+    // Both GPU cards render, titled by device name, with their vendor + driver
+    // (dynamic mock data, asserted within each device's card).
+    const card0 = byTestId(page, 'hardware-gpu-info-card-0')
+    const card1 = byTestId(page, 'hardware-gpu-info-card-1')
+    await expect(card0).toContainText('NVIDIA RTX 4090', { timeout: 15000 })
+    await expect(card1).toContainText('AMD Radeon RX 7900')
+    await expect(card0).toContainText('NVIDIA')
+    await expect(card1).toContainText('AMD')
+    await expect(card0).toContainText('550.54')
   })
 })

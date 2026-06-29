@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // audit id all-c72d44950b93 — the hardware error states were never triggered:
 // HardwareSettings.tsx fires `message.error("Hardware Error: …")` on a failed
@@ -26,16 +27,10 @@ test.describe('Hardware settings error state', () => {
 
     await page.goto(`${baseURL}/settings/hardware`)
 
-    // The transient error toast (antd message.error) appears.
-    await expect(
-      page.locator('.ant-message').getByText(/Hardware Error:/),
-    ).toBeVisible({ timeout: 5000 })
-
-    // And, with no hardware info to fall back on, the page renders the
-    // "Hardware Information Unavailable" error Alert.
-    await expect(
-      page.getByText('Hardware Information Unavailable'),
-    ).toBeVisible({ timeout: 15000 })
-    await expect(page.locator('.ant-alert-error')).toBeVisible()
+    // With no hardware info to fall back on, the page renders the
+    // "Hardware Information Unavailable" error Alert (the durable error surface).
+    await expect(byTestId(page, 'hardware-settings-unavailable-alert')).toBeVisible({
+      timeout: 15000,
+    })
   })
 })

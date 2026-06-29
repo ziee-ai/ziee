@@ -5,6 +5,7 @@ import {
   createTestUser,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * The hardware "Connect" (real-time monitoring) button is gated on
@@ -34,16 +35,12 @@ test.describe('Hardware - monitor permission gating', () => {
     await login(page, baseURL, username, 'password123')
 
     await page.goto(`${baseURL}/settings/hardware`)
-    await expect(
-      page.getByRole('heading', { name: 'Hardware' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'hardware-os-card')).toBeVisible({ timeout: 30000 })
     // The monitoring status card renders, but without hardware::monitor the
     // viewer neither auto-connects (stays Disconnected) nor gets the gated
     // Connect button.
-    await expect(page.getByText('Real-time Monitoring:')).toBeVisible()
-    await expect(page.getByText('Disconnected')).toBeVisible()
-    await expect(
-      page.getByRole('button', { name: 'Connect' }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'hardware-settings-connection-tag')).toBeVisible()
+    await expect(byTestId(page, 'hardware-settings-connection-tag')).toContainText('Disconnected')
+    await expect(byTestId(page, 'hardware-settings-connect-btn')).toHaveCount(0)
   })
 })

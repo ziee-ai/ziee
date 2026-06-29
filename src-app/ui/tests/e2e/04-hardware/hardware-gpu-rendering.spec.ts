@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // audit id all-c6a221168197 — renderGPUCards has distinct branches (no GPU vs N
 // GPUs) that were untested. We mock GET /api/hardware (the external boundary)
@@ -27,7 +28,7 @@ test.describe('Hardware — GPU rendering variations', () => {
     await loginAsAdmin(page, testInfra.baseURL)
     await mockHw(page, [])
     await page.goto(`${testInfra.baseURL}/settings/hardware`)
-    await expect(page.getByText('No GPU devices detected')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'hardware-gpu-none-card')).toBeVisible({ timeout: 30000 })
   })
 
   test('multiple GPUs render one card per device', async ({ page, testInfra }) => {
@@ -38,8 +39,9 @@ test.describe('Hardware — GPU rendering variations', () => {
     ]
     await mockHw(page, gpus)
     await page.goto(`${testInfra.baseURL}/settings/hardware`)
-    await expect(page.getByText('NVIDIA A100')).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText('NVIDIA H100')).toBeVisible()
-    await expect(page.getByText('No GPU devices detected')).toHaveCount(0)
+    // One card per device, titled by the device name (dynamic mock data).
+    await expect(byTestId(page, 'hardware-gpu-info-card-0')).toContainText('NVIDIA A100', { timeout: 30000 })
+    await expect(byTestId(page, 'hardware-gpu-info-card-1')).toContainText('NVIDIA H100')
+    await expect(byTestId(page, 'hardware-gpu-none-card')).toHaveCount(0)
   })
 })
