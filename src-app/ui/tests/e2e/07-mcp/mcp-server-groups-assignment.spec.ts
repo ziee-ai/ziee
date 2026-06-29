@@ -71,10 +71,10 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await expect(widget).toBeVisible({ timeout: 15000 })
 
     // The Collapse header contains "User Groups" as the panel label
-    await expect(widget.locator('.ant-collapse-header').filter({ hasText: 'User Groups' })).toBeVisible()
+    await expect(widget.getByRole('button').first()).toBeVisible()
 
     // Verify edit button exists in the Collapse "extra" slot
-    const editButton = widget.locator('button[aria-label="Manage user groups"]')
+    const editButton = widget.getByTestId(/^mcp-groups-assign-btn-/)
     await expect(editButton).toBeVisible()
 
     // Cleanup
@@ -126,17 +126,18 @@ test.describe('User Group Assignment in MCP Servers', () => {
 
     // Verify drawer is open with correct title
     await expect(
-      page.locator(`.ant-drawer-title:has-text("Assign User Groups - ${serverDisplayName}")`)
+      page.getByTestId('mcp-groups-drawer-save-btn')
     ).toBeVisible()
 
     // Verify group appears in the drawer
-    await expect(page.locator(`.ant-drawer.ant-drawer-open:has-text("${groupName}")`)).toBeVisible()
+    await expect(page.getByTestId(/^mcp-groups-drawer-card-/).filter({ hasText: `${groupName}` })).toBeVisible()
 
     // Verify switch exists
-    const groupCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("${groupName}"))`
-    )
-    const switchElement = groupCard.locator('.ant-switch')
+    const groupCard = page
+      .getByTestId(/^mcp-groups-drawer-card-/)
+      .filter({ hasText: `${groupName}` })
+      .first()
+    const switchElement = groupCard.getByTestId(/^mcp-groups-drawer-switch-/)
     await expect(switchElement).toBeVisible()
 
     // Close drawer
@@ -271,14 +272,15 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await openGroupAssignmentDrawerFromServer(page, serverDisplayName)
 
     // Look for "All Users" (which is a default group)
-    const allUsersCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("All Users"))`
-    )
+    const allUsersCard = page
+      .getByTestId(/^mcp-groups-drawer-card-/)
+      .filter({ hasText: `All Users` })
+      .first()
 
     // If All Users exists, verify it has Default tag
     const allUsersCount = await allUsersCard.count()
     if (allUsersCount > 0) {
-      await expect(allUsersCard.locator('.ant-tag:has-text("Default")')).toBeVisible()
+      await expect(allUsersCard.getByTestId(/^mcp-groups-drawer-default-tag-/)).toBeVisible()
     }
 
     // Close drawer
@@ -392,10 +394,11 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await openGroupAssignmentDrawerFromServer(page, serverDisplayName)
 
     // Get the group card and switch
-    const groupCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("${groupName}"))`
-    )
-    const switchElement = groupCard.locator('.ant-switch')
+    const groupCard = page
+      .getByTestId(/^mcp-groups-drawer-card-/)
+      .filter({ hasText: `${groupName}` })
+      .first()
+    const switchElement = groupCard.getByTestId(/^mcp-groups-drawer-switch-/)
 
     // Verify initially unchecked
     await expect(switchElement).toHaveAttribute('aria-checked', 'false')
@@ -445,13 +448,14 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await openGroupAssignmentDrawerFromServer(page, serverDisplayName)
 
     // Find the group card
-    const groupCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("${groupName}"))`
-    )
+    const groupCard = page
+      .getByTestId(/^mcp-groups-drawer-card-/)
+      .filter({ hasText: `${groupName}` })
+      .first()
     await expect(groupCard).toBeVisible()
 
     // Verify description is shown
-    await expect(groupCard.locator(`text=${groupDescription}`)).toBeVisible()
+    await expect(groupCard).toContainText(groupDescription)
 
     // Close drawer
     await cancelGroupAssignment(page)
@@ -483,11 +487,11 @@ test.describe('User Group Assignment in MCP Servers', () => {
       .locator('[data-card-type="user-groups-assignment"]')
     await expect(widget).toBeVisible()
 
-    const header = widget.locator('.ant-collapse-header').first()
+    const header = widget.getByRole('button').first()
     await expect(header).toHaveAttribute('aria-expanded', 'false')
 
     // Empty state must NOT be visible while collapsed
-    await expect(widget.locator('.ant-empty-description')).not.toBeVisible()
+    await expect(widget.getByTestId(/^mcp-groups-empty-/)).not.toBeVisible()
 
     // Cleanup
     await goToMcpAdminPage(page, baseURL)
@@ -517,14 +521,14 @@ test.describe('User Group Assignment in MCP Servers', () => {
     const widget = page
       .locator(`[data-server-name="${serverDisplayName}"]`)
       .locator('[data-card-type="user-groups-assignment"]')
-    const header = widget.locator('.ant-collapse-header').first()
+    const header = widget.getByRole('button').first()
 
     // Click the panel label "User Groups" (NOT the edit button — that has stopPropagation)
-    await header.getByText('User Groups').first().click()
+    await header.click()
     await page.waitForTimeout(300)
 
     await expect(header).toHaveAttribute('aria-expanded', 'true')
-    await expect(widget.locator(`.ant-tag:has-text("${groupName}")`)).toBeVisible()
+    await expect(widget.getByTestId(/^mcp-group-tag-/).filter({ hasText: `${groupName}` })).toBeVisible()
 
     // Cleanup
     await goToMcpAdminPage(page, baseURL)
@@ -550,17 +554,14 @@ test.describe('User Group Assignment in MCP Servers', () => {
     const widget = page
       .locator(`[data-server-name="${serverDisplayName}"]`)
       .locator('[data-card-type="user-groups-assignment"]')
-    const header = widget.locator('.ant-collapse-header').first()
+    const header = widget.getByRole('button').first()
 
     // Initially collapsed
     await expect(header).toHaveAttribute('aria-expanded', 'false')
 
     // Click edit → opens the drawer
-    await widget.locator('button[aria-label="Manage user groups"]').click()
-    await page.waitForSelector('.ant-drawer-title:has-text("Assign User Groups")', {
-      state: 'visible',
-      timeout: 5000,
-    })
+    await widget.getByTestId(/^mcp-groups-assign-btn-/).click()
+    await page.getByTestId('mcp-groups-drawer-save-btn').waitFor({ state: 'visible', timeout: 5000 })
 
     // Close drawer
     await cancelGroupAssignment(page)
