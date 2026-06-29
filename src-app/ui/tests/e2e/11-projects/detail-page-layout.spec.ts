@@ -1,7 +1,9 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   fillProjectForm,
+  getProjectCard,
   goToProjectsPage,
   openCreateProjectDrawer,
   submitProjectForm,
@@ -45,7 +47,7 @@ test.describe('Projects - detail page layout (Option A)', () => {
     // Stores.ProjectDetail.project finishes loading, and any test that
     // queries [data-test-section=…] right after navigation would see
     // an empty DOM.
-    await page.locator('.ant-card', { hasText: 'Layout Probe' }).click()
+    await getProjectCard(page, 'Layout Probe').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     await page
       .locator('[data-test-project-title="Layout Probe"]')
@@ -55,19 +57,16 @@ test.describe('Projects - detail page layout (Option A)', () => {
   test('header has Back, project title, Edit, Duplicate; no "New chat" button', async ({
     page,
   }) => {
-    await expect(
-      page.getByRole('button', { name: 'Back to projects' }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'project-detail-back-button')).toBeVisible()
     await expect(page.locator('[data-test-project-title="Layout Probe"]')).toBeVisible()
-    // antd icons contribute their name to the button's accessible
-    // name (Edit = "edit Edit", Duplicate = "copy Duplicate"). Use
-    // non-anchored regex.
-    await expect(page.getByRole('button', { name: /edit/i }).first()).toBeVisible()
+    await expect(byTestId(page, 'project-detail-edit-button')).toBeVisible()
     await expect(
-      page.getByRole('button', { name: /duplicate/i }).first(),
+      byTestId(page, 'project-detail-duplicate-button'),
     ).toBeVisible()
     // "New chat" button is gone — replaced by the inline ChatInput.
-    await expect(page.getByRole('button', { name: /^new chat$/i })).toHaveCount(0)
+    await expect(
+      byTestId(page, 'project-detail-new-chat-button'),
+    ).toHaveCount(0)
   })
 
   test('renders every section in the expected vertical order', async ({
@@ -111,10 +110,8 @@ test.describe('Projects - detail page layout (Option A)', () => {
     const section = page.locator('[data-test-section="conversations"]')
     await expect(section).toBeVisible()
     // Empty state on a freshly-created project (no chats yet).
-    await expect(
-      section.getByText(/no conversations in this project yet/i),
-    ).toBeVisible()
-    // No antd tab role anywhere on this page (Option A dropped Tabs).
+    await expect(byTestId(section, 'project-conversations-empty')).toBeVisible()
+    // No tab role anywhere on this page (Option A dropped Tabs).
     await expect(page.getByRole('tab')).toHaveCount(0)
   })
 
@@ -127,22 +124,22 @@ test.describe('Projects - detail page layout (Option A)', () => {
       section.locator('[data-test-files-empty="true"]'),
     ).toBeVisible()
     await expect(
-      section.getByRole('button', { name: /manage knowledge files/i }),
+      byTestId(section, 'project-knowledge-manage-button'),
     ).toBeVisible()
   })
 
   test('Manage button opens the full file management drawer', async ({
     page,
   }) => {
-    await page
-      .locator('[data-test-section="knowledge"]')
-      .getByRole('button', { name: /manage knowledge files/i })
-      .click()
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    await byTestId(
+      page.locator('[data-test-section="knowledge"]'),
+      'project-knowledge-manage-button',
+    ).click()
+    const drawer = page.getByRole('dialog')
     await expect(drawer).toBeVisible()
-    // Drawer body renders the ProjectFilesPanel which uses
-    // "Knowledge files" as its header (empty-state branch).
-    await expect(drawer.getByText(/knowledge files/i).first()).toBeVisible()
+    // Drawer body renders the ProjectFilesManagePanel — its empty-state
+    // marker confirms the knowledge file panel rendered.
+    await expect(byTestId(drawer, 'file-project-empty')).toBeVisible()
   })
 
   test('Instructions section shows the project instruction text', async ({
@@ -161,7 +158,11 @@ test.describe('Projects - detail page layout (Option A)', () => {
   }) => {
     const section = page.locator('[data-test-section="description"]')
     await expect(section).toBeVisible()
-    await expect(section.getByText('Layout sanity-check project.')).toBeVisible()
+    // The description text is dynamic data this test created; assert it
+    // via the stable `data-test-description` hook (i18n-safe).
+    await expect(
+      section.locator('[data-test-description="Layout sanity-check project."]'),
+    ).toBeVisible()
   })
 
   test('Advanced section summarises default assistant + model status', async ({
@@ -190,39 +191,28 @@ test.describe('Projects - detail page layout (Option A)', () => {
     await expect(
       mcp.locator('[data-test-mcp-approval-mode="manual_approve"]'),
     ).toBeVisible()
-    // Edit button now lives in the Card `extra` slot in the header
-    // (was previously a primary button in the body labeled
-    // "Configure MCP defaults"). Aria label = "Edit MCP defaults" so
-    // we can match without depending on the visible "Edit" text.
-    await expect(
-      mcp.getByRole('button', { name: /edit mcp defaults/i }),
-    ).toBeVisible()
+    // Edit button lives in the Card `extra` slot in the header.
+    await expect(byTestId(mcp, 'mcp-project-edit-btn')).toBeVisible()
   })
 
   test('"Edit" header button opens the shared MCP modal in project scope', async ({
     page,
   }) => {
-    await page
-      .locator('[data-test-section="mcp-defaults"]')
-      .getByRole('button', { name: /edit mcp defaults/i })
-      .click()
+    await byTestId(
+      page.locator('[data-test-section="mcp-defaults"]'),
+      'mcp-project-edit-btn',
+    ).click()
 
-    // The shared McpConfigModal opens; in project scope its title
-    // switches to "MCP Defaults for Project". Match on the title
-    // text directly — the page can host multiple ant-modal-content
-    // portals (one from this page's explicit <McpConfigModal />, one
-    // from <McpMenuItem> inside the embedded <ChatInput>'s + menu)
-    // which trips strict-mode on the bare .ant-modal-content selector.
-    await expect(
-      page.getByText('MCP Defaults for Project'),
-    ).toBeVisible({ timeout: 5000 })
+    // The shared McpConfigModal opens (project scope is the only way to
+    // reach it from this button).
+    await expect(byTestId(page, 'mcp-config-modal')).toBeVisible({
+      timeout: 5000,
+    })
 
-    // "Save as Default" should be hidden in project scope (it
-    // writes user_mcp_defaults — orthogonal). Asserting it's not on
-    // the page is enough — the close button + the rest of the modal
-    // shell are antd-built.
+    // "Save as Default" should be hidden in project scope (it writes
+    // user_mcp_defaults — orthogonal).
     await expect(
-      page.getByRole('button', { name: /save as default/i }),
+      byTestId(page, 'mcp-config-save-default-btn'),
     ).toHaveCount(0)
   })
 })
@@ -242,7 +232,7 @@ test.describe('Projects - detail page layout (no description)', () => {
     // Intentionally omit description.
     await fillProjectForm(page, { name: 'No About' })
     await submitProjectForm(page)
-    await page.locator('.ant-card', { hasText: 'No About' }).click()
+    await getProjectCard(page, 'No About').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
   })
 
@@ -263,10 +253,12 @@ test.describe('Projects - detail page layout (no description)', () => {
   test('Instructions empty-state copy appears when no instructions set', async ({
     page,
   }) => {
+    const instructions = page.locator('[data-test-section="instructions"]')
+    await expect(instructions).toBeVisible()
+    // Empty branch: no instruction paragraph renders (the
+    // `data-test-instructions` hook only exists when instructions set).
     await expect(
-      page
-        .locator('[data-test-section="instructions"]')
-        .getByText(/no instructions yet/i),
-    ).toBeVisible()
+      instructions.locator('[data-test-instructions]'),
+    ).toHaveCount(0)
   })
 })

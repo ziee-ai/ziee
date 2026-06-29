@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -114,24 +115,27 @@ test.describe('Memory — onboarding enable', () => {
 
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
-    await page.getByRole('button', { name: /Next/ }).click() // Welcome
-    await page.getByRole('button', { name: /Next/ }).click() // API Keys
-    await page.getByRole('button', { name: /Next/ }).click() // MCP
+    await byTestId(page, 'onboarding-page-next-button').click() // Welcome
+    await byTestId(page, 'onboarding-page-next-button').click() // API Keys
+    await byTestId(page, 'onboarding-page-next-button').click() // MCP
 
-    // Memory step: flip switch + pick model.
-    await expect(page.getByRole('heading', { name: /Persistent Memory/ })).toBeVisible()
-    await page.getByRole('switch').click()
-    // Pick the first option in the embedding-model dropdown. antd v6
-    // renders dropdown items in a way Playwright marks "not visible"
-    // when targeted via getByRole('option'); keyboard-driven selection
-    // bypasses the visibility check and is robust across antd versions.
-    await page.getByRole('combobox').first().click()
+    // Memory step: the enable switch only renders here, so it confirms the
+    // step + is the toggle we flip on.
+    await expect(
+      byTestId(page, 'onboarding-memory-enable-switch'),
+    ).toBeVisible()
+    await byTestId(page, 'onboarding-memory-enable-switch').click()
+    // Pick the first option in the embedding-model dropdown. Opening the kit
+    // Select and using keyboard selection is robust regardless of option
+    // values (which we don't know up front).
+    await byTestId(page, 'onboarding-memory-model-select').click()
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
 
-    await page.getByRole('button', { name: /Next/ }).click()
-    // Final step button is "Start Chatting" (not "Finish"/"Done").
-    await page.getByRole('button', { name: /Start Chatting/ }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    // Final step — the last-step button shares the next-button testid
+    // (label flips to "Start Chatting").
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // Verify settings now enabled.
     const userToken = await getCurrentUserToken(page)

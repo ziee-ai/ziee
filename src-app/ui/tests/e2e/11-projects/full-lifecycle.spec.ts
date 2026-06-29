@@ -5,6 +5,7 @@ import {
   createModelViaAPI,
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the FULL project lifecycle in ONE spec (no single existing spec combines
@@ -59,7 +60,7 @@ test.describe('Projects — full lifecycle (real LLM)', () => {
     )
     await expect(textarea).toBeVisible({ timeout: 10000 })
     await textarea.fill('Say hello.')
-    const send = page.getByRole('button', { name: 'Send message' })
+    const send = byTestId(page, 'chat-input-send-btn')
     await expect(send).toBeEnabled({ timeout: 10000 })
     await send.click()
 
@@ -73,19 +74,17 @@ test.describe('Projects — full lifecycle (real LLM)', () => {
 
     // 5) Manage: rename the project via the detail-page Edit drawer.
     await page.goto(`${baseURL}/projects/${projectId}`)
-    await page.getByRole('button', { name: /^edit$/i }).first().click()
-    const drawer = page.locator(
-      '.ant-drawer.ant-drawer-open:has-text("Edit Project")',
+    await byTestId(page, 'project-detail-edit-button').click()
+    await expect(byTestId(page, 'project-form')).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'project-form-name-input').fill(
+      'Lifecycle Project (renamed)',
     )
-    await expect(drawer).toBeVisible({ timeout: 10000 })
-    await drawer.getByLabel('Name').fill('Lifecycle Project (renamed)')
-    await drawer.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(page.getByText('Project updated')).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'project-form-submit-button').click()
     await expect(
-      page.getByRole('heading', {
-        level: 4,
-        name: /Lifecycle Project \(renamed\)/,
-      }),
+      page.locator('[data-sonner-toast][data-type="success"]').first(),
+    ).toBeVisible({ timeout: 10000 })
+    await expect(
+      page.locator('[data-test-project-title="Lifecycle Project (renamed)"]'),
     ).toBeVisible({ timeout: 15000 })
   })
 })

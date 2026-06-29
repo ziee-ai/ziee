@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the Memory admin master "Memory" card (MemorySection.tsx).
@@ -19,20 +20,15 @@ test.describe('Memory — admin master section', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/memory-admin`)
 
-    const enableSwitch = page.getByRole('switch', {
-      name: 'Enable memory deployment-wide',
-    })
+    const enableSwitch = byTestId(page, 'memory-admin-enabled-switch')
     await expect(enableSwitch).toBeVisible({ timeout: 30000 })
 
-    // The Save button belongs to the card holding this switch.
-    const memoryCard = page.locator(
-      '.ant-card:has([aria-label="Enable memory deployment-wide"])',
-    )
     await enableSwitch.click()
-    await memoryCard.getByRole('button', { name: 'Save' }).click()
+    await byTestId(page, 'memory-admin-master-save-btn').click()
 
-    await expect(page.getByText('Memory settings saved.')).toBeVisible({
-      timeout: 30000,
-    })
+    await expect(page.locator('[data-sonner-toast]')).toContainText(
+      'Memory settings saved.',
+      { timeout: 30000 },
+    )
   })
 })

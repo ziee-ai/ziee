@@ -89,7 +89,7 @@ export function RebuildStatusSection() {
             are picked up automatically.
           </p>
           <Progress value={percent} aria-label="Rebuild progress" data-testid="memory-rebuild-embedding-progress" />
-          <p className="text-xs text-secondary-foreground/70 mb-0">
+          <p className="text-xs text-secondary-foreground/70 mb-0" data-testid="memory-rebuild-embedding-remaining">
             {rebuildStatus?.pending_count} memor
             {rebuildStatus?.pending_count === 1 ? 'y' : 'ies'} remaining.
           </p>

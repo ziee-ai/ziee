@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 
 /**
@@ -21,22 +22,22 @@ test.describe('App shell — responsive sidebar', () => {
     await page.goto(`${testInfra.baseURL}/`)
     await page.waitForLoadState('load')
 
-    // Desktop: the sidebar is open → the toggle offers to CLOSE it.
-    await expect(
-      page.getByRole('button', { name: 'Close navigation menu' }),
-    ).toBeVisible({ timeout: 20000 })
+    // Desktop: the sidebar is open → the toggle reports expanded.
+    const toggle = byTestId(page, 'layout-sidebar-toggle-button')
+    await expect(toggle).toBeVisible({ timeout: 20000 })
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
 
     // Shrink below the xs breakpoint → the effect auto-collapses the sidebar,
-    // so the toggle now offers to OPEN it.
+    // so the toggle now reports collapsed.
     await page.setViewportSize({ width: 375, height: 800 })
-    await expect(
-      page.getByRole('button', { name: 'Open navigation menu' }),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false', {
+      timeout: 10000,
+    })
 
-    // The toggle still works at mobile width: opening flips the control back.
-    await page.getByRole('button', { name: 'Open navigation menu' }).click()
-    await expect(
-      page.getByRole('button', { name: 'Close navigation menu' }),
-    ).toBeVisible({ timeout: 10000 })
+    // The toggle still works at mobile width: clicking reopens the sidebar.
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 10000,
+    })
   })
 })

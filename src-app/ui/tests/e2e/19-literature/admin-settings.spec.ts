@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, createTestUser, login, getCurrentUserToken, clearAuthState } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // lit_search admin config lives on a dedicated page (the built-in MCP row is
 // hidden from the System MCP page). Mock the settings singleton + the
@@ -144,7 +145,9 @@ async function gotoLiterature(page: Page, baseURL: string) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await page.goto(`${baseURL}/settings/literature`)
-      await expect(page.getByRole('heading', { name: 'Literature Search' })).toBeVisible({ timeout: 10000 })
+      // The connectors card always renders (even when the settings GET errors),
+      // so it's the stable "page mounted" signal.
+      await expect(byTestId(page, 'lit-connectors-card')).toBeVisible({ timeout: 10000 })
       return
     } catch (e) {
       if (attempt === 3) throw e
@@ -167,17 +170,17 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    await expect(page.getByText('Enable literature search')).toBeVisible()
-    // `exact` — the connector's name renders in the divider header AND inside its
-    // keyless_note paragraph, so a substring match resolves to 2 elements (matches
-    // the CORE assertion just below, which already scopes with exact).
-    await expect(page.getByText('Europe PMC', { exact: true })).toBeVisible()
-    await expect(page.getByText('CORE', { exact: true })).toBeVisible()
+    await expect(byTestId(page, 'lit-global-enable-switch')).toBeVisible()
+    // The descriptor-driven connector cards render (Europe PMC + CORE).
+    await expect(byTestId(page, 'lit-connector-enable-switch-europepmc')).toBeVisible()
+    await expect(byTestId(page, 'lit-connector-enable-switch-core')).toBeVisible()
     // CORE (required key, unset) shows the "Needs key" tag.
-    await expect(page.getByText('Needs key')).toBeVisible()
+    await expect(byTestId(page, 'lit-connector-needs-key-tag-core')).toBeVisible()
     // The descriptor-driven config field's `help` text renders (proves the
     // generic catalog→UI contract covers help/docs_url, not just labels).
-    await expect(page.getByText('Joins the Crossref polite pool for higher limits')).toBeVisible()
+    await expect(byTestId(page, 'field-desc-mailto')).toContainText(
+      'Joins the Crossref polite pool',
+    )
   })
 
   test('toggling the completeness switch persists', async ({ page, testInfra }) => {
@@ -187,9 +190,10 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    await page.getByRole('switch', { name: 'Show completeness estimate' }).click()
-    await expect(page.getByText('Completeness estimate updated')).toBeVisible({ timeout: 5000 })
-    expect(state.lastSettingsPatch?.completeness_estimate_enabled).toBe(false)
+    await byTestId(page, 'lit-global-completeness-switch').click()
+    await expect
+      .poll(() => state.lastSettingsPatch?.completeness_estimate_enabled, { timeout: 5000 })
+      .toBe(false)
   })
 
   test('setting the CORE key never echoes the secret + marks it configured', async ({ page, testInfra }) => {
@@ -200,18 +204,15 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    await page.getByLabel('CORE API key').fill(SECRET)
-    // The CORE connector's own Save button (scoped to the form with the key field).
-    await page
-      .locator('form')
-      .filter({ has: page.getByLabel('CORE API key') })
-      .getByRole('button', { name: 'Save' })
-      .click()
-    await expect(page.getByText('CORE saved')).toBeVisible({ timeout: 5000 })
+    await byTestId(page, 'lit-connector-api-key-input-core').fill(SECRET)
+    // The CORE connector's own Save button.
+    await byTestId(page, 'lit-connector-save-button-core').click()
 
-    expect(state.lastConnectorPatch?.connector).toBe('core')
+    await expect.poll(() => state.lastConnectorPatch?.connector, { timeout: 5000 }).toBe('core')
     expect(state.lastConnectorPatch?.body.api_key).toBe(SECRET)
-    await expect(page.getByText(SECRET)).toHaveCount(0)
+    // The secret is never echoed back into the page (the key field resets blank).
+    await expect(byTestId(page, 'lit-connector-api-key-input-core')).toHaveValue('')
+    await expect(page.locator('body')).not.toContainText(SECRET)
   })
 
   test('setting the Crossref mailto persists as config', async ({ page, testInfra }) => {
@@ -221,14 +222,9 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    await page.getByLabel('Contact email').fill('researcher@example.org')
-    await page
-      .locator('form')
-      .filter({ has: page.getByLabel('Contact email') })
-      .getByRole('button', { name: 'Save' })
-      .click()
-    await expect(page.getByText('Crossref saved')).toBeVisible({ timeout: 5000 })
-    expect(state.lastConnectorPatch?.connector).toBe('crossref')
+    await byTestId(page, 'lit-connector-config-input-crossref-mailto').fill('researcher@example.org')
+    await byTestId(page, 'lit-connector-save-button-crossref').click()
+    await expect.poll(() => state.lastConnectorPatch?.connector, { timeout: 5000 }).toBe('crossref')
     expect(state.lastConnectorPatch?.body.config.mailto).toBe('researcher@example.org')
   })
 
@@ -240,22 +236,20 @@ test.describe('Literature search admin settings', () => {
     await gotoLiterature(page, baseURL)
 
     // The form must PRE-FILL the stored value (not start blank).
-    await expect(page.getByLabel('Contact email')).toHaveValue('stored@example.org')
+    const mailto = byTestId(page, 'lit-connector-config-input-crossref-mailto')
+    await expect(mailto).toHaveValue('stored@example.org')
 
     // Saving WITHOUT retyping must round-trip it — not wipe it to '' (the bug).
     // Save is dirty-gated (`disabled={!canManage || !dirty}`), and re-`fill`ing the
     // SAME value doesn't fire antd's `onValuesChange` → Save stays disabled and the
     // click times out. Clear then restore the stored value to force `dirty`, while
     // still verifying the save round-trips the stored value (not '').
-    await page.getByLabel('Contact email').fill('')
-    await page.getByLabel('Contact email').fill('stored@example.org')
-    await page
-      .locator('form')
-      .filter({ has: page.getByLabel('Contact email') })
-      .getByRole('button', { name: 'Save' })
-      .click()
-    await expect(page.getByText('Crossref saved')).toBeVisible({ timeout: 5000 })
-    expect(state.lastConnectorPatch?.body.config.mailto).toBe('stored@example.org')
+    await mailto.fill('')
+    await mailto.fill('stored@example.org')
+    await byTestId(page, 'lit-connector-save-button-crossref').click()
+    await expect
+      .poll(() => state.lastConnectorPatch?.body?.config?.mailto, { timeout: 5000 })
+      .toBe('stored@example.org')
   })
 
   test('a non-admin cannot reach the literature settings page', async ({ page, testInfra }) => {
@@ -269,9 +263,13 @@ test.describe('Literature search admin settings', () => {
     await page.goto(`${baseURL}/settings/literature`)
     // Inline 403 with the URL preserved — the POSITIVE proof the LitSearchAdminRead
     // route guard fired (not just a failed navigation). Mirrors the permissions/ E2E.
-    await expect(page.getByText(/Not authorized/i)).toBeVisible({ timeout: 8000 })
+    await expect(
+      page.locator(
+        '[data-testid="router-route-forbidden-result"], [data-testid="settings-forbidden-result"]',
+      ),
+    ).toBeVisible({ timeout: 8000 })
     expect(page.url()).toContain('/settings/literature')
-    await expect(page.getByRole('heading', { name: 'Literature Search' })).toHaveCount(0)
+    await expect(byTestId(page, 'lit-global-card')).toHaveCount(0)
   })
 
   test('master enable toggle persists', async ({ page, testInfra }) => {
@@ -281,7 +279,7 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    const masterSwitch = page.getByRole('switch', { name: 'Enable literature search' })
+    const masterSwitch = byTestId(page, 'lit-global-enable-switch')
     await expect(masterSwitch).toBeChecked()
     await masterSwitch.click()
     await expect.poll(() => state.lastSettingsPatch?.enabled).toBe(false)
@@ -295,7 +293,7 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    await page.getByRole('switch', { name: 'Enable CORE' }).click()
+    await byTestId(page, 'lit-connector-enable-switch-core').click()
     await expect.poll(() => state.lastSettingsPatch?.enabled_connectors).toContain('core')
     // The originally-enabled sources are preserved (not clobbered).
     expect(state.lastSettingsPatch?.enabled_connectors).toEqual(
@@ -314,7 +312,7 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    await page.getByRole('button', { name: 'Clear key' }).click()
+    await byTestId(page, 'lit-connector-clear-key-button-core').click()
     await expect.poll(() => state.lastConnectorPatch?.connector).toBe('core')
     expect(state.lastConnectorPatch?.body.api_key).toBe('')
   })
@@ -332,9 +330,7 @@ test.describe('Literature search admin settings', () => {
     )
 
     await page.goto(`${baseURL}/settings/literature`)
-    await expect(
-      page.getByText('Failed to load literature search settings'),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-settings-error-alert')).toBeVisible({ timeout: 10000 })
   })
 
   test('caps form saves max_results / per-source / timeout', async ({ page, testInfra }) => {
@@ -344,10 +340,9 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    await page.getByLabel('Max deduped results').fill('42')
-    await page.getByRole('button', { name: 'Save caps' }).click()
-    await expect(page.getByText('Literature search settings saved')).toBeVisible({ timeout: 5000 })
-    expect(state.lastSettingsPatch?.max_results).toBe(42)
+    await byTestId(page, 'lit-global-max-results-input').fill('42')
+    await byTestId(page, 'lit-global-save-caps-button').click()
+    await expect.poll(() => state.lastSettingsPatch?.max_results, { timeout: 5000 }).toBe(42)
   })
 
   // audit id 200f6ab3e2c9 — a connector whose key_field is required and has no
@@ -361,18 +356,11 @@ test.describe('Literature search admin settings', () => {
     await gotoLiterature(page, baseURL)
 
     // CORE shows the "Needs key" tag (the warning state the validation guards).
-    await expect(page.getByText('Needs key')).toBeVisible()
+    await expect(byTestId(page, 'lit-connector-needs-key-tag-core')).toBeVisible()
 
-    // Click CORE's Save with the key field left empty.
-    await page
-      .locator('form')
-      .filter({ has: page.getByLabel('CORE API key') })
-      .getByRole('button', { name: 'Save' })
-      .click()
-
-    // Inline required-rule error appears and NO connector PUT was sent.
-    await expect(page.getByText('CORE API key is required')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('CORE saved')).toHaveCount(0)
+    // With the key field empty, the required-key gate keeps CORE's Save disabled,
+    // so an invalid CORE config can never be persisted (no connector PUT).
+    await expect(byTestId(page, 'lit-connector-save-button-core')).toBeDisabled({ timeout: 5000 })
     expect(state.lastConnectorPatch).toBeNull()
   })
 
@@ -406,8 +394,6 @@ test.describe('Literature search admin settings', () => {
     })
 
     await gotoLiterature(page, baseURL)
-    await expect(
-      page.getByText('Failed to load literature search settings'),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-settings-error-alert')).toBeVisible({ timeout: 10000 })
   })
 })

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — ProjectsNavWidget (the LeftSidebar "Projects" widget).
@@ -31,7 +32,7 @@ test.describe('Projects — sidebar nav widget', () => {
 
     // Land on the app shell so the LeftSidebar (and its Projects widget) renders.
     await page.goto(`${baseURL}/`)
-    const row = page.getByRole('button', { name: `Open project ${name}` })
+    const row = page.locator(`[data-project-id="${projectId}"]`)
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.click()
 
@@ -45,7 +46,7 @@ test.describe('Projects — sidebar nav widget', () => {
     await seedProject(apiURL, token, `e2e-allp-${Date.now()}`)
 
     await page.goto(`${baseURL}/`)
-    const allProjects = page.getByRole('button', { name: 'All projects' })
+    const allProjects = byTestId(page, 'project-nav-all-projects-button')
     await expect(allProjects).toBeVisible({ timeout: 20000 })
     await allProjects.click()
 

@@ -9,6 +9,7 @@ import {
   seedLiteratureResult,
   sampleResult,
 } from './fixtures/mock-literature-result'
+import { byTestId } from '../testid'
 
 /**
  * E2E — RIS + BibTeX export from the literature screening panel.
@@ -45,15 +46,13 @@ test.describe('Literature — RIS/BibTeX export', () => {
   }) => {
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
 
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(
-      page.getByRole('heading', { name: 'Screening' }),
-    ).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 10000 })
 
     // ── RIS ──
-    await page.getByRole('button', { name: /Export (all|included)/ }).click()
+    await byTestId(page, 'lit-screening-export-button').click()
     const risDownload = page.waitForEvent('download')
-    await page.getByRole('menuitem', { name: 'Export RIS' }).click()
+    await byTestId(page, 'lit-screening-export-dropdown-item-ris').click()
     const risFile = await risDownload
     expect(risFile.suggestedFilename()).toBe('screening.ris')
     const risStream = await risFile.createReadStream()
@@ -62,9 +61,9 @@ test.describe('Literature — RIS/BibTeX export', () => {
     expect(risText).toMatch(/^ER {2}- /m)
 
     // ── BibTeX ──
-    await page.getByRole('button', { name: /Export (all|included)/ }).click()
+    await byTestId(page, 'lit-screening-export-button').click()
     const bibDownload = page.waitForEvent('download')
-    await page.getByRole('menuitem', { name: 'Export BibTeX' }).click()
+    await byTestId(page, 'lit-screening-export-dropdown-item-bibtex').click()
     const bibFile = await bibDownload
     expect(bibFile.suggestedFilename()).toBe('screening.bib')
     const bibStream = await bibFile.createReadStream()

@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   goToUserAssistantsPage,
   openCreateAssistantDrawer,
@@ -33,16 +34,14 @@ test.describe('User Assistants - Settings Page', () => {
   test('should display empty state when no assistants exist', async ({ page }) => {
     await assertEmptyState(page, 'No assistants yet')
     // The create affordance is the (+) button in the card header.
-    await expect(
-      page.getByRole('button', { name: /create assistant/i }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'user-assistants-create-btn')).toBeVisible()
   })
 
   test('should create a new assistant with basic info', async ({ page }) => {
     await openCreateAssistantDrawer(page)
 
-    // Verify drawer title
-    await expect(page.locator('.ant-drawer.ant-drawer-open').getByText('Create Assistant')).toBeVisible()
+    // Create mode: the name field opens empty.
+    await expect(byTestId(page, 'assistant-form-name')).toHaveValue('')
 
     await fillAssistantForm(page, {
       name: 'Test Assistant',
@@ -79,12 +78,12 @@ test.describe('User Assistants - Settings Page', () => {
     await openCreateAssistantDrawer(page)
 
     // Try to submit without filling required fields
-    await page.locator('.ant-drawer.ant-drawer-open').getByRole('button', { name: 'Create' }).click()
+    await byTestId(page, 'assistant-form-submit').click()
 
-    await expect(page.getByText('Please enter a name', { exact: true })).toBeVisible()
+    await expect(byTestId(page, 'field-error-name')).toContainText('Please enter a name')
 
-    // Drawer should still be open
-    await expect(page.locator('.ant-drawer.ant-drawer-open')).toBeVisible()
+    // Drawer should still be open (form still mounted).
+    await expect(byTestId(page, 'assistant-form')).toBeVisible()
   })
 
   test('should validate JSON parameters', async ({ page }) => {
@@ -95,15 +94,15 @@ test.describe('User Assistants - Settings Page', () => {
       parameters: 'invalid json',
     })
 
-    await page.locator('.ant-drawer.ant-drawer-open').getByRole('button', { name: 'Create' }).click()
+    await byTestId(page, 'assistant-form-submit').click()
 
-    await expect(page.getByText('Please enter valid JSON', { exact: true })).toBeVisible()
+    await expect(byTestId(page, 'field-error-parameters')).toContainText('Please enter valid JSON')
   })
 
   test('should prettify JSON parameters on blur', async ({ page }) => {
     await openCreateAssistantDrawer(page)
 
-    const parametersField = page.getByLabel('Model parameters in JSON format')
+    const parametersField = byTestId(page, 'assistant-form-parameters')
 
     await parametersField.fill('{"temperature":0.7,"max_tokens":2048}')
     await parametersField.blur()
@@ -127,14 +126,12 @@ test.describe('User Assistants - Settings Page', () => {
     // Edit the assistant from its row
     await editUserAssistant(page, 'Edit Test Assistant')
 
-    await expect(page.locator('.ant-drawer.ant-drawer-open').getByText('Edit Assistant')).toBeVisible()
-
-    // Verify form is populated
-    await expect(page.getByLabel('Assistant name')).toHaveValue('Edit Test Assistant')
-    await expect(page.getByLabel('Assistant description')).toHaveValue('Original description')
+    // Edit mode: the form is populated with the persisted values.
+    await expect(byTestId(page, 'assistant-form-name')).toHaveValue('Edit Test Assistant')
+    await expect(byTestId(page, 'assistant-form-description')).toHaveValue('Original description')
 
     // Update the description
-    await page.getByLabel('Assistant description').fill('Updated description')
+    await byTestId(page, 'assistant-form-description').fill('Updated description')
 
     await submitAssistantForm(page)
 
@@ -195,7 +192,7 @@ test.describe('User Assistants - Settings Page', () => {
     // Set second assistant as default
     await editUserAssistant(page, 'Assistant 2')
 
-    const defaultSwitch = page.locator('.ant-form-item:has-text("Set as Default") .ant-switch')
+    const defaultSwitch = byTestId(page, 'assistant-form-default')
     await defaultSwitch.waitFor({ state: 'visible', timeout: 10000 })
     await defaultSwitch.click()
 
@@ -212,8 +209,8 @@ test.describe('User Assistants - Settings Page', () => {
     await assertUserAssistantHasTag(page, 'Assistant 2', 'Default')
 
     const assistant1Row = await getUserAssistantRow(page, 'Assistant 1')
-    const defaultTag = assistant1Row.getByText('Default', { exact: true })
-    await expect(defaultTag).not.toBeVisible()
+    const assistant1Id = await assistant1Row.getAttribute('data-test-assistant-id')
+    await expect(byTestId(page, `${assistant1Id}-default-tag`)).not.toBeVisible()
   })
 
   test('should toggle assistant enabled status', async ({ page }) => {
@@ -229,7 +226,7 @@ test.describe('User Assistants - Settings Page', () => {
     // Disable it
     await editUserAssistant(page, 'Enabled Test Assistant')
 
-    const enabledSwitch = page.locator('.ant-form-item:has-text("Enabled") .ant-switch')
+    const enabledSwitch = byTestId(page, 'assistant-form-enabled')
     await enabledSwitch.waitFor({ state: 'visible', timeout: 10000 })
     await enabledSwitch.click()
 
@@ -247,8 +244,9 @@ test.describe('User Assistants - Settings Page', () => {
     await assertSuccessMessage(page, 'Assistant created successfully')
 
     const row = await getUserAssistantRow(page, 'Date Test Assistant')
+    const id = await row.getAttribute('data-test-assistant-id')
 
-    // The row shows a "Created" date in the Descriptions block.
-    await expect(row.getByText('Created', { exact: true })).toBeVisible()
+    // The row shows a "Created" date in its Descriptions block.
+    await expect(byTestId(page, `${id}-desc`)).toBeVisible()
   })
 })

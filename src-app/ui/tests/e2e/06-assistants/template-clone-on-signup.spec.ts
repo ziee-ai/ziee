@@ -60,9 +60,14 @@ test.describe('Assistants — template clone on signup', () => {
     await login(page, baseURL, uname, 'password123')
     await page.goto(`${baseURL}/settings/assistants`)
 
-    await expect(page.getByText(templateName).first()).toBeVisible({
-      timeout: 30000,
-    })
+    // The clone shows up as one of the user's own assistant rows.
+    await expect(
+      page
+        .locator(`[data-test-assistant-id^="user-assistant-"]`, {
+          hasText: templateName,
+        })
+        .first(),
+    ).toBeVisible({ timeout: 30000 })
 
     // Sanity: it is a real USER assistant (a clone), not the template itself —
     // the user can read it via their own (non-admin) assistants list.

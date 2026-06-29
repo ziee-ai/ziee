@@ -1,7 +1,9 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   fillProjectForm,
+  getProjectCard,
   goToProjectsPage,
   openCreateProjectDrawer,
   submitProjectForm,
@@ -46,7 +48,7 @@ test.describe('Projects - new conversation via inline ChatInput', () => {
   test('inline ChatInput is rendered on the project detail page', async ({
     page,
   }) => {
-    await page.locator('.ant-card', { hasText: 'Project With Chat' }).click()
+    await getProjectCard(page, 'Project With Chat').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
 
     // ChatInput section is the FIRST section in the new layout.
@@ -63,13 +65,15 @@ test.describe('Projects - new conversation via inline ChatInput', () => {
 
     // No "New chat" navigation button in the header (replaced by the
     // inline ChatInput per Option A).
-    await expect(page.getByRole('button', { name: /^new chat$/i })).toHaveCount(0)
+    await expect(
+      byTestId(page, 'project-detail-new-chat-button'),
+    ).toHaveCount(0)
   })
 
   test('sending from inline ChatInput fires create + attach and navigates to /projects/{pid}/chat/{cid}', async ({
     page,
   }) => {
-    await page.locator('.ant-card', { hasText: 'Project With Chat' }).click()
+    await getProjectCard(page, 'Project With Chat').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     const projectUrl = page.url()
     const projectId = new URL(projectUrl).pathname.split('/').pop()!
@@ -115,7 +119,7 @@ test.describe('Projects - new conversation via inline ChatInput', () => {
     await expect(textarea).toBeVisible({ timeout: 10000 })
     await textarea.fill('Ahoy there!')
 
-    const sendButton = page.getByRole('button', { name: 'Send message' })
+    const sendButton = byTestId(page, 'chat-input-send-btn')
     await expect(sendButton).toBeEnabled({ timeout: 10000 })
     await sendButton.click()
 

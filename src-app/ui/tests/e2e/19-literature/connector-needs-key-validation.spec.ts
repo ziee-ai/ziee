@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — a key-REQUIRED connector (CORE) cannot be saved without a key.
@@ -81,17 +82,12 @@ test.describe('Literature — connector "Needs key" validation prevents save', (
     await loginAsAdmin(page, baseURL)
     await mockApi(page)
     await page.goto(`${baseURL}/settings/literature`)
-    await expect(
-      page.getByRole('heading', { name: 'Literature Search' }),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-connectors-card')).toBeVisible({ timeout: 10000 })
 
     // CORE (required key, unset) advertises that it needs a key.
-    await expect(page.getByText('Needs key')).toBeVisible()
+    await expect(byTestId(page, 'lit-connector-needs-key-tag-core')).toBeVisible()
 
-    const coreForm = page
-      .locator('form')
-      .filter({ has: page.getByLabel('CORE API key') })
-    const saveBtn = coreForm.getByRole('button', { name: 'Save' })
+    const saveBtn = byTestId(page, 'lit-connector-save-button-core')
 
     // No key entered → Save is disabled (cannot persist an invalid CORE config).
     await expect(saveBtn).toBeDisabled()
@@ -99,7 +95,7 @@ test.describe('Literature — connector "Needs key" validation prevents save', (
     // Dirtying the form by typing then clearing the key MUST still leave Save
     // disabled — isolating the `needsKey && !apiKeyValue` branch from the
     // separate dirty-gate.
-    const keyField = page.getByLabel('CORE API key')
+    const keyField = byTestId(page, 'lit-connector-api-key-input-core')
     await keyField.fill('temp')
     await expect(saveBtn).toBeEnabled()
     await keyField.fill('')

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -58,13 +59,13 @@ test.describe('Memory — list toolbar + pagination', () => {
     )
 
     await page.goto(`${baseURL}/settings/memory`)
-    // Default page shows 1-10 of 12.
-    await expect(page.getByText(/1-10 of 12 memories/)).toBeVisible({ timeout: 30000 })
+    // Default page shows 10 of 12 rows.
+    await expect(page.locator('[data-memory-id]')).toHaveCount(10, { timeout: 30000 })
 
     // Bump the page size to 20 via the size changer → all 12 on one page.
-    await page.locator('.ant-pagination-options .ant-select').click()
-    await page.getByText('20 / page').click()
-    await expect(page.getByText(/1-12 of 12 memories/)).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'memory-pagination-page-size').click()
+    await byTestId(page, 'memory-pagination-page-size-opt-20').click()
+    await expect(page.locator('[data-memory-id]')).toHaveCount(12, { timeout: 10000 })
   })
 
   test('search filter narrows the list; export downloads; delete-all clears', async ({
@@ -81,39 +82,32 @@ test.describe('Memory — list toolbar + pagination', () => {
     ])
 
     await page.goto(`${baseURL}/settings/memory`)
-    await expect(page.getByText('ALPHA distinctive marker for the search filter')).toBeVisible({
-      timeout: 30000,
-    })
+    const alpha = page
+      .locator('[data-memory-id]')
+      .filter({ hasText: 'ALPHA distinctive marker for the search filter' })
+    const beta = page
+      .locator('[data-memory-id]')
+      .filter({ hasText: 'BETA distinctive marker for the search filter' })
+    await expect(alpha).toBeVisible({ timeout: 30000 })
 
     // Search narrows to just the ALPHA row.
-    await page.getByPlaceholder('Search content').fill('ALPHA')
-    await expect(page.getByText('ALPHA distinctive marker for the search filter')).toBeVisible({
-      timeout: 10000,
-    })
-    await expect(page.getByText('BETA distinctive marker for the search filter')).toHaveCount(0, {
-      timeout: 10000,
-    })
+    await byTestId(page, 'memory-search-input').fill('ALPHA')
+    await expect(alpha).toBeVisible({ timeout: 10000 })
+    await expect(beta).toHaveCount(0, { timeout: 10000 })
     // Clear the search → BETA returns.
-    await page.getByPlaceholder('Search content').fill('')
-    await expect(page.getByText('BETA distinctive marker for the search filter')).toBeVisible({
-      timeout: 10000,
-    })
+    await byTestId(page, 'memory-search-input').fill('')
+    await expect(beta).toBeVisible({ timeout: 10000 })
 
     // Export → the JSON download fires.
     const downloadPromise = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Export' }).click()
-    await page.getByText('Export as JSON').click()
+    await byTestId(page, 'memory-export-btn').click()
+    await byTestId(page, 'memory-export-dropdown-item-json').click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toMatch(/\.json$/)
 
-    // Delete all → Popconfirm → confirm → list empties.
-    await page.getByRole('button', { name: 'Delete all' }).click()
-    await page
-      .locator('.ant-popconfirm')
-      .getByRole('button', { name: 'Delete', exact: true })
-      .click()
-    await expect(
-      page.getByText('ALPHA distinctive marker for the search filter'),
-    ).toHaveCount(0, { timeout: 10000 })
+    // Delete all → confirm dialog → confirm → list empties.
+    await byTestId(page, 'memory-delete-all-btn').click()
+    await byTestId(page, 'memory-delete-all-confirm-confirm').click()
+    await expect(page.locator('[data-memory-id]')).toHaveCount(0, { timeout: 10000 })
   })
 })

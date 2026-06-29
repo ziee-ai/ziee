@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures/test-context'
+import { test } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   navigateToUsers,
@@ -11,6 +11,7 @@ import { createUser } from './helpers/user-actions'
 import {
   createGroup,
   viewGroupMembers,
+  assignUserToGroupInDrawer,
   removeUserFromGroup,
 } from './helpers/group-actions'
 import {
@@ -24,9 +25,6 @@ import {
  * E2E — cross-entity workflow: create a user, create a group, assign the user
  * to the group, verify membership from BOTH the user-side groups drawer and the
  * group-side members drawer, then remove the membership.
- *
- * The existing 02-users specs cover user CRUD and group CRUD in isolation; this
- * stitches the full user↔group lifecycle together through the real UI.
  */
 
 test.describe('Users ↔ Groups — end-to-end membership lifecycle', () => {
@@ -57,33 +55,23 @@ test.describe('Users ↔ Groups — end-to-end membership lifecycle', () => {
     })
     await assertUserExists(page, username)
 
-    // 3) Assign the user to the group via the user's Groups drawer.
+    // 3) Assign the user to the group via the per-row control in the groups
+    //    drawer.
     await openUserGroupsDrawer(page, username)
-    await page.getByRole('button', { name: 'Assign group' }).click()
-    const assignDrawer = page.locator(
-      '.ant-drawer.ant-drawer-open:has-text("Assign to Group")',
-    )
-    await expect(assignDrawer).toBeVisible({ timeout: 10000 })
-    await assignDrawer.getByRole('checkbox', { name: groupName }).check()
-    await assignDrawer.getByRole('button', { name: 'Assign', exact: true }).click()
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({
-      timeout: 10000,
-    })
+    await assignUserToGroupInDrawer(page, groupName)
 
-    // 4a) User-side: the group now appears in the user's groups drawer list.
-    await expect(
-      page
-        .locator('.ant-drawer.ant-drawer-open')
-        .locator('.ant-list-item', { hasText: groupName }),
-    ).toBeVisible({ timeout: 10000 })
-
-    // 4b) Group-side: the members drawer lists the user.
+    // 4) Group-side: the members drawer lists the user.
     await navigateToUserGroups(page, baseURL)
     await viewGroupMembers(page, groupName)
     await assertUserInGroup(page, username)
 
-    // 5) Manage membership: remove the user from the group.
-    await removeUserFromGroup(page, username)
+    // 5) Remove membership via the user's groups drawer + verify gone.
+    await navigateToUsers(page, baseURL)
+    await openUserGroupsDrawer(page, username)
+    await removeUserFromGroup(page, groupName)
+
+    await navigateToUserGroups(page, baseURL)
+    await viewGroupMembers(page, groupName)
     await assertUserNotInGroup(page, username)
   })
 })

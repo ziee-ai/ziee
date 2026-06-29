@@ -7,6 +7,7 @@ import {
   clearAuthState,
 } from '../../common/auth-helpers'
 import { createGroupViaAPI } from '../../common/provider-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — permission inheritance through GROUP MEMBERSHIP.
@@ -61,14 +62,17 @@ test.describe('Users — group permission inheritance', () => {
     await clearAuthState(page)
     await login(page, baseURL, uname, 'password123')
 
-    // Inherited perm: the Hardware settings section is now visible…
+    // Inherited perm: the Hardware settings nav item is now visible…
     await page.goto(`${baseURL}/settings/profile`)
     await expect(
-      page.getByRole('menuitem', { name: 'Hardware' }),
+      byTestId(page, 'settings-nav-menu-item-/settings/hardware'),
     ).toBeVisible({ timeout: 30000 })
 
     // …and reachable (the route admits the inherited permission).
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+    await expect(
+      byTestId(page, 'hardware-os-card')
+        .or(byTestId(page, 'hardware-settings-unavailable-alert')),
+    ).toBeVisible({ timeout: 30000 })
   })
 })

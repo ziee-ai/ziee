@@ -10,6 +10,7 @@ import {
   seedLiteratureResult,
   sampleResult,
 } from './fixtures/mock-literature-result'
+import { byTestId } from '../testid'
 
 /**
  * Complete research-screening journey through the UI: a seeded literature
@@ -41,24 +42,24 @@ test.describe('Literature research journey', () => {
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
 
     // Open the screening workbench from the inline result card.
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({
       timeout: 10000,
     })
 
     // PRISMA provenance: dedup count + the saturation (completeness) estimate.
-    await expect(page.getByText('After dedup: 2')).toBeVisible()
-    await expect(page.getByText(/Saturation estimate: MODERATE/i)).toBeVisible()
+    await expect(byTestId(page, 'lit-screening-tag-after-dedup')).toContainText('2')
+    await expect(byTestId(page, 'lit-screening-completeness')).toContainText('MODERATE')
 
     // Include every record → PRISMA Included reflects it.
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Include', exact: true }).click()
-    await expect(page.getByText('Included: 2')).toBeVisible()
+    await byTestId(page, 'lit-screening-select-all-checkbox').click()
+    await byTestId(page, 'lit-screening-bulk-include-button').click()
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('2')
 
     // Export the included studies as RIS (the "cite" leg of the journey).
-    await page.getByRole('button', { name: /Export (all|included)/ }).click()
+    await byTestId(page, 'lit-screening-export-button').click()
     const download = page.waitForEvent('download')
-    await page.getByRole('menuitem', { name: 'Export RIS' }).click()
+    await byTestId(page, 'lit-screening-export-dropdown-item-ris').click()
     const file = await download
     expect(file.suggestedFilename()).toBe('screening.ris')
 

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — saving the Memory admin "Default extraction model" persists.
@@ -61,41 +62,26 @@ test.describe('Memory — admin extraction model save', () => {
     await seedChatModel(page.request, apiURL, adminToken, chatName)
 
     await page.goto(`${baseURL}/settings/memory-admin`)
-    await expect(page.getByText(/Default extraction model/)).toBeVisible({
+    await expect(byTestId(page, 'memory-extraction-model-combobox')).toBeVisible({
       timeout: 30000,
     })
 
     // Open the extraction picker and choose the seeded chat model.
-    await page
-      .locator('.ant-form-item:has-text("Default extraction model")')
-      .first()
-      .getByRole('combobox')
-      .click()
-    const dropdown = page.locator(
-      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
+    await byTestId(page, 'memory-extraction-model-combobox').click()
+    await page.getByRole('option').filter({ hasText: chatName }).first().click()
+
+    // Save the extraction card.
+    await byTestId(page, 'memory-extraction-save-btn').click()
+
+    await expect(page.locator('[data-sonner-toast]')).toContainText(
+      'Extraction settings saved.',
+      { timeout: 10000 },
     )
-    await expect(dropdown).toBeVisible()
-    await dropdown
-      .locator('.ant-select-item-option')
-      .filter({ hasText: chatName })
-      .first()
-      .click()
-
-    // Save the extraction card (scope to the Extraction card's primary btn).
-    await page
-      .locator('.ant-card:has(.ant-card-head-title:has-text("Extraction"))')
-      .getByRole('button', { name: 'Save' })
-      .click()
-
-    await expect(page.getByText('Extraction settings saved.')).toBeVisible({
-      timeout: 10000,
-    })
 
     // Reload → the saved selection is reflected (persisted, not transient).
     await page.reload()
-    await expect(page.getByText(/Default extraction model/)).toBeVisible({
-      timeout: 30000,
-    })
-    await expect(page.getByText(chatName).first()).toBeVisible({ timeout: 10000 })
+    await expect(
+      byTestId(page, 'memory-extraction-model-combobox'),
+    ).toContainText(chatName, { timeout: 30000 })
   })
 })

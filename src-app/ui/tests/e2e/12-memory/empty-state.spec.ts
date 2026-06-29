@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 
 /**
@@ -19,7 +20,7 @@ test.describe('Memory — list empty state', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/memory`)
 
-    await expect(page.getByText('No memories yet')).toBeVisible({
+    await expect(byTestId(page, 'memory-empty')).toBeVisible({
       timeout: 30000,
     })
   })

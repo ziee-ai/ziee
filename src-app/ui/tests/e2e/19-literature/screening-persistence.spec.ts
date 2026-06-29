@@ -6,6 +6,7 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import { seedLiteratureResult, sampleResult } from './fixtures/mock-literature-result'
+import { byTestId } from '../testid'
 
 // audit id all-2e73f996b353 — screening decisions persist across a page reload
 // (LiteratureScreeningPanel persists decisions via updateRightPanelTab →
@@ -31,11 +32,11 @@ test.describe('Literature screening — persistence across reload', () => {
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
 
     // Open the screening panel and include both records.
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({ timeout: 10000 })
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Include', exact: true }).click()
-    await expect(page.getByText('Included: 2')).toBeVisible()
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'lit-screening-select-all-checkbox').click()
+    await byTestId(page, 'lit-screening-bulk-include-button').click()
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('2')
 
     // The decisions are persisted to localStorage.
     const persisted = await page.evaluate(() =>
@@ -47,8 +48,10 @@ test.describe('Literature screening — persistence across reload', () => {
     // include decisions must be restored (Included count preserved).
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({ timeout: 15000 })
-    await expect(page.getByText('Included: 2')).toBeVisible({ timeout: 15000 })
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('2', {
+      timeout: 15000,
+    })
   })
 })

@@ -9,6 +9,11 @@ import {
   seedLiteratureResult,
   sampleResult,
 } from './fixtures/mock-literature-result'
+import { byTestId } from '../testid'
+
+// recordKey() derives `doi:<lowercased-doi>` for the seeded sampleResult rows.
+const KEY1 = 'doi:10.1/aaa'
+const KEY2 = 'doi:10.1/bbb'
 
 /**
  * E2E — INDEPENDENT per-row screening decisions via the Segmented control.
@@ -45,29 +50,32 @@ test.describe('Literature — independent per-row Segmented decisions', () => {
   }) => {
     // sampleResult() ships exactly two records.
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(
-      page.getByRole('heading', { name: 'Screening' }),
-    ).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 10000 })
 
-    const segments = page.locator('[aria-label="Screening decision"]')
-    await expect(segments).toHaveCount(2)
+    // Each record has its own Segmented control (keyed by recordKey).
+    await expect(byTestId(page, `lit-screening-record-decision-${KEY1}`)).toBeVisible()
+    await expect(byTestId(page, `lit-screening-record-decision-${KEY2}`)).toBeVisible()
 
     // Row 1 → Include, Row 2 → Exclude, via each row's OWN control.
-    await segments.nth(0).getByText('Include', { exact: true }).click()
-    await segments.nth(1).getByText('Exclude', { exact: true }).click()
+    await byTestId(page, `lit-screening-record-decision-${KEY1}-opt-include`).click()
+    await byTestId(page, `lit-screening-record-decision-${KEY2}-opt-exclude`).click()
 
     // Both decisions persist independently — neither clobbers the other.
-    await expect(page.getByText('Included: 1')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('Excluded: 1')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('1', {
+      timeout: 10000,
+    })
+    await expect(byTestId(page, 'lit-screening-tag-excluded')).toContainText('1', {
+      timeout: 10000,
+    })
 
     // The two Segmented controls reflect their own (different) selections:
-    // antd marks the selected segment label with `.ant-segmented-item-selected`.
+    // the selected ToggleGroup option carries data-state="on".
     await expect(
-      segments.nth(0).locator('.ant-segmented-item-selected'),
-    ).toHaveText('Include')
+      byTestId(page, `lit-screening-record-decision-${KEY1}-opt-include`),
+    ).toHaveAttribute('data-state', 'on')
     await expect(
-      segments.nth(1).locator('.ant-segmented-item-selected'),
-    ).toHaveText('Exclude')
+      byTestId(page, `lit-screening-record-decision-${KEY2}-opt-exclude`),
+    ).toHaveAttribute('data-state', 'on')
   })
 })

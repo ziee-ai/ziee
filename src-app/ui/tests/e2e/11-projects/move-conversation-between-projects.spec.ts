@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — moving a conversation from one project to another.
@@ -51,20 +52,23 @@ test.describe('Projects — move conversation between projects', () => {
 
     const convSection = () => page.locator('[data-test-section="conversations"]')
 
+    const convCard = () =>
+      byTestId(convSection(), `chat-conversation-card-${convId}`)
+
     // Initially in A.
     await page.goto(`${baseURL}/projects/${projectA}`)
-    await expect(convSection().getByText(title)).toBeVisible({ timeout: 30000 })
+    await expect(convCard()).toBeVisible({ timeout: 30000 })
 
     // MOVE: re-attach to B.
     await attach(apiURL, token, projectB, convId)
 
     // Now in B…
     await page.goto(`${baseURL}/projects/${projectB}`)
-    await expect(convSection().getByText(title)).toBeVisible({ timeout: 30000 })
+    await expect(convCard()).toBeVisible({ timeout: 30000 })
 
     // …and no longer in A.
     await page.goto(`${baseURL}/projects/${projectA}`)
     await expect(convSection()).toBeVisible({ timeout: 30000 })
-    await expect(convSection().getByText(title)).toHaveCount(0)
+    await expect(convCard()).toHaveCount(0)
   })
 })

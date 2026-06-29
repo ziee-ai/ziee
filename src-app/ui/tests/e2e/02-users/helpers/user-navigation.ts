@@ -1,4 +1,17 @@
 import { Page } from '@playwright/test'
+import { byTestId } from '../../testid'
+
+/**
+ * Page-object-style navigation helpers for the Users / User Groups admin
+ * surfaces. All selectors are testid-based (i18n-safe). Per-row action
+ * buttons carry id-suffixed testids (`user-edit-button-<id>` etc.); since
+ * callers only know the username/group name, we scope to the name-keyed row
+ * wrapper (`user-row-<username>` / `user-group-row-<name>` /
+ * `user-groups-drawer-row-<name>`, added at source) and then target the
+ * action by its testid prefix — unique within the scoped row.
+ */
+
+const usersHeading = (page: Page) => byTestId(page, 'user-list-card')
 
 /**
  * Navigate to the users settings page
@@ -6,8 +19,7 @@ import { Page } from '@playwright/test'
 export async function navigateToUsers(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/users`)
   await page.waitForLoadState('load')
-  // Wait for page heading to ensure page is loaded
-  await page.getByRole('heading', { name: /^users$/i }).waitFor({ timeout: 10000 })
+  await usersHeading(page).waitFor({ timeout: 10000 })
 }
 
 /**
@@ -16,132 +28,87 @@ export async function navigateToUsers(page: Page, baseURL: string) {
 export async function navigateToUserGroups(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/user-groups`)
   await page.waitForLoadState('load')
-  // Wait for page heading to ensure page is loaded
-  await page.getByRole('heading', { name: /user groups/i }).waitFor({ timeout: 10000 })
+  // Either the create button (always present for admins) or the empty state.
+  await byTestId(page, 'user-groups-create-button')
+    .or(byTestId(page, 'user-groups-empty'))
+    .first()
+    .waitFor({ timeout: 10000 })
 }
 
 /**
  * Open the create user drawer
- *
- * The trigger button is icon-only with `aria-label="Create user"`.
- * Drawer submit label was standardised to "Create" (audit I-2), so
- * `/create user/i` now matches only the trigger CTA — but we still
- * use `.first()` defensively in case other elements share the name.
  */
 export async function openCreateUserDrawer(page: Page) {
-  const createButton = page.getByRole('button', { name: /create user/i }).first()
-  await createButton.click()
-
-  // Wait for drawer to appear
-  const drawer = page.locator('.ant-drawer.ant-drawer-open', { hasText: 'Create User' })
-  await drawer.waitFor({ state: 'visible' })
+  await byTestId(page, 'user-create-open-button').click()
+  await byTestId(page, 'user-create-form').waitFor({ state: 'visible' })
 }
 
 /**
  * Open the create group drawer
- *
- * Same flake pattern as openCreateUserDrawer — `.first()` to disambiguate.
  */
 export async function openCreateGroupDrawer(page: Page) {
-  const createButton = page.getByRole('button', { name: /create group/i }).first()
-  await createButton.click()
-
-  // Wait for drawer to appear
-  const drawer = page.locator('.ant-drawer.ant-drawer-open', { hasText: 'Create User Group' })
-  await drawer.waitFor({ state: 'visible' })
+  await byTestId(page, 'user-groups-create-button').click()
+  await byTestId(page, 'user-create-group-form').waitFor({ state: 'visible' })
 }
 
 /**
- * Open the edit user drawer for a specific user
- *
- * Find the row container directly: the row has classes
- * "flex items-center gap-2 mb-2 flex-wrap" and contains both the
- * username span and the action buttons. `:has()` filters reliably
- * without brittle ancestor counting.
+ * Open the edit user drawer for a specific user (by username).
  */
 export async function openEditUserDrawer(page: Page, username: string) {
-  // Find the user-specific Delete button (its aria-label includes the
-  // username, so it's unique). The Edit button is its sibling in the
-  // buttons div — use sibling axis instead of parent + descendant
-  // because some Playwright versions are flaky about `..` chaining.
-  const editButton = page
-    .getByRole('button', { name: `Delete ${username}`, exact: true })
-    .locator('xpath=preceding-sibling::button[normalize-space()="Edit"]')
-    .first()
+  const editButton = byTestId(page, `user-row-${username}`).locator(
+    '[data-testid^="user-edit-button-"]',
+  )
   await editButton.waitFor({ state: 'visible', timeout: 5000 })
   await editButton.click()
-
-  // Wait for drawer to appear
-  const drawer = page.locator('.ant-drawer.ant-drawer-open', { hasText: /edit user/i })
-  await drawer.waitFor({ state: 'visible' })
+  await byTestId(page, 'user-edit-form').waitFor({ state: 'visible' })
 }
 
 /**
- * Open the edit group drawer for a specific group
+ * Open the edit group drawer for a specific group (by name).
  */
 export async function openEditGroupDrawer(page: Page, groupName: string) {
-  // Edit button lives 2 levels up from group name text (group info
-  // section and button section share a common parent).
-  const editButton = page.getByRole('button', { name: new RegExp(`edit.*${groupName}`, 'i') })
-    .or(page.locator(`text="${groupName}"`).first().locator('../..').getByRole('button', { name: /edit/i }))
-
-  await editButton.first().click()
-
-  // Wait for drawer to appear
-  const drawer = page.locator('.ant-drawer.ant-drawer-open', { hasText: /edit group/i })
-  await drawer.waitFor({ state: 'visible' })
+  const editButton = byTestId(page, `user-group-row-${groupName}`).locator(
+    '[data-testid^="user-group-edit-button-"]',
+  )
+  await editButton.waitFor({ state: 'visible', timeout: 5000 })
+  await editButton.click()
+  await byTestId(page, 'user-edit-group-form').waitFor({ state: 'visible' })
 }
 
 /**
- * Open the groups drawer for a specific user
+ * Open the groups drawer for a specific user (by username).
  */
 export async function openUserGroupsDrawer(page: Page, username: string) {
-  // Anchor on user-specific Delete button (aria-label includes the
-  // username) and use sibling axis to reach the Groups button.
-  const groupsButton = page.getByRole('button', { name: new RegExp(`groups.*${username}`, 'i') })
-    .or(
-      page
-        .getByRole('button', { name: `Delete ${username}`, exact: true })
-        .locator('xpath=preceding-sibling::button[normalize-space()="Groups"]')
-    )
-
-  await groupsButton.first().click()
-
-  // Wait for drawer to appear
-  const drawer = page.locator('.ant-drawer.ant-drawer-open')
-  await drawer.waitFor({ state: 'visible' })
+  const groupsButton = byTestId(page, `user-row-${username}`).locator(
+    '[data-testid^="user-groups-button-"]',
+  )
+  await groupsButton.waitFor({ state: 'visible', timeout: 5000 })
+  await groupsButton.click()
+  await byTestId(page, 'user-groups-drawer-list')
+    .or(byTestId(page, 'user-groups-drawer-empty'))
+    .first()
+    .waitFor({ state: 'visible' })
 }
 
 /**
- * Open the members drawer for a specific group
+ * Open the members drawer for a specific group (by name).
  */
 export async function openGroupMembersDrawer(page: Page, groupName: string) {
-  const membersButton = page.getByRole('button', { name: new RegExp(`members.*${groupName}`, 'i') })
-    .or(page.locator(`text="${groupName}"`).first().locator('../..').getByRole('button', { name: /members/i }))
-
-  await membersButton.first().click()
-
-  // Wait for drawer to appear
-  const drawer = page.locator('.ant-drawer.ant-drawer-open', { hasText: /members of/i })
-  await drawer.waitFor({ state: 'visible' })
+  const membersButton = byTestId(page, `user-group-row-${groupName}`).locator(
+    '[data-testid^="user-group-members-button-"]',
+  )
+  await membersButton.waitFor({ state: 'visible', timeout: 5000 })
+  await membersButton.click()
+  await byTestId(page, 'user-group-members-list').waitFor({ state: 'visible' })
 }
 
 /**
- * Close any open drawer
- *
- * The custom Drawer wrapper renders an aria-labelled "Close drawer"
- * button in the title slot instead of the default .ant-drawer-close.
+ * Close any open drawer via the kit Drawer's "Close drawer" button.
  */
 export async function closeDrawer(page: Page) {
-  const closeButton = page
-    .locator('.ant-drawer.ant-drawer-open')
-    .getByRole('button', { name: 'Close drawer' })
+  const closeButton = byTestId(page, 'layout-drawer-close-button')
   if (await closeButton.isVisible()) {
     await closeButton.click()
-    // Wait for drawer animation to complete
-    await page.waitForTimeout(500)
-    // Wait for drawer to actually be hidden — use ant-drawer-open class
-    // (default ant-drawer-content still exists in DOM after close).
-    await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'hidden', timeout: 5000 })
+    await closeButton.waitFor({ state: 'hidden', timeout: 5000 })
   }
 }

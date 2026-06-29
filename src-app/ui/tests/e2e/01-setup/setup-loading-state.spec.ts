@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 
 /**
  * E2E — SetupPage "Create Admin Account" button loading state.
@@ -24,18 +25,18 @@ test.describe('App Setup — submit loading state', () => {
     })
 
     await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
+    await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
+    await byTestId(page, 'app-setup-username-input').fill('admin')
+    await byTestId(page, 'app-setup-email-input').fill('admin@example.com')
+    await byTestId(page, 'app-setup-password-input').fill('password123')
+    await byTestId(page, 'app-setup-confirm-password-input').fill('password123')
 
-    const submit = page.getByRole('button', { name: /create admin account/i })
+    const submit = byTestId(page, 'app-setup-submit-button')
     await submit.click()
 
-    // While the delayed request is in flight, the antd Button renders its
-    // loading spinner (class `ant-btn-loading`).
-    await expect(submit).toHaveClass(/ant-btn-loading/, { timeout: 5000 })
+    // While the delayed request is in flight, the kit Button enters its loading
+    // state (aria-busy).
+    await expect(submit).toHaveAttribute('aria-busy', 'true', { timeout: 5000 })
 
     // The request eventually completes and the wizard navigates away from /setup.
     await expect(page).not.toHaveURL(/\/setup/, { timeout: 20000 })

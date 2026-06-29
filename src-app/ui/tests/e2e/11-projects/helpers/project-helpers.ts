@@ -1,22 +1,21 @@
-import { Page, expect } from '@playwright/test'
+import { Page, Locator, expect } from '@playwright/test'
+import { byTestId } from '../../testid'
 
 /**
- * Navigation + drawer helpers for the Projects E2E suite. Mirrors the
- * shape of `06-assistants/helpers/assistant-helpers.ts` so reviewers
- * familiar with assistants tests can read these at a glance.
+ * Navigation + drawer helpers for the Projects E2E suite, rewritten onto
+ * the kit's stable `data-testid`s (i18n-safe — visible text / role-names
+ * change under translation, testids do not).
  */
 
 // Don't wait for `networkidle` — when navigating AWAY from
 // /projects/:id, the chat-input + MCP-modal mounts on the detail
 // page can leave background activity (lazy store hydration,
-// websocket reconnects) that delays networkidle past the 30s/180s
-// playwright timeout. Waiting for the page's distinctive heading is
-// sufficient — by then the route component has mounted and the
-// store hydration the next assertions need is already in flight.
+// websocket reconnects) that delays networkidle past the playwright
+// timeout. Waiting for the page's distinctive title testid is
+// sufficient — by then the route component has mounted.
 export async function goToProjectsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/projects`)
-  await page
-    .getByRole('heading', { level: 4, name: /projects/i })
+  await byTestId(page, 'project-list-title')
     .first()
     .waitFor({ timeout: 15000 })
 }
@@ -34,11 +33,10 @@ export async function goToProjectDetail(
 }
 
 export async function openCreateProjectDrawer(page: Page) {
-  await page
-    .getByRole('button', { name: /create project|new project|^plus$/i })
-    .first()
-    .click()
-  await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
+  // The header "+" CTA (always present for users who can create) opens
+  // the ProjectFormDrawer in create mode.
+  await byTestId(page, 'project-list-create-button').click()
+  await byTestId(page, 'project-form').waitFor({ state: 'visible' })
 }
 
 export async function fillProjectForm(
@@ -49,63 +47,56 @@ export async function fillProjectForm(
     instructions?: string
   },
 ) {
-  await page.getByLabel('Name').waitFor({ state: 'visible' })
+  await byTestId(page, 'project-form-name-input').waitFor({ state: 'visible' })
   if (data.name !== undefined) {
-    await page.getByLabel('Name').fill(data.name)
+    await byTestId(page, 'project-form-name-input').fill(data.name)
   }
   if (data.description !== undefined) {
-    await page.getByLabel('Description').fill(data.description)
+    await byTestId(page, 'project-form-description-textarea').fill(
+      data.description,
+    )
   }
   if (data.instructions !== undefined) {
-    await page.getByLabel('Instructions').fill(data.instructions)
+    await byTestId(page, 'project-form-instructions-textarea').fill(
+      data.instructions,
+    )
   }
 }
 
 export async function submitProjectForm(page: Page) {
-  // Per `[[project_ui_e2e_drawer_selectors]]`: scope by
-  // `.ant-btn-primary[type="submit"]` rather than the text-match.
-  // Text matching is fragile across button-label changes (Create/Save
-  // tense, icon contribution to accessible name, loading state hiding
-  // the label) and the CSS-selector is the canonical drawer submit.
-  await page
-    .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
-    .click()
+  await byTestId(page, 'project-form-submit-button').click()
 }
 
 export async function cancelProjectForm(page: Page) {
-  await page
-    .locator('.ant-drawer.ant-drawer-open')
-    .getByRole('button', { name: /^cancel$/i })
-    .click()
-  await page
-    .locator('.ant-drawer.ant-drawer-open')
-    .waitFor({ state: 'hidden', timeout: 10000 })
+  await byTestId(page, 'project-form-cancel-button').click()
+  await byTestId(page, 'project-form').waitFor({
+    state: 'hidden',
+    timeout: 10000,
+  })
 }
 
 /**
- * Find a project card by its visible name. Returns the card locator.
- * Cards are antd cards whose title contains the project name; we use
- * `locator('...').filter({ hasText: name })` which is stable across
- * the icon + dropdown changes.
+ * Find a project card by its visible name. The card carries a stable
+ * `data-test-project-name="<name>"` test hook (the testid itself is
+ * keyed by the project id, which callers don't know — they identify a
+ * project by the name they typed, which is dynamic data they created).
  */
-export function getProjectCard(page: Page, projectName: string) {
-  return page
-    .locator('.ant-card')
-    .filter({ hasText: projectName })
-    .first()
+export function getProjectCard(page: Page, projectName: string): Locator {
+  return page.locator(`[data-test-project-name="${cssEsc(projectName)}"]`).first()
 }
 
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// Escape a value for use inside a CSS attribute selector string.
+function cssEsc(s: string): string {
+  return s.replace(/(["\\])/g, '\\$1')
 }
 
 /**
- * Click the inline Edit/Duplicate/Delete icon button on a project
- * card. The round-3 ProjectCard rewrite replaced the Dropdown
- * "Project actions" menu with three inline icon buttons whose
- * aria-labels are "Edit {name}" / "Duplicate {name}" / "Delete {name}".
+ * Click the inline Edit/Duplicate/Delete icon button on a project card.
+ * The buttons are kit Buttons with testids `project-card-{edit,duplicate,
+ * delete}-button-${id}`; scoping to the (single-project) card lets us
+ * target them by testid PREFIX without needing the project id.
  *
- * For `Delete`, the click opens an antd Popconfirm — call
+ * For `Delete`, the click opens a Confirm (AlertDialog) — call
  * `confirmDeletePopconfirm` afterwards.
  */
 export async function clickCardAction(
@@ -114,40 +105,25 @@ export async function clickCardAction(
   action: 'Edit' | 'Duplicate' | 'Delete',
 ) {
   const card = getProjectCard(page, projectName)
-  await card
-    .getByRole('button', {
-      name: new RegExp(`^${action} ${escapeRe(projectName)}$`, 'i'),
-    })
-    .click()
+  const prefix = {
+    Edit: 'project-card-edit-button-',
+    Duplicate: 'project-card-duplicate-button-',
+    Delete: 'project-card-delete-button-',
+  }[action]
+  await card.locator(`[data-testid^="${prefix}"]`).click()
 }
 
 /**
- * Click the primary action of the antd Popconfirm currently open on
- * the page. Selector is stable across okText changes per
- * `[[project_ui_e2e_drawer_selectors]]`.
+ * Confirm the open delete Confirm dialog. The kit Confirm renders its
+ * primary (OK) button with a testid ending in `-confirm`; scope to the
+ * open alertdialog so we hit the right one.
  */
 export async function confirmDeletePopconfirm(page: Page) {
   await page
-    .locator('.ant-popconfirm .ant-btn-primary')
+    .getByRole('alertdialog')
+    .locator('[data-testid$="-confirm"]')
     .first()
     .click()
-}
-
-/** @deprecated Round-3 removed the Dropdown menu — use `clickCardAction` instead. */
-export async function openProjectCardMenu(_page: Page, projectName: string) {
-  throw new Error(
-    `openProjectCardMenu is gone — the Dropdown menu was replaced by inline ` +
-      `icon buttons in round 3. Update the test to call clickCardAction(page, '${projectName}', 'Edit'|'Duplicate'|'Delete') ` +
-      `(and confirmDeletePopconfirm for the delete case).`,
-  )
-}
-
-/** @deprecated See `openProjectCardMenu`. */
-export async function clickCardMenuItem(
-  _page: Page,
-  _itemName: 'Edit' | 'Duplicate' | 'Delete',
-) {
-  throw new Error('clickCardMenuItem is gone — use clickCardAction.')
 }
 
 export async function assertProjectExists(
@@ -163,15 +139,19 @@ export async function assertProjectExists(
 }
 
 export async function assertEmptyState(page: Page) {
-  // "No projects yet" appears both as the sidebar widget's <Text>
-  // empty-state AND the main page's <Title> empty-state. Scope to
-  // the main page's <h3> heading so the strict mode check doesn't
-  // match the sidebar instance.
-  await expect(
-    page.getByRole('heading', { name: /no projects yet/i }),
-  ).toBeVisible()
+  await expect(byTestId(page, 'project-list-empty')).toBeVisible()
 }
 
-export async function assertSuccessMessage(page: Page, text: string | RegExp) {
-  await expect(page.locator('.ant-message')).toContainText(text)
+/**
+ * Assert a success toast appeared. Toast COPY is UI chrome (i18n-fragile)
+ * so we assert on sonner's stable `data-type="success"` marker rather
+ * than the text. The `_text` arg is kept for call-site readability.
+ */
+export async function assertSuccessMessage(
+  page: Page,
+  _text?: string | RegExp,
+) {
+  await expect(
+    page.locator('[data-sonner-toast][data-type="success"]').first(),
+  ).toBeVisible({ timeout: 10000 })
 }

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
@@ -10,7 +11,7 @@ import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
  * deployment-wide via the admin-settings PUT (no embedding model is
  * required to flip `enabled`), create a real conversation, navigate to
  * it, then drive the pill's dropdown UI end-to-end and assert the
- * pill's label reflects the chosen mode.
+ * pill's mode reflects the chosen value.
  */
 
 test.describe('Memory — composer status pill', () => {
@@ -40,20 +41,18 @@ test.describe('Memory — composer status pill', () => {
 
     await page.goto(`${baseURL}/chat/${conversationId}`)
 
-    // The pill defaults to 'auto' (inherit). Find it by its aria-label.
-    const pill = page.getByRole('button', { name: /Memory mode:/ })
+    // The pill defaults to 'inherit' (auto). It carries data-mode for
+    // i18n-safe state assertions.
+    const pill = byTestId(page, 'memory-status-pill')
     await expect(pill).toBeVisible({ timeout: 30000 })
-    await expect(pill).toHaveText(/Memory: auto/)
+    await expect(pill).toHaveAttribute('data-mode', 'inherit')
 
     // Open the dropdown and pick "Always retrieve memories" → mode = on.
     await pill.click()
-    await page.getByRole('menuitem', { name: 'Always retrieve memories' }).click()
+    await byTestId(page, 'memory-status-pill-dropdown-item-on').click()
 
-    // Success feedback + the pill relabels to "Memory: on".
-    await expect(page.getByText('Memory: on for this conversation')).toBeVisible()
-    await expect(
-      page.getByRole('button', { name: 'Memory mode: Memory: on' }),
-    ).toBeVisible()
+    // The pill relabels to mode = on.
+    await expect(pill).toHaveAttribute('data-mode', 'on')
 
     // Server persisted the choice.
     const after = await page.request.get(

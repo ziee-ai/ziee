@@ -69,6 +69,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
           key={o.value}
           value={o.value}
           disabled={o.disabled}
+          data-testid={`${testid}-opt-${o.value}`}
           className={cn(itemH(s.size), 'data-[state=on]:bg-background data-[state=on]:shadow-sm')}
         >
           {o.label}

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   goToUserAssistantsPage,
   openCreateAssistantDrawer,
@@ -50,19 +51,17 @@ test.describe('User Assistants — edit-form restoration', () => {
 
     // --- First edit open: form is restored with the persisted values. ---
     await editUserAssistant(page, name)
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    await expect(drawer.getByText('Edit Assistant')).toBeVisible()
-    await expect(page.getByLabel('Assistant name')).toHaveValue(name)
-    await expect(page.getByLabel('Assistant description')).toHaveValue(
+    await expect(byTestId(page, 'assistant-form-name')).toHaveValue(name)
+    await expect(byTestId(page, 'assistant-form-description')).toHaveValue(
       originalDescription,
     )
-    await expect(page.getByLabel('Assistant instructions')).toHaveValue(
+    await expect(byTestId(page, 'assistant-form-instructions')).toHaveValue(
       originalInstructions,
     )
 
     // --- Modify several fields, then CANCEL (discard, no save). ---
-    await page.getByLabel('Assistant description').fill('ABANDONED edit ' + tag)
-    await page.getByLabel('Assistant instructions').fill('ABANDONED instructions')
+    await byTestId(page, 'assistant-form-description').fill('ABANDONED edit ' + tag)
+    await byTestId(page, 'assistant-form-instructions').fill('ABANDONED instructions')
     await cancelAssistantForm(page)
 
     // The row still shows the original name (nothing was persisted).
@@ -74,15 +73,15 @@ test.describe('User Assistants — edit-form restoration', () => {
 
     // --- Reopen edit: the abandoned edits are gone; originals are restored. ---
     await editUserAssistant(page, name)
-    await expect(page.getByLabel('Assistant name')).toHaveValue(name)
-    await expect(page.getByLabel('Assistant description')).toHaveValue(
+    await expect(byTestId(page, 'assistant-form-name')).toHaveValue(name)
+    await expect(byTestId(page, 'assistant-form-description')).toHaveValue(
       originalDescription,
     )
-    await expect(page.getByLabel('Assistant instructions')).toHaveValue(
+    await expect(byTestId(page, 'assistant-form-instructions')).toHaveValue(
       originalInstructions,
     )
     // The abandoned values must NOT have leaked back into the form.
-    await expect(page.getByLabel('Assistant description')).not.toHaveValue(
+    await expect(byTestId(page, 'assistant-form-description')).not.toHaveValue(
       'ABANDONED edit ' + tag,
     )
 

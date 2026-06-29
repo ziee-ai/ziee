@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * ProjectsNavWidget — the sidebar widget listing the user's projects with a
@@ -24,18 +25,16 @@ test.describe('Projects - sidebar nav widget', () => {
     // Land on the app shell — the sidebar widget mounts + self-fetches.
     await page.goto(`${baseURL}/`)
 
-    // The widget renders the project as a role="button" row.
-    const row = page.getByRole('button', { name: 'Open project Sidebar Project' })
+    // The widget renders each project as a row keyed by project id.
+    const row = page.locator(`[data-project-id="${projectId}"]`)
     await expect(row).toBeVisible({ timeout: 30000 })
     await row.click()
     await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`))
 
     // Back to the shell, the "All projects" footer button opens the list page.
     await page.goto(`${baseURL}/`)
-    await page.getByRole('button', { name: 'All projects' }).click()
+    await byTestId(page, 'project-nav-all-projects-button').click()
     await expect(page).toHaveURL(/\/projects$/)
-    await expect(
-      page.getByRole('heading', { name: /projects/i }).first(),
-    ).toBeVisible()
+    await expect(byTestId(page, 'project-list-title').first()).toBeVisible()
   })
 })

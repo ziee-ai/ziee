@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -40,21 +41,19 @@ test.describe('Memory — export', () => {
     await login(page, baseURL, username, 'password123')
 
     await page.goto(`${baseURL}/settings/memory`)
-    await expect(page.getByRole('button', { name: /Add memory/ })).toBeVisible()
+    await expect(byTestId(page, 'memory-add-btn')).toBeVisible()
 
     // Seed one memory through the UI so the export has real content.
-    await page.getByRole('button', { name: /Add memory/ }).click()
-    const dialog = page.getByRole('dialog')
-    await expect(dialog).toBeVisible()
-    await dialog.getByLabel('Content').fill(MEMORY_TEXT)
-    await dialog.getByRole('button', { name: /^Add$/ }).click()
-    await expect(page.getByText('Memory added')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText(MEMORY_TEXT)).toBeVisible()
+    await byTestId(page, 'memory-add-btn').click()
+    await byTestId(page, 'memory-create-content-input').fill(MEMORY_TEXT)
+    await byTestId(page, 'memory-create-submit-btn').click()
+    // Seeded content is dynamic data this test created — assert inside the list card.
+    await expect(byTestId(page, 'memory-my-card')).toContainText(MEMORY_TEXT, { timeout: 5000 })
 
     // Export as JSON.
     const jsonDownloadPromise = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Export' }).click()
-    await page.getByText('Export as JSON').click()
+    await byTestId(page, 'memory-export-btn').click()
+    await byTestId(page, 'memory-export-dropdown-item-json').click()
     const jsonDownload = await jsonDownloadPromise
     expect(jsonDownload.suggestedFilename()).toMatch(/^ziee-memories-\d{4}-\d{2}-\d{2}\.json$/)
     const jsonPath = await jsonDownload.path()
@@ -63,8 +62,8 @@ test.describe('Memory — export', () => {
 
     // Export as CSV.
     const csvDownloadPromise = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Export' }).click()
-    await page.getByText('Export as CSV').click()
+    await byTestId(page, 'memory-export-btn').click()
+    await byTestId(page, 'memory-export-dropdown-item-csv').click()
     const csvDownload = await csvDownloadPromise
     expect(csvDownload.suggestedFilename()).toMatch(/^ziee-memories-\d{4}-\d{2}-\d{2}\.csv$/)
     const csvText = readFileSync(await csvDownload.path(), 'utf8')

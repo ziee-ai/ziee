@@ -35,19 +35,20 @@ test.describe('Router — dynamic route segment', () => {
     const idA = await seedProject(apiURL, token, nameA)
     const idB = await seedProject(apiURL, token, nameB)
 
-    // Navigate by id A → header shows A's name (not B's).
+    // Navigate by id A → header shows A's name (not B's). The page
+    // title carries the project name via `data-test-project-title`.
     await page.goto(`${baseURL}/projects/${idA}`)
     await expect(
-      page.getByRole('heading', { level: 4, name: nameA }),
+      page.locator(`[data-test-project-title="${nameA}"]`),
     ).toBeVisible({ timeout: 30000 })
     await expect(
-      page.getByRole('heading', { level: 4, name: nameB }),
+      page.locator(`[data-test-project-title="${nameB}"]`),
     ).toHaveCount(0)
 
     // Switch the dynamic segment to id B → header now shows B's name.
     await page.goto(`${baseURL}/projects/${idB}`)
     await expect(
-      page.getByRole('heading', { level: 4, name: nameB }),
+      page.locator(`[data-test-project-title="${nameB}"]`),
     ).toBeVisible({ timeout: 30000 })
   })
 })

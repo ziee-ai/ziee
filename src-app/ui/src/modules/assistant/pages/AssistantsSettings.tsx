@@ -196,6 +196,10 @@ export function AssistantsSettings() {
                   total={totalAssistants}
                   pageSize={storePageSize}
                   onChange={(page) => handlePageChange(page, storePageSize)}
+                  showSizeChanger
+                  pageSizeOptions={[10, 20, 50]}
+                  pageSizeLabel="Items per page"
+                  onPageSizeChange={(size) => handlePageChange(1, size)}
                   aria-label="Assistants pagination"
                 />
               </div>

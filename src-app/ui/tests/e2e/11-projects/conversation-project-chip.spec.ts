@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // audit id all-dddb0ce3b16c — the "In project: <name>" chip in the chat header
 // (projects/chat-extension/extension.tsx:162-168) is a clickable Tag that
@@ -34,7 +35,7 @@ test.describe('Conversation project chip — interactive', () => {
     await page.goto(`${baseURL}/chat/${convId}`)
     await page.waitForLoadState('domcontentloaded')
 
-    const chip = page.getByText(`In project: ${projName}`)
+    const chip = byTestId(page, 'project-header-chip-tag')
     await expect(chip).toBeVisible({ timeout: 30000 })
     await chip.click()
 

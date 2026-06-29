@@ -37,6 +37,8 @@ test.describe('Literature — select_included tool result in chat', () => {
       text: answer,
     })
 
-    await expect(page.getByText(answer)).toBeVisible({ timeout: 15000 })
+    await expect(
+      page.locator('[data-testid="chat-message"]').filter({ hasText: answer }),
+    ).toBeVisible({ timeout: 15000 })
   })
 })

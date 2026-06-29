@@ -1,9 +1,11 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   assertProjectExists,
   clickCardAction,
   fillProjectForm,
+  getProjectCard,
   goToProjectsPage,
   openCreateProjectDrawer,
   submitProjectForm,
@@ -65,25 +67,18 @@ test.describe('Projects - Duplicate', () => {
     await submitProjectForm(page)
 
     // Open detail page.
-    await page.locator('.ant-card', { hasText: 'Header Dup' }).click()
+    await getProjectCard(page, 'Header Dup').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
 
-    // Click "Duplicate" in the header bar. Note: antd icons (CopyOutlined)
-    // contribute "copy" to the accessible name, so the button's full
-    // accessible name is "copy Duplicate" — match by trailing
-    // "Duplicate" rather than anchoring with /^…$/.
-    await page
-      .getByRole('button', { name: /duplicate/i })
-      .first()
-      .click()
+    // Click "Duplicate" in the header bar.
+    await byTestId(page, 'project-detail-duplicate-button').click()
 
-    // The page navigates to the new project's detail page. Verify by
-    // checking the H4 page title — the project name also appears in
-    // the sidebar widget AND a brief success toast ("Duplicated as
-    // …"), which would trip strict-mode if we matched plain text.
+    // The page navigates to the new project's detail page. Verify via
+    // the title's stable `data-test-project-title` hook carrying the
+    // duplicated name.
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/, { timeout: 10000 })
     await expect(
-      page.getByRole('heading', { level: 4, name: /Header Dup \(copy\)/i }),
+      page.locator('[data-test-project-title="Header Dup (copy)"]'),
     ).toBeVisible()
   })
 })

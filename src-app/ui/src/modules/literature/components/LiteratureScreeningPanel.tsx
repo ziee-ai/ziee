@@ -124,7 +124,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
   }
 
   return (
-    <div className="p-3 space-y-3 overflow-y-auto">
+    <div className="p-3 space-y-3 overflow-y-auto" data-testid="lit-screening-panel">
       <Title level={5} className="!mb-0">
         Screening
       </Title>
@@ -148,7 +148,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       )}
 
       {completeness && (
-        <div className="rounded-md bg-accent p-3 border border-border">
+        <div className="rounded-md bg-accent p-3 border border-border" data-testid="lit-screening-completeness">
           <Text className="text-sm font-medium text-foreground">{completeness.estimate.toUpperCase()}</Text>
           <Paragraph className="text-xs text-muted-foreground !mb-0">{completeness.caveat}</Paragraph>
         </div>

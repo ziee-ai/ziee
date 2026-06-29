@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -49,17 +50,20 @@ test.describe('Memory — onboarding skip', () => {
     // Memory, then Skip.
     // (Selectors are scaffolded; actual wizard markup is in
     // OnboardingPage.tsx and may evolve.)
-    await page.getByRole('button', { name: /Next/ }).click() // Welcome
-    await page.getByRole('button', { name: /Next/ }).click() // API Keys
-    await page.getByRole('button', { name: /Next/ }).click() // MCP
+    await byTestId(page, 'onboarding-page-next-button').click() // Welcome
+    await byTestId(page, 'onboarding-page-next-button').click() // API Keys
+    await byTestId(page, 'onboarding-page-next-button').click() // MCP
 
-    // Memory step: leave switch off, click Next.
-    await expect(page.getByRole('heading', { name: /Persistent Memory/ })).toBeVisible()
-    await page.getByRole('button', { name: /Next/ }).click()
+    // Memory step: the enable switch only renders on this step, so its
+    // presence confirms we reached it. Leave it off, click Next.
+    await expect(
+      byTestId(page, 'onboarding-memory-enable-switch'),
+    ).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
-    // Finish step. OnboardingPage.tsx:231 labels the last-step button
-    // "Start Chatting" (not "Finish" / "Done").
-    await page.getByRole('button', { name: /Start Chatting/ }).click()
+    // Finish step — the last-step button shares the next-button testid
+    // (its label flips to "Start Chatting").
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // Admin settings page reachable; memory still disabled.
     const userToken = await getCurrentUserToken(page)

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   assertProjectExists,
   assertSuccessMessage,
@@ -19,9 +20,10 @@ test.describe('Projects - Create drawer', () => {
 
   test('opens drawer from empty-state CTA', async ({ page }) => {
     await openCreateProjectDrawer(page)
-    await expect(
-      page.locator('.ant-drawer.ant-drawer-open').getByText(/new project/i),
-    ).toBeVisible()
+    // Drawer opened in create mode: the form + its create-mode submit
+    // button (rendered only when the user can save) are present.
+    await expect(byTestId(page, 'project-form')).toBeVisible()
+    await expect(byTestId(page, 'project-form-submit-button')).toBeVisible()
   })
 
   test('creates a project with name + description + instructions', async ({
@@ -40,13 +42,12 @@ test.describe('Projects - Create drawer', () => {
 
   test('validates required name field', async ({ page }) => {
     await openCreateProjectDrawer(page)
-    // Submit empty form. Ant form rules show inline error.
-    await page
-      .locator('.ant-drawer.ant-drawer-open')
-      .getByRole('button', { name: /create/i })
-      .click()
-    await expect(page.getByText(/name is required/i)).toBeVisible()
-    await expect(page.locator('.ant-drawer.ant-drawer-open')).toBeVisible()
+    // Submit empty form. Zod rules show an inline field error (the kit
+    // FieldError carries a `field-error-<name>` testid).
+    await submitProjectForm(page)
+    await expect(byTestId(page, 'field-error-name')).toBeVisible()
+    // Drawer stays open (submit was blocked).
+    await expect(byTestId(page, 'project-form')).toBeVisible()
   })
 
   test('cancel does not create the project', async ({ page }) => {
