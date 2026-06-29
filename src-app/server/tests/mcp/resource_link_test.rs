@@ -35,6 +35,7 @@ async fn user_id(server: &TestServer) -> Uuid {
 ///  - `ziee://` OUTSIDE the root → rejected, not saved, URI blanked (guard #3)
 ///  - `workflow_run_id = Some(..)` is accepted (documented no-op on this branch)
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn persist_ingests_ziee_under_root_and_handles_mixed_links() {
     let server = TestServer::start().await;
     let uid = user_id(&server).await;
@@ -301,6 +302,7 @@ async fn http_link_without_jwt_secret_is_skipped() {
 /// `workflow_run_id` is set (not orphan-deleted) and (b) the saved `/api/files/{id}` reference
 /// still resolves to the original bytes — i.e. the recalled link is a live, run-attributed handle.
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
     let server = TestServer::start().await;
     let uid = user_id(&server).await;
@@ -410,6 +412,7 @@ async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
 /// counterpart to the workflow-path test above, which links the file to a run.
 /// This pins the code_sandbox → file-store integration for the chat dispatcher.
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
     let server = TestServer::start().await;
     let uid = user_id(&server).await;

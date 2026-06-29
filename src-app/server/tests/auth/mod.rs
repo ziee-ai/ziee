@@ -1423,6 +1423,7 @@ async fn test_concurrent_registration_same_username_creates_one_user() {
 /// defaults an empty base to "user". Driven directly by initializing the
 /// in-process Repos against the test DB (same pattern as resource_link_test).
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn test_ensure_unique_username_collision_suffix_and_defaults() {
     let server = crate::common::TestServer::start().await;
     let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();

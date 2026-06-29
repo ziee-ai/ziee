@@ -59,10 +59,9 @@ macro_rules! declare_repositories {
             }
 
             $(
-                pub fn $field(&self) -> Arc<$type> {
+                pub fn $field(&self) -> &Arc<$type> {
                     self.$field
                         .get_or_init(|| Arc::new($type::new(self.pool.clone())))
-                        .clone()
                 }
             )*
         }
@@ -70,36 +69,48 @@ macro_rules! declare_repositories {
         // ============================================
         // SECTION 2.5: FACTORY INITIALIZATION
         // ============================================
-        static FACTORY: OnceCell<RepositoryFactory> = OnceCell::new();
+        // The factory is stored as a leaked `&'static` behind an RwLock so
+        // that `get_factory()` (and therefore `Repos.*` Deref + `pool()`)
+        // can keep returning `&'static` references with zero per-call
+        // allocation, while still allowing the global to be OVERWRITTEN.
+        //
+        // Production calls `init_repositories` exactly once at boot, so the
+        // leak is a single factory for the process lifetime. The integration
+        // test binary calls it once per `TestServer::start` (hundreds of
+        // times per process) — each re-init leaks one small factory, which
+        // is bounded and acceptable for a test process. Crucially, re-init
+        // now actually SWAPS the active pool (the old `OnceCell` set-once
+        // silently kept the first pool, so every later in-process-`Repos`
+        // test operated on an already-dropped test DB → spurious
+        // "not initialized" / duplicate-key / missing-relation failures).
+        static FACTORY: std::sync::RwLock<Option<&'static RepositoryFactory>> =
+            std::sync::RwLock::new(None);
 
-        /// Initialize the global repository factory.
+        /// Initialize (or re-initialize) the global repository factory.
         ///
-        /// SECURITY: warns loudly via tracing on double-initialization.
-        /// The previous implementation used `set(...).ok()` which silently
-        /// swallowed the error — leaving the original pool in place
-        /// while the caller assumed the new one had been swapped in.
-        /// If the second init carried a different connection string,
-        /// the assumed-new behavior would silently revert to the old
-        /// pool's behavior, including its credentials. Closes 14-core
-        /// F-10 (Medium).
-        ///
-        /// Test note: the integration test binary calls this once per
-        /// TestServer::start (potentially hundreds of times per process),
-        /// so we cannot panic on re-init. The first call wins; subsequent
-        /// calls log a warning that surfaces the issue in observability
-        /// without breaking test isolation.
+        /// Overwrites any previously-installed factory. In a non-test build
+        /// a second call is logged as a warning (it signals a second
+        /// bootstrap path in production), but the overwrite still happens.
         pub fn init_repositories(pool: PgPool) {
-            if FACTORY.set(RepositoryFactory::new(pool)).is_err() {
+            let leaked: &'static RepositoryFactory =
+                Box::leak(Box::new(RepositoryFactory::new(pool)));
+            let mut guard = FACTORY.write().unwrap_or_else(|e| e.into_inner());
+            #[cfg(not(test))]
+            if guard.is_some() {
                 tracing::warn!(
                     "init_repositories called more than once in this process; \
-                     subsequent call ignored. In production this signals a \
-                     second bootstrap path — investigate."
+                     overwriting the active factory. In production this signals \
+                     a second bootstrap path — investigate."
                 );
             }
+            *guard = Some(leaked);
         }
 
         fn get_factory() -> &'static RepositoryFactory {
-            FACTORY.get().expect("RepositoryFactory not initialized. Call init_repositories() first.")
+            FACTORY
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .expect("RepositoryFactory not initialized. Call init_repositories() first.")
         }
 
         /// True if `init_repositories()` has been called and the
@@ -108,7 +119,7 @@ macro_rules! declare_repositories {
         /// the desktop tauri crate's auto_start tunnel hook, which
         /// races against the embedded-PostgreSQL boot).
         pub fn is_repos_initialized() -> bool {
-            FACTORY.get().is_some()
+            FACTORY.read().unwrap_or_else(|e| e.into_inner()).is_some()
         }
 
         // ============================================
@@ -120,8 +131,12 @@ macro_rules! declare_repositories {
                 impl std::ops::Deref for [<$type Repos>] {
                     type Target = Arc<$type>;
                     fn deref(&self) -> &Self::Target {
-                        static INSTANCE: OnceCell<Arc<$type>> = OnceCell::new();
-                        INSTANCE.get_or_init(|| get_factory().$field())
+                        // Resolve against the CURRENT factory on every access.
+                        // A previous version cached the Arc in a per-type
+                        // `static INSTANCE`, which pinned the first factory's
+                        // pool forever and defeated re-init (the integration
+                        // tests re-init per `TestServer::start`).
+                        get_factory().$field()
                     }
                 }
             )*

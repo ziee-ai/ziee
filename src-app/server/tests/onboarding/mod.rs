@@ -419,6 +419,7 @@ async fn test_completion_cardinality_cap_rejects_over_256() {
 /// upsert — not just by the handler's pre-check. Drives the real repo fn with a
 /// small cap so the test is cheap: the (cap+1)-th distinct guide is NOT appended.
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn completion_cardinality_cap_is_enforced_in_the_repository() {
     let server = crate::common::TestServer::start().await;
     let user =

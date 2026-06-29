@@ -695,6 +695,7 @@ async fn ask_user_accept_persists_status_and_response_content_to_db() {
 /// is idempotent) and (b) re-assert the url (its port changes across restarts).
 /// Drives the REAL repository function, not a mirrored SQL string.
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn elicitation_builtin_upsert_is_idempotent_and_reasserts_url() {
     let server = crate::common::TestServer::start().await;
     let pool = ziee::Repos.pool().clone();

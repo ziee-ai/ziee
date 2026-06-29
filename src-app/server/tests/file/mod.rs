@@ -1963,6 +1963,7 @@ async fn dedup_collapses_identical_uploads_in_resolve_available_files() {
 /// (2) For the owner, a real text file routes to content block(s) (the
 /// extracted-text / base64 dispatch arms), not an empty result.
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn provider_routing_enforces_ownership_and_routes_text_file() {
     let server = crate::common::TestServer::start().await;
     let owner = test_helpers::create_user_with_permissions(
@@ -2031,6 +2032,7 @@ async fn provider_routing_enforces_ownership_and_routes_text_file() {
 /// existing routing test only covered the TEXT arm; the image/base64 arm was
 /// untested.
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn provider_routing_image_file_routes_to_base64_image_block() {
     use base64::Engine;
 

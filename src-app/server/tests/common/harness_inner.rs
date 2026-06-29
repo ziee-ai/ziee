@@ -158,13 +158,50 @@ pub fn make_isolated_data_dir() -> tempfile::TempDir {
     td
 }
 
-/// Name of the fully-migrated TEMPLATE database. Per-test DBs are cloned from
-/// it via `CREATE DATABASE ... TEMPLATE`, so migrations run exactly ONCE per
-/// test process instead of once per test — eliminating the per-test migration
-/// races that broke parallel runs (a half-applied schema → "relation does not
-/// exist") and making DB setup dramatically faster (a byte-copy vs replaying
-/// 117 migrations per test).
-const TEST_TEMPLATE_DB: &str = "ziee_test_template";
+// Per-test DBs are cloned from a fully-migrated TEMPLATE via
+// `CREATE DATABASE ... TEMPLATE`, so migrations run exactly ONCE per test
+// process instead of once per test — eliminating the per-test migration races
+// that broke parallel runs (a half-applied schema → "relation does not exist")
+// and making DB setup dramatically faster (a byte-copy vs replaying 118
+// migrations per test).
+
+/// True when this harness is compiled into the `ziee-desktop` crate's test
+/// binary (vs the server crate's). Decided at compile time via the package
+/// name, so the SAME `#[path]`-shared source picks the right migration set
+/// and template name for whichever crate it's built into.
+fn is_desktop() -> bool {
+    env!("CARGO_PKG_NAME") == "ziee-desktop"
+}
+
+/// Name of the fully-migrated TEMPLATE database. The desktop and server test
+/// binaries use DISTINCT names so they never clobber each other's template
+/// even when run against the same Postgres (the desktop template carries the
+/// extra 5 desktop migrations on top of the server's 118).
+fn test_template_db() -> &'static str {
+    if is_desktop() {
+        "ziee_test_template_desktop"
+    } else {
+        "ziee_test_template"
+    }
+}
+
+/// Ordered migration directories to apply when building the template.
+/// Server build: just the server's `migrations/`. Desktop build: the server's
+/// 118 migrations FIRST (resolved relative to the desktop crate manifest),
+/// THEN the desktop crate's 5 — mirroring the real desktop boot path in
+/// `src-app/desktop/tauri/src/lib.rs`.
+fn template_migration_dirs() -> Vec<PathBuf> {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if is_desktop() {
+        vec![
+            manifest.join("../../server/migrations"),
+            manifest.join("migrations"),
+        ]
+    } else {
+        vec![manifest.join("migrations")]
+    }
+}
+
 static TEST_TEMPLATE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
 
 /// Build the migrated template DB exactly once per process (the OnceCell makes
@@ -179,32 +216,53 @@ async fn ensure_test_template(admin_url: &str) {
                 .connect(admin_url)
                 .await
                 .expect("connect postgres to build test template");
+            let template_db = test_template_db();
             let term = format!(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{TEST_TEMPLATE_DB}' AND pid <> pg_backend_pid()"
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{template_db}' AND pid <> pg_backend_pid()"
             );
             let _ = sqlx::query(&term).execute(&admin).await;
             // Rebuild fresh each process so migration changes are picked up.
-            let _ = sqlx::query(&format!("DROP DATABASE IF EXISTS {TEST_TEMPLATE_DB}"))
+            let _ = sqlx::query(&format!("DROP DATABASE IF EXISTS {template_db}"))
                 .execute(&admin)
                 .await;
-            sqlx::query(&format!("CREATE DATABASE {TEST_TEMPLATE_DB}"))
+            sqlx::query(&format!("CREATE DATABASE {template_db}"))
                 .execute(&admin)
                 .await
                 .expect("create test template database");
             admin.close().await;
 
-            // Migrate the template with the SAME migrator the server uses on boot.
+            // Migrate the template at RUNTIME from the on-disk migration dirs.
+            // We deliberately do NOT use the compile-time crate-relative
+            // `sqlx::migrate!("./migrations")` macro: compiled into the
+            // `ziee-desktop` test binary it resolves to the desktop crate's
+            // 5-migration dir and misses the server's 118 (every desktop
+            // integration test then failed with `relation
+            // "user_group_llm_providers" does not exist`). The runtime
+            // Migrator lets the desktop build apply server-then-desktop.
             let mut tmpl = url::Url::parse(admin_url).expect("admin url");
-            tmpl.set_path(TEST_TEMPLATE_DB);
+            tmpl.set_path(template_db);
             let tmpl_pool = PgPoolOptions::new()
                 .max_connections(1)
                 .connect(tmpl.as_str())
                 .await
                 .expect("connect template database");
-            sqlx::migrate!("./migrations")
-                .run(&tmpl_pool)
-                .await
-                .expect("migrate test template database");
+            for dir in template_migration_dirs() {
+                let mut migrator = sqlx::migrate::Migrator::new(dir.clone())
+                    .await
+                    .unwrap_or_else(|e| {
+                        panic!("create migrator for {}: {e}", dir.display())
+                    });
+                // Desktop migrations carry version numbers far above the
+                // server's; ignore-missing lets each migrator run against a
+                // DB that already has the other set applied.
+                migrator.set_ignore_missing(true);
+                migrator
+                    .run(&tmpl_pool)
+                    .await
+                    .unwrap_or_else(|e| {
+                        panic!("migrate test template from {}: {e}", dir.display())
+                    });
+            }
             tmpl_pool.close().await;
 
             // Drop any lingering backend on the template so clones can copy it.
@@ -542,7 +600,8 @@ secrets:
 
         sqlx::query(&format!(
             "CREATE DATABASE {} TEMPLATE {}",
-            database_name, TEST_TEMPLATE_DB
+            database_name,
+            test_template_db()
         ))
         .execute(&pool)
         .await

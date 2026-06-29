@@ -414,6 +414,7 @@ async fn test_upsert_block_is_idempotent_update() {
 /// recall. Exercises the real production fn (no mocks) end-to-end against a
 /// real assistant + persisted core-memory block, with memory admin enabled.
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn test_retrieve_and_inject_injects_core_memory_block() {
     use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 
@@ -624,6 +625,7 @@ async fn test_core_memory_blocks_are_isolated_per_user() {
 /// assistant's core-memory as a front System message) — on one request and
 /// assert both survive. Deterministic (no LLM).
 #[tokio::test]
+#[serial_test::serial(repos)]
 async fn test_file_attachment_and_memory_inject_coexist_in_one_request() {
     use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 
