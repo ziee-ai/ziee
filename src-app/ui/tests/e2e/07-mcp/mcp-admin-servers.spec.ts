@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   goToMcpAdminPage,
   waitForMcpAdminPageLoad,
@@ -29,29 +30,28 @@ test.describe('MCP - Admin System Servers', () => {
   })
 
   test('should display System MCP Servers page', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'System MCP Servers' })).toBeVisible()
-    await expect(page.locator('text=Manage Model Context Protocol servers across the system')).toBeVisible()
-    await expect(page.locator('button:has-text("Add Server")')).toBeVisible()
+    await expect(byTestId(page, 'mcp-system-add-btn')).toBeVisible()
+    await expect(byTestId(page, 'mcp-system-search-input')).toBeVisible()
+    await expect(byTestId(page, 'mcp-system-status-select')).toBeVisible()
   })
 
   test('should display search and filter controls', async ({ page }) => {
-    await expect(page.locator('input[placeholder="Search servers..."]')).toBeVisible()
-    await expect(page.locator('.ant-select:has-text("All Servers")')).toBeVisible()
+    await expect(byTestId(page, 'mcp-system-search-input')).toBeVisible()
+    await expect(byTestId(page, 'mcp-system-status-select')).toBeVisible()
   })
 
   test('should display existing system servers', async ({ page }) => {
     // Default system servers from migration should be visible. `.first()`
-    // because `.ant-card` matches both the outer page card and the
-    // inner server cards containing the same text.
-    await expect(page.locator('.ant-card:has-text("Filesystem Access")').first()).toBeVisible()
-    await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).toBeVisible()
+    // matched by the system-server-card testid filtered by name.
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()).toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()).toBeVisible()
   })
 
   test('should open Add System Server drawer', async ({ page }) => {
     await openAddServerDrawer(page, true)
-    await expect(page.locator('.ant-drawer-title:has-text("Add System Server")')).toBeVisible()
-    await expect(page.getByLabel('Name', { exact: true })).toBeVisible()
-    await expect(page.getByLabel('Display Name')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-form')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-name-input')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-display-name-input')).toBeVisible()
   })
 
   test('should create system HTTP server successfully', async ({ page }) => {
@@ -69,7 +69,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -92,7 +92,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -103,16 +103,16 @@ test.describe('MCP - Admin System Servers', () => {
     await clickEditServerButton(page, 'Web Fetch', true)
 
     // Verify drawer opens with pre-filled data
-    await expect(page.locator('.ant-drawer-title:has-text("Edit System Server")')).toBeVisible()
-    await expect(page.getByLabel('Display Name')).toHaveValue('Web Fetch')
+    await expect(byTestId(page, 'mcp-drawer-name-input')).toHaveCount(0)
+    await expect(byTestId(page, 'mcp-drawer-display-name-input')).toHaveValue('Web Fetch')
 
     // Update description
-    await page.getByLabel('Description').fill('Updated description for Web Fetch server')
+    await byTestId(page, 'mcp-drawer-description-textarea').fill('Updated description for Web Fetch server')
 
     await submitMcpServerForm(page, 'update', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
   })
 
   test('should toggle system server enabled state', async ({ page }) => {
@@ -120,49 +120,49 @@ test.describe('MCP - Admin System Servers', () => {
     await toggleServerEnabled(page, 'Filesystem Access')
 
     // Verify success message
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify switch state changed
     await verifyServerEnabled(page, 'Filesystem Access', true)
   })
 
   test('should filter system servers by search term', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder="Search servers..."]')
+    const searchInput = byTestId(page, 'mcp-system-search-input')
     await searchInput.fill('Filesystem')
 
     // Should show Filesystem server
-    await expect(page.locator('.ant-card:has-text("Filesystem Access")').first()).toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()).toBeVisible()
 
     // Should not show Web Fetch server
-    await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).not.toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()).not.toBeVisible()
   })
 
   test('should filter by enabled status', async ({ page }) => {
     // Click status filter
-    await page.click('.ant-select:has-text("All Servers")')
+    await byTestId(page, 'mcp-system-status-select').click()
 
     // Select 'Enabled' filter
-    await page.click('.ant-select-item-option:has-text("Enabled")')
+    await byTestId(page, 'mcp-system-status-select-opt-enabled').click()
 
     // Should show only enabled servers
-    await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()).toBeVisible()
 
     // Should not show disabled servers
-    await expect(page.locator('.ant-card:has-text("Filesystem Access")').first()).not.toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()).not.toBeVisible()
   })
 
   test('should filter by disabled status', async ({ page }) => {
     // Click status filter
-    await page.click('.ant-select:has-text("All Servers")')
+    await byTestId(page, 'mcp-system-status-select').click()
 
     // Select 'Disabled' filter
-    await page.click('.ant-select-item-option:has-text("Disabled")')
+    await byTestId(page, 'mcp-system-status-select-opt-disabled').click()
 
     // Should show only disabled servers
-    await expect(page.locator('.ant-card:has-text("Filesystem Access")').first()).toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()).toBeVisible()
 
     // Should not show enabled servers
-    await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).not.toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()).not.toBeVisible()
   })
 
   // The "Sort servers" Select was removed by the settings UX overhaul
@@ -176,38 +176,38 @@ test.describe('MCP - Admin System Servers', () => {
 
   test('should clear all filters', async ({ page }) => {
     // Apply search filter
-    await page.fill('input[placeholder="Search servers..."]', 'test')
+    await byTestId(page, 'mcp-system-search-input').fill('test')
 
     // Apply status filter
-    await page.click('.ant-select:has-text("All Servers")')
-    await page.click('.ant-select-item-option:has-text("Enabled")')
+    await byTestId(page, 'mcp-system-status-select').click()
+    await byTestId(page, 'mcp-system-status-select-opt-enabled').click()
 
     // Verify clear button appears
-    await expect(page.locator('button:has-text("Clear all")')).toBeVisible()
+    await expect(byTestId(page, 'mcp-system-clear-filters-btn')).toBeVisible()
 
     // Click clear all
-    await page.click('button:has-text("Clear all")')
+    await byTestId(page, 'mcp-system-clear-filters-btn').click()
 
     // Verify filters are cleared
-    await expect(page.locator('input[placeholder="Search servers..."]')).toHaveValue('')
+    await expect(byTestId(page, 'mcp-system-search-input')).toHaveValue('')
   })
 
   test('should display all system servers as editable', async ({ page }) => {
-    const serverCard = page.locator('.ant-card:has-text("Web Fetch")').first()
+    const serverCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()
 
     // System servers in admin page should have Edit button
-    await expect(serverCard.locator('button:has-text("Edit")')).toBeVisible()
+    await expect(serverCard.getByTestId('mcp-server-edit-btn')).toBeVisible()
 
     // Should have enabled/disabled switch
-    await expect(serverCard.locator('.ant-switch')).toBeVisible()
+    await expect(serverCard.getByTestId('mcp-server-enable-switch')).toBeVisible()
   })
 
   test('should display empty state when no servers match filter', async ({ page }) => {
     // Search for non-existent server
-    await page.fill('input[placeholder="Search servers..."]', 'nonexistent-admin-server-xyz')
+    await byTestId(page, 'mcp-system-search-input').fill('nonexistent-admin-server-xyz')
 
     // Should display empty state
-    await expect(page.locator('text=No servers match your search criteria')).toBeVisible()
+    await expect(byTestId(page, 'mcp-system-empty')).toBeVisible()
   })
 
   test('should validate transport type cannot be changed in edit mode', async ({ page }) => {
@@ -216,15 +216,8 @@ test.describe('MCP - Admin System Servers', () => {
 
     // Transport type dropdown should be disabled in edit mode
     // Find the Form.Item that contains "Transport Type" label and get its select
-    const transportSelect = page.locator('.ant-form-item:has-text("Transport Type") .ant-select')
-
-    // Check if the select is disabled
-    const isDisabled = await transportSelect.evaluate((el) => {
-      return el.classList.contains('ant-select-disabled')
-    })
-
-    // Transport type should be disabled in edit mode
-    expect(isDisabled).toBe(true)
+    // Transport type cannot change in edit mode → the select is disabled.
+    await expect(byTestId(page, 'mcp-drawer-transport-select')).toBeDisabled()
   })
 
   test('should create SSE transport server', async ({ page }) => {
@@ -242,7 +235,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -265,12 +258,12 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify sampling badge and always badge are visible on the card
-    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
-    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).toBeVisible()
-    await expect(serverCard.locator('.ant-tag:has-text("Always")')).toBeVisible()
+    const serverCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: `${serverData.displayName}` }).first()
+    await expect(serverCard.getByTestId('mcp-sampling-badge')).toBeVisible()
+    await expect(serverCard.getByTestId('mcp-always-badge')).toBeVisible()
   })
 
   test('should show no sampling badge when supports_sampling is false', async ({ page }) => {
@@ -287,11 +280,11 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
-    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
-    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).not.toBeVisible()
-    await expect(serverCard.locator('.ant-tag:has-text("Always")')).not.toBeVisible()
+    const serverCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: `${serverData.displayName}` }).first()
+    await expect(serverCard.getByTestId('mcp-sampling-badge')).not.toBeVisible()
+    await expect(serverCard.getByTestId('mcp-always-badge')).not.toBeVisible()
   })
 
   test('should preserve sampling fields when editing a server', async ({ page }) => {
@@ -311,26 +304,21 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Open edit drawer
     await clickEditServerButton(page, serverData.displayName, true)
 
     // Verify sampling fields are pre-filled
-    const samplingSwitch = page.getByLabel('Enable MCP Sampling')
-    const isSamplingChecked = await samplingSwitch.evaluate((el) =>
-      el.classList.contains('ant-switch-checked')
-    )
+    const samplingSwitch = byTestId(page, 'mcp-drawer-sampling-switch')
+    const isSamplingChecked = ((await samplingSwitch.getAttribute('aria-checked')) === 'true')
     expect(isSamplingChecked).toBe(true)
 
     // AntD Select stores the displayed text in a separate span, not
     // the hidden input that `getByLabel` resolves to. Read it from
     // the Form.Item's content-value span instead.
-    const usageModeSelect = page
-      .locator('.ant-form-item:has-text("Usage Mode") .ant-select')
-      .first()
-    await expect(usageModeSelect).toContainText('Always')
-    await expect(page.getByLabel('Max Concurrent Sessions')).toHaveValue('5')
+    await expect(byTestId(page, 'mcp-drawer-usage-mode-select')).toContainText('Always')
+    await expect(byTestId(page, 'mcp-drawer-max-sessions-input')).toHaveValue('5')
   })
 
   test('should update sampling settings via edit', async ({ page }) => {
@@ -348,11 +336,11 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify no sampling badges initially
-    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
-    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).not.toBeVisible()
+    const serverCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: `${serverData.displayName}` }).first()
+    await expect(serverCard.getByTestId('mcp-sampling-badge')).not.toBeVisible()
 
     // Edit and enable sampling
     await clickEditServerButton(page, serverData.displayName, true)
@@ -363,12 +351,12 @@ test.describe('MCP - Admin System Servers', () => {
     })
     await submitMcpServerForm(page, 'update', true)
 
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify sampling and always badges now appear
-    const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
-    await expect(updatedCard.locator('.ant-tag:has-text("Sampling")')).toBeVisible()
-    await expect(updatedCard.locator('.ant-tag:has-text("Always")')).toBeVisible()
+    const updatedCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: `${serverData.displayName}` }).first()
+    await expect(updatedCard.getByTestId('mcp-sampling-badge')).toBeVisible()
+    await expect(updatedCard.getByTestId('mcp-always-badge')).toBeVisible()
   })
 
   // ──────────────────────────────────────────────────────────────────────
@@ -390,9 +378,9 @@ test.describe('MCP - Admin System Servers', () => {
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
-    const card = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    const card = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: `${serverData.displayName}` }).first()
     await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
     await expect(card.locator('[data-testid="mcp-always-badge"]')).toBeVisible()
 
@@ -400,9 +388,9 @@ test.describe('MCP - Admin System Servers', () => {
     await clickEditServerButton(page, serverData.displayName, true)
     await fillMcpServerForm(page, { ...serverData, supportsSampling: false })
     await submitMcpServerForm(page, 'update', true)
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
-    const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    const updatedCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: `${serverData.displayName}` }).first()
     await expect(updatedCard.locator('[data-testid="mcp-sampling-badge"]')).not.toBeVisible()
     // Always badge tracks usage_mode === 'always' independently of supports_sampling,
     // so it remains visible — covered by the sampling-on/auto test below.
@@ -423,9 +411,9 @@ test.describe('MCP - Admin System Servers', () => {
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
-    const card = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    const card = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: `${serverData.displayName}` }).first()
     await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
     await expect(card.locator('[data-testid="mcp-always-badge"]')).not.toBeVisible()
   })
@@ -464,7 +452,7 @@ test.describe('MCP - Admin System Servers', () => {
     // with a raw field is the only path — the migration script normally sets this
     // for filesystem/web-fetch servers). For the test, we use a system server already
     // marked built-in by migration (Filesystem Access or Web Fetch).
-    const builtInCard = page.locator('.ant-card:has-text("Filesystem Access")').first()
+    const builtInCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()
     await expect(builtInCard).toBeVisible()
     await expect(builtInCard.locator('[data-testid="mcp-server-edit-btn"]')).toBeVisible()
     await expect(builtInCard.locator('[data-testid="mcp-server-delete-btn"]')).not.toBeVisible()
@@ -486,25 +474,25 @@ test.describe('MCP - Admin System Servers', () => {
     // AntD InputNumber without min defaults to allowing any number; the component
     // sets min=1 in the McpServerDrawer (verify by typing -5 → coerced).
     await openAddServerDrawer(page, true)
-    await page.getByLabel('Name', { exact: true }).fill(`test-neg-max-${Date.now()}`)
-    await page.getByLabel('Display Name').fill('Test Negative Max')
-    await page.getByLabel('Transport Type').click({ force: true })
-    await page.click('.ant-select-item-option:has-text("HTTP")')
-    await page.getByLabel('URL').waitFor({ state: 'visible' })
-    await page.getByLabel('URL').fill('https://neg.example.com/mcp')
+    await byTestId(page, 'mcp-drawer-name-input').fill(`test-neg-max-${Date.now()}`)
+    await byTestId(page, 'mcp-drawer-display-name-input').fill('Test Negative Max')
+    await byTestId(page, 'mcp-drawer-transport-select').click()
+    await byTestId(page, 'mcp-drawer-transport-select-opt-http').click()
+    await byTestId(page, 'mcp-drawer-url-input').waitFor({ state: 'visible' })
+    await byTestId(page, 'mcp-drawer-url-input').fill('https://neg.example.com/mcp')
 
     // Enable sampling so the max field is required-relevant
-    const samplingSwitch = page.getByLabel('Enable MCP Sampling')
-    const checked = await samplingSwitch.evaluate(el => el.classList.contains('ant-switch-checked'))
+    const samplingSwitch = byTestId(page, 'mcp-drawer-sampling-switch')
+    const checked = ((await samplingSwitch.getAttribute('aria-checked')) === 'true')
     if (!checked) await samplingSwitch.click()
 
     // Try to enter -5
-    const maxInput = page.getByLabel('Max Concurrent Sessions')
+    const maxInput = byTestId(page, 'mcp-drawer-max-sessions-input')
     await maxInput.fill('-5')
 
     // AntD InputNumber with min=1 coerces invalid values to min on blur or shows error.
     // We tolerate either: the value is coerced to >=1, OR the form refuses submit.
-    await page.getByLabel('Display Name').click() // blur the max field
+    await byTestId(page, 'mcp-drawer-display-name-input').click() // blur the max field
 
     const finalVal = await maxInput.inputValue()
     const numeric = parseInt(finalVal || '0', 10)
@@ -523,17 +511,17 @@ test.describe('MCP - Admin System Servers', () => {
   test('run-in-sandbox toggle is visible only for stdio in create-system mode', async ({ page }) => {
     await openAddServerDrawer(page, true)
     // Default transport is stdio → toggle should be visible.
-    const stdioToggle = page.getByLabel('Run in sandbox')
+    const stdioToggle = byTestId(page, 'mcp-drawer-run-sandbox-switch')
     await expect(stdioToggle).toBeVisible()
 
     // Switch to HTTP → toggle should hide.
-    await page.getByLabel('Transport Type').click({ force: true })
-    await page.click('.ant-select-item-option:has-text("HTTP")')
+    await byTestId(page, 'mcp-drawer-transport-select').click()
+    await byTestId(page, 'mcp-drawer-transport-select-opt-http').click()
     await expect(stdioToggle).not.toBeVisible()
 
     // Back to stdio → re-appears. The option label is "Standard I/O".
-    await page.getByLabel('Transport Type').click({ force: true })
-    await page.click('.ant-select-item-option:has-text("Standard I/O")')
+    await byTestId(page, 'mcp-drawer-transport-select').click()
+    await byTestId(page, 'mcp-drawer-transport-select-opt-stdio').click()
     await expect(stdioToggle).toBeVisible()
   })
 
@@ -543,32 +531,33 @@ test.describe('MCP - Admin System Servers', () => {
 
     // CREATE with sandbox on.
     await openAddServerDrawer(page, true)
-    await page.getByLabel('Name', { exact: true }).fill(name)
-    await page.getByLabel('Display Name').fill(displayName)
-    await page.getByLabel('Command').fill('python3')
+    await byTestId(page, 'mcp-drawer-name-input').fill(name)
+    await byTestId(page, 'mcp-drawer-display-name-input').fill(displayName)
+    await byTestId(page, 'mcp-drawer-command-input').fill('python3')
     // Toggle on.
-    const toggle = page.getByLabel('Run in sandbox')
+    const toggle = byTestId(page, 'mcp-drawer-run-sandbox-switch')
     await expect(toggle).toBeVisible()
-    const checkedBefore = await toggle.evaluate(el => el.classList.contains('ant-switch-checked'))
+    const checkedBefore = ((await toggle.getAttribute('aria-checked')) === 'true')
     if (!checkedBefore) await toggle.click()
 
     await submitMcpServerForm(page, 'create', true)
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
     await verifyServerExists(page, displayName)
 
     // EDIT — toggle should be hydrated to checked.
     await clickEditServerButton(page, displayName, true)
-    const editToggle = page.getByLabel('Run in sandbox')
+    const editToggle = byTestId(page, 'mcp-drawer-run-sandbox-switch')
     await expect(editToggle).toBeVisible()
-    const checkedNow = await editToggle.evaluate(el => el.classList.contains('ant-switch-checked'))
+    const checkedNow = ((await editToggle.getAttribute('aria-checked')) === 'true')
     expect(checkedNow).toBe(true)
   })
 
   test('run-in-sandbox help text mentions filesystem isolation', async ({ page }) => {
     await openAddServerDrawer(page, true)
     // The help text is rendered under the Switch.
-    await expect(page.getByText(/isolated workspace/i)).toBeVisible()
-    await expect(page.getByText(/filesystem-oriented/i)).toBeVisible()
+    const sandboxHelp = byTestId(page, 'run_in_sandbox-description')
+    await expect(sandboxHelp).toContainText(/isolated workspace/i)
+    await expect(sandboxHelp).toContainText(/filesystem-oriented/i)
   })
 })
 
@@ -582,57 +571,52 @@ test.describe('MCP - Admin System Servers: sandbox flavor + command tiers', () =
 
   test('flavor picker appears only when run-in-sandbox is on, defaults to full', async ({ page }) => {
     await openAddServerDrawer(page, true)
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
 
     // Hidden until the toggle is on.
-    await expect(drawer.getByText('Sandbox flavor')).toHaveCount(0)
+    await expect(byTestId(page, 'mcp-drawer-sandbox-flavor-select')).toHaveCount(0)
 
-    await page.getByLabel('Run in sandbox').click()
+    await byTestId(page, 'mcp-drawer-run-sandbox-switch').click()
 
-    await expect(drawer.getByText('Sandbox flavor')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-sandbox-flavor-select')).toBeVisible()
     // Default selection is `full` (the Select's value renders inside the
-    // form-item; antd v6 uses .ant-select-content).
-    await expect(
-      drawer.locator('.ant-form-item:has-text("Sandbox flavor")'),
-    ).toContainText('full')
+    // flavor select trigger).
+    await expect(byTestId(page, 'mcp-drawer-sandbox-flavor-select')).toContainText('full')
   })
 
   test('host allowlist blocks a disallowed command unless run-in-sandbox is on', async ({ page }) => {
     await openAddServerDrawer(page, true)
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
 
-    await page.getByLabel('Name', { exact: true }).fill(`deno-${Date.now()}`)
-    await page.getByLabel('Display Name').fill('Deno Server')
-    await page.getByLabel('Command').fill('deno')
+    await byTestId(page, 'mcp-drawer-name-input').fill(`deno-${Date.now()}`)
+    await byTestId(page, 'mcp-drawer-display-name-input').fill('Deno Server')
+    await byTestId(page, 'mcp-drawer-command-input').fill('deno')
 
     // Host tier (run-in-sandbox off) → submit is blocked with an inline error.
-    await drawer.locator('.ant-btn-primary').click()
-    await expect(drawer.getByText(/not allowed on the host/i)).toBeVisible()
-    await expect(drawer).toBeVisible() // drawer stays open (save blocked)
+    await byTestId(page, 'mcp-drawer-submit-btn').click()
+    await expect(byTestId(page, 'command-error')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-form')).toBeVisible() // drawer stays open (save blocked)
 
     // Enabling run-in-sandbox lifts the restriction; the error clears.
-    await page.getByLabel('Run in sandbox').click()
-    await expect(drawer.getByText(/not allowed on the host/i)).toHaveCount(0)
+    await byTestId(page, 'mcp-drawer-run-sandbox-switch').click()
+    await expect(byTestId(page, 'command-error')).toHaveCount(0)
 
     // Save disabled so the create-time connection probe doesn't spawn the command.
-    await page.getByLabel('Enabled').click()
-    await drawer.locator('.ant-btn-primary').click()
+    await byTestId(page, 'mcp-drawer-enabled-switch').click()
+    await byTestId(page, 'mcp-drawer-submit-btn').click()
     // A successful save closes the drawer (robust success signal).
-    await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0, { timeout: 10000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 10000 })
   })
 
   test('an allowlisted host command (uvx) saves without sandbox', async ({ page }) => {
     await openAddServerDrawer(page, true)
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
 
-    await page.getByLabel('Name', { exact: true }).fill(`uvx-${Date.now()}`)
-    await page.getByLabel('Display Name').fill('Uvx Server')
-    await page.getByLabel('Command').fill('uvx')
+    await byTestId(page, 'mcp-drawer-name-input').fill(`uvx-${Date.now()}`)
+    await byTestId(page, 'mcp-drawer-display-name-input').fill('Uvx Server')
+    await byTestId(page, 'mcp-drawer-command-input').fill('uvx')
 
     // Disable so the create-time probe (which would spawn uvx) doesn't run.
-    await page.getByLabel('Enabled').click()
-    await drawer.locator('.ant-btn-primary').click()
+    await byTestId(page, 'mcp-drawer-enabled-switch').click()
+    await byTestId(page, 'mcp-drawer-submit-btn').click()
     // A successful save closes the drawer (robust success signal).
-    await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0, { timeout: 10000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 10000 })
   })
 })

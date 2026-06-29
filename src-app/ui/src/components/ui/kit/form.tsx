@@ -254,9 +254,9 @@ export function FormField(props: FormFieldProps) {
           </FieldLabel>
         )
         const control = React.cloneElement(children, injected)
-        const descEl = description != null && <FieldDescription id={descId}>{description}</FieldDescription>
+        const descEl = description != null && <FieldDescription id={descId} data-testid={`${name}-description`}>{description}</FieldDescription>
         // FieldError already carries role="alert" → announced when it appears
-        const errEl = showError && <FieldError id={errId}>{fieldState.error?.message}</FieldError>
+        const errEl = showError && <FieldError id={errId} data-testid={`${name}-error`}>{fieldState.error?.message}</FieldError>
         // horizontal/inline: label beside a FieldContent column (control + desc + error).
         if (beside) {
           return (
