@@ -1,0 +1,33 @@
+# cargo-audit configuration.
+#
+# Run:  cargo audit   (reads this file from the workspace root)
+
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071 — "Marvin Attack" timing side-channel in the `rsa` crate.
+    #
+    # NOT EXPLOITABLE in ziee. The Marvin Attack is a timing oracle against RSA
+    # *private-key decryption* (PKCS#1 v1.5 / OAEP) where an attacker submits
+    # chosen ciphertexts and measures decryption time. ziee performs NO RSA
+    # private-key decryption anywhere. Every `rsa` code path reached here is
+    # public-key *signature verification*:
+    #   * Apple OIDC ID-token verification — Algorithm::RS256 /
+    #     DecodingKey::from_rsa_components (modules/auth/providers/apple.rs).
+    #   * openidconnect ID-token signature verification.
+    #   * sigstore / cosign keyless certificate + bundle verification.
+    # ziee's own JWTs are HS256 (HMAC, symmetric — no RSA at all).
+    #
+    # No fix is removable or swappable:
+    #   * `rsa 0.9.x` is a transitive dep hard-required (`^0.9`) by
+    #     jsonwebtoken (rust_crypto), openidconnect, and sigstore. It cannot be
+    #     dropped without losing RS256 OIDC + cosign verification.
+    #   * `sad-rsa` (the audited fork) tops out at 0.2.3 with a different
+    #     crypto-bigint 0.7 API and does not satisfy `rsa ^0.9`, so it cannot be
+    #     substituted via [patch.crates-io] (verified: semver + source-rename
+    #     both rejected by cargo).
+    #   * Upstream `rsa` has no patched release for this advisory.
+    #
+    # Revisit when jsonwebtoken / openidconnect / sigstore migrate off rsa 0.9
+    # (e.g. to a const-time backend), then drop this ignore.
+    "RUSTSEC-2023-0071",
+]
