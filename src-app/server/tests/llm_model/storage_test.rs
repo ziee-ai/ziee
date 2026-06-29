@@ -147,7 +147,7 @@ async fn test_delete_downloaded_model_removes_files() {
     // env-var fallback that defaults to `$HOME/.ziee` checked the
     // wrong path and asserted false. Sourcing the dir from the
     // harness keeps the two in lockstep automatically.
-    let app_data_dir = shared_test_app_data_dir();
+    let app_data_dir = server.data_dir().to_path_buf(); // per-test isolated data dir (harness no longer uses the shared cache dir)
     let model_path = app_data_dir
         .join("models")
         .join(provider_id)
@@ -345,7 +345,7 @@ async fn test_download_creates_correct_file_structure() {
     // env-var fallback that defaults to `$HOME/.ziee` checked the
     // wrong path and asserted false. Sourcing the dir from the
     // harness keeps the two in lockstep automatically.
-    let app_data_dir = shared_test_app_data_dir();
+    let app_data_dir = server.data_dir().to_path_buf(); // per-test isolated data dir (harness no longer uses the shared cache dir)
     let model_path = app_data_dir
         .join("models")
         .join(provider_id)

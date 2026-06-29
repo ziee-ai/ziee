@@ -704,7 +704,7 @@ async fn test_upload_sharded_safetensors_without_index_keeps_all_shards() {
     // None at create time — it's populated later by Tier-2 validation — so we
     // check the storage dir directly.) If only the single main shard were kept
     // (the OLD index-dependent behavior), shard 2 would be missing.
-    let model_dir = crate::common::shared_test_app_data_dir()
+    let model_dir = server.data_dir() // per-test isolated data dir
         .join("models")
         .join(provider_id)
         .join(model_id);
