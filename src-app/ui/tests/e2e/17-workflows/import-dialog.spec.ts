@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToWorkflowsPage } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 // E2E for ImportWorkflowDialog (audit id 877d258b5d5e — zero coverage):
 // the file picker, the Validate button + inline validation-result rendering
@@ -33,10 +34,8 @@ async function mockValidate(page: Page, resp: ValResponse) {
 }
 
 async function openImportDialog(page: Page) {
-  await page.getByRole('button', { name: /import/i }).click()
-  await expect(
-    page.getByRole('dialog').getByText('Import Workflow'),
-  ).toBeVisible()
+  await byTestId(page, 'wf-list-import-btn').click()
+  await expect(byTestId(page, 'wf-import-dialog')).toBeVisible()
 }
 
 async function dropFile(page: Page, name: string, contents: string) {
@@ -72,12 +71,13 @@ test.describe('Workflows — Import dialog', () => {
     })
     await openImportDialog(page)
     await dropFile(page, 'workflow.yaml', 'name: demo\nsteps: []\n')
-    await page.getByRole('button', { name: 'Validate' }).click()
+    await byTestId(page, 'wf-import-validate-btn').click()
 
     // Success Alert renders the step + call counts.
-    await expect(
-      page.getByText(/Valid workflow — 4 steps, up to 12 calls/i),
-    ).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'wf-import-validation-alert')).toContainText(
+      /Valid workflow — 4 steps, up to 12 calls/i,
+      { timeout: 5000 },
+    )
   })
 
   test('validating an invalid workflow.yaml surfaces the error messages', async ({
@@ -93,12 +93,11 @@ test.describe('Workflows — Import dialog', () => {
     })
     await openImportDialog(page)
     await dropFile(page, 'workflow.yaml', 'name: broken\n')
-    await page.getByRole('button', { name: 'Validate' }).click()
+    await byTestId(page, 'wf-import-validate-btn').click()
 
-    await expect(page.getByText('Validation failed')).toBeVisible({
-      timeout: 5000,
-    })
-    await expect(page.getByText(/steps\[0\]: missing run/)).toBeVisible()
+    const alert = byTestId(page, 'wf-import-validation-alert')
+    await expect(alert).toContainText('Validation failed', { timeout: 5000 })
+    await expect(alert).toContainText(/steps\[0\]: missing run/)
   })
 
   test('validating a non-yaml bundle shows the advisory instead of calling validate', async ({
@@ -115,12 +114,13 @@ test.describe('Workflows — Import dialog', () => {
     })
     await openImportDialog(page)
     await dropFile(page, 'bundle.tar.gz', 'binary-bundle-bytes')
-    await page.getByRole('button', { name: 'Validate' }).click()
+    await byTestId(page, 'wf-import-validate-btn').click()
 
-    // The dialog advises the user to drop a workflow.yaml; no validate call.
+    // The dialog advises the user to drop a workflow.yaml (a sonner info toast);
+    // no validate call is made.
     await expect(
-      page.getByText(/Validation reads workflow\.yaml/i),
-    ).toBeVisible({ timeout: 5000 })
+      page.locator('[data-sonner-toast][data-type="info"]'),
+    ).toContainText(/Validation reads workflow\.yaml/i, { timeout: 5000 })
     expect(validateCalled).toBe(false)
   })
 })

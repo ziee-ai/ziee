@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — WorkflowRunProgressView MID-RUN CANCEL (WorkflowRunProgressView.tsx
@@ -73,22 +74,22 @@ test.describe('Workflows - mid-run cancel', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-cancel-run')
 
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({ timeout: 10000 })
-    const topic = page.getByLabel('topic')
+    await byTestId(page, 'wf-detail-run-btn').click()
+    await expect(byTestId(page, 'wf-run-dialog')).toBeVisible({ timeout: 10000 })
+    const topic = byTestId(page, 'wf-run-input-topic')
     if (await topic.count()) await topic.first().fill('the history of computing')
-    else await page.getByPlaceholder(/"topic"/).fill('{ "topic": "the history of computing" }')
-    await page.getByLabel('Model').click()
-    await page.getByRole('option', { name: /Claude Haiku 4\.5/ }).first().click()
-    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+    else await byTestId(page, 'wf-run-json-textarea').fill('{ "topic": "the history of computing" }')
+    await byTestId(page, 'wf-run-model-select').click()
+    await page.locator('[data-testid^="wf-run-model-select-opt-"]').first().click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
     // The progress view appears; cancel while the run is still in flight.
-    await expect(page.getByText('Run progress')).toBeVisible({ timeout: 15000 })
-    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(byTestId(page, 'wf-progress-status-tag')).toBeVisible({ timeout: 15000 })
+    await byTestId(page, 'wf-progress-cancel-btn').click()
 
     // The run reaches the cancelled terminal state.
-    await expect(
-      page.getByText('cancelled', { exact: true }).first(),
-    ).toBeVisible({ timeout: 60000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText('cancelled', {
+      timeout: 60000,
+    })
   })
 })

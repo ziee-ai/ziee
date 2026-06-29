@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Workflow deletion from the detail drawer (WorkflowDetailDrawer handleDelete +
@@ -41,19 +42,18 @@ test.describe('Workflows - delete from detail drawer', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, slug)
 
-    // The drawer's Delete button → Popconfirm "Delete this workflow?".
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
-    await expect(page.getByText(/delete this workflow\?/i)).toBeVisible()
+    // The drawer's Delete button → confirm dialog "Delete this workflow?".
+    await byTestId(page, 'wf-detail-delete-btn').click()
+    await expect(byTestId(page, 'wf-detail-delete-dialog')).toBeVisible()
     // Confirm via the danger OK button (okText "Delete").
-    await page
-      .locator('.ant-popconfirm:visible')
-      .getByRole('button', { name: 'Delete', exact: true })
-      .click()
+    await byTestId(page, 'wf-detail-delete-confirm-btn').click()
 
     // Success toast + the drawer closes + the card is gone from the list.
-    await expect(page.getByText('Workflow deleted')).toBeVisible()
     await expect(
-      page.locator('.ant-card', { hasText: slug }),
+      page.locator('[data-sonner-toast][data-type="success"]'),
+    ).toContainText('Workflow deleted')
+    await expect(
+      page.locator('[data-testid^="wf-list-card-"]').filter({ hasText: slug }),
     ).toHaveCount(0, { timeout: 15000 })
   })
 })

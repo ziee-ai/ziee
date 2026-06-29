@@ -4,6 +4,7 @@ import {
   goToWorkflowsPage,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Workflows list page rendered WITH data (audit gap all-495967c5c50a).
@@ -50,11 +51,14 @@ test.describe('Workflows - List page with data', () => {
     await goToWorkflowsPage(page, baseURL)
 
     // The empty state must NOT be shown now that a workflow exists.
-    await expect(page.getByText(/no workflows installed yet/i)).toHaveCount(0)
+    await expect(byTestId(page, 'wf-list-empty')).toHaveCount(0)
 
-    // The seeded workflow renders as a card showing its name.
-    const card = page.locator('.ant-card', { hasText: slug }).first()
+    // The seeded workflow renders as a card showing its name (dynamic data).
+    const card = page
+      .locator('[data-testid^="wf-list-card-"]')
+      .filter({ hasText: slug })
+      .first()
     await expect(card).toBeVisible({ timeout: 15000 })
-    await expect(page.getByText(slug).first()).toBeVisible()
+    await expect(card).toContainText(slug)
   })
 })

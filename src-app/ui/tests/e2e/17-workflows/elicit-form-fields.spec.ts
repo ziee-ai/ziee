@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 // audit ids all-ea879b49efc5 (dynamic form rendering from JSON schema — all
 // field types) + all-fa60163cc857 (validation error display on submit).
@@ -93,20 +94,21 @@ test.describe('Workflows — elicit form field types + validation', () => {
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-elicit-form')
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
     // The elicit form renders.
-    await expect(page.getByText(/input required/i)).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({ timeout: 15000 })
 
-    // ea879 — every schema field type rendered (by its data-testid).
-    await expect(page.getByTestId('elicitation-field-full_name')).toBeVisible()
-    await expect(page.getByTestId('elicitation-field-count')).toBeVisible()
-    await expect(page.getByTestId('elicitation-field-agree')).toBeVisible()
-    await expect(page.getByTestId('elicitation-field-color')).toBeVisible()
+    // ea879 — every schema field type rendered (each by its type-specific testid:
+    // string→input, integer→number, boolean→switch, enum→select).
+    await expect(byTestId(page, 'wf-elicit-input-full_name')).toBeVisible()
+    await expect(byTestId(page, 'wf-elicit-number-count')).toBeVisible()
+    await expect(byTestId(page, 'wf-elicit-switch-agree')).toBeVisible()
+    await expect(byTestId(page, 'wf-elicit-select-color')).toBeVisible()
 
     // fa60 — submitting with the required `full_name` empty surfaces the error.
-    await page.getByRole('button', { name: 'Submit', exact: true }).click()
-    await expect(page.getByText('Please fix the highlighted fields')).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'wf-elicit-submit-btn').click()
+    await expect(byTestId(page, 'wf-elicit-error-alert')).toBeVisible({ timeout: 10000 })
   })
 })

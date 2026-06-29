@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — WorkflowRunDialog input validation.
@@ -55,16 +56,16 @@ test.describe('Workflows - run dialog input validation', () => {
     await openWorkflowCard(page, 'e2e-run-validation')
 
     // Open the Run dialog.
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    const dialog = page.getByRole('dialog', { name: /^Run / })
+    await byTestId(page, 'wf-detail-run-btn').click()
+    const dialog = byTestId(page, 'wf-run-dialog')
     await expect(dialog).toBeVisible({ timeout: 10000 })
 
     // Click Run without filling the required `topic` input.
-    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
-    // The antd Form rule surfaces an inline "topic is required" error and the
+    // The Form rule surfaces an inline "topic is required" error and the
     // dialog stays open (no run submitted).
-    await expect(dialog.getByText('topic is required')).toBeVisible({
+    await expect(byTestId(page, 'wf-run-form')).toContainText('topic is required', {
       timeout: 10000,
     })
     await expect(dialog).toBeVisible()

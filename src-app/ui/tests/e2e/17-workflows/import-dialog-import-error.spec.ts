@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToWorkflowsPage } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the Import-Workflow dialog IMPORT-FAILURE branch (ImportWorkflowDialog.tsx).
@@ -29,9 +30,9 @@ test.describe('Workflows — Import dialog import-failure branch', () => {
     await loginAsAdmin(page, baseURL)
     await goToWorkflowsPage(page, baseURL)
 
-    await page.getByRole('button', { name: /import/i }).click()
+    await byTestId(page, 'wf-list-import-btn').click()
 
-    const dialog = page.getByRole('dialog', { name: 'Import Workflow' })
+    const dialog = byTestId(page, 'wf-import-dialog')
     await expect(dialog).toBeVisible()
 
     // Not a valid tar(.gz) bundle — the server's extractor cannot read a
@@ -50,19 +51,21 @@ test.describe('Workflows — Import dialog import-failure branch', () => {
         r.request().method() === 'POST',
       { timeout: 30000 },
     )
-    await dialog.getByRole('button', { name: 'Import' }).click()
+    await byTestId(dialog, 'wf-import-submit-btn').click()
     expect((await importResp).status()).toBeGreaterThanOrEqual(400)
 
-    // The catch branch surfaces an antd error message (the server's message or
-    // the "Import failed" fallback) — assert an error notice renders.
-    await expect(page.locator('.ant-message-error').first()).toBeVisible({
-      timeout: 15000,
-    })
+    // The catch branch surfaces an error toast (the server's message or the
+    // "Import failed" fallback) — assert an error notice renders.
+    await expect(
+      page.locator('[data-sonner-toast][data-type="error"]').first(),
+    ).toBeVisible({ timeout: 15000 })
 
     // The defining behavior of the failure branch: the dialog STAYS OPEN (the
     // success path would have closed it), so the user can correct + retry.
     await expect(dialog).toBeVisible()
     // The success toast must NOT have fired.
-    await expect(page.getByText('Workflow imported')).toHaveCount(0)
+    await expect(
+      page.locator('[data-sonner-toast][data-type="success"]'),
+    ).toHaveCount(0)
   })
 })

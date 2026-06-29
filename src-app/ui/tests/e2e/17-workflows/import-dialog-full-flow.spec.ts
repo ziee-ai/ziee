@@ -4,6 +4,7 @@ import {
   goToWorkflowsPage,
   buildWorkflowBundle,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the Import-Workflow dialog FULL flow (ImportWorkflowDialog.tsx).
@@ -54,9 +55,9 @@ test.describe('Workflows — Import dialog full flow', () => {
     await loginAsAdmin(page, baseURL)
     await goToWorkflowsPage(page, baseURL)
 
-    await page.getByRole('button', { name: /import/i }).click()
+    await byTestId(page, 'wf-list-import-btn').click()
 
-    const dialog = page.getByRole('dialog', { name: 'Import Workflow' })
+    const dialog = byTestId(page, 'wf-import-dialog')
     await expect(dialog).toBeVisible()
 
     // Drop a real tar.gz bundle (the production import format, identical to the
@@ -74,20 +75,23 @@ test.describe('Workflows — Import dialog full flow', () => {
         r.request().method() === 'POST',
       { timeout: 30000 },
     )
-    await dialog.getByRole('button', { name: 'Import' }).click()
+    await byTestId(dialog, 'wf-import-submit-btn').click()
     expect((await importResp).status()).toBe(201)
 
     // The dialog closes and the success toast fires.
-    await expect(page.getByText('Workflow imported')).toBeVisible({
-      timeout: 15000,
-    })
+    await expect(
+      page.locator('[data-sonner-toast][data-type="success"]'),
+    ).toContainText('Workflow imported', { timeout: 15000 })
     await expect(dialog).toBeHidden({ timeout: 15000 })
 
     // The imported workflow surfaces on the list (display_name === slug ===
     // "imported-workflow"; see dev.rs import_workflow_inner).
     await goToWorkflowsPage(page, baseURL)
     await expect(
-      page.locator('.ant-card', { hasText: 'imported-workflow' }).first(),
+      page
+        .locator('[data-testid^="wf-list-card-"]')
+        .filter({ hasText: 'imported-workflow' })
+        .first(),
     ).toBeVisible({ timeout: 15000 })
   })
 
@@ -99,8 +103,8 @@ test.describe('Workflows — Import dialog full flow', () => {
     await loginAsAdmin(page, baseURL)
     await goToWorkflowsPage(page, baseURL)
 
-    await page.getByRole('button', { name: /import/i }).click()
-    const dialog = page.getByRole('dialog', { name: 'Import Workflow' })
+    await byTestId(page, 'wf-list-import-btn').click()
+    const dialog = byTestId(page, 'wf-import-dialog')
     await expect(dialog).toBeVisible()
 
     await dialog.locator('input[type="file"]').setInputFiles({
@@ -109,11 +113,12 @@ test.describe('Workflows — Import dialog full flow', () => {
       buffer: Buffer.from(INVALID_WORKFLOW_YAML, 'utf8'),
     })
 
-    await dialog.getByRole('button', { name: 'Validate' }).click()
+    await byTestId(dialog, 'wf-import-validate-btn').click()
 
     // The real /validate round-trip returns valid:false → the error-type Alert.
-    await expect(dialog.getByText('Validation failed')).toBeVisible({
-      timeout: 30000,
-    })
+    await expect(byTestId(dialog, 'wf-import-validation-alert')).toContainText(
+      'Validation failed',
+      { timeout: 30000 },
+    )
   })
 })

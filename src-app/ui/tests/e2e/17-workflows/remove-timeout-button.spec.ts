@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the "Remove timeout" button on the live run progress view
@@ -81,16 +82,16 @@ test.describe('Workflows - Remove timeout button', () => {
     // Open the workflow → its (paused) run's progress view.
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-remove-timeout')
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
     // The pending elicitation form proves the run is live + non-terminal,
     // so the "Remove timeout" button (only shown while !terminal) renders.
-    await expect(page.getByText(/input required/i)).toBeVisible({
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({
       timeout: 15000,
     })
 
-    const removeBtn = page.getByRole('button', { name: 'Remove timeout' })
+    const removeBtn = byTestId(page, 'wf-progress-remove-timeout-btn')
     await expect(removeBtn).toBeVisible({ timeout: 10000 })
 
     // Click it and assert the REAL setRunTimeout call fires for THIS run
@@ -113,8 +114,8 @@ test.describe('Workflows - Remove timeout button', () => {
 
     // The UI surfaces the success message ("Timeout removed — this run is no
     // longer wall-clock limited"), confirming the button drove the cap-lift.
-    await expect(page.getByText(/Timeout removed/i)).toBeVisible({
-      timeout: 10000,
-    })
+    await expect(
+      page.locator('[data-sonner-toast][data-type="success"]'),
+    ).toContainText('Timeout removed', { timeout: 10000 })
   })
 })

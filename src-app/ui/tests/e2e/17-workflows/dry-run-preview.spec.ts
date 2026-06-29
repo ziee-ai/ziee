@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — DryRunPreviewDialog loading + error states (audit id 80086b394b17).
@@ -26,7 +27,7 @@ outputs: []
 
 async function openDryRun(page: import('@playwright/test').Page) {
   await openWorkflowCard(page, SLUG)
-  await page.getByRole('button', { name: 'Dry-run preview' }).click()
+  await byTestId(page, 'wf-detail-dry-run-btn').click()
 }
 
 test.describe('Workflows — dry-run preview dialog', () => {
@@ -69,12 +70,19 @@ test.describe('Workflows — dry-run preview dialog', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openDryRun(page)
 
-    const dialog = page.getByRole('dialog').filter({ hasText: 'Dry-run preview' })
+    const dialog = byTestId(page, 'wf-dry-run-dialog')
     // Loading state: the Spin is visible while the request is in flight.
-    await expect(dialog.locator('.ant-spin')).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(dialog, 'wf-dry-run-spin')).toBeVisible({
+      timeout: 5000,
+    })
     // Then the estimate renders.
-    await expect(dialog.getByText('Est. calls')).toBeVisible({ timeout: 10000 })
-    await expect(dialog.getByText('only_step')).toBeVisible()
+    await expect(byTestId(dialog, 'wf-dry-run-stat-calls')).toBeVisible({
+      timeout: 10000,
+    })
+    // The seeded step id appears in the estimate table (dynamic test data).
+    await expect(byTestId(dialog, 'wf-dry-run-steps-table')).toContainText(
+      'only_step',
+    )
   })
 
   test('shows an error alert when dry-run fails', async ({
@@ -98,7 +106,9 @@ test.describe('Workflows — dry-run preview dialog', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openDryRun(page)
 
-    const dialog = page.getByRole('dialog').filter({ hasText: 'Dry-run preview' })
-    await expect(dialog.locator('.ant-alert-error')).toBeVisible({ timeout: 10000 })
+    const dialog = byTestId(page, 'wf-dry-run-dialog')
+    await expect(byTestId(dialog, 'wf-dry-run-error-alert')).toBeVisible({
+      timeout: 10000,
+    })
   })
 })

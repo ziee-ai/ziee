@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * D2/D3 — the rich editable-array-table elicit widget.
@@ -141,35 +142,36 @@ test.describe('Workflows - elicit rich editable table (real LLM snapshot)', () =
     await openWorkflowCard(page, 'e2e-elicit-table')
 
     // The running run shows in the Runs list; open it.
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
     // The elicit form renders ("Input required") with the seeded table rows.
-    await expect(page.getByText(/input required/i)).toBeVisible({
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({
       timeout: 15000,
     })
     // The seeded titles appear (the table pre-filled from `data:`). The
     // `title` cells are editable `<Input>`s, so the seeded text is the input
-    // VALUE, not page text — assert on the table ROW (its accessible name
-    // includes the cell values), not getByText (which would match the run
-    // view's truncated step-output JSON preview, missing the last row).
-    await expect(page.getByRole('row', { name: /Paper A/ })).toBeVisible({
-      timeout: 10000,
-    })
-    await expect(page.getByRole('row', { name: /Paper C/ })).toBeVisible()
+    // VALUE — assert on the per-cell input's value (rows 0 and 2), which proves
+    // the full seeded array rendered (not just the truncated preview).
+    await expect(byTestId(page, 'wf-cell-input-rows.0.title')).toHaveValue(
+      /Paper A/,
+      { timeout: 10000 },
+    )
+    await expect(byTestId(page, 'wf-cell-input-rows.2.title')).toHaveValue(
+      /Paper C/,
+    )
 
     // Bulk-toggle: select all rows, then "Set include on" for the bulk column.
     // The header checkbox selects every row.
     const headerCheckbox = page.getByRole('checkbox').first()
     await headerCheckbox.check()
-    await page
-      .getByRole('button', { name: /set include on/i })
-      .first()
-      .click()
+    await byTestId(page, 'wf-array-bulk-set-on-btn').click()
 
     // Expand a row to reveal the long `abstract` (expand affordance is the
-    // first-column expand icon; the expanded content shows the abstract text).
-    const expandIcon = page.locator('.ant-table-row-expand-icon').first()
+    // first-column expand button; the expanded content shows the abstract text).
+    const expandIcon = page
+      .locator('[data-testid^="wf-array-expand-btn-"]')
+      .first()
     if (await expandIcon.count()) {
       await expandIcon.click()
     }
@@ -182,14 +184,14 @@ test.describe('Workflows - elicit rich editable table (real LLM snapshot)', () =
     }
 
     // Submit the form → the run resumes.
-    await page.getByRole('button', { name: 'Submit', exact: true }).click()
+    await byTestId(page, 'wf-elicit-submit-btn').click()
 
-    // After resume the single elicit-after step completes the run. Both the
-    // run-level status Tag and the step's status Tag read "completed", so
-    // target the first (the run-level header tag) to avoid a strict-mode clash.
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 30000 })
+    // After resume the single elicit-after step completes the run. The
+    // run-level status Tag reads "completed".
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 30000 },
+    )
   })
 
   test('add row + remove row mutate the editable array before submit', async ({
@@ -229,26 +231,27 @@ test.describe('Workflows - elicit rich editable table (real LLM snapshot)', () =
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-elicit-table-rows')
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
-    await expect(page.getByText(/input required/i)).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({ timeout: 15000 })
 
-    // 3 seeded rows render.
-    const dataRows = page.locator('.ant-table-tbody .ant-table-row')
+    // 3 seeded rows render (one per-row checkbox in the bulk-toggle column).
+    const dataRows = page.locator('[data-testid^="wf-array-row-checkbox-"]')
     await expect.poll(async () => await dataRows.count(), { timeout: 15000 }).toBe(3)
 
     // Add row → a 4th editable row appears.
-    await page.getByRole('button', { name: /Add row/ }).click()
+    await byTestId(page, 'wf-array-add-row-btn').click()
     await expect.poll(async () => await dataRows.count(), { timeout: 10000 }).toBe(4)
 
     // Remove a row → back to 3.
-    await page.getByRole('button', { name: 'Remove row' }).first().click()
+    await page.locator('[data-testid^="wf-array-remove-btn-"]').first().click()
     await expect.poll(async () => await dataRows.count(), { timeout: 10000 }).toBe(3)
 
     // Submit → the run resumes and completes.
-    await page.getByRole('button', { name: 'Submit', exact: true }).click()
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 30000 })
+    await byTestId(page, 'wf-elicit-submit-btn').click()
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 30000 },
+    )
   })
 })

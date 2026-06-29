@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Run cancellation — the Cancel button on WorkflowRunProgressView
@@ -110,21 +111,22 @@ test.describe('Workflows - run cancellation (real LLM snapshot)', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-cancel-run')
 
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
     // The run is paused (elicit "Input required"); the Cancel button is shown
     // because the run is non-terminal.
-    await expect(page.getByText(/input required/i)).toBeVisible({
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({
       timeout: 15000,
     })
-    const cancelBtn = page.getByRole('button', { name: 'Cancel' })
+    const cancelBtn = byTestId(page, 'wf-progress-cancel-btn')
     await expect(cancelBtn).toBeVisible()
     await cancelBtn.click()
 
     // The run-level status Tag flips to "cancelled".
-    await expect(
-      page.getByText('cancelled', { exact: true }).first(),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'cancelled',
+      { timeout: 30000 },
+    )
   })
 })

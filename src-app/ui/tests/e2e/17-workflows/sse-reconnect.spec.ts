@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the run-progress SSE reconnect warning (audit gap all-5f31d86f6abd).
@@ -86,12 +87,12 @@ test.describe('Workflows - run-progress SSE reconnect', () => {
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-sse-reconnect')
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
     // The run-progress view mounts + subscribes; the SSE can't connect, so
     // `connected` never flips true and the warning surfaces for the live run.
-    const reconnecting = page.getByText(/reconnecting/i)
+    const reconnecting = byTestId(page, 'wf-progress-reconnecting')
     await expect(reconnecting).toBeVisible({ timeout: 15000 })
 
     // It must PERSIST — every backoff reconnect is aborted too, so this is the
@@ -99,7 +100,7 @@ test.describe('Workflows - run-progress SSE reconnect', () => {
     await page.waitForTimeout(4000)
     await expect(reconnecting).toBeVisible()
     // And the live elicitation form never arrived (it rides the dead stream).
-    await expect(page.getByText(/input required/i)).toHaveCount(0)
+    await expect(byTestId(page, 'wf-elicit-alert')).toHaveCount(0)
 
     // --- SSE RESTORED: let the stream through and remount the view. ---
     await page.unroute(SSE_GLOB)
@@ -108,15 +109,15 @@ test.describe('Workflows - run-progress SSE reconnect', () => {
     // SSE stream.
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-sse-reconnect')
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
     // A healthy SSE delivers the snapshot + elicitation frame → `connected`
     // flips true → the warning clears, and the live form (proof the stream is
     // genuinely connected, not just silent) renders.
-    await expect(page.getByText(/input required/i)).toBeVisible({
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({
       timeout: 15000,
     })
-    await expect(page.getByText(/reconnecting/i)).toHaveCount(0)
+    await expect(byTestId(page, 'wf-progress-reconnecting')).toHaveCount(0)
   })
 })

@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Multi-step parallel/diamond DAG through the UI run-progress view. The backend
@@ -100,13 +101,14 @@ test.describe('Workflows - diamond DAG run (real LLM snapshot)', () => {
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-diamond')
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
     // The run-progress view lists every diamond step and the run reaches
     // completed (fan-out B/C + fan-in D all resolved).
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 45000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 45000 },
+    )
   })
 })

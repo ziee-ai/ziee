@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * `kind: sandbox` workflow step — UI run-progress coverage gap.
@@ -71,29 +72,35 @@ test.describe('Workflows - sandbox step run (rootfs-gated)', () => {
     await openWorkflowCard(page, 'e2e-sandbox-greet')
 
     // Open the Run dialog.
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+    await byTestId(page, 'wf-detail-run-btn').click()
+    await expect(byTestId(page, 'wf-run-dialog')).toBeVisible({
       timeout: 10000,
     })
 
     // Provide the required `name` input (structured field or JSON fallback).
-    const nameField = page.getByLabel('name')
+    const nameField = byTestId(page, 'wf-run-input-name')
     if (await nameField.count()) {
       await nameField.first().fill('ziee')
     } else {
-      await page.getByPlaceholder(/"name"/).fill('{ "name": "ziee" }')
+      await byTestId(page, 'wf-run-json-textarea').fill('{ "name": "ziee" }')
     }
 
     // A sandbox-only workflow needs no model; run directly.
-    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
     // Progress streams in and the run reaches completed.
-    await expect(page.getByText('Run progress')).toBeVisible({ timeout: 15000 })
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 60000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 60000 },
+    )
 
-    // The sandbox step id is shown in the progress tree.
-    await expect(page.getByText('greet', { exact: true }).first()).toBeVisible()
+    // The sandbox step id ("greet") is shown in the progress tree — its kind
+    // tag is keyed by the step id.
+    await expect(
+      byTestId(page, 'wf-progress-step-kind-tag-greet'),
+    ).toBeVisible()
   })
 })

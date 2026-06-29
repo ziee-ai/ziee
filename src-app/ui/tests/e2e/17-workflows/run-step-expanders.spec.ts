@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Per-step log expander buttons in the Workflow Run Progress View
@@ -101,44 +102,60 @@ test.describe('Workflows - run progress per-step log expanders', () => {
 
     // Open the Run dialog from the drawer (drawer button name is the icon
     // aria-label + "Run"; match the trailing word).
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+    await byTestId(page, 'wf-detail-run-btn').click()
+    await expect(byTestId(page, 'wf-run-dialog')).toBeVisible({
       timeout: 10000,
     })
 
     // Pick the registered model (required for a standalone run with an llm step).
-    await page.getByLabel('Model').click()
-    await page.getByRole('option').first().click()
+    await byTestId(page, 'wf-run-model-select').click()
+    await page
+      .locator('[data-testid^="wf-run-model-select-opt-"]')
+      .first()
+      .click()
 
     // Kick the run (the dialog's own OK "Run" button).
-    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
     // Run-progress view appears and the (mocked) run completes.
-    await expect(page.getByText('Run progress')).toBeVisible({ timeout: 15000 })
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 30000 },
+    )
 
     // The completed step exposes its per-step log expander buttons.
-    const rawOutputBtn = page.getByRole('button', { name: 'Show raw output' })
-    const promptBtn = page.getByRole('button', { name: 'Show prompt' })
-    const traceBtn = page.getByRole('button', { name: 'Show trace' })
+    const rawOutputBtn = page.locator(
+      '[data-testid^="wf-step-log-btn-"][data-testid$="-raw_output"]',
+    )
+    const promptBtn = page.locator(
+      '[data-testid^="wf-step-log-btn-"][data-testid$="-prompt"]',
+    )
+    const traceBtn = page.locator(
+      '[data-testid^="wf-step-log-btn-"][data-testid$="-trace"]',
+    )
+    const logUnavailable = page.locator('[data-testid="wf-step-log-empty"]')
+    const traceAccordion = page
+      .locator('[data-testid^="wf-step-log-accordion-"][data-testid$="-trace"]')
+      .first()
     await expect(rawOutputBtn.first()).toBeVisible({ timeout: 10000 })
     await expect(promptBtn.first()).toBeVisible()
     await expect(traceBtn.first()).toBeVisible()
 
     // "Show raw output": the mock captured no dispatch logs, so read_log 404s
     // and the expander renders its "Log not available" fallback (the 404 branch
-    // of StepLogExpanderLocal.doFetch — previously untested). Toggling open
+    // of StepLogExpander.fetchLog — previously untested). Toggling open
     // triggers the real fetch.
     await rawOutputBtn.first().click()
-    await expect(page.getByText('Log not available').first()).toBeVisible({
+    await expect(logUnavailable.first()).toBeVisible({
       timeout: 15000,
     })
 
     // "Show prompt": same fallback (a mock writes no prompt log).
     await promptBtn.first().click()
-    await expect(page.getByText('Log not available')).toHaveCount(2, {
+    await expect(logUnavailable).toHaveCount(2, {
       timeout: 15000,
     })
 
@@ -146,7 +163,7 @@ test.describe('Workflows - run progress per-step log expanders', () => {
     // loads real content — the serialized StepTrace JSON (stable `attempts`
     // field) — exercising the success-render path of the same component.
     await traceBtn.first().click()
-    await expect(page.getByText(/attempts/i).first()).toBeVisible({
+    await expect(traceAccordion).toContainText(/attempts/i, {
       timeout: 15000,
     })
   })
@@ -204,33 +221,45 @@ outputs:
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-expander-real')
 
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+    await byTestId(page, 'wf-detail-run-btn').click()
+    await expect(byTestId(page, 'wf-run-dialog')).toBeVisible({
       timeout: 10000,
     })
 
-    await page.getByLabel('Model').click()
+    await byTestId(page, 'wf-run-model-select').click()
     await page
-      .getByRole('option', { name: /Claude Haiku 4\.5/ })
+      .locator('[data-testid^="wf-run-model-select-opt-"]')
       .first()
       .click()
 
     // Turn on "Capture debug logs" so prompt/raw_output are persisted.
-    const captureToggle = page.getByRole('switch').first()
+    const captureToggle = byTestId(page, 'wf-run-capture-logs-switch')
     await captureToggle.click()
     await expect(captureToggle).toBeChecked()
 
-    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
-    await expect(page.getByText('Run progress')).toBeVisible({ timeout: 15000 })
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 60000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 60000 },
+    )
 
     // The captured raw model output is revealed by the "Show raw output"
     // expander and contains the beacon the model was told to echo.
-    await page.getByRole('button', { name: 'Show raw output' }).first().click()
-    await expect(page.getByText(new RegExp(beacon)).first()).toBeVisible({
+    await page
+      .locator('[data-testid^="wf-step-log-btn-"][data-testid$="-raw_output"]')
+      .first()
+      .click()
+    await expect(
+      page
+        .locator(
+          '[data-testid^="wf-step-log-accordion-"][data-testid$="-raw_output"]',
+        )
+        .first(),
+    ).toContainText(new RegExp(beacon), {
       timeout: 15000,
     })
   })

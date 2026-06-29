@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * A1/A7 — run a standalone workflow from the settings page with the model
@@ -96,90 +97,95 @@ test.describe('Workflows - run a standalone workflow (real LLM)', () => {
     // has a PlayCircle icon, so its accessible name is "play-circle Run" (the
     // icon's aria-label is concatenated); match the trailing "Run" rather than
     // exact. The dialog's own OK button below is a plain "Run" (exact).
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    // Assert the Run dialog (a Modal titled "Run <workflow>") opened — target
-    // it by dialog role + name, not getByText(/^Run /): the latter also matches
-    // the drawer's "Run tests" button text behind the modal (strict-mode clash).
-    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+    await byTestId(page, 'wf-detail-run-btn').click()
+    // Assert the Run dialog (titled "Run <workflow>") opened — target it by its
+    // i18n-safe testid.
+    await expect(byTestId(page, 'wf-run-dialog')).toBeVisible({
       timeout: 10000,
     })
 
     // Provide the required `topic` input. With structured inputs the field is
-    // labeled by the input name; fall back to the free-form JSON editor.
-    const topicField = page.getByLabel('topic')
+    // testid'd by the input name; fall back to the free-form JSON editor.
+    const topicField = byTestId(page, 'wf-run-input-topic')
     if (await topicField.count()) {
       await topicField.first().fill('quantum entanglement')
     } else {
-      await page
-        .getByPlaceholder(/"topic"/)
-        .fill('{ "topic": "quantum entanglement" }')
+      await byTestId(page, 'wf-run-json-textarea').fill(
+        '{ "topic": "quantum entanglement" }',
+      )
     }
 
-    // Pick a model in the standalone picker.
-    const modelSelect = page.getByLabel('Model')
-    await modelSelect.click()
+    // Pick a model in the standalone picker (only one model is registered).
+    await byTestId(page, 'wf-run-model-select').click()
     await page
-      .getByRole('option', { name: /Claude Haiku 4\.5/ })
+      .locator('[data-testid^="wf-run-model-select-opt-"]')
       .first()
       .click()
 
     // Turn on "Capture debug logs".
-    const captureToggle = page.getByRole('switch').first()
+    const captureToggle = byTestId(page, 'wf-run-capture-logs-switch')
     await captureToggle.click()
     await expect(captureToggle).toBeChecked()
 
     // Run.
-    await page
-      .getByRole('button', { name: 'Run', exact: true })
-      .last()
-      .click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
     // The run-progress view appears and streams to completion. The status tag
     // transitions to "completed"; allow a generous budget for the real call.
-    await expect(page.getByText('Run progress')).toBeVisible({ timeout: 15000 })
-    // Both the run-level status Tag and the (single) step's status Tag read
-    // "completed", so target the first (the run-level header tag).
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 60000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 60000 },
+    )
 
     // A7: a completed LLM step surfaces its per-step log expanders — "Show
     // prompt" (an llm step has a prompt) and "Show trace" (trace.json is
-    // written on completion). This guards the durable-log viewers against an
-    // antd render-trap and confirms the trace affordance shows for a completed
-    // step (it is correctly hidden for failed steps).
-    await expect(page.getByText('Show prompt').first()).toBeVisible({
-      timeout: 10000,
-    })
-    await expect(page.getByText('Show trace').first()).toBeVisible()
+    // written on completion). This guards the durable-log viewers and confirms
+    // the trace affordance shows for a completed step (hidden for failed steps).
+    const promptBtn = page.locator(
+      '[data-testid^="wf-step-log-btn-"][data-testid$="-prompt"]',
+    )
+    const traceBtn = page.locator(
+      '[data-testid^="wf-step-log-btn-"][data-testid$="-trace"]',
+    )
+    const promptAccordion = page
+      .locator('[data-testid^="wf-step-log-accordion-"][data-testid$="-prompt"]')
+      .first()
+    const traceAccordion = page
+      .locator('[data-testid^="wf-step-log-accordion-"][data-testid$="-trace"]')
+      .first()
+    const logUnavailable = page.locator('[data-testid="wf-step-log-empty"]')
+
+    await expect(promptBtn.first()).toBeVisible({ timeout: 10000 })
+    await expect(traceBtn.first()).toBeVisible()
 
     // A7 (expander interaction): clicking "Show prompt" lazily fetches the
     // captured prompt log and renders it inline — assert the rendered prompt
     // body appears (it embeds the step's prompt text). This exercises the
     // StepLogExpander fetch+expand path, not just the affordance's presence.
-    await page.getByText('Show prompt').first().click()
-    await expect(page.getByText(/say something about/i).first()).toBeVisible({
+    await promptBtn.first().click()
+    await expect(promptAccordion).toContainText(/say something about/i, {
       timeout: 15000,
     })
 
     // Likewise "Show trace" fetches + renders trace.json content.
-    await page.getByText('Show trace').first().click()
-    await expect(page.getByText(/summarize/).first()).toBeVisible({
+    await traceBtn.first().click()
+    await expect(traceAccordion).toContainText(/summarize/, {
       timeout: 15000,
     })
-    // Expander INTERACTION (StepLogExpander): clicking "Show prompt" must
-    // lazily fetch + render the step's prompt log inline — NOT the
-    // "Log not available" fallback. The prompt interpolates the `topic` input,
-    // so the rendered content contains "quantum entanglement".
-    await page.getByText('Show prompt').first().click()
-    await expect(page.getByText(/quantum entanglement/i).first()).toBeVisible({
+    // Expander INTERACTION (StepLogExpander): the prompt interpolates the
+    // `topic` input, so the rendered content contains "quantum entanglement".
+    await promptBtn.first().click()
+    await expect(promptAccordion).toContainText(/quantum entanglement/i, {
       timeout: 15000,
     })
-    await expect(page.getByText('Log not available')).toHaveCount(0)
+    await expect(logUnavailable).toHaveCount(0)
 
     // The trace expander likewise loads its content (trace.json) on click,
     // not the unavailable note.
-    await page.getByText('Show trace').first().click()
-    await expect(page.getByText('Log not available')).toHaveCount(0)
+    await traceBtn.first().click()
+    await expect(logUnavailable).toHaveCount(0)
   })
 })

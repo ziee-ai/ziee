@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Durable workflow resume (Change B) through the real UI.
@@ -117,16 +118,17 @@ test.describe('Workflows - durable resume (timeout_ms:0 suspend → cold resume)
     // Open the workflow → its (suspended) run.
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-durable-resume')
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await page.getByText('Workflow page', { exact: true }).first().click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
     // The form renders even though NO runner is resident (served from the DB
     // snapshot). The run-level status reads `waiting` (the durable, non-terminal
     // state introduced by Change B).
-    await expect(page.getByText(/input required/i)).toBeVisible({
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({
       timeout: 15000,
     })
-    await expect(page.getByText('waiting', { exact: true }).first()).toBeVisible(
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'waiting',
       { timeout: 10000 },
     )
 
@@ -135,8 +137,8 @@ test.describe('Workflows - durable resume (timeout_ms:0 suspend → cold resume)
     await page.reload()
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-durable-resume')
-    await page.getByText('Workflow page', { exact: true }).first().click()
-    await expect(page.getByText(/input required/i)).toBeVisible({
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({
       timeout: 15000,
     })
 
@@ -146,10 +148,11 @@ test.describe('Workflows - durable resume (timeout_ms:0 suspend → cold resume)
     if (await gateSwitch.count()) {
       await gateSwitch.click()
     }
-    await page.getByRole('button', { name: 'Submit', exact: true }).click()
+    await byTestId(page, 'wf-elicit-submit-btn').click()
 
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 30000 },
+    )
   })
 })

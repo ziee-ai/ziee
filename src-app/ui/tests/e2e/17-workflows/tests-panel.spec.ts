@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — WorkflowTestsPanel (audit id c3b0bc0c903ade49). The panel calls
@@ -27,7 +28,7 @@ outputs: []
 
 async function openTests(page: import('@playwright/test').Page) {
   await openWorkflowCard(page, SLUG)
-  await page.getByRole('button', { name: 'Run tests' }).click()
+  await byTestId(page, 'wf-detail-run-tests-btn').click()
 }
 
 test.describe('Workflows — tests panel', () => {
@@ -73,14 +74,20 @@ test.describe('Workflows — tests panel', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openTests(page)
 
-    const dialog = page.getByRole('dialog').filter({ hasText: 'Workflow tests' })
-    // Summary tags.
-    await expect(dialog.getByText('1 passed')).toBeVisible({ timeout: 10000 })
-    await expect(dialog.getByText('1 failed')).toBeVisible()
-    // Per-fixture rows, including the failure detail.
-    await expect(dialog.getByText('fixture_ok')).toBeVisible()
-    await expect(dialog.getByText('fixture_bad')).toBeVisible()
-    await expect(dialog.getByText(/summary: contains/)).toBeVisible()
+    const dialog = byTestId(page, 'wf-tests-dialog')
+    // Summary tags (counts are dynamic data from the mocked response).
+    await expect(byTestId(dialog, 'wf-tests-passed-tag')).toContainText(
+      '1 passed',
+      { timeout: 10000 },
+    )
+    await expect(byTestId(dialog, 'wf-tests-failed-tag')).toContainText(
+      '1 failed',
+    )
+    // Per-fixture rows, including the failure detail (dynamic test data).
+    const list = byTestId(dialog, 'wf-tests-list')
+    await expect(list).toContainText('fixture_ok')
+    await expect(list).toContainText('fixture_bad')
+    await expect(list).toContainText(/summary: contains/)
   })
 
   test('shows an error alert when the test run fails', async ({
@@ -104,7 +111,9 @@ test.describe('Workflows — tests panel', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openTests(page)
 
-    const dialog = page.getByRole('dialog').filter({ hasText: 'Workflow tests' })
-    await expect(dialog.locator('.ant-alert-error')).toBeVisible({ timeout: 10000 })
+    const dialog = byTestId(page, 'wf-tests-dialog')
+    await expect(byTestId(dialog, 'wf-tests-error-alert')).toBeVisible({
+      timeout: 10000,
+    })
   })
 })
