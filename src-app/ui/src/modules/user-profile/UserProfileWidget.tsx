@@ -71,25 +71,31 @@ function SidebarItem({
 }
 
 export function UserProfileWidget() {
-  const { user } = Stores.Auth
+  const { user, isInitializing, isLoading } = Stores.Auth
   const { isSidebarCollapsed } = Stores.AppLayout
   const canViewProfile = usePermission(Permissions.ProfileRead)
   const navigate = useNavigate()
 
-  // While auth is still resolving (user not yet hydrated) show a
-  // skeleton row that mirrors the SidebarItem shape, so the sidebar
-  // footer doesn't pop in blank then jump to the profile entry.
   if (!user) {
-    return (
-      <div
-        data-testid="user-profile-widget-loading"
-        className="flex items-center px-3 py-1 mx-2"
-        aria-hidden="true"
-      >
-        <Skeleton className="w-4 h-4 mr-1.5 rounded-full shrink-0" />
-        {!isSidebarCollapsed && <Skeleton className="h-3.5 w-24 rounded" />}
-      </div>
-    )
+    // While auth is still resolving (user not yet hydrated) show a skeleton
+    // row that mirrors the SidebarItem shape — an avatar-shaped circle plus a
+    // label line, composed from the kit Skeleton primitive (no Skeleton.Avatar
+    // in the kit) — so the sidebar footer doesn't pop in blank then jump to the
+    // profile entry. Once auth has SETTLED with no user (logged out), the
+    // signals clear and we render nothing.
+    if (isInitializing || isLoading) {
+      return (
+        <div
+          data-testid="user-profile-widget-loading"
+          className="flex items-center px-3 py-1 mx-2"
+          aria-hidden="true"
+        >
+          <Skeleton className="w-4 h-4 mr-1.5 rounded-full shrink-0" />
+          {!isSidebarCollapsed && <Skeleton className="h-3.5 w-24 rounded" />}
+        </div>
+      )
+    }
+    return null
   }
 
   const items = [
