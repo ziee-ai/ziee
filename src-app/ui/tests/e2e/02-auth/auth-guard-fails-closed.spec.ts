@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 
 /**
  * E2E — AuthGuard FAILS CLOSED on an invalid / tampered token.
@@ -39,7 +40,6 @@ async function seedBogusToken(
   }, token)
 }
 
-const LOGIN_WALL = '#login_username'
 // A guarded deep-link whose content must never appear without a real session.
 const GUARDED_ROUTE = '/settings/profile'
 
@@ -56,12 +56,10 @@ test.describe('Auth — AuthGuard fails closed', () => {
     await page.goto(`${baseURL}${GUARDED_ROUTE}`)
 
     // FAIL CLOSED: the login wall is shown, protected content is not.
-    await expect(page.locator(LOGIN_WALL)).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 15000 })
     // The profile page's own controls must NOT have rendered.
-    await expect(page.getByLabel('Assistant name')).toHaveCount(0)
-    await expect(
-      page.locator('[data-testid="user-profile-widget"]'),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'profile-display-name-input')).toHaveCount(0)
+    await expect(byTestId(page, 'user-profile-widget')).toHaveCount(0)
 
     // The store rejected + wiped the bad token (it was not trusted): the
     // persisted token is cleared after the 401.
@@ -93,9 +91,7 @@ test.describe('Auth — AuthGuard fails closed', () => {
     await seedBogusToken(page, 'another.bogus.token')
     await page.goto(`${baseURL}/this-route-does-not-exist-${Date.now()}`)
 
-    await expect(page.locator(LOGIN_WALL)).toBeVisible({ timeout: 15000 })
-    await expect(
-      page.locator('[data-testid="user-profile-widget"]'),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'user-profile-widget')).toHaveCount(0)
   })
 })

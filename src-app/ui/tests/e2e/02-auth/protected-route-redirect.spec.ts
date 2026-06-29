@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, clearAuthState } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — unauthenticated access to a protected route renders the AuthPage.
@@ -25,8 +26,6 @@ test.describe('Authentication — protected route guard', () => {
     await page.goto(`${baseURL}/settings/profile`, { waitUntil: 'load' })
 
     // The guard renders the AuthPage login form rather than the profile page.
-    await expect(
-      page.getByLabel('Username or Email'),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 30000 })
   })
 })

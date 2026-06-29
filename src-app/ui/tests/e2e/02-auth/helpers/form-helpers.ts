@@ -1,10 +1,11 @@
 import { Page, expect } from '@playwright/test'
+import { byTestId } from '../../testid'
 
 /**
  * Auth-specific form helpers
  * These are only used within the auth test suite
  *
- * Uses semantic selectors following best practices
+ * Uses testid selectors (i18n-safe) — see tests/e2e/testid.ts
  */
 
 // =====================================================
@@ -19,12 +20,12 @@ export async function createAdminViaSetup(
   password = 'password123'
 ) {
   await page.goto(`${baseURL}/setup`)
-  await page.getByLabel('Username').waitFor({ timeout: 30000 })
-  await page.getByLabel('Username').fill(username)
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password', { exact: true }).fill(password)
-  await page.getByLabel('Confirm Password').fill(password)
-  await page.getByRole('button', { name: /create admin account/i }).click()
+  await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
+  await byTestId(page, 'app-setup-username-input').fill(username)
+  await byTestId(page, 'app-setup-email-input').fill(email)
+  await byTestId(page, 'app-setup-password-input').fill(password)
+  await byTestId(page, 'app-setup-confirm-password-input').fill(password)
+  await byTestId(page, 'app-setup-submit-button').click()
   await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 }
 
@@ -37,12 +38,12 @@ export async function fillLoginForm(
   username: string,
   password: string
 ) {
-  await page.getByLabel('Username or Email').fill(username)
-  await page.getByLabel('Password', { exact: true }).fill(password)
+  await byTestId(page, 'auth-login-username').fill(username)
+  await byTestId(page, 'auth-login-password').fill(password)
 }
 
 export async function submitLoginForm(page: Page, baseURL: string) {
-  await page.getByRole('button', { name: /^sign in$/i }).click()
+  await byTestId(page, 'auth-login-submit').click()
   await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 }
 
@@ -61,8 +62,8 @@ export async function loginWithCredentials(
 // =====================================================
 
 export async function switchToRegistrationForm(page: Page) {
-  await page.getByRole('button', { name: /sign up/i }).click()
-  await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
+  await byTestId(page, 'auth-login-switch-to-register').click()
+  await expect(byTestId(page, 'auth-register-form')).toBeVisible()
 }
 
 export async function fillRegistrationForm(
@@ -71,14 +72,14 @@ export async function fillRegistrationForm(
   email: string,
   password: string
 ) {
-  await page.getByLabel('Username').fill(username)
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password', { exact: true }).fill(password)
-  await page.getByLabel('Confirm Password').fill(password)
+  await byTestId(page, 'auth-register-username').fill(username)
+  await byTestId(page, 'auth-register-email').fill(email)
+  await byTestId(page, 'auth-register-password').fill(password)
+  await byTestId(page, 'auth-register-confirm-password').fill(password)
 }
 
 export async function submitRegistrationForm(page: Page, baseURL: string) {
-  await page.getByRole('button', { name: /^sign up$/i }).click()
+  await byTestId(page, 'auth-register-submit').click()
   await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 }
 
@@ -94,6 +95,6 @@ export async function registerUser(
 }
 
 export async function switchBackToLoginForm(page: Page) {
-  await page.getByRole('button', { name: /^sign in$/i }).click()
-  await expect(page.getByText('Username or Email')).toBeVisible()
+  await byTestId(page, 'auth-register-switch-to-login').click()
+  await expect(byTestId(page, 'auth-login-form')).toBeVisible()
 }

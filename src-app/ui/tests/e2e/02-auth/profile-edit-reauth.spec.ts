@@ -15,6 +15,7 @@ import {
   getAdminToken,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 test.describe('Profile edit then re-auth with new username', () => {
   test('username change persists and the new username can log in', async ({
@@ -43,13 +44,16 @@ test.describe('Profile edit then re-auth with new username', () => {
 
     // Edit the username in profile settings and save.
     await page.goto(`${baseURL}/settings/profile`)
-    const usernameField = page.getByLabel('Username', { exact: true })
+    const usernameField = byTestId(page, 'profile-username-input')
     await usernameField.waitFor({ timeout: 30000 })
     await usernameField.fill(newName)
-    await page.getByRole('button', { name: /^save$/i }).click()
-    await expect(page.getByText(/profile saved/i)).toBeVisible({
-      timeout: 15000,
-    })
+    // Save succeeded → the profile update request returns 200.
+    const savePromise = page.waitForResponse(
+      r => r.url().includes('/api/auth/profile') && r.request().method() === 'POST',
+      { timeout: 15000 },
+    )
+    await byTestId(page, 'profile-save-button').click()
+    expect((await savePromise).ok()).toBeTruthy()
 
     // Log out completely, then re-authenticate with the NEW username.
     await clearAuthState(page)
@@ -58,7 +62,7 @@ test.describe('Profile edit then re-auth with new username', () => {
     // Re-auth succeeded and the change persisted: the profile form now shows
     // the new username.
     await page.goto(`${baseURL}/settings/profile`)
-    const reloaded = page.getByLabel('Username', { exact: true })
+    const reloaded = byTestId(page, 'profile-username-input')
     await reloaded.waitFor({ timeout: 30000 })
     await expect(reloaded).toHaveValue(newName)
   })

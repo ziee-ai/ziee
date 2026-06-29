@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — logging out via the sidebar UserProfileWidget dropdown
@@ -31,13 +32,13 @@ test.describe('Auth — logout via the sidebar profile widget', () => {
     expect(tokenBefore, 'should be logged in before logout').toBeTruthy()
 
     // Open the sidebar profile widget dropdown and click Logout.
-    await page.getByTestId('user-profile-widget').click()
-    await page.getByRole('menuitem', { name: 'Logout' }).click()
+    await byTestId(page, 'user-profile-widget').click()
+    await byTestId(page, 'userprofile-menu-dropdown-item-logout').click()
 
     // The app drops to the unauthenticated surface: AuthGuard bounces any
     // protected route to /auth once isAuthenticated flips to false.
     await page.waitForURL(/\/auth/, { timeout: 30000 })
-    await expect(page.locator('#login_username')).toBeVisible({
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({
       timeout: 15000,
     })
 
@@ -59,6 +60,6 @@ test.describe('Auth — logout via the sidebar profile widget', () => {
       .toBeNull()
 
     // The profile widget is gone now that there's no user.
-    await expect(page.getByTestId('user-profile-widget')).toHaveCount(0)
+    await expect(byTestId(page, 'user-profile-widget')).toHaveCount(0)
   })
 })

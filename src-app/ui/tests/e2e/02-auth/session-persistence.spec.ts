@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — session survives a HARD page reload.
@@ -20,9 +21,9 @@ test.describe('Auth — session persistence across reload', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/profile`)
-    await expect(
-      page.getByRole('heading', { name: 'Profile' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'profile-account-card')).toBeVisible({
+      timeout: 30000,
+    })
 
     // Hard reload — drops all in-memory React/zustand state.
     await page.reload({ waitUntil: 'domcontentloaded' })
@@ -42,8 +43,8 @@ test.describe('Auth — session persistence across reload', () => {
     // ...and the user is NOT bounced to the login page; the authed
     // profile page re-mounts from the persisted session.
     await expect(page).not.toHaveURL(/\/auth/)
-    await expect(
-      page.getByRole('heading', { name: 'Profile' }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'profile-account-card')).toBeVisible({
+      timeout: 30000,
+    })
   })
 })
