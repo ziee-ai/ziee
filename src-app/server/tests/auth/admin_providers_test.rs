@@ -150,13 +150,35 @@ async fn test_admin_providers_crud_happy_path() {
     assert_ne!(row["config"]["client_secret"], json!("INITIAL-SECRET-VALUE"));
 
     // 3. PUT with empty client_secret preserves the existing one.
-    //    Confirm by reading the raw DB value before + after.
+    //    The secret is now encrypted at rest (migration 125): the plaintext
+    //    copy inside config is BLANKED and the real value lives in the
+    //    client_secret_encrypted bytea column (pgcrypto). Confirm by decrypting
+    //    that column with the test storage key before + after. The test harness
+    //    configures `secrets.storage_key = test-storage-key-for-pgcrypto-...`
+    //    (see common/harness_inner.rs), so encryption is active here.
+    const TEST_STORAGE_KEY: &str = "test-storage-key-for-pgcrypto-min-32-chars-long";
     let pool = sqlx::PgPool::connect(&test_server.database_url)
         .await
         .unwrap();
-    let secret_before: Option<String> = sqlx::query_scalar!(
+
+    // Plaintext copy in config must be blanked (encrypted at rest).
+    let plaintext_in_config: Option<String> = sqlx::query_scalar!(
         r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google-test'"#
     )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        plaintext_in_config.as_deref(),
+        Some(""),
+        "client_secret must NOT be stored plaintext in config when encryption is active"
+    );
+    // The encrypted column holds the real secret.
+    let secret_before: Option<String> = sqlx::query_scalar(
+        r#"SELECT pgp_sym_decrypt(client_secret_encrypted, $1)
+           FROM auth_providers WHERE name = 'google-test'"#,
+    )
+    .bind(TEST_STORAGE_KEY)
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -178,16 +200,18 @@ async fn test_admin_providers_crud_happy_path() {
         .unwrap();
     assert_eq!(r.status(), 200);
 
-    let secret_after: Option<String> = sqlx::query_scalar!(
-        r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google-test'"#
+    let secret_after: Option<String> = sqlx::query_scalar(
+        r#"SELECT pgp_sym_decrypt(client_secret_encrypted, $1)
+           FROM auth_providers WHERE name = 'google-test'"#,
     )
+    .bind(TEST_STORAGE_KEY)
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!(
         secret_after.as_deref(),
         Some("INITIAL-SECRET-VALUE"),
-        "Empty client_secret in PUT must preserve existing value"
+        "Empty client_secret in PUT must preserve existing (encrypted) value"
     );
     let scopes_after: Option<Vec<String>> = sqlx::query_scalar!(
         r#"SELECT ARRAY(SELECT jsonb_array_elements_text(config->'scopes'))::text[]
@@ -217,9 +241,20 @@ async fn test_admin_providers_crud_happy_path() {
         .await
         .unwrap();
     assert_eq!(r.status(), 200);
-    let secret_after2: Option<String> = sqlx::query_scalar!(
+    // The new secret is re-encrypted at rest: plaintext blanked, ciphertext
+    // decrypts to the replacement.
+    let plaintext_after2: Option<String> = sqlx::query_scalar!(
         r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google-test'"#
     )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(plaintext_after2.as_deref(), Some(""));
+    let secret_after2: Option<String> = sqlx::query_scalar(
+        r#"SELECT pgp_sym_decrypt(client_secret_encrypted, $1)
+           FROM auth_providers WHERE name = 'google-test'"#,
+    )
+    .bind(TEST_STORAGE_KEY)
     .fetch_one(&pool)
     .await
     .unwrap();

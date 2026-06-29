@@ -8,6 +8,103 @@ use uuid::Uuid;
 
 use super::models::AuthProvider;
 use crate::common::AppError;
+use crate::common::secret::{encrypt_secret, resolve_optional_secret};
+
+/// JSONB key inside `auth_providers.config` that holds the OAuth login secret.
+const CLIENT_SECRET_KEY: &str = "client_secret";
+
+/// Raw row shape including the dual-column secret, before the encrypted column
+/// is resolved back into `config`. Mirrors the mcp repository's row→model
+/// assembly (see `assemble_mcp_server`).
+struct AuthProviderRow {
+    id: Uuid,
+    name: String,
+    provider_type: String,
+    enabled: bool,
+    config: serde_json::Value,
+    client_secret_encrypted: Option<Vec<u8>>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+    last_test_at: Option<chrono::DateTime<chrono::Utc>>,
+    last_test_ok: Option<bool>,
+    last_test_message: Option<String>,
+}
+
+/// Resolve the client_secret from the encrypted column (preferred) with a
+/// fallback to the plaintext value still embedded in `config` (legacy /
+/// not-yet-re-encrypted rows), then inject the resolved value back into
+/// `config["client_secret"]`. This keeps the returned `AuthProvider.config`
+/// identical in shape to the pre-encryption behavior, so every downstream
+/// consumer (oauth2.rs `serde_json::from_value`, the handlers' secret-preserve
+/// path) works unchanged. The API response layer masks the secret separately
+/// (handlers::mask_provider_config).
+async fn assemble_provider(pool: &PgPool, row: AuthProviderRow) -> AuthProvider {
+    let mut config = row.config;
+    // Plaintext fallback: the secret still sitting in config on legacy rows.
+    let plaintext = config
+        .get(CLIENT_SECRET_KEY)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    if let Some(resolved) =
+        resolve_optional_secret(pool, row.client_secret_encrypted, plaintext).await
+        && let serde_json::Value::Object(map) = &mut config
+    {
+        map.insert(
+            CLIENT_SECRET_KEY.to_string(),
+            serde_json::Value::String(resolved),
+        );
+    }
+    AuthProvider {
+        id: row.id,
+        name: row.name,
+        provider_type: row.provider_type,
+        enabled: row.enabled,
+        config,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        last_test_at: row.last_test_at,
+        last_test_ok: row.last_test_ok,
+        last_test_message: row.last_test_message,
+    }
+}
+
+/// Split a `config` JSONB into the value to persist + the encrypted secret blob.
+/// When a non-empty `client_secret` is present AND a storage key is configured,
+/// the secret is encrypted into the returned blob and BLANKED inside the stored
+/// config (the read path re-injects it from the encrypted column). With no
+/// storage key (dev / unconfigured), it stays plaintext in config and the blob
+/// is None — the dual-column compat mode, mirroring mcp + web_search.
+async fn prepare_config_for_write(
+    pool: &PgPool,
+    config: &serde_json::Value,
+) -> Result<(serde_json::Value, Option<Vec<u8>>), AppError> {
+    let secret = config
+        .get(CLIENT_SECRET_KEY)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+    let Some(secret) = secret else {
+        // No secret to protect (e.g. ldap/apple rows, or a blank OAuth row):
+        // store config as-is, no encrypted blob.
+        return Ok((config.clone(), None));
+    };
+    match encrypt_secret(pool, secret, crate::core::secrets::storage_key()).await? {
+        Some(blob) => {
+            // Blank the plaintext copy in the stored config; the read path
+            // re-injects the real value from the encrypted column.
+            let mut stored = config.clone();
+            if let serde_json::Value::Object(map) = &mut stored {
+                map.insert(
+                    CLIENT_SECRET_KEY.to_string(),
+                    serde_json::Value::String(String::new()),
+                );
+            }
+            Ok((stored, Some(blob)))
+        }
+        // No storage key → compat mode: keep plaintext in config.
+        None => Ok((config.clone(), None)),
+    }
+}
 
 /// Look up an auth provider by its `name` column (the identifier
 /// in the URL path).
@@ -15,10 +112,11 @@ pub async fn get_provider_by_name(
     pool: &PgPool,
     name: &str,
 ) -> Result<Option<AuthProvider>, AppError> {
-    sqlx::query_as!(
-        AuthProvider,
+    let row = sqlx::query_as!(
+        AuthProviderRow,
         r#"
         SELECT id, name, provider_type, enabled, config,
+               client_secret_encrypted,
                created_at as "created_at: _",
                updated_at as "updated_at: _",
                last_test_at as "last_test_at: _",
@@ -31,7 +129,11 @@ pub async fn get_provider_by_name(
     )
     .fetch_optional(pool)
     .await
-    .map_err(AppError::database_error)
+    .map_err(AppError::database_error)?;
+    match row {
+        Some(r) => Ok(Some(assemble_provider(pool, r).await)),
+        None => Ok(None),
+    }
 }
 
 /// Look up an auth provider by id. Used by the admin CRUD handlers.
@@ -39,10 +141,11 @@ pub async fn get_provider_by_id(
     pool: &PgPool,
     id: Uuid,
 ) -> Result<Option<AuthProvider>, AppError> {
-    sqlx::query_as!(
-        AuthProvider,
+    let row = sqlx::query_as!(
+        AuthProviderRow,
         r#"
         SELECT id, name, provider_type, enabled, config,
+               client_secret_encrypted,
                created_at as "created_at: _",
                updated_at as "updated_at: _",
                last_test_at as "last_test_at: _",
@@ -55,17 +158,22 @@ pub async fn get_provider_by_id(
     )
     .fetch_optional(pool)
     .await
-    .map_err(AppError::database_error)
+    .map_err(AppError::database_error)?;
+    match row {
+        Some(r) => Ok(Some(assemble_provider(pool, r).await)),
+        None => Ok(None),
+    }
 }
 
 /// List all configured auth providers (admin view — returns ALL
 /// rows including disabled ones; secret-masking happens at the
 /// response-building layer in handlers.rs).
 pub async fn list_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, AppError> {
-    sqlx::query_as!(
-        AuthProvider,
+    let rows = sqlx::query_as!(
+        AuthProviderRow,
         r#"
         SELECT id, name, provider_type, enabled, config,
+               client_secret_encrypted,
                created_at as "created_at: _",
                updated_at as "updated_at: _",
                last_test_at as "last_test_at: _",
@@ -77,7 +185,12 @@ pub async fn list_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, AppError
     )
     .fetch_all(pool)
     .await
-    .map_err(AppError::database_error)
+    .map_err(AppError::database_error)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        out.push(assemble_provider(pool, r).await);
+    }
+    Ok(out)
 }
 
 /// List enabled auth providers — the subset surfaced on the
@@ -85,10 +198,11 @@ pub async fn list_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, AppError
 /// Excludes the built-in `local` provider since the username/password
 /// form is rendered statically.
 pub async fn list_public_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, AppError> {
-    sqlx::query_as!(
-        AuthProvider,
+    let rows = sqlx::query_as!(
+        AuthProviderRow,
         r#"
         SELECT id, name, provider_type, enabled, config,
+               client_secret_encrypted,
                created_at as "created_at: _",
                updated_at as "updated_at: _",
                last_test_at as "last_test_at: _",
@@ -101,7 +215,12 @@ pub async fn list_public_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, A
     )
     .fetch_all(pool)
     .await
-    .map_err(AppError::database_error)
+    .map_err(AppError::database_error)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        out.push(assemble_provider(pool, r).await);
+    }
+    Ok(out)
 }
 
 /// Create a new auth_providers row.
@@ -112,12 +231,17 @@ pub async fn create_provider(
     enabled: bool,
     config: &serde_json::Value,
 ) -> Result<AuthProvider, AppError> {
-    sqlx::query_as!(
-        AuthProvider,
+    // Encrypt the client_secret at rest: store it in client_secret_encrypted
+    // and blank the plaintext copy inside config (compat: stays plaintext when
+    // no storage key is configured).
+    let (stored_config, encrypted) = prepare_config_for_write(pool, config).await?;
+    let row = sqlx::query_as!(
+        AuthProviderRow,
         r#"
-        INSERT INTO auth_providers (name, provider_type, enabled, config)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO auth_providers (name, provider_type, enabled, config, client_secret_encrypted)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id, name, provider_type, enabled, config,
+                  client_secret_encrypted,
                   created_at as "created_at: _",
                   updated_at as "updated_at: _",
                   last_test_at as "last_test_at: _",
@@ -127,11 +251,13 @@ pub async fn create_provider(
         name,
         provider_type,
         enabled,
-        config,
+        stored_config,
+        encrypted,
     )
     .fetch_one(pool)
     .await
-    .map_err(AppError::database_error)
+    .map_err(AppError::database_error)?;
+    Ok(assemble_provider(pool, row).await)
 }
 
 /// Update an auth_providers row. Pass `None` for fields you want to
@@ -143,15 +269,34 @@ pub async fn update_provider(
     enabled: Option<bool>,
     config: Option<&serde_json::Value>,
 ) -> Result<AuthProvider, AppError> {
-    sqlx::query_as!(
-        AuthProvider,
+    // Only touch the secret columns when `config` is being patched. When it is,
+    // encrypt the client_secret + blank its plaintext copy; the encrypted column
+    // is set to the new blob (which is NULL in compat mode, intentionally
+    // clearing any stale ciphertext so the now-plaintext config is the source).
+    // When config is None, both `config` and `client_secret_encrypted` are left
+    // untouched via the `config_provided` guard.
+    let config_provided = config.is_some();
+    let (stored_config, encrypted): (Option<serde_json::Value>, Option<Vec<u8>>) = match config {
+        Some(c) => {
+            let (sc, enc) = prepare_config_for_write(pool, c).await?;
+            (Some(sc), enc)
+        }
+        None => (None, None),
+    };
+    let row = sqlx::query_as!(
+        AuthProviderRow,
         r#"
         UPDATE auth_providers
         SET name = COALESCE($2, name),
             enabled = COALESCE($3, enabled),
-            config = COALESCE($4, config)
+            config = COALESCE($4, config),
+            client_secret_encrypted = CASE
+                WHEN $5 THEN $6
+                ELSE client_secret_encrypted
+            END
         WHERE id = $1
         RETURNING id, name, provider_type, enabled, config,
+                  client_secret_encrypted,
                   created_at as "created_at: _",
                   updated_at as "updated_at: _",
                   last_test_at as "last_test_at: _",
@@ -161,11 +306,14 @@ pub async fn update_provider(
         id,
         name,
         enabled,
-        config,
+        stored_config,
+        config_provided,
+        encrypted,
     )
     .fetch_one(pool)
     .await
-    .map_err(AppError::database_error)
+    .map_err(AppError::database_error)?;
+    Ok(assemble_provider(pool, row).await)
 }
 
 /// Delete an auth_providers row. CASCADE drops any user_auth_links
