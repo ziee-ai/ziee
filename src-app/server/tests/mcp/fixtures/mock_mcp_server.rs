@@ -393,6 +393,18 @@ async fn handle_post(
         return render(r, id, state.clone());
     }
 
+    // Default OK for `tools/list`: a live server should advertise (an empty
+    // set of) tools without the test having to program a response for the
+    // baseline case. Tests exercising error paths program explicit
+    // responses, which are consumed above before this fallback.
+    if method == "tools/list" {
+        return render(
+            MockResponse::JsonOk(serde_json::json!({ "tools": [] })),
+            id,
+            state.clone(),
+        );
+    }
+
     // Default: -32601 Method not found
     let body = serde_json::json!({
         "jsonrpc": "2.0",

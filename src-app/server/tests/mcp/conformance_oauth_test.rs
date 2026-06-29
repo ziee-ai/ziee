@@ -228,12 +228,17 @@ async fn unauthenticated_client_surfaces_401_without_token_flow() {
 async fn token_is_reacquired_on_mid_conversation_401() {
     let mock = MockMcpServer::start().await;
     mock.enable_oauth("mcp-client", "mcp-secret", "token-v1");
-    mock.on_method(
-        "tools/list",
+    // Two authorized tools/list dispatches reach the method queue: the first
+    // call and the post-refresh retry (the intervening 401 is rejected at the
+    // auth layer before dispatch, so it consumes no queued response). Program
+    // the 1-tool response for both.
+    let one_tool = || {
         MockResponse::JsonOk(serde_json::json!({
             "tools": [{ "name": "t", "description": "d", "inputSchema": { "type": "object" } }]
-        })),
-    );
+        }))
+    };
+    mock.on_method("tools/list", one_tool());
+    mock.on_method("tools/list", one_tool());
 
     let mut client = HttpMcpClient::new_with_oauth(
         server_config(mock.base_url()),
