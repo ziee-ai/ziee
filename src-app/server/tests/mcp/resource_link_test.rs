@@ -33,7 +33,11 @@ async fn user_id(server: &TestServer) -> Uuid {
 ///  - `ziee://` under the root  → ingested (byte round-trip), URI rewritten to
 ///                                `/api/files/{id}`, DB row `created_by="workflow"`
 ///  - `ziee://` OUTSIDE the root → rejected, not saved, URI blanked (guard #3)
-///  - `workflow_run_id = Some(..)` is accepted (documented no-op on this branch)
+///
+/// `workflow_run_id` is `None` here (the chat path): run-linking is no longer a no-op —
+/// passing a non-existent run id would FK-violate and orphan-delete the ingested file.
+/// The real run-link branch is exercised by
+/// `persist_links_run_link_attributes_ingested_file_to_real_run`.
 #[tokio::test]
 #[serial_test::serial(repos, file_storage)]
 async fn persist_ingests_ziee_under_root_and_handles_mixed_links() {
@@ -46,9 +50,11 @@ async fn persist_ingests_ziee_under_root_and_handles_mixed_links() {
         .connect(&server.database_url)
         .await
         .unwrap();
-    if !ziee::is_repos_initialized() {
-        ziee::init_repositories(pool.clone());
-    }
+    // ALWAYS (re-)point the global Repos at THIS test's DB. `init_repositories`
+    // swaps the active pool on every call; gating it behind `is_repos_initialized`
+    // would leave Repos bound to whichever earlier serial test initialized first
+    // (whose per-test DB is already torn down) → cross-DB FK failures here.
+    ziee::init_repositories(pool.clone());
     let store_dir = std::env::temp_dir().join(format!("ziee_rl_store_{}", Uuid::new_v4()));
     std::fs::create_dir_all(&store_dir).unwrap();
     ziee::init_file_storage(&store_dir);
@@ -79,7 +85,7 @@ async fn persist_ingests_ziee_under_root_and_handles_mixed_links() {
         None,
         None,
         "workflow",
-        Some(Uuid::new_v4()), // workflow_run_id accepted (no-op on this branch)
+        None, // chat path: no run-link (run-linking is exercised by the real-run test)
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
@@ -313,9 +319,11 @@ async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
         .connect(&server.database_url)
         .await
         .unwrap();
-    if !ziee::is_repos_initialized() {
-        ziee::init_repositories(pool.clone());
-    }
+    // ALWAYS (re-)point the global Repos at THIS test's DB. `init_repositories`
+    // swaps the active pool on every call; gating it behind `is_repos_initialized`
+    // would leave Repos bound to whichever earlier serial test initialized first
+    // (whose per-test DB is already torn down) → cross-DB FK failures here.
+    ziee::init_repositories(pool.clone());
     let store_dir = std::env::temp_dir().join(format!("ziee_rl_store_{}", Uuid::new_v4()));
     std::fs::create_dir_all(&store_dir).unwrap();
     ziee::init_file_storage(&store_dir);
@@ -422,9 +430,11 @@ async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
         .connect(&server.database_url)
         .await
         .unwrap();
-    if !ziee::is_repos_initialized() {
-        ziee::init_repositories(pool.clone());
-    }
+    // ALWAYS (re-)point the global Repos at THIS test's DB. `init_repositories`
+    // swaps the active pool on every call; gating it behind `is_repos_initialized`
+    // would leave Repos bound to whichever earlier serial test initialized first
+    // (whose per-test DB is already torn down) → cross-DB FK failures here.
+    ziee::init_repositories(pool.clone());
     let store_dir = std::env::temp_dir().join(format!("ziee_rl_chat_store_{}", Uuid::new_v4()));
     std::fs::create_dir_all(&store_dir).unwrap();
     ziee::init_file_storage(&store_dir);
