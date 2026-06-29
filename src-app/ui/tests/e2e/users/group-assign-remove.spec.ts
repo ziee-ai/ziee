@@ -59,12 +59,12 @@ test.describe('Users — group assign + remove workflow', () => {
     await navigateToUsers(page, baseURL)
     await openUserGroupsDrawer(page, username)
 
-    // Open the AssignGroupDrawer (single-group Select) and assign.
+    // Open the AssignGroupDrawer (multi-group checkboxes) and assign.
     await byTestId(page, 'user-groups-drawer-assign-button').click()
     await byTestId(page, 'user-assign-group-form').waitFor({ state: 'visible' })
-    await byTestId(page, 'user-assign-group-select').click()
+    await byTestId(page, 'user-assign-group-checkboxes').waitFor({ state: 'visible' })
     await page
-      .locator('[data-testid^="user-assign-group-select-opt-"]')
+      .locator('[data-testid^="user-assign-group-checkboxes-opt-"]')
       .filter({ hasText: groupName })
       .click()
     await byTestId(page, 'user-assign-group-submit-button').click()
