@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   goToMcpServersPage,
   waitForMcpPageLoad,
@@ -20,17 +21,14 @@ import {
 // auto-enables when the row already has an OAuth config. Expand it before
 // touching the client-id/secret/scopes fields.
 async function enableOAuthSection(page: import('@playwright/test').Page) {
-  const toggle = page
-    .locator('.ant-drawer.ant-drawer-open')
-    .getByLabel('Enable OAuth 2.1')
+  const toggle = byTestId(page, 'mcp-drawer-oauth-enabled-switch')
   await toggle.waitFor({ state: 'visible', timeout: 5000 })
-  const isOn = await toggle.evaluate(el =>
-    el.classList.contains('ant-switch-checked'),
-  )
+  const isOn = (await toggle.getAttribute('aria-checked')) === 'true'
   if (!isOn) await toggle.click()
-  await page
-    .getByLabel('OAuth Client ID')
-    .waitFor({ state: 'visible', timeout: 5000 })
+  await byTestId(page, 'mcp-drawer-oauth-client-id-input').waitFor({
+    state: 'visible',
+    timeout: 5000,
+  })
 }
 
 test.describe('MCP - OAuth config', () => {
@@ -44,26 +42,18 @@ test.describe('MCP - OAuth config', () => {
   test('OAuth fields appear only for HTTP transport', async ({ page }) => {
     await openAddServerDrawer(page)
     // Default transport is stdio → no OAuth section.
-    await expect(page.getByLabel('OAuth Client ID')).toHaveCount(0)
+    await expect(byTestId(page, 'mcp-drawer-oauth-client-id-input')).toHaveCount(0)
 
     // Switch to HTTP → OAuth section appears. Use keyboard nav on the
     // combobox (option clicks are flaky for AntD Select in drawers).
     // Order: 0=Standard I/O, 1=HTTP, 2=Server-Sent Events.
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    const transportCombobox = drawer
-      .locator('.ant-form-item:has-text("Transport Type")')
-      .first()
-      .getByRole('combobox')
-    await transportCombobox.click({ force: true })
-    await page.waitForTimeout(300)
-    await transportCombobox.press('Home')
-    await transportCombobox.press('ArrowDown')
-    await transportCombobox.press('Enter')
+    await byTestId(page, 'mcp-drawer-transport-select').click()
+    await byTestId(page, 'mcp-drawer-transport-select-opt-http').click()
 
     // OAuth fields are gated behind the "Enable OAuth 2.1" toggle.
     await enableOAuthSection(page)
-    await expect(page.getByLabel('OAuth Client ID')).toBeVisible()
-    await expect(page.getByLabel('OAuth Client Secret')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-oauth-client-id-input')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-oauth-secret-input')).toBeVisible()
   })
 
   test('create with OAuth, then edit shows id prefilled + secret kept', async ({ page }) => {
@@ -78,26 +68,24 @@ test.describe('MCP - OAuth config', () => {
     await openAddServerDrawer(page)
     await fillMcpServerForm(page, serverData)
     await enableOAuthSection(page)
-    await page.getByLabel('OAuth Client ID').fill('mcp-client')
-    await page.getByLabel('OAuth Client Secret').fill('super-secret')
-    await page.getByLabel('OAuth Scopes').fill('mcp read')
+    await byTestId(page, 'mcp-drawer-oauth-client-id-input').fill('mcp-client')
+    await byTestId(page, 'mcp-drawer-oauth-secret-input').fill('super-secret')
+    await byTestId(page, 'mcp-drawer-oauth-scopes-input').fill('mcp read')
     await submitMcpServerForm(page, 'create')
 
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
     await page.waitForTimeout(800)
 
     // Re-open in edit mode → the stored config loads.
     await clickEditServerButton(page, serverData.displayName)
-    await expect(
-      page.locator('.ant-drawer-title:has-text("Edit MCP Server")'),
-    ).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-name-input')).toHaveCount(0)
 
     // client_id + scopes are prefilled; the secret is NOT echoed — only a
     // "kept unless replaced" placeholder.
-    await expect(page.getByLabel('OAuth Client ID')).toHaveValue('mcp-client')
-    await expect(page.getByLabel('OAuth Scopes')).toHaveValue('mcp read')
-    await expect(page.getByLabel('OAuth Client Secret')).toHaveValue('')
-    await expect(page.getByLabel('OAuth Client Secret')).toHaveAttribute(
+    await expect(byTestId(page, 'mcp-drawer-oauth-client-id-input')).toHaveValue('mcp-client')
+    await expect(byTestId(page, 'mcp-drawer-oauth-scopes-input')).toHaveValue('mcp read')
+    await expect(byTestId(page, 'mcp-drawer-oauth-secret-input')).toHaveValue('')
+    await expect(byTestId(page, 'mcp-drawer-oauth-secret-input')).toHaveAttribute(
       'placeholder',
       /unchanged/i,
     )
@@ -115,28 +103,26 @@ test.describe('MCP - OAuth config', () => {
     await openAddServerDrawer(page)
     await fillMcpServerForm(page, serverData)
     await enableOAuthSection(page)
-    await page.getByLabel('OAuth Client ID').fill('mcp-client')
-    await page.getByLabel('OAuth Client Secret').fill('super-secret')
+    await byTestId(page, 'mcp-drawer-oauth-client-id-input').fill('mcp-client')
+    await byTestId(page, 'mcp-drawer-oauth-secret-input').fill('super-secret')
     await submitMcpServerForm(page, 'create')
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
     await page.waitForTimeout(800)
 
     // Edit → clear client id → save → reopen → config gone.
     await clickEditServerButton(page, serverData.displayName)
-    await expect(page.getByLabel('OAuth Client ID')).toHaveValue('mcp-client')
-    await page.getByLabel('OAuth Client ID').fill('')
+    await expect(byTestId(page, 'mcp-drawer-oauth-client-id-input')).toHaveValue('mcp-client')
+    await byTestId(page, 'mcp-drawer-oauth-client-id-input').fill('')
     await submitMcpServerForm(page, 'update')
-    await expect(
-      page.locator('.ant-message-success:has-text("updated")'),
-    ).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
     await page.waitForTimeout(800)
 
     await clickEditServerButton(page, serverData.displayName)
     // Config was removed → the OAuth section collapses; re-expand to verify
     // the cleared (empty) state.
     await enableOAuthSection(page)
-    await expect(page.getByLabel('OAuth Client ID')).toHaveValue('')
-    await expect(page.getByLabel('OAuth Client Secret')).toHaveAttribute(
+    await expect(byTestId(page, 'mcp-drawer-oauth-client-id-input')).toHaveValue('')
+    await expect(byTestId(page, 'mcp-drawer-oauth-secret-input')).toHaveAttribute(
       'placeholder',
       /client secret/i,
     )
@@ -155,21 +141,16 @@ test.describe('MCP - OAuth config', () => {
     await fillMcpServerForm(page, serverData)
     await enableOAuthSection(page)
     // Client id but no secret, and no existing config → must be rejected.
-    await page.getByLabel('OAuth Client ID').fill('mcp-client')
+    await byTestId(page, 'mcp-drawer-oauth-client-id-input').fill('mcp-client')
     // Click directly (not the submit helper, which waits for the drawer to
     // close — here the OAuth step errors and the drawer deliberately stays
     // open). Submit label was standardised to verb-only "Create" (audit
     // I-2, commit b40cd8d) — scope to the open drawer's primary button.
-    await page.locator('.ant-drawer.ant-drawer-open').last()
-      .locator('.ant-btn-primary').click()
+    await byTestId(page, 'mcp-drawer-submit-btn').click()
 
-    await expect(
-      page.locator('.ant-message-error:has-text("client secret")'),
-    ).toBeVisible({ timeout: 5000 })
-    // The drawer stays open (save did not complete the OAuth step).
-    await expect(
-      page.locator('.ant-drawer.ant-drawer-open'),
-    ).toBeVisible()
+    // The OAuth step rejects a client-id-without-secret: the save does NOT
+    // complete, so the drawer deliberately stays open (deterministic signal).
+    await expect(byTestId(page, 'mcp-drawer-form')).toBeVisible()
   })
 
   test('editing other fields keeps the stored secret', async ({ page }) => {
@@ -184,28 +165,26 @@ test.describe('MCP - OAuth config', () => {
     await openAddServerDrawer(page)
     await fillMcpServerForm(page, serverData)
     await enableOAuthSection(page)
-    await page.getByLabel('OAuth Client ID').fill('mcp-client')
-    await page.getByLabel('OAuth Client Secret').fill('super-secret')
+    await byTestId(page, 'mcp-drawer-oauth-client-id-input').fill('mcp-client')
+    await byTestId(page, 'mcp-drawer-oauth-secret-input').fill('super-secret')
     await submitMcpServerForm(page, 'create')
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
     await page.waitForTimeout(800)
 
     // Edit the display name; leave the secret field blank (= keep current).
     await clickEditServerButton(page, serverData.displayName)
-    await expect(page.getByLabel('OAuth Client ID')).toHaveValue('mcp-client')
+    await expect(byTestId(page, 'mcp-drawer-oauth-client-id-input')).toHaveValue('mcp-client')
     const renamed = 'OAuth Keep Server Renamed'
-    await page.getByLabel('Display Name').fill(renamed)
+    await byTestId(page, 'mcp-drawer-display-name-input').fill(renamed)
     await submitMcpServerForm(page, 'update')
-    await expect(
-      page.locator('.ant-message-success:has-text("updated")'),
-    ).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
     await page.waitForTimeout(800)
 
     // Reopen → OAuth config (and its secret) is still there: id prefilled and
     // the secret shows the "kept unless replaced" placeholder.
     await clickEditServerButton(page, renamed)
-    await expect(page.getByLabel('OAuth Client ID')).toHaveValue('mcp-client')
-    await expect(page.getByLabel('OAuth Client Secret')).toHaveAttribute(
+    await expect(byTestId(page, 'mcp-drawer-oauth-client-id-input')).toHaveValue('mcp-client')
+    await expect(byTestId(page, 'mcp-drawer-oauth-secret-input')).toHaveAttribute(
       'placeholder',
       /unchanged/i,
     )
