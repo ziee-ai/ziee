@@ -313,6 +313,16 @@ all four via the `*` wildcard.
 
 ### Host package install per distro
 
+**Dev/CI test bootstrap:** for running the test suites on a fresh box, run
+`./scripts/dev-test-bootstrap.sh` (idempotent) — it installs the host deps below,
+sets the AppArmor sysctl, adds the docker group, and pre-installs Playwright
+browsers. On Ubuntu ≥ 23.10, bwrap needs unprivileged user namespaces enabled or
+tier4/tier6 fail with `bwrap: setting up uid map: Permission denied` — the
+bootstrap runs `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`
+(resets on reboot). Run the **sandbox tiers as a separate `--test-threads=1`
+pass** (they each spawn squashfuse + bwrap + a server and contend under high
+parallelism); the rest of the suite runs fully parallel.
+
 **Runtime deps** (what operators consuming a binary release need):
 
 ```bash

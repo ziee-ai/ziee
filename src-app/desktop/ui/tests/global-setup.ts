@@ -34,6 +34,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 export default async function globalSetup(_config: FullConfig) {
   console.log('\n🚀 Starting Desktop E2E Test Infrastructure...\n')
 
+  // Ensure the Playwright browser binary is present (idempotent; fast when
+  // already installed). Baked in so no manual `npx playwright install` is
+  // needed for any desktop-e2e invocation.
+  try {
+    console.log('🌐 Ensuring Playwright chromium is installed...')
+    execSync('npx playwright install chromium', { stdio: 'inherit' })
+  } catch (e) {
+    console.warn('⚠️  playwright install chromium failed (continuing):', e)
+  }
+
   // Allocate a test run ID (used to namespace the Docker container +
   // config files) and stash it in env for teardown / test-context.
   const runId = process.env.TEST_RUN_ID || crypto.randomBytes(4).toString('hex')

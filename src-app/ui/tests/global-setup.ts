@@ -18,6 +18,18 @@ export default async function globalSetup(_config: FullConfig) {
 
   console.log('\n🚀 Starting Playwright E2E Test Infrastructure...\n')
 
+  // Ensure the Playwright browser binary is present. Idempotent + fast when
+  // already installed (just verifies the cache); on a fresh machine/CI it
+  // downloads chromium so the run doesn't fail every test with
+  // "Executable doesn't exist ... npx playwright install". Baked in here so no
+  // manual `npx playwright install` step is needed for any e2e invocation.
+  try {
+    console.log('🌐 Ensuring Playwright chromium is installed...')
+    execSync('npx playwright install chromium', { stdio: 'inherit' })
+  } catch (e) {
+    console.warn('⚠️  playwright install chromium failed (continuing):', e)
+  }
+
   // Clean up stale port locks from previous crashed/killed test runs
   cleanupStaleLocks()
 
