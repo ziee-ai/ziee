@@ -80,16 +80,20 @@ test.describe('desktop host-mount settings', () => {
 
     // Reach the page the way a user does: open Settings, click the entry.
     await page.goto('/settings')
-    await page.getByText(/Host Mount Policy/i).first().click()
+    await page.getByTestId('desktop-settings-menu-item-host-mount').click()
 
-    await expect(page.getByText(/Allow host-folder mounting/i)).toBeVisible({
-      timeout: 15_000,
-    })
-    await expect(page.getByText(/Allowed path prefixes/i)).toBeVisible()
+    // The policy card + its rows render (master-enable toggle + the
+    // allowed-prefixes editor).
+    await expect(
+      page.getByTestId('desktop-hostmount-policy-enabled-switch'),
+    ).toBeVisible({ timeout: 15_000 })
+    await expect(
+      page.getByTestId('desktop-hostmount-policy-prefixes-select'),
+    ).toBeVisible()
 
     // Toggling read-write enables Save; saving sends the new policy.
-    await page.getByRole('switch').nth(1).click()
-    const save = page.getByRole('button', { name: 'Save' })
+    await page.getByTestId('desktop-hostmount-policy-readwrite-switch').click()
+    const save = page.getByTestId('desktop-hostmount-policy-save-btn')
     await expect(save).toBeEnabled()
     await save.click()
 
@@ -109,8 +113,8 @@ test.describe('desktop host-mount settings', () => {
 
     await page.goto('/settings')
     // The desktop-only module registers a "Host Mount Policy" admin entry.
-    await expect(page.getByText(/Host Mount Policy/i).first()).toBeVisible({
-      timeout: 15_000,
-    })
+    await expect(
+      page.getByTestId('desktop-settings-menu-item-host-mount'),
+    ).toBeVisible({ timeout: 15_000 })
   })
 })

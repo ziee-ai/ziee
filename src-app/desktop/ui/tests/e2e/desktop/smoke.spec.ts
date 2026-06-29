@@ -7,8 +7,8 @@ test.describe('Desktop App Smoke Tests', () => {
     // Wait for the app to load
     await expect(page.locator('#root')).toBeVisible()
 
-    // Verify the app container is rendered
-    await expect(page.locator('.ant-app')).toBeVisible()
+    // Verify the app container (mounted by App.tsx) is rendered.
+    await expect(page.getByTestId('app-root')).toBeVisible()
   })
 
   test('should display the main navigation', async ({ page }) => {

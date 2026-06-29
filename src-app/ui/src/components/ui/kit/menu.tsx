@@ -40,13 +40,14 @@ function labelText(label: React.ReactNode): string | undefined {
   return typeof label === 'string' ? label : undefined
 }
 
-function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid }: {
+function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, groupTestid }: {
   items: MenuItem[]
   selectedSet: Set<string>
   onSelect?: (k: string) => void
   locked: boolean
   collapsed: boolean
   itemTestid?: (key: string) => string | undefined
+  groupTestid?: (index: number) => string | undefined
 }) {
   return (
     <>
@@ -54,11 +55,11 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid }: 
         if ('type' in it && it.type === 'divider') return <li key={`d${i}`} role="separator" className="my-1 h-px bg-border" />
         if ('type' in it && it.type === 'group') {
           return (
-            <li key={`g${i}`}>
+            <li key={`g${i}`} data-testid={groupTestid?.(i)}>
               {/* group caption is decorative chrome — hidden in the collapsed rail. */}
               {!collapsed && <div className="px-3 py-1 text-xs font-medium text-muted-foreground">{it.label}</div>}
               <ul className="contents">
-                <Items items={it.children} selectedSet={selectedSet} onSelect={onSelect} locked={locked} collapsed={collapsed} itemTestid={itemTestid} />
+                <Items items={it.children} selectedSet={selectedSet} onSelect={onSelect} locked={locked} collapsed={collapsed} itemTestid={itemTestid} groupTestid={groupTestid} />
               </ul>
             </li>
           )
@@ -109,6 +110,10 @@ export function Menu({ items, selectedKey, selectedKeys, onSelect, mode = 'verti
     (k: string) => (testid ? `${testid}-item-${k}` : undefined),
     [testid],
   )
+  const groupTestid = React.useCallback(
+    (index: number) => (testid ? `${testid}-group-${index}` : undefined),
+    [testid],
+  )
   // Merge the single + multi selection inputs into one O(1) lookup set.
   const selectedSet = React.useMemo(() => {
     const set = new Set(selectedKeys ?? [])
@@ -118,7 +123,7 @@ export function Menu({ items, selectedKey, selectedKeys, onSelect, mode = 'verti
   return (
     <nav aria-label={ariaLabel} style={style} data-testid={testid}>
       <ul className={cn(mode === 'horizontal' ? 'flex items-center gap-1' : 'flex flex-col gap-0.5', className)}>
-        <Items items={items} selectedSet={selectedSet} onSelect={onSelect} locked={!!s.disabled} collapsed={collapsed} itemTestid={itemTestid} />
+        <Items items={items} selectedSet={selectedSet} onSelect={onSelect} locked={!!s.disabled} collapsed={collapsed} itemTestid={itemTestid} groupTestid={groupTestid} />
       </ul>
     </nav>
   )

@@ -36,10 +36,14 @@ test.describe('desktop auto-login', () => {
 
     // While the retries happen, the spinner caption is visible. Wait
     // long enough for two backoff cycles (500ms + 1s + retry budget).
-    await expect(page.getByText(/starting up/i)).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByTestId('desktop-bootstrap-starting')).toBeVisible({
+      timeout: 5_000,
+    })
 
     // After ~3.5 s the third call succeeds → spinner gone, no AuthPage.
-    await expect(page.getByText(/starting up/i)).toBeHidden({ timeout: 10_000 })
+    await expect(page.getByTestId('desktop-bootstrap-starting')).toBeHidden({
+      timeout: 10_000,
+    })
     await expect(
       page.getByRole('textbox', { name: /username/i }),
     ).toHaveCount(0)
@@ -61,7 +65,7 @@ test.describe('desktop auto-login', () => {
     // 30 s wall-clock budget — bump the test timeout accordingly. The
     // failure message is the contract the user sees if the embedded
     // server never recovers.
-    await expect(page.getByText(/backend failed to start/i)).toBeVisible({
+    await expect(page.getByTestId('desktop-bootstrap-failed')).toBeVisible({
       timeout: 35_000,
     })
     // Even on failure the AuthPage must NOT appear — desktop has no
