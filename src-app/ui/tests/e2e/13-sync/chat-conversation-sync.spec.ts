@@ -90,13 +90,13 @@ test.describe('Realtime sync — conversation (cross-user isolation)', () => {
 
       // Positive control: the owner's OTHER device lists it live (no reload),
       // which also proves the SSE delivery window has elapsed.
-      await expect(pageA2.getByText(title).first()).toBeVisible({
+      await expect(pageA2.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: title })).toBeVisible({
         timeout: 15_000,
       })
 
       // Isolation: the different user's device — within the same delivery
       // window — never sees the admin's conversation (owner-scoped audience).
-      await expect(pageB.getByText(title)).not.toBeVisible()
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: title })).not.toBeVisible()
     } finally {
       await ctxA2.close()
       await ctxB.close()

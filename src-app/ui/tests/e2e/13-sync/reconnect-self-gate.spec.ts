@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   login,
@@ -46,7 +47,7 @@ test.describe('Sync reconnect self-gating', () => {
     // Land on the app shell.
     await page.goto(`${baseURL}/`)
     await expect(
-      page.getByRole('menuitem', { name: /New Chat/ }),
+      byTestId(page, 'chat-history-new-chat-btn'),
     ).toBeVisible({ timeout: 20_000 })
 
     // Record any forbidden API response from here on.
@@ -68,7 +69,7 @@ test.describe('Sync reconnect self-gating', () => {
 
     // The app is still usable and NO store fired a forbidden refetch.
     await expect(
-      page.getByRole('menuitem', { name: /New Chat/ }),
+      byTestId(page, 'chat-history-new-chat-btn'),
     ).toBeVisible()
     expect(
       forbidden,

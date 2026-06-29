@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   createTestUser,
   getAdminToken,
@@ -37,7 +38,7 @@ async function gotoSettings(
   // The Settings heading is always present once the page mounts — every
   // user (admin or not) sees at least the "General" entry.
   await expect(
-    page.getByRole('heading', { name: /^Settings$/ }),
+    byTestId(page, 'settings-nav-menu'),
   ).toBeVisible({ timeout: 15_000 })
 }
 

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
@@ -14,14 +15,12 @@ import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 async function gotoWebSearch(page: import('@playwright/test').Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/web-search`)
   await expect(
-    page.getByRole('heading', { name: 'Web Search' }),
+    byTestId(page, 'websearch-global-card'),
   ).toBeVisible({ timeout: 30000 })
 }
 
 function enableSwitch(page: import('@playwright/test').Page) {
-  return page
-    .locator('.ant-form-item:has-text("Enable web search")')
-    .getByRole('switch')
+  return byTestId(page, 'websearch-global-enabled')
 }
 
 test.describe('Realtime sync — web search settings (cross-window)', () => {

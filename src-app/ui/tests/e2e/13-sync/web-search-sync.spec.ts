@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 // audit id all-fd85458224a6 — realtime sync for the web_search_settings
@@ -16,7 +17,7 @@ async function gotoWebSearch(
   await page.goto(`${baseURL}/settings/web-search`)
   await page.waitForLoadState('load')
   await expect(
-    page.getByRole('heading', { name: 'Web Search' }),
+    byTestId(page, 'websearch-global-card'),
   ).toBeVisible({ timeout: 30_000 })
 }
 

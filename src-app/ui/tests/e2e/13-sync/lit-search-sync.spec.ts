@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 // Realtime sync for the `lit_search_settings` singleton entity. When an admin
@@ -23,12 +24,12 @@ async function gotoLiterature(
   await page.goto(`${baseURL}${SETTINGS_URL}`)
   await page.waitForLoadState('load')
   await expect(
-    page.getByRole('heading', { name: 'Literature Search' }),
+    byTestId(page, 'lit-global-card'),
   ).toBeVisible({ timeout: 30_000 })
 }
 
 function completenessSwitch(page: import('@playwright/test').Page) {
-  return page.getByRole('switch', { name: 'Show completeness estimate' })
+  return byTestId(page, 'lit-global-completeness-switch')
 }
 
 test.describe('Realtime sync — lit_search_settings', () => {
