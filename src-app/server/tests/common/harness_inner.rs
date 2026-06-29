@@ -105,6 +105,8 @@ pub struct TestServer {
     /// test contaminates the seed every other test reads. Dropped (tree
     /// deleted) at test end.
     _hub_tempdir: tempfile::TempDir,
+    /// Per-test isolated data_dir (mutable state); dropped at test end.
+    _data_tempdir: tempfile::TempDir,
 }
 
 /// Repo-relative shared cache dir for tests. The test harness injects
@@ -126,6 +128,95 @@ pub fn shared_test_app_data_dir() -> PathBuf {
         .expect("repo root walk");
     fs::create_dir_all(&path).expect("create shared test app_data_dir");
     path
+}
+
+/// Per-test isolated `app.data_dir` that keeps the EXPENSIVE binary caches
+/// shared. Each test gets a fresh TempDir for its MUTABLE state
+/// (`files/`, `sandboxes/`, `skills/`, `workflows/`, …) — which is what makes
+/// the suite safe to run WITHOUT `--test-threads=1` — while the read-only
+/// extracted caches (`bin/` = pandoc/pdfium/uv/bun, `llm-engines/`,
+/// `lit-cache/`) are SYMLINKED in from the shared `.ziee-cache` dir so the
+/// hundreds-of-MB extraction still happens once per `cargo test` run, not once
+/// per test. The TempDir is held on `TestServer` and dropped (tree deleted) at
+/// test end. Non-unix: falls back to the shared dir (perf isolation only
+/// matters where symlinks exist; the CI parallel target is linux).
+pub fn make_isolated_data_dir() -> tempfile::TempDir {
+    let shared = shared_test_app_data_dir();
+    let td = tempfile::Builder::new()
+        .prefix("ziee-test-data-")
+        .tempdir()
+        .expect("create per-test data_dir TempDir");
+    // Symlink the read-only / content-addressed caches so they stay shared.
+    for sub in ["bin", "llm-engines", "lit-cache"] {
+        let target = shared.join(sub);
+        fs::create_dir_all(&target).ok();
+        #[cfg(unix)]
+        {
+            let _ = std::os::unix::fs::symlink(&target, td.path().join(sub));
+        }
+    }
+    td
+}
+
+/// Name of the fully-migrated TEMPLATE database. Per-test DBs are cloned from
+/// it via `CREATE DATABASE ... TEMPLATE`, so migrations run exactly ONCE per
+/// test process instead of once per test — eliminating the per-test migration
+/// races that broke parallel runs (a half-applied schema → "relation does not
+/// exist") and making DB setup dramatically faster (a byte-copy vs replaying
+/// 117 migrations per test).
+const TEST_TEMPLATE_DB: &str = "ziee_test_template";
+static TEST_TEMPLATE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+
+/// Build the migrated template DB exactly once per process (the OnceCell makes
+/// every concurrent test await the single build before any of them clone). The
+/// template must have NO active connections when a clone runs, so we close our
+/// pools and terminate any stragglers before returning.
+async fn ensure_test_template(admin_url: &str) {
+    TEST_TEMPLATE
+        .get_or_init(|| async {
+            let admin = PgPoolOptions::new()
+                .max_connections(1)
+                .connect(admin_url)
+                .await
+                .expect("connect postgres to build test template");
+            let term = format!(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{TEST_TEMPLATE_DB}' AND pid <> pg_backend_pid()"
+            );
+            let _ = sqlx::query(&term).execute(&admin).await;
+            // Rebuild fresh each process so migration changes are picked up.
+            let _ = sqlx::query(&format!("DROP DATABASE IF EXISTS {TEST_TEMPLATE_DB}"))
+                .execute(&admin)
+                .await;
+            sqlx::query(&format!("CREATE DATABASE {TEST_TEMPLATE_DB}"))
+                .execute(&admin)
+                .await
+                .expect("create test template database");
+            admin.close().await;
+
+            // Migrate the template with the SAME migrator the server uses on boot.
+            let mut tmpl = url::Url::parse(admin_url).expect("admin url");
+            tmpl.set_path(TEST_TEMPLATE_DB);
+            let tmpl_pool = PgPoolOptions::new()
+                .max_connections(1)
+                .connect(tmpl.as_str())
+                .await
+                .expect("connect template database");
+            sqlx::migrate!("./migrations")
+                .run(&tmpl_pool)
+                .await
+                .expect("migrate test template database");
+            tmpl_pool.close().await;
+
+            // Drop any lingering backend on the template so clones can copy it.
+            let admin2 = PgPoolOptions::new()
+                .max_connections(1)
+                .connect(admin_url)
+                .await
+                .expect("connect postgres to quiesce template");
+            let _ = sqlx::query(&term).execute(&admin2).await;
+            admin2.close().await;
+        })
+        .await;
 }
 
 /// Options for spinning up a TestServer with non-default features.
@@ -270,7 +361,11 @@ impl TestServer {
         //     sandbox-enabled test overrides workspace_root below to a
         //     per-test TempDir for isolation. Tests that don't enable
         //     the sandbox don't touch this dir.
-        let shared_data_dir = shared_test_app_data_dir();
+        // Per-test isolated data_dir (mutable state fresh per test; binary
+        // caches symlinked-in shared). This is what lets the suite run without
+        // `--test-threads=1`. Held on TestServer so its tree is reaped at end.
+        let data_tempdir = make_isolated_data_dir();
+        let data_dir_path = data_tempdir.path().to_path_buf();
 
         // Rate-limit override: default to very-high caps so sequential test
         // sweeps against the single 127.0.0.1 bucket don't self-429; the
@@ -348,7 +443,7 @@ secrets:
   storage_key: "test-storage-key-for-pgcrypto-min-32-chars-long"
 "#,
             host, port, username, password, database_name, server_port,
-            shared = shared_data_dir.display(),
+            shared = data_dir_path.display(),
             rl_enabled = rl_enabled,
             rl_per_sec = rl_per_sec,
             rl_burst = rl_burst,
@@ -434,17 +529,24 @@ secrets:
 
         fs::write(&temp_config_path, config).expect("Failed to write temporary config");
 
-        // Create the test database
+        // Ensure the fully-migrated template exists (built once per process),
+        // then clone the per-test DB from it — no migrations run per test, so
+        // nothing races and there's no half-applied schema under parallelism.
+        ensure_test_template(&db_url).await;
+
         let pool = PgPoolOptions::new()
             .max_connections(1)
             .connect(&db_url)
             .await
             .expect("Failed to connect to PostgreSQL - ensure docker compose is running");
 
-        sqlx::query(&format!("CREATE DATABASE {}", database_name))
-            .execute(&pool)
-            .await
-            .expect("Failed to create test database");
+        sqlx::query(&format!(
+            "CREATE DATABASE {} TEMPLATE {}",
+            database_name, TEST_TEMPLATE_DB
+        ))
+        .execute(&pool)
+        .await
+        .expect("Failed to create test database from template");
 
         pool.close().await;
 
@@ -552,6 +654,7 @@ secrets:
             // workspace_root field removed — see struct doc
             _sandbox_cache_tempdir: opts.sandbox_cache_tempdir.clone(),
             _hub_tempdir: hub_tempdir,
+            _data_tempdir: data_tempdir,
         }
     }
 
