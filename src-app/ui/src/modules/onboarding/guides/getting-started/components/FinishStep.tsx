@@ -38,7 +38,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
       <div className="space-y-2 mb-6">
         <div className="flex items-center gap-2">
           <CircleCheck className="text-success" />
-          <Text>
+          <Text data-testid="onboarding-finish-apikeys-summary">
             {apiKeysCount > 0
               ? `${apiKeysCount} API key${apiKeysCount > 1 ? 's' : ''} saved`
               : 'No API keys added (you can add them later in Settings)'}

@@ -191,7 +191,7 @@ export default function OnboardingPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header with steps */}
         <div className="p-4 md:p-6 border-b border-border bg-card">
-          <Title level={4} className="!mb-3">
+          <Title level={4} className="!mb-3" data-testid="onboarding-guide-title">
             {guide.title}
           </Title>
           <Progress

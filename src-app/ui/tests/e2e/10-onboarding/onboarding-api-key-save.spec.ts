@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -37,9 +38,9 @@ test.describe('Onboarding — API key save', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
 
     // Enter a key into the (selected provider's) Password input.
     const keyInput = page.locator('input[type="password"]').first()
@@ -47,15 +48,15 @@ test.describe('Onboarding — API key save', () => {
     await keyInput.fill('sk-onboarding-test-key-123')
 
     // Next runs the beforeNext hook → saves the key. Walk to Finish.
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'Persistent Memory' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-memory-setup')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // FinishStep summary reflects the saved key (not "No API keys added").
-    await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText(/API key.*saved/i)).toBeVisible()
-    await expect(page.getByText(/No API keys added/i)).toHaveCount(0)
+    await expect(byTestId(page, 'onboarding-step-finish')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'onboarding-finish-apikeys-summary')).toContainText(/API key.*saved/i)
+    await expect(byTestId(page, 'onboarding-finish-apikeys-summary')).not.toContainText(/No API keys added/i)
   })
 })
