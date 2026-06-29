@@ -151,6 +151,7 @@ static SHUTDOWN: Lazy<tokio::sync::Notify> = Lazy::new(tokio::sync::Notify::new)
 
 /// Signal every in-flight engine download to interrupt and tear down. Returns
 /// the number of non-terminal tasks that were still running.
+#[allow(dead_code)] // called from main.rs (binary crate); invisible to the lib's dead-code analysis
 pub async fn shutdown_all() -> usize {
     let mut count = 0usize;
     for entry in DOWNLOAD_TASKS.iter() {

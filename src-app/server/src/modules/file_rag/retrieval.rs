@@ -181,6 +181,7 @@ const SELECT_COLS: &str =
 /// / half-dimensions) race test can assert the `embedding IS NOT NULL` filter
 /// excludes mid-rebuild rows without exposing `SemanticHit`/`HalfVector`.
 #[doc(hidden)]
+#[allow(dead_code)] // pub test-only seam; consumed by tests/file_rag/mod.rs via the ziee::file_rag_search re-export
 pub async fn vector_search_hit_count_for_test(
     scope_ids: &[Uuid],
     user_id: Uuid,
@@ -194,6 +195,7 @@ pub async fn vector_search_hit_count_for_test(
 
 /// Test-only: number of FTS-arm hits. Re-exported alongside the vector wrapper.
 #[doc(hidden)]
+#[allow(dead_code)] // pub test-only seam; consumed by tests/file_rag/mod.rs via the ziee::file_rag_search re-export
 pub async fn fts_search_hit_count_for_test(
     scope_ids: &[Uuid],
     user_id: Uuid,

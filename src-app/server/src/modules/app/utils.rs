@@ -145,6 +145,9 @@ pub fn is_valid_email(email: &str) -> bool {
     true
 }
 
+/// Superseded by `auth::password::validate_password_strength`; retained as a
+/// test-only helper. No production callers.
+#[cfg(test)]
 pub fn is_strong_password(password: &str) -> bool {
     password.len() >= 8
 }
