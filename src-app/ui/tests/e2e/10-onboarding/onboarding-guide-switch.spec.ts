@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -22,7 +23,7 @@ import {
  * spec therefore exercises the reachable behavior of the same selector
  * control: re-selecting the guide mid-flow discards a manual "Back" and
  * snaps to the resume step. (If a second guide is ever registered, the
- * same `getByText(<guide title>)` click drives a genuine A->B switch.)
+ * same guide-card click drives a genuine A->B switch.)
  */
 
 async function freshUser(apiURL: string, name: string) {
@@ -54,28 +55,26 @@ test.describe('Onboarding — guide selector', () => {
     // The sidebar lists the registered guide as a clickable card (its
     // description is unique to the sidebar entry, so it disambiguates from
     // the right-pane "Getting Started" heading).
-    const guideCard = page.getByText(
-      'Set up your AI providers and MCP servers to get started.',
-    )
+    const guideCard = byTestId(page, 'onboarding-guide-card-getting-started')
     await expect(guideCard).toBeVisible()
 
     // Step 0 (Welcome) is showing.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
 
     // Advance to step 1 (AI Providers). This completes "welcome", so the
     // guide's resume point becomes step 1.
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
 
     // Manually page Back to the (now-completed) Welcome step.
-    await page.getByRole('button', { name: 'Back' }).click()
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await byTestId(page, 'onboarding-page-back-button').click()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
 
     // Click the guide in the sidebar — handleSelectGuide clears the manual
     // step and recomputes the resume point, snapping forward to the first
     // incomplete step (AI Providers), NOT staying on Welcome.
     await guideCard.click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toHaveCount(0)
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toHaveCount(0)
   })
 })

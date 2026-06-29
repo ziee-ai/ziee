@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
@@ -49,22 +50,23 @@ test.describe('User LLM-provider key settings', () => {
     await page.waitForLoadState('load')
 
     // The seeded provider is auto-selected; its form is shown.
-    await expect(page.getByRole('heading', { name: 'E2E Provider' })).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'ullm-provider-title')).toContainText('E2E Provider', { timeout: 15000 })
 
     // Save a personal key.
-    await page.locator('input[type="password"]').fill('sk-my-personal-key')
-    await page.getByRole('button', { name: 'Save Key' }).click()
+    await byTestId(page, 'ullm-key-password-input').fill('sk-my-personal-key')
+    await byTestId(page, 'ullm-save-key-button').click()
 
     // The "Your key configured" tag + Remove Key button appear.
-    await expect(page.getByText('Your key configured')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByRole('button', { name: 'Remove Key' })).toBeVisible()
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('Your key configured', { timeout: 10000 })
+    await expect(byTestId(page, 'ullm-remove-key-button')).toBeVisible()
 
     // Remove it.
-    await page.getByRole('button', { name: 'Remove Key' }).click()
+    await byTestId(page, 'ullm-remove-key-button').click()
 
     // Tag reverts (no longer the user's key).
-    await expect(page.getByText('Your key configured')).toBeHidden({ timeout: 10000 })
-    await expect(page.getByRole('button', { name: 'Save Key' })).toBeVisible()
+    // Key removed → the Remove button disappears and Save reverts (deterministic).
+    await expect(byTestId(page, 'ullm-remove-key-button')).toHaveCount(0, { timeout: 10000 })
+    await expect(byTestId(page, 'ullm-save-key-button')).toBeVisible()
   })
 
   test('local providers are not listed on the personal-keys page', async ({ page, testInfra }) => {
@@ -98,7 +100,7 @@ test.describe('User LLM-provider key settings', () => {
 
     // The remote provider is listed (its name renders in both the menu and the
     // detail header → use .first()); the local one is filtered out entirely.
-    await expect(page.getByText('E2E Provider').first()).toBeVisible({ timeout: 15000 })
-    await expect(page.getByText('Local Only Provider', { exact: true })).toHaveCount(0)
+    await expect(byTestId(page, 'ullm-provider-title')).toContainText('E2E Provider', { timeout: 15000 })
+    await expect(byTestId(page, 'ullm-provider-menu')).not.toContainText('Local Only Provider')
   })
 })

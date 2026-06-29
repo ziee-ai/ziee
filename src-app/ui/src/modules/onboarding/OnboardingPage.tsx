@@ -167,6 +167,7 @@ export default function OnboardingPage() {
           return (
             <div
               key={g.id}
+              data-testid={`onboarding-guide-card-${g.id}`}
               className={`p-3 rounded-lg cursor-pointer transition-colors ${isActive ? 'bg-accent border border-primary' : 'border border-border'}`}
               onClick={() => handleSelectGuide(g)}
             >
