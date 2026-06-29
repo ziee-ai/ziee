@@ -1,9 +1,6 @@
-/// OAuth2/OIDC Provider Integration Tests
-///
-/// These tests use testcontainers to automatically spawn OAuth mock servers.
-/// Docker will be started automatically if not already running.
 use crate::common::oauth_mock::OAuthMockServer;
 use serde_json::json;
+use ziee::hash_password;
 
 /// Test that we can start an OAuth mock server and connect to it
 #[tokio::test]
@@ -290,24 +287,6 @@ async fn test_oauth_authorization_flow() {
         &access_token[..20.min(access_token.len())]
     );
 }
-
-// ============================================================
-// New-branch coverage — added with the OAuth social-login feature
-// ============================================================
-//
-// These exercise the previously-unreachable branches in oauth_callback:
-//   - auto-provisioning a brand-new user from social claims
-//   - First-Broker-Link when an existing local email collides
-//   - Microsoft `tid` allowlist (accept + reject paths)
-//   - return_to round-trip through `oauth_sessions.return_to`
-//
-// The pattern is the same as `test_oauth_authorization_flow`:
-//   1. seed an auth_providers row pointing at the navikt mock
-//   2. GET our /authorize → follow 307 → POST navikt /authorize → follow
-//      302 back to our /callback (with `code` + `state`)
-//   3. assert the final redirect / status
-
-use ziee::hash_password;
 
 /// Seed an OIDC auth_providers row that points at the navikt mock.
 /// `extra_config` is merged into the JSONB to test allowed_tenant_ids,
@@ -1244,18 +1223,6 @@ async fn test_oauth_callback_without_code_is_rejected() {
     seed_oidc_provider(&pool, "test-oauth", &oauth_server, json!({})).await;
 
     // Provider error redirect: error + state, NO code.
-/// Error path: the provider DENIES authorization and redirects back to our
-/// callback with `?error=access_denied` (and crucially NO `code`). This is the
-/// IdP-side failure (user clicked "Cancel", consent withheld, provider policy
-/// block). Our callback must reject it — never mint a session — and must not
-/// 500. Because `OAuthCallbackQuery` requires `code`, a denial (which omits it)
-/// is refused at the request boundary with a 400, so a denied authorization can
-/// never reach the login-completion path. This pins that externally-observable
-/// contract, complementing `test_oauth_callback_invalid_or_expired_state_returns_400`
-/// (bad state) and `test_oauth_token_exchange_failure_is_handled` (token POST fails).
-#[tokio::test]
-async fn test_oauth_callback_provider_error_is_rejected() {
-    let test_server = crate::common::TestServer::start().await;
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -1272,6 +1239,25 @@ async fn test_oauth_callback_provider_error_is_rejected() {
         resp.status().is_client_error(),
         "a provider-error callback (no code) must be rejected, got {}",
         resp.status()
+    );
+}
+
+/// Error path: the provider DENIES authorization and redirects back to our
+/// callback with `?error=access_denied` (and crucially NO `code`). This is the
+/// IdP-side failure (user clicked "Cancel", consent withheld, provider policy
+/// block). Our callback must reject it — never mint a session — and must not
+/// 500. Because `OAuthCallbackQuery` requires `code`, a denial (which omits it)
+/// is refused at the request boundary with a 400, so a denied authorization can
+/// never reach the login-completion path. This pins that externally-observable
+/// contract, complementing `test_oauth_callback_invalid_or_expired_state_returns_400`
+/// (bad state) and `test_oauth_token_exchange_failure_is_handled` (token POST fails).
+#[tokio::test]
+async fn test_oauth_callback_provider_error_is_rejected() {
+    let test_server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
 
     // A real IdP denial callback: error params, a state, and NO authorization
     // code. (We use a random state — a denied flow never gets far enough for
@@ -1298,3 +1284,4 @@ async fn test_oauth_callback_provider_error_is_rejected() {
         status
     );
 }
+

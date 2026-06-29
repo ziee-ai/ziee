@@ -1,25 +1,6 @@
-//! Test helper: a client-side probe for the realtime-sync SSE stream.
-//!
-//! `SyncProbe::open` subscribes to `GET /api/sync/subscribe` exactly like a
-//! real browser tab, captures the `connected` handshake's connection id, and
-//! reads `sync` frames off the wire into a channel. Tests then assert what a
-//! given user's device WOULD observe after a real REST mutation — i.e. the
-//! full producer→registry→stream path, not the routing logic in isolation
-//! (that's covered by the in-source unit tests in `modules/sync/`).
-//!
-//! Usage:
-//! ```ignore
-//! let mut probe = SyncProbe::open(&server, &user.token).await;
-//! // ...trigger a real mutation as `user`...
-//! let f = probe.expect_event("memory", "create", Duration::from_secs(5)).await;
-//! assert_eq!(f.id, created_id);
-//! // a different user's probe must stay silent:
-//! other.expect_silence(Duration::from_secs(1)).await;
-//! ```
-
 use std::time::Duration;
-
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
@@ -41,12 +22,14 @@ pub struct SyncProbe {
 }
 
 impl Drop for SyncProbe {
+
     fn drop(&mut self) {
         self.task.abort();
     }
 }
 
 impl SyncProbe {
+
     /// Open the stream for `token`. Resolves once the `connected` handshake
     /// frame arrives (so `connection_id()` is immediately usable).
     pub async fn open(server: &crate::common::TestServer, token: &str) -> SyncProbe {
@@ -124,11 +107,13 @@ impl SyncProbe {
         }
     }
 
+
     /// The server-assigned connection id (echo it back via the
     /// `X-Sync-Connection-Id` header to test self-echo suppression).
     pub fn connection_id(&self) -> Uuid {
         self.connection_id
     }
+
 
     /// Wait up to `timeout` for a `sync` frame matching `(entity, action)`,
     /// ignoring any other frames that arrive first (e.g. a dual-audience
@@ -152,6 +137,42 @@ impl SyncProbe {
             }
         }
     }
+
+
+    /// Assert NO sync frame at all arrives within `dur` (cross-user isolation
+    /// / origin-skip). A closed stream also counts as silence.
+    pub async fn expect_silence(&mut self, dur: Duration) {
+        match tokio::time::timeout(dur, self.rx.recv()).await {
+            Ok(Some(f)) => panic!(
+                "expected silence but received sync {}/{} (id {})",
+                f.entity, f.action, f.id
+            ),
+            Ok(None) | Err(_) => {}
+        }
+    }
+
+
+    /// Assert the server CLOSES the stream within `dur` (e.g. the periodic
+    /// re-check tears it down after the account is deactivated or loses the
+    /// baseline permission). Intervening data frames are ignored; a closed
+    /// channel (`recv` → None) is the success condition.
+    pub async fn expect_closed(&mut self, dur: Duration) {
+        let deadline = tokio::time::Instant::now() + dur;
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                panic!("expected the sync stream to close within {dur:?}, but it stayed open");
+            }
+            match tokio::time::timeout(remaining, self.rx.recv()).await {
+                Ok(None) => return, // server closed the stream — success
+                Ok(Some(_)) => continue, // ignore data frames, keep waiting for close
+                Err(_) => panic!(
+                    "expected the sync stream to close within {dur:?}, but it stayed open"
+                ),
+            }
+        }
+    }
+
 
     /// Like `expect_event`, but matches the FIRST frame whose entity is in
     /// `entities` (and whose action matches) — for a dual-audience mutation
@@ -178,39 +199,6 @@ impl SyncProbe {
             }
         }
     }
-
-    /// Assert NO sync frame at all arrives within `dur` (cross-user isolation
-    /// / origin-skip). A closed stream also counts as silence.
-    pub async fn expect_silence(&mut self, dur: Duration) {
-        match tokio::time::timeout(dur, self.rx.recv()).await {
-            Ok(Some(f)) => panic!(
-                "expected silence but received sync {}/{} (id {})",
-                f.entity, f.action, f.id
-            ),
-            Ok(None) | Err(_) => {}
-        }
-    }
-
-    /// Assert the server CLOSES the stream within `dur` (e.g. the periodic
-    /// re-check tears it down after the account is deactivated or loses the
-    /// baseline permission). Intervening data frames are ignored; a closed
-    /// channel (`recv` → None) is the success condition.
-    pub async fn expect_closed(&mut self, dur: Duration) {
-        let deadline = tokio::time::Instant::now() + dur;
-        loop {
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                panic!("expected the sync stream to close within {dur:?}, but it stayed open");
-            }
-            match tokio::time::timeout(remaining, self.rx.recv()).await {
-                Ok(None) => return, // server closed the stream — success
-                Ok(Some(_)) => continue, // ignore data frames, keep waiting for close
-                Err(_) => panic!(
-                    "expected the sync stream to close within {dur:?}, but it stayed open"
-                ),
-            }
-        }
-    }
 }
 
 /// Pull `event:` + concatenated `data:` lines out of one raw SSE frame.
@@ -232,3 +220,4 @@ fn parse_sse_frame(frame: &str) -> (Option<String>, Option<String>) {
     };
     (event, data)
 }
+

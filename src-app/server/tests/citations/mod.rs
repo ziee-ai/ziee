@@ -1,20 +1,13 @@
-//! Integration + HTTP-handler tests for the citations module.
-//!
-//! Tier 2 (REST library CRUD + permission gating + project links), Tier 3
-//! (JSON-RPC MCP handler), and the deterministic mock-resolve tier: resolve +
-//! verify + dedup against loopback mocks for all three upstreams (doi.org
-//! content-negotiation, NCBI ID-Converter, Crossref title-search) via the debug
-//! `CITATIONS_*_ENDPOINT` seams — no network.
-
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use std::time::Duration;
 use uuid::Uuid;
-
 use crate::common::sync_probe::SyncProbe;
-use crate::common::test_helpers::{
-    create_user_with_no_permissions, create_user_with_only_permissions, create_user_with_permissions,
-};
-use crate::common::{TestServer, TestServerOptions};
+use crate::common::test_helpers::create_user_with_no_permissions;
+use crate::common::test_helpers::create_user_with_only_permissions;
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::common::TestServer;
+use crate::common::TestServerOptions;
 
 mod real_egress;
 mod real_llm;
@@ -174,40 +167,6 @@ async fn test_initialize_returns_server_info() {
     assert_eq!(res.status(), 200);
     let body: Value = res.json().await.unwrap();
     assert_eq!(body["result"]["serverInfo"]["name"], "citations");
-}
-
-#[tokio::test]
-async fn test_jsonrpc_unknown_method_returns_method_not_found() {
-    // An unknown JSON-RPC method must return a well-formed error object
-    // (code -32601) at HTTP 200, NOT a transport-level failure.
-    let server = TestServer::start().await;
-    let user = create_user_with_permissions(&server, "cit_mnf", &["citations::use"]).await;
-    let res = jsonrpc(&server, &user.token, "does/not/exist", json!({}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 200);
-    let body: Value = res.json().await.unwrap();
-    assert_eq!(body["error"]["code"], -32601, "method_not_found code; got {body}");
-    assert!(body.get("result").is_none(), "must not carry a result: {body}");
-}
-
-#[tokio::test]
-async fn test_jsonrpc_malformed_body_returns_parse_error() {
-    // A body that isn't valid JSON must yield a -32700 parse error at HTTP 400.
-    let server = TestServer::start().await;
-    let user = create_user_with_permissions(&server, "cit_parse", &["citations::use"]).await;
-    let res = reqwest::Client::new()
-        .post(server.api_url("/citations/mcp"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .header("Content-Type", "application/json")
-        .body("{ this is not json ")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 400);
-    let body: Value = res.json().await.unwrap();
-    assert_eq!(body["error"]["code"], -32700, "parse_error code; got {body}");
 }
 
 #[tokio::test]
@@ -385,64 +344,6 @@ async fn test_same_doi_twice_dedups_to_one_entry() {
     assert_eq!(list_entries(&server, &user.token).await.len(), 1, "{body}");
 }
 
-/// CONCURRENT add race (audit all-5e6b3968a246). `test_same_doi_twice_…` only
-/// covers the SEQUENTIAL case (two items in one call — the loser is caught by
-/// the pre-insert `find_by_doi` dedup at handlers.rs:600). The genuine race is
-/// two INDEPENDENT requests for the same DOI firing at once: both can pass the
-/// pre-insert find (each sees no existing row), both reach `insert_entry`, one
-/// wins the partial-unique index and the other gets a 409 that the retry loop
-/// (handlers.rs:690-720) must resolve by re-finding the winner and returning a
-/// `linked_existing` — never a duplicate row and never a `failed`/5xx.
-#[tokio::test]
-async fn test_concurrent_add_same_doi_races_to_one_entry() {
-    let server = server_with_mock_resolver().await;
-    let user = create_user_with_permissions(&server, "cit_race", &[]).await;
-
-    // Fire two add_citations for the SAME DOI concurrently (each `jsonrpc` builds
-    // its own reqwest::Client → independent connections that truly race at the DB).
-    let req = |token: &str| {
-        jsonrpc(
-            &server,
-            token,
-            "tools/call",
-            json!({ "name": "add_citations", "arguments": { "items": [{ "id": "10.5555/known" }] } }),
-        )
-        .send()
-    };
-    let (a, b) = tokio::join!(req(&user.token), req(&user.token));
-
-    let result_of = |res: reqwest::Response| async move {
-        let body: Value = res.json().await.unwrap();
-        body["result"]["structuredContent"]["results"][0].clone()
-    };
-    let ra = result_of(a.unwrap()).await;
-    let rb = result_of(b.unwrap()).await;
-
-    // Neither request errored: each is a stored citation (inserted by the winner,
-    // linked_existing by the 409-retry loser) — never `failed`/null.
-    for r in [&ra, &rb] {
-        let outcome = r["dedup_outcome"].as_str().unwrap_or("");
-        assert!(
-            outcome == "inserted" || outcome == "linked_existing",
-            "concurrent add must resolve the 409 race, not fail: {r}"
-        );
-        assert!(!r["entry_id"].is_null(), "a winning/linked entry id is required: {r}");
-    }
-
-    // Exactly one of them inserted; the other linked to that same row.
-    let inserted = [&ra, &rb].iter().filter(|r| r["dedup_outcome"] == "inserted").count();
-    assert_eq!(inserted, 1, "exactly one concurrent add must insert: a={ra} b={rb}");
-    assert_eq!(
-        ra["entry_id"], rb["entry_id"],
-        "both concurrent adds must map to the SAME single entry: a={ra} b={rb}"
-    );
-
-    // And the DB holds exactly one bibliography entry for that DOI (the race did
-    // not create a duplicate).
-    let entries = list_entries(&server, &user.token).await;
-    assert_eq!(entries.len(), 1, "the 409 retry must collapse the race to one row: {entries:?}");
-}
-
 #[tokio::test]
 async fn test_idless_exact_reimport_dedups_by_fingerprint() {
     let server = server_with_mock_resolver().await;
@@ -610,199 +511,6 @@ async fn test_project_attach_then_detach_keeps_entry_in_library() {
     assert_eq!(plist["entries"].as_array().unwrap().len(), 0, "detach should empty the project list");
     let lib: Value = client.get(server.api_url("/citations")).header("Authorization", auth()).send().await.unwrap().json().await.unwrap();
     assert_eq!(lib["entries"].as_array().unwrap().len(), 1, "detach must NOT delete from the library");
-}
-
-#[tokio::test]
-async fn test_mcp_add_then_remove_with_project_id_links_and_unlinks() {
-    // The MCP tools accept an optional `project_id`: `add_citations` with it
-    // must create the library entry AND link it to that project's reference
-    // list in one call; `remove_citations` with it must UNLINK from the
-    // project (not delete) — leaving the library entry intact. Only the
-    // REST attach/detach endpoints were covered before; the MCP project_id
-    // path (handlers.rs add_one→attach_to_project / remove→detach_from_project)
-    // had no test. Uses a DOI-less CSL item so no resolver upstream is hit.
-    let server = server_with_mock_resolver().await;
-    let perms = &[
-        "citations::use",
-        "projects::create",
-        "projects::read",
-        "projects::edit",
-        "projects::delete",
-    ];
-    let user = create_user_with_permissions(&server, "cit_mcp_proj", perms).await;
-    let project_id = create_project(&server, &user.token, "MCP Manuscript").await;
-
-    // MCP add_citations WITH project_id → entry created + linked to the project.
-    let res = jsonrpc(
-        &server,
-        &user.token,
-        "tools/call",
-        json!({ "name": "add_citations", "arguments": {
-            "project_id": project_id,
-            "items": [{ "csl": {
-                "type": "book",
-                "title": "MCP-Linked Reference With No DOI",
-                "author": [{ "family": "Lamport", "given": "L." }],
-                "issued": { "date-parts": [[1978]] }
-            } }]
-        } }),
-    )
-    .send()
-    .await
-    .unwrap();
-    let body: Value = res.json().await.unwrap();
-    let result = &body["result"]["structuredContent"]["results"][0];
-    assert_eq!(result["verification_status"], "unverified", "{body}");
-    let entry_id = result["entry_id"]
-        .as_str()
-        .expect("MCP add must persist a library entry")
-        .to_string();
-
-    // The project reference list (MCP list_citations scoped by project_id) has it.
-    let res = jsonrpc(
-        &server,
-        &user.token,
-        "tools/call",
-        json!({ "name": "list_citations", "arguments": { "project_id": project_id } }),
-    )
-    .send()
-    .await
-    .unwrap();
-    let plist: Value = res.json().await.unwrap();
-    let entries = plist["result"]["structuredContent"]["entries"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    assert_eq!(entries.len(), 1, "MCP add with project_id must link to the project: {plist}");
-    assert_eq!(entries[0]["id"].as_str().unwrap(), entry_id);
-
-    // MCP remove_citations WITH project_id → unlink from the project only.
-    let res = jsonrpc(
-        &server,
-        &user.token,
-        "tools/call",
-        json!({ "name": "remove_citations", "arguments": {
-            "project_id": project_id,
-            "ids": [entry_id]
-        } }),
-    )
-    .send()
-    .await
-    .unwrap();
-    let rbody: Value = res.json().await.unwrap();
-    assert_eq!(rbody["result"]["structuredContent"]["removed"], 1, "{rbody}");
-    // The MCP text verb is "unlinked" (not "deleted") when project_id is set.
-    assert!(
-        rbody["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("unlinked"),
-        "remove with project_id must unlink, not delete: {rbody}"
-    );
-
-    // Project list now empty …
-    let res = jsonrpc(
-        &server,
-        &user.token,
-        "tools/call",
-        json!({ "name": "list_citations", "arguments": { "project_id": project_id } }),
-    )
-    .send()
-    .await
-    .unwrap();
-    let plist: Value = res.json().await.unwrap();
-    assert_eq!(
-        plist["result"]["structuredContent"]["entries"].as_array().unwrap().len(),
-        0,
-        "MCP remove with project_id must empty the project list: {plist}"
-    );
-
-    // … but the library entry survives (unlink ≠ delete).
-    assert_eq!(
-        list_entries(&server, &user.token).await.len(),
-        1,
-        "MCP project unlink must NOT delete the library entry"
-    );
-async fn test_delete_entry_cascades_project_link() {
-    // Deleting a library entry must CASCADE-remove its project_bibliography
-    // links (ON DELETE CASCADE), unlike detach which only unlinks. After the
-    // delete BOTH the project list and the library must be empty.
-    let server = server_with_mock_resolver().await;
-    let perms = &[
-        "citations::use",
-        "citations::manage",
-        "projects::create",
-        "projects::read",
-    ];
-    let user = create_user_with_permissions(&server, "cit_cascade", perms).await;
-    let client = reqwest::Client::new();
-    let auth = || format!("Bearer {}", user.token);
-
-    // Library entry + project + link.
-    let body: Value = client
-        .post(server.api_url("/citations/import"))
-        .header("Authorization", auth())
-        .json(&json!({ "items": [{ "id": "10.5555/known" }] }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let entry_id = body["results"][0]["entry_id"].as_str().unwrap().to_string();
-    let project_id = create_project(&server, &user.token, "Cascade Project").await;
-    let r = client
-        .post(server.api_url(&format!("/projects/{project_id}/citations")))
-        .header("Authorization", auth())
-        .json(&json!({ "entry_ids": [entry_id] }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(r.status(), 200);
-    let plist: Value = client
-        .get(server.api_url(&format!("/citations?project_id={project_id}")))
-        .header("Authorization", auth())
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(plist["entries"].as_array().unwrap().len(), 1, "linked: {plist}");
-
-    // Delete the ENTRY (not detach) → cascade removes the project link.
-    let r = client
-        .delete(server.api_url(&format!("/citations/{entry_id}")))
-        .header("Authorization", auth())
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(r.status(), 200);
-
-    let plist: Value = client
-        .get(server.api_url(&format!("/citations?project_id={project_id}")))
-        .header("Authorization", auth())
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(
-        plist["entries"].as_array().unwrap().len(),
-        0,
-        "deleting the entry must cascade-remove the project link: {plist}"
-    );
-    let lib: Value = client
-        .get(server.api_url("/citations"))
-        .header("Authorization", auth())
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(lib["entries"].as_array().unwrap().len(), 0, "entry gone from library too");
 }
 
 #[tokio::test]
@@ -1252,6 +960,179 @@ async fn test_mcp_add_and_remove_with_project_id() {
         list_entries(&server, &user.token).await.iter().any(|e| e["title"].as_str() == Some("Project Linked Paper")),
         "unlinked entry must remain in the library"
     );
+}
+
+/// CONCURRENT add race (audit all-5e6b3968a246). `test_same_doi_twice_…` only
+/// covers the SEQUENTIAL case (two items in one call — the loser is caught by
+/// the pre-insert `find_by_doi` dedup at handlers.rs:600). The genuine race is
+/// two INDEPENDENT requests for the same DOI firing at once: both can pass the
+/// pre-insert find (each sees no existing row), both reach `insert_entry`, one
+/// wins the partial-unique index and the other gets a 409 that the retry loop
+/// (handlers.rs:690-720) must resolve by re-finding the winner and returning a
+/// `linked_existing` — never a duplicate row and never a `failed`/5xx.
+#[tokio::test]
+async fn test_concurrent_add_same_doi_races_to_one_entry() {
+    let server = server_with_mock_resolver().await;
+    let user = create_user_with_permissions(&server, "cit_race", &[]).await;
+
+    // Fire two add_citations for the SAME DOI concurrently (each `jsonrpc` builds
+    // its own reqwest::Client → independent connections that truly race at the DB).
+    let req = |token: &str| {
+        jsonrpc(
+            &server,
+            token,
+            "tools/call",
+            json!({ "name": "add_citations", "arguments": { "items": [{ "id": "10.5555/known" }] } }),
+        )
+        .send()
+    };
+    let (a, b) = tokio::join!(req(&user.token), req(&user.token));
+
+    let result_of = |res: reqwest::Response| async move {
+        let body: Value = res.json().await.unwrap();
+        body["result"]["structuredContent"]["results"][0].clone()
+    };
+    let ra = result_of(a.unwrap()).await;
+    let rb = result_of(b.unwrap()).await;
+
+    // Neither request errored: each is a stored citation (inserted by the winner,
+    // linked_existing by the 409-retry loser) — never `failed`/null.
+    for r in [&ra, &rb] {
+        let outcome = r["dedup_outcome"].as_str().unwrap_or("");
+        assert!(
+            outcome == "inserted" || outcome == "linked_existing",
+            "concurrent add must resolve the 409 race, not fail: {r}"
+        );
+        assert!(!r["entry_id"].is_null(), "a winning/linked entry id is required: {r}");
+    }
+
+    // Exactly one of them inserted; the other linked to that same row.
+    let inserted = [&ra, &rb].iter().filter(|r| r["dedup_outcome"] == "inserted").count();
+    assert_eq!(inserted, 1, "exactly one concurrent add must insert: a={ra} b={rb}");
+    assert_eq!(
+        ra["entry_id"], rb["entry_id"],
+        "both concurrent adds must map to the SAME single entry: a={ra} b={rb}"
+    );
+
+    // And the DB holds exactly one bibliography entry for that DOI (the race did
+    // not create a duplicate).
+    let entries = list_entries(&server, &user.token).await;
+    assert_eq!(entries.len(), 1, "the 409 retry must collapse the race to one row: {entries:?}");
+}
+
+#[tokio::test]
+async fn test_mcp_add_then_remove_with_project_id_links_and_unlinks() {
+    // The MCP tools accept an optional `project_id`: `add_citations` with it
+    // must create the library entry AND link it to that project's reference
+    // list in one call; `remove_citations` with it must UNLINK from the
+    // project (not delete) — leaving the library entry intact. Only the
+    // REST attach/detach endpoints were covered before; the MCP project_id
+    // path (handlers.rs add_one→attach_to_project / remove→detach_from_project)
+    // had no test. Uses a DOI-less CSL item so no resolver upstream is hit.
+    let server = server_with_mock_resolver().await;
+    let perms = &[
+        "citations::use",
+        "projects::create",
+        "projects::read",
+        "projects::edit",
+        "projects::delete",
+    ];
+    let user = create_user_with_permissions(&server, "cit_mcp_proj", perms).await;
+    let project_id = create_project(&server, &user.token, "MCP Manuscript").await;
+
+    // MCP add_citations WITH project_id → entry created + linked to the project.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "add_citations", "arguments": {
+            "project_id": project_id,
+            "items": [{ "csl": {
+                "type": "book",
+                "title": "MCP-Linked Reference With No DOI",
+                "author": [{ "family": "Lamport", "given": "L." }],
+                "issued": { "date-parts": [[1978]] }
+            } }]
+        } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: Value = res.json().await.unwrap();
+    let result = &body["result"]["structuredContent"]["results"][0];
+    assert_eq!(result["verification_status"], "unverified", "{body}");
+    let entry_id = result["entry_id"]
+        .as_str()
+        .expect("MCP add must persist a library entry")
+        .to_string();
+
+    // The project reference list (MCP list_citations scoped by project_id) has it.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "list_citations", "arguments": { "project_id": project_id } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let plist: Value = res.json().await.unwrap();
+    let entries = plist["result"]["structuredContent"]["entries"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(entries.len(), 1, "MCP add with project_id must link to the project: {plist}");
+    assert_eq!(entries[0]["id"].as_str().unwrap(), entry_id);
+
+    // MCP remove_citations WITH project_id → unlink from the project only.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "remove_citations", "arguments": {
+            "project_id": project_id,
+            "ids": [entry_id]
+        } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let rbody: Value = res.json().await.unwrap();
+    assert_eq!(rbody["result"]["structuredContent"]["removed"], 1, "{rbody}");
+    // The MCP text verb is "unlinked" (not "deleted") when project_id is set.
+    assert!(
+        rbody["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("unlinked"),
+        "remove with project_id must unlink, not delete: {rbody}"
+    );
+
+    // Project list now empty …
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "list_citations", "arguments": { "project_id": project_id } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let plist: Value = res.json().await.unwrap();
+    assert_eq!(
+        plist["result"]["structuredContent"]["entries"].as_array().unwrap().len(),
+        0,
+        "MCP remove with project_id must empty the project list: {plist}"
+    );
+
+    // … but the library entry survives (unlink ≠ delete).
+    assert_eq!(
+        list_entries(&server, &user.token).await.len(),
+        1,
+        "MCP project unlink must NOT delete the library entry"
+    );
+}
+
 /// Concurrent add of the SAME work exercises the 409-retry race (handlers.rs:630-695,
 /// repository.rs partial-unique-index 409). Two simultaneous add_citations for the
 /// same DOI: one wins the insert, the other's insert collides (409) and re-finds +
@@ -1287,3 +1168,121 @@ async fn test_concurrent_add_same_doi_dedups_via_409_retry() {
     let entries = list_entries(&server, &user.token).await;
     assert_eq!(entries.len(), 1, "the race must collapse to a single entry: {entries:?}");
 }
+
+#[tokio::test]
+async fn test_jsonrpc_unknown_method_returns_method_not_found() {
+    // An unknown JSON-RPC method must return a well-formed error object
+    // (code -32601) at HTTP 200, NOT a transport-level failure.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "cit_mnf", &["citations::use"]).await;
+    let res = jsonrpc(&server, &user.token, "does/not/exist", json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"]["code"], -32601, "method_not_found code; got {body}");
+    assert!(body.get("result").is_none(), "must not carry a result: {body}");
+}
+
+#[tokio::test]
+async fn test_jsonrpc_malformed_body_returns_parse_error() {
+    // A body that isn't valid JSON must yield a -32700 parse error at HTTP 400.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "cit_parse", &["citations::use"]).await;
+    let res = reqwest::Client::new()
+        .post(server.api_url("/citations/mcp"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .body("{ this is not json ")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"]["code"], -32700, "parse_error code; got {body}");
+}
+
+#[tokio::test]
+async fn test_delete_entry_cascades_project_link() {
+    // Deleting a library entry must CASCADE-remove its project_bibliography
+    // links (ON DELETE CASCADE), unlike detach which only unlinks. After the
+    // delete BOTH the project list and the library must be empty.
+    let server = server_with_mock_resolver().await;
+    let perms = &[
+        "citations::use",
+        "citations::manage",
+        "projects::create",
+        "projects::read",
+    ];
+    let user = create_user_with_permissions(&server, "cit_cascade", perms).await;
+    let client = reqwest::Client::new();
+    let auth = || format!("Bearer {}", user.token);
+
+    // Library entry + project + link.
+    let body: Value = client
+        .post(server.api_url("/citations/import"))
+        .header("Authorization", auth())
+        .json(&json!({ "items": [{ "id": "10.5555/known" }] }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let entry_id = body["results"][0]["entry_id"].as_str().unwrap().to_string();
+    let project_id = create_project(&server, &user.token, "Cascade Project").await;
+    let r = client
+        .post(server.api_url(&format!("/projects/{project_id}/citations")))
+        .header("Authorization", auth())
+        .json(&json!({ "entry_ids": [entry_id] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let plist: Value = client
+        .get(server.api_url(&format!("/citations?project_id={project_id}")))
+        .header("Authorization", auth())
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(plist["entries"].as_array().unwrap().len(), 1, "linked: {plist}");
+
+    // Delete the ENTRY (not detach) → cascade removes the project link.
+    let r = client
+        .delete(server.api_url(&format!("/citations/{entry_id}")))
+        .header("Authorization", auth())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+
+    let plist: Value = client
+        .get(server.api_url(&format!("/citations?project_id={project_id}")))
+        .header("Authorization", auth())
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        plist["entries"].as_array().unwrap().len(),
+        0,
+        "deleting the entry must cascade-remove the project link: {plist}"
+    );
+    let lib: Value = client
+        .get(server.api_url("/citations"))
+        .header("Authorization", auth())
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(lib["entries"].as_array().unwrap().len(), 0, "entry gone from library too");
+}
+

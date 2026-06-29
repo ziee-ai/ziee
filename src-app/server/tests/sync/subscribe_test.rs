@@ -70,84 +70,6 @@ async fn subscribe_with_valid_token_opens_event_stream() {
 #[tokio::test]
 async fn subscribe_rejects_when_per_user_connection_cap_exceeded() {
     const PER_USER_MAX_CONNECTIONS: usize = 12;
-/// File sync end-to-end through the SSE stream: uploading a file fires
-/// `publish_file_changed` (owner-scoped `File`/`Update`), and the uploader's own
-/// sync subscription receives a `file`/`update` frame carrying the file id. The
-/// generic subscribe test above only proves the stream opens; this proves a
-/// file-specific entity is actually delivered over it.
-#[tokio::test]
-async fn upload_delivers_file_sync_event_to_owner() {
-    use crate::common::sync_probe::SyncProbe;
-/// Mint an access token (HS256, the test config's secret/iss/aud) that expires
-/// `secs` from now, for an existing user id. Mirrors how the real JwtService
-/// shapes access-token claims so `validate_access_token` accepts it.
-fn mint_access_token(user_id: &str, secs: i64) -> String {
-    use jsonwebtoken::{encode, EncodingKey, Header};
-    let now = chrono::Utc::now().timestamp();
-    let claims = serde_json::json!({
-        "sub": user_id,
-        "exp": now + secs,
-        "iat": now,
-        "iss": "ziee",
-        "aud": "ziee-api",
-        "username": "sync_exp",
-        "email": "sync_exp@example.com",
-        "is_admin": false,
-    });
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(b"test-secret-key-for-jwt-tokens-min-32-chars-long"),
-    )
-    .unwrap()
-}
-
-/// The stream is bounded by the access token's `exp`: a token expiring in ~2s
-/// must tear the SSE stream down at the deadline (the `sleep_until(deadline)`
-/// arm), so the response body completes on its own — NOT hang until the token
-/// would otherwise live for 24h.
-#[tokio::test]
-async fn subscribe_stream_closes_at_token_expiry() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "sync_exp_user",
-        &["profile::read"],
-    )
-    .await;
-
-    // A short-lived token (still valid NOW, so the stream opens; lapses in ~2s).
-    let token = mint_access_token(&user.user_id, 2);
-    let res = reqwest::Client::new()
-        .get(server.api_url("/sync/subscribe"))
-        .header("Authorization", format!("Bearer {token}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 200, "stream opens while the token is still valid");
-
-    // Reading the full body returns when the server closes the stream at the
-    // exp deadline. A generous 15s timeout guards against the body hanging
-    // (which would mean the exp teardown didn't fire).
-    let start = std::time::Instant::now();
-    let body = tokio::time::timeout(std::time::Duration::from_secs(15), res.bytes()).await;
-    assert!(body.is_ok(), "stream must close on token expiry, not hang open");
-    let elapsed = start.elapsed();
-    assert!(
-        elapsed < std::time::Duration::from_secs(14),
-        "stream closed well before the 24h fallback (at ~exp); elapsed={elapsed:?}"
-    );
-}
-
-/// The sync stream's FIRST frame is the `connected` handshake carrying a valid
-/// UUID `connection_id` — the contract every client depends on to echo
-/// `X-Sync-Connection-Id` back for self-echo suppression. The existing open
-/// test asserts only the 200 + content-type; this validates the handshake
-/// frame's event name + payload shape on the wire.
-#[tokio::test]
-async fn subscribe_first_frame_is_connected_handshake_with_uuid() {
-    use futures_util::StreamExt;
-    use std::time::Duration;
 
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
@@ -162,6 +84,37 @@ async fn subscribe_first_frame_is_connected_handshake_with_uuid() {
     // underlying connections stay registered server-side).
     let mut held = Vec::new();
     for i in 0..PER_USER_MAX_CONNECTIONS {
+        let res = client
+            .get(server.api_url("/sync/subscribe"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            res.status(),
+            200,
+            "connection {i} (within the cap) must be accepted"
+        );
+        held.push(res);
+    }
+
+    // The next subscribe for the SAME user exceeds the per-user cap → 429.
+    let over = client
+        .get(server.api_url("/sync/subscribe"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        over.status(),
+        429,
+        "subscribe beyond the per-user connection cap must be rejected with 429"
+    );
+
+    // Keep the held streams alive until the assertion above has run.
+    drop(held);
+}
+
 /// Account deactivation cuts off realtime sync: a user who could open the SSE
 /// stream is REFUSED on (re)connect once an admin deactivates them, because the
 /// subscribe handler's `RequirePermissions<(ProfileRead,)>` extractor re-checks
@@ -186,12 +139,6 @@ async fn subscribe_refuses_a_deactivated_user() {
 
     // Active → the stream opens.
     let ok = reqwest::Client::new()
-        "sync_handshake",
-        &["profile::read"],
-    )
-    .await;
-
-    let resp = reqwest::Client::new()
         .get(server.api_url("/sync/subscribe"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
@@ -351,6 +298,178 @@ async fn subscribe_refuses_excess_connections_for_one_user_with_429() {
     const PER_USER_MAX: usize = 12;
     let mut held = Vec::with_capacity(PER_USER_MAX);
     for i in 0..PER_USER_MAX {
+        let res = client
+            .get(server.api_url("/sync/subscribe"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            res.status(),
+            200,
+            "sync connection #{} (under the per-user cap) must open",
+            i + 1
+        );
+        held.push(res);
+    }
+
+    // The (cap+1)th concurrent connection for the SAME user must be refused.
+    let overflow = client
+        .get(server.api_url("/sync/subscribe"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        overflow.status(),
+        429,
+        "the (cap+1)th concurrent sync stream for one user must be refused (SYNC_USER_LIMIT)"
+    );
+    let body = overflow.text().await.unwrap_or_default();
+    assert!(
+        body.contains("SYNC_USER_LIMIT") || body.contains("Too many open sync connections"),
+        "the 429 body should carry the SYNC_USER_LIMIT error, got: {body}"
+    );
+
+    // Drop the held responses → closes the 12 streams → ConnGuard unregisters
+    // each, leaving the process-wide registry clean for sibling tests.
+    drop(held);
+}
+
+/// File sync end-to-end through the SSE stream: uploading a file fires
+/// `publish_file_changed` (owner-scoped `File`/`Update`), and the uploader's own
+/// sync subscription receives a `file`/`update` frame carrying the file id. The
+/// generic subscribe test above only proves the stream opens; this proves a
+/// file-specific entity is actually delivered over it.
+#[tokio::test]
+async fn upload_delivers_file_sync_event_to_owner() {
+    use crate::common::sync_probe::SyncProbe;
+    use std::time::Duration;
+
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_file_owner",
+        &["files::upload", "files::read"],
+    )
+    .await;
+
+    let mut probe = SyncProbe::open(&server, &user.token).await;
+
+    // Upload a file (no X-Sync-Connection-Id header → no self-echo suppression,
+    // so the uploader's own probe receives the event).
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(b"hello sync".to_vec())
+            .file_name("sync.txt")
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+    let res = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload");
+    assert!(res.status().is_success(), "upload should succeed: {}", res.status());
+    let body: serde_json::Value = res.json().await.unwrap();
+    let file_id = body["id"].as_str().expect("uploaded file id").to_string();
+
+    let frame = probe
+        .expect_event("file", "update", Duration::from_secs(5))
+        .await;
+    assert_eq!(
+        frame.id, file_id,
+        "the file sync frame must carry the uploaded file id"
+    );
+}
+
+/// Mint an access token (HS256, the test config's secret/iss/aud) that expires
+/// `secs` from now, for an existing user id. Mirrors how the real JwtService
+/// shapes access-token claims so `validate_access_token` accepts it.
+fn mint_access_token(user_id: &str, secs: i64) -> String {
+    use jsonwebtoken::{encode, EncodingKey, Header};
+    let now = chrono::Utc::now().timestamp();
+    let claims = serde_json::json!({
+        "sub": user_id,
+        "exp": now + secs,
+        "iat": now,
+        "iss": "ziee",
+        "aud": "ziee-api",
+        "username": "sync_exp",
+        "email": "sync_exp@example.com",
+        "is_admin": false,
+    });
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(b"test-secret-key-for-jwt-tokens-min-32-chars-long"),
+    )
+    .unwrap()
+}
+
+/// The stream is bounded by the access token's `exp`: a token expiring in ~2s
+/// must tear the SSE stream down at the deadline (the `sleep_until(deadline)`
+/// arm), so the response body completes on its own — NOT hang until the token
+/// would otherwise live for 24h.
+#[tokio::test]
+async fn subscribe_stream_closes_at_token_expiry() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_exp_user",
+        &["profile::read"],
+    )
+    .await;
+
+    // A short-lived token (still valid NOW, so the stream opens; lapses in ~2s).
+    let token = mint_access_token(&user.user_id, 2);
+    let res = reqwest::Client::new()
+        .get(server.api_url("/sync/subscribe"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "stream opens while the token is still valid");
+
+    // Reading the full body returns when the server closes the stream at the
+    // exp deadline. A generous 15s timeout guards against the body hanging
+    // (which would mean the exp teardown didn't fire).
+    let start = std::time::Instant::now();
+    let body = tokio::time::timeout(std::time::Duration::from_secs(15), res.bytes()).await;
+    assert!(body.is_ok(), "stream must close on token expiry, not hang open");
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_secs(14),
+        "stream closed well before the 24h fallback (at ~exp); elapsed={elapsed:?}"
+    );
+}
+
+/// The sync stream's FIRST frame is the `connected` handshake carrying a valid
+/// UUID `connection_id` — the contract every client depends on to echo
+/// `X-Sync-Connection-Id` back for self-echo suppression. The existing open
+/// test asserts only the 200 + content-type; this validates the handshake
+/// frame's event name + payload shape on the wire.
+#[tokio::test]
+async fn subscribe_first_frame_is_connected_handshake_with_uuid() {
+    use futures_util::StreamExt;
+    use std::time::Duration;
+
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_handshake",
+        &["profile::read"],
+    )
+    .await;
+
+    let resp = reqwest::Client::new()
+        .get(server.api_url("/sync/subscribe"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
 
     // Read until the first complete SSE frame (blank-line terminated), bounded.
@@ -417,19 +536,6 @@ async fn subscribe_enforces_per_user_connection_cap_with_429() {
             .send()
             .await
             .unwrap();
-        assert_eq!(
-            res.status(),
-            200,
-            "connection {i} (within the cap) must be accepted"
-            "sync connection #{} (under the per-user cap) must open",
-            i + 1
-        );
-        held.push(res);
-    }
-
-    // The next subscribe for the SAME user exceeds the per-user cap → 429.
-    let over = client
-    // The (cap+1)th concurrent connection for the SAME user must be refused.
         assert_eq!(res.status(), 200, "connection {i} should open");
         held.push(res); // keep the stream alive → stays registered
     }
@@ -442,59 +548,6 @@ async fn subscribe_enforces_per_user_connection_cap_with_429() {
         .await
         .unwrap();
     assert_eq!(
-        over.status(),
-        429,
-        "subscribe beyond the per-user connection cap must be rejected with 429"
-    );
-
-    // Keep the held streams alive until the assertion above has run.
-        overflow.status(),
-        429,
-        "the (cap+1)th concurrent sync stream for one user must be refused (SYNC_USER_LIMIT)"
-    );
-    let body = overflow.text().await.unwrap_or_default();
-    assert!(
-        body.contains("SYNC_USER_LIMIT") || body.contains("Too many open sync connections"),
-        "the 429 body should carry the SYNC_USER_LIMIT error, got: {body}"
-    );
-
-    // Drop the held responses → closes the 12 streams → ConnGuard unregisters
-    // each, leaving the process-wide registry clean for sibling tests.
-    drop(held);
-        "sync_file_owner",
-        &["files::upload", "files::read"],
-    )
-    .await;
-
-    let mut probe = SyncProbe::open(&server, &user.token).await;
-
-    // Upload a file (no X-Sync-Connection-Id header → no self-echo suppression,
-    // so the uploader's own probe receives the event).
-    let form = reqwest::multipart::Form::new().part(
-        "file",
-        reqwest::multipart::Part::bytes(b"hello sync".to_vec())
-            .file_name("sync.txt")
-            .mime_str("text/plain")
-            .unwrap(),
-    );
-    let res = reqwest::Client::new()
-        .post(server.api_url("/files/upload"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .multipart(form)
-        .send()
-        .await
-        .expect("upload");
-    assert!(res.status().is_success(), "upload should succeed: {}", res.status());
-    let body: serde_json::Value = res.json().await.unwrap();
-    let file_id = body["id"].as_str().expect("uploaded file id").to_string();
-
-    let frame = probe
-        .expect_event("file", "update", Duration::from_secs(5))
-        .await;
-    assert_eq!(
-        frame.id, file_id,
-        "the file sync frame must carry the uploaded file id"
-    );
         overflow.status(),
         429,
         "the (cap+1)th connection must be refused with 429"
@@ -502,3 +555,4 @@ async fn subscribe_enforces_per_user_connection_cap_with_429() {
 
     drop(held);
 }
+

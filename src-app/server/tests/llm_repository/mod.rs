@@ -1,11 +1,3 @@
-// ============================================================================
-// LLM Repository Module Integration Tests
-// ============================================================================
-//
-// This test suite covers all CRUD operations and permission checks for the
-// LLM Repository module, which manages external LLM model repositories like
-// Hugging Face and GitHub with authentication support.
-
 use serde_json::json;
 
 mod connection_health_test;
@@ -1169,6 +1161,9 @@ async fn test_list_repositories_pagination_edges() {
     assert!(
         !b["repositories"].as_array().unwrap().is_empty(),
         "page=0 is treated as the first page"
+    );
+}
+
 /// Pagination edge cases on `GET /llm-repositories` (`list_repositories`,
 /// handlers.rs:39-76). The handler slices an in-memory `Vec` after the
 /// `PaginationQuery` deserializer clamps the inputs (`page>=1`,
@@ -1287,3 +1282,4 @@ async fn test_list_llm_repositories_pagination_edge_cases() {
         "the clamped default 20-row window returns the whole small set"
     );
 }
+

@@ -1,19 +1,6 @@
-//! Streaming integration tests — migrated to the fire-and-forget model.
-//!
-//! The old per-request SSE response (`POST /messages/stream`) is gone; the
-//! reply now streams over the per-user `GET /api/chat/stream`. These tests use
-//! the deterministic stub-engine-backed model (`helpers::create_stub_model`) +
-//! `ChatStreamProbe`, so they run WITHOUT API keys. The raw transport-format
-//! assertions (content-type, `data:` lines) moved to `chat_stream_test.rs`;
-//! what remains here is the extension behaviour that rides the stream
-//! (titleUpdated, assistant system-message injection) plus the invalid-model
-//! guard.
-
 use std::time::Duration;
-
 use reqwest::StatusCode;
 use serde_json::json;
-
 use super::helpers;
 use crate::common::chat_stream_probe::ChatStreamProbe;
 
@@ -255,53 +242,6 @@ async fn test_message_assistant_attribution_persists_and_is_readable() {
         .unwrap();
     assert_eq!(assistant_response.status(), StatusCode::CREATED);
     let assistant: serde_json::Value = assistant_response.json().await.unwrap();
-/// Integration proof that an assistant's INSTRUCTIONS actually reach the model:
-/// with a deterministic StubChat (which records the full prompt text of every
-/// request), a turn sent with `assistant_id` must carry the assistant's
-/// instruction text as a system message in the generation request. The existing
-/// assistant streaming tests only count content frames; this asserts the
-/// before_llm_call injection lands in the wire prompt (no real LLM needed).
-#[tokio::test]
-async fn test_assistant_instructions_reach_the_model_prompt() {
-    use crate::common::stub_chat::{register_stub_model, StubChat};
-
-    let server = crate::common::TestServer::start().await;
-    let stub = StubChat::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "assistant_inject",
-        &[
-            "conversations::create",
-            "conversations::read",
-            "conversations::edit",
-            "messages::create",
-            "messages::read",
-            "llm_models::read",
-            "assistants::create",
-            "assistants::read",
-        ],
-    )
-    .await;
-    let model_id_str =
-        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url, false, None).await;
-    let model_id = helpers::parse_uuid(&serde_json::json!(model_id_str));
-
-    // Distinctive instruction marker — easy to find in the recorded prompt.
-    let marker = "ASSISTANT_MAGIC_INSTR_7QX";
-    let assistant: serde_json::Value = reqwest::Client::new()
-        .post(server.api_url("/assistants"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "name": "Injector",
-            "instructions": format!("Always remember the codeword {marker}."),
-            "enabled": true
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
     let assistant_id = helpers::parse_uuid(&assistant["id"]);
 
     let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
@@ -383,6 +323,62 @@ async fn test_disabled_model_is_rejected_by_chat_send() {
     assert_eq!(
         body["error_code"], "MODEL_DISABLED",
         "downstream consumer must reject a disabled model with MODEL_DISABLED: {body}"
+    );
+}
+
+/// Integration proof that an assistant's INSTRUCTIONS actually reach the model:
+/// with a deterministic StubChat (which records the full prompt text of every
+/// request), a turn sent with `assistant_id` must carry the assistant's
+/// instruction text as a system message in the generation request. The existing
+/// assistant streaming tests only count content frames; this asserts the
+/// before_llm_call injection lands in the wire prompt (no real LLM needed).
+#[tokio::test]
+async fn test_assistant_instructions_reach_the_model_prompt() {
+    use crate::common::stub_chat::{register_stub_model, StubChat};
+
+    let server = crate::common::TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "assistant_inject",
+        &[
+            "conversations::create",
+            "conversations::read",
+            "conversations::edit",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+            "assistants::create",
+            "assistants::read",
+        ],
+    )
+    .await;
+    let model_id_str =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url, false, None).await;
+    let model_id = helpers::parse_uuid(&serde_json::json!(model_id_str));
+
+    // Distinctive instruction marker — easy to find in the recorded prompt.
+    let marker = "ASSISTANT_MAGIC_INSTR_7QX";
+    let assistant: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "Injector",
+            "instructions": format!("Always remember the codeword {marker}."),
+            "enabled": true
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let assistant_id = helpers::parse_uuid(&assistant["id"]);
+
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
+
     let content =
         send_with_assistant(&server, &user.token, conv_id, branch_id, model_id, Some(assistant_id), "hi").await;
     assert!(content > 0, "assistant-driven turn should stream content");
@@ -395,3 +391,4 @@ async fn test_disabled_model_is_rejected_by_chat_send() {
         stub.requests()
     );
 }
+

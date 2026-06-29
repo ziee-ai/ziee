@@ -1,18 +1,3 @@
-// ============================================================================
-// bio_mcp built-in MCP server tests.
-//
-// Tests the proxy route at /api/bio/mcp (the "thin wrapper we own"):
-//   - Auth gate: no JWT → 401; a JWT without `bio::query` → 403.
-//   - Graceful unavailability: an authorized caller, when BioMCP is not
-//     configured/enabled (no sidecar), gets a clean 503 — never a 500 /
-//     panic. (The default test server leaves `bio_mcp.enabled` false, so
-//     the bio row is never upserted → `ensure_healthy` surfaces a clear
-//     "row not found" error mapped to 503.)
-//
-// The full proxy-forward path (real biomcp serve-http sidecar) is covered
-// by the Tier-4 real-sidecar test, which is environment-gated.
-// ============================================================================
-
 use serde_json::json;
 
 fn jsonrpc_body() -> serde_json::Value {
@@ -30,45 +15,6 @@ async fn test_proxy_requires_auth() {
         .await
         .unwrap();
     assert_eq!(res.status(), 401);
-}
-
-/// The /bio/mcp route is registered for POST + GET (standalone SSE) + DELETE
-/// (session teardown), all forwarding through the same proxy_handler behind the
-/// same JWT + bio::query boundary. The existing tests only exercise POST; assert
-/// GET and DELETE are also wired and auth-gated (401 without a token).
-#[tokio::test]
-async fn test_proxy_get_and_delete_methods_are_auth_gated() {
-    let server = crate::common::TestServer::start().await;
-    let client = reqwest::Client::new();
-
-    // GET (standalone SSE open) without auth → 401.
-    let get_res = client
-        .get(server.api_url("/bio/mcp"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(get_res.status(), 401, "GET /bio/mcp must require auth");
-
-    // DELETE (session teardown) without auth → 401.
-    let del_res = client
-        .delete(server.api_url("/bio/mcp"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(del_res.status(), 401, "DELETE /bio/mcp must require auth");
-
-    // An unsupported method on the same path is NOT routed to the proxy
-    // (405 Method Not Allowed), proving only the three intended verbs are wired.
-    let put_res = client
-        .put(server.api_url("/bio/mcp"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(
-        put_res.status(),
-        405,
-        "PUT /bio/mcp is not a registered method"
-    );
 }
 
 #[tokio::test]
@@ -130,49 +76,6 @@ async fn test_proxy_unavailable_is_graceful_503() {
         err.contains("BioMCP") || err.contains("not found") || err.contains("disabled"),
         "503 should carry a bio-specific error message, got: {body}"
     );
-}
-
-/// The /bio/mcp route also accepts GET (standalone SSE stream) and DELETE
-/// (session teardown) — both forward through the SAME proxy_handler as POST. The
-/// existing tests only exercise POST; assert GET + DELETE are routed (NOT 404/405)
-/// AND share the auth + graceful-503 behavior.
-#[tokio::test]
-async fn test_proxy_get_and_delete_methods_are_routed_and_gated() {
-    let server = crate::common::TestServer::start().await;
-    let client = reqwest::Client::new();
-
-    // Unauthenticated GET + DELETE → 401 (route exists + auth-gated, not 404/405).
-    for method in ["GET", "DELETE"] {
-        let req = match method {
-            "GET" => client.get(server.api_url("/bio/mcp")),
-            _ => client.delete(server.api_url("/bio/mcp")),
-        };
-        let res = req.send().await.unwrap();
-        assert_eq!(res.status(), 401, "{method} /bio/mcp must be auth-gated (got {})", res.status());
-    }
-
-    // Authorized GET + DELETE with BioMCP unavailable → graceful 503 (same as
-    // POST), proving they reach the proxy and its ensure_healthy path.
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "bio_methods_authorized",
-        &["bio::query"],
-    )
-    .await;
-    let bearer = format!("Bearer {}", user.token);
-    for method in ["GET", "DELETE"] {
-        let req = match method {
-            "GET" => client.get(server.api_url("/bio/mcp")),
-            _ => client.delete(server.api_url("/bio/mcp")),
-        };
-        let res = req.header("Authorization", &bearer).send().await.unwrap();
-        assert_eq!(
-            res.status(),
-            503,
-            "{method} /bio/mcp must reach the proxy + return graceful 503 when the sidecar is unavailable (got {})",
-            res.status()
-        );
-    }
 }
 
 /// Resolve the build-staged biomcp binary path for the host triple and
@@ -603,3 +506,86 @@ async fn bio_note_not_injected_when_disabled_even_for_tool_capable_model() {
         "with bio disabled, even a tool-capable model must NOT receive the bio note"
     );
 }
+
+/// The /bio/mcp route is registered for POST + GET (standalone SSE) + DELETE
+/// (session teardown), all forwarding through the same proxy_handler behind the
+/// same JWT + bio::query boundary. The existing tests only exercise POST; assert
+/// GET and DELETE are also wired and auth-gated (401 without a token).
+#[tokio::test]
+async fn test_proxy_get_and_delete_methods_are_auth_gated() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // GET (standalone SSE open) without auth → 401.
+    let get_res = client
+        .get(server.api_url("/bio/mcp"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_res.status(), 401, "GET /bio/mcp must require auth");
+
+    // DELETE (session teardown) without auth → 401.
+    let del_res = client
+        .delete(server.api_url("/bio/mcp"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_res.status(), 401, "DELETE /bio/mcp must require auth");
+
+    // An unsupported method on the same path is NOT routed to the proxy
+    // (405 Method Not Allowed), proving only the three intended verbs are wired.
+    let put_res = client
+        .put(server.api_url("/bio/mcp"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        put_res.status(),
+        405,
+        "PUT /bio/mcp is not a registered method"
+    );
+}
+
+/// The /bio/mcp route also accepts GET (standalone SSE stream) and DELETE
+/// (session teardown) — both forward through the SAME proxy_handler as POST. The
+/// existing tests only exercise POST; assert GET + DELETE are routed (NOT 404/405)
+/// AND share the auth + graceful-503 behavior.
+#[tokio::test]
+async fn test_proxy_get_and_delete_methods_are_routed_and_gated() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Unauthenticated GET + DELETE → 401 (route exists + auth-gated, not 404/405).
+    for method in ["GET", "DELETE"] {
+        let req = match method {
+            "GET" => client.get(server.api_url("/bio/mcp")),
+            _ => client.delete(server.api_url("/bio/mcp")),
+        };
+        let res = req.send().await.unwrap();
+        assert_eq!(res.status(), 401, "{method} /bio/mcp must be auth-gated (got {})", res.status());
+    }
+
+    // Authorized GET + DELETE with BioMCP unavailable → graceful 503 (same as
+    // POST), proving they reach the proxy and its ensure_healthy path.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "bio_methods_authorized",
+        &["bio::query"],
+    )
+    .await;
+    let bearer = format!("Bearer {}", user.token);
+    for method in ["GET", "DELETE"] {
+        let req = match method {
+            "GET" => client.get(server.api_url("/bio/mcp")),
+            _ => client.delete(server.api_url("/bio/mcp")),
+        };
+        let res = req.header("Authorization", &bearer).send().await.unwrap();
+        assert_eq!(
+            res.status(),
+            503,
+            "{method} /bio/mcp must reach the proxy + return graceful 503 when the sidecar is unavailable (got {})",
+            res.status()
+        );
+    }
+}
+

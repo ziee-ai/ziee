@@ -1,25 +1,3 @@
-//! Apple Sign In integration tests, driven against a wiremock-based
-//! AppleMockServer that emulates `appleid.apple.com`'s wire behavior:
-//!   - GET  /auth/keys  → JWKS containing our mock RSA public key
-//!   - POST /auth/token → token response with a synthetic id_token
-//!                        signed by the mock's RSA private key
-//!
-//! The mock cannot accept ES256 client_secret JWTs the way real Apple
-//! does (Apple validates the team_id + key_id + signature against
-//! their key registry); our mock just accepts any POST. We
-//! separately unit-test that we GENERATE the right ES256 JWT.
-//!
-//! Strategy per test:
-//!   1. AppleMockServer::start() — wiremock instance + RSA keypair
-//!   2. Seed provider row with `base_url` pointing at the mock + the
-//!      fixture .p8 key path
-//!   3. GET /api/auth/oauth/apple/authorize  → 307 to mock with state+nonce
-//!   4. Extract state + nonce from the redirect URL's query params
-//!   5. apple_mock.sign_id_token(claims with matching nonce)
-//!   6. apple_mock.queue_token_response(signed_jwt)
-//!   7. POST /api/auth/oauth/apple/callback (form-encoded) with state+code
-//!   8. Assert outcome (new user provisioned, JWT redirect, etc.)
-
 use crate::common::apple_mock::AppleMockServer;
 use chrono::Utc;
 use serde_json::json;
@@ -540,6 +518,18 @@ async fn test_apple_relogin_forged_user_json_does_not_overwrite_name() {
     let row = sqlx::query!(
         r#"SELECT u.display_name FROM users u
            JOIN user_auth_links l ON l.user_id = u.id WHERE l.provider_id = $1"#,
+        provider_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        row.display_name.as_deref(),
+        Some("Real Name"),
+        "a forged relogin user JSON must NOT overwrite the established display_name"
+    );
+}
+
 /// SECURITY — first-time-only `user` JSON must NOT clobber a stored profile.
 ///
 /// Apple sends the `user` form field (name/email) ONLY on the user's FIRST
@@ -634,10 +624,6 @@ async fn test_apple_second_login_user_json_does_not_clobber_profile() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(
-        row.display_name.as_deref(),
-        Some("Real Name"),
-        "a forged relogin user JSON must NOT overwrite the established display_name"
     assert_eq!(count, 1, "second login must not create a second link/user");
 
     let after = sqlx::query!(
@@ -669,3 +655,4 @@ async fn test_apple_second_login_user_json_does_not_clobber_profile() {
         "second login must resolve the SAME user id",
     );
 }
+

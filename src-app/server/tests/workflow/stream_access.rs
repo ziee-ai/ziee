@@ -1,39 +1,12 @@
-//! Audit gaps S1–S4 + S7: per-run read-back surface access control.
-//!
-//! Every per-run read endpoint (`get_run`, `cancel_run`, the artifact
-//! stream, the log stream) gates on `row.user_id == auth.user.id` and
-//! returns 403 `WORKFLOW_RUN_FORBIDDEN` for a cross-user caller. The
-//! artifact + log streams additionally reject path-traversal in the
-//! caller-supplied path segments BEFORE touching the DB (400).
-//!
-//!   S1: cross-user GET    /workflow-runs/{id}                       → 403
-//!   S2: cross-user POST   /workflow-runs/{id}/cancel                → 403
-//!   S3: cross-user GET    /workflow-runs/{id}/artifact/{step}/{file}→ 403
-//!   S4: cross-user GET    /workflow-runs/{id}/logs/{step}/{kind}    → 403
-//!   S7: path-traversal guards on the artifact filename + log kind/step_id → 400
-//!
-//! Handler-behavior notes (verified against the real handlers — the
-//! assertions below match REALITY, not the audit's a-priori expectation):
-//!
-//!   * `artifact_stream::read_artifact` runs its `filename` traversal guard
-//!     (line 24, `ARTIFACT_PATH_INVALID`) FIRST, then `find_run`, then the
-//!     OWNERSHIP check (line 33), and only THEN looks up the step's artifacts.
-//!     So for a cross-user caller hitting an EXISTING run with a plausible
-//!     (non-traversal) filename, ownership 403s before the artifact-not-found
-//!     404 — S3 uses a real run owned by user A to exercise that ordering.
-//!   * `log_stream::read_log` runs its `kind`-allowlist guard (line 31,
-//!     `WORKFLOW_LOG_BAD_KIND`) FIRST, then the `step_id` traversal guard
-//!     (line 44, `WORKFLOW_LOG_BAD_STEP_ID`), then `find_run`, then OWNERSHIP
-//!     (line 53). So a cross-user caller must use a VALID `kind` to reach the
-//!     ownership check — S4 uses `kind = "prompt"` on user A's real run.
-
 use serde_json::json;
 use uuid::Uuid;
-
-use super::{
-    SIMPLE_OK_YAML, import_dev_workflow, plain_server, poll_run, run_workflow, stub_model_for,
-    workflow_user,
-};
+use super::SIMPLE_OK_YAML;
+use super::import_dev_workflow;
+use super::plain_server;
+use super::poll_run;
+use super::run_workflow;
+use super::stub_model_for;
+use super::workflow_user;
 use crate::common::test_helpers::create_user_with_permissions;
 
 /// Set up a real COMPLETED run owned by `owner`: dev-import SIMPLE_OK_YAML,
@@ -355,17 +328,6 @@ async fn output_read_cross_user_is_forbidden() {
     let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-xuser").await;
 
     let other = intruder(&server, "wf_out_xuser_intruder").await;
-// ── output_stream (read_output) error paths — fd22d822 ───────────────────────
-
-#[tokio::test]
-async fn output_stream_cross_user_is_forbidden() {
-    // read_output checks ownership (output_stream.rs:27) before the per-step
-    // output lookup, so a cross-user caller on user A's real run gets 403.
-    let server = plain_server().await;
-    let owner = workflow_user(&server, "wf_out_owner").await;
-    let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-cross").await;
-
-    let other = intruder(&server, "wf_out_intruder").await;
     let resp = reqwest::Client::new()
         .get(server.api_url(&format!("/workflow-runs/{run_id}/output/gen")))
         .header("Authorization", format!("Bearer {}", other.token))
@@ -402,6 +364,24 @@ async fn output_read_unknown_step_is_404() {
         body.contains("step output"),
         "step-not-found message surfaced (distinct from missing-run): {body}"
     );
+}
+
+// ── output_stream (read_output) error paths — fd22d822 ───────────────────────
+
+#[tokio::test]
+async fn output_stream_cross_user_is_forbidden() {
+    // read_output checks ownership (output_stream.rs:27) before the per-step
+    // output lookup, so a cross-user caller on user A's real run gets 403.
+    let server = plain_server().await;
+    let owner = workflow_user(&server, "wf_out_owner").await;
+    let (_stub, run_id) = completed_run_owned_by(&server, &owner, "out-cross").await;
+
+    let other = intruder(&server, "wf_out_intruder").await;
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflow-runs/{run_id}/output/gen")))
+        .header("Authorization", format!("Bearer {}", other.token))
+        .send()
+        .await
         .expect("output stream cross-user");
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
@@ -445,6 +425,7 @@ async fn output_stream_unknown_step_is_404() {
         .expect("output stream unknown step");
     assert_eq!(resp.status(), 404, "an unknown step's output must 404");
 }
+
 /// `read_output` (GET /workflow-runs/{run_id}/output/{step_id}) returns 404
 /// `WorkflowRun` for a run that does not exist — proving the run-lookup runs
 /// (and 404s) BEFORE the step-output lookup, for a caller who holds
@@ -470,3 +451,4 @@ async fn read_output_nonexistent_run_is_404() {
         "404 must be for the missing RUN, not a missing step: {body}"
     );
 }
+

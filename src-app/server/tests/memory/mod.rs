@@ -1,15 +1,11 @@
 // Memory module integration tests. See individual files for details.
 
 mod capability_filter_test;
-mod combined_real_llm;
-mod combined_real_llm_test;
 mod core_memory_test;
 mod crud_test;
-mod embedding_failure_test;
 mod extraction_injection_test;
 mod extraction_model_validation_test;
 mod extraction_test;
-mod fts_rebuild_test;
 mod memory_off_test;
 mod onboarding_settings_init_test;
 mod per_conversation_toggle_test;
@@ -21,3 +17,7 @@ mod retention_test;
 mod sync_emit_test;
 mod recall_fts_test;
 mod fts_rebuild_test;
+mod combined_real_llm;
+mod combined_real_llm_test;
+mod embedding_failure_test;
+

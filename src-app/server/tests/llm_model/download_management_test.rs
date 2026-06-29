@@ -1,7 +1,5 @@
-// LLM Model Download Management Integration Tests
-// Following Tier 1 & 2 SSE testing strategy from .plans/sse-testing-strategy.md
-
-use crate::common::{TestServer, test_helpers};
+use crate::common::TestServer;
+use crate::common::test_helpers;
 
 // =====================================================
 // List Downloads Tests
@@ -965,6 +963,9 @@ async fn test_subscribe_download_progress_multi_client_and_disconnect() {
         resp.status(),
         200,
         "a new subscription must still succeed after prior clients disconnected"
+    );
+}
+
 // =====================================================
 // Resume-after-restart: orphaned non-terminal download rows
 // (audit all-c736e307b89e)
@@ -989,25 +990,6 @@ async fn test_orphaned_downloading_row_survives_restart_unreconciled() {
         &server,
         "dl_orphan_restart",
         &["llm_models::downloads_read"],
-// =====================================================
-// Cancel download — real mid-flight cancellation (downloading → cancelled)
-// =====================================================
-
-/// REAL-PATH cancellation of an IN-FLIGHT download: the E2E mocks the list +
-/// cancel endpoints, and the only backend cancel test exercises the
-/// cancel-AFTER-complete (400) path. Here a genuine `downloading` row is seeded
-/// via SQL and POSTed to the real /cancel endpoint, asserting 204 + the row
-/// transitions to `cancelled` (the `can_cancel()` → mark-cancelled handler path,
-/// downloads.rs:189-281).
-#[tokio::test]
-async fn test_cancel_active_download_marks_cancelled() {
-    use uuid::Uuid;
-
-    let server = TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(
-        &server,
-        "dl_cancel_active",
-        &["llm_models::downloads_cancel", "llm_models::downloads_read"],
     )
     .await;
 
@@ -1022,10 +1004,6 @@ async fn test_cancel_active_download_marks_cancelled() {
     sqlx::query(
         "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in)
          VALUES ($1, 'Orphan Restart Provider', 'huggingface', true, false)",
-    let provider_id = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in)
-         VALUES ($1, 'DL Cancel Provider', 'huggingface', true, false)",
     )
     .bind(provider_id)
     .execute(&pool)
@@ -1036,7 +1014,6 @@ async fn test_cancel_active_download_marks_cancelled() {
     sqlx::query(
         "INSERT INTO llm_repositories (id, name, url, auth_type, enabled, built_in)
          VALUES ($1, 'Orphan Restart Repo', 'https://huggingface.co', 'none', true, false)",
-         VALUES ($1, 'DL Cancel Repo', 'https://huggingface.co', 'none', true, false)",
     )
     .bind(repository_id)
     .execute(&pool)
@@ -1095,6 +1072,66 @@ async fn test_cancel_active_download_marks_cancelled() {
         serde_json::json!("downloading"),
         "single-fetch confirms the persisted non-terminal status survives restart"
     );
+}
+
+// =====================================================
+// Cancel download — real mid-flight cancellation (downloading → cancelled)
+// =====================================================
+
+/// REAL-PATH cancellation of an IN-FLIGHT download: the E2E mocks the list +
+/// cancel endpoints, and the only backend cancel test exercises the
+/// cancel-AFTER-complete (400) path. Here a genuine `downloading` row is seeded
+/// via SQL and POSTed to the real /cancel endpoint, asserting 204 + the row
+/// transitions to `cancelled` (the `can_cancel()` → mark-cancelled handler path,
+/// downloads.rs:189-281).
+#[tokio::test]
+async fn test_cancel_active_download_marks_cancelled() {
+    use uuid::Uuid;
+
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "dl_cancel_active",
+        &["llm_models::downloads_cancel", "llm_models::downloads_read"],
+    )
+    .await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+
+    let provider_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in)
+         VALUES ($1, 'DL Cancel Provider', 'huggingface', true, false)",
+    )
+    .bind(provider_id)
+    .execute(&pool)
+    .await
+    .expect("insert provider");
+
+    let repository_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO llm_repositories (id, name, url, auth_type, enabled, built_in)
+         VALUES ($1, 'DL Cancel Repo', 'https://huggingface.co', 'none', true, false)",
+    )
+    .bind(repository_id)
+    .execute(&pool)
+    .await
+    .expect("insert repository");
+
+    let download_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO download_instances (id, provider_id, repository_id, request_data, status)
+         VALUES ($1, $2, $3, '{}'::jsonb, 'downloading')",
+    )
+    .bind(download_id)
+    .bind(provider_id)
+    .bind(repository_id)
+    .execute(&pool)
+    .await
     .expect("insert downloading download");
 
     // Real cancel endpoint → 204 No Content.
@@ -1116,3 +1153,4 @@ async fn test_cancel_active_download_marks_cancelled() {
     pool.close().await;
     assert_eq!(status, "cancelled", "the in-flight download must be marked cancelled");
 }
+

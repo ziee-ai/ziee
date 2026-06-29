@@ -1,30 +1,11 @@
-// ============================================================================
-// files_mcp built-in MCP server tests.
-//
-// Tests the JSON-RPC handler at /api/files/mcp (Track A):
-//   - initialize / tools/list return the 3 read-only tools.
-//   - tools/call requires the x-conversation-id header (conversation-scoped).
-//   - the handler is gated on `files::read` (granted to all users by default).
-//
-// The `tools/call` round-trips against a REAL conversation with project files
-// are exercised below (cross-cutting-04): list_files / read_file (offset+limit
-// line slicing) / grep_files / the AMBIGUOUS_NAME + MISSING_TARGET + UNKNOWN_TOOL
-// error classes / cross-conversation ownership. These reach the FIXED handler
-// (`file_type`-based dispatch + `app_error_to_jsonrpc` mapping) directly over
-// HTTP, so they don't need the stub chat provider — they POST the JSON-RPC
-// `tools/call` with the `x-conversation-id` header exactly as the built-in MCP
-// client does. The agentic chat-loop round-trip (manifest → read_file →
-// continuation) lives in `tests/agentic_chat/mod.rs`.
-// ============================================================================
-
 use std::time::Duration;
-
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use uuid::Uuid;
-
 use crate::common::sync_probe::SyncProbe;
 use crate::common::TestServer;
-use crate::common::test_helpers::{TestUser, create_user_with_permissions};
+use crate::common::test_helpers::TestUser;
+use crate::common::test_helpers::create_user_with_permissions;
 
 // File-versioning tests (edit tools → versions, restore, reproducibility,
 // version-pinned reads) live in a submodule so they can reuse the private
@@ -299,6 +280,7 @@ async fn test_tools_call_requires_conversation_id() {
 //   400 bad_request — MISSING_TARGET / AMBIGUOUS_NAME / INVALID_ARGS — AND 404
 //   not_found — cross-conversation ownership, no-such-name).
 const METHOD_NOT_FOUND: i64 = -32601;
+
 const INVALID_PARAMS: i64 = -32602;
 
 /// (1) `list_files` over a project conversation returns the attached file's
@@ -484,24 +466,6 @@ async fn test_convert_document_saved_bytes_are_a_real_pdf() {
     let server = TestServer::start().await;
     let user = power_user(&server, "files_mcp_convert_pdf").await;
     let conv_uuid = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
-/// convert_document renders markdown → PDF, persists it to the file store, and
-/// emits a `resource_link` content block pointing at the saved file. This pins
-/// the full success path (real pandoc render → process_and_save → Repos.file)
-/// AND the resource_link shape the chat persist_links consumer relies on
-/// (`is_saved:true` + `uri = /api/files/{id}`). Persistence is verified for
-/// real by downloading the referenced file and asserting it is a PDF.
-#[tokio::test]
-async fn test_convert_document_persists_pdf_and_emits_resource_link() {
-    let server = TestServer::start().await;
-    let user = power_user(&server, "files_mcp_convert_ok").await;
-    let (conv_id, _ids) = project_conversation_with_files(
-        &server,
-        &user,
-        "convert-ok-project",
-        &[("seed.txt", "content")],
-    )
-    .await;
-    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
 
     let body = call_tool(
         &server,
@@ -522,31 +486,6 @@ async fn test_convert_document_persists_pdf_and_emits_resource_link() {
 
     // The persisted file is downloadable and its bytes carry the %PDF magic —
     // proving the pandoc subprocess produced a real PDF, not a placeholder.
-        json!({ "markdown": "# Title\n\nHello **world**.", "filename": "report.pdf" }),
-    )
-    .await;
-
-    assert!(body["error"].is_null(), "convert should succeed; body={body}");
-    let sc = &body["result"]["structuredContent"];
-    let file_id = sc["file_id"].as_str().expect("file_id present");
-
-    // The emitted resource_link references the persisted file, flagged saved so
-    // the chat persist_links path references (never re-saves) it.
-    let link = &sc["content"][0];
-    assert_eq!(link["type"], "resource_link", "resource_link block: {sc}");
-    assert_eq!(link["is_saved"], serde_json::Value::Bool(true));
-    assert_eq!(
-        link["uri"].as_str().unwrap(),
-        format!("/api/files/{file_id}"),
-        "uri points at the saved file"
-    );
-    assert_eq!(
-        link["mimeType"].as_str().unwrap(),
-        "application/pdf",
-        "converted artifact is a PDF"
-    );
-
-    // Persistence is REAL: the referenced file downloads and is a valid PDF.
     let dl = reqwest::Client::new()
         .get(server.api_url(&format!("/files/{file_id}/download")))
         .header("Authorization", format!("Bearer {}", user.token))
@@ -558,12 +497,6 @@ async fn test_convert_document_persists_pdf_and_emits_resource_link() {
     assert!(
         bytes.starts_with(b"%PDF"),
         "downloaded bytes must carry the %PDF magic (len={})",
-        .unwrap();
-    assert_eq!(dl.status(), 200, "saved file must be downloadable");
-    let bytes = dl.bytes().await.unwrap();
-    assert!(
-        bytes.starts_with(b"%PDF"),
-        "persisted artifact is a real PDF (got {} bytes)",
         bytes.len()
     );
 }
@@ -612,10 +545,6 @@ async fn test_grep_files_hits() {
 // corpus with MORE than 200 matching lines must cap `matches` at exactly 200 and
 // set `truncated=true`, so the model knows the result is partial. (The (MAX+1)th
 // sentinel is pushed then trimmed, so the cap is exact, not off-by-one.)
-/// (4a-trunc) When a corpus has MORE than GREP_MAX_MATCHES (200) matching
-/// lines, grep_files caps the returned matches at 200 and flags
-/// `truncated: true` with the "[results truncated …]" note — so the model can
-/// tell a capped result from an exhaustive one and narrow its pattern.
 #[tokio::test]
 async fn test_grep_files_truncates_at_match_cap() {
     let server = TestServer::start().await;
@@ -624,23 +553,17 @@ async fn test_grep_files_truncates_at_match_cap() {
     let mut body = String::new();
     for i in 0..250 {
         body.push_str(&format!("NEEDLE line {i}\n"));
-    // 250 matching lines > the 200-match cap.
-    let mut body_text = String::new();
-    for i in 0..250 {
-        body_text.push_str(&format!("NEEDLE line {i}\n"));
     }
     let (conv_id, _ids) = project_conversation_with_files(
         &server,
         &user,
         "grep-trunc-project",
         &[("big.txt", body.as_str())],
-        &[("big.txt", &body_text)],
     )
     .await;
     let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
 
     let res = call_tool(
-    let body = call_tool(
         &server,
         &user,
         conv_uuid,
@@ -662,13 +585,6 @@ async fn test_grep_files_truncates_at_match_cap() {
         true,
         "a >200-match corpus must report truncated=true"
     );
-    assert!(body["error"].is_null(), "grep should succeed; body={body}");
-    let sc = &body["result"]["structuredContent"];
-    let matches = sc["matches"].as_array().expect("matches array");
-    assert_eq!(matches.len(), 200, "matches must be capped at GREP_MAX_MATCHES (200)");
-    assert_eq!(sc["truncated"].as_bool().unwrap(), true, "over-cap corpus is truncated");
-    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
-    assert!(text.contains("truncated"), "summary flags truncation: {text}");
 }
 
 /// (4b) A malformed regex (unbalanced `(`) must NOT error — it falls back to a
@@ -946,16 +862,6 @@ async fn test_convert_document_persists_file_and_emits_saved_resource_link() {
 }
 
 /// upload arbitrary bytes with a chosen MIME → returns the library file id.
-// ── read_file: non-text file_type branches (image / binary) ──────────────────
-//
-// `read_file` dispatches on `AvailableFile::file_type` (available_files.rs:97):
-// an `image/*` mime → FileType::Image (returns an MCP `image` content block with
-// base64 `data` + `mimeType`); a no-text non-image blob → FileType::Binary
-// (returns a text note "no extractable text", never bytes). The existing
-// read_file tests only exercise the Text branch (line slicing); these cover the
-// two non-text branches end-to-end through the real handler + file store.
-
-/// Upload arbitrary bytes with an explicit mime; returns the new file id.
 async fn upload_bytes(
     server: &TestServer,
     user: &TestUser,
@@ -970,68 +876,6 @@ async fn upload_bytes(
             .file_name(filename.to_string())
             .mime_str(mime)
             .unwrap(),
-/// Multi-turn model-authored-file workflow: the model AUTHORS a file via
-/// `create_file`, and that file is then available to LATER tool calls in the
-/// SAME conversation — `list_files` enumerates it and `read_file` returns its
-/// authored content. Exercises the production files_mcp write→read loop the
-/// model drives across turns (deterministic via call_tool, no LLM).
-#[tokio::test]
-async fn test_model_authored_file_is_readable_in_later_turn() {
-    let server = TestServer::start().await;
-    let user = power_user(&server, "files_mcp_authored").await;
-    let conv_id = create_conversation(&server, &user).await;
-    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
-
-    // Turn 1 — the model authors a file.
-    let created = call_tool(
-        &server,
-        &user,
-        conv_uuid,
-        "create_file",
-        json!({ "filename": "authored.md", "content": "AUTHORED_MARKER first line\nsecond line\n" }),
-    )
-    .await;
-    assert!(created["error"].is_null(), "create_file should succeed; body={created}");
-    let file_id = created["result"]["structuredContent"]["file_id"]
-        .as_str()
-        .expect("file_id")
-        .to_string();
-
-    // Turn 2 — the authored file is now in the conversation's manifest.
-    let listed = call_tool(&server, &user, conv_uuid, "list_files", json!({})).await;
-    assert!(listed["error"].is_null(), "list_files should succeed; body={listed}");
-    let files = listed["result"]["structuredContent"]["files"]
-        .as_array()
-        .expect("files array");
-    assert!(
-        files.iter().any(|f| f["id"].as_str() == Some(file_id.as_str())
-            && f["name"].as_str() == Some("authored.md")),
-        "the model-authored file must appear in a later turn's manifest; files={files:?}"
-    );
-
-    // Turn 3 — read the authored content back by id.
-    let read = call_tool(
-        &server,
-        &user,
-        conv_uuid,
-        "read_file",
-        json!({ "id": file_id }),
-    )
-    .await;
-    assert!(read["error"].is_null(), "read_file should succeed; body={read}");
-    let text = read["result"]["content"][0]["text"].as_str().unwrap_or("");
-    assert!(
-        text.contains("AUTHORED_MARKER"),
-        "read_file must return the model-authored content; got: {text}"
-    );
-}
-
-/// Upload raw BYTES with an explicit mime type; returns the new file id.
-async fn upload_bytes(server: &TestServer, user: &TestUser, filename: &str, bytes: Vec<u8>, mime: &str) -> String {
-    use reqwest::multipart;
-    let form = multipart::Form::new().part(
-        "file",
-        multipart::Part::bytes(bytes).file_name(filename.to_string()).mime_str(mime).unwrap(),
     );
     let resp = reqwest::Client::new()
         .post(server.api_url("/files/upload"))
@@ -1044,11 +888,6 @@ async fn upload_bytes(server: &TestServer, user: &TestUser, filename: &str, byte
         resp.status(),
         reqwest::StatusCode::CREATED,
         "upload: {}",
-        .expect("upload");
-    assert_eq!(
-        resp.status(),
-        reqwest::StatusCode::CREATED,
-        "upload {filename}: {}",
         resp.text().await.unwrap_or_default()
     );
     let v: Value = resp.json().await.unwrap();
@@ -1128,6 +967,66 @@ async fn test_write_tool_denied_without_files_upload_permission() {
     )
     .await;
     let conv = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv,
+        "create_file",
+        json!({ "filename": "nope.md", "content": "# blocked\n" }),
+    )
+    .await;
+
+    assert!(body["error"].is_object(), "write without files::upload must error: {body}");
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("files::upload") || msg.to_lowercase().contains("permission"),
+        "error must name the missing write permission: {body}"
+    );
+}
+
+// ── read_file: non-text file_type branches (image / binary) ──────────────────
+//
+// `read_file` dispatches on `AvailableFile::file_type` (available_files.rs:97):
+// an `image/*` mime → FileType::Image (returns an MCP `image` content block with
+// base64 `data` + `mimeType`); a no-text non-image blob → FileType::Binary
+// (returns a text note "no extractable text", never bytes). The existing
+// read_file tests only exercise the Text branch (line slicing); these cover the
+// two non-text branches end-to-end through the real handler + file store.
+
+/// Upload arbitrary bytes with an explicit mime; returns the new file id.
+async fn upload_bytes_v2(
+    server: &TestServer,
+    user: &TestUser,
+    filename: &str,
+    mime: &str,
+    bytes: Vec<u8>,
+) -> String {
+    use reqwest::multipart;
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(bytes)
+            .file_name(filename.to_string())
+            .mime_str(mime)
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::CREATED,
+        "upload {filename}: {}",
+        resp.text().await.unwrap_or_default()
+    );
+    let v: Value = resp.json().await.unwrap();
+    v["id"].as_str().unwrap().to_string()
+}
+
 /// A minimal, valid 1×1 transparent PNG. The magic sniffer keys on the 8-byte
 /// PNG signature (`\x89PNG\r\n\x1a\n`), so this is classified `image/png`.
 fn one_by_one_png() -> Vec<u8> {
@@ -1160,17 +1059,6 @@ async fn test_read_file_image_returns_image_block() {
     let body = call_tool(
         &server,
         &user,
-        conv,
-        "create_file",
-        json!({ "filename": "nope.md", "content": "# blocked\n" }),
-    )
-    .await;
-
-    assert!(body["error"].is_object(), "write without files::upload must error: {body}");
-    let msg = body["error"]["message"].as_str().unwrap_or("");
-    assert!(
-        msg.contains("files::upload") || msg.to_lowercase().contains("permission"),
-        "error must name the missing write permission: {body}"
         conv_uuid,
         "read_file",
         json!({ "id": file_id }),
@@ -1324,6 +1212,78 @@ async fn test_convert_document_emits_persisted_resource_link() {
         "the downloaded artifact is a real rendered PDF (magic %PDF); len={}",
         bytes.len()
     );
+}
+
+/// Multi-turn model-authored-file workflow: the model AUTHORS a file via
+/// `create_file`, and that file is then available to LATER tool calls in the
+/// SAME conversation — `list_files` enumerates it and `read_file` returns its
+/// authored content. Exercises the production files_mcp write→read loop the
+/// model drives across turns (deterministic via call_tool, no LLM).
+#[tokio::test]
+async fn test_model_authored_file_is_readable_in_later_turn() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_authored").await;
+    let conv_id = create_conversation(&server, &user).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    // Turn 1 — the model authors a file.
+    let created = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "create_file",
+        json!({ "filename": "authored.md", "content": "AUTHORED_MARKER first line\nsecond line\n" }),
+    )
+    .await;
+    assert!(created["error"].is_null(), "create_file should succeed; body={created}");
+    let file_id = created["result"]["structuredContent"]["file_id"]
+        .as_str()
+        .expect("file_id")
+        .to_string();
+
+    // Turn 2 — the authored file is now in the conversation's manifest.
+    let listed = call_tool(&server, &user, conv_uuid, "list_files", json!({})).await;
+    assert!(listed["error"].is_null(), "list_files should succeed; body={listed}");
+    let files = listed["result"]["structuredContent"]["files"]
+        .as_array()
+        .expect("files array");
+    assert!(
+        files.iter().any(|f| f["id"].as_str() == Some(file_id.as_str())
+            && f["name"].as_str() == Some("authored.md")),
+        "the model-authored file must appear in a later turn's manifest; files={files:?}"
+    );
+
+    // Turn 3 — read the authored content back by id.
+    let read = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "read_file",
+        json!({ "id": file_id }),
+    )
+    .await;
+    assert!(read["error"].is_null(), "read_file should succeed; body={read}");
+    let text = read["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("AUTHORED_MARKER"),
+        "read_file must return the model-authored content; got: {text}"
+    );
+}
+
+/// Upload raw BYTES with an explicit mime type; returns the new file id.
+async fn upload_bytes_v3(server: &TestServer, user: &TestUser, filename: &str, bytes: Vec<u8>, mime: &str) -> String {
+    use reqwest::multipart;
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(bytes).file_name(filename.to_string()).mime_str(mime).unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload bytes");
     assert_eq!(resp.status(), reqwest::StatusCode::CREATED, "upload: {}", resp.text().await.unwrap_or_default());
     resp.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string()
 }
@@ -1345,7 +1305,7 @@ async fn test_read_file_image_and_binary_branches() {
     let png = base64::engine::general_purpose::STANDARD
         .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
         .unwrap();
-    let img_id = upload_bytes(&server, &user, "dot.png", png, "image/png").await;
+    let img_id = upload_bytes(&server, &user, "dot.png", "image/png", png).await;
     attach_file_to_project(&server, &user, &project_id, &img_id).await;
 
     let img = call_tool(&server, &user, conv_uuid, "read_file", json!({ "id": img_id })).await;
@@ -1356,7 +1316,7 @@ async fn test_read_file_image_and_binary_branches() {
     assert!(block["data"].as_str().is_some_and(|d| !d.is_empty()), "image data must be base64");
 
     // A non-UTF8 binary blob → FileType::Binary (no extractable text).
-    let bin_id = upload_bytes(&server, &user, "blob.bin", vec![0u8, 159, 146, 150, 1, 2, 3], "application/octet-stream").await;
+    let bin_id = upload_bytes(&server, &user, "blob.bin", "application/octet-stream", vec![0u8, 159, 146, 150, 1, 2, 3]).await;
     attach_file_to_project(&server, &user, &project_id, &bin_id).await;
     let bin = call_tool(&server, &user, conv_uuid, "read_file", json!({ "id": bin_id })).await;
     assert!(bin["error"].is_null(), "read_file(binary) should succeed; body={bin}");
@@ -1371,7 +1331,7 @@ async fn test_read_file_image_and_binary_branches() {
 /// scanning stops early. A file with >200 matching lines exercises the cap +
 /// byte-budget/truncation path (handlers.rs grep_files), previously untested.
 #[tokio::test]
-async fn test_grep_files_truncates_at_match_cap() {
+async fn test_grep_files_truncates_at_match_cap_v2() {
     let server = TestServer::start().await;
     let user = power_user(&server, "files_mcp_grep_cap").await;
     // 300 lines each containing the marker → exceeds the 200-match cap.
@@ -1387,6 +1347,110 @@ async fn test_grep_files_truncates_at_match_cap() {
     let matches = sc["matches"].as_array().expect("matches array");
     assert!(matches.len() <= 200, "matches must be capped at GREP_MAX_MATCHES; got {}", matches.len());
 }
+
+/// convert_document renders markdown → PDF, persists it to the file store, and
+/// emits a `resource_link` content block pointing at the saved file. This pins
+/// the full success path (real pandoc render → process_and_save → Repos.file)
+/// AND the resource_link shape the chat persist_links consumer relies on
+/// (`is_saved:true` + `uri = /api/files/{id}`). Persistence is verified for
+/// real by downloading the referenced file and asserting it is a PDF.
+#[tokio::test]
+async fn test_convert_document_persists_pdf_and_emits_resource_link() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_convert_ok").await;
+    let (conv_id, _ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "convert-ok-project",
+        &[("seed.txt", "content")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "convert_document",
+        json!({ "markdown": "# Title\n\nHello **world**.", "filename": "report.pdf" }),
+    )
+    .await;
+
+    assert!(body["error"].is_null(), "convert should succeed; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    let file_id = sc["file_id"].as_str().expect("file_id present");
+
+    // The emitted resource_link references the persisted file, flagged saved so
+    // the chat persist_links path references (never re-saves) it.
+    let link = &sc["content"][0];
+    assert_eq!(link["type"], "resource_link", "resource_link block: {sc}");
+    assert_eq!(link["is_saved"], serde_json::Value::Bool(true));
+    assert_eq!(
+        link["uri"].as_str().unwrap(),
+        format!("/api/files/{file_id}"),
+        "uri points at the saved file"
+    );
+    assert_eq!(
+        link["mimeType"].as_str().unwrap(),
+        "application/pdf",
+        "converted artifact is a PDF"
+    );
+
+    // Persistence is REAL: the referenced file downloads and is a valid PDF.
+    let dl = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/download")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dl.status(), 200, "saved file must be downloadable");
+    let bytes = dl.bytes().await.unwrap();
+    assert!(
+        bytes.starts_with(b"%PDF"),
+        "persisted artifact is a real PDF (got {} bytes)",
+        bytes.len()
+    );
+}
+
+/// (4a-trunc) When a corpus has MORE than GREP_MAX_MATCHES (200) matching
+/// lines, grep_files caps the returned matches at 200 and flags
+/// `truncated: true` with the "[results truncated …]" note — so the model can
+/// tell a capped result from an exhaustive one and narrow its pattern.
+#[tokio::test]
+async fn test_grep_files_truncates_at_match_cap_v3() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_grep_trunc").await;
+    // 250 matching lines > the 200-match cap.
+    let mut body_text = String::new();
+    for i in 0..250 {
+        body_text.push_str(&format!("NEEDLE line {i}\n"));
+    }
+    let (conv_id, _ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "grep-trunc-project",
+        &[("big.txt", &body_text)],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "grep_files",
+        json!({ "pattern": "NEEDLE" }),
+    )
+    .await;
+    assert!(body["error"].is_null(), "grep should succeed; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    let matches = sc["matches"].as_array().expect("matches array");
+    assert_eq!(matches.len(), 200, "matches must be capped at GREP_MAX_MATCHES (200)");
+    assert_eq!(sc["truncated"].as_bool().unwrap(), true, "over-cap corpus is truncated");
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(text.contains("truncated"), "summary flags truncation: {text}");
+}
+
 /// The files MCP WRITE tools are gated on `files::upload` by an in-handler
 /// `require_write` check (the route itself only requires `files::read`). A user
 /// holding `files::read` but NOT `files::upload` must be refused with a
@@ -1439,3 +1503,4 @@ async fn test_write_tools_denied_without_files_upload_permission() {
         "list_files (a read tool) must still work for a files::read user: {list}"
     );
 }
+

@@ -598,102 +598,6 @@ async fn test_concurrent_user_assignments_to_same_group_all_land() {
             members.len()
         );
     }
-/// System groups (is_system = true, e.g. the seeded Administrators/Users
-/// groups) must reject mutations to their core attributes — name,
-/// deactivation, and permissions — even from a `groups::edit` holder, while
-/// still allowing a benign field (description) to change. This guards
-/// 02-permissions F-02: without it any edit-holder could rewrite the default
-/// Users group's permissions to `['*']` and cascade wildcard to every user.
-#[tokio::test]
-async fn test_update_group_system_group_protection() {
-    use crate::common::TEST_CONFIG;
-
-    let server = crate::common::TestServer::start().await;
-    let admin =
-        helpers::create_user_with_permissions(&server, "admin", &["groups::edit"]).await;
-
-    // Seed a SYSTEM group directly (is_system = true) — the API offers no way
-    // to create one, mirroring the seeded Administrators/Users groups.
-    let database_url = format!(
-        "postgresql://{}:{}@{}:{}/{}",
-        TEST_CONFIG.pg_username,
-        TEST_CONFIG.pg_password,
-        TEST_CONFIG.pg_bind_address,
-        TEST_CONFIG.pg_port,
-        server.database_name
-    );
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&database_url)
-        .await
-        .expect("Failed to connect to test database");
-
-    let group_id = Uuid::new_v4();
-    let group_name = format!("sys_group_{}", &group_id.to_string()[..8]);
-    let perms: Vec<String> = vec!["users::read".to_string()];
-    sqlx::query(
-        "INSERT INTO groups (id, name, description, permissions, is_system, is_active, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, true, true, NOW(), NOW())",
-    )
-    .bind(group_id)
-    .bind(&group_name)
-    .bind("Protected system group")
-    .bind(&perms)
-    .execute(&pool)
-    .await
-    .expect("Failed to seed system group");
-    pool.close().await;
-
-    let url = server.api_url(&format!("/groups/{}", group_id));
-    let client = reqwest::Client::new();
-
-    // Each forbidden mutation must be rejected with 400 / SYSTEM_GROUP.
-    for (label, payload) in [
-        ("rename", json!({ "name": "renamed_system_group" })),
-        ("permissions", json!({ "permissions": ["*"] })),
-        ("deactivate", json!({ "is_active": false })),
-    ] {
-        let response = client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", admin.token))
-            .json(&payload)
-            .send()
-            .await
-            .expect("Request failed");
-        assert_eq!(
-            response.status(),
-            400,
-            "System group {label} mutation must be rejected"
-        );
-        let body: serde_json::Value =
-            response.json().await.expect("Failed to parse JSON");
-        assert_eq!(
-            body.get("error_code").and_then(|v| v.as_str()),
-            Some("SYSTEM_GROUP"),
-            "System group {label} rejection must carry the SYSTEM_GROUP code"
-        );
-    }
-
-    // A benign, allowed field (description) on the SAME system group still
-    // succeeds — proving the guard is targeted, not a blanket block.
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "description": "Updated by admin" }))
-        .send()
-        .await
-        .expect("Request failed");
-    assert_eq!(
-        response.status(),
-        200,
-        "Description-only update on a system group must be allowed"
-    );
-    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert_eq!(body["description"], "Updated by admin");
-    assert_eq!(
-        body["name"], group_name,
-        "Name must be unchanged after the allowed update"
-    );
 }
 
 // ============================================================================
@@ -1003,51 +907,6 @@ async fn test_concurrent_assign_same_user_is_race_safe() {
         .json()
         .await
         .expect("parse members");
-/// Assigning a user who is ALREADY in the group is an idempotent no-op:
-/// the second assign still succeeds (204, ON CONFLICT DO NOTHING) and the
-/// group still has exactly ONE membership row for that user (no duplicate).
-#[tokio::test]
-async fn test_assign_user_already_in_group_is_noop() {
-    let server = crate::common::TestServer::start().await;
-    let admin = helpers::create_user_with_permissions(
-        &server,
-        "noop_admin",
-        &["groups::create", "users::create", "groups::assign_users", "groups::read"],
-    )
-    .await;
-
-    let group = helpers::create_test_group(&server, &admin.token, "noopgroup").await;
-    let group_id = group["id"].as_str().expect("group id");
-    let user = helpers::create_test_user_via_api(&server, &admin.token, "noopuser").await;
-    let user_id = user["id"].as_str().expect("user id");
-
-    let assign = || {
-        let url = server.api_url("/groups/assign");
-        let token = admin.token.clone();
-        async move {
-            reqwest::Client::new()
-                .post(&url)
-                .header("Authorization", format!("Bearer {token}"))
-                .json(&json!({ "user_id": user_id, "group_id": group_id }))
-                .send()
-                .await
-                .expect("assign")
-        }
-    };
-
-    assert_eq!(assign().await.status(), 204, "first assign");
-    assert_eq!(assign().await.status(), 204, "second assign is an idempotent no-op");
-
-    // Exactly one membership row — the no-op did not duplicate it.
-    let members: serde_json::Value = reqwest::Client::new()
-        .get(server.api_url(&format!("/groups/{group_id}/members?page=1&per_page=100")))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .send()
-        .await
-        .expect("members")
-        .json()
-        .await
-        .expect("members body");
     let count = members["users"]
         .as_array()
         .expect("users array")
@@ -1064,19 +923,6 @@ async fn test_assign_user_already_in_group_is_noop() {
 // permissions to ['*'] and cascade wildcard to everyone. Untested until now.
 #[tokio::test]
 async fn test_update_system_group_is_rejected() {
-        .filter(|u| u["id"].as_str() == Some(user_id))
-        .count();
-    assert_eq!(count, 1, "double-assign must not duplicate the membership: {members}");
-}
-
-/// `delete_group` must refuse to delete a SYSTEM group (`is_system = true`,
-/// e.g. the seeded Administrators/Users groups) with 400 / SYSTEM_GROUP, while
-/// still allowing deletion of an ordinary group — the sibling of the
-/// `update_group` system-protection guard (groups.rs:259-261).
-#[tokio::test]
-async fn test_delete_group_system_group_protection() {
-    use crate::common::TEST_CONFIG;
-
     let server = crate::common::TestServer::start().await;
     let admin = helpers::create_user_with_permissions(
         &server,
@@ -1086,16 +932,6 @@ async fn test_delete_group_system_group_protection() {
     .await;
 
     // Find a system group (seeded "Users"/"Administrators").
-/// A system group's core attributes (name, is_active, permissions) cannot be
-/// modified even by a holder of `groups::edit` — guards the wildcard-escalation
-/// path in `update_group` (02-permissions F-02).
-#[tokio::test]
-async fn test_update_system_group_core_attrs_rejected() {
-    let server = crate::common::TestServer::start().await;
-    let admin =
-        helpers::create_user_with_permissions(&server, "sysgrp_admin", &["groups::read", "groups::edit"]).await;
-
-    // Find a seeded system group (e.g. Administrators / Users).
     let list: serde_json::Value = reqwest::Client::new()
         .get(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -1156,52 +992,6 @@ async fn test_permission_denied_response_body_format() {
         &["profile::read"],
     )
     .await;
-        .expect("Request failed")
-        .json()
-        .await
-        .expect("Failed to parse JSON");
-    let groups = list["groups"].as_array().expect("groups array");
-    let system_group = groups
-        .iter()
-        .find(|g| g["is_system"].as_bool() == Some(true))
-        .expect("at least one seeded system group must exist");
-    let group_id = system_group["id"].as_str().expect("group id");
-
-    let url = server.api_url(&format!("/groups/{}", group_id));
-
-    // Renaming a system group must be refused with 400 SYSTEM_GROUP.
-    let rename = reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "name": "hacked-system-group" }))
-        .send()
-        .await
-        .expect("Request failed");
-    assert_eq!(rename.status(), 400, "renaming a system group must be rejected");
-    let body: serde_json::Value = rename.json().await.expect("Failed to parse JSON");
-    assert_eq!(body["error_code"].as_str(), Some("SYSTEM_GROUP"));
-
-    // Rewriting a system group's permissions to wildcard must also be refused.
-    let escalate = reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "permissions": ["*"] }))
-        .send()
-        .await
-        .expect("Request failed");
-    assert_eq!(escalate.status(), 400, "rewriting system-group permissions must be rejected");
-    let body: serde_json::Value = escalate.json().await.expect("Failed to parse JSON");
-    assert_eq!(body["error_code"].as_str(), Some("SYSTEM_GROUP"));
-}
-
-/// Permission-denied RESPONSE BODY format — the SINGLE-missing-permission branch
-/// (extractors.rs:147-153). Existing 403 tests only assert `error_code`; the
-/// human-readable `message` ("Missing required permission: <perm>") was never
-/// checked. GET /groups requires the single `groups::read` perm.
-#[tokio::test]
-async fn test_permission_denied_body_single_message() {
-    let server = crate::common::TestServer::start().await;
-    let user = helpers::create_user_with_permissions(&server, "denybody_single", &[]).await;
 
     let resp = reqwest::Client::new()
         .get(server.api_url("/groups"))
@@ -1219,6 +1009,173 @@ async fn test_permission_denied_body_single_message() {
     assert!(
         msg.contains("groups::read") && msg.to_lowercase().contains("missing required permission"),
         "the error message must name the missing permission: {body}"
+    );
+}
+
+/// System groups (is_system = true, e.g. the seeded Administrators/Users
+/// groups) must reject mutations to their core attributes — name,
+/// deactivation, and permissions — even from a `groups::edit` holder, while
+/// still allowing a benign field (description) to change. This guards
+/// 02-permissions F-02: without it any edit-holder could rewrite the default
+/// Users group's permissions to `['*']` and cascade wildcard to every user.
+#[tokio::test]
+async fn test_update_group_system_group_protection() {
+    use crate::common::TEST_CONFIG;
+
+    let server = crate::common::TestServer::start().await;
+    let admin =
+        helpers::create_user_with_permissions(&server, "admin", &["groups::edit"]).await;
+
+    // Seed a SYSTEM group directly (is_system = true) — the API offers no way
+    // to create one, mirroring the seeded Administrators/Users groups.
+    let database_url = format!(
+        "postgresql://{}:{}@{}:{}/{}",
+        TEST_CONFIG.pg_username,
+        TEST_CONFIG.pg_password,
+        TEST_CONFIG.pg_bind_address,
+        TEST_CONFIG.pg_port,
+        server.database_name
+    );
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let group_id = Uuid::new_v4();
+    let group_name = format!("sys_group_{}", &group_id.to_string()[..8]);
+    let perms: Vec<String> = vec!["users::read".to_string()];
+    sqlx::query(
+        "INSERT INTO groups (id, name, description, permissions, is_system, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, true, true, NOW(), NOW())",
+    )
+    .bind(group_id)
+    .bind(&group_name)
+    .bind("Protected system group")
+    .bind(&perms)
+    .execute(&pool)
+    .await
+    .expect("Failed to seed system group");
+    pool.close().await;
+
+    let url = server.api_url(&format!("/groups/{}", group_id));
+    let client = reqwest::Client::new();
+
+    // Each forbidden mutation must be rejected with 400 / SYSTEM_GROUP.
+    for (label, payload) in [
+        ("rename", json!({ "name": "renamed_system_group" })),
+        ("permissions", json!({ "permissions": ["*"] })),
+        ("deactivate", json!({ "is_active": false })),
+    ] {
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .json(&payload)
+            .send()
+            .await
+            .expect("Request failed");
+        assert_eq!(
+            response.status(),
+            400,
+            "System group {label} mutation must be rejected"
+        );
+        let body: serde_json::Value =
+            response.json().await.expect("Failed to parse JSON");
+        assert_eq!(
+            body.get("error_code").and_then(|v| v.as_str()),
+            Some("SYSTEM_GROUP"),
+            "System group {label} rejection must carry the SYSTEM_GROUP code"
+        );
+    }
+
+    // A benign, allowed field (description) on the SAME system group still
+    // succeeds — proving the guard is targeted, not a blanket block.
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "description": "Updated by admin" }))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        response.status(),
+        200,
+        "Description-only update on a system group must be allowed"
+    );
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["description"], "Updated by admin");
+    assert_eq!(
+        body["name"], group_name,
+        "Name must be unchanged after the allowed update"
+    );
+}
+
+/// Assigning a user who is ALREADY in the group is an idempotent no-op:
+/// the second assign still succeeds (204, ON CONFLICT DO NOTHING) and the
+/// group still has exactly ONE membership row for that user (no duplicate).
+#[tokio::test]
+async fn test_assign_user_already_in_group_is_noop() {
+    let server = crate::common::TestServer::start().await;
+    let admin = helpers::create_user_with_permissions(
+        &server,
+        "noop_admin",
+        &["groups::create", "users::create", "groups::assign_users", "groups::read"],
+    )
+    .await;
+
+    let group = helpers::create_test_group(&server, &admin.token, "noopgroup").await;
+    let group_id = group["id"].as_str().expect("group id");
+    let user = helpers::create_test_user_via_api(&server, &admin.token, "noopuser").await;
+    let user_id = user["id"].as_str().expect("user id");
+
+    let assign = || {
+        let url = server.api_url("/groups/assign");
+        let token = admin.token.clone();
+        async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "user_id": user_id, "group_id": group_id }))
+                .send()
+                .await
+                .expect("assign")
+        }
+    };
+
+    assert_eq!(assign().await.status(), 204, "first assign");
+    assert_eq!(assign().await.status(), 204, "second assign is an idempotent no-op");
+
+    // Exactly one membership row — the no-op did not duplicate it.
+    let members: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/groups/{group_id}/members?page=1&per_page=100")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("members")
+        .json()
+        .await
+        .expect("members body");
+    let count = members["users"]
+        .as_array()
+        .expect("users array")
+        .iter()
+        .filter(|u| u["id"].as_str() == Some(user_id))
+        .count();
+    assert_eq!(count, 1, "double-assign must not duplicate the membership: {members}");
+}
+
+/// `delete_group` must refuse to delete a SYSTEM group (`is_system = true`,
+/// e.g. the seeded Administrators/Users groups) with 400 / SYSTEM_GROUP, while
+/// still allowing deletion of an ordinary group — the sibling of the
+/// `update_group` system-protection guard (groups.rs:259-261).
+#[tokio::test]
+async fn test_delete_group_system_group_protection() {
+    use crate::common::TEST_CONFIG;
+
+    let server = crate::common::TestServer::start().await;
+    let admin = helpers::create_user_with_permissions(
+        &server,
+        "admin",
         &["groups::create", "groups::delete", "groups::read"],
     )
     .await;
@@ -1305,6 +1262,76 @@ async fn test_permission_denied_body_single_message() {
         response.status(),
         204,
         "An ordinary group must delete successfully"
+    );
+}
+
+/// A system group's core attributes (name, is_active, permissions) cannot be
+/// modified even by a holder of `groups::edit` — guards the wildcard-escalation
+/// path in `update_group` (02-permissions F-02).
+#[tokio::test]
+async fn test_update_system_group_core_attrs_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let admin =
+        helpers::create_user_with_permissions(&server, "sysgrp_admin", &["groups::read", "groups::edit"]).await;
+
+    // Find a seeded system group (e.g. Administrators / Users).
+    let list: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    let groups = list["groups"].as_array().expect("groups array");
+    let system_group = groups
+        .iter()
+        .find(|g| g["is_system"].as_bool() == Some(true))
+        .expect("at least one seeded system group must exist");
+    let group_id = system_group["id"].as_str().expect("group id");
+
+    let url = server.api_url(&format!("/groups/{}", group_id));
+
+    // Renaming a system group must be refused with 400 SYSTEM_GROUP.
+    let rename = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "name": "hacked-system-group" }))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(rename.status(), 400, "renaming a system group must be rejected");
+    let body: serde_json::Value = rename.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"].as_str(), Some("SYSTEM_GROUP"));
+
+    // Rewriting a system group's permissions to wildcard must also be refused.
+    let escalate = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "permissions": ["*"] }))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(escalate.status(), 400, "rewriting system-group permissions must be rejected");
+    let body: serde_json::Value = escalate.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"].as_str(), Some("SYSTEM_GROUP"));
+}
+
+/// Permission-denied RESPONSE BODY format — the SINGLE-missing-permission branch
+/// (extractors.rs:147-153). Existing 403 tests only assert `error_code`; the
+/// human-readable `message` ("Missing required permission: <perm>") was never
+/// checked. GET /groups requires the single `groups::read` perm.
+#[tokio::test]
+async fn test_permission_denied_body_single_message() {
+    let server = crate::common::TestServer::start().await;
+    let user = helpers::create_user_with_permissions(&server, "denybody_single", &[]).await;
+
+    let resp = reqwest::Client::new()
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
         .expect("request");
     assert_eq!(resp.status(), 403);
     let body: serde_json::Value = resp.json().await.unwrap();
@@ -1340,3 +1367,4 @@ async fn test_permission_denied_body_multi_message() {
         "multi-missing-perm message format; body={body}"
     );
 }
+

@@ -1,20 +1,9 @@
-//! Hermetic hub catalog tests — no network.
-//!
-//! Uses the in-test `mock_release_server` (a mini Pages site over
-//! loopback) + the debug-only `ZIEE_HUB_PAGES_BASE` override so the
-//! full refresh → parse-index → lazy-fetch-manifest path is exercised
-//! against a local server. There is no "activate by tag" or cosign
-//! chain; the flow is:
-//!
-//!   mock.switch_to(version)           // publisher updates the catalog
-//!   POST /hub/refresh (admin)         // server pulls the new index
-//!
-//! Helper [`apply_catalog`] below performs both in one call so the
-//! test bodies stay readable.
-
-use serde_json::{json, Value as Json};
-
-use super::mock_release_server::{spawn_mock_hub, MockHub, MockItem, MockVersion};
+use serde_json::json;
+use serde_json::Value as Json;
+use super::mock_release_server::spawn_mock_hub;
+use super::mock_release_server::MockHub;
+use super::mock_release_server::MockItem;
+use super::mock_release_server::MockVersion;
 use crate::common::TestServer;
 use crate::common::test_helpers::create_user_with_permissions;
 
@@ -1816,71 +1805,6 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
     );
 }
 
-/// Cross-subsystem: a hub-installed assistant must cross from the hub install
-/// handler into the assistant subsystem so it is listable + usable in chat.
-/// `install_rejects_incompatible_item` only asserts the install 201; this
-/// follows the entity through to `GET /assistants` (the surface the chat
-/// assistant-picker reads from).
-#[tokio::test]
-async fn hub_installed_assistant_is_listed_in_the_assistant_subsystem() {
-    let mock = spawn_mock_hub(two_versions()).await;
-    let server = TestServer::start_with_options(crate::common::TestServerOptions {
-        extra_env: mock.test_env(),
-        ..Default::default()
-    })
-    .await;
-    let admin = create_user_with_permissions(
-        &server,
-        "hub_chat_admin",
-        &[
-            "hub::catalog::read",
-            "hub::catalog::manage",
-            "hub::assistants::create",
-            "assistants::read",
-        ],
-    )
-    .await;
-    let client = reqwest::Client::new();
-
-    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
-
-    // Install the assistant from the hub.
-    let install = client
-        .post(server.api_url("/hub/assistants/create"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
-        .send()
-        .await
-        .expect("install assistant");
-    assert_eq!(install.status(), 201, "install should 201");
-    let body: Json = install.json().await.expect("parse install body");
-    let assistant_id = body["assistant"]["id"]
-        .as_str()
-        .expect("installed assistant id")
-        .to_string();
-
-    // It now appears in the assistant subsystem's list — the chat
-    // assistant-picker's source of truth.
-    let list = client
-        .get(server.api_url("/assistants"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .send()
-        .await
-        .expect("list assistants");
-    assert_eq!(list.status(), 200, "GET /assistants should 200");
-    let list_body: Json = list.json().await.expect("parse list");
-    // The list may be `{ assistants: [...] }` or a bare array — handle both.
-    let rows = list_body
-        .get("assistants")
-        .and_then(|v| v.as_array())
-        .or_else(|| list_body.as_array())
-        .expect("assistants array");
-    assert!(
-        rows.iter().any(|a| a["id"].as_str() == Some(assistant_id.as_str())),
-        "hub-installed assistant {assistant_id} must be listed in /assistants: {list_body}"
-    );
-}
-
 // ============================================================================
 // REMOVED: required_env/required_headers placeholder seeding tests
 // ============================================================================
@@ -1975,3 +1899,82 @@ async fn refresh_response_reports_updated_previous_and_new_version() {
     assert_eq!(r3["previous_version"], "9.9.1-test", "previous: {r3}");
     assert_eq!(r3["new_version"], "9.9.2-test", "new: {r3}");
 }
+
+/// Cross-subsystem: a hub-installed assistant must cross from the hub install
+/// handler into the assistant subsystem so it is listable + usable in chat.
+/// `install_rejects_incompatible_item` only asserts the install 201; this
+/// follows the entity through to `GET /assistants` (the surface the chat
+/// assistant-picker reads from).
+#[tokio::test]
+async fn hub_installed_assistant_is_listed_in_the_assistant_subsystem() {
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "hub_chat_admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::create",
+            "assistants::read",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
+
+    // Install the assistant from the hub.
+    let install = client
+        .post(server.api_url("/hub/assistants/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
+        .send()
+        .await
+        .expect("install assistant");
+    assert_eq!(install.status(), 201, "install should 201");
+    let body: Json = install.json().await.expect("parse install body");
+    let assistant_id = body["assistant"]["id"]
+        .as_str()
+        .expect("installed assistant id")
+        .to_string();
+
+    // It now appears in the assistant subsystem's list — the chat
+    // assistant-picker's source of truth.
+    let list = client
+        .get(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list assistants");
+    assert_eq!(list.status(), 200, "GET /assistants should 200");
+    let list_body: Json = list.json().await.expect("parse list");
+    // The list may be `{ assistants: [...] }` or a bare array — handle both.
+    let rows = list_body
+        .get("assistants")
+        .and_then(|v| v.as_array())
+        .or_else(|| list_body.as_array())
+        .expect("assistants array");
+    assert!(
+        rows.iter().any(|a| a["id"].as_str() == Some(assistant_id.as_str())),
+        "hub-installed assistant {assistant_id} must be listed in /assistants: {list_body}"
+    );
+}
+
+// ============================================================================
+// REMOVED: required_env/required_headers placeholder seeding tests
+// ============================================================================
+// The legacy install path read `hub_mcp_server.required_env[*].placeholder`
+// and seeded the new MCP server's env map with those values. The
+// `required_env` + `required_headers` fields were dropped from
+// `HubMCPServer` when the body moved to strict server.json (env vars now
+// declared per-package in `packages[i].environmentVariables`, headers in
+// `remotes[i].headers`). The four tests that exercised the old
+// placeholder-seeding + replace-existing-merging behavior are deleted (not
+// ignored — the feature is gone, see memory note
+// `feedback_no_ignore_unless_platform`).
+

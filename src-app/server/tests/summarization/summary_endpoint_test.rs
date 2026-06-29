@@ -1,17 +1,5 @@
-// ============================================================================
-// GET /api/conversations/{id}/summary — read the active-branch summary.
-//
-// Three tests:
-//   - null-when-none: a conversation with no summary row returns
-//     `null` (not 404) so the frontend can render "no summary yet"
-//     uniformly.
-//   - seeded-round-trip: write a `conversation_summaries` row directly
-//     via SQL, then assert the endpoint returns the same fields.
-//   - 404-on-other-user: ownership-gated; intruder gets 404 to defeat
-//     probing.
-// ============================================================================
-
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -186,6 +174,19 @@ async fn test_summary_endpoint_requires_conversations_read() {
     let user = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "summ_endpoint_noperm",
+        &["profile::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{}/summary", Uuid::new_v4())))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403, "missing conversations::read must be 403");
+}
+
 #[tokio::test]
 async fn test_summary_endpoint_requires_conversations_read_permission() {
     // The endpoint is gated by `ConversationsRead` (handlers.rs:232). The
@@ -215,12 +216,6 @@ async fn test_summary_endpoint_requires_conversations_read_permission() {
     .await;
 
     let res = reqwest::Client::new()
-        .get(server.api_url(&format!("/conversations/{}/summary", Uuid::new_v4())))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 403, "missing conversations::read must be 403");
         .get(server.api_url(&format!("/conversations/{conv_id}/summary")))
         .header("Authorization", format!("Bearer {}", no_read.token))
         .send()
@@ -329,3 +324,4 @@ async fn test_refresh_endpoint_noop_branch_returns_ok() {
         "the handler returns {{\"ok\":true}} on success"
     );
 }
+

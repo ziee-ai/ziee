@@ -1,16 +1,14 @@
-//! Tier 2/3 — lit_search JSON-RPC MCP handler: discovery, permission gating,
-//! the disabled + empty-query error paths, and the headline UNION search over
-//! mock loopback upstreams (dedup + identified counts + completeness), plus the
-//! S2 429-retry and the CORE-enabled-but-unkeyed self-skip.
-
 use serde_json::json;
-
-use crate::common::test_helpers::{create_user_with_no_permissions, create_user_with_permissions};
-use crate::common::{TestServer, TestServerOptions};
-use crate::lit_search::{
-    configure, jsonrpc, start_mock_crossref, start_mock_europepmc, start_mock_s2_flaky,
-    start_mock_s2_paper,
-};
+use crate::common::test_helpers::create_user_with_no_permissions;
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::common::TestServer;
+use crate::common::TestServerOptions;
+use crate::lit_search::configure;
+use crate::lit_search::jsonrpc;
+use crate::lit_search::start_mock_crossref;
+use crate::lit_search::start_mock_europepmc;
+use crate::lit_search::start_mock_s2_flaky;
+use crate::lit_search::start_mock_s2_paper;
 
 fn admin_perms() -> &'static [&'static str] {
     &["lit_search::admin::read", "lit_search::admin::manage"]
@@ -674,25 +672,6 @@ async fn test_failing_connector_is_degraded_others_still_return() {
     configure(&server, &admin.token, &["europepmc", "crossref"]).await;
 
     let res = jsonrpc(
-#[tokio::test]
-async fn test_research_journey_search_then_dedup_then_select() {
-    // The complete research USER JOURNEY across the pure-pipeline tools:
-    //   literature_search → dedup_records (combine snowball rounds) →
-    //   select_included (turn screening decisions into the fetch id-list).
-    // This wires the REAL output of one tool into the next, rather than
-    // exercising each in isolation with hand-authored inputs.
-    let epmc = start_mock_europepmc().await;
-    let crossref = start_mock_crossref().await;
-    let server = server_with_seams(vec![
-        ("LIT_SEARCH_EUROPEPMC_ENDPOINT".to_string(), format!("{epmc}/search")),
-        ("LIT_SEARCH_CROSSREF_ENDPOINT".to_string(), format!("{crossref}/works")),
-    ])
-    .await;
-    let admin = create_user_with_permissions(&server, "ls_journey_admin", admin_perms()).await;
-    configure(&server, &admin.token, &["europepmc", "crossref"]).await;
-
-    // 1) Search → 3 deduped records.
-    let search: serde_json::Value = jsonrpc(
         &server,
         &admin.token,
         "tools/call",
@@ -819,6 +798,34 @@ async fn test_select_included_tool_via_mcp() {
     assert_eq!(sc["included"], 2, "unique included: {body}");
     assert_eq!(sc["excluded"], 1, "{body}");
     assert_eq!(sc["skipped"], 1, "null decision skipped: {body}");
+}
+
+#[tokio::test]
+async fn test_research_journey_search_then_dedup_then_select() {
+    // The complete research USER JOURNEY across the pure-pipeline tools:
+    //   literature_search → dedup_records (combine snowball rounds) →
+    //   select_included (turn screening decisions into the fetch id-list).
+    // This wires the REAL output of one tool into the next, rather than
+    // exercising each in isolation with hand-authored inputs.
+    let epmc = start_mock_europepmc().await;
+    let crossref = start_mock_crossref().await;
+    let server = server_with_seams(vec![
+        ("LIT_SEARCH_EUROPEPMC_ENDPOINT".to_string(), format!("{epmc}/search")),
+        ("LIT_SEARCH_CROSSREF_ENDPOINT".to_string(), format!("{crossref}/works")),
+    ])
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_journey_admin", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc", "crossref"]).await;
+
+    // 1) Search → 3 deduped records.
+    let search: serde_json::Value = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "literature_search", "arguments": { "query": "crispr" } }),
+    )
+    .send()
+    .await
     .unwrap()
     .json()
     .await
@@ -885,3 +892,4 @@ async fn test_select_included_tool_via_mcp() {
     assert_eq!(sc["included"], 1, "{sc}");
     assert_eq!(sc["excluded"], 1, "{sc}");
 }
+

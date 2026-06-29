@@ -1,25 +1,8 @@
-//! Conversation ↔ project relation: attach/detach endpoint coverage
-//! + list scoping + FK cascade behavior. Single file per
-//! resource-pairing convention (compare `files_test.rs` for the
-//! project↔file pair).
-//!
-//! Legacy tests that exercised `POST /conversations` with a body
-//! `project_id`, `PUT /conversations/{id}` for moves,
-//! `?project_id=<uuid>` query filtering, and backend default_model_id
-//! snapshot-on-create were deleted as part of the chat↔project
-//! decoupling — those code paths no longer exist:
-//!   - chat creates UNFILED conversations only; project membership
-//!     is set via `POST /projects/{id}/conversations/{conv_id}`.
-//!   - chat's `GET /conversations` always returns unfiled-only; no
-//!     `?project_id` query param.
-//!   - default_model_id resolution moved to the frontend; E2E specs
-//!     cover the seed-from-project-default flow.
-
 use reqwest::StatusCode;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
-
 use super::helpers;
 use crate::common::TestServer;
 use crate::common::test_helpers::TestUser;
@@ -1198,3 +1181,4 @@ async fn test_create_project_rejects_bad_default_asset_refs() {
     let body: Value = r.json().await.unwrap();
     assert_eq!(body["error_code"].as_str(), Some("DEFAULT_ASSISTANT_INACCESSIBLE"), "{body}");
 }
+

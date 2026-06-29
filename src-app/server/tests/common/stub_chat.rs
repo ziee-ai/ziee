@@ -1,48 +1,16 @@
-//! In-process OpenAI-compatible **stub chat provider** for chat-loop tests.
-//!
-//! The audit's **T0 prerequisite**: there is no mock CHAT provider in the
-//! server tests — `tests/chat/helpers.rs::get_or_create_test_model` uses a REAL
-//! provider keyed by env API keys, so nothing scripts model output. Almost every
-//! Track A/B chat-loop assertion (manifest injected, `read_file` round-trips,
-//! inline self-save without a 2nd call, capability gating) needs a deterministic
-//! model.
-//!
-//! This fixture stands up a loopback axum server speaking the OpenAI
-//! `/v1/chat/completions` SSE + tool-call wire format the real `OpenAIProvider`
-//! parses. Registering it as a `custom` provider therefore exercises the FULL
-//! chat path (request build → SSE parse → tool-use loop → continuation) with
-//! canned, scripted output — only token generation is faked.
-//!
-//! ## Scripting
-//! The model's behaviour is driven by a `STUB_PLAN=<plan>` token the test author
-//! embeds in the user message, combined with whether the request history already
-//! carries a tool result (turn detection — the same request is replayed each
-//! continuation, so the presence of a `role:"tool"` message is what advances the
-//! script). Plans:
-//!   - `text` (default): one assistant turn of plain text.
-//!   - `read_first_file`: turn 1 → `read_file({id})` where `id` is parsed from
-//!     the injected manifest system block; turn 2 (a tool result is present) →
-//!     text that echoes the returned file content (proves the round-trip).
-//!   - `grep_first_file`: turn 1 → `grep_files({pattern})` (pattern from a
-//!     `STUB_GREP=<word>` token, default `the`); turn 2 → text.
-//!   - `remember`: ONE turn → an answer text **and** a `remember` tool call in
-//!     the same assistant message (Track B inline self-save; the side-effect loop
-//!     must finalize without a 2nd generation call).
-//!
-//! Every `/v1/chat/completions` hit is recorded so a test can assert what the
-//! model actually saw (manifest present? which tools attached? tool result on
-//! the continuation?) and how many generation calls the loop made.
-
-#![allow(dead_code)]
-
-use std::sync::{Arc, Mutex};
-
+use std::sync::Arc;
+use std::sync::Mutex;
 use axum::extract::State;
-use axum::response::sse::{Event, Sse};
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
-use axum::{Json, Router};
-use serde_json::{Value, json};
+use axum::response::sse::Event;
+use axum::response::sse::Sse;
+use axum::response::IntoResponse;
+use axum::response::Response;
+use axum::routing::get;
+use axum::routing::post;
+use axum::Json;
+use axum::Router;
+use serde_json::Value;
+use serde_json::json;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
@@ -70,6 +38,7 @@ pub struct RecordedRequest {
 }
 
 impl RecordedRequest {
+
     pub fn has_tool(&self, name: &str) -> bool {
         self.tool_names.iter().any(|t| tool_name_matches(t, name))
     }
@@ -108,12 +77,14 @@ pub struct StubChat {
 }
 
 impl Drop for StubChat {
+
     fn drop(&mut self) {
         self.handle.abort();
     }
 }
 
 impl StubChat {
+
     /// Bind a loopback OpenAI-compatible stub and start serving.
     pub async fn start() -> StubChat {
         let requests = Arc::new(Mutex::new(Vec::new()));
@@ -141,10 +112,12 @@ impl StubChat {
         }
     }
 
+
     /// All recorded requests (clone — safe to inspect after the send).
     pub fn requests(&self) -> Vec<RecordedRequest> {
         self.requests.lock().unwrap().clone()
     }
+
 
     /// Count generation calls whose tool set included `name`. The title /
     /// summarizer extensions issue tool-less calls, so counting tool-carrying
@@ -155,6 +128,7 @@ impl StubChat {
             .filter(|r| r.has_tool(name))
             .count()
     }
+
 
     /// True if any recorded request carried the Track A manifest system block.
     pub fn any_manifest(&self) -> bool {
@@ -506,44 +480,6 @@ fn script(
             }
             let echoed = last_tool_result_text(messages);
             (Some(format!("Recalled prior result: {echoed}")), None)
-        // Turn 1 of the model-authored-file workflow: emit a files_mcp
-        // `create_file` writing STUB_CONTENT into STUB_FILE — the model authors
-        // a brand-new file (not an uploaded one) that it can reuse on a later
-        // turn. The continuation acknowledges the creation.
-        "create_file" => {
-            if let (false, Some(wire)) =
-                (had_tool_result, resolve_wire_name(tool_names, "create_file"))
-            {
-                let filename = parse_token(last_user, "STUB_FILE=")
-                    .filter(|c| !c.trim().is_empty())
-                    .unwrap_or_else(|| "authored.md".into());
-                let content = parse_token(last_user, "STUB_CONTENT=")
-                    .filter(|c| !c.trim().is_empty())
-                    .unwrap_or_else(|| "authored body".into());
-                return (
-                    None,
-                    Some((wire.to_string(), json!({ "filename": filename, "content": content }))),
-                );
-            }
-            (Some("Created the file.".into()), None)
-        }
-        // A later turn of the authored-file workflow: read a file back BY NAME
-        // (STUB_NAME) via files_mcp `read_file`. Name resolution searches the
-        // CONVERSATION's available files, so this only succeeds if a file
-        // authored on an earlier turn persisted and is still reusable here. The
-        // continuation echoes the file's content so the test can assert the
-        // round-trip recovered the authored content.
-        "read_named" => {
-            if let (false, Some(wire)) =
-                (had_tool_result, resolve_wire_name(tool_names, "read_file"))
-            {
-                let name = parse_token(last_user, "STUB_NAME=")
-                    .filter(|c| !c.trim().is_empty())
-                    .unwrap_or_else(|| "authored.md".into());
-                return (None, Some((wire.to_string(), json!({ "name": name }))));
-            }
-            let echoed = last_tool_result_text(messages);
-            (Some(format!("Reading the authored file: {echoed}")), None)
         }
         // "text" and any unknown plan → a plain answer.
         _ => (Some("Hello from the stub model.".into()), None),
@@ -822,3 +758,234 @@ pub async fn register_stub_model(
 
     model_id
 }
+
+/// Decide the assistant turn. Returns `(text, Option<(tool_name, args_json)>)`.
+fn script_v2(
+    plan: &str,
+    had_tool_result: bool,
+    tool_names: &[String],
+    system_text: &str,
+    last_user: &str,
+    messages: &[Value],
+) -> (Option<String>, Option<(String, Value)>) {
+    match plan {
+        "read_first_file" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "read_file"))
+            {
+                if let Some(id) = first_manifest_id(system_text) {
+                    return (None, Some((wire.to_string(), json!({ "id": id }))));
+                }
+                // No id resolvable — degrade to text so the loop terminates.
+                return (Some("No readable files were listed.".into()), None);
+            }
+            // Continuation: echo the tool result so the test can assert the
+            // round-trip actually returned the file's content.
+            let echoed = last_tool_result_text(messages);
+            (
+                Some(format!("Based on the file, here is the content: {echoed}")),
+                None,
+            )
+        }
+        "grep_first_file" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "grep_files"))
+            {
+                let pattern = parse_token(last_user, "STUB_GREP=").unwrap_or_else(|| "the".into());
+                return (None, Some((wire.to_string(), json!({ "pattern": pattern }))));
+            }
+            let echoed = last_tool_result_text(messages);
+            (Some(format!("Matches: {echoed}")), None)
+        }
+        "remember" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "remember"))
+            {
+                let content = parse_token(last_user, "STUB_PLAN=remember ")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "The user shared a durable fact.".into());
+                // Answer text AND the side-effect save in the same turn.
+                return (
+                    Some("Got it — I'll remember that.".into()),
+                    Some((
+                        wire.to_string(),
+                        json!({ "content": content, "scope": "conversation" }),
+                    )),
+                );
+            }
+            (Some("Got it — I'll remember that.".into()), None)
+        }
+        // Emit the built-in `ask_user` elicitation tool (a single-choice enum),
+        // then, on the continuation carrying the user's answer as the tool
+        // result, echo it back. Drives the ask_user elicitation round-trip test.
+        "ask_user" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "ask_user"))
+            {
+                return (
+                    None,
+                    Some((
+                        wire.to_string(),
+                        json!({
+                            "message": "Which color do you want?",
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "color": {
+                                        "type": "string",
+                                        "enum": ["red", "green", "blue"]
+                                    }
+                                },
+                                "required": ["color"]
+                            }
+                        }),
+                    )),
+                );
+            }
+            let answer = last_tool_result_text(messages);
+            (Some(format!("You chose: {answer}")), None)
+        }
+        // ask_user with a MULTI-FIELD schema mixing a free-string, a bounded
+        // integer, and a `pattern`-validated string. Drives the multi-field /
+        // validated-input elicitation round-trip test; the continuation echoes
+        // the full answer JSON the user submitted.
+        "ask_user_multi" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "ask_user"))
+            {
+                return (
+                    None,
+                    Some((
+                        wire.to_string(),
+                        json!({
+                            "message": "Tell me about yourself",
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "nickname": { "type": "string" },
+                                    "age": { "type": "integer", "minimum": 0 },
+                                    "code": { "type": "string", "pattern": "^[A-Z]{3}$" }
+                                },
+                                "required": ["nickname", "code"]
+                            }
+                        }),
+                    )),
+                );
+            }
+            let answer = last_tool_result_text(messages);
+            (Some(format!("Recorded: {answer}")), None)
+        }
+        // ask_user with an EMPTY message — a malformed tool call. The built-in
+        // returns the is_error "non-empty message" marker WITHOUT surfacing a
+        // form; the continuation echoes that marker. Drives the empty-message
+        // integration test (no mcpElicitationRequired is emitted).
+        "ask_user_empty" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "ask_user"))
+            {
+                return (
+                    None,
+                    Some((
+                        wire.to_string(),
+                        json!({ "message": "", "schema": { "type": "object" } }),
+                    )),
+                );
+            }
+            let answer = last_tool_result_text(messages);
+            (Some(format!("Result: {answer}")), None)
+        }
+        // Emit a code_sandbox `write_file` overwriting `STUB_FILE` with
+        // `STUB_CONTENT`. Used by the sandbox version-back round-trip test: the
+        // write overwrites the copied-in editable file so the per-turn
+        // version-back commits a new version of the backing file.
+        "sandbox_write_file" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "write_file"))
+            {
+                let filename = parse_token(last_user, "STUB_FILE=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "notes.txt".into());
+                let content = parse_token(last_user, "STUB_CONTENT=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "changed by sandbox".into());
+                return (
+                    None,
+                    Some((wire.to_string(), json!({ "filename": filename, "content": content }))),
+                );
+            }
+            (Some("Wrote the file.".into()), None)
+        }
+        // Two write_file calls to the SAME file within ONE turn — the MCP tool
+        // loop iterates, so this drives write #1 then (on the continuation that
+        // carries the first tool result) write #2. The end-of-turn version-back
+        // must COALESCE both into a SINGLE new version holding the final content
+        // (STUB_CONTENT2), never two. STUB_CONTENT1/STUB_CONTENT2 set the bodies.
+        "sandbox_write_file_twice" => {
+            let wire = resolve_wire_name(tool_names, "write_file");
+            let filename = parse_token(last_user, "STUB_FILE=")
+                .filter(|c| !c.trim().is_empty())
+                .unwrap_or_else(|| "notes.txt".into());
+            let tool_results = messages
+                .iter()
+                .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"))
+                .count();
+            match (tool_results, wire) {
+                (0, Some(w)) => {
+                    let c = parse_token(last_user, "STUB_CONTENT1=")
+                        .filter(|c| !c.trim().is_empty())
+                        .unwrap_or_else(|| "first".into());
+                    (None, Some((w.to_string(), json!({ "filename": filename, "content": c }))))
+                }
+                (1, Some(w)) => {
+                    let c = parse_token(last_user, "STUB_CONTENT2=")
+                        .filter(|c| !c.trim().is_empty())
+                        .unwrap_or_else(|| "final".into());
+                    (None, Some((w.to_string(), json!({ "filename": filename, "content": c }))))
+                }
+                _ => (Some("Done — wrote the file twice.".into()), None),
+            }
+        }
+        // Turn 1 of the model-authored-file workflow: emit a files_mcp
+        // `create_file` writing STUB_CONTENT into STUB_FILE — the model authors
+        // a brand-new file (not an uploaded one) that it can reuse on a later
+        // turn. The continuation acknowledges the creation.
+        "create_file" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "create_file"))
+            {
+                let filename = parse_token(last_user, "STUB_FILE=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored.md".into());
+                let content = parse_token(last_user, "STUB_CONTENT=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored body".into());
+                return (
+                    None,
+                    Some((wire.to_string(), json!({ "filename": filename, "content": content }))),
+                );
+            }
+            (Some("Created the file.".into()), None)
+        }
+        // A later turn of the authored-file workflow: read a file back BY NAME
+        // (STUB_NAME) via files_mcp `read_file`. Name resolution searches the
+        // CONVERSATION's available files, so this only succeeds if a file
+        // authored on an earlier turn persisted and is still reusable here. The
+        // continuation echoes the file's content so the test can assert the
+        // round-trip recovered the authored content.
+        "read_named" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "read_file"))
+            {
+                let name = parse_token(last_user, "STUB_NAME=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored.md".into());
+                return (None, Some((wire.to_string(), json!({ "name": name }))));
+            }
+            let echoed = last_tool_result_text(messages);
+            (Some(format!("Reading the authored file: {echoed}")), None)
+        }
+        // "text" and any unknown plan → a plain answer.
+        _ => (Some("Hello from the stub model.".into()), None),
+    }
+}
+

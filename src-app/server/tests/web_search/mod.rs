@@ -1,3 +1,6 @@
+use serde_json::Value;
+use serde_json::json;
+
 // Integration + HTTP-handler tests for the web_search module.
 //
 // Tier 2 (settings CRUD + permission gating + secret round-trip) and Tier 3
@@ -8,8 +11,6 @@ mod mcp_test;
 mod real_llm_test;
 mod restart_test;
 mod settings_test;
-
-use serde_json::{Value, json};
 
 /// Build a JSON-RPC request to the web_search MCP endpoint.
 pub fn jsonrpc(
@@ -90,9 +91,6 @@ pub async fn start_failing_searxng() -> (String, std::sync::Arc<std::sync::atomi
 /// Spawn a loopback SearXNG that always returns HTTP 429 (rate-limited) — used
 /// to exercise the chain's fallback on a rate-limit response (distinct from a
 /// 500). Returns the base url + a hit counter.
-/// Loopback mock SearXNG that always replies HTTP 429 (rate-limited) and counts
-/// hits — to exercise the fallback-on-rate-limit path (distinct from the 500
-/// case `start_failing_searxng` covers).
 pub async fn start_rate_limited_searxng() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
     use axum::{Router, http::StatusCode, routing::get};
     use std::sync::Arc;
@@ -220,6 +218,100 @@ pub async fn start_mock_html() -> String {
         }),
     )
     .route(
+        // Oversized page (~81 KB body) for the char-truncation + byte-cap tests.
+        "/big",
+        get(|| async {
+            let para = "lorem ipsum dolor sit amet ".repeat(3000); // ~81 KB
+            Html(format!(
+                "<html><head><title>Big Page</title></head><body>\
+                 <article><h1>Big</h1><p>{para}</p></article></body></html>"
+            ))
+        }),
+    )
+    // Non-HTML content types: the readability extractor is HTML-oriented, so
+    // these exercise the best-effort fallback (fetch_url must still 200 and
+    // surface the body text rather than choking on the wrong content type).
+    .route(
+        "/data.json",
+        get(|| async {
+            (
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                "{\"marker\":\"JSONBODYMARKER\",\"items\":[1,2,3]}",
+            )
+        }),
+    )
+    .route(
+        "/data.csv",
+        get(|| async {
+            (
+                [(axum::http::header::CONTENT_TYPE, "text/csv")],
+                "col_a,col_b\nCSVBODYMARKER,2\nrow,3\n",
+            )
+        }),
+    )
+    .route(
+        "/data.xml",
+        get(|| async {
+            (
+                [(axum::http::header::CONTENT_TYPE, "application/xml")],
+                "<?xml version=\"1.0\"?><root><item>XMLBODYMARKER</item></root>",
+            )
+        }),
+    );
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app.into_make_service()).await;
+    });
+    format!("http://127.0.0.1:{port}")
+}
+
+/// Loopback mock SearXNG that always replies HTTP 429 (rate-limited) and counts
+/// hits — to exercise the fallback-on-rate-limit path (distinct from the 500
+/// case `start_failing_searxng` covers).
+pub async fn start_rate_limited_searxng_v2() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use axum::{Router, http::StatusCode, routing::get};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let hits = Arc::new(AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let h = hits.clone();
+    let app = Router::new().route(
+        "/search",
+        get(move || {
+            let h = h.clone();
+            async move {
+                h.fetch_add(1, Ordering::SeqCst);
+                StatusCode::TOO_MANY_REQUESTS
+            }
+        }),
+    );
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app.into_make_service()).await;
+    });
+    (format!("http://127.0.0.1:{port}"), hits)
+}
+
+/// Spawn a loopback HTML page for the page-fetch fixture. Page-fetch uses the
+/// public-only SSRF policy, so the TestServer must be started with
+/// `WEB_SEARCH_FETCH_ALLOW_LOOPBACK=1` for a 127.0.0.1 fixture to be reachable.
+pub async fn start_mock_html_v2() -> String {
+    use axum::{Router, response::Html, routing::get};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route(
+        "/page",
+        get(|| async {
+            Html(
+                "<html><head><title>Fixture Title</title></head><body>\
+                 <nav>home about contact</nav>\
+                 <article><h1>Main Heading</h1>\
+                 <p>This is the substantive body paragraph that readability keeps so the model can read the page.</p>\
+                 <p>A second meaningful paragraph with enough words to be retained by the extractor.</p>\
+                 </article><footer>copyright boilerplate</footer></body></html>",
+            )
+        }),
+    )
+    .route(
         // Redirect (302) to a private/IMDS address — the SSRF guard must block
         // the redirect HOP even though the initial loopback URL was allowed.
         "/redirect-to-imds",
@@ -276,3 +368,4 @@ pub async fn start_mock_html() -> String {
     });
     format!("http://127.0.0.1:{port}")
 }
+

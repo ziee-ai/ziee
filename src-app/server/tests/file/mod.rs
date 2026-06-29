@@ -1,3 +1,7 @@
+use crate::common::test_helpers;
+use reqwest::multipart;
+use std::path::PathBuf;
+
 // File module comprehensive integration tests
 
 // File's chat-bridge tests — moved out of tests/chat/ as part of the
@@ -8,10 +12,6 @@
 mod file_attachments_test;
 mod file_attachments_real_providers_test;
 mod provider_routing_integration_test;
-
-use crate::common::test_helpers;
-use reqwest::multipart;
-use std::path::PathBuf;
 
 // Get the path to test data
 fn test_data_path(filename: &str) -> PathBuf {
@@ -1289,7 +1289,7 @@ async fn test_get_text_content_specific_page() {
 
     let upload_body: serde_json::Value = upload_response.json().await.unwrap();
     let file_id = upload_body["id"].as_str().unwrap();
-    let _text_page_count = upload_body["text_page_count"].as_i64().unwrap();
+    let text_page_count = upload_body["text_page_count"].as_i64().unwrap();
 
     // Get specific page
     let text_url = server.api_url(&format!("/files/{}/text?page=1", file_id));
@@ -1770,13 +1770,6 @@ async fn test_file_content_responses_have_private_bounded_cache_control() {
 
 #[tokio::test]
 async fn test_upload_unprocessable_pdf_degrades_gracefully() {
-/// Graceful degradation: a file whose CONTENT processing fails (a .pdf carrying
-/// non-PDF garbage bytes → the PDF processor errors) is STILL created with
-/// default/empty processing metadata (the `ProcessingResult::default()` fallback
-/// in upload.rs), not a 5xx. The upload happy-path tests only cover successful
-/// processing.
-#[tokio::test]
-async fn test_upload_with_failed_processing_still_creates_file() {
     let server = crate::common::TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(
         &server,
@@ -1794,16 +1787,6 @@ async fn test_upload_with_failed_processing_still_creates_file() {
     let form = multipart::Form::new().part(
         "file",
         multipart::Part::bytes(corrupt_pdf.to_vec())
-        &["files::upload", "files::read"],
-    )
-    .await;
-
-    // A .pdf claimed by name + mime, but the bytes are NOT a valid PDF → the
-    // PDF processing path errors and falls back to empty results.
-    let garbage = b"%PDF-1.7 \x00\x01\x02 not actually a pdf \xff\xfe\xfd junk".to_vec();
-    let form = multipart::Form::new().part(
-        "file",
-        multipart::Part::bytes(garbage)
             .file_name("broken.pdf")
             .mime_str("application/pdf")
             .unwrap(),
@@ -1812,6 +1795,52 @@ async fn test_upload_with_failed_processing_still_creates_file() {
     let url = server.api_url("/files/upload");
     let response = reqwest::Client::new()
         .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        201,
+        "upload of an unprocessable PDF must still succeed (graceful degradation), not 5xx"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let file_id = body["id"].as_str().expect("response should carry a file id");
+    assert_eq!(body["filename"], "broken.pdf");
+    assert_eq!(body["mime_type"], "application/pdf");
+    assert!(
+        body["file_size"].as_i64().unwrap() > 0,
+        "the original bytes are still stored despite the processing failure"
+    );
+    assert_eq!(
+        body["text_page_count"].as_i64().unwrap(),
+        0,
+        "a file that failed processing degrades to zero extracted text pages"
+    );
+
+    // The stored original remains downloadable after the degraded upload.
+    let dl = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{}/download", file_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("download request failed");
+    assert_eq!(
+        dl.status(),
+        200,
+        "the original file must be downloadable after a degraded upload"
+    );
+    let downloaded = dl.bytes().await.expect("download body");
+    assert_eq!(
+        downloaded.as_ref(),
+        corrupt_pdf,
+        "the stored original is returned byte-for-byte"
+    );
+}
+
 /// File content-dedup through the REAL upload+attach flow: two uploads of the
 /// SAME bytes get the same checksum, so when both are attached to a project the
 /// `resolve_available_files` resolver (used by the chat replay) collapses them
@@ -2081,52 +2110,11 @@ async fn versioned_preview_endpoint_serves_image_and_404s_unknown_version() {
             .unwrap(),
     );
     let up: serde_json::Value = reqwest::Client::new()
-    let response = reqwest::Client::new()
         .post(server.api_url("/files/upload"))
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form)
         .send()
         .await
-        .expect("Request failed");
-
-    assert_eq!(
-        response.status(),
-        201,
-        "upload of an unprocessable PDF must still succeed (graceful degradation), not 5xx"
-    );
-
-    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let file_id = body["id"].as_str().expect("response should carry a file id");
-    assert_eq!(body["filename"], "broken.pdf");
-    assert_eq!(body["mime_type"], "application/pdf");
-    assert!(
-        body["file_size"].as_i64().unwrap() > 0,
-        "the original bytes are still stored despite the processing failure"
-    );
-    assert_eq!(
-        body["text_page_count"].as_i64().unwrap(),
-        0,
-        "a file that failed processing degrades to zero extracted text pages"
-    );
-
-    // The stored original remains downloadable after the degraded upload.
-    let dl = reqwest::Client::new()
-        .get(server.api_url(&format!("/files/{}/download", file_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .expect("download request failed");
-    assert_eq!(
-        dl.status(),
-        200,
-        "the original file must be downloadable after a degraded upload"
-    );
-    let downloaded = dl.bytes().await.expect("download body");
-    assert_eq!(
-        downloaded.as_ref(),
-        corrupt_pdf,
-        "the stored original is returned byte-for-byte"
-    );
         .expect("upload")
         .json()
         .await
@@ -2158,6 +2146,42 @@ async fn versioned_preview_endpoint_serves_image_and_404s_unknown_version() {
         .await
         .expect("preview request");
     assert_eq!(missing.status(), 404, "unknown version preview must 404");
+}
+
+/// Graceful degradation: a file whose CONTENT processing fails (a .pdf carrying
+/// non-PDF garbage bytes → the PDF processor errors) is STILL created with
+/// default/empty processing metadata (the `ProcessingResult::default()` fallback
+/// in upload.rs), not a 5xx. The upload happy-path tests only cover successful
+/// processing.
+#[tokio::test]
+async fn test_upload_with_failed_processing_still_creates_file() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "file_degrade_user",
+        &["files::upload", "files::read"],
+    )
+    .await;
+
+    // A .pdf claimed by name + mime, but the bytes are NOT a valid PDF → the
+    // PDF processing path errors and falls back to empty results.
+    let garbage = b"%PDF-1.7 \x00\x01\x02 not actually a pdf \xff\xfe\xfd junk".to_vec();
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(garbage)
+            .file_name("broken.pdf")
+            .mime_str("application/pdf")
+            .unwrap(),
+    );
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("Request failed");
+
     // The file is CREATED despite the processing failure (graceful, not 5xx).
     assert_eq!(response.status(), 201, "upload must succeed even when processing fails");
     let body: serde_json::Value = response.json().await.expect("parse JSON");
@@ -2176,3 +2200,4 @@ async fn versioned_preview_endpoint_serves_image_and_404s_unknown_version() {
         .unwrap();
     assert_eq!(dl.status(), 200, "the saved original must be downloadable");
 }
+

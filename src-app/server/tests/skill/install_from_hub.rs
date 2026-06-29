@@ -1,15 +1,17 @@
-//! Install the fixture skill from the (mock) hub catalog → assert the
-//! full bundle pipeline: DB row + on-disk extract + frontmatter parse +
-//! hub_entities tracking.
-
 use serde_json::Value as Json;
-
-use super::{FIXTURE_SKILL_NAME, admin_and_refresh, install_fixture_skill, server_with_skill_catalog};
-
-use super::{FIXTURE_REFERENCE_MD, FIXTURE_SKILL_MD, refresh_catalog};
+use super::FIXTURE_SKILL_NAME;
+use super::admin_and_refresh;
+use super::install_fixture_skill;
+use super::server_with_skill_catalog;
+use super::FIXTURE_REFERENCE_MD;
+use super::FIXTURE_SKILL_MD;
+use super::refresh_catalog;
 use crate::common::test_helpers::create_user_with_permissions;
-use crate::common::{TestServer, TestServerOptions};
-use crate::hub::mock_release_server::{MockItem, MockVersion, spawn_mock_hub};
+use crate::common::TestServer;
+use crate::common::TestServerOptions;
+use crate::hub::mock_release_server::MockItem;
+use crate::hub::mock_release_server::MockVersion;
+use crate::hub::mock_release_server::spawn_mock_hub;
 
 /// The download → sha256-verify path must REJECT a bundle whose manifest
 /// advertises a sha256 that doesn't match the served bytes
@@ -314,6 +316,8 @@ async fn skill_mcp_coexists_with_memory_builtin() {
         "memory's remember must attach ALONGSIDE skill_mcp; tools={:?}",
         first.tool_names
     );
+}
+
 /// CHARACTERIZATION (documents CURRENT behavior + a known gap): deleting a
 /// hub-installed SKILL does NOT remove its `hub_entities` tracking row — unlike
 /// assistants/MCP servers, the event-driven CleanupHubEntitiesHandler does not
@@ -370,3 +374,4 @@ async fn deleting_hub_skill_currently_leaves_hub_entities_row() {
     );
     pool.close().await;
 }
+

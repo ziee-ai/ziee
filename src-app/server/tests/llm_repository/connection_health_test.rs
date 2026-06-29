@@ -1,21 +1,14 @@
-// ============================================================================
-// LLM Repository Connection-Health — Tier 2 Integration Tests
-// ============================================================================
-//
-// Covers the three enforcement entry points (create / update-transition /
-// boot) end-to-end against a real Postgres + a `wiremock` HTTP server that
-// stands in for the upstream auth-test endpoint. Mirrors the MCP module's
-// connection-health test shape (no shared fixture — each spec spins its own
-// mock so failures are isolated).
-
 use crate::common::TestServer;
 use crate::common::test_helpers::create_user_with_permissions;
 use reqwest::StatusCode;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 use wiremock::matchers::method;
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::Mock;
+use wiremock::MockServer;
+use wiremock::ResponseTemplate;
 
 const REPO_ADMIN_PERMS: &[&str] = &[
     "llm_repositories::read",
@@ -740,67 +733,6 @@ async fn create_enabled_huggingface_repo_probes_live_and_persists_healthy() {
                 "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
             },
             "enabled": true,
-/// Concurrent test-connection probes of the SAME repository must all succeed
-/// (no 500/panic) and converge to a consistent healthy row — exercises the
-/// race on the shared probe → last_health_check write path. The mock upstream
-/// is the only external boundary; the probe logic + DB write are real.
-#[tokio::test]
-async fn concurrent_test_by_id_probes_all_succeed_and_converge() {
-    let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
-    let upstream = mock_ok().await;
-    let repo_id = seed_disabled_row(&server, &admin.token, "byid-race", &upstream.uri()).await;
-
-    // Fire 8 concurrent probes of the same row.
-    let mut handles = Vec::new();
-    for _ in 0..8 {
-        let url = server.api_url(&format!("/llm-repositories/{repo_id}/test"));
-        let token = admin.token.clone();
-        handles.push(tokio::spawn(async move {
-            reqwest::Client::new()
-                .post(url)
-                .header("Authorization", format!("Bearer {token}"))
-                .json(&serde_json::json!({}))
-                .send()
-                .await
-                .unwrap()
-        }));
-    }
-    for h in handles {
-        let resp = h.await.unwrap();
-        assert_eq!(resp.status(), 200, "every concurrent probe must 200, not error");
-        let body: Value = resp.json().await.unwrap();
-        assert_eq!(body["success"], true, "each concurrent probe succeeds: {body}");
-    }
-
-    // The row converges to a single consistent healthy state.
-    let pool = pool_for(&server).await;
-    let (_enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
-    assert_eq!(status, "healthy", "row converges healthy after concurrent probes");
-    assert_eq!(reason, None);
-    assert!(at.is_some(), "last_health_check_at stamped");
-}
-
-/// Concurrency: many simultaneous test-connection probes against the SAME repo
-/// must all return a consistent 200/success (no panic, no 500, no torn health
-/// bookkeeping), and the persisted health outcome converges to `healthy`. The
-/// existing health tests probe sequentially (create/update); this fires N
-/// concurrent `POST /llm-repositories/{id}/test`.
-#[tokio::test]
-async fn concurrent_test_connection_probes_same_repo_are_consistent() {
-    let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
-    let upstream = mock_ok().await;
-
-    // Create the repo disabled (no probe at create); we'll probe it concurrently.
-    let created: Value = reqwest::Client::new()
-        .post(server.api_url("/llm-repositories"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({
-            "name": "concurrent-probe-repo",
-            "url": upstream.uri(),
-            "auth_type": "none",
-            "enabled": false,
         }))
         .send()
         .await
@@ -818,6 +750,8 @@ async fn concurrent_test_connection_probes_same_repo_are_consistent() {
     assert!(enabled, "valid live credentials must leave the repo enabled");
     assert_eq!(status, "healthy", "live HF probe must persist healthy (reason: {reason:?})");
     assert!(at.is_some(), "last_health_check_at must be stamped by the live probe");
+}
+
 #[tokio::test]
 async fn test_by_id_concurrent_probes_same_repo_are_race_safe() {
     // Concurrency / TOCTOU: the test-by-id handler probes the upstream
@@ -1011,6 +945,76 @@ async fn test_by_id_real_huggingface_credentials_probe_succeeds() {
     assert_eq!(status, "healthy", "live HF probe recorded as healthy");
     assert_eq!(reason, None);
     assert!(at.is_some(), "last_health_check_at stamped after the live probe");
+}
+
+/// Concurrent test-connection probes of the SAME repository must all succeed
+/// (no 500/panic) and converge to a consistent healthy row — exercises the
+/// race on the shared probe → last_health_check write path. The mock upstream
+/// is the only external boundary; the probe logic + DB write are real.
+#[tokio::test]
+async fn concurrent_test_by_id_probes_all_succeed_and_converge() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let upstream = mock_ok().await;
+    let repo_id = seed_disabled_row(&server, &admin.token, "byid-race", &upstream.uri()).await;
+
+    // Fire 8 concurrent probes of the same row.
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let url = server.api_url(&format!("/llm-repositories/{repo_id}/test"));
+        let token = admin.token.clone();
+        handles.push(tokio::spawn(async move {
+            reqwest::Client::new()
+                .post(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&serde_json::json!({}))
+                .send()
+                .await
+                .unwrap()
+        }));
+    }
+    for h in handles {
+        let resp = h.await.unwrap();
+        assert_eq!(resp.status(), 200, "every concurrent probe must 200, not error");
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body["success"], true, "each concurrent probe succeeds: {body}");
+    }
+
+    // The row converges to a single consistent healthy state.
+    let pool = pool_for(&server).await;
+    let (_enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
+    assert_eq!(status, "healthy", "row converges healthy after concurrent probes");
+    assert_eq!(reason, None);
+    assert!(at.is_some(), "last_health_check_at stamped");
+}
+
+/// Concurrency: many simultaneous test-connection probes against the SAME repo
+/// must all return a consistent 200/success (no panic, no 500, no torn health
+/// bookkeeping), and the persisted health outcome converges to `healthy`. The
+/// existing health tests probe sequentially (create/update); this fires N
+/// concurrent `POST /llm-repositories/{id}/test`.
+#[tokio::test]
+async fn concurrent_test_connection_probes_same_repo_are_consistent() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let upstream = mock_ok().await;
+
+    // Create the repo disabled (no probe at create); we'll probe it concurrently.
+    let created: Value = reqwest::Client::new()
+        .post(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "concurrent-probe-repo",
+            "url": upstream.uri(),
+            "auth_type": "none",
+            "enabled": false,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     let repo_id: Uuid = Uuid::parse_str(created["id"].as_str().expect("id")).unwrap();
 
     // Fire 6 concurrent probes at the same repo.
@@ -1049,3 +1053,4 @@ async fn test_by_id_real_huggingface_credentials_probe_succeeds() {
     assert_eq!(status, "healthy", "final persisted health must be consistent");
     pool.close().await;
 }
+

@@ -1,13 +1,5 @@
-// ============================================================================
-// Assistant core-memory CRUD tests (plan §9 Phase 6).
-//
-// Exercises /api/assistants/{id}/core-memory + /api/assistants/core-memory:
-//   - upsert a block, list it back, delete it.
-//   - user_id isolation (Alice's blocks not visible to Bob).
-//   - validation: block_label slug pattern, content size.
-// ============================================================================
-
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -191,52 +183,6 @@ async fn test_concurrent_core_memory_upsert_delete_is_consistent() {
 }
 
 #[tokio::test]
-async fn test_core_memory_char_limit_edge_cases() {
-    // char_limit must be in 1..=50_000 and content <= 50_000 chars. These
-    // validations run BEFORE any DB/FK work, so they return 400 deterministically
-    // regardless of whether the assistant_id exists.
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "core_charlimit",
-        &["memory::core::read", "memory::core::write"],
-    )
-    .await;
-    let assistant_id = Uuid::new_v4();
-    let client = reqwest::Client::new();
-    let token = &user.token;
-
-    let upsert = |char_limit: i64, content: String| {
-        let body = json!({
-            "assistant_id": assistant_id,
-            "block_label": "persona",
-            "content": content,
-            "char_limit": char_limit,
-        });
-        client
-            .put(server.api_url("/assistants/core-memory"))
-            .header("Authorization", format!("Bearer {token}"))
-            .json(&body)
-            .send()
-    };
-
-    // char_limit = 0 → below range → 400
-    assert_eq!(upsert(0, "x".into()).await.unwrap().status(), 400);
-    // char_limit = 50_001 → above range → 400
-    assert_eq!(upsert(50_001, "x".into()).await.unwrap().status(), 400);
-    // content longer than MAX_CONTENT_LEN (50_000) → 400, even with a valid
-    // char_limit.
-    let huge = "a".repeat(50_001);
-    assert_eq!(upsert(1000, huge).await.unwrap().status(), 400);
-    // Boundary char_limit = 1 and 50_000 with small content pass validation
-    // (they reach the DB layer; the FK may then 404/500 without a real
-    // assistant fixture — but they must NOT be rejected with a 400 validation
-    // error).
-    assert_ne!(upsert(1, "x".into()).await.unwrap().status(), 400);
-    assert_ne!(upsert(50_000, "x".into()).await.unwrap().status(), 400);
-}
-
-#[tokio::test]
 async fn test_delete_nonexistent_core_memory_block_returns_404() {
     // Deleting a block that was never created must surface 404, not a silent
     // 204. `delete` returns `false` (0 rows affected) and the handler maps
@@ -335,6 +281,133 @@ async fn test_core_memory_char_limit_edge_cases_rejected() {
         async move {
             reqwest::Client::new()
                 .put(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "assistant_id": assistant_id,
+                    "block_label": "persona",
+                    "content": "valid content",
+                    "char_limit": char_limit,
+                }))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // 0 is below the 1..=50000 range.
+    let res = put(0).await;
+    assert_eq!(res.status(), 400, "char_limit 0 must be rejected");
+    assert_eq!(
+        res.json::<Value>().await.unwrap_or_default()["error_code"],
+        "VALIDATION_ERROR"
+    );
+
+    // 50001 is above the range.
+    let res = put(50_001).await;
+    assert_eq!(res.status(), 400, "char_limit 50001 must be rejected");
+}
+
+/// Content over the 50,000-char cap is rejected at the handler with 400 before
+/// any DB write (validation precedes the FK insert, so a throwaway assistant_id
+/// is fine here). Guards assistant_core_memory/handlers.rs MAX_CONTENT_LEN.
+#[tokio::test]
+async fn test_upsert_block_content_exceeds_50k_returns_400() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_caplen",
+        &["memory::core::read", "memory::core::write"],
+    )
+    .await;
+
+    let oversized = "x".repeat(50_001);
+    let res = reqwest::Client::new()
+        .put(server.api_url("/assistants/core-memory"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "assistant_id": Uuid::new_v4(),
+            "block_label": "persona",
+            "content": oversized,
+            "char_limit": 1000
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status().as_u16(), 400, "oversized content must be rejected");
+    let body: Value = res.json().await.unwrap();
+    assert!(
+        body.to_string().contains("50000"),
+        "error should reference the 50000 char limit: {body}"
+    );
+}
+
+/// upsert is idempotent on (user_id, assistant_id, block_label): a second
+/// upsert with the SAME label UPDATES the existing row (does not create a
+/// duplicate). Needs a real assistant (FK to assistants.id).
+#[tokio::test]
+async fn test_upsert_block_is_idempotent_update() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_idem",
+        &["assistants::create", "memory::core::read", "memory::core::write"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let token = &user.token;
+
+    // Real assistant so the FK passes.
+    let created: Value = client
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "name": "Idem Assistant" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let assistant_id = created["id"].as_str().expect("assistant id");
+
+    let upsert = |content: &str| {
+        client
+            .put(server.api_url("/assistants/core-memory"))
+            .header("Authorization", format!("Bearer {token}"))
+            .json(&json!({
+                "assistant_id": assistant_id,
+                "block_label": "persona",
+                "content": content,
+                "char_limit": 1000
+            }))
+            .send()
+    };
+
+    let first = upsert("first version").await.unwrap();
+    assert_eq!(first.status().as_u16(), 200, "first upsert ok");
+    let second = upsert("second version").await.unwrap();
+    assert_eq!(second.status().as_u16(), 200, "second upsert ok");
+    let second_row: Value = second.json().await.unwrap();
+    assert_eq!(second_row["content"], "second version");
+
+    // List → exactly ONE 'persona' block carrying the UPDATED content.
+    let list: Value = client
+        .get(server.api_url(&format!("/assistants/{assistant_id}/core-memory")))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let blocks = list.as_array().expect("list is an array");
+    let personas: Vec<&Value> = blocks
+        .iter()
+        .filter(|b| b["block_label"] == "persona")
+        .collect();
+    assert_eq!(personas.len(), 1, "upsert must update, not duplicate: {list}");
+    assert_eq!(personas[0]["content"], "second version");
+}
+
 /// Combined retrieval + core-memory injection entrypoint: `retrieve_and_inject`
 /// must inject an assistant's core-memory blocks into the ChatRequest as a
 /// front system message (Letta-style always-in-context), independent of vector
@@ -359,32 +432,6 @@ async fn test_retrieve_and_inject_injects_core_memory_block() {
         .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {token}"))
         .json(&json!({ "name": "Core Inject Assistant" }))
-/// Concurrency: many simultaneous upserts to the SAME core-memory block
-/// (`user_id`, `assistant_id`, `block_label`) must converge to a single row via
-/// the `ON CONFLICT DO UPDATE` — every request succeeds (no duplicate-key
-/// error), and exactly one block survives holding one writer's content. Needs a
-/// real assistant (the FK target).
-#[tokio::test]
-async fn test_concurrent_core_memory_upserts_converge_to_one_row() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "core_concurrent",
-        &[
-            "memory::core::read",
-            "memory::core::write",
-            "assistants::create",
-            "assistants::read",
-        ],
-    )
-    .await;
-    let client = reqwest::Client::new();
-
-    // A real assistant so the core-memory FK resolves (upsert returns 200).
-    let assistant: Value = client
-        .post(server.api_url("/assistants"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "name": "CM Concurrency", "enabled": true }))
         .send()
         .await
         .unwrap()
@@ -512,67 +559,14 @@ async fn test_core_memory_blocks_are_isolated_per_user() {
                 .json(&json!({
                     "assistant_id": assistant_id,
                     "block_label": "persona",
-                    "content": "valid content",
-                    "char_limit": char_limit,
                     "content": content,
                     "char_limit": 1000,
-    let assistant_id = assistant["id"].as_str().expect("assistant id").to_string();
-
-    // Fire N concurrent upserts to the same block_label.
-    let url = server.api_url("/assistants/core-memory");
-    let mut handles = Vec::new();
-    for i in 0..8 {
-        let url = url.clone();
-        let token = user.token.clone();
-        let aid = assistant_id.clone();
-        handles.push(tokio::spawn(async move {
-            reqwest::Client::new()
-                .put(&url)
-                .header("Authorization", format!("Bearer {token}"))
-                .json(&json!({
-                    "assistant_id": aid,
-                    "block_label": "persona",
-                    "content": format!("variant {i}"),
-                    "char_limit": 1000
                 }))
                 .send()
                 .await
                 .unwrap()
         }
     };
-
-    // 0 is below the 1..=50000 range.
-    let res = put(0).await;
-    assert_eq!(res.status(), 400, "char_limit 0 must be rejected");
-    assert_eq!(
-        res.json::<Value>().await.unwrap_or_default()["error_code"],
-        "VALIDATION_ERROR"
-    );
-
-    // 50001 is above the range.
-    let res = put(50_001).await;
-    assert_eq!(res.status(), 400, "char_limit 50001 must be rejected");
-/// Content over the 50,000-char cap is rejected at the handler with 400 before
-/// any DB write (validation precedes the FK insert, so a throwaway assistant_id
-/// is fine here). Guards assistant_core_memory/handlers.rs MAX_CONTENT_LEN.
-#[tokio::test]
-async fn test_upsert_block_content_exceeds_50k_returns_400() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "core_caplen",
-        &["memory::core::read", "memory::core::write"],
-    )
-    .await;
-
-    let oversized = "x".repeat(50_001);
-    let res = reqwest::Client::new()
-        .put(server.api_url("/assistants/core-memory"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "assistant_id": Uuid::new_v4(),
-            "block_label": "persona",
-            "content": oversized,
     let list = |token: String| {
         let client = client.clone();
         let url = server.api_url(&format!("/assistants/{assistant_id}/core-memory"));
@@ -673,92 +667,6 @@ async fn test_file_attachment_and_memory_inject_coexist_in_one_request() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status().as_u16(), 400, "oversized content must be rejected");
-    let body: Value = res.json().await.unwrap();
-    assert!(
-        body.to_string().contains("50000"),
-        "error should reference the 50000 char limit: {body}"
-    );
-}
-
-/// upsert is idempotent on (user_id, assistant_id, block_label): a second
-/// upsert with the SAME label UPDATES the existing row (does not create a
-/// duplicate). Needs a real assistant (FK to assistants.id).
-#[tokio::test]
-async fn test_upsert_block_is_idempotent_update() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "core_idem",
-        &["assistants::create", "memory::core::read", "memory::core::write"],
-    )
-    .await;
-    let client = reqwest::Client::new();
-    let token = &user.token;
-
-    // Real assistant so the FK passes.
-    let created: Value = client
-        .post(server.api_url("/assistants"))
-        .header("Authorization", format!("Bearer {token}"))
-        .json(&json!({ "name": "Idem Assistant" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let assistant_id = created["id"].as_str().expect("assistant id");
-
-    let upsert = |content: &str| {
-        client
-            .put(server.api_url("/assistants/core-memory"))
-            .header("Authorization", format!("Bearer {token}"))
-            .json(&json!({
-                "assistant_id": assistant_id,
-                "block_label": "persona",
-                "content": content,
-                "char_limit": 1000
-            }))
-            .send()
-    };
-
-    let first = upsert("first version").await.unwrap();
-    assert_eq!(first.status().as_u16(), 200, "first upsert ok");
-    let second = upsert("second version").await.unwrap();
-    assert_eq!(second.status().as_u16(), 200, "second upsert ok");
-    let second_row: Value = second.json().await.unwrap();
-    assert_eq!(second_row["content"], "second version");
-
-    // List → exactly ONE 'persona' block carrying the UPDATED content.
-    let list: Value = client
-        .get(server.api_url(&format!("/assistants/{assistant_id}/core-memory")))
-        .header("Authorization", format!("Bearer {token}"))
-                .status()
-        }));
-    }
-    for h in handles {
-        let status = h.await.unwrap();
-        assert_eq!(status.as_u16(), 200, "each concurrent upsert must succeed");
-    }
-
-    // Exactly one block survives the race, holding a racer's value.
-    let blocks: Value = client
-        .get(server.api_url(&format!("/assistants/{assistant_id}/core-memory")))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let blocks = list.as_array().expect("list is an array");
-    let personas: Vec<&Value> = blocks
-        .iter()
-        .filter(|b| b["block_label"] == "persona")
-        .collect();
-    assert_eq!(personas.len(), 1, "upsert must update, not duplicate: {list}");
-    assert_eq!(personas[0]["content"], "second version");
-}
     assert_eq!(up.status().as_u16(), 200);
     ziee::Repos
         .memory
@@ -859,6 +767,127 @@ async fn test_upsert_block_is_idempotent_update() {
     assert!(
         all_text.contains("SENTINEL_FILE_FACT"),
         "attached file content must survive alongside the memory inject; got: {all_text}"
+    );
+}
+
+#[tokio::test]
+async fn test_core_memory_char_limit_edge_cases() {
+    // char_limit must be in 1..=50_000 and content <= 50_000 chars. These
+    // validations run BEFORE any DB/FK work, so they return 400 deterministically
+    // regardless of whether the assistant_id exists.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_charlimit",
+        &["memory::core::read", "memory::core::write"],
+    )
+    .await;
+    let assistant_id = Uuid::new_v4();
+    let client = reqwest::Client::new();
+    let token = &user.token;
+
+    let upsert = |char_limit: i64, content: String| {
+        let body = json!({
+            "assistant_id": assistant_id,
+            "block_label": "persona",
+            "content": content,
+            "char_limit": char_limit,
+        });
+        client
+            .put(server.api_url("/assistants/core-memory"))
+            .header("Authorization", format!("Bearer {token}"))
+            .json(&body)
+            .send()
+    };
+
+    // char_limit = 0 → below range → 400
+    assert_eq!(upsert(0, "x".into()).await.unwrap().status(), 400);
+    // char_limit = 50_001 → above range → 400
+    assert_eq!(upsert(50_001, "x".into()).await.unwrap().status(), 400);
+    // content longer than MAX_CONTENT_LEN (50_000) → 400, even with a valid
+    // char_limit.
+    let huge = "a".repeat(50_001);
+    assert_eq!(upsert(1000, huge).await.unwrap().status(), 400);
+    // Boundary char_limit = 1 and 50_000 with small content pass validation
+    // (they reach the DB layer; the FK may then 404/500 without a real
+    // assistant fixture — but they must NOT be rejected with a 400 validation
+    // error).
+    assert_ne!(upsert(1, "x".into()).await.unwrap().status(), 400);
+    assert_ne!(upsert(50_000, "x".into()).await.unwrap().status(), 400);
+}
+
+/// Concurrency: many simultaneous upserts to the SAME core-memory block
+/// (`user_id`, `assistant_id`, `block_label`) must converge to a single row via
+/// the `ON CONFLICT DO UPDATE` — every request succeeds (no duplicate-key
+/// error), and exactly one block survives holding one writer's content. Needs a
+/// real assistant (the FK target).
+#[tokio::test]
+async fn test_concurrent_core_memory_upserts_converge_to_one_row() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "core_concurrent",
+        &[
+            "memory::core::read",
+            "memory::core::write",
+            "assistants::create",
+            "assistants::read",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // A real assistant so the core-memory FK resolves (upsert returns 200).
+    let assistant: Value = client
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "CM Concurrency", "enabled": true }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let assistant_id = assistant["id"].as_str().expect("assistant id").to_string();
+
+    // Fire N concurrent upserts to the same block_label.
+    let url = server.api_url("/assistants/core-memory");
+    let mut handles = Vec::new();
+    for i in 0..8 {
+        let url = url.clone();
+        let token = user.token.clone();
+        let aid = assistant_id.clone();
+        handles.push(tokio::spawn(async move {
+            reqwest::Client::new()
+                .put(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "assistant_id": aid,
+                    "block_label": "persona",
+                    "content": format!("variant {i}"),
+                    "char_limit": 1000
+                }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }));
+    }
+    for h in handles {
+        let status = h.await.unwrap();
+        assert_eq!(status.as_u16(), 200, "each concurrent upsert must succeed");
+    }
+
+    // Exactly one block survives the race, holding a racer's value.
+    let blocks: Value = client
+        .get(server.api_url(&format!("/assistants/{assistant_id}/core-memory")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     let arr = blocks.as_array().expect("core-memory list is an array");
     let personas: Vec<&Value> = arr
         .iter()
@@ -871,3 +900,4 @@ async fn test_upsert_block_is_idempotent_update() {
         personas[0]
     );
 }
+

@@ -1,30 +1,15 @@
-//! Integration coverage for the unified hub catalog endpoints against
-//! the embedded seed catalog.
-//!
-//! Exercises the hub endpoints (there is no `/hub/releases` /
-//! `/hub/activate` — pinning is not supported, the Pages branch is the
-//! current catalog):
-//!   - GET    /api/hub/index
-//!   - GET    /api/hub/version
-//!   - POST   /api/hub/refresh    (admin)
-//!   - GET    /api/hub/installed  (any auth; admin sees system rows too)
-//!   - GET    /api/hub/manifest/:id?category=...
-//!
-//! The seed (hub_version `2.0.0`, 5 entries — 2 models, 1 assistant,
-//! 2 MCP servers) is install-on-boot via `include_dir!`, so every test
-//! starts with a populated catalog and doesn't need to hit GitHub.
-
 use serde_json::Value as Json;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
-
 use crate::common::TestServer;
-use crate::common::test_helpers::{create_user_with_no_permissions, create_user_with_permissions};
+use crate::common::test_helpers::create_user_with_no_permissions;
+use crate::common::test_helpers::create_user_with_permissions;
 
 /// Hub-version constant of the embedded seed (mirrors
 /// `resources/hub-seed/index.json::hub_version`). Hard-coded rather
 /// than loaded dynamically so a bumped seed forces test review.
 const SEED_VERSION: &str = "2.0.0";
+
 // The seed mirrors ziee-ai/hub's published `dist/` — 7 models +
 // 5 assistants + 6 mcp-servers + 1 skill + 9 workflows = 28 entries.
 // (ziee's 10 capability skills are now built-in, embedded in the binary,
@@ -428,31 +413,17 @@ async fn manifest_lazy_fetches_from_pages_on_cache_miss() {
     .await;
     let server = TestServer::start_with_options(crate::common::TestServerOptions {
         extra_env: mock.test_env(),
-/// Catalog-refresh error recovery: a `/hub/refresh` against an unreachable
-/// Pages base (dead loopback port → connection refused) must fail GRACEFULLY
-/// (non-2xx, no panic) and leave the boot-loaded seed catalog intact + still
-/// queryable. Guards the atomic-rotate contract: a failed fetch never wipes the
-/// current `current/` dir.
-#[tokio::test]
-async fn refresh_failure_leaves_seed_catalog_intact() {
-    let server = TestServer::start_with_options(crate::common::TestServerOptions {
-        extra_env: vec![(
-            "ZIEE_HUB_PAGES_BASE".to_string(),
-            "http://127.0.0.1:1".to_string(),
-        )],
         ..Default::default()
     })
     .await;
     let admin = create_user_with_permissions(
         &server,
         "lazy_manifest_admin",
-        "hub_refresh_recovery_admin",
         &["hub::catalog::read", "hub::catalog::manage", "hub::models::read"],
     )
     .await;
 
     // Load the INDEX from the mock (per-item manifests are NOT fetched here).
-    // Refresh against the dead base → graceful error, NOT a 200/panic.
     let refresh = reqwest::Client::new()
         .post(server.api_url("/hub/refresh"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -472,6 +443,44 @@ async fn refresh_failure_leaves_seed_catalog_intact() {
     let payload: Json = res.json().await.unwrap();
     assert_eq!(payload["category"], "model");
     assert_eq!(payload["model"]["name"], "io.github.test/lazy-model");
+}
+
+// v1's `/hub/releases` + `/hub/activate` tests have been removed:
+// the endpoints are gone. The catalog is now refreshed in place from
+// Pages by `/hub/refresh` (the read/manage perm split survives —
+// covered by `catalog_read_cannot_refresh` above). The full
+// publisher-switches-catalog flow is exercised hermetically in
+// `catalog_hermetic.rs` via the mock Pages server's
+// `MockHub::switch_to`.
+
+/// Catalog-refresh error recovery: a `/hub/refresh` against an unreachable
+/// Pages base (dead loopback port → connection refused) must fail GRACEFULLY
+/// (non-2xx, no panic) and leave the boot-loaded seed catalog intact + still
+/// queryable. Guards the atomic-rotate contract: a failed fetch never wipes the
+/// current `current/` dir.
+#[tokio::test]
+async fn refresh_failure_leaves_seed_catalog_intact() {
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: vec![(
+            "ZIEE_HUB_PAGES_BASE".to_string(),
+            "http://127.0.0.1:1".to_string(),
+        )],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "hub_refresh_recovery_admin",
+        &["hub::catalog::read", "hub::catalog::manage", "hub::models::read"],
+    )
+    .await;
+
+    // Refresh against the dead base → graceful error, NOT a 200/panic.
+    let refresh = reqwest::Client::new()
+        .post(server.api_url("/hub/refresh"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
         .expect("refresh request should not hang/panic");
     assert!(
         !refresh.status().is_success(),
@@ -497,3 +506,4 @@ async fn refresh_failure_leaves_seed_catalog_intact() {
         "seed catalog still lists items after the failed refresh: {catalog}"
     );
 }
+

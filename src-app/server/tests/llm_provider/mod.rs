@@ -1,10 +1,12 @@
-// Integration tests for LLM Provider module
-
-mod sync_emit_test;
-
 use reqwest::StatusCode;
 use serde_json::json;
 use uuid::Uuid;
+use ziee::resolve_api_key_for_user;
+use ziee::UserKeyRepository;
+
+// Integration tests for LLM Provider module
+
+mod sync_emit_test;
 
 // =====================================================
 // Permission Tests
@@ -214,138 +216,6 @@ async fn test_list_providers_with_pagination() {
     assert_eq!(body["page"], 1);
     assert_eq!(body["per_page"], 3);
     assert_eq!(body["providers"].as_array().unwrap().len(), 3);
-}
-
-#[tokio::test]
-async fn test_discover_models_not_found_provider() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "discover_404",
-        &["llm_providers::read"],
-    )
-    .await;
-    let missing = uuid::Uuid::new_v4();
-    let res = reqwest::Client::new()
-        .get(server.api_url(&format!("/llm-providers/{missing}/discover-models")))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_discover_models_local_provider_returns_note_no_network() {
-    // A `local` provider short-circuits before any live /v1/models call: it
-    // returns an empty model list + a note pointing at /api/llm-models. This
-    // exercises the discover handler end-to-end without touching the network.
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "discover_local",
-        &["llm_providers::read", "llm_providers::create"],
-    )
-    .await;
-
-    let provider: serde_json::Value = {
-        let res = reqwest::Client::new()
-            .post(server.api_url("/llm-providers"))
-            .header("Authorization", format!("Bearer {}", user.token))
-            .json(&json!({
-                "name": "Local Runtime",
-                "provider_type": "local",
-                "enabled": false
-            }))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::CREATED);
-        res.json().await.unwrap()
-    };
-    let provider_id = provider["id"].as_str().unwrap();
-
-    let res = reqwest::Client::new()
-        .get(server.api_url(&format!("/llm-providers/{provider_id}/discover-models")))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body: serde_json::Value = res.json().await.unwrap();
-    assert_eq!(body["provider_type"], "local");
-    assert_eq!(body["models"].as_array().unwrap().len(), 0);
-    let notes = body["notes"].as_array().unwrap();
-    assert!(
-        notes.iter().any(|n| n.as_str().unwrap_or("").contains("llm-models")),
-        "expected a note redirecting to /api/llm-models; got {body}"
-    );
-}
-
-/// discover-models on a NON-local provider exercises Layer 1 (the curated
-/// catalog) AND the live `/v1/models` error-fallback branch — deterministically
-/// and WITHOUT real network: the base_url points at loopback, which the
-/// outbound-URL SSRF policy rejects up front, so `fetch_v1_models` fails fast
-/// and the handler falls back to catalog-only with an explanatory note. (The
-/// existing discover tests only cover the 404 + local short-circuit paths.)
-#[tokio::test]
-async fn test_discover_models_openai_catalog_with_live_call_fallback() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "discover_openai",
-        &["llm_providers::read", "llm_providers::create"],
-    )
-    .await;
-
-    // A loopback base_url is blocked by the PUBLIC_HTTP_OR_HTTPS SSRF policy
-    // before any socket is opened → the live call errors instantly (no network).
-    let provider: serde_json::Value = {
-        let res = reqwest::Client::new()
-            .post(server.api_url("/llm-providers"))
-            .header("Authorization", format!("Bearer {}", user.token))
-            .json(&json!({
-                "name": "OpenAI Compatible",
-                "provider_type": "openai",
-                "api_key": "sk-test-dummy",
-                "base_url": "http://127.0.0.1:9/v1",
-                "enabled": false
-            }))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::CREATED, "create: {}", res.status());
-        res.json().await.unwrap()
-    };
-    let provider_id = provider["id"].as_str().unwrap();
-
-    let res = reqwest::Client::new()
-        .get(server.api_url(&format!("/llm-providers/{provider_id}/discover-models")))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body: serde_json::Value = res.json().await.unwrap();
-    assert_eq!(body["provider_type"], "openai");
-
-    // Layer 1: the curated openai catalog populates models, all sourced
-    // "catalog" (the live augment failed, so nothing is "discovery").
-    let models = body["models"].as_array().unwrap();
-    assert!(!models.is_empty(), "openai catalog must yield models: {body}");
-    assert!(
-        models.iter().all(|m| m["source"] == "catalog"),
-        "all models must come from the catalog when the live call fails: {body}"
-    );
-
-    // The live-call failure is surfaced as a note (catalog-only fallback).
-    let notes = body["notes"].as_array().unwrap();
-    assert!(
-        notes
-            .iter()
-            .any(|n| n.as_str().unwrap_or("").contains("live /v1/models call failed")),
-        "expected a live-call fallback note; got {body}"
-    );
 }
 
 #[tokio::test]
@@ -2421,16 +2291,6 @@ async fn test_user_keys_are_isolated_between_users() {
     );
 }
 
-// ---------- API-key resolution (`resolve_api_key_for_user`) ----------
-//
-// These tests directly exercise the helper that the chat streaming pipeline
-// uses to decide which API key (user's personal key vs. admin system key) to
-// pass to the LLM provider. They go through the real DB via the test server,
-// but call the function directly instead of running a full chat round-trip
-// (which would require a mock LLM server).
-
-use ziee::{resolve_api_key_for_user, UserKeyRepository};
-
 /// Build a UserKeyRepository talking directly to the test server's database
 /// — bypasses the global `Repos` (which lives in a different process from
 /// the integration tests).
@@ -2785,18 +2645,26 @@ async fn test_discover_models_catalog_and_local_paths() {
     let lid = local["id"].as_str().unwrap();
     let lbody: serde_json::Value = reqwest::Client::new()
         .get(server.api_url(&format!("/llm-providers/{lid}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(lbody["provider_type"], "local");
+    assert!(lbody["models"].as_array().unwrap().is_empty(), "local: no discovered models: {lbody}");
+    assert!(
+        lbody["notes"].as_array().unwrap().iter().any(|n| n.as_str().unwrap_or("").contains("llm-models")),
+        "local must point at /api/llm-models: {lbody}"
+    );
+}
+
 /// Concurrency: multiple admins assigning the SAME provider→group at the same
 /// time must converge to exactly ONE assignment (no duplicate rows, no lost
 /// update, no 500). The existing idempotent test only assigns sequentially.
 #[tokio::test]
 async fn test_concurrent_provider_group_assignment_is_safe() {
-/// Concurrency: many admins assigning the SAME provider to the SAME group at
-/// once must converge to a single assignment row (the `ON CONFLICT` upsert is
-/// race-safe), with every concurrent request succeeding — no duplicate rows,
-/// no 5xx. The existing idempotent test only fires sequentially. Mirrors the
-/// `llm_provider_files` concurrent-upsert convergence test.
-#[tokio::test]
-async fn test_concurrent_provider_group_assignment_converges_to_one_row() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -2826,6 +2694,194 @@ async fn test_concurrent_provider_group_assignment_converges_to_one_row() {
                 .post(&url)
                 .header("Authorization", format!("Bearer {}", token))
                 .json(&json!({ "group_id": gid }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }));
+    }
+    for h in handles {
+        let status = h.await.unwrap();
+        assert_eq!(
+            status,
+            StatusCode::NO_CONTENT,
+            "every concurrent assign must succeed, got {status}"
+        );
+    }
+
+    // Exactly one assignment survives — no duplicate rows from the race.
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        body.as_array().unwrap().len(),
+        1,
+        "concurrent identical assigns must converge to a single assignment"
+    );
+}
+
+#[tokio::test]
+async fn test_discover_models_not_found_provider() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "discover_404",
+        &["llm_providers::read"],
+    )
+    .await;
+    let missing = uuid::Uuid::new_v4();
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{missing}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_discover_models_local_provider_returns_note_no_network() {
+    // A `local` provider short-circuits before any live /v1/models call: it
+    // returns an empty model list + a note pointing at /api/llm-models. This
+    // exercises the discover handler end-to-end without touching the network.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "discover_local",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
+
+    let provider: serde_json::Value = {
+        let res = reqwest::Client::new()
+            .post(server.api_url("/llm-providers"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&json!({
+                "name": "Local Runtime",
+                "provider_type": "local",
+                "enabled": false
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+        res.json().await.unwrap()
+    };
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{provider_id}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["provider_type"], "local");
+    assert_eq!(body["models"].as_array().unwrap().len(), 0);
+    let notes = body["notes"].as_array().unwrap();
+    assert!(
+        notes.iter().any(|n| n.as_str().unwrap_or("").contains("llm-models")),
+        "expected a note redirecting to /api/llm-models; got {body}"
+    );
+}
+
+/// discover-models on a NON-local provider exercises Layer 1 (the curated
+/// catalog) AND the live `/v1/models` error-fallback branch — deterministically
+/// and WITHOUT real network: the base_url points at loopback, which the
+/// outbound-URL SSRF policy rejects up front, so `fetch_v1_models` fails fast
+/// and the handler falls back to catalog-only with an explanatory note. (The
+/// existing discover tests only cover the 404 + local short-circuit paths.)
+#[tokio::test]
+async fn test_discover_models_openai_catalog_with_live_call_fallback() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "discover_openai",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
+
+    // A loopback base_url is blocked by the PUBLIC_HTTP_OR_HTTPS SSRF policy
+    // before any socket is opened → the live call errors instantly (no network).
+    let provider: serde_json::Value = {
+        let res = reqwest::Client::new()
+            .post(server.api_url("/llm-providers"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&json!({
+                "name": "OpenAI Compatible",
+                "provider_type": "openai",
+                "api_key": "sk-test-dummy",
+                "base_url": "http://127.0.0.1:9/v1",
+                "enabled": false
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED, "create: {}", res.status());
+        res.json().await.unwrap()
+    };
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{provider_id}/discover-models")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["provider_type"], "openai");
+
+    // Layer 1: the curated openai catalog populates models, all sourced
+    // "catalog" (the live augment failed, so nothing is "discovery").
+    let models = body["models"].as_array().unwrap();
+    assert!(!models.is_empty(), "openai catalog must yield models: {body}");
+    assert!(
+        models.iter().all(|m| m["source"] == "catalog"),
+        "all models must come from the catalog when the live call fails: {body}"
+    );
+
+    // The live-call failure is surfaced as a note (catalog-only fallback).
+    let notes = body["notes"].as_array().unwrap();
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.as_str().unwrap_or("").contains("live /v1/models call failed")),
+        "expected a live-call fallback note; got {body}"
+    );
+}
+
+/// Concurrency: many admins assigning the SAME provider to the SAME group at
+/// once must converge to a single assignment row (the `ON CONFLICT` upsert is
+/// race-safe), with every concurrent request succeeding — no duplicate rows,
+/// no 5xx. The existing idempotent test only fires sequentially. Mirrors the
+/// `llm_provider_files` concurrent-upsert convergence test.
+#[tokio::test]
+async fn test_concurrent_provider_group_assignment_converges_to_one_row() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "concurrent_assign",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::assign_groups",
+            "groups::read",
+        ],
+    )
+    .await;
+
+    let provider = create_test_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap().to_string();
+    let admin_group_id = get_admin_group_id(&server, &user.token).await;
+
     // Fire N concurrent identical assign requests.
     let url = server.api_url(&format!("/llm-providers/{provider_id}/groups"));
     let mut handles = Vec::new();
@@ -2846,16 +2902,6 @@ async fn test_concurrent_provider_group_assignment_converges_to_one_row() {
     }
     for h in handles {
         let status = h.await.unwrap();
-        assert_eq!(
-            status,
-            StatusCode::NO_CONTENT,
-            "every concurrent assign must succeed, got {status}"
-        );
-    }
-
-    // Exactly one assignment survives — no duplicate rows from the race.
-    let body: serde_json::Value = reqwest::Client::new()
-        .get(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         assert!(
             status == StatusCode::NO_CONTENT || status == StatusCode::CONFLICT,
             "each concurrent assign must succeed or be a benign conflict, got {status}"
@@ -2872,18 +2918,10 @@ async fn test_concurrent_provider_group_assignment_converges_to_one_row() {
         .json()
         .await
         .unwrap();
-    assert_eq!(lbody["provider_type"], "local");
-    assert!(lbody["models"].as_array().unwrap().is_empty(), "local: no discovered models: {lbody}");
-    assert!(
-        lbody["notes"].as_array().unwrap().iter().any(|n| n.as_str().unwrap_or("").contains("llm-models")),
-        "local must point at /api/llm-models: {lbody}"
-    assert_eq!(
-        body.as_array().unwrap().len(),
-        1,
-        "concurrent identical assigns must converge to a single assignment"
     assert_eq!(
         body.as_array().unwrap().len(),
         1,
         "concurrent assigns must converge to a single row: {body}"
     );
 }
+

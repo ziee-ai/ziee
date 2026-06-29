@@ -281,66 +281,6 @@ async fn test_auth_login_invalid_credentials() {
     assert_eq!(response.status(), 401, "Expected 401 Unauthorized");
 }
 
-/// Timing-attack / user-enumeration mitigation (handlers.rs login path): every
-/// failure mode — wrong password, NONEXISTENT user, and a DEACTIVATED account —
-/// must collapse into the IDENTICAL response (same 401 status, same
-/// `INVALID_CREDENTIALS` code, same message). A differing status/code/message
-/// would let an attacker enumerate valid usernames. (The constant-time dummy
-/// bcrypt is the timing half; this asserts the indistinguishable-response half.)
-#[tokio::test]
-async fn test_auth_login_failures_are_indistinguishable() {
-    let server = crate::common::TestServer::start().await;
-    let client = reqwest::Client::new();
-
-    // A real, active user to fail against with a wrong password.
-    client
-        .post(server.api_url("/auth/register"))
-        .json(&json!({
-            "username": "enum_real",
-            "email": "enum_real@example.com",
-            "password": "correct-horse-battery"
-        }))
-        .send()
-        .await
-        .expect("register failed");
-
-    let login = |username: &'static str, password: &'static str| {
-        let client = client.clone();
-        let url = server.api_url("/auth/login");
-        async move {
-            let res = client
-                .post(url)
-                .json(&json!({ "username": username, "password": password }))
-                .send()
-                .await
-                .expect("login request failed");
-            let status = res.status();
-            let body: serde_json::Value = res.json().await.expect("parse error body");
-            (status, body)
-        }
-    };
-
-    // (a) existing user, wrong password
-    let (s_wrong, b_wrong) = login("enum_real", "definitely-wrong").await;
-    // (b) user that does not exist at all
-    let (s_missing, b_missing) = login("enum_ghost", "definitely-wrong").await;
-
-    // All failures: 401 + the SAME generic error code + message (no enumeration).
-    assert_eq!(s_wrong.as_u16(), 401);
-    assert_eq!(s_missing.as_u16(), 401);
-    assert_eq!(b_wrong["error_code"], json!("INVALID_CREDENTIALS"));
-    assert_eq!(
-        b_wrong["error_code"], b_missing["error_code"],
-        "error_code must be identical for wrong-password vs nonexistent-user"
-    );
-    assert_eq!(
-        b_wrong["error"], b_missing["error"],
-        "error message must be identical (no user enumeration via message)"
-    );
-    // The message must be the generic, non-revealing one.
-    assert_eq!(b_wrong["error"], json!("Invalid username or password"));
-}
-
 #[tokio::test]
 async fn test_auth_logout() {
     let server = crate::common::TestServer::start().await;
@@ -839,67 +779,6 @@ async fn test_setup_admin_invalid_email() {
     assert_eq!(error_body.get("error_code").unwrap(), "INVALID_EMAIL");
 }
 
-/// Error recovery in the setup flow: a FAILED setup attempt (invalid input)
-/// must NOT leave the system half-initialized. The deployment must still report
-/// `needs_setup: true` afterward, and a subsequent VALID setup must succeed and
-/// flip the status — i.e. the first error is fully recoverable with a retry.
-#[tokio::test]
-async fn test_setup_recovers_after_failed_attempt() {
-    let server = crate::common::TestServer::start().await;
-    let client = reqwest::Client::new();
-
-    // 1. A bad setup attempt fails with 400 (invalid email).
-    let bad = client
-        .post(server.api_url("/app/setup/admin"))
-        .json(&json!({
-            "username": "admin",
-            "email": "not-an-email",
-            "password": "SecurePass123!"
-        }))
-        .send()
-        .await
-        .expect("setup request failed");
-    assert_eq!(bad.status(), 400, "invalid setup must be rejected");
-
-    // 2. The failed attempt left NO partial admin → setup is still needed.
-    let status = client
-        .get(server.api_url("/app/setup/status"))
-        .send()
-        .await
-        .expect("status request failed");
-    let body: serde_json::Value = status.json().await.unwrap();
-    assert_eq!(
-        body.get("needs_setup").unwrap(),
-        true,
-        "a failed setup attempt must not create a partial admin"
-    );
-
-    // 3. A subsequent VALID setup succeeds — the flow recovered.
-    let good = client
-        .post(server.api_url("/app/setup/admin"))
-        .json(&json!({
-            "username": "admin",
-            "email": "admin@example.com",
-            "password": "SecurePass123!",
-            "display_name": "Administrator"
-        }))
-        .send()
-        .await
-        .expect("setup request failed");
-    assert_eq!(good.status(), 201, "retry after a failed attempt must succeed");
-
-    // 4. Status now reflects the completed setup.
-    let after: serde_json::Value = client
-        .get(server.api_url("/app/setup/status"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(after.get("needs_setup").unwrap(), false);
-}
-
 #[tokio::test]
 async fn test_setup_admin_invalid_username() {
     let server = crate::common::TestServer::start().await;
@@ -1158,6 +1037,69 @@ async fn deactivated_user_with_valid_jwt_is_rejected_at_me() {
     assert_eq!(me_dead.status(), 401, "deactivated account must be 401 even with a valid JWT");
     let body: serde_json::Value = me_dead.json().await.unwrap();
     assert_eq!(body["error_code"], "ACCOUNT_DEACTIVATED");
+}
+
+/// Error recovery in the setup flow: a FAILED setup attempt (invalid input)
+/// must NOT leave the system half-initialized. The deployment must still report
+/// `needs_setup: true` afterward, and a subsequent VALID setup must succeed and
+/// flip the status — i.e. the first error is fully recoverable with a retry.
+#[tokio::test]
+async fn test_setup_recovers_after_failed_attempt() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // 1. A bad setup attempt fails with 400 (invalid email).
+    let bad = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "admin",
+            "email": "not-an-email",
+            "password": "SecurePass123!"
+        }))
+        .send()
+        .await
+        .expect("setup request failed");
+    assert_eq!(bad.status(), 400, "invalid setup must be rejected");
+
+    // 2. The failed attempt left NO partial admin → setup is still needed.
+    let status = client
+        .get(server.api_url("/app/setup/status"))
+        .send()
+        .await
+        .expect("status request failed");
+    let body: serde_json::Value = status.json().await.unwrap();
+    assert_eq!(
+        body.get("needs_setup").unwrap(),
+        true,
+        "a failed setup attempt must not create a partial admin"
+    );
+
+    // 3. A subsequent VALID setup succeeds — the flow recovered.
+    let good = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "admin",
+            "email": "admin@example.com",
+            "password": "SecurePass123!",
+            "display_name": "Administrator"
+        }))
+        .send()
+        .await
+        .expect("setup request failed");
+    assert_eq!(good.status(), 201, "retry after a failed attempt must succeed");
+
+    // 4. Status now reflects the completed setup.
+    let after: serde_json::Value = client
+        .get(server.api_url("/app/setup/status"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after.get("needs_setup").unwrap(), false);
+}
+
 /// Refresh-token jti lifecycle + persistence (the whitelist lives in
 /// `refresh_tokens`, so it survives a server restart — modeled here by
 /// re-querying through a FRESH connection that shares no in-process state).
@@ -1203,42 +1145,6 @@ async fn refresh_token_jti_lifecycle_persists_across_connections() {
             .await
             .unwrap(),
         "an expired jti is inactive"
-/// `ensure_unique_username` (SSO auto-provision) appends the lowest free numeric
-/// suffix when the base is taken, returns the base verbatim when free, and
-/// defaults an empty base to "user". Driven directly by initializing the
-/// in-process Repos against the test DB (same pattern as resource_link_test).
-#[tokio::test]
-async fn test_ensure_unique_username_collision_suffix_and_defaults() {
-    let server = crate::common::TestServer::start().await;
-    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
-    if !ziee::is_repos_initialized() {
-        ziee::init_repositories(pool.clone());
-    }
-
-    // Seed a collision: "ssobase" and "ssobase2" already exist (distinct emails
-    // so the email path is irrelevant — we exercise username uniqueness only).
-    for (name, email) in [("ssobase", "a@x.com"), ("ssobase2", "b@x.com")] {
-        sqlx::query("INSERT INTO users (id, username, email, is_active, is_admin, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, true, false, NOW(), NOW())")
-            .bind(name)
-            .bind(email)
-            .execute(&pool)
-            .await
-            .unwrap();
-    }
-
-    // Taken base + taken base2 → next free is base3.
-    let got = ziee::ensure_unique_username("ssobase").await.expect("unique");
-    assert_eq!(got, "ssobase3", "lowest free numeric suffix");
-
-    // A free base is returned verbatim.
-    let free = format!("freebase_{}", &uuid::Uuid::new_v4().to_string()[..8]);
-    assert_eq!(ziee::ensure_unique_username(&free).await.unwrap(), free);
-
-    // Empty base defaults to "user" (or user2… if taken) — must be non-empty.
-    let defaulted = ziee::ensure_unique_username("   ").await.unwrap();
-    assert!(
-        defaulted == "user" || defaulted.starts_with("user"),
-        "empty base must default to a user-prefixed name, got {defaulted}"
     );
 
     pool.close().await;
@@ -1407,6 +1313,69 @@ async fn deactivated_user_is_refused_on_protected_resource_endpoints() {
         mem_refused.status() == 401 || mem_refused.status() == 403,
         "a deactivated user must be refused the memories endpoint; got {}",
         mem_refused.status()
+    );
+}
+
+/// Timing-attack / user-enumeration mitigation (handlers.rs login path): every
+/// failure mode — wrong password, NONEXISTENT user, and a DEACTIVATED account —
+/// must collapse into the IDENTICAL response (same 401 status, same
+/// `INVALID_CREDENTIALS` code, same message). A differing status/code/message
+/// would let an attacker enumerate valid usernames. (The constant-time dummy
+/// bcrypt is the timing half; this asserts the indistinguishable-response half.)
+#[tokio::test]
+async fn test_auth_login_failures_are_indistinguishable() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // A real, active user to fail against with a wrong password.
+    client
+        .post(server.api_url("/auth/register"))
+        .json(&json!({
+            "username": "enum_real",
+            "email": "enum_real@example.com",
+            "password": "correct-horse-battery"
+        }))
+        .send()
+        .await
+        .expect("register failed");
+
+    let login = |username: &'static str, password: &'static str| {
+        let client = client.clone();
+        let url = server.api_url("/auth/login");
+        async move {
+            let res = client
+                .post(url)
+                .json(&json!({ "username": username, "password": password }))
+                .send()
+                .await
+                .expect("login request failed");
+            let status = res.status();
+            let body: serde_json::Value = res.json().await.expect("parse error body");
+            (status, body)
+        }
+    };
+
+    // (a) existing user, wrong password
+    let (s_wrong, b_wrong) = login("enum_real", "definitely-wrong").await;
+    // (b) user that does not exist at all
+    let (s_missing, b_missing) = login("enum_ghost", "definitely-wrong").await;
+
+    // All failures: 401 + the SAME generic error code + message (no enumeration).
+    assert_eq!(s_wrong.as_u16(), 401);
+    assert_eq!(s_missing.as_u16(), 401);
+    assert_eq!(b_wrong["error_code"], json!("INVALID_CREDENTIALS"));
+    assert_eq!(
+        b_wrong["error_code"], b_missing["error_code"],
+        "error_code must be identical for wrong-password vs nonexistent-user"
+    );
+    assert_eq!(
+        b_wrong["error"], b_missing["error"],
+        "error message must be identical (no user enumeration via message)"
+    );
+    // The message must be the generic, non-revealing one.
+    assert_eq!(b_wrong["error"], json!("Invalid username or password"));
+}
+
 /// Concurrent registrations with the SAME username must not both succeed: the
 /// handler's check-then-insert has a TOCTOU window, and the DB UNIQUE
 /// constraint is the real guard. Exactly one request creates the account; the
@@ -1446,6 +1415,50 @@ async fn test_concurrent_registration_same_username_creates_one_user() {
     assert!(
         loser >= 400,
         "the losing registration must be an error status, got {loser}"
+    );
+}
+
+/// `ensure_unique_username` (SSO auto-provision) appends the lowest free numeric
+/// suffix when the base is taken, returns the base verbatim when free, and
+/// defaults an empty base to "user". Driven directly by initializing the
+/// in-process Repos against the test DB (same pattern as resource_link_test).
+#[tokio::test]
+async fn test_ensure_unique_username_collision_suffix_and_defaults() {
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    if !ziee::is_repos_initialized() {
+        ziee::init_repositories(pool.clone());
+    }
+
+    // Seed a collision: "ssobase" and "ssobase2" already exist (distinct emails
+    // so the email path is irrelevant — we exercise username uniqueness only).
+    for (name, email) in [("ssobase", "a@x.com"), ("ssobase2", "b@x.com")] {
+        sqlx::query("INSERT INTO users (id, username, email, is_active, is_admin, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, true, false, NOW(), NOW())")
+            .bind(name)
+            .bind(email)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    // Taken base + taken base2 → next free is base3.
+    let got = ziee::ensure_unique_username("ssobase").await.expect("unique");
+    assert_eq!(got, "ssobase3", "lowest free numeric suffix");
+
+    // A free base is returned verbatim.
+    let free = format!("freebase_{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    assert_eq!(ziee::ensure_unique_username(&free).await.unwrap(), free);
+
+    // Empty base defaults to "user" (or user2… if taken) — must be non-empty.
+    let defaulted = ziee::ensure_unique_username("   ").await.unwrap();
+    assert!(
+        defaulted == "user" || defaulted.starts_with("user"),
+        "empty base must default to a user-prefixed name, got {defaulted}"
+    );
+
+    pool.close().await;
+}
+
 /// Refresh-token jti lifecycle is DB-backed (`refresh_tokens` table), so it
 /// survives a process restart and revocation is consulted from the persistent
 /// store on every `/auth/refresh` — not from in-memory state. Proven without a
@@ -1527,3 +1540,4 @@ async fn test_refresh_token_jti_lifecycle_is_db_backed() {
         denied.status()
     );
 }
+

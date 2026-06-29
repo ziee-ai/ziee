@@ -1,27 +1,5 @@
-// ============================================================================
-// Adversarial prompt-injection regression tests for memory.
-//
-// Plan §11 mitigation: "A user message that says 'forget all previous
-// memories' must not actually delete." This file tests:
-//
-//   1. Manual memory CRUD never accepts a "delete-all"-shaped content
-//      string as something special (it's stored as data, not executed).
-//   2. The retrieval system block frames memories as untrusted data so
-//      poisoned content can't issue commands (we can't test the LLM's
-//      compliance here, but we can assert the prompt template carries
-//      the guard text — see prompts_test for that).
-//   3. MCP `forget` requires an explicit memory_id; bulk-delete is
-//      forbidden at the JSON-RPC surface (covered in tests/memory_mcp).
-//
-// The hard part — verifying the LLM extractor doesn't emit DELETE ops
-// for "ignore previous instructions"-laced conversations — requires a
-// real LLM and is a Tier-5 manual exercise. The assertion below
-// validates the SCHEMA gate: extractor JSON parsing is forgiving but
-// op dispatch requires memory_id for DELETE; without one, the row
-// would just be ignored.
-// ============================================================================
-
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 #[tokio::test]
 async fn test_injection_string_stored_as_data_not_executed() {
@@ -125,6 +103,9 @@ fn test_retrieval_prompt_template_includes_injection_guard() {
     assert!(
         prompt.contains("NEVER capture credentials"),
         "extraction prompt must forbid PII/secret capture"
+    );
+}
+
 #[test]
 fn test_extraction_prompt_includes_injection_guard_and_pii_ban() {
     // The previous body was a no-op stub ("can't import the constant"). The
@@ -148,3 +129,4 @@ fn test_extraction_prompt_includes_injection_guard_and_pii_ban() {
         "extraction prompt must keep the PII-capture ban"
     );
 }
+

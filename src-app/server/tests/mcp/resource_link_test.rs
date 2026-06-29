@@ -1,19 +1,5 @@
-//! Integration tests for the shared `mcp::resource_link::persist_links` consumer.
-//!
-//! Driven by calling the re-exported `ziee::persist_links` directly in-process — the same
-//! way the chat extension + workflow dispatcher invoke it internally. Tier-2 (Postgres +
-//! file store). Run with `--test-threads=1` (the project default).
-//!
-//! NOTE on process-global state: `persist_links`' ingest tail uses the process-global
-//! `Repos` (`init_repositories`, first-call-wins) and `FILE_STORAGE` (`init_file_storage`,
-//! idempotent). `TestServer` runs the server in a SEPARATE process, so neither global is
-//! set in THIS test process. Exactly ONE test here (`persist_ingests_*`) initializes them
-//! in-process; it is the sole `init_repositories` caller in the whole integration binary
-//! (no other integration test uses the global `Repos` in-process), so the global-once
-//! factory safely points at that test's DB for the duration. Every other test exercises a
-//! guard short-circuit that returns BEFORE the save tail, so it never touches the globals.
-
-use crate::common::{test_helpers, TestServer};
+use crate::common::test_helpers;
+use crate::common::TestServer;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
@@ -154,71 +140,6 @@ async fn persist_ingests_ziee_under_root_and_handles_mixed_links() {
     std::fs::remove_dir_all(&root).ok();
     std::fs::remove_dir_all(&store_dir).ok();
     std::fs::remove_file(&outside).ok();
-}
-
-/// Chat path (NOT a workflow run): a code_sandbox `ziee://` artifact saved
-/// during a chat passes `workflow_run_id = None`, so the ingested file must be
-/// created but NOT linked to any run (`files.workflow_run_id IS NULL`) — the
-/// counterpart to the workflow-path test above, which links the file to a run.
-/// This pins the code_sandbox → file-store integration for the chat dispatcher.
-#[tokio::test]
-async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
-    let server = TestServer::start().await;
-    let uid = user_id(&server).await;
-
-    let pool = PgPoolOptions::new()
-        .max_connections(4)
-        .connect(&server.database_url)
-        .await
-        .unwrap();
-    if !ziee::is_repos_initialized() {
-        ziee::init_repositories(pool.clone());
-    }
-    let store_dir = std::env::temp_dir().join(format!("ziee_rl_chat_store_{}", Uuid::new_v4()));
-    std::fs::create_dir_all(&store_dir).unwrap();
-    ziee::init_file_storage(&store_dir);
-
-    let root = std::env::temp_dir().join(format!("ziee_rl_chat_ws_{}", Uuid::new_v4()));
-    std::fs::create_dir_all(&root).unwrap();
-    let artifact = root.join("plot.png");
-    let payload = b"\x89PNG\r\n\x1a\nfake-chart-bytes";
-    std::fs::write(&artifact, payload).unwrap();
-
-    let mut links = vec![ziee_link(&format!("ziee://{}", artifact.display()), "plot.png")];
-    let outcome = ziee::persist_links(
-        &mut links,
-        uid,
-        None,
-        None,
-        "user",        // chat provenance, not "workflow"
-        None,          // workflow_run_id = None → no run link (the chat path)
-        code_sandbox_server_id(),
-        true,
-        &serde_json::json!({}),
-        &[root.clone()],
-        None,
-    )
-    .await
-    .expect("persist_links");
-
-    // The artifact is ingested + the ziee:// URI rewritten to /api/files/{id}.
-    assert_eq!(outcome.saved.len(), 1, "code_sandbox artifact ingested");
-    let art = &outcome.saved[0];
-    assert_eq!(links[0].uri, format!("/api/files/{}", art.file_id));
-    assert!(!links[0].uri.contains("ziee://"), "host path must not leak to the client");
-
-    // It is NOT linked to any workflow run (chat path).
-    let run_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT workflow_run_id FROM files WHERE id = $1")
-            .bind(art.file_id)
-            .fetch_one(&pool)
-            .await
-            .expect("file row exists");
-    assert!(run_id.is_none(), "chat-path file must not be linked to a workflow run");
-
-    pool.close().await;
-    std::fs::remove_dir_all(&root).ok();
-    std::fs::remove_dir_all(&store_dir).ok();
 }
 
 /// Guard #1: a `ziee://` link from a NON-built-in (external/user) server is ignored — not
@@ -482,3 +403,69 @@ async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
     std::fs::remove_dir_all(&root).ok();
     std::fs::remove_dir_all(&store_dir).ok();
 }
+
+/// Chat path (NOT a workflow run): a code_sandbox `ziee://` artifact saved
+/// during a chat passes `workflow_run_id = None`, so the ingested file must be
+/// created but NOT linked to any run (`files.workflow_run_id IS NULL`) — the
+/// counterpart to the workflow-path test above, which links the file to a run.
+/// This pins the code_sandbox → file-store integration for the chat dispatcher.
+#[tokio::test]
+async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
+    let server = TestServer::start().await;
+    let uid = user_id(&server).await;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    if !ziee::is_repos_initialized() {
+        ziee::init_repositories(pool.clone());
+    }
+    let store_dir = std::env::temp_dir().join(format!("ziee_rl_chat_store_{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&store_dir).unwrap();
+    ziee::init_file_storage(&store_dir);
+
+    let root = std::env::temp_dir().join(format!("ziee_rl_chat_ws_{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let artifact = root.join("plot.png");
+    let payload = b"\x89PNG\r\n\x1a\nfake-chart-bytes";
+    std::fs::write(&artifact, payload).unwrap();
+
+    let mut links = vec![ziee_link(&format!("ziee://{}", artifact.display()), "plot.png")];
+    let outcome = ziee::persist_links(
+        &mut links,
+        uid,
+        None,
+        None,
+        "user",        // chat provenance, not "workflow"
+        None,          // workflow_run_id = None → no run link (the chat path)
+        code_sandbox_server_id(),
+        true,
+        &serde_json::json!({}),
+        &[root.clone()],
+        None,
+    )
+    .await
+    .expect("persist_links");
+
+    // The artifact is ingested + the ziee:// URI rewritten to /api/files/{id}.
+    assert_eq!(outcome.saved.len(), 1, "code_sandbox artifact ingested");
+    let art = &outcome.saved[0];
+    assert_eq!(links[0].uri, format!("/api/files/{}", art.file_id));
+    assert!(!links[0].uri.contains("ziee://"), "host path must not leak to the client");
+
+    // It is NOT linked to any workflow run (chat path).
+    let run_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT workflow_run_id FROM files WHERE id = $1")
+            .bind(art.file_id)
+            .fetch_one(&pool)
+            .await
+            .expect("file row exists");
+    assert!(run_id.is_none(), "chat-path file must not be linked to a workflow run");
+
+    pool.close().await;
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::remove_dir_all(&store_dir).ok();
+}
+

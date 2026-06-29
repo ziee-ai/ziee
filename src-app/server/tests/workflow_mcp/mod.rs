@@ -20,15 +20,18 @@
 //! this whole module needs NO real LLM key — the conversation only supplies the
 //! model SNAPSHOT (a stub model), never a real token.
 
+use serde_json::Value as Json;
+use serde_json::json;
+use uuid::Uuid;
+use crate::common::TestServer;
+use crate::common::test_helpers::create_user_with_no_permissions;
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::workflow::import_dev_workflow;
+use crate::workflow::poll_run;
+
+
 mod resources_test;
 mod upsert_test;
-
-use serde_json::{Value as Json, json};
-use uuid::Uuid;
-
-use crate::common::TestServer;
-use crate::common::test_helpers::{create_user_with_no_permissions, create_user_with_permissions};
-use crate::workflow::{import_dev_workflow, poll_run};
 
 /// A single-step `llm` workflow whose step is mock-short-circuited via a
 /// baked-in YAML `mock:` (no real provider call). `inputs.topic` feeds the
@@ -109,23 +112,6 @@ async fn db_pool(server: &TestServer) -> sqlx::PgPool {
         .connect(&server.database_url)
         .await
         .expect("connect test db")
-}
-
-/// tools/list returns an EMPTY tools array for a user with no accessible
-/// workflows (the `{tools:[]}` branch) — initialize still succeeds.
-#[tokio::test]
-async fn tools_list_is_empty_with_no_accessible_workflows() {
-    let server = TestServer::start().await;
-    let user = mcp_user(&server, "wf_mcp_empty").await;
-
-    let init = jsonrpc(&server, &user.token, None, "initialize", json!({})).await;
-    assert_eq!(init.status(), 200, "initialize must succeed with no workflows");
-
-    let list = jsonrpc(&server, &user.token, None, "tools/list", json!({})).await;
-    assert_eq!(list.status(), 200);
-    let body: Json = list.json().await.unwrap();
-    let tools = body["result"]["tools"].as_array().expect("tools array");
-    assert!(tools.is_empty(), "no workflows → empty tools list, got: {body}");
 }
 
 #[tokio::test]
@@ -383,6 +369,9 @@ async fn tools_list_is_empty_when_user_has_no_workflows() {
     assert!(
         tools.is_empty(),
         "a user with no accessible workflows must get an empty tools list, got: {body}"
+    );
+}
+
 #[tokio::test]
 async fn tools_list_with_zero_accessible_workflows_returns_empty_array() {
     // A user who has `workflows::execute` (so the JSON-RPC auth gate at
@@ -410,3 +399,21 @@ async fn tools_list_with_zero_accessible_workflows_returns_empty_array() {
         "a user with zero accessible workflows must get an empty tools array, got: {tools:?}"
     );
 }
+
+/// tools/list returns an EMPTY tools array for a user with no accessible
+/// workflows (the `{tools:[]}` branch) — initialize still succeeds.
+#[tokio::test]
+async fn tools_list_is_empty_with_no_accessible_workflows() {
+    let server = TestServer::start().await;
+    let user = mcp_user(&server, "wf_mcp_empty").await;
+
+    let init = jsonrpc(&server, &user.token, None, "initialize", json!({})).await;
+    assert_eq!(init.status(), 200, "initialize must succeed with no workflows");
+
+    let list = jsonrpc(&server, &user.token, None, "tools/list", json!({})).await;
+    assert_eq!(list.status(), 200);
+    let body: Json = list.json().await.unwrap();
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    assert!(tools.is_empty(), "no workflows → empty tools list, got: {body}");
+}
+

@@ -1,9 +1,6 @@
 use reqwest::StatusCode;
-/// Model Upload Integration Tests
-///
-/// These tests download small models from HuggingFace using the `hf` CLI
-/// and test the upload functionality with real model files.
-use reqwest::multipart::{Form, Part};
+use reqwest::multipart::Form;
+use reqwest::multipart::Part;
 use serde_json::json;
 use std::path::PathBuf;
 use tokio::fs;
@@ -730,7 +727,7 @@ async fn test_upload_sharded_safetensors_without_index_keeps_all_shards() {
 /// missing-fields + duplicate-name only). No model download needed: the bytes
 /// are synthetic and must be refused before any storage write.
 #[tokio::test]
-async fn test_upload_rejects_empty_and_html_content() {
+async fn test_upload_rejects_empty_and_html_content_v2() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -792,3 +789,4 @@ async fn test_upload_rejects_empty_and_html_content() {
         "HTML rejection must name the validation failure: {body}"
     );
 }
+

@@ -4,6 +4,7 @@
 //! need an embedding model (no vector retrieval) so we skip the
 //! Gemini provider/model registration entirely. Only Groq Llama 4 is
 //! set up + registered as the deployment's `default_summarization_model_id`.
+
 #![allow(dead_code)]
 
 use serde_json::{Value, json};

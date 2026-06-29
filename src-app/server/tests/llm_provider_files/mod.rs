@@ -1,12 +1,19 @@
-// Integration tests for LLM Provider Files Module
-//
-// These tests verify the file caching and provider file mapping functionality.
-// Since this is an integration test, we test the database operations directly
-// without relying on internal module imports.
-
-use chrono::{Duration, Utc};
+use chrono::Duration;
+use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use ai_providers::AIProvider;
+use ai_providers::ChatRequest;
+use ai_providers::EmbeddingsRequest;
+use ai_providers::EmbeddingsResponse;
+use ai_providers::FileUpload;
+use ai_providers::FileUploadResponse;
+use ai_providers::ProviderError;
+use ai_providers::StreamChatChunk;
+use futures::Stream;
+use std::pin::Pin;
 
 // ============================================================================
 // Helper Functions
@@ -268,75 +275,6 @@ async fn test_upsert_updates_existing_mapping() {
 }
 
 #[tokio::test]
-async fn test_concurrent_upserts_converge_to_single_row() {
-    // The mapping upsert is documented "idempotent and safe for concurrent
-    // calls" (ON CONFLICT (file_id, provider_id)). Fire many concurrent upserts
-    // for the SAME (file_id, provider_id) and assert: none errors with a
-    // duplicate-key violation, exactly ONE row survives, and its
-    // provider_file_id is one of the racing writers' values (last-writer-wins).
-    let server = crate::common::TestServer::start().await;
-    let pool = sqlx::PgPool::connect(&server.database_url)
-        .await
-        .expect("connect test db");
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "race_user", &[])
-        .await;
-    let user_id = Uuid::parse_str(&user.user_id).unwrap();
-    let file_id = create_test_file(&pool, user_id, "race.pdf").await;
-    let provider_id = create_test_provider(&pool, "Race Provider", "openai").await;
-
-    const N: usize = 12;
-    let mut handles = Vec::with_capacity(N);
-    for i in 0..N {
-        let pool = pool.clone();
-        handles.push(tokio::spawn(async move {
-            sqlx::query(
-                r#"
-                INSERT INTO llm_provider_files (
-                    file_id, provider_id, provider_file_id, provider_metadata, upload_status
-                )
-                VALUES ($1, $2, $3, $4, 'completed')
-                ON CONFLICT (file_id, provider_id) DO UPDATE SET
-                    provider_file_id = EXCLUDED.provider_file_id,
-                    provider_metadata = EXCLUDED.provider_metadata,
-                    upload_status = 'completed',
-                    updated_at = NOW()
-                "#,
-            )
-            .bind(file_id)
-            .bind(provider_id)
-            .bind(format!("file_race_{i}"))
-            .bind(json!({ "writer": i }))
-            .execute(&pool)
-            .await
-        }));
-    }
-    for h in handles {
-        h.await.unwrap().expect("concurrent upsert must not error (no duplicate-key violation)");
-    }
-
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
-    )
-    .bind(file_id)
-    .bind(provider_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(count, 1, "concurrent upserts must converge to exactly one row");
-
-    let pfid: Option<String> = sqlx::query_scalar(
-        "SELECT provider_file_id FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
-    )
-    .bind(file_id)
-    .bind(provider_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    let pfid = pfid.expect("surviving row has a provider_file_id");
-    assert!(pfid.starts_with("file_race_"), "survivor is one of the writers: {pfid}");
-}
-
-#[tokio::test]
 async fn test_delete_provider_file_mapping() {
     let server = crate::common::TestServer::start().await;
     let pool = sqlx::PgPool::connect(&server.database_url)
@@ -548,28 +486,6 @@ async fn test_cascade_delete_on_provider_deletion() {
     assert!(mapping.is_none(), "Mapping should be cascade deleted");
 }
 
-// ============================================================================
-// Service Tests — retry / re-upload after a provider upload failure
-// ============================================================================
-//
-// Gap (audit id 880298cae9cb): the upload error path at
-// `service.rs:118-122` (`upload_file(...).map_err(...)`) and the
-// "test-and-validate" re-upload contract were untested. A failed provider
-// upload must NOT persist a Completed mapping, and a subsequent call must
-// retry the upload (rather than short-circuiting on a stale/half-written
-// mapping). This drives the REAL service function `get_or_upload_provider_file`
-// end-to-end against a real `FilesystemStorage` blob + a mock `AIProvider`
-// whose first `upload_file` fails and second succeeds. Only the external
-// provider boundary is mocked.
-
-use std::sync::atomic::{AtomicUsize, Ordering};
-use ai_providers::{
-    AIProvider, ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload,
-    FileUploadResponse, ProviderError, StreamChatChunk,
-};
-use futures::Stream;
-use std::pin::Pin;
-
 /// Mock provider supporting the file API whose `upload_file` fails on the
 /// first invocation and succeeds on every subsequent one.
 struct FlakyUploadProvider {
@@ -578,6 +494,7 @@ struct FlakyUploadProvider {
 }
 
 impl FlakyUploadProvider {
+
     fn new(succeed_id: &str) -> Self {
         Self {
             upload_calls: AtomicUsize::new(0),
@@ -588,9 +505,11 @@ impl FlakyUploadProvider {
 
 #[ziee::async_trait]
 impl AIProvider for FlakyUploadProvider {
+
     fn name(&self) -> &str {
         "flaky-upload"
     }
+
 
     async fn stream_chat(
         &self,
@@ -604,6 +523,7 @@ impl AIProvider for FlakyUploadProvider {
         Err(ProviderError::NotSupported("mock: no chat".into()))
     }
 
+
     async fn embeddings(
         &self,
         _api_key: &str,
@@ -613,9 +533,11 @@ impl AIProvider for FlakyUploadProvider {
         Err(ProviderError::NotSupported("mock: no embeddings".into()))
     }
 
+
     fn supports_file_api(&self) -> bool {
         true
     }
+
 
     async fn upload_file(
         &self,
@@ -647,24 +569,6 @@ async fn test_reupload_after_provider_failure() {
         ProxySettings,
     };
 
-// Concurrency — race condition on the idempotent upsert
-// ============================================================================
-
-/// `upsert_provider_file_mapping` documents itself as "idempotent and safe for
-/// concurrent calls" (repository.rs:46). The safety is delegated to Postgres:
-/// the `UNIQUE(file_id, provider_id)` constraint (migration 15) plus the
-/// `ON CONFLICT (file_id, provider_id) DO UPDATE` clause must collapse a burst
-/// of simultaneous upserts on the SAME key into a single row — no duplicate-key
-/// error leaking out, no second row, and a consistent terminal value (one of
-/// the racers wins, last-writer-wins on the row).
-///
-/// This fires N upserts concurrently, each on the same (file_id, provider_id)
-/// but with a DISTINCT provider_file_id, from independent pool connections so
-/// they genuinely contend at the database (not serialized in one task). It runs
-/// the EXACT SQL the repository issues (this integration tier tests the DB
-/// operations directly, mirroring the other tests in this file).
-#[tokio::test]
-async fn test_concurrent_upsert_same_key_is_race_safe() {
     let server = crate::common::TestServer::start().await;
     let pool = sqlx::PgPool::connect(&server.database_url)
         .await
@@ -766,9 +670,11 @@ struct SequentialUploadProvider {
 
 #[ziee::async_trait]
 impl AIProvider for SequentialUploadProvider {
+
     fn name(&self) -> &str {
         "seq-upload"
     }
+
     async fn stream_chat(
         &self,
         _a: &str,
@@ -780,6 +686,7 @@ impl AIProvider for SequentialUploadProvider {
     > {
         Err(ProviderError::NotSupported("mock".into()))
     }
+
     async fn embeddings(
         &self,
         _a: &str,
@@ -788,9 +695,11 @@ impl AIProvider for SequentialUploadProvider {
     ) -> Result<EmbeddingsResponse, ProviderError> {
         Err(ProviderError::NotSupported("mock".into()))
     }
+
     fn supports_file_api(&self) -> bool {
         true
     }
+
     async fn upload_file(
         &self,
         _a: &str,
@@ -915,54 +824,6 @@ async fn test_provider_file_mapping_is_user_scoped() {
         provider_id,
         "file_owned_by_a",
         json!({}),
-// API-key rotation → cached provider_file_id invalidation
-// ============================================================================
-
-/// The cache-reuse path in `get_or_upload_provider_file` keys on an
-/// `api_key_fingerprint` stored in `provider_metadata`: on a cache HIT it
-/// reuses the mapping ONLY when the stored fingerprint equals the current
-/// key's fingerprint, otherwise it treats the cached `provider_file_id` as
-/// belonging to a different account and re-uploads. This pins the persisted
-/// half of that decision end-to-end: the fingerprint round-trips through the
-/// real `llm_provider_files` row, and the same comparison the service performs
-/// (`stored != current ⇒ invalidate`) yields reuse for the same key and
-/// invalidation after rotation.
-#[tokio::test]
-async fn test_api_key_fingerprint_persists_and_detects_rotation() {
-    use sha2::{Digest, Sha256};
-
-    fn fingerprint(key: &str) -> String {
-        let mut h = Sha256::new();
-        h.update(key.as_bytes());
-        hex::encode(h.finalize())
-    }
-
-    let server = crate::common::TestServer::start().await;
-    let pool = sqlx::PgPool::connect(&server.database_url)
-        .await
-        .expect("connect");
-    let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "rotation_user", &[])
-            .await;
-    let user_id = Uuid::parse_str(&user.user_id).expect("uuid");
-    let file_id = create_test_file(&pool, user_id, "doc.pdf").await;
-    let provider_id = create_test_provider(&pool, "Rotation Provider", "gemini").await;
-
-    let old_key = "sk-account-A-original";
-    // Persist a completed mapping carrying the OLD key's fingerprint — exactly
-    // what `save_upload_response` writes into provider_metadata.
-    sqlx::query!(
-        r#"
-        INSERT INTO llm_provider_files (
-            file_id, provider_id, provider_file_id,
-            provider_metadata, upload_status
-        )
-        VALUES ($1, $2, $3, $4, 'completed')
-        "#,
-        file_id,
-        provider_id,
-        "provider-file-acctA",
-        json!({ "api_key_fingerprint": fingerprint(old_key), "filename": "doc.pdf" })
     )
     .execute(&pool)
     .await
@@ -970,44 +831,6 @@ async fn test_api_key_fingerprint_persists_and_detects_rotation() {
 
     // Owner A resolves the mapping.
     let owner = get_provider_file_mapping(&pool, file_id, provider_id, a_id)
-/// Cross-tenant security (repository.rs:31-33, service.rs:54-58 — the JOIN to
-/// `files` on `f.user_id = $3`). A provider-file mapping created for user A's
-/// file must NOT be retrievable by user B via get_provider_file_mapping, even
-/// though file_id is globally unique. The owner still gets it. Drives the REAL
-/// repository function (re-exported as ziee::llm_provider_file_mapping_for_user),
-/// not a mirrored query.
-#[tokio::test]
-async fn test_get_provider_file_mapping_is_cross_tenant_scoped() {
-    let server = crate::common::TestServer::start().await;
-    let pool = sqlx::PgPool::connect(&server.database_url)
-        .await
-        .expect("connect test db");
-
-    let user_a =
-        crate::common::test_helpers::create_user_with_permissions(&server, "tenant_a", &[]).await;
-    let user_b =
-        crate::common::test_helpers::create_user_with_permissions(&server, "tenant_b", &[]).await;
-    let a_id = Uuid::parse_str(&user_a.user_id).unwrap();
-    let b_id = Uuid::parse_str(&user_b.user_id).unwrap();
-
-    let file_id = create_test_file(&pool, a_id, "secret.pdf").await;
-    let provider_id = create_test_provider(&pool, "Tenant Provider", "gemini").await;
-
-    sqlx::query!(
-        r#"INSERT INTO llm_provider_files
-            (file_id, provider_id, provider_file_id, provider_metadata, upload_status)
-            VALUES ($1, $2, $3, $4, 'completed')"#,
-        file_id,
-        provider_id,
-        "file_secret",
-        json!({})
-    )
-    .execute(&pool)
-    .await
-    .expect("create mapping");
-
-    // The OWNER (user A) resolves the mapping.
-    let owner = ziee::llm_provider_file_mapping_for_user(&pool, file_id, provider_id, a_id)
         .await
         .expect("query ok");
     assert!(owner.is_some(), "owner must resolve their own provider-file mapping");
@@ -1018,6 +841,32 @@ async fn test_get_provider_file_mapping_is_cross_tenant_scoped() {
         .await
         .expect("query ok");
     assert!(cross.is_none(), "a different user must NOT resolve user A's provider-file mapping");
+}
+
+// ============================================================================
+// Concurrency — race condition on the idempotent upsert
+// ============================================================================
+
+/// `upsert_provider_file_mapping` documents itself as "idempotent and safe for
+/// concurrent calls" (repository.rs:46). The safety is delegated to Postgres:
+/// the `UNIQUE(file_id, provider_id)` constraint (migration 15) plus the
+/// `ON CONFLICT (file_id, provider_id) DO UPDATE` clause must collapse a burst
+/// of simultaneous upserts on the SAME key into a single row — no duplicate-key
+/// error leaking out, no second row, and a consistent terminal value (one of
+/// the racers wins, last-writer-wins on the row).
+///
+/// This fires N upserts concurrently, each on the same (file_id, provider_id)
+/// but with a DISTINCT provider_file_id, from independent pool connections so
+/// they genuinely contend at the database (not serialized in one task). It runs
+/// the EXACT SQL the repository issues (this integration tier tests the DB
+/// operations directly, mirroring the other tests in this file).
+#[tokio::test]
+async fn test_concurrent_upsert_same_key_is_race_safe() {
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "concurrent_upsert_user",
@@ -1108,11 +957,180 @@ async fn test_get_provider_file_mapping_is_cross_tenant_scoped() {
         "surviving provider_file_id {:?} must be one of the concurrent proposals",
         row.provider_file_id
     );
+}
+
+/// Cross-tenant security (repository.rs:31-33, service.rs:54-58 — the JOIN to
+/// `files` on `f.user_id = $3`). A provider-file mapping created for user A's
+/// file must NOT be retrievable by user B via get_provider_file_mapping, even
+/// though file_id is globally unique. The owner still gets it. Drives the REAL
+/// repository function (re-exported as ziee::llm_provider_file_mapping_for_user),
+/// not a mirrored query.
+#[tokio::test]
+async fn test_get_provider_file_mapping_is_cross_tenant_scoped() {
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect test db");
+
+    let user_a =
+        crate::common::test_helpers::create_user_with_permissions(&server, "tenant_a", &[]).await;
+    let user_b =
+        crate::common::test_helpers::create_user_with_permissions(&server, "tenant_b", &[]).await;
+    let a_id = Uuid::parse_str(&user_a.user_id).unwrap();
+    let b_id = Uuid::parse_str(&user_b.user_id).unwrap();
+
+    let file_id = create_test_file(&pool, a_id, "secret.pdf").await;
+    let provider_id = create_test_provider(&pool, "Tenant Provider", "gemini").await;
+
+    sqlx::query!(
+        r#"INSERT INTO llm_provider_files
+            (file_id, provider_id, provider_file_id, provider_metadata, upload_status)
+            VALUES ($1, $2, $3, $4, 'completed')"#,
+        file_id,
+        provider_id,
+        "file_secret",
+        json!({})
+    )
+    .execute(&pool)
+    .await
+    .expect("create mapping");
+
+    // The OWNER (user A) resolves the mapping.
+    let owner = ziee::llm_provider_file_mapping_for_user(&pool, file_id, provider_id, a_id)
+        .await
+        .expect("query ok");
+    assert!(owner.is_some(), "owner must resolve their own provider-file mapping");
+
     // A DIFFERENT tenant (user B) must NOT — the files JOIN filters by user_id.
     let intruder = ziee::llm_provider_file_mapping_for_user(&pool, file_id, provider_id, b_id)
         .await
         .expect("query ok");
     assert!(intruder.is_none(), "cross-tenant access to another user's provider-file mapping must be blocked");
+}
+
+#[tokio::test]
+async fn test_concurrent_upserts_converge_to_single_row() {
+    // The mapping upsert is documented "idempotent and safe for concurrent
+    // calls" (ON CONFLICT (file_id, provider_id)). Fire many concurrent upserts
+    // for the SAME (file_id, provider_id) and assert: none errors with a
+    // duplicate-key violation, exactly ONE row survives, and its
+    // provider_file_id is one of the racing writers' values (last-writer-wins).
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "race_user", &[])
+        .await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+    let file_id = create_test_file(&pool, user_id, "race.pdf").await;
+    let provider_id = create_test_provider(&pool, "Race Provider", "openai").await;
+
+    const N: usize = 12;
+    let mut handles = Vec::with_capacity(N);
+    for i in 0..N {
+        let pool = pool.clone();
+        handles.push(tokio::spawn(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO llm_provider_files (
+                    file_id, provider_id, provider_file_id, provider_metadata, upload_status
+                )
+                VALUES ($1, $2, $3, $4, 'completed')
+                ON CONFLICT (file_id, provider_id) DO UPDATE SET
+                    provider_file_id = EXCLUDED.provider_file_id,
+                    provider_metadata = EXCLUDED.provider_metadata,
+                    upload_status = 'completed',
+                    updated_at = NOW()
+                "#,
+            )
+            .bind(file_id)
+            .bind(provider_id)
+            .bind(format!("file_race_{i}"))
+            .bind(json!({ "writer": i }))
+            .execute(&pool)
+            .await
+        }));
+    }
+    for h in handles {
+        h.await.unwrap().expect("concurrent upsert must not error (no duplicate-key violation)");
+    }
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
+    )
+    .bind(file_id)
+    .bind(provider_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "concurrent upserts must converge to exactly one row");
+
+    let pfid: Option<String> = sqlx::query_scalar(
+        "SELECT provider_file_id FROM llm_provider_files WHERE file_id = $1 AND provider_id = $2",
+    )
+    .bind(file_id)
+    .bind(provider_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let pfid = pfid.expect("surviving row has a provider_file_id");
+    assert!(pfid.starts_with("file_race_"), "survivor is one of the writers: {pfid}");
+}
+
+// ============================================================================
+// API-key rotation → cached provider_file_id invalidation
+// ============================================================================
+
+/// The cache-reuse path in `get_or_upload_provider_file` keys on an
+/// `api_key_fingerprint` stored in `provider_metadata`: on a cache HIT it
+/// reuses the mapping ONLY when the stored fingerprint equals the current
+/// key's fingerprint, otherwise it treats the cached `provider_file_id` as
+/// belonging to a different account and re-uploads. This pins the persisted
+/// half of that decision end-to-end: the fingerprint round-trips through the
+/// real `llm_provider_files` row, and the same comparison the service performs
+/// (`stored != current ⇒ invalidate`) yields reuse for the same key and
+/// invalidation after rotation.
+#[tokio::test]
+async fn test_api_key_fingerprint_persists_and_detects_rotation() {
+    use sha2::{Digest, Sha256};
+
+    fn fingerprint(key: &str) -> String {
+        let mut h = Sha256::new();
+        h.update(key.as_bytes());
+        hex::encode(h.finalize())
+    }
+
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect");
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "rotation_user", &[])
+            .await;
+    let user_id = Uuid::parse_str(&user.user_id).expect("uuid");
+    let file_id = create_test_file(&pool, user_id, "doc.pdf").await;
+    let provider_id = create_test_provider(&pool, "Rotation Provider", "gemini").await;
+
+    let old_key = "sk-account-A-original";
+    // Persist a completed mapping carrying the OLD key's fingerprint — exactly
+    // what `save_upload_response` writes into provider_metadata.
+    sqlx::query!(
+        r#"
+        INSERT INTO llm_provider_files (
+            file_id, provider_id, provider_file_id,
+            provider_metadata, upload_status
+        )
+        VALUES ($1, $2, $3, $4, 'completed')
+        "#,
+        file_id,
+        provider_id,
+        "provider-file-acctA",
+        json!({ "api_key_fingerprint": fingerprint(old_key), "filename": "doc.pdf" })
+    )
+    .execute(&pool)
+    .await
+    .expect("insert mapping");
+
     // Read the mapping back as the service does (provider_metadata JSONB).
     let row = sqlx::query!(
         r#"
@@ -1148,3 +1166,4 @@ async fn test_get_provider_file_mapping_is_cross_tenant_scoped() {
         "rotated key must invalidate the cached provider_file_id"
     );
 }
+

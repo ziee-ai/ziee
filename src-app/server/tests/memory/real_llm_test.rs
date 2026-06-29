@@ -1,32 +1,6 @@
-//! Tier 5 — real-LLM memory tests.
-//!
-//! Runs the memory module against actual external providers:
-//!   - Gemini text-embedding-004 (768d) for embeddings
-//!   - Groq Llama 4 Scout for extraction
-//!
-//! These exercise the paths that the rest of the suite mocks or
-//! skips: real embedding generation, real vector search, real LLM
-//! extraction.
-//!
-//! Summarization Tier-5 tests (R4/R5/R6) moved with the engine to
-//! `tests/summarization/real_llm_test.rs` in migration 91.
-//!
-//! Gated behind `#[ignore]` so a default `cargo test` doesn't try
-//! to hit external APIs. Run with:
-//!
-//!   source tests/.env.test && \
-//!     cargo test --test integration_tests -- --ignored --test-threads=1 \
-//!     memory::real_llm
-//!
-//! Costs are negligible — both providers' free tiers cover the full
-//! suite. Each test logs setup choices via eprintln! so you can grep
-//! the run output if something looks off.
-
-#![allow(unused_imports)]
-
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use uuid::Uuid;
-
 use super::real_llm_helpers as h;
 
 // ────────────────────────────────────────────────────────────────────
@@ -500,6 +474,7 @@ async fn r7_cosine_threshold_filters_unrelated_memories() {
 // ────────────────────────────────────────────────────────────────────
 
 const OPENAI_EMBEDDING_MODEL_A: &str = "text-embedding-ada-002";
+
 const OPENAI_EMBEDDING_MODEL_B: &str = "text-embedding-3-small";
 
 /// Register the OpenAI provider + two embedding models (same dim:
@@ -908,16 +883,6 @@ async fn r10_explicit_reembed_endpoint_resumes_stale_rows() {
 #[tokio::test]
 async fn r3_multi_turn_progressively_accumulates_memories() {
     if h::skip_if_no_keys("r3_multi_turn") {
-// ────────────────────────────────────────────────────────────────────
-// R-forget — the MCP `forget` tool soft-deletes a memory so a later
-// recall no longer surfaces it (real embeddings + real vector search).
-// The existing `test_mcp_forget_requires_memory_id` only covers the
-// missing-arg validation; this exercises the full remember→recall→
-// forget→recall lifecycle end to end.
-// ────────────────────────────────────────────────────────────────────
-#[tokio::test]
-async fn r_forget_removes_memory_from_subsequent_recall() {
-    if h::skip_if_no_keys("r_forget") {
         return;
     }
     let server = crate::common::TestServer::start().await;
@@ -998,6 +963,22 @@ async fn r_forget_removes_memory_from_subsequent_recall() {
         contents.iter().any(|c| c.contains("peanut") || c.contains("allerg")),
         "turn-2 fact (peanut allergy) must ALSO persist (progressive accumulation); got: {contents:?}"
     );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// R-forget — the MCP `forget` tool soft-deletes a memory so a later
+// recall no longer surfaces it (real embeddings + real vector search).
+// The existing `test_mcp_forget_requires_memory_id` only covers the
+// missing-arg validation; this exercises the full remember→recall→
+// forget→recall lifecycle end to end.
+// ────────────────────────────────────────────────────────────────────
+#[tokio::test]
+async fn r_forget_removes_memory_from_subsequent_recall() {
+    if h::skip_if_no_keys("r_forget") {
+        return;
+    }
+    let server = crate::common::TestServer::start().await;
+    let _ids = h::setup_real_providers(&server).await;
     let user = h::memory_user(&server, "r_forget").await;
 
     // A distinctive, isolated fact so recall is unambiguous.
@@ -1044,3 +1025,4 @@ async fn r_forget_removes_memory_from_subsequent_recall() {
         .unwrap();
     assert_eq!(got.status(), 404, "a forgotten memory must 404 on direct GET");
 }
+

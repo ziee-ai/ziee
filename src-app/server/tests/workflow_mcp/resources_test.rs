@@ -1,60 +1,12 @@
-//! workflow_mcp `resources/list` + `resources/read` over the HTTP JSON-RPC
-//! server — closing audit gaps S5, M4, M5, M6.
-//!
-//! These exercise the FULL production MCP path: a real `tools/call` spawns a
-//! REAL (stub-LLM) run (no `mock:` in the YAML, so the runner dispatches to the
-//! stub provider and the dispatcher writes `prompt`/`raw_output` logs + the
-//! output file on disk under the run's staging dir), and then `resources/list`
-//! / `resources/read` are driven over the SAME `/api/workflows/mcp` JSON-RPC
-//! endpoint the chat MCP client uses.
-//!
-//! Gaps covered:
-//! - **S5**: `resources/read` for a run owned by ANOTHER user → the ownership
-//!   gate (`workflow_runs.user_id != JWT sub`) refuses it. The handler maps the
-//!   `AppError::forbidden("WORKFLOW_RUN_FORBIDDEN", …)` through
-//!   `JsonRpcError::from_app_error`, which classifies 403 as `invalid_params`
-//!   (`-32602`) (see `code_sandbox::types::from_app_error`'s
-//!   `400|403|404|409|410|422 => invalid_params` arm) — so we assert the
-//!   JSON-RPC error code + the message, NOT an HTTP 403.
-//! - **M4**: `resources/list` for a completed run enumerates the run's output
-//!   resource URI (an `expose: artifact` output always surfaces as a
-//!   `ziee://workflow-runs/<run>/outputs/<name>` resource — see
-//!   `resources::resources_list`'s `is_resource` rule).
-//! - **M5**: `resources/read` of a CAPTURED log kind (`raw_output`, written to
-//!   disk by the dispatcher at `log: full`) returns the body; an UNKNOWN log
-//!   kind is rejected (`read_log`'s `LOG_KINDS` whitelist); a dotdot/traversal
-//!   URI is rejected by `parse_uri`'s `sanitize_uri_component`.
-//! - **M6**: `logs_surfaceable` fail-closed — a workflow with `expose_logs:
-//!   never` refuses a `resources/read` of its logs even for the owner; and a
-//!   FAILED run's `tools/call` returns the `build_error_result` shape
-//!   (`isError:true`, the failure surfaced in the text body) WITHOUT a
-//!   `logs_resource` link when `expose_logs: never`.
-//!
-//! Reality notes (verified against the runner + resources/tools code, June 2026):
-//!   * `step_logs_json` IS populated on a step's terminal transition by the
-//!     runner (`log_io::snapshot_step_logs` → `repository::persist_step_logs`),
-//!     so `resources/list` enumerates durable log resources too — gated by
-//!     `expose_logs`/`logs_surfaceable` (so an `expose_logs: never` step is
-//!     never advertised). M4 asserts the OUTPUT resource URI (the reliable,
-//!     rootfs-free resource). Per-step `artifacts` only exist for `kind:
-//!     sandbox` steps (which need a mounted rootfs), so they're out of scope
-//!     for these cross-platform tests.
-//!   * Log BODIES are written to DISK by the dispatcher (`log_io::
-//!     write_text_log`, gated on `log: full`) AND snapshotted into
-//!     `step_logs_json`. `resources/read` reads the staging dir first
-//!     (`read_log`), falling back to the durable DB body once the dir is GC'd
-//!     (server boot). So M5's read-back of a captured `raw_output` works.
-
-use serde_json::{Value as Json, json};
+use serde_json::Value as Json;
+use serde_json::json;
 use uuid::Uuid;
-
 use crate::common::TestServer;
-use crate::workflow::{import_dev_workflow, poll_run};
-
-// `jsonrpc` / `mcp_user` / `wf_tool_name` are the request-building helpers
-// defined in the parent `workflow_mcp/mod.rs`; child modules reach ancestor
-// items via `super::` regardless of their (private) visibility.
-use super::{jsonrpc, mcp_user, wf_tool_name};
+use crate::workflow::import_dev_workflow;
+use crate::workflow::poll_run;
+use super::jsonrpc;
+use super::mcp_user;
+use super::wf_tool_name;
 
 /// JSON-RPC INVALID_PARAMS code (the bucket 4xx AppErrors land in via
 /// `JsonRpcError::from_app_error`). Mirrors
@@ -81,29 +33,6 @@ outputs:
   - name: summary
     from: "{{ gen.output }}"
     expose: artifact
-"#;
-
-/// Same shape as `REAL_LOGGED_WORKFLOW_YAML` but the sole `expose: artifact`
-/// output declares a BINARY `mime_type` (`application/octet-stream`, which is
-/// not in `is_text_mime`'s allow-list). So `resources/read` of the output must
-/// take the base64 BLOB branch (resources.rs:296-299) rather than the text
-/// branch — even though the underlying bytes are the stub model's plain-text
-/// reply. The declared mime_type wins over `parsed_as`.
-const BINARY_OUTPUT_WORKFLOW_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
-expose_logs: always
-inputs:
-  - name: topic
-    required: true
-steps:
-  - id: gen
-    kind: llm
-    prompt: "summarize {{ inputs.topic }}"
-    log: full
-outputs:
-  - name: summary
-    from: "{{ gen.output }}"
-    expose: artifact
-    mime_type: application/octet-stream
 "#;
 
 /// Same shape but `expose_logs: never` — the confidentiality control under M6.
@@ -336,68 +265,6 @@ async fn resources_read_returns_captured_log_body() {
     assert!(
         text.contains("Hello from stub"),
         "the captured raw_output log carries the stub model's reply: {body}"
-    );
-}
-
-/// M5 (binary branch): an output declaring a non-text `mime_type` must be
-/// returned as a base64 `blob`, NOT a `text` body — and the base64 must decode
-/// back to the original bytes. Exercises resources.rs:296-299 (the
-/// `else { … encode … "blob" }` arm), which every other resources/read test
-/// (all of which hit text mimes) leaves uncovered.
-#[tokio::test]
-async fn resources_read_returns_binary_output_as_base64_blob() {
-    use base64::Engine as _;
-
-    let server = TestServer::start().await;
-    let user = mcp_user(&server, "wf_res_binblob").await;
-
-    let (run_id, _result, _conv) =
-        run_via_tools_call(&server, &user, "m5-binblob", BINARY_OUTPUT_WORKFLOW_YAML).await;
-    let final_run = poll_run(&server, &user.token, run_id).await;
-    assert_eq!(final_run["status"], "completed", "run completed: {final_run}");
-
-    // The `summary` output bytes are the stub model's reply, but the output
-    // declares `mime_type: application/octet-stream` → resources/read must take
-    // the binary blob branch.
-    let uri = format!("ziee://workflow-runs/{run_id}/outputs/summary");
-    let resp = jsonrpc(
-        &server,
-        &user.token,
-        None,
-        "resources/read",
-        json!({ "uri": uri }),
-    )
-    .await;
-    assert_eq!(resp.status(), 200, "resources/read should 200");
-    let body: Json = resp.json().await.unwrap();
-    assert!(body["error"].is_null(), "binary read had no error: {body}");
-    let content = &body["result"]["contents"][0];
-    assert_eq!(
-        content["uri"].as_str(),
-        Some(uri.as_str()),
-        "the content echoes the requested uri: {body}"
-    );
-    assert_eq!(
-        content["mimeType"].as_str(),
-        Some("application/octet-stream"),
-        "the declared binary mime_type is surfaced: {body}"
-    );
-    // The binary branch returns `blob` (base64), NEVER `text`.
-    assert!(
-        content.get("text").is_none(),
-        "a binary-mime resource must NOT be returned as a text body: {body}"
-    );
-    let b64 = content["blob"]
-        .as_str()
-        .unwrap_or_else(|| panic!("binary output returns a base64 `blob` field: {body}"));
-    let decoded = base64::engine::general_purpose::STANDARD
-        .decode(b64)
-        .expect("the blob must be valid base64");
-    // Round-trips back to the original output bytes (the stub's reply).
-    let decoded_text = String::from_utf8(decoded).expect("stub reply bytes are utf-8");
-    assert!(
-        decoded_text.contains("Hello from stub"),
-        "the decoded blob carries the original output bytes (the stub reply): got {decoded_text:?}"
     );
 }
 
@@ -640,6 +507,94 @@ async fn resources_list_omits_deleted_run_and_read_errors() {
     assert!(
         body["error"].is_object() || body["result"]["isError"] == json!(true),
         "reading a deleted run's resource must surface an error, not crash: {body}"
+    );
+}
+
+/// Same shape as `REAL_LOGGED_WORKFLOW_YAML` but the sole `expose: artifact`
+/// output declares a BINARY `mime_type` (`application/octet-stream`, which is
+/// not in `is_text_mime`'s allow-list). So `resources/read` of the output must
+/// take the base64 BLOB branch (resources.rs:296-299) rather than the text
+/// branch — even though the underlying bytes are the stub model's plain-text
+/// reply. The declared mime_type wins over `parsed_as`.
+const BINARY_OUTPUT_WORKFLOW_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+expose_logs: always
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: gen
+    kind: llm
+    prompt: "summarize {{ inputs.topic }}"
+    log: full
+outputs:
+  - name: summary
+    from: "{{ gen.output }}"
+    expose: artifact
+    mime_type: application/octet-stream
+"#;
+
+/// M5 (binary branch): an output declaring a non-text `mime_type` must be
+/// returned as a base64 `blob`, NOT a `text` body — and the base64 must decode
+/// back to the original bytes. Exercises resources.rs:296-299 (the
+/// `else { … encode … "blob" }` arm), which every other resources/read test
+/// (all of which hit text mimes) leaves uncovered.
+#[tokio::test]
+async fn resources_read_returns_binary_output_as_base64_blob() {
+    use base64::Engine as _;
+
+    let server = TestServer::start().await;
+    let user = mcp_user(&server, "wf_res_binblob").await;
+
+    let (run_id, _result, _conv) =
+        run_via_tools_call(&server, &user, "m5-binblob", BINARY_OUTPUT_WORKFLOW_YAML).await;
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(final_run["status"], "completed", "run completed: {final_run}");
+
+    // The `summary` output bytes are the stub model's reply, but the output
+    // declares `mime_type: application/octet-stream` → resources/read must take
+    // the binary blob branch.
+    let uri = format!("ziee://workflow-runs/{run_id}/outputs/summary");
+    let resp = jsonrpc(
+        &server,
+        &user.token,
+        None,
+        "resources/read",
+        json!({ "uri": uri }),
+    )
+    .await;
+    assert_eq!(resp.status(), 200, "resources/read should 200");
+    let body: Json = resp.json().await.unwrap();
+    assert!(body["error"].is_null(), "binary read had no error: {body}");
+    let content = &body["result"]["contents"][0];
+    assert_eq!(
+        content["uri"].as_str(),
+        Some(uri.as_str()),
+        "the content echoes the requested uri: {body}"
+    );
+    assert_eq!(
+        content["mimeType"].as_str(),
+        Some("application/octet-stream"),
+        "the declared binary mime_type is surfaced: {body}"
+    );
+    // The binary branch returns `blob` (base64), NEVER `text`.
+    assert!(
+        content.get("text").is_none(),
+        "a binary-mime resource must NOT be returned as a text body: {body}"
+    );
+    let b64 = content["blob"]
+        .as_str()
+        .unwrap_or_else(|| panic!("binary output returns a base64 `blob` field: {body}"));
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .expect("the blob must be valid base64");
+    // Round-trips back to the original output bytes (the stub's reply).
+    let decoded_text = String::from_utf8(decoded).expect("stub reply bytes are utf-8");
+    assert!(
+        decoded_text.contains("Hello from stub"),
+        "the decoded blob carries the original output bytes (the stub reply): got {decoded_text:?}"
+    );
+}
+
 /// A minimal SANDBOX workflow (no llm/tool/elicit steps, so `tools/call` runs to
 /// terminal without blocking): one `kind: sandbox` step writes an artifact and
 /// emits a byte count, surfaced as an `expose: artifact` output.
@@ -764,6 +719,9 @@ async fn await_terminal_fails_a_stalled_run_via_no_progress_guard() {
     assert!(
         msg.contains("no progress") || msg.contains("crashed"),
         "the failure must cite the no-progress/crashed-runner reason; got: {err}"
+    );
+}
+
 // ── resources/list gracefully skips a run whose workflow def is gone ─────────
 
 /// `resources_list` loads each run's workflow.yaml from disk (`workflow_def_for_run`).
@@ -822,3 +780,4 @@ async fn resources_list_skips_run_with_unreadable_workflow_def() {
         "the run with an unreadable def must be skipped from the listing: {after_body}"
     );
 }
+

@@ -11,7 +11,7 @@
 //! x86_64 Linux (bwrap) AND Apple-Silicon macOS (libkrun microVM), since
 //! `v0.0.5-alpha` of `ziee-ai/sandbox-rootfs` publishes aarch64 squashfs too.
 
-use serde_json::json;
+use serde_json::{Value as Json, json};
 use uuid::Uuid;
 
 use super::{import_dev_workflow, poll_run, run_workflow, stub_conversation, workflow_user};

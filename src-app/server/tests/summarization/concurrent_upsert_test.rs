@@ -1,15 +1,8 @@
-//! Concurrency safety of the conversation-summary UPSERT.
-//!
-//! `summarizer::upsert_summary` writes `conversation_summaries` with
-//! `ON CONFLICT (branch_id) DO UPDATE` (branch_id is the PK) precisely because
-//! several refreshes for the same branch can race (see the concurrent-refresh
-//! note at summarizer.rs:27-32). This drives that race directly: many
-//! simultaneous upserts on one branch must converge to exactly ONE row
-//! (last-write-wins) without a duplicate-key error.
-
 use uuid::Uuid;
-
 use crate::common::TestServer;
+use serde_json::Value;
+use serde_json::json;
+use sqlx::PgPool;
 
 #[tokio::test]
 async fn concurrent_summary_upserts_converge_to_one_row() {
@@ -55,20 +48,38 @@ async fn concurrent_summary_upserts_converge_to_one_row() {
             )
             .bind(branch_id)
             .bind(text)
-// ============================================================================
-// Concurrent summarization race — the engine documents that two simultaneous
-// turns on the same branch can each spawn their own `refresh_summary`, and
-// relies on `INSERT ... ON CONFLICT (branch_id) DO UPDATE` (last-write-wins) to
-// converge. This pins that race resolution directly at the DB layer: N
-// concurrent upserts on the SAME branch must leave EXACTLY ONE
-// `conversation_summaries` row (no duplicate-key error, no extra rows), holding
-// one of the racers' values. Mirrors the summarizer's upsert SQL (summarizer.rs
-// `upsert_summary`) and the llm_provider_files concurrent-convergence test.
-// ============================================================================
+            .execute(&pool)
+            .await
+        }));
+    }
+    for h in handles {
+        h.await
+            .unwrap()
+            .expect("concurrent upsert must not error on the PK conflict");
+    }
 
-use serde_json::{Value, json};
-use sqlx::PgPool;
-use uuid::Uuid;
+    // Exactly one row survives — last-write-wins, no duplicate from the race.
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM conversation_summaries WHERE branch_id = $1")
+            .bind(branch_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count.0, 1, "concurrent upserts must converge to one row");
+
+    let text: (String,) =
+        sqlx::query_as("SELECT summary_text FROM conversation_summaries WHERE branch_id = $1")
+            .bind(branch_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        text.0.starts_with("summary-"),
+        "surviving row carries one writer's text: {}",
+        text.0
+    );
+    pool.close().await;
+}
 
 async fn create_conversation(server: &crate::common::TestServer, token: &str) -> Uuid {
     let res = reqwest::Client::new()
@@ -131,30 +142,6 @@ async fn test_concurrent_summary_upsert_converges_to_one_row() {
         }));
     }
     for h in handles {
-        h.await
-            .unwrap()
-            .expect("concurrent upsert must not error on the PK conflict");
-    }
-
-    // Exactly one row survives — last-write-wins, no duplicate from the race.
-    let count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM conversation_summaries WHERE branch_id = $1")
-            .bind(branch_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(count.0, 1, "concurrent upserts must converge to one row");
-
-    let text: (String,) =
-        sqlx::query_as("SELECT summary_text FROM conversation_summaries WHERE branch_id = $1")
-            .bind(branch_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert!(
-        text.0.starts_with("summary-"),
-        "surviving row carries one writer's text: {}",
-        text.0
         // Every racer must succeed — the ON CONFLICT makes the upsert race-safe
         // (no duplicate-key violation).
         h.await.unwrap().expect("concurrent upsert must not error");
@@ -183,3 +170,4 @@ async fn test_concurrent_summary_upsert_converges_to_one_row() {
     );
     pool.close().await;
 }
+

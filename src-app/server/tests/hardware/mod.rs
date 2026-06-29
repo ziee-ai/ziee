@@ -276,15 +276,6 @@ async fn test_hardware_info_rejects_monitor_only_user() {
     let server = crate::common::TestServer::start().await;
     // Holds hardware::monitor but NOT hardware::read.
     let user = crate::common::test_helpers::create_user_with_only_permissions(
-/// Permission edge case: `hardware::read` and `hardware::monitor` are a SPLIT.
-/// Holding one must NOT grant the other endpoint. The existing tests only cover
-/// with-perm / no-perm; this covers the WRONG-perm cross combinations.
-#[tokio::test]
-async fn test_hardware_read_and_monitor_perms_do_not_cross() {
-    let server = crate::common::TestServer::start().await;
-
-    // User A: monitor only (no read).
-    let monitor_only = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "hw_monitor_only",
         &["hardware::monitor"],
@@ -309,8 +300,6 @@ async fn test_usage_stream_rejects_read_only_user() {
     let server = crate::common::TestServer::start().await;
     // Holds hardware::read but NOT hardware::monitor.
     let user = crate::common::test_helpers::create_user_with_only_permissions(
-    // User B: read only (no monitor).
-    let read_only = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "hw_read_only",
         &["hardware::read"],
@@ -327,6 +316,31 @@ async fn test_usage_stream_rejects_read_only_user() {
         res.status(),
         403,
         "hardware::read must NOT grant access to the usage stream (needs hardware::monitor)"
+    );
+}
+
+/// Permission edge case: `hardware::read` and `hardware::monitor` are a SPLIT.
+/// Holding one must NOT grant the other endpoint. The existing tests only cover
+/// with-perm / no-perm; this covers the WRONG-perm cross combinations.
+#[tokio::test]
+async fn test_hardware_read_and_monitor_perms_do_not_cross() {
+    let server = crate::common::TestServer::start().await;
+
+    // User A: monitor only (no read).
+    let monitor_only = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hw_monitor_only",
+        &["hardware::monitor"],
+    )
+    .await;
+    // User B: read only (no monitor).
+    let read_only = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hw_read_only",
+        &["hardware::read"],
+    )
+    .await;
+
     let client = reqwest::Client::new();
 
     // monitor-only on the read endpoint → 403.
@@ -379,38 +393,16 @@ async fn test_usage_stream_rejects_read_only_user() {
 #[tokio::test]
 async fn test_hardware_usage_stream_emits_real_snapshot_frames() {
     use futures::StreamExt;
-/// The header-only test above proves the content-type but never reads a frame.
-/// This reads the live SSE body (with a hard timeout so an endless stream can't
-/// hang the suite) and asserts the FIRST emitted event is the `connected`
-/// handshake with a parseable `data:` JSON payload carrying the connect
-/// message — i.e. the stream actually serializes real SSE frames, not just the
-/// right header.
-#[tokio::test]
-async fn test_subscribe_hardware_usage_emits_connected_frame() {
-    use futures_util::StreamExt;
-    use std::time::Duration;
 
     let server = crate::common::TestServer::start().await;
     let admin = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "hw_stream_content",
-/// SSE STREAM CONTENT (not just the content-type header): read the first
-/// hardware-usage frame off the stream within a bounded timeout and assert it's
-/// a real `data:` SSE frame whose payload parses as JSON carrying the expected
-/// usage fields. The stream is endless, so we stop at the first complete frame.
-#[tokio::test]
-async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
-    let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "hw_sse_content",
-        "hw_sse_body",
         &["hardware::monitor"],
     )
     .await;
 
     let response = reqwest::Client::new()
-    let mut response = reqwest::Client::new()
         .get(server.api_url("/hardware/usage-stream"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .header("Accept", "text/event-stream")
@@ -518,6 +510,29 @@ async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
     assert!(
         update.get("gpu_devices").map(|g| g.is_array()).unwrap_or(false),
         "update must include a gpu_devices array, got: {update}"
+    );
+}
+
+/// SSE STREAM CONTENT (not just the content-type header_v2): read the first
+/// hardware-usage frame off the stream within a bounded timeout and assert it's
+/// a real `data:` SSE frame whose payload parses as JSON carrying the expected
+/// usage fields. The stream is endless, so we stop at the first complete frame.
+#[tokio::test]
+async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hw_sse_content",
+        &["hardware::monitor"],
+    )
+    .await;
+
+    let mut response = reqwest::Client::new()
+        .get(server.api_url("/hardware/usage-stream"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
         .expect("Request failed");
     assert_eq!(response.status(), 200);
 
@@ -548,6 +563,34 @@ async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
     assert!(
         json.get("cpu").is_some() || json.get("memory").is_some() || json.get("timestamp").is_some(),
         "usage frame should carry hardware usage fields; got: {json}"
+    );
+}
+
+/// The header-only test above proves the content-type but never reads a frame.
+/// This reads the live SSE body (with a hard timeout so an endless stream can't
+/// hang the suite) and asserts the FIRST emitted event is the `connected`
+/// handshake with a parseable `data:` JSON payload carrying the connect
+/// message — i.e. the stream actually serializes real SSE frames, not just the
+/// right header.
+#[tokio::test]
+async fn test_subscribe_hardware_usage_emits_connected_frame() {
+    use futures_util::StreamExt;
+    use std::time::Duration;
+
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hw_sse_body",
+        &["hardware::monitor"],
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .get(server.api_url("/hardware/usage-stream"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
         .expect("Request failed");
     assert_eq!(response.status(), 200);
 
@@ -597,3 +640,4 @@ async fn test_subscribe_hardware_usage_sse_emits_json_frame() {
         "event payload deserializes: {payload:?}"
     );
 }
+

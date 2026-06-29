@@ -1,3 +1,29 @@
+use serde_json::Value;
+use serde_json::json;
+use crate::common::TestServer;
+
+// Integration + HTTP-handler tests for the lit_search module.
+//
+// Tier 2 — admin settings/connectors CRUD + permission gating + secret
+// round-trip + sync (settings_test.rs); the JSON-RPC MCP handler
+// (initialize / tools/list / tools/call) driving the UNION search over mock
+// loopback upstreams + dedup + identified counts + completeness (mcp_test.rs);
+// fetch_paper_fulltext over a mock Europe PMC fullTextXML server + the cache +
+// per-conversation view symlink (fulltext_test.rs).
+// Tier 3 — the per-conversation `/lit` read-only sandbox mount
+// (sandbox_mount_test.rs, rootfs-gated env-skip).
+// Tier 4 — real-network + real-LLM smoke (real_llm_test.rs, key-gated).
+//
+// The connectors hit fixed public hosts; the debug-only `LIT_SEARCH_<X>_ENDPOINT`
+// seams (compiled out of release) point them at the loopback mocks below, paired
+// with `LIT_SEARCH_ALLOW_LOOPBACK=1` so the SSRF policy permits 127.0.0.1.
+
+mod fulltext_test;
+mod mcp_test;
+mod real_llm_test;
+mod sandbox_mount_test;
+mod settings_test;
+mod cross_subsystem_test;
 // Integration + HTTP-handler tests for the lit_search module.
 //
 // Tier 2 — admin settings/connectors CRUD + permission gating + secret
@@ -15,16 +41,7 @@
 // with `LIT_SEARCH_ALLOW_LOOPBACK=1` so the SSRF policy permits 127.0.0.1.
 
 mod citations_handoff_test;
-mod fulltext_test;
-mod mcp_test;
 mod multistep_test;
-mod real_llm_test;
-mod sandbox_mount_test;
-mod settings_test;
-
-use serde_json::{Value, json};
-
-use crate::common::TestServer;
 
 /// Build a JSON-RPC request to the lit_search MCP endpoint.
 pub fn jsonrpc(
@@ -257,4 +274,4 @@ pub async fn start_mock_epmc_fulltext()
     });
     (format!("http://127.0.0.1:{port}"), hits)
 }
-mod cross_subsystem_test;
+

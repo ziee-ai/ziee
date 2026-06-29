@@ -1,30 +1,23 @@
-// ============================================================================
-// Document RAG — Tier 3 real-embedder tests.
-//
-// Uses a REAL embedding model (Gemini `gemini-embedding-001`, 3072-dim) to
-// prove the vector arm ranks semantically — the one thing the stub embedder
-// can't show. Because the model is 3072-dim and the migration default is
-// halfvec(768), setting it also exercises the dimension-rebuild path
-// (probe → ALTER halfvec(3072) → re-embed existing chunks).
-//
-// Gated on GEMINI_API_KEY (ships in tests/.env.test). Skips with an eprintln!
-// when unset.
-// ============================================================================
-
-use serde_json::{json, Value};
+use serde_json::json;
+use serde_json::Value;
 use sqlx::PgPool;
 use std::time::Duration;
 use uuid::Uuid;
-
-use super::{
-    attach_conversation_to_project, attach_file_to_project, create_project, db_pool,
-    project_conversation_with_files, semantic_search, set_rag_settings, upload_text,
-    wait_for_chunks,
-};
-use crate::common::test_helpers::{create_user_with_permissions, TestUser};
+use super::attach_conversation_to_project;
+use super::attach_file_to_project;
+use super::create_project;
+use super::db_pool;
+use super::project_conversation_with_files;
+use super::semantic_search;
+use super::set_rag_settings;
+use super::upload_text;
+use super::wait_for_chunks;
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::common::test_helpers::TestUser;
 use crate::common::TestServer;
 
 const GEMINI_EMBEDDING_MODEL: &str = "gemini-embedding-001";
+
 const ANTHROPIC_HAIKU_MODEL: &str = "claude-haiku-4-5-20251001";
 
 fn skip_if_no_gemini(test: &str) -> bool {
@@ -389,18 +382,12 @@ async fn real_llm_calls_semantic_search_and_grounds_answer() {
 /// `read_file`). A distinctive codeword is buried in a manifest-attached doc;
 /// the model is asked to READ the file and report it, and we assert the real
 /// model actually fired `read_file` and grounded its answer in the content.
-/// Agentic read_file via a REAL model: the same manifest-only setup, but the
-/// answer lives in a NAMED section the model must OPEN with the `read_file`
-/// tool (not semantic_search). Asserts `read_file` specifically fired AND the
-/// buried fact reached the answer — the existing agentic read_file test uses a
-/// STUB model, so this is the real-LLM path through the manifest→read_file loop.
 #[tokio::test]
 async fn real_llm_calls_read_file_through_agentic_loop() {
     if std::env::var("ANTHROPIC_API_KEY").is_err() {
         eprintln!(
             "test real_llm_calls_read_file_through_agentic_loop skipped: \
              ANTHROPIC_API_KEY unset (source tests/.env.test)"
-            "test real_llm_calls_read_file_through_agentic_loop skipped: ANTHROPIC_API_KEY unset"
         );
         return;
     }
@@ -422,6 +409,79 @@ async fn real_llm_calls_read_file_through_agentic_loop() {
 
     let project_id = create_project(&server, &user, "readfile-agentic").await;
     let file_id = upload_text(&server, &user, "reykjavik-ops-handbook.txt", &body).await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    wait_for_chunks(&pool, &file_id, 1).await;
+
+    let conv_resp = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "model_id": model_id }))
+        .send()
+        .await
+        .expect("create conv");
+    assert_eq!(conv_resp.status(), reqwest::StatusCode::CREATED);
+    let conv: Value = conv_resp.json().await.unwrap();
+    let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
+    let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
+    attach_conversation_to_project(
+        &server,
+        &user,
+        &project_id,
+        &conv["id"].as_str().unwrap().to_string(),
+    )
+    .await;
+
+    let turn = crate::chat::helpers::send_and_collect(
+        &server,
+        &user.token,
+        conv_id,
+        branch_id,
+        Uuid::parse_str(&model_id).unwrap(),
+        "Open the Reykjavik operations handbook with the read_file tool and tell me the exact \
+         master door-lock override code written in it.",
+    )
+    .await;
+
+    let tools_fired: Vec<&str> = turn
+        .frames
+        .iter()
+        .filter(|f| f.event_type == "mcpToolStart")
+        .filter_map(|f| f.data["tool_name"].as_str())
+        .collect();
+    assert!(
+        tools_fired.contains(&"read_file"),
+        "real LLM must call read_file through the agentic loop; tools fired={tools_fired:?}; answer={:?}",
+        turn.text
+    );
+    assert!(
+        turn.text.contains("GLACIER-5582"),
+        "answer must contain the code read via read_file; answer={:?}",
+        turn.text
+    );
+}
+
+/// Agentic read_file via a REAL model: the same manifest-only setup, but the
+/// answer lives in a NAMED section the model must OPEN with the `read_file`
+/// tool (not semantic_search). Asserts `read_file` specifically fired AND the
+/// buried fact reached the answer — the existing agentic read_file test uses a
+/// STUB model, so this is the real-LLM path through the manifest→read_file loop.
+#[tokio::test]
+async fn real_llm_calls_read_file_through_agentic_loop_v2() {
+    if std::env::var("ANTHROPIC_API_KEY").is_err() {
+        eprintln!(
+            "test real_llm_calls_read_file_through_agentic_loop skipped: ANTHROPIC_API_KEY unset"
+        );
+        return;
+    }
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = create_user_with_permissions(&server, "file_rag_readfile", &["*"]).await;
+
+    let Some(model) = anthropic_haiku_model(&server, &user.user_id).await else {
+        return;
+    };
+    let model_id = model["id"].as_str().unwrap().to_string();
+
     let filler = "Routine operating procedures follow standard company policy and are \
                   reviewed annually by the operations team. "
         .repeat(30);
@@ -462,8 +522,6 @@ async fn real_llm_calls_read_file_through_agentic_loop() {
         conv_id,
         branch_id,
         Uuid::parse_str(&model_id).unwrap(),
-        "Open the Reykjavik operations handbook with the read_file tool and tell me the exact \
-         master door-lock override code written in it.",
         "Use the read_file tool to open the file 'reykjavik-logistics-handbook.txt' from this \
          project and tell me the exact Cold-Chain Override passphrase in section 7.2.",
     )
@@ -477,12 +535,6 @@ async fn real_llm_calls_read_file_through_agentic_loop() {
         .collect();
     assert!(
         tools_fired.contains(&"read_file"),
-        "real LLM must call read_file through the agentic loop; tools fired={tools_fired:?}; answer={:?}",
-        turn.text
-    );
-    assert!(
-        turn.text.contains("GLACIER-5582"),
-        "answer must contain the code read via read_file; answer={:?}",
         "real LLM must call read_file; tools fired={tools_fired:?}; answer={:?}",
         turn.text
     );
@@ -492,3 +544,4 @@ async fn real_llm_calls_read_file_through_agentic_loop() {
         turn.text
     );
 }
+

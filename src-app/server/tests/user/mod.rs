@@ -1,4 +1,4 @@
-use crate::common::test_helpers::{self};
+use crate::common::test_helpers;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -242,65 +242,6 @@ async fn test_create_user_duplicate_email() {
         .expect("Request failed");
 
     assert_eq!(response.status(), 409, "Should conflict");
-}
-
-/// TOCTOU race: the create-user handler (user.rs:144-157) does a
-/// check-then-insert — `get_by_username`/`get_by_email` then `create`. Two
-/// concurrent requests for the SAME username+email can both pass the
-/// app-level pre-check before either inserts. The DB UNIQUE constraint on
-/// users(username)/users(email) is what actually closes the window, and the
-/// repo's `create` maps the unique-violation into a 409 (repository.rs).
-///
-/// This fires both requests concurrently against the same live server (two
-/// independent reqwest clients → two real connections, so they race at the
-/// DB, not in a serialized single connection) and asserts EXACTLY ONE wins:
-/// one 2xx, one 409. A regression that dropped the unique constraint (or
-/// surfaced the race as a 500) would make this fail.
-#[tokio::test]
-async fn test_create_user_concurrent_duplicate_is_race_safe() {
-    let server = crate::common::TestServer::start().await;
-    let admin =
-        test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
-
-    let url = server.api_url("/users");
-    let token = admin.token.clone();
-
-    // Same username AND email on both requests — either field's unique
-    // constraint is sufficient to reject the loser.
-    let payload = json!({
-        "username": "raceuser",
-        "email": "race@example.com",
-        "password": "SecurePass123!"
-    });
-
-    let fire = |url: String, token: String, payload: serde_json::Value| async move {
-        // A fresh client per task = a distinct connection, so the two inserts
-        // genuinely contend at the database rather than being serialized.
-        reqwest::Client::new()
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", token))
-            .json(&payload)
-            .send()
-            .await
-            .expect("Request failed")
-            .status()
-            .as_u16()
-    };
-
-    let (s1, s2) = tokio::join!(
-        fire(url.clone(), token.clone(), payload.clone()),
-        fire(url.clone(), token.clone(), payload.clone()),
-    );
-
-    let mut statuses = [s1, s2];
-    statuses.sort_unstable();
-    assert_eq!(
-        statuses,
-        [201, 409],
-        "exactly one concurrent create must succeed (201) and the other must \
-         lose to the unique constraint (409); got {:?}",
-        statuses
-    );
 }
 
 #[tokio::test]
@@ -1481,6 +1422,67 @@ async fn test_concurrent_user_creation_same_username_yields_one() {
         .await
         .unwrap();
     assert_eq!(count, 1, "exactly one user row must persist");
+}
+
+/// TOCTOU race: the create-user handler (user.rs:144-157) does a
+/// check-then-insert — `get_by_username`/`get_by_email` then `create`. Two
+/// concurrent requests for the SAME username+email can both pass the
+/// app-level pre-check before either inserts. The DB UNIQUE constraint on
+/// users(username)/users(email) is what actually closes the window, and the
+/// repo's `create` maps the unique-violation into a 409 (repository.rs).
+///
+/// This fires both requests concurrently against the same live server (two
+/// independent reqwest clients → two real connections, so they race at the
+/// DB, not in a serialized single connection) and asserts EXACTLY ONE wins:
+/// one 2xx, one 409. A regression that dropped the unique constraint (or
+/// surfaced the race as a 500) would make this fail.
+#[tokio::test]
+async fn test_create_user_concurrent_duplicate_is_race_safe() {
+    let server = crate::common::TestServer::start().await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
+
+    let url = server.api_url("/users");
+    let token = admin.token.clone();
+
+    // Same username AND email on both requests — either field's unique
+    // constraint is sufficient to reject the loser.
+    let payload = json!({
+        "username": "raceuser",
+        "email": "race@example.com",
+        "password": "SecurePass123!"
+    });
+
+    let fire = |url: String, token: String, payload: serde_json::Value| async move {
+        // A fresh client per task = a distinct connection, so the two inserts
+        // genuinely contend at the database rather than being serialized.
+        reqwest::Client::new()
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&payload)
+            .send()
+            .await
+            .expect("Request failed")
+            .status()
+            .as_u16()
+    };
+
+    let (s1, s2) = tokio::join!(
+        fire(url.clone(), token.clone(), payload.clone()),
+        fire(url.clone(), token.clone(), payload.clone()),
+    );
+
+    let mut statuses = [s1, s2];
+    statuses.sort_unstable();
+    assert_eq!(
+        statuses,
+        [201, 409],
+        "exactly one concurrent create must succeed (201) and the other must \
+         lose to the unique constraint (409); got {:?}",
+        statuses
+    );
+}
+
 // ============================================================================
 // Cross-subsystem: default-group auto-assignment on user creation
 // (user/handlers/user.rs:183-191) — a newly created user is auto-joined to
@@ -1572,16 +1574,6 @@ async fn test_group_crud_lifecycle_through_real_handlers() {
         &server,
         "grp_crud_admin",
         &["groups::read", "groups::create", "groups::edit", "groups::delete"],
-/// delete_group must refuse to delete a SYSTEM group (400 SYSTEM_GROUP) — the
-/// built-in Users/Administrators groups are load-bearing and deleting one
-/// would brick auth/permission resolution. A non-system group deletes fine.
-#[tokio::test]
-async fn test_delete_group_refuses_system_group() {
-    let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "group_deleter",
-        &["groups::delete", "groups::read", "groups::create"],
     )
     .await;
     let client = reqwest::Client::new();
@@ -1611,8 +1603,6 @@ async fn test_delete_group_refuses_system_group() {
 
     // READ — appears in the list AND GET /groups/{id} returns it
     let listed: serde_json::Value = client
-    // Find a system group from the list.
-    let groups: serde_json::Value = client
         .get(server.api_url("/groups"))
         .header("Authorization", &bearer)
         .send()
@@ -1682,6 +1672,8 @@ async fn test_delete_group_refuses_system_group() {
         .await
         .expect("get after delete failed");
     assert_eq!(after.status(), 404, "deleted group must be gone (404)");
+}
+
 /// Cross-subsystem: a user created through the ADMIN handler (POST /api/users,
 /// user/handlers/user.rs:183-191) is auto-assigned to the default group, so they
 /// inherit the deployment's baseline permissions without an explicit grant.
@@ -1730,6 +1722,29 @@ async fn test_admin_created_user_is_auto_assigned_to_default_group() {
     .await
     .unwrap();
     assert!(in_default, "admin-created user must be auto-assigned to the default group");
+}
+
+/// delete_group must refuse to delete a SYSTEM group (400 SYSTEM_GROUP) — the
+/// built-in Users/Administrators groups are load-bearing and deleting one
+/// would brick auth/permission resolution. A non-system group deletes fine.
+#[tokio::test]
+async fn test_delete_group_refuses_system_group() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "group_deleter",
+        &["groups::delete", "groups::read", "groups::create"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", admin.token);
+
+    // Find a system group from the list.
+    let groups: serde_json::Value = client
+        .get(server.api_url("/groups"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
         .unwrap()
         .json()
         .await
@@ -1777,3 +1792,4 @@ async fn test_admin_created_user_is_auto_assigned_to_default_group() {
         .unwrap();
     assert_eq!(del.status(), 204, "a non-system group must delete cleanly");
 }
+

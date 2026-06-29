@@ -1,13 +1,8 @@
-//! `POST /workflows/validate` (valid + invalid) and
-//! `POST /workflows/{id}/dry-run` structured responses.
-//!
-//! - validate (valid) → `{valid: true, steps: 3, ...}`.
-//! - validate (cycle) → `{valid: false, errors: non-empty}`.
-//! - dry-run → per-step `{step_id, kind, est_calls, ...}` + totals.
-
 use serde_json::json;
-
-use super::{FIXTURE_WORKFLOW_YAML, import_dev_workflow, plain_server, workflow_user};
+use super::FIXTURE_WORKFLOW_YAML;
+use super::import_dev_workflow;
+use super::plain_server;
+use super::workflow_user;
 
 /// A workflow with a `depends_on` cycle (a → b → a). The validator's
 /// cycle-check must reject it with a non-empty errors list.
@@ -144,6 +139,19 @@ async fn test_workflow_endpoint_returns_zero_summary_when_no_fixtures() {
 
     let resp = reqwest::Client::new()
         .post(server.api_url(&format!("/workflows/{id}/test")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("test endpoint");
+    assert_eq!(resp.status(), 200, "test endpoint should 200: {}", resp.text().await.unwrap_or_default());
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["total"], 0, "no bundled fixtures → total 0: {body}");
+    assert_eq!(body["passed"], 0);
+    assert_eq!(body["failed"], 0);
+    assert!(body["results"].as_array().unwrap().is_empty(), "results empty: {body}");
+}
+
 /// POST /workflows/{id}/test (dev fixture-runner surface). A bundle imported
 /// without any `tests/*.yaml` fixtures runs zero fixtures → an all-zero
 /// TestRunResponse; a non-existent workflow id is access-gated to 404. Neither
@@ -162,13 +170,6 @@ async fn test_workflow_endpoint_no_fixtures_and_not_found() {
         .json(&json!({}))
         .send()
         .await
-        .expect("test endpoint");
-    assert_eq!(resp.status(), 200, "test endpoint should 200: {}", resp.text().await.unwrap_or_default());
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["total"], 0, "no bundled fixtures → total 0: {body}");
-    assert_eq!(body["passed"], 0);
-    assert_eq!(body["failed"], 0);
-    assert!(body["results"].as_array().unwrap().is_empty(), "results empty: {body}");
         .unwrap();
     assert_eq!(res.status(), 200, "test endpoint should 200");
     let body: serde_json::Value = res.json().await.unwrap();
@@ -187,3 +188,4 @@ async fn test_workflow_endpoint_no_fixtures_and_not_found() {
         .unwrap();
     assert_eq!(res.status(), 404, "unknown workflow must 404");
 }
+

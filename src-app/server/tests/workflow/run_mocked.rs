@@ -1,29 +1,15 @@
-//! Drive a workflow run end-to-end with mocks for every llm step → no
-//! live provider needed.
-//!
-//! Approach (documented choice): we dev-import the 3-step
-//! `research → summarize → write` workflow (`is_dev=true`, so per-step
-//! `mocks` are honored), then `POST /workflows/{id}/run` with a `mocks`
-//! map covering all three llm steps. The runner's mock short-circuit
-//! (`run_mock_step`) writes the canned value as the step output WITHOUT
-//! dispatching to a provider. A stub model is still required because
-//! `spawn_run` snapshots the conversation's model at run start (the
-//! provider object is constructed but never invoked when all steps are
-//! mocked).
-//!
-//! Asserts: run reaches `completed`, per-step output metadata is
-//! recorded in `step_outputs_json`, output files are readable via the
-//! per-step output endpoint, and `final_output_json` is populated from
-//! the workflow's `outputs[]`.
-
 use serde_json::json;
 use uuid::Uuid;
-
-use super::{
-    FIXTURE_WORKFLOW_YAML, admin_and_refresh, import_dev_workflow, install_fixture_workflow,
-    plain_server, poll_run, run_workflow, server_with_workflow_catalog, stub_conversation,
-    workflow_user,
-};
+use super::FIXTURE_WORKFLOW_YAML;
+use super::admin_and_refresh;
+use super::import_dev_workflow;
+use super::install_fixture_workflow;
+use super::plain_server;
+use super::poll_run;
+use super::run_workflow;
+use super::server_with_workflow_catalog;
+use super::stub_conversation;
+use super::workflow_user;
 
 #[tokio::test]
 async fn mocked_run_completes_and_writes_outputs() {
@@ -215,6 +201,8 @@ async fn concurrent_multi_user_runs_are_isolated() {
     let out_b = read_write(user_b.token.clone(), run_b_id).await;
     assert!(out_a.contains("RUN_A_MARKER") && !out_a.contains("RUN_B_MARKER"), "run A output isolated: {out_a}");
     assert!(out_b.contains("RUN_B_MARKER") && !out_b.contains("RUN_A_MARKER"), "run B output isolated: {out_b}");
+}
+
 /// Fan-in DAG: a step with MORE THAN ONE `depends_on` (two upstream roots →
 /// one downstream join). The existing fixtures are all linear chains; this pins
 /// that the runner waits for BOTH upstreams before the join (the join's template
@@ -293,3 +281,4 @@ async fn fan_in_dag_waits_for_all_upstreams_before_the_join_step() {
     let content = resp.text().await.expect("merge content");
     assert!(content.contains("FAN_IN_MERGE_MARKER"), "join output present: {content}");
 }
+

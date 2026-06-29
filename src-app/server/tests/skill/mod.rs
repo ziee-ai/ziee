@@ -9,23 +9,26 @@
 //! debug-only `ZIEE_HUB_PAGES_BASE` override, so the download → sha256
 //! → extract path runs for real without touching GitHub.
 
+use serde_json::Value as Json;
+use crate::common::TestServer;
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::hub::mock_release_server::MockHub;
+use crate::hub::mock_release_server::MockItem;
+use crate::hub::mock_release_server::MockVersion;
+use crate::hub::mock_release_server::spawn_mock_hub;
+
+
 mod access_and_security;
 mod builtin;
 mod cross_subsystem_test;
-mod bundle_security_http;
 mod hide_in_conversation;
 mod install_from_hub;
 mod listing_in_chat;
-mod real_llm;
-mod real_llm_test;
 mod skill_mcp_load;
 mod sync_emit_test;
-
-use serde_json::Value as Json;
-
-use crate::common::TestServer;
-use crate::common::test_helpers::create_user_with_permissions;
-use crate::hub::mock_release_server::{MockHub, MockItem, MockVersion, spawn_mock_hub};
+mod bundle_security_http;
+mod real_llm;
+mod real_llm_test;
 
 /// The SKILL.md body the fixture skill ships. Path B contract: this
 /// text must NOT appear in the chat listing — only via `load_skill`.
@@ -142,3 +145,4 @@ pub async fn admin_and_refresh(server: &TestServer) -> crate::common::test_helpe
     refresh_catalog(server, &admin.token).await;
     admin
 }
+

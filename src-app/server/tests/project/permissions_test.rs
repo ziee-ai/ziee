@@ -1,5 +1,3 @@
-//! Permission gating on project endpoints.
-
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -191,6 +189,9 @@ async fn duplicate_requires_all_of_a_two_permission_and_tuple() {
         StatusCode::OK,
         "holding BOTH projects::create AND projects::read must satisfy the gate"
     );
+}
+
+#[tokio::test]
 async fn attach_conversation_requires_edit_permissions() {
     // POST /projects/{id}/conversations/{conv_id} is gated on
     // (ProjectsEdit, ConversationsEdit). A user holding neither (the perm
@@ -241,3 +242,4 @@ async fn detach_conversation_requires_edit_permissions() {
 
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
+

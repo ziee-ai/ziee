@@ -1,17 +1,10 @@
-//! Core realtime-sync delivery over the REAL path: a real REST mutation in
-//! one connection produces a real `sync` frame on a subscribed stream. These
-//! assert the mechanism end-to-end (handler → publish → registry → SSE) and
-//! the two cross-cutting guarantees — cross-user isolation and origin (self-
-//! echo) suppression — using `memory` as an owner-scoped vehicle. Per-entity
-//! coverage lives in each owning module's own integration tests.
-
 use std::time::Duration;
-
-use serde_json::{Value, json};
-
+use serde_json::Value;
+use serde_json::json;
 use crate::common::sync_probe::SyncProbe;
 
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
+
 const SILENCE_WINDOW: Duration = Duration::from_secs(1);
 
 /// POST /memories as `token`, returning the new memory id.
@@ -175,13 +168,6 @@ async fn deactivating_a_user_mid_stream_closes_their_sync_stream() {
 // exact order the rows were created.
 #[tokio::test]
 async fn rapid_fire_mutations_are_delivered_in_order() {
-/// Rapid-fire mutations through the HTTP path: N memory creates fired in a tight
-/// loop must each deliver a `memory`/`create` sync frame to the owner's probe —
-/// no drops, in submission order (the bounded FIFO per-connection channel). The
-/// existing delivery tests only fire one mutation at a time; the registry's
-/// in-order/no-drop guarantee was only unit-tested (registry.rs::tests).
-#[tokio::test]
-async fn rapid_fire_memory_creates_deliver_all_events_in_order() {
     let server = crate::common::TestServer::start().await;
     let alice = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -214,6 +200,22 @@ async fn rapid_fire_memory_creates_deliver_all_events_in_order() {
 
     // No spurious extra frames after the N expected ones.
     probe.expect_silence(SILENCE_WINDOW).await;
+}
+
+/// Rapid-fire mutations through the HTTP path: N memory creates fired in a tight
+/// loop must each deliver a `memory`/`create` sync frame to the owner's probe —
+/// no drops, in submission order (the bounded FIFO per-connection channel). The
+/// existing delivery tests only fire one mutation at a time; the registry's
+/// in-order/no-drop guarantee was only unit-tested (registry.rs::tests).
+#[tokio::test]
+async fn rapid_fire_memory_creates_deliver_all_events_in_order() {
+    let server = crate::common::TestServer::start().await;
+    let alice = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_rapid_alice",
+        &["memory::read", "memory::write"],
+    )
+    .await;
     let mut probe = SyncProbe::open(&server, &alice.token).await;
 
     const BURST: usize = 10;
@@ -232,3 +234,4 @@ async fn rapid_fire_memory_creates_deliver_all_events_in_order() {
         assert_eq!(&frame.id, expected, "event {i} must arrive in order");
     }
 }
+

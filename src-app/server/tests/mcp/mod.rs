@@ -1,10 +1,13 @@
+use crate::common::test_helpers;
+use serde_json::json;
+use uuid::Uuid;
+
 // NOTE: Old approval_test module uses outdated TestServer API
 // Comprehensive approval workflow tests now live in this directory
 // (mcp_approval_workflow_test) after the chat→mcp bridge extraction.
 
 pub mod mock_sampling_server;
 mod run_in_sandbox_test;
-
 // Bridge-side tests moved out of tests/chat/ as part of the
 // chat→mcp bridge extraction. They exercise the mcp chat-extension's
 // behavior end-to-end via the test server's HTTP surface; they don't
@@ -16,16 +19,67 @@ mod mcp_content_test;
 mod mcp_defaults_test;
 mod mcp_elicitation_test;
 mod mcp_extension_test;
-mod group_cascade_test;          // group-cascade system-MCP assignment grant/revoke via real endpoints
-mod project_mcp_group_combined_test; // project MCP-defaults snapshot + group server-assignment combined
 mod mcp_loop_settings_test;
 mod mcp_sampling_test;
 mod mcp_streaming_workflow_test;
 mod resource_link_test;
+// ============================================================================
+// Runtime Tests
+// ============================================================================
 
-use crate::common::test_helpers::{self};
-use serde_json::json;
-use uuid::Uuid;
+mod runtime;
+// Stdio transport tests (18 tests)
+mod http_transport_test;
+// HTTP transport tests (12 tests)
+// sse_transport_test removed — SSE transport deprecated in MCP 2025-03-26
+pub mod fixtures;
+// External MCP server fixtures (everything-server + mock)
+mod conformance_test;
+// Spec-conformance tests against `server-everything`
+mod conformance_errors_test;
+// Error-path tests against in-process mock server
+mod conformance_streaming_test;
+// SSE streaming edge-case tests via mock
+mod conformance_extended_test;
+// Deeper conformance tests against `server-everything`
+mod conformance_elicitation_test;
+// Elicitation roundtrip tests via mock SSE server
+mod conformance_phase1_test;
+// Plan-3 Phase-1: version negotiation, string id, pagination
+mod conformance_resumability_test;
+// Plan-3 Phase-3 (I1): SSE resume via Last-Event-Id
+mod conformance_oauth_test;
+// Plan-3 Phase-4 (Cos1): OAuth client_credentials
+mod oauth_config_route_test;
+// Plan-3 Phase-4: per-server OAuth config endpoints
+mod conformance_cancellation_test;
+// Plan-3 Phase-2 (C3): client notifications/cancelled
+mod elicitation_route_test;
+// HTTP route tests for /mcp/elicitation/{id}/respond
+mod rate_limit_test;
+// Global rate-limiter on/off regression (governor toggle)
+mod test_connection_test;
+// Connection-test endpoints (user + system test-connection)
+mod http_headers_test;
+// Custom-header transmission + trim/validation (create/update/test)
+mod http_connection_reuse_test;
+// Stale keep-alive reuse regression (proxy/tunnel reap → fresh conn per request)
+mod sync_emit_test;
+// Realtime-sync emission: mcp_server (owner) + system dual-audience
+mod permission_revocation_test;
+// all-f44bdb26e811: revoking group membership denies subsequent MCP calls
+mod tool_call_history_test;
+mod group_cascade_test;
+// group-cascade system-MCP assignment grant/revoke via real endpoints
+mod project_mcp_group_combined_test;
+// HTTP transport tests (12 tests)
+mod stdio_transport_test;
+// Plan-3 Phase-2 (C3): client notifications/cancelled
+mod tool_call_timeout_test;
+// HTTP route tests for /mcp/elicitation/{id}/respond
+mod elicitation_jsonrpc_test;
+// JSON-RPC route tests for /elicitation/mcp (tools/call fallback)
+mod elicitation_cancel_test;
 
 // ============================================================================
 // User MCP Server Tests
@@ -1412,36 +1466,7 @@ async fn test_duplicate_server_name_allowed() {
     );
 }
 
-// ============================================================================
-// Runtime Tests
-// ============================================================================
-
-mod runtime;              // Stdio transport tests (18 tests)
-mod http_transport_test;  // HTTP transport tests (12 tests)
-mod stdio_transport_test; // Stdio transport conformance (npx-gated, server-everything)
-// sse_transport_test removed — SSE transport deprecated in MCP 2025-03-26
-pub mod fixtures;             // External MCP server fixtures (everything-server + mock)
-mod conformance_test;         // Spec-conformance tests against `server-everything`
-mod conformance_errors_test;     // Error-path tests against in-process mock server
-mod conformance_streaming_test;  // SSE streaming edge-case tests via mock
-mod conformance_extended_test;   // Deeper conformance tests against `server-everything`
-mod conformance_elicitation_test; // Elicitation roundtrip tests via mock SSE server
-mod conformance_phase1_test;      // Plan-3 Phase-1: version negotiation, string id, pagination
-mod conformance_resumability_test; // Plan-3 Phase-3 (I1): SSE resume via Last-Event-Id
-mod conformance_oauth_test;        // Plan-3 Phase-4 (Cos1): OAuth client_credentials
-mod oauth_config_route_test;       // Plan-3 Phase-4: per-server OAuth config endpoints
-mod conformance_cancellation_test; // Plan-3 Phase-2 (C3): client notifications/cancelled
-mod tool_call_timeout_test; // per-call timeout + retry-after-timeout transport recovery
-mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
-mod elicitation_jsonrpc_test;     // JSON-RPC route tests for /elicitation/mcp (tools/call fallback)
-mod elicitation_cancel_test;      // cancel_pending_elicitations semantics (loop-exit cleanup)
-mod rate_limit_test;              // Global rate-limiter on/off regression (governor toggle)
-mod test_connection_test;         // Connection-test endpoints (user + system test-connection)
-mod http_headers_test;            // Custom-header transmission + trim/validation (create/update/test)
-mod http_connection_reuse_test;   // Stale keep-alive reuse regression (proxy/tunnel reap → fresh conn per request)
-mod sync_emit_test;               // Realtime-sync emission: mcp_server (owner) + system dual-audience
-mod permission_revocation_test;   // all-f44bdb26e811: revoking group membership denies subsequent MCP calls
-mod tool_call_history_test;       // mcp_tool_calls recording + list/scope + retention setting
+// mcp_tool_calls recording + list/scope + retention setting
 
 // ============================================================================
 // Sampling Field CRUD Tests
@@ -1700,7 +1725,6 @@ async fn test_call_tool_with_sampling_sse_roundtrip() {
     eprintln!("SSE roundtrip test passed: {:?}", result.content);
 }
 
-
 /// Group-cascade access: assigning a SYSTEM MCP server to a group must cascade
 /// to that group's members — a user in the group then sees the server in their
 /// own `GET /mcp/servers` (which joins user_group_mcp_servers). The existing
@@ -1785,3 +1809,4 @@ async fn test_system_server_assignment_cascades_to_group_members() {
         "filesystem must cascade to the group member after assignment: {after:?}"
     );
 }
+

@@ -1,19 +1,9 @@
-//! Realtime-sync emission for the `llm_repository` entity.
-//!
-//! The LLM-repository surface is permission-scoped: a mutation fans out only
-//! to connections whose snapshot satisfies `llm_repositories::read` (admins
-//! always qualify). These tests assert, over the REAL path (handler → publish
-//! → registry → SSE), that an admin creating/updating a repository produces an
-//! `llm_repository`/<action> frame carrying the row id, and that a user
-//! lacking the read perm never observes it.
-
 use std::time::Duration;
-
 use serde_json::json;
-
 use crate::common::sync_probe::SyncProbe;
 
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
+
 const SILENCE_WINDOW: Duration = Duration::from_secs(1);
 
 /// POST /llm-repositories as `token`, returning the new repository id.
@@ -131,31 +121,6 @@ async fn group_membership_change_updates_sync_audience() {
     let bob = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "sync_grp_bob",
-/// Sync entity permission via GROUP MEMBERSHIP (not direct grant). The existing
-/// tests grant llm_repositories::read DIRECTLY; this proves the sync audience
-/// honors a read perm a user holds ONLY through group membership — i.e. a
-/// permission change via group assignment puts the user into the entity's
-/// audience.
-#[tokio::test]
-async fn group_derived_read_perm_puts_user_in_llm_repository_audience() {
-    let server = crate::common::TestServer::start().await;
-    let client = reqwest::Client::new();
-
-    // Admin can create groups, assign users, and create repositories.
-    let admin = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "grp_repo_admin",
-        &[
-            "groups::create",
-            "groups::assign_users",
-            "llm_repositories::create",
-        ],
-    )
-    .await;
-    // Bob holds NO direct llm_repositories::read — only the default baseline.
-    let bob = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "grp_repo_bob",
         &[],
     )
     .await;
@@ -201,6 +166,38 @@ async fn group_derived_read_perm_puts_user_in_llm_repository_audience() {
     assert_eq!(
         frame.id, id,
         "after the membership change Bob's snapshot satisfies the perm and he receives the event"
+    );
+}
+
+/// Sync entity permission via GROUP MEMBERSHIP (not direct grant). The existing
+/// tests grant llm_repositories::read DIRECTLY; this proves the sync audience
+/// honors a read perm a user holds ONLY through group membership — i.e. a
+/// permission change via group assignment puts the user into the entity's
+/// audience.
+#[tokio::test]
+async fn group_derived_read_perm_puts_user_in_llm_repository_audience() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Admin can create groups, assign users, and create repositories.
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "grp_repo_admin",
+        &[
+            "groups::create",
+            "groups::assign_users",
+            "llm_repositories::create",
+        ],
+    )
+    .await;
+    // Bob holds NO direct llm_repositories::read — only the default baseline.
+    let bob = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "grp_repo_bob",
+        &[],
+    )
+    .await;
+
     // A group that GRANTS llm_repositories::read, then add Bob to it so his
     // effective perms include the read VIA the group.
     let group: serde_json::Value = client
@@ -242,3 +239,4 @@ async fn group_derived_read_perm_puts_user_in_llm_repository_audience() {
         "a group-derived llm_repositories::read must place Bob in the llm_repository/create audience"
     );
 }
+

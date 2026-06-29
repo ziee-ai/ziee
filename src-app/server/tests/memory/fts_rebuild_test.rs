@@ -1,9 +1,5 @@
-//! audit id all-8a7efaae6e4a — the FTS-rebuild endpoints (trigger_fts_rebuild +
-//! get_fts_rebuild_status, handlers.rs:843-1060) were completely untested. These
-//! cover the validation gate, the same-dictionary short-circuit, the status
-//! read, and the permission gate — none of which spawn the real DDL rewrite.
-
 use serde_json::Value;
+use std::time::Duration;
 
 fn admin_perms() -> &'static [&'static str] {
     &["memory::admin::read", "memory::admin::manage"]
@@ -46,32 +42,6 @@ async fn test_fts_rebuild_same_dictionary_is_noop() {
     let cur: Value = reqwest::Client::new()
         .get(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
-//! FTS rebuild admin endpoints:
-//!   POST /memory/admin/fts/rebuild         (MemoryAdminManage)
-//!   GET  /memory/admin/fts/rebuild/status  (MemoryAdminRead)
-//!
-//! Neither was exercised. We drive the trigger end-to-end (it rebuilds
-//! `content_tsv` synchronously; with no memories it completes immediately) and
-//! assert the status reflects completion, plus the manage-permission gate.
-
-use serde_json::Value;
-
-#[tokio::test]
-async fn test_fts_rebuild_trigger_and_status() {
-    let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "fts_admin",
-        &["memory::admin::read", "memory::admin::manage"],
-    )
-    .await;
-    let client = reqwest::Client::new();
-    let bearer = format!("Bearer {}", admin.token);
-
-    // Initial status: not in progress.
-    let s0: Value = client
-        .get(server.api_url("/memory/admin/fts/rebuild/status"))
-        .header("Authorization", &bearer)
         .send()
         .await
         .unwrap()
@@ -112,54 +82,28 @@ async fn test_fts_rebuild_status_is_readable() {
     let body: Value = res.json().await.unwrap();
     // Idle by default → in_progress=false.
     assert_eq!(body["in_progress"], false, "no rebuild running by default: {body}");
-    assert_eq!(s0["in_progress"], false, "no rebuild running initially: {s0}");
-
-    // Trigger the rebuild.
-    let trigger = client
-        .post(server.api_url("/memory/admin/fts/rebuild"))
-        .header("Authorization", &bearer)
-        .send()
-        .await
-        .unwrap();
-    assert!(
-        trigger.status().is_success(),
-        "trigger should succeed: {} {}",
-        trigger.status(),
-        trigger.text().await.unwrap_or_default()
-    );
-
-    // After a synchronous rebuild (no memories), status reports completion
-    // (not in progress, completed_at set).
-    let s1: Value = client
-        .get(server.api_url("/memory/admin/fts/rebuild/status"))
-        .header("Authorization", &bearer)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(s1["in_progress"], false, "rebuild finished: {s1}");
-    assert!(!s1["completed_at"].is_null(), "completed_at must be set after a rebuild: {s1}");
 }
 
 #[tokio::test]
 async fn test_fts_rebuild_requires_manage_permission() {
     let server = crate::common::TestServer::start().await;
     // Read-only admin (no manage) must be forbidden from triggering.
-// ============================================================================
-// Memory FTS-rebuild endpoints (handlers.rs:843-1060):
-//   POST /api/memory/admin/fts/rebuild        (trigger_fts_rebuild)
-//   GET  /api/memory/admin/fts/rebuild/status (get_fts_rebuild_status)
-//
-// These were completely untested. Covers the permission gate, the allowlist
-// (invalid dictionary → 400), the same-dictionary short-circuit (no DDL), a
-// real different-dictionary rebuild claiming the slot + driving it to
-// completion via the status endpoint, and the in-progress 409 guard.
-// ============================================================================
+    let reader = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "fts_reader",
+        &["memory::admin::read"],
+    )
+    .await;
 
-use serde_json::Value;
-use std::time::Duration;
+    let res = reqwest::Client::new()
+        .post(server.api_url("/memory/admin/fts/rebuild"))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .json(&serde_json::json!({ "dictionary": "english" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403, "trigger must require memory::admin::manage");
+}
 
 async fn admin(server: &crate::common::TestServer, name: &str) -> crate::common::test_helpers::TestUser {
     crate::common::test_helpers::create_user_with_permissions(
@@ -175,8 +119,6 @@ async fn fts_rebuild_requires_manage_permission() {
     let server = crate::common::TestServer::start().await;
     // A user with only read (not manage) must be refused on the trigger.
     let reader = crate::common::test_helpers::create_user_with_permissions(
-    // Read-only memory admin can read status but NOT trigger a rebuild.
-    let reader = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "fts_reader",
         &["memory::admin::read"],
@@ -190,7 +132,6 @@ async fn fts_rebuild_requires_manage_permission() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 403, "trigger must require memory::admin::manage");
     assert_eq!(res.status(), 403, "trigger requires memory::admin::manage");
 }
 
@@ -309,6 +250,71 @@ async fn fts_rebuild_different_dictionary_runs_and_status_reaches_completion() {
         .await
         .unwrap();
     assert_eq!(settings["fts_dictionary"], "english", "rebuild must switch the active dictionary");
+}
+
+#[tokio::test]
+async fn test_fts_rebuild_trigger_and_status() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "fts_admin",
+        &["memory::admin::read", "memory::admin::manage"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", admin.token);
+
+    // Initial status: not in progress.
+    let s0: Value = client
+        .get(server.api_url("/memory/admin/fts/rebuild/status"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(s0["in_progress"], false, "no rebuild running initially: {s0}");
+
+    // Trigger the rebuild.
+    let trigger = client
+        .post(server.api_url("/memory/admin/fts/rebuild"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        trigger.status().is_success(),
+        "trigger should succeed: {} {}",
+        trigger.status(),
+        trigger.text().await.unwrap_or_default()
+    );
+
+    // After a synchronous rebuild (no memories), status reports completion
+    // (not in progress, completed_at set).
+    let s1: Value = client
+        .get(server.api_url("/memory/admin/fts/rebuild/status"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(s1["in_progress"], false, "rebuild finished: {s1}");
+    assert!(!s1["completed_at"].is_null(), "completed_at must be set after a rebuild: {s1}");
+}
+
+#[tokio::test]
+async fn test_fts_rebuild_requires_manage_permission_v2() {
+    let server = crate::common::TestServer::start().await;
+    // Read-only memory admin can read status but NOT trigger a rebuild.
+    let reader = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "fts_reader",
+        &["memory::admin::read"],
+    )
+    .await;
     let res = reqwest::Client::new()
         .post(server.api_url("/memory/admin/fts/rebuild"))
         .header("Authorization", format!("Bearer {}", reader.token))
@@ -317,3 +323,4 @@ async fn fts_rebuild_different_dictionary_runs_and_status_reaches_completion() {
         .unwrap();
     assert_eq!(res.status(), 403, "rebuild trigger must require memory::admin::manage");
 }
+

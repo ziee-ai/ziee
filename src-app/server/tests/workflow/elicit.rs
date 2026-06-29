@@ -1,34 +1,14 @@
-//! `POST /workflow-runs/{run_id}/elicit/{elicitation_id}` validation
-//! paths. Drives a REAL pending elicitation (so the schema-valid case
-//! reaches the in-process runner waiter → 200/delivered):
-//!
-//!   - the workflow is a single `kind: elicit` step (no upstream llm
-//!     step to mock — elicit blocks immediately on run start);
-//!   - we `POST /run`, then poll `GET /workflow-runs/{id}` until
-//!     `pending_elicitation_json` is set by the ElicitDispatcher;
-//!   - then exercise: (a) wrong user → 403, (b) stale elicitation_id →
-//!     410, (c) schema-invalid response → 422, (d) schema-valid → 200.
-//!
-//! Both the runner task and the elicit endpoint live in the SAME server
-//! process, so the in-process registry waiter the runner registers is
-//! reachable by the endpoint — that's what lets (d) deliver and resume
-//! the run to `completed`.
-//!
-//! NOTE (uncertain — not runnable here): the exact timing of when
-//! `pending_elicitation_json` becomes visible vs. when the run is
-//! cleaned up is best-effort; `poll_pending_elicitation` retries with a
-//! short deadline. If this proves flaky under real execution, the
-//! fallback documented in the plan §7 is to hand-insert a workflow_runs
-//! row with a crafted pending_elicitation_json via a direct PgPool
-//! (TestServer exposes `database_url`) and test the 403/410/422 paths
-//! only (the 200 path needs a live runner and cannot be hand-faked).
-
-use std::time::{Duration, Instant};
-
-use serde_json::{Value as Json, json};
+use std::time::Duration;
+use std::time::Instant;
+use serde_json::Value as Json;
+use serde_json::json;
 use uuid::Uuid;
-
-use super::{import_dev_workflow, plain_server, poll_run, run_workflow, stub_conversation, workflow_user};
+use super::import_dev_workflow;
+use super::plain_server;
+use super::poll_run;
+use super::run_workflow;
+use super::stub_conversation;
+use super::workflow_user;
 use crate::common::TestServer;
 use crate::common::test_helpers::create_user_with_permissions;
 
@@ -317,13 +297,6 @@ async fn elicit_schema_valid_response_delivers_and_resumes() {
 /// `timeout_ms: 300000` gate that is always answered/cancelled before it
 /// can fire (the other tests in this file).
 const SHORT_TIMEOUT_ELICIT_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
-/// A FINITE elicit `timeout_ms` (not the durable `0`) is a wall-clock deadline:
-/// if the user never answers, the run terminates on its own after the timeout
-/// rather than parking forever. Complements resume.rs (timeout_ms:0 = durable
-/// park) and the happy-path answer tests.
-#[tokio::test]
-async fn elicit_finite_timeout_terminates_unanswered_run() {
-    const FINITE_TIMEOUT_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
 inputs:
   - name: topic
     required: true
@@ -339,8 +312,6 @@ steps:
           title: "Proceed?"
       required: [proceed]
     timeout_ms: 2500
-      required: [proceed]
-    timeout_ms: 1500
 outputs:
   - name: decision
     from: "{{ confirm.output }}"
@@ -359,9 +330,6 @@ async fn bounded_elicit_gate_times_out_and_fails_run() {
     let server = plain_server().await;
     let user = workflow_user(&server, "elicit_timeout_fires").await;
     let wf = import_dev_workflow(&server, &user.token, "elicit-timeout", SHORT_TIMEOUT_ELICIT_YAML).await;
-    let server = plain_server().await;
-    let user = workflow_user(&server, "elicit_finite_timeout").await;
-    let wf = import_dev_workflow(&server, &user.token, "elicit-finite", FINITE_TIMEOUT_YAML).await;
     let wf_id = wf["id"].as_str().expect("workflow id").to_string();
     let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
 
@@ -373,7 +341,6 @@ async fn bounded_elicit_gate_times_out_and_fails_run() {
             "inputs": { "topic": "shipping the feature" },
             "conversation_id": conv_id.to_string(),
         }),
-        json!({ "inputs": { "topic": "x" }, "conversation_id": conv_id.to_string() }),
     )
     .await;
     let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
@@ -397,6 +364,47 @@ async fn bounded_elicit_gate_times_out_and_fails_run() {
         "the failure must reference the elicit timeout (dispatch.rs bounded-gate expiry): {final_run}"
     );
 }
+
+/// A FINITE elicit `timeout_ms` (not the durable `0`) is a wall-clock deadline:
+/// if the user never answers, the run terminates on its own after the timeout
+/// rather than parking forever. Complements resume.rs (timeout_ms:0 = durable
+/// park) and the happy-path answer tests.
+#[tokio::test]
+async fn elicit_finite_timeout_terminates_unanswered_run() {
+    const FINITE_TIMEOUT_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: confirm
+    kind: elicit
+    message: "Proceed with {{ inputs.topic }}?"
+    schema:
+      type: object
+      properties:
+        proceed:
+          type: boolean
+      required: [proceed]
+    timeout_ms: 1500
+outputs:
+  - name: decision
+    from: "{{ confirm.output }}"
+"#;
+    let server = plain_server().await;
+    let user = workflow_user(&server, "elicit_finite_timeout").await;
+    let wf = import_dev_workflow(&server, &user.token, "elicit-finite", FINITE_TIMEOUT_YAML).await;
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+
+    let run = run_workflow(
+        &server,
+        &user.token,
+        &wf_id,
+        json!({ "inputs": { "topic": "x" }, "conversation_id": conv_id.to_string() }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+
     // Do NOT answer. The 1.5s deadline must drive the run to a terminal state
     // on its own (poll_run waits up to 30s for termination).
     let final_run = poll_run(&server, &user.token, run_id).await;
@@ -429,3 +437,4 @@ async fn set_run_timeout_nonexistent_run_is_404() {
     let body = resp.text().await.unwrap_or_default();
     assert!(body.contains("WorkflowRun"), "404 must name the missing run: {body}");
 }
+

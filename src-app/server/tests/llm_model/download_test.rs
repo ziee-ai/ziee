@@ -1,8 +1,3 @@
-/// Model Download Integration Tests
-///
-/// These tests verify the download functionality from remote repositories like Hugging Face.
-/// The tests use the initiate_repository_download endpoint to start background downloads
-/// and verify the download instance creation and status tracking.
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -879,20 +874,6 @@ async fn test_concurrent_download_initiations_are_distinct() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "cc_downloader",
-/// Concurrency-safety: the partial unique index `uq_download_instances_in_progress`
-/// (migration 119) is the TOCTOU guard for two simultaneous identical downloads.
-/// Two concurrent requests can both pass the handler's find-existing check and
-/// both attempt an insert; the index makes the loser fail at the DB level so the
-/// handler can return the in-flight winner instead of spawning a duplicate task.
-/// This exercises that guard directly (no network): a second in-progress row for
-/// the same (repo, provider, path, filename) must be rejected, while a fresh
-/// in-progress insert is allowed once the prior row reaches a terminal status.
-#[tokio::test]
-async fn concurrent_identical_downloads_dedup_via_unique_index() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "dl_dedup",
         &[
             "llm_models::create",
             "llm_models::read",
@@ -1033,6 +1014,33 @@ async fn test_cancel_real_download() {
             );
         }
     }
+}
+
+/// Concurrency-safety: the partial unique index `uq_download_instances_in_progress`
+/// (migration 119) is the TOCTOU guard for two simultaneous identical downloads.
+/// Two concurrent requests can both pass the handler's find-existing check and
+/// both attempt an insert; the index makes the loser fail at the DB level so the
+/// handler can return the in-flight winner instead of spawning a duplicate task.
+/// This exercises that guard directly (no network): a second in-progress row for
+/// the same (repo, provider, path, filename) must be rejected, while a fresh
+/// in-progress insert is allowed once the prior row reaches a terminal status.
+#[tokio::test]
+async fn concurrent_identical_downloads_dedup_via_unique_index() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "dl_dedup",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
     let hf_repo = get_huggingface_repository(&server, &user.token, false).await;
     let repo_id =
         uuid::Uuid::parse_str(hf_repo["id"].as_str().unwrap()).unwrap();
@@ -1094,3 +1102,4 @@ async fn test_cancel_real_download() {
 
     pool.close().await;
 }
+

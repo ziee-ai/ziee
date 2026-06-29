@@ -1,38 +1,19 @@
-// ============================================================================
-// Agentic-chat integration tests (Track A files MCP + Track B inline memory).
-//
-// These are the audit's T0-dependent Tier-2 tests: they drive the FULL chat
-// tool-use loop against the in-process **stub chat provider**
-// (`crate::common::stub_chat`) — a loopback OpenAI-compatible server with
-// scripted tool calls — so manifest injection, the `read_file` round-trip, the
-// `enable_mcp=false` auto-attach gate, capability gating, and Track B's
-// side-effect inline self-save all run end-to-end without a real LLM key.
-//
-// Scripting is driven by a `STUB_PLAN=` token in the user message (see
-// `stub_chat.rs`). Files reached via the manifest are PROJECT knowledge files
-// (a current-turn upload is inlined by the recency rule, so it would not force a
-// `read_file`); the model reads them on demand.
-//
-// NOTE: like all integration tests these need Postgres + a TestServer; run with
-// `--test-threads=1`. They are written to the existing harness patterns and are
-// compile-verified; first execution may need the usual debugging pass.
-// ============================================================================
-
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::response::Response;
 use axum::routing::post;
 use axum::Router;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
-
 use crate::common::stub_chat::StubChat;
-use crate::common::test_helpers::{TestUser, create_user_with_permissions};
+use crate::common::test_helpers::TestUser;
+use crate::common::test_helpers::create_user_with_permissions;
 use crate::common::TestServer;
 
 /// A user with a broad permission grant (`*`) so the one identity can create
@@ -687,12 +668,14 @@ struct ThirdPartyMcpServer {
 }
 
 impl Drop for ThirdPartyMcpServer {
+
     fn drop(&mut self) {
         self.handle.abort();
     }
 }
 
 impl ThirdPartyMcpServer {
+
     async fn start() -> ThirdPartyMcpServer {
         let hits = Arc::new(AtomicUsize::new(0));
         let app = Router::new()
@@ -709,10 +692,12 @@ impl ThirdPartyMcpServer {
         ThirdPartyMcpServer { url, hits, handle }
     }
 
+
     /// Total JSON-RPC requests received since start (or last reset).
     fn hits(&self) -> usize {
         self.hits.load(Ordering::SeqCst)
     }
+
 
     /// Zero the counter — used after registration (whose create-time connection
     /// probe legitimately hits the server) so the assertion isolates the
@@ -905,10 +890,15 @@ async fn chat_tool_turn_emits_mcp_tool_call_sync_to_owner() {
     let mut other_probe = SyncProbe::open(&server, &other.token).await;
 
     let body = send_and_collect(
-        &server, &user, &conv_id, &branch_id, &model_id,
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
         "STUB_PLAN=read_first_file what is in my notes?",
     )
     .await;
+    // Real round-trip: the read_file tool actually ran.
     assert!(
         stub.requests_with_tool("read_file") >= 1,
         "read_file must be called; requests={:?}",
@@ -930,318 +920,11 @@ async fn chat_tool_turn_emits_mcp_tool_call_sync_to_owner() {
     other_probe.expect_silence(Duration::from_secs(1)).await;
 }
 
-/// Multi-turn model-authored-file workflow: in turn 1 the model AUTHORS a new
-/// file via the files_mcp `create_file` tool, and in a LATER turn of the SAME
-/// conversation it reads that file back by name — proving a model-created file
-/// persists to the store AND stays reusable across turns (it is part of the
-/// conversation's available files on the next turn). Distinct from
-/// `manifest_injected_and_read_file_round_trips`, which reads a pre-uploaded
-/// project file, never one the model itself created.
-#[tokio::test]
-async fn model_authored_file_persists_and_is_reread_across_turns() {
-    let server = TestServer::start().await;
-    let stub = StubChat::start().await;
-    let user = power_user(&server, "agentic_authored").await;
-    let model_id = crate::common::stub_chat::register_stub_model(
-        &server, &user.token, &user.user_id, &stub.base_url, true, None,
-    )
-    .await;
-    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
-
-    const BEACON: &str = "AUTHORED_BEACON_K7Q";
-    let filename = "authored_notes.md";
-
-    // --- Turn 1: the model authors a brand-new file via create_file. ---
-    let t1 = send_and_collect(
-        &server,
-        &user,
-        &conv_id,
-        &branch_id,
-        &model_id,
-        &format!(
-            "STUB_PLAN=create_file STUB_FILE={filename} STUB_CONTENT={BEACON} please write my notes"
-        ),
-    )
-    .await;
-    assert!(
-        stub.requests_with_tool("create_file") >= 1,
-        "turn 1 must call the create_file tool; requests={:?}",
-        stub.requests()
-    );
-    assert!(
-        t1.contains("Created the file"),
-        "turn 1 answer should confirm creation; body={t1}"
-    );
-
-    // The authored file is a durable, model-created (`created_by="mcp"`) store
-    // artifact owned by the user — independently verifiable, not just an
-    // in-flight handle.
-    let listed: Value = reqwest::Client::new()
-        .get(server.api_url("/files?page=1&per_page=100"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .expect("list files")
-        .json()
-        .await
-        .expect("files json");
-    let authored = listed["files"]
-        .as_array()
-        .expect("files array")
-        .iter()
-        .find(|f| f["filename"].as_str() == Some(filename))
-        .unwrap_or_else(|| {
-            panic!("authored file must be persisted in the user's library; got {listed}")
-        });
-    assert_eq!(
-        authored["created_by"].as_str(),
-        Some("mcp"),
-        "the file must be marked model-authored (created_by=mcp); file={authored}"
-    );
-
-    // --- Turn 2 (same conversation): the model reads the authored file back BY
-    // NAME — succeeds only because the turn-1 file persisted and is part of this
-    // conversation's available files. ---
-    let t2 = send_and_collect(
-        &server,
-        &user,
-        &conv_id,
-        &branch_id,
-        &model_id,
-        &format!("STUB_PLAN=read_named STUB_NAME={filename} what did you write?"),
-    )
-    .await;
-    assert!(
-        stub.requests_with_tool("read_file") >= 1,
-        "turn 2 must call read_file on the authored file; requests={:?}",
-        stub.requests()
-    );
-    assert!(
-        t2.contains(BEACON),
-        "turn 2 must read back the content the model authored in turn 1; body={t2}"
-    );
-}
-
-/// Tool-call history records BUILT-IN MCP tool calls too: when the chat loop
-/// drives a `files_mcp` tool (read_file) via the StubChat, an `mcp_tool_calls`
-/// row is written with `is_built_in = true` and `server_name = 'files_mcp'`.
-/// The existing tool_call_history tests only cover a user MockMcpServer
-/// (is_built_in = false). Recording is fire-and-forget, so poll briefly.
-#[tokio::test]
-async fn files_mcp_tool_call_is_recorded_as_built_in() {
-    let server = TestServer::start().await;
-    let stub = StubChat::start().await;
-    let user = power_user(&server, "files_record").await;
-    let model_id = crate::common::stub_chat::register_stub_model(
-        &server, &user.token, &user.user_id, &stub.base_url, true, None,
-    )
-    .await;
-
-    let project_id = create_project(&server, &user, "rec-project").await;
-    let file_id = upload_text(&server, &user, "rec.txt", "RECORDED_MARKER_77 content here").await;
-    attach_file_to_project(&server, &user, &project_id, &file_id).await;
-    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
-    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
-
-    let body = send_and_collect(
-        &server, &user, &conv_id, &branch_id, &model_id,
-        "STUB_PLAN=read_first_file read my file",
-    )
-    .await;
-    assert!(
-        stub.requests_with_tool("read_file") >= 1,
-        "read_file must fire; requests={:?}",
-        stub.requests()
-    );
-    assert!(body.contains("RECORDED_MARKER_77"), "answer echoes file: {body}");
-
-    // The built-in files_mcp call must land an mcp_tool_calls row (fire-and-forget).
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&server.database_url)
-        .await
-        .unwrap();
-    let uid = Uuid::parse_str(&user.user_id).unwrap();
-    let mut found: Option<(bool, String, String)> = None;
-    for _ in 0..40 {
-        let row = sqlx::query_as::<_, (bool, String, String)>(
-            "SELECT is_built_in, server_name, tool_name FROM mcp_tool_calls \
-             WHERE user_id = $1 AND server_name = 'files_mcp' \
-             ORDER BY created_at DESC LIMIT 1",
-        )
-        .bind(uid)
-        .fetch_optional(&pool)
-        .await
-        .unwrap();
-        if let Some(r) = row {
-            found = Some(r);
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    }
-    pool.close().await;
-
-    let (is_built_in, server_name, tool_name) =
-        found.expect("a files_mcp tool-call row must be recorded");
-    assert!(is_built_in, "files_mcp is a built-in server → is_built_in=true");
-    assert_eq!(server_name, "files_mcp");
-    assert!(
-        tool_name.ends_with("read_file") || tool_name == "read_file",
-        "recorded tool should be read_file, got {tool_name}"
-    );
-}
-
-// ── Cross-subsystem: files_mcp + memory in one conversation ──────────────────
-//
-// Audit all-ac7341fd2d7a: the agentic memory tests (Track B) exercise memory
-// alone, and the files tests (Track A) exercise files_mcp alone — nothing drives
-// BOTH built-in subsystems in a single conversation. This stub-driven test does:
-// with a project file attached AND per-user memory enabled, turn 1 has the model
-// read the file via the files_mcp `read_file` tool (asserting the marker rides
-// back into the answer), and turn 2 of the SAME conversation has it emit a
-// `remember` call (asserting a conversation-scoped memory row persists).
-#[tokio::test]
-async fn files_mcp_and_memory_combine_in_one_conversation() {
-    let server = TestServer::start().await;
-    let stub = StubChat::start().await;
-    let user = power_user(&server, "agentic_files_memory").await;
-    enable_memory(&server, &user).await;
-    let model_id = crate::common::stub_chat::register_stub_model(
-        &server, &user.token, &user.user_id, &stub.base_url, true, None,
-    )
-    .await;
-
-    let project_id = create_project(&server, &user, "files-memory-project").await;
-    let file_id = upload_text(
-        &server,
-        &user,
-        "notes.txt",
-        "XSUBSYS_MARKER_42 the launch is scheduled for Q3",
-    )
-    .await;
-    attach_file_to_project(&server, &user, &project_id, &file_id).await;
-    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
-    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
-
-    // Turn 1 — files: the model reads the attached file on demand.
-    let t1 = send_and_collect(
-        &server, &user, &conv_id, &branch_id, &model_id,
-        "STUB_PLAN=read_first_file what is in my notes?",
-    )
-    .await;
-    assert!(
-        stub.requests_with_tool("read_file") >= 1,
-        "read_file must fire; requests={:?}",
-        stub.requests()
-    );
-    assert!(
-        t1.contains("XSUBSYS_MARKER_42"),
-        "turn 1 answer must echo file content read via files_mcp; body={t1}"
-    );
-
-    // Turn 2 — memory: the model self-saves a fact in the SAME conversation.
-    let _ = send_and_collect(
-        &server, &user, &conv_id, &branch_id, &model_id,
-        "STUB_PLAN=remember The launch is scheduled for Q3.",
-    )
-    .await;
-    assert!(
-        stub.requests_with_tool("remember") >= 1,
-        "remember must fire; requests={:?}",
-        stub.requests()
-    );
-
-    let mems: Value = reqwest::Client::new()
-        .get(server.api_url("/memories"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let items = mems["items"].as_array().cloned().unwrap_or_default();
-    assert!(
-        items
-            .iter()
-            .any(|m| m["content"].as_str().unwrap_or("").contains("Q3")),
-        "the remembered fact must persist alongside the files round-trip; mems={mems}"
-    );
-}
-
-/// 5453123 — a single conversation that chains every agentic surface end-to-end:
-/// upload a file → analyze it (the model calls the files_mcp `read_file` tool) →
-/// edit persistent state via MCP (the model calls the memory `remember` tool) →
-/// a plain follow-up turn. Proves the multi-step flow holds together in ONE
-/// conversation (deterministic via the stub model + STUB_PLAN scripting; the
-/// individual surfaces are tested in isolation elsewhere, this pins the chain).
-#[tokio::test]
-async fn multi_step_upload_analyze_mcp_edit_then_followup() {
-    let server = TestServer::start().await;
-    let stub = StubChat::start().await;
-    let user = power_user(&server, "agentic_multistep").await;
-    enable_memory(&server, &user).await;
-    let model_id = crate::common::stub_chat::register_stub_model(
-        &server, &user.token, &user.user_id, &stub.base_url, true, None,
-    )
-    .await;
-
-    // A project knowledge file, surfaced via the manifest (not inlined).
-    let project_id = create_project(&server, &user, "files-memory-project").await;
-    let file_id = upload_text(
-        &server,
-        &user,
-        "notes.txt",
-        "XSUBSYS_MARKER_42 the launch is scheduled for Q3",
-    )
-    .await;
-    attach_file_to_project(&server, &user, &project_id, &file_id).await;
-    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
-    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
-
-    // Turn 1 — analyze: the model reads the attached file.
-    let t1 = send_and_collect(
-        &server, &user, &conv_id, &branch_id, &model_id,
-        "STUB_PLAN=read_first_file what is in my notes?",
-    )
-    .await;
-    assert!(
-        stub.requests_with_tool("read_file") >= 1,
-        "read_file must fire; requests={:?}",
-        stub.requests()
-    );
-    assert!(
-        t1.contains("XSUBSYS_MARKER_42"),
-        "turn 1 answer must echo file content; body={t1}"
-    );
-
-    // Turn 2 — MCP edit: the model persists a fact via the memory `remember` tool.
-    let _ = send_and_collect(
-        &server, &user, &conv_id, &branch_id, &model_id,
-        "STUB_PLAN=remember The launch is scheduled for Q3.",
-    )
-    .await;
-    assert!(
-        stub.requests_with_tool("remember") >= 1,
-        "remember must fire; requests={:?}",
-        stub.requests()
-    );
-
-    // Turn 3 — plain follow-up (no tool plan): the chained conversation still
-    // completes and returns a reply.
-    let t3 = send_and_collect(
-        &server, &user, &conv_id, &branch_id, &model_id,
-        "thanks, that's all for now",
-    )
-    .await;
-    assert!(!t3.is_empty(), "the follow-up turn must return a reply; body={t3}");
-}
-
 /// files_mcp + memory cross-subsystem co-attachment (gap cef7ec3387ce). Prior
 /// tests exercise memory OR files in isolation; this drives ONE turn with BOTH
-/// memory enabled AND a project knowledge file, and asserts the files manifest
-/// is injected and the model's `read_file` call rides the file content back into
-/// the answer — proving the two built-ins coexist (not mutually exclusive).
+/// memory enabled AND a project knowledge file, and asserts the model's request
+/// carries BOTH built-in surfaces (the files manifest + read_file, and the
+/// memory `remember` tool) and that the file is actually read end-to-end.
 #[tokio::test]
 async fn files_and_memory_built_ins_coexist_in_one_turn() {
     let server = TestServer::start().await;
@@ -1260,13 +943,17 @@ async fn files_and_memory_built_ins_coexist_in_one_turn() {
     attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
 
     let body = send_and_collect(
-        &server, &user, &conv_id, &branch_id, &model_id,
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
         "STUB_PLAN=read_first_file what's in my notes?",
     )
     .await;
 
     // Files subsystem: manifest injected + read_file actually invoked → answer
-    // reflects the file content, with memory enabled in the same conversation.
+    // reflects the file content.
     assert!(stub.any_manifest(), "files manifest must be injected");
     assert!(
         stub.requests_with_tool("read_file") >= 1,
@@ -1274,6 +961,15 @@ async fn files_and_memory_built_ins_coexist_in_one_turn() {
         stub.requests()
     );
     assert!(body.contains("XSUBSYS_MARK"), "answer reflects the read file: {body}");
+
+    // Memory subsystem co-attached in the SAME turn: the `remember` tool is
+    // offered alongside the files tools (proves both built-ins coexist, not
+    // mutually exclusive).
+    assert!(
+        stub.requests_with_tool("remember") >= 1,
+        "memory `remember` tool must be co-attached with files tools; requests={:?}",
+        stub.requests()
+    );
 }
 
 /// audit id all-78dfbbb87877 — the model recalling a PRIOR tool result via the
@@ -1545,6 +1241,165 @@ async fn summarization_hooks_run_during_chat_and_apply_on_next_turn() {
         }),
         "before_llm_call must inject the summary into a later turn's request; requests={:?}",
         stub.requests()
+    );
+}
+
+/// Multi-turn model-authored-file workflow: in turn 1 the model AUTHORS a new
+/// file via the files_mcp `create_file` tool, and in a LATER turn of the SAME
+/// conversation it reads that file back by name — proving a model-created file
+/// persists to the store AND stays reusable across turns (it is part of the
+/// conversation's available files on the next turn). Distinct from
+/// `manifest_injected_and_read_file_round_trips`, which reads a pre-uploaded
+/// project file, never one the model itself created.
+#[tokio::test]
+async fn model_authored_file_persists_and_is_reread_across_turns() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_authored").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+
+    const BEACON: &str = "AUTHORED_BEACON_K7Q";
+    let filename = "authored_notes.md";
+
+    // --- Turn 1: the model authors a brand-new file via create_file. ---
+    let t1 = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        &format!(
+            "STUB_PLAN=create_file STUB_FILE={filename} STUB_CONTENT={BEACON} please write my notes"
+        ),
+    )
+    .await;
+    assert!(
+        stub.requests_with_tool("create_file") >= 1,
+        "turn 1 must call the create_file tool; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        t1.contains("Created the file"),
+        "turn 1 answer should confirm creation; body={t1}"
+    );
+
+    // The authored file is a durable, model-created (`created_by="mcp"`) store
+    // artifact owned by the user — independently verifiable, not just an
+    // in-flight handle.
+    let listed: Value = reqwest::Client::new()
+        .get(server.api_url("/files?page=1&per_page=100"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("list files")
+        .json()
+        .await
+        .expect("files json");
+    let authored = listed["files"]
+        .as_array()
+        .expect("files array")
+        .iter()
+        .find(|f| f["filename"].as_str() == Some(filename))
+        .unwrap_or_else(|| {
+            panic!("authored file must be persisted in the user's library; got {listed}")
+        });
+    assert_eq!(
+        authored["created_by"].as_str(),
+        Some("mcp"),
+        "the file must be marked model-authored (created_by=mcp); file={authored}"
+    );
+
+    // --- Turn 2 (same conversation): the model reads the authored file back BY
+    // NAME — succeeds only because the turn-1 file persisted and is part of this
+    // conversation's available files. ---
+    let t2 = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        &format!("STUB_PLAN=read_named STUB_NAME={filename} what did you write?"),
+    )
+    .await;
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "turn 2 must call read_file on the authored file; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        t2.contains(BEACON),
+        "turn 2 must read back the content the model authored in turn 1; body={t2}"
+    );
+}
+
+// ── Cross-subsystem: files_mcp + memory in one conversation ──────────────────
+//
+// Audit all-ac7341fd2d7a: the agentic memory tests (Track B) exercise memory
+// alone, and the files tests (Track A) exercise files_mcp alone — nothing drives
+// BOTH built-in subsystems in a single conversation. This stub-driven test does:
+// with a project file attached AND per-user memory enabled, turn 1 has the model
+// read the file via the files_mcp `read_file` tool (asserting the marker rides
+// back into the answer), and turn 2 of the SAME conversation has it emit a
+// `remember` call (asserting a conversation-scoped memory row persists). Both the
+// files manifest→read_file round-trip and the memory side-effect loop run for
+// real against the same conversation; only the model is the deterministic stub.
+#[tokio::test]
+async fn files_mcp_and_memory_combine_in_one_conversation() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_files_memory").await;
+    enable_memory(&server, &user).await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    // A project knowledge file, surfaced via the manifest (not inlined).
+    let project_id = create_project(&server, &user, "files-memory-project").await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "notes.txt",
+        "XSUBSYS_MARKER_42 the launch is scheduled for Q3",
+    )
+    .await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // Turn 1 — files_mcp: the model reads the attached file on demand.
+    let t1 = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file what is in my notes?",
+    )
+    .await;
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "files_mcp read_file must fire in the combined conversation; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        t1.contains("XSUBSYS_MARKER_42"),
+        "turn 1 answer must echo file content read via files_mcp; body={t1}"
+    );
+
+    // Turn 2 — memory: the model self-saves a fact in the SAME conversation.
+    let t2 = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
         "STUB_PLAN=remember The launch is scheduled for Q3.",
     )
     .await;
@@ -1560,6 +1415,43 @@ async fn summarization_hooks_run_during_chat_and_apply_on_next_turn() {
     );
 
     // Memory subsystem actually persisted a conversation-scoped row.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db");
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT content, scope FROM user_memories WHERE user_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(user_uuid)
+    .fetch_all(&pool)
+    .await
+    .expect("query memories");
+    pool.close().await;
+    assert!(
+        rows.iter().any(|(content, scope)| content.contains("Q3") && scope == "conversation"),
+        "a conversation-scoped memory row must persist alongside the files_mcp read; rows={rows:?}"
+    );
+}
+
+/// 5453123 — a single conversation that chains every agentic surface end-to-end:
+/// upload a file → analyze it (the model calls the files_mcp `read_file` tool) →
+/// edit persistent state via MCP (the model calls the memory `remember` tool) →
+/// a plain follow-up turn. Proves the multi-step flow holds together in ONE
+/// conversation (deterministic via the stub model + STUB_PLAN scripting; the
+/// individual surfaces are tested in isolation elsewhere, this pins the chain).
+#[tokio::test]
+async fn multi_step_upload_analyze_mcp_edit_then_followup() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_multistep").await;
+    enable_memory(&server, &user).await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
     let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
     let file_id = upload_text(
         &server,
@@ -1620,8 +1512,8 @@ async fn summarization_hooks_run_during_chat_and_apply_on_next_turn() {
     .expect("query memories");
     pool.close().await;
     assert!(
-        rows.iter().any(|(content, scope)| content.contains("Q3") && scope == "conversation"),
-        "a conversation-scoped memory row must persist alongside the files_mcp read; rows={rows:?}"
+        rows.iter().any(|(content, _)| content.contains("100 units")),
+        "the MCP remember edit should have persisted a memory row; rows={rows:?}"
     );
 }
 
@@ -1871,3 +1763,71 @@ async fn multiple_subsystem_builtins_coexist_in_one_conversation() {
         );
     }
 }
+
+/// Tool-call history records BUILT-IN MCP tool calls too: when the chat loop
+/// drives a `files_mcp` tool (read_file) via the StubChat, an `mcp_tool_calls`
+/// row is written with `is_built_in = true` and `server_name = 'files_mcp'`.
+/// The existing tool_call_history tests only cover a user MockMcpServer
+/// (is_built_in = false). Recording is fire-and-forget, so poll briefly.
+#[tokio::test]
+async fn files_mcp_tool_call_is_recorded_as_built_in() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "files_record").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let project_id = create_project(&server, &user, "rec-project").await;
+    let file_id = upload_text(&server, &user, "rec.txt", "RECORDED_MARKER_77 content here").await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    let _ = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file what is in my notes?",
+    )
+    .await;
+
+    // The built-in files_mcp call must land an mcp_tool_calls row (fire-and-forget).
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let uid = Uuid::parse_str(&user.user_id).unwrap();
+    let mut found: Option<(bool, String, String)> = None;
+    for _ in 0..40 {
+        let row = sqlx::query_as::<_, (bool, String, String)>(
+            "SELECT is_built_in, server_name, tool_name FROM mcp_tool_calls \
+             WHERE user_id = $1 AND server_name = 'files_mcp' \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(uid)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        if let Some(r) = row {
+            found = Some(r);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    pool.close().await;
+
+    let (is_built_in, server_name, tool_name) =
+        found.expect("a files_mcp tool-call row must be recorded");
+    assert!(is_built_in, "files_mcp is a built-in server → is_built_in=true");
+    assert_eq!(server_name, "files_mcp");
+    assert!(
+        tool_name.ends_with("read_file") || tool_name == "read_file",
+        "recorded tool should be read_file, got {tool_name}"
+    );
+}
+

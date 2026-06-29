@@ -1,18 +1,9 @@
-//! Integration coverage for the MCP tool-call history (`mcp_tool_calls`).
-//!
-//! Drives the deterministic recording path: register the in-process
-//! `MockMcpServer` as a user HTTP MCP server, call a tool through the REST
-//! endpoint `POST /api/mcp/servers/{id}/tools/{name}/call` (the same
-//! `McpSession::call_tool` chokepoint every path uses), then assert the row
-//! that the fire-and-forget recorder wrote. No LLM needed.
-
 use std::time::Duration;
-
 use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
-
-use super::fixtures::mock_mcp_server::{MockMcpServer, MockResponse};
+use super::fixtures::mock_mcp_server::MockMcpServer;
+use super::fixtures::mock_mcp_server::MockResponse;
 
 /// Register `mock` as a user-owned HTTP MCP server, returning the new id.
 async fn register_mock_server(
@@ -749,6 +740,8 @@ async fn builtin_files_mcp_tool_call_records_is_built_in_true() {
         "a built-in MCP tool call must record is_built_in=true"
     );
     assert_eq!(row.get::<String, _>("tool_name"), "list_files");
+}
+
 /// Retention prune (mcp/tool_calls/prune.rs → McpRepository::prune_tool_calls →
 /// `DELETE FROM mcp_tool_calls WHERE created_at < cutoff`). The existing
 /// suite only round-trips the retention SETTING; this exercises the actual
@@ -808,3 +801,4 @@ async fn prune_deletes_rows_older_than_cutoff_and_keeps_recent() {
     assert_eq!(recent_kept, 1, "the recent row must be kept");
     pool.close().await;
 }
+

@@ -1,27 +1,13 @@
-// ============================================================================
-// Document RAG (file_rag) integration tests — Tier 2.
-//
-// Exercises the FULL production path over HTTP against a real Postgres test DB:
-//   - eager background ingest after upload (chunk rows appear; FTS works)
-//   - the `files_mcp` `semantic_search` tool: FTS-from-day-one (no embedder),
-//     provenance shape, scope isolation, disabled-message
-//   - re-index on a new head version, cascade cleanup on file delete
-//
-// The server runs as a subprocess (ingest happens there, async), so the tests
-// poll the shared test DB via a raw pool for the background chunk rows. No
-// embedding model is configured, so retrieval runs in FTS-only mode — which is
-// exactly the zero-config day-one experience these tests pin down. Real-vector
-// semantic ranking is a Tier-3 test (needs a real embedder).
-// ============================================================================
-
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use std::time::Duration;
 use uuid::Uuid;
-
-use crate::common::test_helpers::{create_user_with_permissions, TestUser};
-use crate::common::{TestServer, TestServerOptions};
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::common::test_helpers::TestUser;
+use crate::common::TestServer;
+use crate::common::TestServerOptions;
 
 // Tier-3 real-embedder tests (gated on GEMINI_API_KEY) — reuse the helpers
 // below via `super::`.
@@ -362,61 +348,6 @@ async fn on_by_default_fts_search_with_provenance() {
     );
 }
 
-/// Cross-module linkage: a file produced by a workflow MCP step
-/// (`created_by='workflow'`, the provenance `persist_links` stamps on
-/// run-created files) flows through the SAME shared `ingest_bytes` tail as an
-/// uploaded file, so it is chunked by file_rag and answerable via the
-/// `semantic_search` tool. This guards the workflow→file_rag retrieval seam
-/// the audit flagged as untested — proving file_rag retrieval is
-/// provenance-agnostic (workflow outputs are first-class searchable content).
-#[tokio::test]
-async fn workflow_provenance_file_is_chunked_and_retrievable() {
-    let server = TestServer::start().await;
-    let user = power_user(&server, "file_rag_workflow").await;
-    let pool = db_pool(&server).await;
-
-    let (conv, file_ids) = project_conversation_with_files(
-        &server,
-        &user,
-        "rag-workflow",
-        &[(
-            "workflow-report.txt",
-            "Workflow run summary: the migration assistant analyzed 412 call sites \
-             and recommends replacing the deprecated tokenizer with the streaming \
-             variant to reduce peak memory during ingestion.",
-        )],
-    )
-    .await;
-    let conv_uuid = Uuid::parse_str(&conv).unwrap();
-
-    // Stamp the workflow provenance the run tool-step would set, then confirm
-    // the background ingest still produced FTS-ready chunks for it.
-    sqlx::query("UPDATE files SET created_by = 'workflow' WHERE id = $1::uuid")
-        .bind(&file_ids[0])
-        .execute(&pool)
-        .await
-        .unwrap();
-    wait_for_chunks(&pool, &file_ids[0], 1).await;
-    let provenance: String =
-        sqlx::query_scalar("SELECT created_by FROM files WHERE id = $1::uuid")
-            .bind(&file_ids[0])
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(provenance, "workflow", "file is workflow-provenance");
-
-    // The workflow-produced content is retrievable through file_rag.
-    let body = semantic_search(&server, &user, conv_uuid, "deprecated tokenizer streaming memory").await;
-    assert!(body["error"].is_null(), "semantic_search should succeed; body={body}");
-    let results = body["result"]["structuredContent"]["results"]
-        .as_array()
-        .expect("results array");
-    assert!(
-        results.iter().any(|r| r["file_id"].as_str() == Some(file_ids[0].as_str())),
-        "workflow-provenance file must be retrievable via file_rag; results={results:?}"
-    );
-}
-
 /// Scope isolation: a conversation only searches its own project's files; a
 /// term that exists only in another project's file returns nothing.
 #[tokio::test]
@@ -662,111 +593,6 @@ async fn non_admin_rejected_from_admin_endpoints() {
     assert_eq!(reembed.status(), reqwest::StatusCode::FORBIDDEN, "reembed must 403");
     let backfill = post_raw(&server, &user, "/file-rag/backfill").await;
     assert_eq!(backfill.status(), reqwest::StatusCode::FORBIDDEN, "backfill must 403");
-}
-
-/// Dimension-mismatch after a model swap (the guards at
-/// `embed_worker.rs:137-145` and `ingest.rs:229-236`, which skip a chunk whose
-/// freshly-embedded vector dimension != the column dimension).
-///
-/// Those guards exist because `file_chunks.embedding` is a fixed-width
-/// `halfvec(768)` column: if a swapped-in model emits a vector of a different
-/// dimension, writing it would be rejected by Postgres and would corrupt the
-/// HNSW index. The guards therefore SKIP such chunks (leaving them NULL =
-/// FTS-only) instead of writing them at the wrong width.
-///
-/// This pins that contract end-to-end against the REAL schema + the REAL
-/// production write (`set_chunk_embedding`'s exact untyped
-/// `UPDATE file_chunks SET embedding = $1` bind): a real ingest-produced chunk
-/// rejects a wrong-dimension `halfvec` write but accepts a matching 768-dim one.
-/// So a model returning a mismatched dimension can NEVER be silently stored —
-/// it can only be skipped, which is precisely the guarded behavior.
-#[tokio::test]
-async fn embedding_dimension_mismatch_on_model_swap_is_rejected_not_silently_stored() {
-    let server = TestServer::start().await;
-    let user = power_user(&server, "file_rag_dimswap").await;
-    let pool = db_pool(&server).await;
-
-    // Real ingest path produces a chunk (embedding NULL, FTS-only — no embedder).
-    let file_id = upload_text(
-        &server,
-        &user,
-        "swap.txt",
-        "Mitochondria are the powerhouse of the cell; the electron transport chain \
-         pumps protons across the inner membrane.",
-    )
-    .await;
-    wait_for_chunks(&pool, &file_id, 1).await;
-
-    let fid = Uuid::parse_str(&file_id).unwrap();
-    let (chunk_id, chunk_uid): (Uuid, Uuid) = sqlx::query_as(
-        "SELECT id, user_id FROM file_chunks WHERE file_id = $1 ORDER BY id LIMIT 1",
-    )
-    .bind(fid)
-    .fetch_one(&pool)
-    .await
-    .expect("fetch a chunk");
-
-    // The production write verbatim (repository::set_chunk_embedding):
-    //   UPDATE file_chunks SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4
-    let write_embedding = |dims: usize, model: &'static str| {
-        let pool = pool.clone();
-        let hv = pgvector::HalfVector::from_f32_slice(&vec![0.0123_f32; dims]);
-        async move {
-            sqlx::query(
-                "UPDATE file_chunks SET embedding = $1, embedding_model = $2 \
-                 WHERE id = $3 AND user_id = $4",
-            )
-            .bind(hv)
-            .bind(model)
-            .bind(chunk_id)
-            .bind(chunk_uid)
-            .execute(&pool)
-            .await
-        }
-    };
-
-    // A swapped model emitting the WRONG dimension (4 != 768) must be rejected
-    // by the column — this is the failure the in-loop guards short-circuit.
-    let mismatch = write_embedding(4, "swapped-model-4dim").await;
-    assert!(
-        mismatch.is_err(),
-        "writing a 4-dim vector into halfvec(768) must be rejected by Postgres, \
-         not silently stored at the wrong width",
-    );
-
-    // The stale chunk is still untouched: embedding NULL, model NULL (the guard
-    // left it FTS-only rather than corrupting it).
-    let (emb_is_null, model_is_null): (bool, bool) = sqlx::query_as(
-        "SELECT embedding IS NULL, embedding_model IS NULL FROM file_chunks WHERE id = $1",
-    )
-    .bind(chunk_id)
-    .fetch_one(&pool)
-    .await
-    .expect("re-read chunk after rejected write");
-    assert!(
-        emb_is_null && model_is_null,
-        "a rejected wrong-dim write must leave the chunk NULL (skipped/FTS-only), \
-         got embedding_null={emb_is_null} model_null={model_is_null}",
-    );
-
-    // A model emitting the MATCHING 768 dimension writes cleanly and is tagged —
-    // the post-swap re-embed of a same-dimension model fills the corpus.
-    let ok = write_embedding(768, "swapped-model-768dim").await;
-    assert!(ok.is_ok(), "a 768-dim vector must store into halfvec(768): {ok:?}");
-
-    let (has_embedding, model_tag): (bool, Option<String>) = sqlx::query_as(
-        "SELECT embedding IS NOT NULL, embedding_model FROM file_chunks WHERE id = $1",
-    )
-    .bind(chunk_id)
-    .fetch_one(&pool)
-    .await
-    .expect("re-read chunk after matching write");
-    assert!(has_embedding, "matching-dim embedding should now be present");
-    assert_eq!(
-        model_tag.as_deref(),
-        Some("swapped-model-768dim"),
-        "the chunk should be tagged with the swapped-in model",
-    );
 }
 
 /// Setting a non-embedding model is rejected (400) and does not persist.
@@ -1121,6 +947,114 @@ async fn admin_settings_validation_rejects_bad_values() {
     assert_eq!(
         resp.json::<Value>().await.unwrap_or_default()["error_code"],
         "VALIDATION_ERROR"
+    );
+}
+
+/// Dimension-mismatch after a model swap (the guards at
+/// `embed_worker.rs:137-145` and `ingest.rs:229-236`, which skip a chunk whose
+/// freshly-embedded vector dimension != the column dimension).
+///
+/// Those guards exist because `file_chunks.embedding` is a fixed-width
+/// `halfvec(768)` column: if a swapped-in model emits a vector of a different
+/// dimension, writing it would be rejected by Postgres and would corrupt the
+/// HNSW index. The guards therefore SKIP such chunks (leaving them NULL =
+/// FTS-only) instead of writing them at the wrong width.
+///
+/// This pins that contract end-to-end against the REAL schema + the REAL
+/// production write (`set_chunk_embedding`'s exact untyped
+/// `UPDATE file_chunks SET embedding = $1` bind): a real ingest-produced chunk
+/// rejects a wrong-dimension `halfvec` write but accepts a matching 768-dim one.
+/// So a model returning a mismatched dimension can NEVER be silently stored —
+/// it can only be skipped, which is precisely the guarded behavior.
+#[tokio::test]
+async fn embedding_dimension_mismatch_on_model_swap_is_rejected_not_silently_stored() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_dimswap").await;
+    let pool = db_pool(&server).await;
+
+    // Real ingest path produces a chunk (embedding NULL, FTS-only — no embedder).
+    let file_id = upload_text(
+        &server,
+        &user,
+        "swap.txt",
+        "Mitochondria are the powerhouse of the cell; the electron transport chain \
+         pumps protons across the inner membrane.",
+    )
+    .await;
+    wait_for_chunks(&pool, &file_id, 1).await;
+
+    let fid = Uuid::parse_str(&file_id).unwrap();
+    let (chunk_id, chunk_uid): (Uuid, Uuid) = sqlx::query_as(
+        "SELECT id, user_id FROM file_chunks WHERE file_id = $1 ORDER BY id LIMIT 1",
+    )
+    .bind(fid)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch a chunk");
+
+    // The production write verbatim (repository::set_chunk_embedding):
+    //   UPDATE file_chunks SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4
+    let write_embedding = |dims: usize, model: &'static str| {
+        let pool = pool.clone();
+        let hv = pgvector::HalfVector::from_f32_slice(&vec![0.0123_f32; dims]);
+        async move {
+            sqlx::query(
+                "UPDATE file_chunks SET embedding = $1, embedding_model = $2 \
+                 WHERE id = $3 AND user_id = $4",
+            )
+            .bind(hv)
+            .bind(model)
+            .bind(chunk_id)
+            .bind(chunk_uid)
+            .execute(&pool)
+            .await
+        }
+    };
+
+    // A swapped model emitting the WRONG dimension (4 != 768) must be rejected
+    // by the column — this is the failure the in-loop guards short-circuit.
+    let mismatch = write_embedding(4, "swapped-model-4dim").await;
+    assert!(
+        mismatch.is_err(),
+        "writing a 4-dim vector into halfvec(768) must be rejected by Postgres, \
+         not silently stored at the wrong width",
+    );
+
+    // The stale chunk is still untouched: embedding NULL, model NULL (the guard
+    // left it FTS-only rather than corrupting it).
+    let (emb_is_null, model_is_null): (bool, bool) = sqlx::query_as(
+        "SELECT embedding IS NULL, embedding_model IS NULL FROM file_chunks WHERE id = $1",
+    )
+    .bind(chunk_id)
+    .fetch_one(&pool)
+    .await
+    .expect("re-read chunk after rejected write");
+    assert!(
+        emb_is_null && model_is_null,
+        "a rejected wrong-dim write must leave the chunk NULL (skipped/FTS-only), \
+         got embedding_null={emb_is_null} model_null={model_is_null}",
+    );
+
+    // A model emitting the MATCHING 768 dimension writes cleanly and is tagged —
+    // the post-swap re-embed of a same-dimension model fills the corpus.
+    let ok = write_embedding(768, "swapped-model-768dim").await;
+    assert!(ok.is_ok(), "a 768-dim vector must store into halfvec(768): {ok:?}");
+
+    let (has_embedding, model_tag): (bool, Option<String>) = sqlx::query_as(
+        "SELECT embedding IS NOT NULL, embedding_model FROM file_chunks WHERE id = $1",
+    )
+    .bind(chunk_id)
+    .fetch_one(&pool)
+    .await
+    .expect("re-read chunk after matching write");
+    assert!(has_embedding, "matching-dim embedding should now be present");
+    assert_eq!(
+        model_tag.as_deref(),
+        Some("swapped-model-768dim"),
+        "the chunk should be tagged with the swapped-in model",
+    );
+}
+
 /// Permission revocation is re-resolved per request, not cached on the token.
 ///
 /// A user granted `file_rag::admin::read` can GET the admin settings (200).
@@ -1336,149 +1270,6 @@ async fn embed_dispatch_absent_keeps_chunks_null_embedded_yet_fts_searchable() {
             "mito.txt",
             "The mitochondrion is the powerhouse of the cell; oxidative phosphorylation \
              on the cristae membrane drives ATP synthase to produce uniquemarkerzeta.",
-/// Concurrent re-ingest of the SAME file must not corrupt the chunk set: the
-/// reindex transaction takes a per-file `pg_advisory_xact_lock(file_rag_reindex:$1)`,
-/// so two simultaneous re-index passes serialize and each leaves a consistent
-/// DELETE+INSERT swap (no doubled rows, no lost index). Drives the real
-/// `reindex_file` entrypoint twice concurrently.
-#[tokio::test]
-async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
-    let server = TestServer::start().await;
-    let user = power_user(&server, "rag_concurrent_ingest").await;
-    let pool = db_pool(&server).await;
-
-    set_rag_settings(&server, &user, json!({ "enabled": true })).await;
-    let file_id = upload_text(
-        &server,
-        &user,
-        "concurrent.txt",
-        "alpha beta gamma delta epsilon\nsecond line of content here\nthird line too\n",
-    )
-    .await;
-    let n = wait_for_chunks(&pool, &file_id, 1).await;
-
-    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
-    let file_uuid = Uuid::parse_str(&file_id).unwrap();
-
-    // Two concurrent re-index passes on the same file.
-    let (r1, r2) = tokio::join!(
-        ziee::file_rag_ingest::reindex_file(user_uuid, file_uuid),
-        ziee::file_rag_ingest::reindex_file(user_uuid, file_uuid),
-    );
-    r1.expect("first concurrent reindex must succeed");
-    r2.expect("second concurrent reindex must succeed");
-
-    // The advisory lock serialized the two swaps → the chunk count is the same
-    // single index, not doubled or wiped.
-    assert_eq!(
-        chunk_count(&pool, &file_id).await,
-        n,
-        "concurrent reindex must leave exactly one consistent chunk set"
-    );
-}
-
-/// Concurrent search during an embed rebuild (the half-dimensions race): while a
-/// re-embed is in flight the `file_chunks.embedding` column is NULL for affected
-/// rows. A search MUST stay safe — the vector arm's `embedding IS NOT NULL`
-/// filter excludes those rows (so a stale/wrong-dimension query vector can't hit
-/// a half-migrated row and error), while FTS keeps serving from `content_tsv`.
-/// With NO embedding model configured, freshly-indexed chunks have NULL
-/// embeddings — exactly the mid-rebuild state — so this reproduces it directly.
-#[tokio::test]
-async fn search_during_embed_rebuild_vector_arm_excludes_null_embeddings_fts_still_serves() {
-    let server = TestServer::start().await;
-    let user = power_user(&server, "rag_embed_race").await;
-    let pool = db_pool(&server).await;
-
-    // FTS-only deployment (no embedding model) → chunks land with NULL embeddings.
-    set_rag_settings(&server, &user, json!({ "enabled": true })).await;
-    let file_id = upload_text(
-        &server,
-        &user,
-        "race.txt",
-        "ZEBRAFISH genomics quarterly report with distinctive searchable tokens\n",
-    )
-    .await;
-    let _ = wait_for_chunks(&pool, &file_id, 1).await;
-
-    // Confirm the rows really are in the NULL-embedding (mid-rebuild) state.
-    let with_embedding: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM file_chunks WHERE file_id = $1 AND embedding IS NOT NULL",
-    )
-    .bind(Uuid::parse_str(&file_id).unwrap())
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(with_embedding, 0, "precondition: embeddings are NULL (mid-rebuild)");
-
-    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
-    let scope = vec![Uuid::parse_str(&file_id).unwrap()];
-
-    // Vector arm with an arbitrary query vector → ZERO hits (NULL rows excluded),
-    // and crucially NO dimension-mismatch error.
-    let vec_hits = ziee::file_rag_search::vector_search_hit_count_for_test(
-        &scope,
-        user_uuid,
-        &vec![0.05f32; 768],
-        1.0,
-        10,
-    )
-    .await
-    .expect("vector search must not error on NULL-embedding rows");
-    assert_eq!(vec_hits, 0, "the vector arm must exclude NULL-embedding rows");
-
-    // FTS arm still serves the content during the rebuild window.
-    let fts_hits = ziee::file_rag_search::fts_search_hit_count_for_test(
-        &scope,
-        user_uuid,
-        "ZEBRAFISH",
-        10,
-        "simple",
-        0.0,
-    )
-    .await
-    .expect("fts search must succeed");
-    assert!(fts_hits >= 1, "FTS must still return results while embeddings are NULL");
-}
-
-/// Cross-module recovery (file_rag retrieval ↔ memory embed-dispatch): when the
-/// deployment WANTS semantic search but the embedding dispatch can't be
-/// provisioned — the memory `embed_batch` capability check REJECTS a non-embedder
-/// (`INVALID_EMBEDDING_MODEL`), so `embedding_model_id` never persists — file_rag
-/// must still serve queries end-to-end via the FTS arm rather than erroring. This
-/// joins the two modules' failure-recovery contract that no single-module test
-/// exercised together.
-#[tokio::test]
-async fn semantic_requested_but_embed_dispatch_unavailable_recovers_to_fts() {
-    let server = TestServer::start().await;
-    let user = power_user(&server, "rag_dispatch_recover").await;
-    let pool = db_pool(&server).await;
-
-    // Ask for semantic search, then try to wire a NON-embedder model. The
-    // memory embed-dispatch capability check rejects it (400) — the dispatch is
-    // effectively unavailable.
-    set_rag_settings(&server, &user, json!({ "enabled": true, "semantic_enabled": true })).await;
-    let bad_model = create_chat_model(&server, &user).await;
-    let resp = put_settings_raw(&server, &user, json!({ "embedding_model_id": bad_model })).await;
-    assert_eq!(
-        resp.status(),
-        reqwest::StatusCode::BAD_REQUEST,
-        "non-embedder must be rejected by the embed-dispatch capability check"
-    );
-    let settings = get_settings(&server, &user).await;
-    assert!(
-        settings["embedding_model_id"].is_null(),
-        "no usable embedder is configured after the rejection"
-    );
-
-    // Upload + attach a file and search: retrieval must RECOVER to FTS, not error.
-    let (conv, file_ids) = project_conversation_with_files(
-        &server,
-        &user,
-        "rag-dispatch-recover",
-        &[(
-            "doc.txt",
-            "The MITOCHONDRION is the powerhouse with distinctive searchable tokens.",
         )],
     )
     .await;
@@ -1509,10 +1300,6 @@ async fn semantic_requested_but_embed_dispatch_unavailable_recovers_to_fts() {
     // the retrieval mode is FTS (retrieval.rs degrade path), with provenance.
     let body = semantic_search(&server, &user, conv_uuid, "uniquemarkerzeta").await;
     assert!(body["error"].is_null(), "semantic_search must not error; body={body}");
-    wait_for_chunks(&pool, &file_ids[0], 1).await;
-
-    let body = semantic_search(&server, &user, conv_uuid, "mitochondrion powerhouse").await;
-    assert!(body["error"].is_null(), "search must not error; body={body}");
     let sc = &body["result"]["structuredContent"];
     assert_eq!(
         sc["mode"].as_str().unwrap(),
@@ -1701,12 +1488,227 @@ async fn admin_read_permission_grant_takes_effect_mid_session() {
         after.status(),
         reqwest::StatusCode::OK,
         "after the grant is added, the same token must be re-checked and admitted (200), proving mid-session escalation takes effect"
+    );
+}
+
+/// Concurrent re-ingest of the SAME file must not corrupt the chunk set: the
+/// reindex transaction takes a per-file `pg_advisory_xact_lock(file_rag_reindex:$1)`,
+/// so two simultaneous re-index passes serialize and each leaves a consistent
+/// DELETE+INSERT swap (no doubled rows, no lost index). Drives the real
+/// `reindex_file` entrypoint twice concurrently.
+#[tokio::test]
+async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_concurrent_ingest").await;
+    let pool = db_pool(&server).await;
+
+    set_rag_settings(&server, &user, json!({ "enabled": true })).await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "concurrent.txt",
+        "alpha beta gamma delta epsilon\nsecond line of content here\nthird line too\n",
+    )
+    .await;
+    let n = wait_for_chunks(&pool, &file_id, 1).await;
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let file_uuid = Uuid::parse_str(&file_id).unwrap();
+
+    // Two concurrent re-index passes on the same file.
+    let (r1, r2) = tokio::join!(
+        ziee::file_rag_ingest::reindex_file(user_uuid, file_uuid),
+        ziee::file_rag_ingest::reindex_file(user_uuid, file_uuid),
+    );
+    r1.expect("first concurrent reindex must succeed");
+    r2.expect("second concurrent reindex must succeed");
+
+    // The advisory lock serialized the two swaps → the chunk count is the same
+    // single index, not doubled or wiped.
+    assert_eq!(
+        chunk_count(&pool, &file_id).await,
+        n,
+        "concurrent reindex must leave exactly one consistent chunk set"
+    );
+}
+
+/// Concurrent search during an embed rebuild (the half-dimensions race): while a
+/// re-embed is in flight the `file_chunks.embedding` column is NULL for affected
+/// rows. A search MUST stay safe — the vector arm's `embedding IS NOT NULL`
+/// filter excludes those rows (so a stale/wrong-dimension query vector can't hit
+/// a half-migrated row and error), while FTS keeps serving from `content_tsv`.
+/// With NO embedding model configured, freshly-indexed chunks have NULL
+/// embeddings — exactly the mid-rebuild state — so this reproduces it directly.
+#[tokio::test]
+async fn search_during_embed_rebuild_vector_arm_excludes_null_embeddings_fts_still_serves() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_embed_race").await;
+    let pool = db_pool(&server).await;
+
+    // FTS-only deployment (no embedding model) → chunks land with NULL embeddings.
+    set_rag_settings(&server, &user, json!({ "enabled": true })).await;
+    let file_id = upload_text(
+        &server,
+        &user,
+        "race.txt",
+        "ZEBRAFISH genomics quarterly report with distinctive searchable tokens\n",
+    )
+    .await;
+    let _ = wait_for_chunks(&pool, &file_id, 1).await;
+
+    // Confirm the rows really are in the NULL-embedding (mid-rebuild) state.
+    let with_embedding: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM file_chunks WHERE file_id = $1 AND embedding IS NOT NULL",
+    )
+    .bind(Uuid::parse_str(&file_id).unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(with_embedding, 0, "precondition: embeddings are NULL (mid-rebuild)");
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let scope = vec![Uuid::parse_str(&file_id).unwrap()];
+
+    // Vector arm with an arbitrary query vector → ZERO hits (NULL rows excluded),
+    // and crucially NO dimension-mismatch error.
+    let vec_hits = ziee::file_rag_search::vector_search_hit_count_for_test(
+        &scope,
+        user_uuid,
+        &vec![0.05f32; 768],
+        1.0,
+        10,
+    )
+    .await
+    .expect("vector search must not error on NULL-embedding rows");
+    assert_eq!(vec_hits, 0, "the vector arm must exclude NULL-embedding rows");
+
+    // FTS arm still serves the content during the rebuild window.
+    let fts_hits = ziee::file_rag_search::fts_search_hit_count_for_test(
+        &scope,
+        user_uuid,
+        "ZEBRAFISH",
+        10,
+        "simple",
+        0.0,
+    )
+    .await
+    .expect("fts search must succeed");
+    assert!(fts_hits >= 1, "FTS must still return results while embeddings are NULL");
+}
+
+/// Cross-module recovery (file_rag retrieval ↔ memory embed-dispatch): when the
+/// deployment WANTS semantic search but the embedding dispatch can't be
+/// provisioned — the memory `embed_batch` capability check REJECTS a non-embedder
+/// (`INVALID_EMBEDDING_MODEL`), so `embedding_model_id` never persists — file_rag
+/// must still serve queries end-to-end via the FTS arm rather than erroring. This
+/// joins the two modules' failure-recovery contract that no single-module test
+/// exercised together.
+#[tokio::test]
+async fn semantic_requested_but_embed_dispatch_unavailable_recovers_to_fts() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "rag_dispatch_recover").await;
+    let pool = db_pool(&server).await;
+
+    // Ask for semantic search, then try to wire a NON-embedder model. The
+    // memory embed-dispatch capability check rejects it (400) — the dispatch is
+    // effectively unavailable.
+    set_rag_settings(&server, &user, json!({ "enabled": true, "semantic_enabled": true })).await;
+    let bad_model = create_chat_model(&server, &user).await;
+    let resp = put_settings_raw(&server, &user, json!({ "embedding_model_id": bad_model })).await;
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "non-embedder must be rejected by the embed-dispatch capability check"
+    );
+    let settings = get_settings(&server, &user).await;
+    assert!(
+        settings["embedding_model_id"].is_null(),
+        "no usable embedder is configured after the rejection"
+    );
+
+    // Upload + attach a file and search: retrieval must RECOVER to FTS, not error.
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-dispatch-recover",
+        &[(
+            "doc.txt",
+            "The MITOCHONDRION is the powerhouse with distinctive searchable tokens.",
+        )],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+
+    let body = semantic_search(&server, &user, conv_uuid, "mitochondrion powerhouse").await;
+    assert!(body["error"].is_null(), "search must not error; body={body}");
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(
+        sc["mode"].as_str().unwrap(),
+        "fts",
         "embed dispatch unavailable → retrieval recovers to FTS-only"
     );
     assert!(
         !sc["results"].as_array().unwrap().is_empty(),
         "FTS must still return results during embed-dispatch unavailability"
     );
+}
+
+/// Cross-module linkage: a file produced by a workflow MCP step
+/// (`created_by='workflow'`, the provenance `persist_links` stamps on
+/// run-created files) flows through the SAME shared `ingest_bytes` tail as an
+/// uploaded file, so it is chunked by file_rag and answerable via the
+/// `semantic_search` tool. This guards the workflow→file_rag retrieval seam
+/// the audit flagged as untested — proving file_rag retrieval is
+/// provenance-agnostic (workflow outputs are first-class searchable content).
+#[tokio::test]
+async fn workflow_provenance_file_is_chunked_and_retrievable() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "file_rag_workflow").await;
+    let pool = db_pool(&server).await;
+
+    let (conv, file_ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "rag-workflow",
+        &[(
+            "workflow-report.txt",
+            "Workflow run summary: the migration assistant analyzed 412 call sites \
+             and recommends replacing the deprecated tokenizer with the streaming \
+             variant to reduce peak memory during ingestion.",
+        )],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv).unwrap();
+
+    // Stamp the workflow provenance the run tool-step would set, then confirm
+    // the background ingest still produced FTS-ready chunks for it.
+    sqlx::query("UPDATE files SET created_by = 'workflow' WHERE id = $1::uuid")
+        .bind(&file_ids[0])
+        .execute(&pool)
+        .await
+        .unwrap();
+    wait_for_chunks(&pool, &file_ids[0], 1).await;
+    let provenance: String =
+        sqlx::query_scalar("SELECT created_by FROM files WHERE id = $1::uuid")
+            .bind(&file_ids[0])
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(provenance, "workflow", "file is workflow-provenance");
+
+    // The workflow-produced content is retrievable through file_rag.
+    let body = semantic_search(&server, &user, conv_uuid, "deprecated tokenizer streaming memory").await;
+    assert!(body["error"].is_null(), "semantic_search should succeed; body={body}");
+    let results = body["result"]["structuredContent"]["results"]
+        .as_array()
+        .expect("results array");
+    assert!(
+        results.iter().any(|r| r["file_id"].as_str() == Some(file_ids[0].as_str())),
+        "workflow-provenance file must be retrievable via file_rag; results={results:?}"
+    );
+}
+
 /// Permission re-gating: a user holding `file_rag::admin::read` can read the
 /// RAG admin settings, but once that permission is revoked (admin demotes them
 /// / strips the group grant) the very next read is 403 — the settings cannot
@@ -1907,3 +1909,4 @@ async fn semantic_search_with_null_embeddings_degrades_gracefully() {
     );
     pool.close().await;
 }
+

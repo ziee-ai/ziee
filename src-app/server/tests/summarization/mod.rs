@@ -8,11 +8,12 @@
 
 mod admin_settings_test;
 mod debug_refresh_stub_test;
-mod after_llm_call_test;
-mod concurrent_upsert_test;
 mod migration_seed_test;
 mod per_conversation_mode_test;
 mod real_llm_helpers;
 mod real_llm_test;
 mod summary_endpoint_test;
 mod sync_emit_test;
+mod concurrent_upsert_test;
+mod after_llm_call_test;
+

@@ -1,13 +1,3 @@
-//! Admin CRUD for /api/admin/auth-providers — covers:
-//!   - Permission gating (member → 403, admin → 200)
-//!   - Secret masking on GET
-//!   - Secret preservation on PUT with empty client_secret
-//!   - Delete returns cascade count
-//!   - Public /api/auth/providers excludes secrets + disabled rows
-//!
-//! All endpoints use `RequirePermissions<…>` so the gating boundary
-//! is the typed extractor, not anything bespoke per handler.
-
 use serde_json::json;
 
 /// Seed an admin user via setup, return its access token.
@@ -564,6 +554,9 @@ async fn create_auth_provider_emits_sync_to_admins_only() {
     assert_eq!(frame.id, id, "frame carries the new provider id");
 
     // A plain member lacks auth_providers::read → outside the audience.
+    member_probe.expect_silence(Duration::from_secs(1)).await;
+}
+
 /// AuthProvider realtime-sync emission (handlers.rs:1768-1774). Creating an auth
 /// provider must publish an `auth_provider`/`create` frame to holders of
 /// `auth_providers::read` (the root admin via `*`); a plain member without that
@@ -594,3 +587,4 @@ async fn test_auth_provider_create_emits_sync_to_readers_only() {
         .await;
     member_probe.expect_silence(Duration::from_secs(1)).await;
 }
+

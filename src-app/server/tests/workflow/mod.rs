@@ -14,9 +14,19 @@
 //!   exercise the /elicit endpoint validation paths (ownership 403,
 //!   staleness 410, schema 422) + the schema-valid resume → completed.
 
+use std::io::Write;
+use std::time::Duration;
+use serde_json::Value as Json;
+use uuid::Uuid;
+use crate::common::TestServer;
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::hub::mock_release_server::MockHub;
+use crate::hub::mock_release_server::MockItem;
+use crate::hub::mock_release_server::MockVersion;
+use crate::hub::mock_release_server::spawn_mock_hub;
+
+
 mod access_and_durability;
-mod conversation_elicit;
-mod diamond_dag;
 mod elicit;
 mod elicit_data_seeding;
 mod install_from_hub;
@@ -27,7 +37,6 @@ mod resume;
 mod run_cost_test;
 mod run_history_and_delete;
 mod run_mocked;
-mod sync_emit_test;
 mod run_model;
 mod sandbox_progress;
 mod sandbox_run;
@@ -38,19 +47,11 @@ mod status_machine;
 mod stream_access;
 mod sync_emit_test;
 mod system_endpoints;
-mod test_endpoint;
 mod tool_step;
 mod validate_and_dry_run;
-
-use std::io::Write;
-use std::time::Duration;
-
-use serde_json::Value as Json;
-use uuid::Uuid;
-
-use crate::common::TestServer;
-use crate::common::test_helpers::create_user_with_permissions;
-use crate::hub::mock_release_server::{MockHub, MockItem, MockVersion, spawn_mock_hub};
+mod conversation_elicit;
+mod test_endpoint;
+mod diamond_dag;
 
 /// Reverse-DNS name of the fixture workflow the mock catalog serves.
 pub const FIXTURE_WORKFLOW_NAME: &str = "io.github.test/research-summarize-write";
@@ -447,3 +448,4 @@ pub async fn poll_run(server: &TestServer, token: &str, run_id: Uuid) -> Json {
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
+
