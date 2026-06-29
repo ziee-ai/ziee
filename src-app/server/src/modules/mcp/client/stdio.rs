@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use rmcp::{ServiceExt, transport::TokioChildProcess, service::RunningService};
-use rmcp::model::{CallToolRequestParam, GetPromptRequestParam, ReadResourceRequestParam};
-use std::borrow::Cow;
+use rmcp::model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams};
 use std::path::PathBuf;
 use tokio::process::Command;
 use uuid::Uuid;
@@ -441,10 +440,14 @@ impl McpClient for StdioMcpClient {
 
         let args_map = arguments.as_object().cloned();
 
-        let result = service.call_tool(CallToolRequestParam {
-            name: Cow::Owned(name.to_string()),
-            arguments: args_map,
-        }).await
+        // rmcp 1.x marks the request-param structs #[non_exhaustive], so they
+        // must be built via the constructor + builder methods rather than a
+        // struct literal.
+        let mut params = CallToolRequestParams::new(name.to_string());
+        if let Some(args) = args_map {
+            params = params.with_arguments(args);
+        }
+        let result = service.call_tool(params).await
         .map_err(|e| AppError::internal_error(format!("Tool call failed: {}", e)))?;
 
         Ok(ToolResult {
@@ -482,9 +485,7 @@ impl McpClient for StdioMcpClient {
         let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
 
-        let result = service.read_resource(ReadResourceRequestParam {
-            uri: uri.to_string(),
-        }).await
+        let result = service.read_resource(ReadResourceRequestParams::new(uri.to_string())).await
         .map_err(|e| AppError::internal_error(format!("Failed to read resource: {}", e)))?;
 
         serde_json::to_value(result.contents)
@@ -527,10 +528,11 @@ impl McpClient for StdioMcpClient {
             v.as_object().map(|o| o.clone().into_iter().collect())
         });
 
-        let result = service.get_prompt(GetPromptRequestParam {
-            name: name.to_string(),
-            arguments: args_map,
-        }).await
+        let mut params = GetPromptRequestParams::new(name.to_string());
+        if let Some(args) = args_map {
+            params = params.with_arguments(args);
+        }
+        let result = service.get_prompt(params).await
         .map_err(|e| AppError::internal_error(format!("get_prompt failed: {}", e)))?;
 
         // Convert rmcp's typed PromptMessage list back to opaque JSON values

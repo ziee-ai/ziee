@@ -142,7 +142,7 @@ sigstore = { version = "0.14", default-features = false, features = ["bundle", "
 ai-providers = { path = "./ai-providers" }
 
 # MCP client
-rmcp = { version = "0.8", features = ["client", "transport-child-process"] }
+rmcp = { version = "1.4", features = ["client", "transport-child-process"] }
 # E5: full JSON-Schema validation of elicit submissions. default-features off
 # drops the remote-`$ref` HTTP/file resolvers (no SSRF surface during form
 # validation) — elicit schemas are self-contained.
@@ -263,6 +263,6 @@ rand.workspace = true
 serde_norway.workspace = true
 sqlx.workspace = true
 postgresql_embedded.workspace = true
-testcontainers = "0.25.2"
+testcontainers = "0.27.3"
 wiremock = "0.6"
 rsa = { version = "0.9", features = ["pem"] }
