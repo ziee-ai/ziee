@@ -195,7 +195,7 @@ async function injectElicitation(
   await goToNewChatPage(page, baseURL)
   await selectModelInDropdown(page, 'GPT-4o Mini')
 
-  const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
+  const textarea = byTestId(page, 'chat-message-textarea').first()
   await textarea.fill('trigger')
   const sendButton = byTestId(page, 'chat-input-send-btn')
   await sendButton.click()

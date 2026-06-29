@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -46,18 +47,16 @@ test.describe('MCP Config Modal — server toggle', () => {
     await goToNewChatPage(page, baseURL)
 
     // Open the MCP config modal.
-    await page.getByRole('button', { name: 'Add attachment' }).first().click()
-    await page.getByText('MCP tools & servers').first().click()
-    await expect(
-      page.locator('.ant-modal-title:has-text("MCP Configuration")'),
-    ).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'chat-input-add-btn').first().click()
+    await byTestId(page, 'chat-mcp-menu-item').first().click()
+    await expect(byTestId(page, 'mcp-config-modal')).toBeVisible({ timeout: 10000 })
 
     // The seeded server appears with a per-server Switch in its collapse header.
     const header = page
-      .locator('.ant-collapse-item')
+      .getByTestId(/^mcp-config-server-row-/)
       .filter({ hasText: display })
     await expect(header).toBeVisible({ timeout: 10000 })
-    const toggle = header.locator('.ant-switch').first()
+    const toggle = header.getByTestId(/^mcp-config-server-switch-/)
 
     // Toggle the server on → the Switch becomes checked (server selected).
     const before = await toggle.getAttribute('aria-checked')

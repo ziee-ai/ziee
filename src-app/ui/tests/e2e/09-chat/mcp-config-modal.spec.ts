@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -41,12 +42,12 @@ test.describe('MCP Config Modal — save semantics', () => {
     await goToNewChatPage(page, testInfra.baseURL)
     await openMcpConfigModal(page)
 
-    await expect(page.locator('.ant-modal-title:has-text("MCP Configuration")')).toBeVisible({
+    await expect(byTestId(page, 'mcp-config-modal')).toBeVisible({
       timeout: 5000,
     })
-    await expect(page.locator('.ant-modal button:has-text("Save as Default")')).toBeVisible()
+    await expect(byTestId(page, 'mcp-config-save-default-btn')).toBeVisible()
     // Either "Close" (new conversation) or "Save & Close" (existing) — assert one is there
-    const primaryButton = page.locator('.ant-modal button.ant-btn-primary')
+    const primaryButton = byTestId(page, 'mcp-config-close-btn')
     await expect(primaryButton).toBeVisible()
     const primaryText = await primaryButton.textContent()
     expect(primaryText).toMatch(/Close|Save & Close/)
@@ -90,10 +91,10 @@ test.describe('MCP Config Modal — save semantics', () => {
 
     // 4. Open and immediately close the modal (auto-save fires on close)
     await openMcpConfigModal(page)
-    await expect(page.locator('.ant-modal-title:has-text("MCP Configuration")')).toBeVisible()
+    await expect(byTestId(page, 'mcp-config-modal')).toBeVisible()
 
-    await page.click('.ant-modal button.ant-btn-primary')
-    await expect(page.locator('.ant-modal-title:has-text("MCP Configuration")')).not.toBeVisible({
+    await byTestId(page, 'mcp-config-close-btn').click()
+    await expect(byTestId(page, 'mcp-config-modal')).not.toBeVisible({
       timeout: 5000,
     })
 
@@ -122,9 +123,9 @@ async function getAdminToken(page: import('@playwright/test').Page): Promise<str
  * (otherwise the McpMenuItem hides itself).
  */
 async function openMcpConfigModal(page: import('@playwright/test').Page): Promise<void> {
-  await page.getByRole('button', { name: 'Add attachment' }).first().click()
-  await page.getByText('MCP tools & servers').first().click()
-  await expect(page.locator('.ant-modal-title:has-text("MCP Configuration")')).toBeVisible({
+  await byTestId(page, 'chat-input-add-btn').first().click()
+  await byTestId(page, 'chat-mcp-menu-item').first().click()
+  await expect(byTestId(page, 'mcp-config-modal')).toBeVisible({
     timeout: 5000,
   })
 }

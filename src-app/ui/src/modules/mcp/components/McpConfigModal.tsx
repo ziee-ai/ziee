@@ -284,7 +284,7 @@ export function McpConfigModal() {
     return {
       key: server.id,
       label: (
-        <div className="flex items-center justify-between w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between w-full" data-testid={`mcp-config-server-row-${server.id}`} onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2">
             <Switch
               checked={!!selection}

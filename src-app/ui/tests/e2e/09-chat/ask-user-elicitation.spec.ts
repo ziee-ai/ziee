@@ -163,7 +163,7 @@ async function injectAskUser(
   await goToNewChatPage(page, baseURL)
   await selectModelInDropdown(page, 'GPT-4o Mini')
 
-  const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
+  const textarea = byTestId(page, 'chat-message-textarea').first()
   await textarea.fill('pick a color')
   await byTestId(page, 'chat-input-send-btn').click()
 
