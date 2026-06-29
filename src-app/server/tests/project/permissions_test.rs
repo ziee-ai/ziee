@@ -186,7 +186,7 @@ async fn duplicate_requires_all_of_a_two_permission_and_tuple() {
         .unwrap();
     assert_eq!(
         resp.status(),
-        StatusCode::OK,
+        StatusCode::CREATED,
         "holding BOTH projects::create AND projects::read must satisfy the gate"
     );
 }

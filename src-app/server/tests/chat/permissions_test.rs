@@ -281,11 +281,10 @@ async fn test_send_message_disabled_model_is_rejected() {
     let (_stub, model) = super::helpers::create_stub_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
-    // Disable the model.
+    // Disable the model via the dedicated disable action endpoint.
     let disable = reqwest::Client::new()
-        .put(server.api_url(&format!("/llm-models/{model_id}")))
+        .post(server.api_url(&format!("/llm-models/{model_id}/disable")))
         .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "enabled": false }))
         .send()
         .await
         .unwrap();

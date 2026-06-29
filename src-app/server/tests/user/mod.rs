@@ -1702,7 +1702,8 @@ async fn test_admin_created_user_is_auto_assigned_to_default_group() {
         .expect("create user");
     assert_eq!(res.status(), 201, "admin user-create should 201");
     let body: serde_json::Value = res.json().await.unwrap();
-    let new_user_id = Uuid::parse_str(body["user"]["id"].as_str().unwrap()).unwrap();
+    // POST /users returns a flat `User` object (not an envelope).
+    let new_user_id = Uuid::parse_str(body["id"].as_str().unwrap()).unwrap();
 
     // The new user is a member of the default group (the auto-assignment).
     let pool = sqlx::postgres::PgPoolOptions::new()

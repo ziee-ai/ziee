@@ -310,8 +310,9 @@ async fn test_disabled_model_is_rejected_by_chat_send() {
     let conv_id = helpers::parse_uuid(&conversation["id"]);
     let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
 
+    // Arg order is (conversation_id, model_id, branch_id) — see helper sig.
     let response = helpers::send_message_simple(
-        &server, &user.token, conv_id, branch_id, model_id, "should be blocked",
+        &server, &user.token, conv_id, model_id, branch_id, "should be blocked",
     )
     .await;
     assert_eq!(
