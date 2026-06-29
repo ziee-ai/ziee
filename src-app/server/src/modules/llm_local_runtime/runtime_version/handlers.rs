@@ -97,20 +97,13 @@ pub async fn list_runtime_versions(
             .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
     };
 
-    // Offset-paginate the response (round-4 pattern). Runtime versions are a
-    // small admin-curated set, so the repository fetch is already bounded
-    // (list_all caps at 200; list_by_engine is one engine's binaries); we
-    // slice here to give the endpoint a stable limit/offset contract.
-    let limit = params
-        .limit
-        .unwrap_or(crate::common::DEFAULT_PAGE_SIZE as i64)
-        .clamp(1, crate::common::PAGINATION_MAX_PER_PAGE as i64);
-    let offset = params.offset.unwrap_or(0).max(0);
+    // Pagination is applied at the repository layer via page/per_page
+    // (list_versions / list_versions_for_engine), so the response is already
+    // the requested page — map it directly. (A second offset/limit slice here
+    // was a merge-time duplicate of the same pagination and is removed.)
     let response = RuntimeVersionListResponse {
         versions: versions
             .into_iter()
-            .skip(offset as usize)
-            .take(limit as usize)
             .map(RuntimeVersionResponse::from)
             .collect(),
     };

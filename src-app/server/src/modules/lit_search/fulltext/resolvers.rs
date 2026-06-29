@@ -11,6 +11,7 @@
 //! (`PUBLIC_HTTP_OR_HTTPS`); arbitrary OA-PDF URLs from Unpaywall are validated
 //! by that client's DNS/redirect guard.
 
+use crate::common::AppError;
 use std::time::Duration;
 
 use serde::Deserialize;

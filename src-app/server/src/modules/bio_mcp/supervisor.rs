@@ -361,21 +361,16 @@ pub async fn shutdown() {
 }
 #[cfg(test)]
 mod tests {
-    use super::fingerprint;
-
-    use super::{fingerprint, is_unsafe_env_name};
-
-    use super::{current_env, fingerprint, is_unsafe_env_name};
+    use super::{
+        current_env, env_pairs_from_headers, fingerprint, flap_backoff_active, is_unsafe_env_name,
+        shutdown, spawn_idle_reaper, SPAWN_BACKOFF, STATE,
+    };
 
     use crate::modules::bio_mcp::{bio_mcp_server_id, repository::BioMcpRepository};
 
     use sqlx::postgres::PgPoolOptions;
 
-    use super::{fingerprint, flap_backoff_active, shutdown, spawn_idle_reaper, SPAWN_BACKOFF, STATE};
-
     use std::time::{Duration, Instant};
-
-    use super::{env_pairs_from_headers, fingerprint, is_unsafe_env_name};
 
 
     #[test]

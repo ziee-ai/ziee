@@ -100,11 +100,9 @@ pub fn is_ooxml_or_odf(mime_type: &str) -> bool {
 mod tests {
     use super::*;
 
-    use std::io::Write;
+    use std::io::{Cursor, Write};
 
     use zip::write::SimpleFileOptions;
-
-    use std::io::{Cursor, Write};
 
     use zip::{CompressionMethod, ZipWriter};
 
