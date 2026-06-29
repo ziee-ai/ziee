@@ -240,11 +240,12 @@ async fn project_mcp_defaults_reference_group_assigned_server_and_snapshot_onto_
         "project defaults referencing an inaccessible system server must be rejected"
     );
     let denied_body: Value = denied.json().await.unwrap();
+    // The error envelope is { error: "<human message>", error_code: "<CODE>" },
+    // so read the machine code field (not the human `error` message).
     assert_eq!(
-        denied_body["error"]
+        denied_body["error_code"]
             .as_str()
-            .or_else(|| denied_body["code"].as_str())
-            .or_else(|| denied_body["error_code"].as_str()),
+            .or_else(|| denied_body["code"].as_str()),
         Some("MCP_SERVER_NOT_ACCESSIBLE"),
         "rejection must be the access-validator error, got: {denied_body}"
     );

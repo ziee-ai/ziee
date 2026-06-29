@@ -85,9 +85,16 @@ async fn add_content(
     content: serde_json::Value,
 ) -> Uuid {
     let id = Uuid::new_v4();
+    // Derive the next sequence_order for this message so multiple contents on
+    // the same message don't collide on the (message_id, sequence_order)
+    // unique index.
     sqlx::query(
         r#"INSERT INTO message_contents (id, message_id, content_type, content, sequence_order, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 0, NOW(), NOW())"#,
+           VALUES (
+               $1, $2, $3, $4,
+               (SELECT COALESCE(MAX(sequence_order) + 1, 0) FROM message_contents WHERE message_id = $2),
+               NOW(), NOW()
+           )"#,
     )
     .bind(id)
     .bind(message_id)

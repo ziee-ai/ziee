@@ -18,7 +18,7 @@ async fn revoking_group_membership_denies_subsequent_mcp_calls() {
     let admin = create_user_with_permissions(
         &server,
         "revoke_admin",
-        &["groups::create", "groups::edit", "groups::read"],
+        &["groups::create", "groups::edit", "groups::read", "groups::assign_users"],
     )
     .await;
     // A user with NO baseline perms (default group removed) — access comes

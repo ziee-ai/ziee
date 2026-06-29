@@ -198,11 +198,27 @@ async fn ask_user_accept_returns_the_answer_to_the_model() {
         "ask_user must be auto-attached, got: {tools:?}"
     );
     // Every attached tool is a known built-in — nothing external leaked in.
+    // Covers all auto-attached built-in MCP servers' tools.
     const BUILTIN_SUFFIXES: &[&str] = &[
         "__ask_user",
         "__get_tool_result",
+        // lit_search
         "__literature_search",
         "__fetch_paper_fulltext",
+        "__dedup_records",
+        "__select_included",
+        "__verify_quote",
+        "__fetch_references",
+        // citations
+        "__lookup_citations",
+        "__add_citations",
+        "__verify_citations",
+        "__list_citations",
+        "__format_citations",
+        "__remove_citations",
+        // skill
+        "__load_skill",
+        "__read_skill_file",
     ];
     assert!(
         tools
