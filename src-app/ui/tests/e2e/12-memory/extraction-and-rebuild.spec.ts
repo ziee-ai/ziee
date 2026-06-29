@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -29,7 +30,7 @@ test.describe('Memory admin — extraction + rebuild status', () => {
       'openai',
     )
     await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
-    await createModelViaAPI(
+    const modelId = await createModelViaAPI(
       apiURL,
       adminToken,
       providerId,
@@ -39,15 +40,20 @@ test.describe('Memory admin — extraction + rebuild status', () => {
     )
 
     await page.goto(`${baseURL}/settings/memory-admin`)
-    const extractionCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Default extraction model' })
+    const extractionCard = byTestId(page, 'memory-extraction-card')
     await expect(extractionCard).toBeVisible({ timeout: 20000 })
 
-    await extractionCard.locator('.ant-select').click()
-    await page.getByRole('option', { name: 'GPT-4o Mini' }).click()
-    await extractionCard.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Extraction settings saved.')).toBeVisible()
+    await byTestId(extractionCard, 'memory-extraction-model-combobox').click()
+    await byTestId(page, `memory-extraction-model-combobox-opt-${modelId}`).click()
+
+    const saveResp = page.waitForResponse(
+      (r) =>
+        /\/api\/memory\/admin-settings$/.test(r.url()) &&
+        r.request().method() === 'PUT' &&
+        r.ok(),
+    )
+    await byTestId(extractionCard, 'memory-extraction-save-btn').click()
+    await saveResp
   })
 
   test('RebuildStatusSection shows + polls while an FTS rebuild is in flight', async ({
@@ -87,9 +93,9 @@ test.describe('Memory admin — extraction + rebuild status', () => {
     await page.goto(`${baseURL}/settings/memory-admin`)
 
     // The in-flight FTS rebuild card surfaces.
-    await expect(
-      page.getByText('Rebuilding full-text search index'),
-    ).toBeVisible({ timeout: 20000 })
+    await expect(byTestId(page, 'memory-rebuild-fts-card')).toBeVisible({
+      timeout: 20000,
+    })
 
     // It keeps polling the status endpoint (2s interval) — at least one
     // additional poll lands after the initial load.

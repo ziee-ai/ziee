@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Memory admin RetentionLimitsSection (two numeric inputs + Save).
@@ -26,31 +27,29 @@ test.describe('Memory — admin retention limits', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/memory-admin`)
 
-    const card = page.locator(
-      '.ant-card:has(.ant-card-head-title:has-text("Retention & extraction limits"))',
-    )
-    await expect(card).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'memory-retention-card')).toBeVisible({
+      timeout: 30000,
+    })
 
-    const grace = card.getByLabel('Soft-delete grace days')
-    const quota = card.getByLabel('Daily extraction quota (per user)')
+    const grace = byTestId(page, 'memory-retention-grace-input')
+    const quota = byTestId(page, 'memory-retention-quota-input')
     await setNumber(grace, 14)
     await setNumber(quota, 250)
 
-    await card.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(page.getByText('Retention & limits saved.')).toBeVisible({
-      timeout: 10000,
-    })
+    await byTestId(page, 'memory-retention-save-btn').click()
+    await expect(page.locator('[data-sonner-toast]')).toContainText(
+      'Retention & limits saved.',
+      { timeout: 10000 },
+    )
 
     // Reload → persisted values come back.
     await page.goto(`${baseURL}/settings/memory-admin`)
-    const card2 = page.locator(
-      '.ant-card:has(.ant-card-head-title:has-text("Retention & extraction limits"))',
+    await expect(byTestId(page, 'memory-retention-grace-input')).toHaveValue(
+      '14',
+      { timeout: 30000 },
     )
-    await expect(card2.getByLabel('Soft-delete grace days')).toHaveValue('14', {
-      timeout: 30000,
-    })
-    await expect(
-      card2.getByLabel('Daily extraction quota (per user)'),
-    ).toHaveValue('250')
+    await expect(byTestId(page, 'memory-retention-quota-input')).toHaveValue(
+      '250',
+    )
   })
 })

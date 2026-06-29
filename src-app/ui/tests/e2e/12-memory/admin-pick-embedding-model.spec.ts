@@ -6,6 +6,7 @@ import {
   createTestUser,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — admin picks an embedding model on the Memory admin page.
@@ -54,7 +55,9 @@ test.describe('Memory — admin embedding picker', () => {
     )
     expect(res.status()).toBe(200)
 
-    // Page renders an "embedding model" combobox.
-    await expect(page.getByText(/Embedding model/)).toBeVisible()
+    // Page renders the embedding-model combobox (SemanticSearchSection).
+    await expect(
+      byTestId(page, 'memory-semantic-model-combobox'),
+    ).toBeVisible({ timeout: 30000 })
   })
 })

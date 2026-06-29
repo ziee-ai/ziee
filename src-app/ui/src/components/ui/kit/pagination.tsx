@@ -124,6 +124,7 @@ export function Pagination({
               <PaginationItem key={p}>
                 <PaginationLink
                   href="#"
+                  data-testid={`${testid}-page-${p}`}
                   isActive={p === safeCurrent}
                   aria-label={pageLabel(p)}
                   aria-current={p === safeCurrent ? 'page' : undefined}

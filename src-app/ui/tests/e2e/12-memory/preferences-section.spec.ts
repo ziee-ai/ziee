@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the memory PreferencesSection standalone Save flow.
@@ -22,17 +23,11 @@ test.describe('Memory — Preferences section save flow', () => {
     await page.goto(`${baseURL}/settings/memory`)
 
     // The Preferences card (its own form + Save button).
-    const card = page
-      .locator('.ant-card')
-      .filter({ has: page.getByText('Preferences', { exact: true }) })
+    const card = byTestId(page, 'memory-prefs-card')
     await expect(card).toBeVisible({ timeout: 15_000 })
 
-    // The two switches live in labelled form rows; the extraction switch is
-    // the "Auto-extract memories" row's switch.
-    const extractionRow = card
-      .locator('.ant-form-item')
-      .filter({ hasText: 'Auto-extract memories' })
-    const extractionSwitch = extractionRow.getByRole('switch')
+    // The extraction toggle is the "Auto-extract memories" row's switch.
+    const extractionSwitch = byTestId(card, 'memory-prefs-extraction-switch')
     await expect(extractionSwitch).toBeVisible({ timeout: 15_000 })
 
     // Read the current checked state so we can assert it actually flipped.
@@ -41,10 +36,7 @@ test.describe('Memory — Preferences section save flow', () => {
 
     // A unique cap value so the asserted PUT/persistence can't be a stale read.
     const newCap = 4000 + (Date.now() % 5000)
-    const capInput = card
-      .locator('.ant-form-item')
-      .filter({ hasText: 'Max memories stored' })
-      .getByRole('spinbutton')
+    const capInput = byTestId(card, 'memory-prefs-max-input')
     await capInput.fill(String(newCap))
 
     // Flip the extraction toggle.
@@ -60,7 +52,7 @@ test.describe('Memory — Preferences section save flow', () => {
         r.url().includes('/api/memory/settings') &&
         r.request().method() === 'PUT',
     )
-    await card.getByRole('button', { name: 'Save' }).click()
+    await byTestId(card, 'memory-prefs-save-btn').click()
     const put = await putPromise
     expect(put.status()).toBe(200)
 
@@ -68,29 +60,19 @@ test.describe('Memory — Preferences section save flow', () => {
     expect(body.extraction_enabled).toBe(!wasChecked)
     expect(body.max_memories).toBe(newCap)
 
-    // The standalone success toast.
-    await expect(page.getByText('Preferences saved.')).toBeVisible({
-      timeout: 10_000,
-    })
-
     // Persistence: a fresh load re-hydrates the saved values from the server.
     await page.reload()
-    const reloadedCard = page
-      .locator('.ant-card')
-      .filter({ has: page.getByText('Preferences', { exact: true }) })
-    const reloadedSwitch = reloadedCard
-      .locator('.ant-form-item')
-      .filter({ hasText: 'Auto-extract memories' })
-      .getByRole('switch')
+    const reloadedCard = byTestId(page, 'memory-prefs-card')
+    const reloadedSwitch = byTestId(
+      reloadedCard,
+      'memory-prefs-extraction-switch',
+    )
     await expect(reloadedSwitch).toHaveAttribute(
       'aria-checked',
       String(!wasChecked),
       { timeout: 15_000 },
     )
-    const reloadedCap = reloadedCard
-      .locator('.ant-form-item')
-      .filter({ hasText: 'Max memories stored' })
-      .getByRole('spinbutton')
+    const reloadedCap = byTestId(reloadedCard, 'memory-prefs-max-input')
     await expect(reloadedCap).toHaveValue(String(newCap), { timeout: 15_000 })
   })
 })

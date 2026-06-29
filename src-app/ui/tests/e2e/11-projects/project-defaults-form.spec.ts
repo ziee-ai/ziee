@@ -5,6 +5,7 @@ import {
   createModelViaAPI,
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — ProjectDefaultsForm (audit id all-f5646555310e).
@@ -108,30 +109,26 @@ test.describe('Projects — default assistant/model selection', () => {
       (req.postData() ?? '').includes(urlEnd)
 
     // -------------------- Default assistant --------------------
-    const assistantBlock = advanced.locator('[data-test-default-assistant-set]')
-    await assistantBlock.locator('.ant-select').click()
+    await byTestId(advanced, 'project-default-assistant-combobox').click()
 
     const assistantPut = page.waitForRequest(
       putMatches('default_assistant_id'),
     )
-    await page
-      .locator('.ant-select-dropdown:visible .ant-select-item-option')
-      .filter({ hasText: assistantName })
-      .first()
-      .click()
+    await byTestId(
+      page,
+      `project-default-assistant-combobox-opt-${assistant.id}`,
+    ).click()
     const assistantReq = await assistantPut
     expect(assistantReq.postData()).toContain(assistant.id)
 
     // -------------------- Default model --------------------
-    const modelBlock = advanced.locator('[data-test-default-model-set]')
-    await modelBlock.locator('.ant-select').click()
+    await byTestId(advanced, 'project-default-model-combobox').click()
 
     const modelPut = page.waitForRequest(putMatches('default_model_id'))
-    await page
-      .locator('.ant-select-dropdown:visible .ant-select-item-option')
-      .filter({ hasText: `Defaults Model ${tag}` })
-      .first()
-      .click()
+    await byTestId(
+      page,
+      `project-default-model-combobox-opt-${modelId}`,
+    ).click()
     const modelReq = await modelPut
     expect(modelReq.postData()).toContain(modelId)
 

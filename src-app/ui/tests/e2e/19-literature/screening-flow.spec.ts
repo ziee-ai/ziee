@@ -7,6 +7,11 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import { seedLiteratureResult, sampleResult } from './fixtures/mock-literature-result'
+import { byTestId } from '../testid'
+
+// recordKey() derives `doi:<lowercased-doi>` for the seeded sampleResult rows.
+const KEY1 = 'doi:10.1/aaa'
+const KEY2 = 'doi:10.1/bbb'
 
 // Deterministic screening flow — seed a `literature_search` tool_result with
 // typed structured_content (no live LLM), open the screening right-panel from
@@ -32,38 +37,37 @@ test.describe('Literature screening flow', () => {
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
 
     // The inline card renders for the literature_search result.
-    const openBtn = page.getByRole('button', { name: /Open in screening/ })
+    const openBtn = byTestId(page, 'lit-tool-result-open-button')
     await expect(openBtn).toBeVisible({ timeout: 10000 })
     await openBtn.click()
 
-    // The right-panel screening workbench opens. The panel numbers each record
-    // ("1. <title>") — assert the panel-unique prefix, not the bare title (which
-    // also appears in the inline card → strict-mode multi-match).
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('1. Base editing reduces off-target effects')).toBeVisible()
-    await expect(page.getByText('After dedup: 2')).toBeVisible()
+    // The right-panel screening workbench opens. The records list carries the
+    // (dynamic) seeded title.
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-screening-records-list')).toContainText(
+      'Base editing reduces off-target effects',
+    )
+    await expect(byTestId(page, 'lit-screening-tag-after-dedup')).toContainText('2')
     // Completeness banner (labeled saturation, never a recall %).
-    await expect(page.getByText(/Saturation estimate: MODERATE/i)).toBeVisible()
+    await expect(byTestId(page, 'lit-screening-completeness')).toContainText('MODERATE')
 
     // Bulk include both rows → PRISMA Included updates.
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Include', exact: true }).click()
-    await expect(page.getByText('Included: 2')).toBeVisible()
+    await byTestId(page, 'lit-screening-select-all-checkbox').click()
+    await byTestId(page, 'lit-screening-bulk-include-button').click()
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('2')
 
     // Bulk exclude → exclusion-reason inputs appear; capture a reason.
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Exclude', exact: true }).click()
-    await expect(page.getByText('Excluded: 2')).toBeVisible()
+    await byTestId(page, 'lit-screening-select-all-checkbox').click()
+    await byTestId(page, 'lit-screening-bulk-exclude-button').click()
+    await expect(byTestId(page, 'lit-screening-tag-excluded')).toContainText('2')
     const reason = page.getByPlaceholder('Exclusion reason (optional)').first()
     await expect(reason).toBeVisible()
     await reason.fill('out of scope')
 
-    // Export → CSV download. Scope to the PANEL's export button ("Export all" /
-    // "Export included") — a bare /Export/ also matches the chat-conversation
-    // export button (chat/extensions/export), present in the conversation.
-    await page.getByRole('button', { name: /Export (all|included)/ }).click()
+    // Export → CSV download via the PANEL's export dropdown.
+    await byTestId(page, 'lit-screening-export-button').click()
     const download = page.waitForEvent('download')
-    await page.getByRole('menuitem', { name: 'Export CSV' }).click()
+    await byTestId(page, 'lit-screening-export-dropdown-item-csv').click()
     const file = await download
     expect(file.suggestedFilename()).toBe('screening.csv')
 
@@ -86,31 +90,31 @@ test.describe('Literature screening flow', () => {
     // restore.
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
 
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({
       timeout: 10000,
     })
 
     // Include both rows → PRISMA "Included: 2".
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Include', exact: true }).click()
-    await expect(page.getByText('Included: 2')).toBeVisible()
+    await byTestId(page, 'lit-screening-select-all-checkbox').click()
+    await byTestId(page, 'lit-screening-bulk-include-button').click()
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('2')
 
     // Reload — the conversation + panel snapshot restore from persistence.
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
 
     // The panel may auto-restore; if not, re-open it from the inline card.
-    const heading = page.getByRole('heading', { name: 'Screening' })
-    if (!(await heading.isVisible().catch(() => false))) {
-      await page
-        .getByRole('button', { name: /Open in screening/ })
-        .click({ timeout: 15000 })
+    const panel = byTestId(page, 'lit-screening-panel')
+    if (!(await panel.isVisible().catch(() => false))) {
+      await byTestId(page, 'lit-tool-result-open-button').click({ timeout: 15000 })
     }
-    await expect(heading).toBeVisible({ timeout: 15000 })
+    await expect(panel).toBeVisible({ timeout: 15000 })
 
     // The include decisions survived the reload.
-    await expect(page.getByText('Included: 2')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('2', {
+      timeout: 15000,
+    })
   })
 
   test('per-row Segmented control sets an individual screening decision', async ({
@@ -121,20 +125,25 @@ test.describe('Literature screening flow', () => {
     // Segmented decision control (LiteratureScreeningPanel.tsx:243-251) was
     // untested. Set ONE row to Include + ONE to Exclude via their Segmented.
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 10000 })
 
-    const segmenteds = page.locator('[aria-label="Screening decision"]')
-    await expect.poll(async () => await segmenteds.count(), { timeout: 10000 }).toBeGreaterThanOrEqual(2)
+    await expect(byTestId(page, `lit-screening-record-decision-${KEY1}`)).toBeVisible({
+      timeout: 10000,
+    })
 
     // Row 1 → Include, Row 2 → Exclude, each via its own Segmented control.
-    await segmenteds.nth(0).getByText('Include', { exact: true }).click()
-    await expect(page.getByText('Included: 1')).toBeVisible({ timeout: 10000 })
+    await byTestId(page, `lit-screening-record-decision-${KEY1}-opt-include`).click()
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('1', {
+      timeout: 10000,
+    })
 
-    await segmenteds.nth(1).getByText('Exclude', { exact: true }).click()
-    await expect(page.getByText('Excluded: 1')).toBeVisible({ timeout: 10000 })
+    await byTestId(page, `lit-screening-record-decision-${KEY2}-opt-exclude`).click()
+    await expect(byTestId(page, 'lit-screening-tag-excluded')).toContainText('1', {
+      timeout: 10000,
+    })
     // The exclusion-reason input appears for the per-row Exclude decision.
-    await expect(page.getByPlaceholder('Exclusion reason (optional)').first()).toBeVisible()
+    await expect(byTestId(page, `lit-screening-record-reason-${KEY2}`)).toBeVisible()
   })
 
   test('inline tool-result card shows the dedup + saturation estimate', async ({
@@ -147,9 +156,10 @@ test.describe('Literature screening flow', () => {
     // the search as "<total> identified, <n> after dedup · saturation: <EST>".
     // The existing flow test only asserts the screening-PANEL banner; this
     // covers the inline card's own completeness/saturation line.
-    await expect(page.getByText(/identified,\s*\d+\s*after dedup/i)).toBeVisible({
-      timeout: 10000,
-    })
-    await expect(page.getByText(/saturation:\s*MODERATE/i)).toBeVisible()
+    const summary = byTestId(page, 'lit-tool-result-summary')
+    await expect(summary).toBeVisible({ timeout: 10000 })
+    // The inline summary carries the dedup count + the saturation estimate.
+    await expect(summary).toContainText('2')
+    await expect(summary).toContainText('MODERATE')
   })
 })

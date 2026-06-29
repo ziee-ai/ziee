@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid'
 
 /**
  * E2E — permission-gated section visibility on /settings/memory.
@@ -24,18 +25,12 @@ test.describe('Memory — section permission visibility', () => {
     await page.goto(`${baseURL}/settings/memory`)
 
     // Positive control: the core-memory section (gated on core::read) renders.
-    await expect(
-      page.locator('.ant-card-head-title', {
-        hasText: 'Per-assistant core memory',
-      }),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'memory-core-card')).toBeVisible({
+      timeout: 30000,
+    })
 
     // The memory::read-gated sections are NOT rendered.
-    await expect(
-      page.locator('.ant-card-head-title', { hasText: 'My memories' }),
-    ).toHaveCount(0)
-    await expect(
-      page.locator('.ant-card-head-title', { hasText: 'Preferences' }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'memory-my-card')).toHaveCount(0)
+    await expect(byTestId(page, 'memory-prefs-card')).toHaveCount(0)
   })
 })

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E coverage for `useConversationMenu` — the chat-extension hook
@@ -57,22 +58,19 @@ async function attach(
 }
 
 /**
- * Open the 3-dot menu on the sidebar row whose title matches.
- * Uses the row's aria-labeled title generic as the scoping anchor —
- * the sibling "Conversation options" button is the menu trigger.
+ * Open the 3-dot menu on the sidebar row for the given conversation.
+ * The RecentConversationsWidget renders a per-row actions button with a
+ * stable `chat-recent-row-actions-btn-<id>` testid (hover-revealed via
+ * opacity — still clickable + visible to Playwright).
  */
 async function openSidebarMenuForRow(
   page: import('@playwright/test').Page,
-  conversationTitle: string,
+  conversationId: string,
 ) {
-  // The row is a `<div>` containing both the aria-labeled title
-  // generic AND the "Conversation options" button. Scope to that
-  // row first, then click its button. Hover so the trigger renders.
-  const titleNode = page.locator(`[title="${conversationTitle}"]`).first()
-  await expect(titleNode).toBeVisible({ timeout: 10000 })
-  const row = titleNode.locator('xpath=ancestor::div[contains(@class, "group")][1]')
-  await row.hover()
-  await row.getByRole('button', { name: 'Conversation options' }).click()
+  const trigger = byTestId(page, `chat-recent-row-actions-btn-${conversationId}`)
+  await expect(trigger).toBeVisible({ timeout: 10000 })
+  await trigger.hover()
+  await trigger.click()
 }
 
 test.describe('Sidebar conversation menu — project contributions', () => {
@@ -98,12 +96,13 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     await page.goto(`${baseURL}/settings`)
     await page.waitForLoadState('load')
 
-    await openSidebarMenuForRow(page, 'Conv to open project from')
+    await openSidebarMenuForRow(page, conversationId)
 
-    // "Open: NAME" — wait for the menu's portal to render the item.
-    await page
-      .getByRole('menuitem', { name: /open:\s*sidebar open target/i })
-      .click()
+    // "Open: NAME" menu item (derived id from its `project-open` key).
+    await byTestId(
+      page,
+      `chat-recent-row-menu-${conversationId}-item-project-open`,
+    ).click()
 
     await page.waitForURL(
       new RegExp(`/projects/${projectId}(?:$|/[^c])`),
@@ -141,26 +140,24 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     await page.goto(`${baseURL}/settings`)
     await page.waitForLoadState('load')
 
-    await openSidebarMenuForRow(page, 'Sidebar add-to-project conv')
-    await page.getByRole('menuitem', { name: /add to project/i }).click()
+    await openSidebarMenuForRow(page, conversationId)
+    await byTestId(
+      page,
+      `chat-recent-row-menu-${conversationId}-item-project-add`,
+    ).click()
 
-    // Scope to the dialog so we don't collide with the menu item's
-    // matching label text. antd Modal renders with role="dialog".
-    const dialog = page.getByRole('dialog', { name: /add to project/i })
+    const dialog = byTestId(page, 'project-add-to-project-dialog')
     await expect(dialog).toBeVisible({ timeout: 10000 })
 
-    // Filter + Enter is more robust than clicking the option element
-    // directly: antd's Select option div sometimes fails Playwright's
-    // visibility check (the rendered option text varies by version).
-    // The combobox uses showSearch + optionFilterProp="label" so
-    // typing the project name reliably narrows to one match.
-    const combo = dialog.getByRole('combobox')
-    await combo.click()
-    await combo.fill('Sidebar Add Target')
-    await page.keyboard.press('Enter')
+    // Open the combobox + pick the project by its derived option testid.
+    await byTestId(dialog, 'project-add-to-project-combobox').click()
+    await byTestId(
+      page,
+      `project-add-to-project-combobox-opt-${projectId}`,
+    ).click()
 
     // Confirm via the dialog's Add button.
-    await dialog.getByRole('button', { name: 'Add' }).click()
+    await byTestId(dialog, 'project-add-to-project-confirm-button').click()
 
     await expect(dialog).toBeHidden({ timeout: 10000 })
     expect(attachReqUrl).not.toBeNull()
@@ -210,16 +207,17 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     await page.goto(`${baseURL}/settings`)
     await page.waitForLoadState('load')
 
-    await openSidebarMenuForRow(page, 'Sidebar remove conv')
-    await page.getByRole('menuitem', { name: /remove from project/i }).click()
+    await openSidebarMenuForRow(page, conversationId)
+    await byTestId(
+      page,
+      `chat-recent-row-menu-${conversationId}-item-project-remove`,
+    ).click()
 
-    // Modal.confirm renders as a dialog. Scope the title + OK button
-    // inside it to avoid colliding with anything else on the page.
-    const confirmDialog = page.getByRole('dialog').filter({
-      hasText: 'Remove from project?',
-    })
+    // dialog.confirm renders a Radix AlertDialog (role="alertdialog").
+    // Its primary (Remove) action is the last footer button.
+    const confirmDialog = page.getByRole('alertdialog')
     await expect(confirmDialog).toBeVisible({ timeout: 10000 })
-    await confirmDialog.getByRole('button', { name: 'Remove' }).click()
+    await confirmDialog.getByRole('button').last().click()
 
     await expect(confirmDialog).toBeHidden({ timeout: 10000 })
     expect(detachSeen).toBe(true)

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -52,10 +53,10 @@ test.describe('Memory — My memories CRUD lifecycle', () => {
 
     // ---------------------------- CREATE ----------------------------
     // The card's "Add memory" affordance opens the create drawer.
-    await page.getByRole('button', { name: 'Add memory' }).click()
+    await byTestId(page, 'memory-add-btn').click()
     const createDrawer = page.getByRole('dialog')
-    await expect(createDrawer.getByText('Add memory')).toBeVisible()
-    await createDrawer.getByLabel('Content').fill(original)
+    await expect(byTestId(createDrawer, 'memory-create-form')).toBeVisible()
+    await byTestId(createDrawer, 'memory-create-content-input').fill(original)
 
     const createResp = page.waitForResponse(
       (r) =>
@@ -63,28 +64,31 @@ test.describe('Memory — My memories CRUD lifecycle', () => {
         r.request().method() === 'POST' &&
         r.status() === 201,
     )
-    await createDrawer.getByRole('button', { name: 'Add', exact: true }).click()
+    await byTestId(page, 'memory-create-submit-btn').click()
     await createResp
 
     // The newly-created memory renders as a row carrying its content.
     const createdRow = page.locator('[data-memory-id]', { hasText: original })
     await expect(createdRow).toBeVisible({ timeout: 10_000 })
+    const id = await createdRow.getAttribute('data-memory-id')
 
     // ----------------------------- EDIT -----------------------------
-    await createdRow.getByRole('button', { name: 'Edit memory' }).click()
+    await byTestId(createdRow, `memory-row-edit-btn-${id}`).click()
     const editDrawer = page.getByRole('dialog')
-    await expect(editDrawer.getByText('Edit memory')).toBeVisible()
+    await expect(byTestId(editDrawer, 'memory-edit-form')).toBeVisible()
     // The edit form is pre-filled with the persisted content.
-    await expect(editDrawer.getByLabel('Content')).toHaveValue(original)
+    await expect(byTestId(editDrawer, 'memory-edit-content-input')).toHaveValue(
+      original,
+    )
 
-    await editDrawer.getByLabel('Content').fill(updated)
+    await byTestId(editDrawer, 'memory-edit-content-input').fill(updated)
     const editResp = page.waitForResponse(
       (r) =>
         /\/api\/memories\/[0-9a-f-]+$/.test(r.url()) &&
         r.request().method() === 'PUT' &&
         r.ok(),
     )
-    await editDrawer.getByRole('button', { name: 'Save' }).click()
+    await byTestId(page, 'memory-edit-submit-btn').click()
     await editResp
 
     // The row now shows the updated content; the original is gone.
@@ -97,19 +101,15 @@ test.describe('Memory — My memories CRUD lifecycle', () => {
 
     // ---------------------------- DELETE ----------------------------
     const editedRow = page.locator('[data-memory-id]', { hasText: updated })
-    await editedRow.getByRole('button', { name: /^Delete memory/ }).click()
-    // The per-row delete opens an antd Popconfirm; confirm via its
-    // "Delete" danger button.
+    await byTestId(editedRow, `memory-row-delete-btn-${id}`).click()
+    // The per-row delete opens a confirm dialog; confirm via its danger button.
     const deleteResp = page.waitForResponse(
       (r) =>
         /\/api\/memories\/[0-9a-f-]+$/.test(r.url()) &&
         r.request().method() === 'DELETE' &&
         r.ok(),
     )
-    await page
-      .locator('.ant-popover:visible, .ant-popconfirm:visible')
-      .getByRole('button', { name: 'Delete' })
-      .click()
+    await byTestId(page, `memory-row-delete-confirm-${id}-confirm`).click()
     await deleteResp
 
     // The memory is gone from the list.

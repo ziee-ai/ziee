@@ -8,6 +8,7 @@ import {
   type MockMessageContent,
 } from '../../helpers/sse-mock-helpers'
 import { goToNewChatPage, selectModelInDropdown } from '../../09-chat/helpers/chat-helpers'
+import { byTestId } from '../../testid'
 
 // Seed a `literature_search` tool_result with a typed `structured_content`
 // payload — the deterministic "no live LLM" path the screening-flow E2E needs.
@@ -84,7 +85,7 @@ export async function seedLiteratureResult(
   await selectModelInDropdown(page, 'GPT-4o Mini')
   const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
   await textarea.fill('find papers')
-  await page.getByRole('button', { name: 'Send message' }).click()
+  await byTestId(page, 'chat-input-send-btn').click()
 
   await page
     .locator(`[data-testid="chat-message"][data-message-id="${assistantMessageId}"]`)

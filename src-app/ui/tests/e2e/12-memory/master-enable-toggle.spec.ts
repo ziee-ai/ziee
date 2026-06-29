@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Memory admin — the master MemorySection card's deployment-wide enable toggle
@@ -15,22 +16,19 @@ test.describe('Memory admin — master enable toggle', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/memory-admin`)
-    const memoryCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Enable memory deployment-wide' })
-    await expect(memoryCard).toBeVisible({ timeout: 20000 })
+    const masterSwitch = byTestId(page, 'memory-admin-enabled-switch')
+    await expect(masterSwitch).toBeVisible({ timeout: 20000 })
 
     // Default: memory is disabled.
-    const masterSwitch = memoryCard.getByRole('switch', {
-      name: 'Enable memory deployment-wide',
-    })
     await expect(masterSwitch).toHaveAttribute('aria-checked', 'false')
 
     // Turn it on and save.
     await masterSwitch.click()
     await expect(masterSwitch).toHaveAttribute('aria-checked', 'true')
-    await memoryCard.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Memory settings saved.')).toBeVisible()
+    await byTestId(page, 'memory-admin-master-save-btn').click()
+    await expect(page.locator('[data-sonner-toast]')).toContainText(
+      'Memory settings saved.',
+    )
 
     // Server persisted the master toggle.
     const token = await getAdminToken(apiURL)

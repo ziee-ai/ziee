@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E coverage for the project chat extension's
@@ -62,17 +63,14 @@ async function attach(
 }
 
 /**
- * Locate the antd Card on /chats whose title matches. Walks up from
- * the title's `<strong>` to the nearest `.ant-card` ancestor.
+ * Locate the ConversationCard on /chats by conversation id (stable
+ * `chat-conversation-card-<id>` testid).
  */
 function chatsPageCard(
   page: import('@playwright/test').Page,
-  title: string,
+  conversationId: string,
 ) {
-  return page
-    .locator('strong', { hasText: title })
-    .locator('xpath=ancestor::*[contains(@class, "ant-card")][1]')
-    .first()
+  return byTestId(page, `chat-conversation-card-${conversationId}`)
 }
 
 test.describe('ConversationCard trailing badge — add-to-project', () => {
@@ -110,27 +108,26 @@ test.describe('ConversationCard trailing badge — add-to-project', () => {
     // lazily on first hover — see ConversationCard's `hoveredOnce`
     // state). The membership lookup then runs and, for an unfiled
     // conversation, renders the "Add to project" button.
-    const card = chatsPageCard(page, 'Badge add-to-project conv')
+    const card = chatsPageCard(page, conversationId)
     await expect(card).toBeVisible({ timeout: 10000 })
     await card.hover()
 
-    const addButton = card.getByRole('button', { name: 'Add to project' })
+    const addButton = byTestId(card, 'project-trailing-add-button')
     await expect(addButton).toBeVisible({ timeout: 10000 })
     await addButton.click()
 
-    // Modal opens — scope to the dialog so the menu-item / button
-    // text doesn't collide with the modal title.
-    const dialog = page.getByRole('dialog', { name: /add to project/i })
+    // Modal opens.
+    const dialog = byTestId(page, 'project-add-to-project-dialog')
     await expect(dialog).toBeVisible({ timeout: 10000 })
 
-    // Filter + Enter — see sidebar-menu.spec.ts for why this is
-    // preferred over clicking the option div directly.
-    const combo = dialog.getByRole('combobox')
-    await combo.click()
-    await combo.fill('Badge Add Target')
-    await page.keyboard.press('Enter')
+    // Open the combobox + pick the project by its derived option testid.
+    await byTestId(dialog, 'project-add-to-project-combobox').click()
+    await byTestId(
+      page,
+      `project-add-to-project-combobox-opt-${projectId}`,
+    ).click()
 
-    await dialog.getByRole('button', { name: 'Add' }).click()
+    await byTestId(dialog, 'project-add-to-project-confirm-button').click()
 
     await expect(dialog).toBeHidden({ timeout: 10000 })
     expect(attachReqUrl).not.toBeNull()
@@ -180,35 +177,28 @@ test.describe('ConversationCard trailing badge — remove-from-project', () => {
     await page.goto(`${baseURL}/chats`)
     await page.waitForLoadState('load')
 
-    const card = chatsPageCard(page, 'Badge remove conv')
+    const card = chatsPageCard(page, conversationId)
     await expect(card).toBeVisible({ timeout: 10000 })
     await card.hover()
 
     // Wait for the trailing area to mount + the project lookup to
-    // resolve. Once both are done the Tag with the project name is
-    // visible inside the card.
-    await expect(card.getByText('Badge Remove Target')).toBeVisible({
-      timeout: 10000,
-    })
+    // resolve. Once done the membership Tag renders inside the card.
+    await expect(
+      byTestId(card, 'project-trailing-membership-tag'),
+    ).toBeVisible({ timeout: 10000 })
 
-    // antd Tag in v6 renders the close icon as a child `<span>` with
-    // `aria-label="close"` (`anticon anticon-close`) — the `.ant-tag-close-icon`
-    // class from v5 was dropped. There's exactly one such icon per
-    // card (the trailing area's project Tag); the Delete button uses
-    // anticon-delete, not anticon-close.
-    const closeIcon = card.locator('[aria-label="close"]').first()
-    await expect(closeIcon).toBeVisible({ timeout: 10000 })
-    await closeIcon.click()
+    // Click the remove (×) button on the membership tag.
+    const removeButton = byTestId(card, 'project-trailing-remove-button')
+    await expect(removeButton).toBeVisible({ timeout: 10000 })
+    await removeButton.click()
 
-    // Popconfirm bubble appears with title "Remove from project?".
-    // The bubble is a body-portal — page-level scoping is correct.
-    const popconfirm = page.locator('.ant-popover').filter({
-      hasText: 'Remove from project?',
-    })
-    await expect(popconfirm).toBeVisible({ timeout: 10000 })
-    await popconfirm.getByRole('button', { name: 'Remove' }).click()
+    // The remove Confirm (AlertDialog) opens; confirm via its primary
+    // button (`<confirm-testid>-confirm`).
+    const confirm = byTestId(page, 'project-trailing-remove-confirm')
+    await expect(confirm).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'project-trailing-remove-confirm-confirm').click()
 
-    await expect(popconfirm).toBeHidden({ timeout: 10000 })
+    await expect(confirm).toBeHidden({ timeout: 10000 })
     expect(detachSeen).toBe(true)
 
     // `/api/projects/by-conversation/{cid}` always returns 200 with

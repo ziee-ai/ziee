@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -40,14 +41,16 @@ test.describe('Memory — CRUD UI', () => {
     await login(page, baseURL, username, 'password123')
     await page.goto(`${baseURL}/settings/memory`)
 
-    await page.getByRole('button', { name: /Add memory/ }).click()
+    await byTestId(page, 'memory-add-btn').click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
 
-    // Submit with empty Content → inline "Required" validation, no success toast.
-    await dialog.getByRole('button', { name: /^Add$/ }).click()
-    await expect(dialog.getByText('Required')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('Memory added')).toHaveCount(0)
+    // Submit with empty Content → inline required validation, no memory row created.
+    await byTestId(page, 'memory-create-submit-btn').click()
+    await expect(byTestId(dialog, 'field-error-content')).toBeVisible({
+      timeout: 5000,
+    })
+    await expect(page.locator('[data-memory-id]')).toHaveCount(0)
   })
 
   test('EditMemoryDrawer opens pre-seeded and saves an edit', async ({
@@ -69,18 +72,22 @@ test.describe('Memory — CRUD UI', () => {
     await expect(row).toBeVisible({ timeout: 15000 })
 
     // Open the row's Edit drawer; it must be pre-seeded with the row content.
-    await row.getByRole('button', { name: 'Edit memory' }).click()
+    const id = await row.getAttribute('data-memory-id')
+    await byTestId(row, `memory-row-edit-btn-${id}`).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByLabel('Content')).toHaveValue(
+    await expect(byTestId(dialog, 'memory-edit-content-input')).toHaveValue(
       'Original memory content ABC',
     )
 
-    // Edit + save → success + the list shows the new content.
-    await dialog.getByLabel('Content').fill('Edited memory content XYZ')
-    await dialog.getByRole('button', { name: /^Save$/ }).click()
-    await expect(page.getByText('Memory updated')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('Edited memory content XYZ')).toBeVisible()
+    // Edit + save → the list shows the new content.
+    await byTestId(dialog, 'memory-edit-content-input').fill(
+      'Edited memory content XYZ',
+    )
+    await byTestId(page, 'memory-edit-submit-btn').click()
+    await expect(
+      page.locator('[data-memory-id]').filter({ hasText: 'Edited memory content XYZ' }),
+    ).toBeVisible({ timeout: 5000 })
   })
 
   test('pagination page-size change + page navigation', async ({
@@ -100,24 +107,20 @@ test.describe('Memory — CRUD UI', () => {
     }
 
     await page.goto(`${baseURL}/settings/memory`)
-    // The pagination total renders "X-Y of N memories".
-    await expect(page.getByText(/\d+-\d+ of \d+ memories/)).toBeVisible({
+    await expect(byTestId(page, 'memory-pagination')).toBeVisible({
       timeout: 15000,
     })
 
-    // Shrink page size to 5 → "1-5 of N".
-    await page.locator('.ant-pagination-options .ant-select').click()
-    await page
-      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
-      .getByText('5 / page')
-      .click()
-    await expect(page.getByText(/^1-5 of \d+ memories$/)).toBeVisible({
+    // Shrink page size to 5 → first page shows exactly 5 rows.
+    await byTestId(page, 'memory-pagination-page-size').click()
+    await byTestId(page, 'memory-pagination-page-size-opt-5').click()
+    await expect(page.locator('[data-memory-id]')).toHaveCount(5, {
       timeout: 10000,
     })
 
-    // Page forward → "6-10 of N".
-    await page.locator('.ant-pagination-item-2').click()
-    await expect(page.getByText(/^6-10 of \d+ memories$/)).toBeVisible({
+    // Page forward → page 2 still shows 5 rows (12 total → 5/5/2).
+    await byTestId(page, 'memory-pagination-page-2').click()
+    await expect(page.locator('[data-memory-id]')).toHaveCount(5, {
       timeout: 10000,
     })
   })

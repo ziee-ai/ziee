@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Memory "Audit log" limit selector (AuditLogSection.tsx).
@@ -21,8 +22,10 @@ test.describe('Memory — audit log limit', () => {
     await page.goto(`${baseURL}/settings/memory`)
 
     // The Audit log card + its "Show last" field render.
-    await expect(page.getByText('Audit log')).toBeVisible({ timeout: 30000 })
-    const input = page.getByLabel('Show last')
+    await expect(byTestId(page, 'memory-audit-card')).toBeVisible({
+      timeout: 30000,
+    })
+    const input = byTestId(page, 'memory-audit-limit-input')
     await input.click()
     await input.press('ControlOrMeta+a')
     await input.fill('7')
@@ -34,7 +37,7 @@ test.describe('Memory — audit log limit', () => {
           r.url().includes('limit=7'),
         { timeout: 30000 },
       ),
-      page.getByRole('button', { name: 'Apply' }).click(),
+      byTestId(page, 'memory-audit-limit-apply').click(),
     ])
     expect(resp.status()).toBe(200)
   })

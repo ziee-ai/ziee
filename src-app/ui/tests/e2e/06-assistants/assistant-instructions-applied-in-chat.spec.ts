@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -57,17 +58,20 @@ test.describe('Assistants — instructions applied in chat (real LLM)', () => {
 
     await goToNewChatPage(page, baseURL)
 
-    // Select the assistant via the "+" dropdown → "Select assistant".
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByText('Select assistant').click()
-    await expect(page.getByText(assistantName)).toBeVisible({ timeout: 10000 })
-    await page.getByText(assistantName).click()
+    // Select the assistant via the "+" dropdown → "Select assistant" submenu.
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'assistant-menu-trigger').click()
+    const option = byTestId(page, 'assistant-menu-options')
+      .getByRole('button')
+      .filter({ hasText: assistantName })
+    await expect(option).toBeVisible({ timeout: 10000 })
+    await option.click()
 
     // Send a message → the streamed response must carry the beacon, proving the
     // assistant's instructions were injected into the system prompt.
     const textarea = page.locator('textarea[placeholder*="Type your message"]')
     await textarea.fill('Say hello.')
-    const send = page.getByRole('button', { name: 'Send message' })
+    const send = byTestId(page, 'chat-input-send-btn')
     await expect(send).toBeEnabled({ timeout: 10000 })
     await send.click()
 

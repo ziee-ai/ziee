@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the CoreMemorySection assistant picker + CoreMemoryBlocksEditor UI.
@@ -37,52 +38,54 @@ test.describe('Memory — core memory blocks editor UI', () => {
       }),
     })
     expect(created.status, 'create assistant').toBeLessThan(300)
+    const assistant = await created.json()
+    const optionId = `memory-core-assistant-combobox-opt-${assistant.id}`
 
     await page.goto(`${baseURL}/settings/memory`)
 
     // The "Per-assistant core memory" card holds the assistant picker.
-    const picker = page.getByLabel('Pick an assistant')
+    const picker = byTestId(page, 'memory-core-assistant-combobox')
     await expect(picker).toBeVisible({ timeout: 15000 })
     await picker.click()
-    await page
-      .locator('.ant-select-dropdown:visible')
-      .getByText(assistantName, { exact: true })
-      .click()
+    await byTestId(page, optionId).click()
 
     // Picking the assistant mounts CoreMemoryBlocksEditor → "Add block".
-    await page.getByRole('button', { name: 'Add block' }).click()
+    await byTestId(page, 'memory-core-add-block-btn').click()
 
-    const modal = page.getByRole('dialog')
+    const modal = byTestId(page, 'memory-core-block-create-dialog')
     await expect(modal).toBeVisible({ timeout: 5000 })
     const blockLabel = `persona_${tag}`
-    await modal.getByPlaceholder('persona').fill(blockLabel)
-    await modal
-      .getByPlaceholder(/Always-in-context content/i)
-      .fill('Always greet the user by name and stay concise.')
+    await byTestId(modal, 'memory-core-block-label-input').fill(blockLabel)
+    await byTestId(modal, 'memory-core-block-content-input').fill(
+      'Always greet the user by name and stay concise.',
+    )
 
-    // The OK button ("Add") fires PUT /api/assistants/core-memory.
+    // The submit button ("Add") fires PUT /api/assistants/core-memory.
     const putReq = page.waitForRequest(
       req =>
         req.method() === 'PUT' &&
         req.url().includes('/api/assistants/core-memory'),
       { timeout: 10000 },
     )
-    await modal.getByRole('button', { name: 'Add' }).click()
+    await byTestId(modal, 'memory-core-block-form-submit-btn').click()
     await putReq
 
-    // The new block renders in the editor's list.
-    await expect(page.getByText(blockLabel)).toBeVisible({ timeout: 10000 })
+    // The new block renders in the editor's list (the label we typed is
+    // dynamic data we created).
+    const blockCards = page.locator('[data-testid^="memory-core-block-card-"]')
+    await expect(blockCards).toHaveCount(1, { timeout: 10000 })
+    await expect(blockCards).toContainText(blockLabel)
 
     // Persistence: reload, re-pick the assistant, the block is still listed
     // (proves it was written server-side, not just optimistic state).
     await page.reload()
-    const picker2 = page.getByLabel('Pick an assistant')
+    const picker2 = byTestId(page, 'memory-core-assistant-combobox')
     await expect(picker2).toBeVisible({ timeout: 15000 })
     await picker2.click()
-    await page
-      .locator('.ant-select-dropdown:visible')
-      .getByText(assistantName, { exact: true })
-      .click()
-    await expect(page.getByText(blockLabel)).toBeVisible({ timeout: 10000 })
+    await byTestId(page, optionId).click()
+    const reloadedCards = page.locator(
+      '[data-testid^="memory-core-block-card-"]',
+    )
+    await expect(reloadedCards).toContainText(blockLabel, { timeout: 10000 })
   })
 })

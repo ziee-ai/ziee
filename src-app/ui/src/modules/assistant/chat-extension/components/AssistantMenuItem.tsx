@@ -23,9 +23,10 @@ export function AssistantMenuItem() {
   }
 
   const popoverContent = (
-    <div style={{ minWidth: 160, margin: -4 }}>
+    <div data-testid="assistant-menu-options" style={{ minWidth: 160, margin: -4 }}>
       {selectedAssistantId && (
         <AssistantOption
+          testid="assistant-option-none"
           label="No assistant"
           active={false}
           onClick={() => handleSelect(null)}
@@ -40,6 +41,7 @@ export function AssistantMenuItem() {
       {availableAssistants.map((assistant: any) => (
         <AssistantOption
           key={assistant.id}
+          testid={`assistant-option-${assistant.id}`}
           label={assistant.name}
           active={assistant.id === selectedAssistantId}
           onClick={() => handleSelect(assistant.id)}
@@ -55,6 +57,7 @@ export function AssistantMenuItem() {
       align="start"
     >
       <div
+        data-testid="assistant-menu-trigger"
         className="flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px]"
         onMouseEnter={e => {
           e.currentTarget.className = 'flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px] bg-muted'
@@ -84,15 +87,18 @@ function AssistantOption({
   active,
   onClick,
   dividerAfter,
+  testid,
 }: {
   label: string
   active: boolean
   onClick: () => void
   dividerAfter?: boolean
+  testid?: string
 }) {
   return (
     <>
       <div
+        data-testid={testid}
         role="button"
         tabIndex={0}
         aria-pressed={active}

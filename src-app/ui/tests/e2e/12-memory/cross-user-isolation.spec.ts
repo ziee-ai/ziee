@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -39,14 +40,11 @@ test.describe('Memory — cross-user isolation', () => {
     // Alice logs in, adds a memory.
     await login(page, baseURL, alice, 'password123')
     await page.goto(`${baseURL}/settings/memory`)
-    await page.getByRole('button', { name: /Add memory/ }).click()
-    await page
-      .getByRole('dialog')
-      .getByLabel('Content')
-      .fill('Alice is a secret agent')
-    await page.getByRole('dialog').getByRole('button', { name: /^Add$/ }).click()
-    await expect(page.getByText('Memory added')).toBeVisible()
-    await expect(page.getByText('Alice is a secret agent')).toBeVisible()
+    await byTestId(page, 'memory-add-btn').click()
+    await byTestId(page, 'memory-create-content-input').fill('Alice is a secret agent')
+    await byTestId(page, 'memory-create-submit-btn').click()
+    // Seeded content is dynamic data this test created — assert inside the list card.
+    await expect(byTestId(page, 'memory-my-card')).toContainText('Alice is a secret agent')
 
     // Log out and back in as Bob.
     await page.context().clearCookies()
@@ -55,6 +53,6 @@ test.describe('Memory — cross-user isolation', () => {
     await page.goto(`${baseURL}/settings/memory`)
 
     // Bob's list must NOT contain Alice's secret.
-    await expect(page.getByText('Alice is a secret agent')).not.toBeVisible()
+    await expect(byTestId(page, 'memory-my-card')).not.toContainText('Alice is a secret agent')
   })
 })

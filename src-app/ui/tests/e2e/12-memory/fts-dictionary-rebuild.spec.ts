@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Admin FullTextSearchSection — the dictionary-swap rebuild flow
@@ -35,26 +36,24 @@ test.describe('Memory admin — FTS dictionary rebuild', () => {
     )
 
     await page.goto(`${baseURL}/settings/memory-admin`)
-    const ftsCard = page.locator('.ant-card', { hasText: 'Full-text search' })
+    const ftsCard = byTestId(page, 'memory-fts-card')
     await expect(ftsCard).toBeVisible({ timeout: 20000 })
 
     // Change the Dictionary Select from the default ('simple') to 'english'.
-    await ftsCard.locator('.ant-select').first().click()
-    await page.getByRole('option', { name: 'english', exact: true }).click()
+    // Kit Select emits options as `${selectTestid}-opt-${value}`.
+    await byTestId(page, 'memory-fts-dictionary-select').click()
+    await byTestId(page, 'memory-fts-dictionary-select-opt-english').click()
 
     // Save → the dictionary changed, so a confirm Modal is shown (NOT an
     // in-place save).
-    await ftsCard.getByRole('button', { name: 'Save' }).click()
-    const modal = page.getByRole('dialog')
-    await expect(
-      modal.getByText('Rebuild the full-text search index?'),
-    ).toBeVisible()
+    await byTestId(page, 'memory-fts-save-btn').click()
+    const modal = byTestId(page, 'memory-fts-rebuild-dialog')
+    await expect(modal).toBeVisible()
 
-    // Confirm → the rebuild POST fires with the new dictionary + an info toast.
-    await modal.getByRole('button', { name: 'Rebuild' }).click()
-    await expect(
-      page.getByText(/Full-text search rebuild started/),
-    ).toBeVisible({ timeout: 10000 })
+    // Confirm → the rebuild POST fires with the new dictionary; the dialog
+    // closes once the rebuild request resolves.
+    await byTestId(page, 'memory-fts-rebuild-confirm-btn').click()
+    await expect(modal).toBeHidden({ timeout: 10000 })
     expect(rebuildBody?.['dictionary']).toBe('english')
   })
 })

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Memory admin SemanticSearchSection: change the embedding model + save
@@ -65,46 +66,38 @@ test.describe('Memory — admin semantic search re-embed', () => {
     await createEmbeddingModel(page.request, apiURL, adminToken, providerId, embedName)
 
     await page.goto(`${baseURL}/settings/memory-admin`)
-    const card = page.locator(
-      '.ant-card:has(.ant-card-head-title:has-text("Semantic search"))',
-    )
-    await expect(card).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'memory-semantic-card')).toBeVisible({
+      timeout: 30000,
+    })
 
     // Enable semantic search.
-    const enableSwitch = card.getByRole('switch', {
-      name: 'Enable semantic search retrieval',
-    })
+    const enableSwitch = byTestId(page, 'memory-semantic-enabled-switch')
     if ((await enableSwitch.getAttribute('aria-checked')) === 'false') {
       await enableSwitch.click()
     }
 
     // Pick the seeded embedding model.
-    await card
-      .locator('.ant-form-item:has-text("Embedding model")')
-      .first()
-      .getByRole('combobox')
-      .click()
-    await page
-      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
-      .locator('.ant-select-item-option')
-      .filter({ hasText: embedName })
-      .click()
+    await byTestId(page, 'memory-semantic-model-combobox').click()
+    await page.getByRole('option').filter({ hasText: embedName }).click()
 
     // Save → since the embedding model changed from none, the background
     // re-embed message is surfaced.
-    await card.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(
-      page.getByText(/Embedding model changed — re-embed running in background\./),
-    ).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'memory-semantic-save-btn').click()
+    await expect(page.locator('[data-sonner-toast]')).toContainText(
+      'Embedding model changed — re-embed running in background.',
+      { timeout: 10000 },
+    )
 
     // Now the explicit "Re-embed now" affordance: opens the confirm modal and
     // dispatches the job.
-    await card.getByRole('button', { name: 'Re-embed now' }).click()
-    const modal = page.getByRole('dialog', { name: 'Re-embed every memory?' })
-    await expect(modal).toBeVisible({ timeout: 10000 })
-    await modal.getByRole('button', { name: 'Re-embed', exact: true }).click()
-    await expect(
-      page.getByText(/Re-embed job dispatched in background/),
-    ).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'memory-semantic-reembed-btn').click()
+    await expect(byTestId(page, 'memory-semantic-reembed-dialog')).toBeVisible({
+      timeout: 10000,
+    })
+    await byTestId(page, 'memory-semantic-reembed-confirm-btn').click()
+    await expect(page.locator('[data-sonner-toast]')).toContainText(
+      'Re-embed job dispatched in background',
+      { timeout: 10000 },
+    )
   })
 })

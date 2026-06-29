@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -89,23 +90,24 @@ test.describe('Memory — audit log', () => {
     })
 
     await page.goto(`${baseURL}/settings/memory`)
-    const card = page.locator(
-      '.ant-card:has(.ant-card-head-title:has-text("Audit log"))',
-    )
+    const card = byTestId(page, 'memory-audit-card')
     await expect(card).toBeVisible({ timeout: 30000 })
 
-    // The table renders the seeded entries (≥3 data rows).
-    const rows = card.locator('.ant-table-tbody .ant-table-row')
+    // The table renders the seeded entries (≥3 data rows). Kit Table emits
+    // `${tableTestid}-row-${rowKey}` per row.
+    const rows = byTestId(page, 'memory-audit-table').locator(
+      '[data-testid^="memory-audit-table-row-"]',
+    )
     await expect
       .poll(async () => await rows.count(), { timeout: 15000 })
       .toBeGreaterThanOrEqual(3)
 
     // Apply the "Show last" limit = 1 → the table narrows to a single row.
-    const limit = card.getByLabel('Show last')
+    const limit = byTestId(card, 'memory-audit-limit-input')
     await limit.click()
     await limit.press('ControlOrMeta+a')
     await limit.fill('1')
-    await card.getByRole('button', { name: 'Apply' }).click()
+    await byTestId(card, 'memory-audit-limit-apply').click()
     await expect.poll(async () => await rows.count(), { timeout: 15000 }).toBe(1)
   })
 })

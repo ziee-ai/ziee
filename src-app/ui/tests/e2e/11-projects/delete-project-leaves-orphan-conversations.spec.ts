@@ -4,6 +4,7 @@ import {
   clickCardAction,
   confirmDeletePopconfirm,
   fillProjectForm,
+  getProjectCard,
   goToProjectsPage,
   openCreateProjectDrawer,
   submitProjectForm,
@@ -37,7 +38,7 @@ test.describe('Projects - delete preserves orphan conversations', () => {
     //    endpoint. This mirrors the production frontend flow (the
     //    project chat extension's afterCreateConversation hook).
     const token = await getAdminToken(baseURL)
-    await page.locator('.ant-card', { hasText: 'Ephemeral Project' }).click()
+    await getProjectCard(page, 'Ephemeral Project').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     const projectId = new URL(page.url()).pathname.split('/').pop()!
     const convResp = await page.evaluate(

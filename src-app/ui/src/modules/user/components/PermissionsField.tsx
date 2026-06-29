@@ -212,7 +212,7 @@ export function PermissionsField({
             onChange={e => handleJsonChange(e.target.value)}
           />
           {jsonError && (
-            <Text type="danger" role="alert" className="text-xs">
+            <Text type="danger" role="alert" className="text-xs" data-testid="user-permissions-json-error">
               {jsonError}
             </Text>
           )}
@@ -241,7 +241,7 @@ export function PermissionsField({
             )}
           </div>
           {extra.length > 0 && (
-            <Text type="secondary" className="text-xs">
+            <Text type="secondary" className="text-xs" data-testid="user-permissions-extra-note">
               + {extra.length} advanced{' '}
               {extra.length === 1 ? 'entry' : 'entries'}: {extra.join(', ')} —
               edit in Advanced JSON

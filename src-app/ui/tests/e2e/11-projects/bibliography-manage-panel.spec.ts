@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * ProjectBibliographyManagePanel (citations project-extension, registered as
@@ -26,16 +27,12 @@ test.describe('Projects - bibliography manage panel', () => {
     // EMPTY: open the project, open the knowledge Manage drawer → the
     // References panel shows its empty state + Import button.
     await page.goto(`${baseURL}/projects/${projectId}`)
-    await page
-      .getByRole('button', { name: /manage knowledge files/i })
-      .click()
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    await byTestId(page, 'project-knowledge-manage-button').click()
+    const drawer = page.getByRole('dialog')
     await expect(drawer).toBeVisible()
+    await expect(byTestId(drawer, 'cite-bib-panel-empty')).toBeVisible()
     await expect(
-      drawer.getByText('No references in this project yet.'),
-    ).toBeVisible()
-    await expect(
-      drawer.getByRole('button', { name: 'Import into project' }),
+      byTestId(drawer, 'cite-bib-panel-import-button'),
     ).toBeVisible()
 
     // SEED a reference directly into the project (CSL-only book → unverified,
@@ -59,13 +56,17 @@ test.describe('Projects - bibliography manage panel', () => {
     expect(imp.ok()).toBe(true)
 
     await page.goto(`${baseURL}/projects/${projectId}`)
-    await page
-      .getByRole('button', { name: /manage knowledge files/i })
-      .click()
-    const drawer2 = page.locator('.ant-drawer.ant-drawer-open')
+    await byTestId(page, 'project-knowledge-manage-button').click()
+    const drawer2 = page.getByRole('dialog')
     await expect(drawer2).toBeVisible()
+    // The seeded reference now renders as a CitationCard (keyed by entry
+    // id) and the empty state is gone — exactly one card for the one ref.
+    await expect(byTestId(drawer2, 'cite-bib-panel-empty')).toHaveCount(0)
+    // Exactly one CitationCard rendered — count the per-entry delete
+    // button (uniquely one per reference) to avoid matching the card's
+    // other `cite-card-*` sub-element testids.
     await expect(
-      drawer2.getByText('A Project-Scoped Reference'),
-    ).toBeVisible({ timeout: 10000 })
+      drawer2.locator('[data-testid^="cite-card-delete-button-"]'),
+    ).toHaveCount(1, { timeout: 10000 })
   })
 })

@@ -58,7 +58,11 @@ export function ProjectsListPage() {
     <div className="h-full flex flex-col overflow-hidden">
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
-          <Title level={4} className="!m-0 !leading-tight">
+          <Title
+            level={4}
+            className="!m-0 !leading-tight"
+            data-testid="project-list-title"
+          >
             Projects
           </Title>
           <Can permission={Permissions.ProjectsCreate}>
@@ -105,7 +109,7 @@ export function ProjectsListPage() {
             <Spin label="Loading projects" />
           </div>
         ) : (
-          <div className="text-center py-12 m-auto">
+          <div className="text-center py-12 m-auto" data-testid="project-list-empty">
             <Folder className="text-6xl mb-4" />
               <Title level={3} className="text-muted-foreground">
                 No projects yet

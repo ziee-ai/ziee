@@ -7,6 +7,7 @@ import {
 } from '../../common/provider-helpers'
 import { goToNewChatPage, selectModelInDropdown, sendChatMessage } from '../09-chat/helpers/chat-helpers'
 import { LiteratureMockServer, sampleLiteraturePayload } from './helpers/literature-mock-server'
+import { byTestId } from '../testid'
 
 /**
  * LLM-gated end-to-end for the literature screening panel via a REAL chat.
@@ -122,22 +123,25 @@ test.describe('Literature screening — real chat → tool → panel (real LLM +
 
     // The inline LiteratureToolResultCard renders from the REAL persisted
     // tool_result block (name === 'literature_search') the model produced.
-    const openBtn = page.getByRole('button', { name: /Open in screening/ })
+    const openBtn = byTestId(page, 'lit-tool-result-open-button')
     await expect(openBtn).toBeVisible({ timeout: 60000 })
     expect(mock.toolCallCount()).toBeGreaterThan(0)
     await openBtn.click()
 
     // The right-panel screening workbench opens with the real records.
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({ timeout: 15000 })
-    await expect(
-      page.getByText('1. Base editing reduces off-target effects'),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'lit-screening-records-list')).toContainText(
+      'Base editing reduces off-target effects',
+      { timeout: 10000 },
+    )
 
     // Exercise one real screening interaction: bulk-include both rows and
     // watch the PRISMA Included count update through the production panel.
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Include', exact: true }).click()
-    await expect(page.getByText('Included: 2')).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'lit-screening-select-all-checkbox').click()
+    await byTestId(page, 'lit-screening-bulk-include-button').click()
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('2', {
+      timeout: 10000,
+    })
   })
 })
 

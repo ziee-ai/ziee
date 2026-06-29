@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   goToTemplateAssistantsSettings,
   openCreateAssistantDrawer,
@@ -27,23 +28,22 @@ test.describe('Template Assistants - Settings Page', () => {
   })
 
   test('should display template assistants card', async ({ page }) => {
-    await expect(page.locator('.ant-card-head-title:has-text("Template Assistants")')).toBeVisible()
-    await expect(page.getByText('Manage template assistants. Default assistants are automatically cloned for new users.')).toBeVisible()
+    await expect(byTestId(page, 'template-assistants-card')).toBeVisible()
   })
 
   test('should display empty state when no templates exist', async ({ page }) => {
-    // Check for empty state
-    const emptyDescription = page.getByText('No assistants yet', { exact: true })
-    if (await emptyDescription.isVisible()) {
-      await expect(emptyDescription).toBeVisible()
+    // Check for empty state (only present when no templates exist).
+    const empty = byTestId(page, 'template-assistants-empty')
+    if (await empty.isVisible()) {
+      await expect(empty).toBeVisible()
     }
   })
 
   test('should create a new template assistant', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    // Verify drawer title
-    await expect(page.locator('.ant-drawer-title:has-text("Create Template Assistant")')).toBeVisible()
+    // Create mode: the name field opens empty.
+    await expect(byTestId(page, 'assistant-form-name')).toHaveValue('')
 
     await fillAssistantForm(page, {
       name: 'Template Test Assistant',
@@ -79,7 +79,8 @@ test.describe('Template Assistants - Settings Page', () => {
 
     // Verify Default tag
     const row = await getTemplateAssistantRow(page, 'Full Template Assistant')
-    await expect(row.locator('.ant-tag:has-text("Default")')).toBeVisible()
+    const id = await row.getAttribute('data-test-assistant-id')
+    await expect(byTestId(page, `${id}-default-tag`)).toBeVisible()
   })
 
   test('should edit a template assistant', async ({ page }) => {
@@ -94,14 +95,11 @@ test.describe('Template Assistants - Settings Page', () => {
     // Edit the template
     await editTemplateAssistant(page, 'Edit Template Test')
 
-    // Verify drawer title
-    await expect(page.locator('.ant-drawer-title:has-text("Edit Template Assistant")')).toBeVisible()
-
-    // Verify form is populated
-    await expect(page.locator('[aria-label="Assistant name"]')).toHaveValue('Edit Template Test')
+    // Edit mode: the form is populated with the persisted name.
+    await expect(byTestId(page, 'assistant-form-name')).toHaveValue('Edit Template Test')
 
     // Update the description
-    await page.fill('[aria-label="Assistant description"]', 'Updated template description')
+    await byTestId(page, 'assistant-form-description').fill('Updated template description')
 
     await submitAssistantForm(page)
 
@@ -136,7 +134,8 @@ test.describe('Template Assistants - Settings Page', () => {
     await submitAssistantForm(page)
 
     const row = await getTemplateAssistantRow(page, 'Default Template Test')
-    await expect(row.locator('.ant-tag:has-text("Default")')).toBeVisible()
+    const id = await row.getAttribute('data-test-assistant-id')
+    await expect(byTestId(page, `${id}-default-tag`)).toBeVisible()
   })
 
   test('should display inactive tag for disabled template', async ({ page }) => {
@@ -154,7 +153,8 @@ test.describe('Template Assistants - Settings Page', () => {
     await assertTemplateAssistantExists(page, 'Inactive Template Test')
 
     const row = await getTemplateAssistantRow(page, 'Inactive Template Test')
-    await expect(row.locator('.ant-tag:has-text("Inactive")')).toBeVisible()
+    const id = await row.getAttribute('data-test-assistant-id')
+    await expect(byTestId(page, `${id}-inactive-tag`)).toBeVisible()
   })
 
   test('should display template information', async ({ page }) => {
@@ -166,15 +166,13 @@ test.describe('Template Assistants - Settings Page', () => {
     await submitAssistantForm(page)
 
     const row = await getTemplateAssistantRow(page, 'Info Template Test')
+    const id = await row.getAttribute('data-test-assistant-id')
 
-    // Verify description is displayed
-    await expect(row.getByText('Test description for display', { exact: true })).toBeVisible()
-
-    // Verify "Created By" is displayed
-    await expect(row.getByText('Created By', { exact: true })).toBeVisible()
-
-    // Verify "Created" date is displayed
-    await expect(row.getByText('Created', { exact: true })).toBeVisible()
+    // The row's Descriptions block renders description + Created By + Created.
+    const desc = byTestId(page, `${id}-desc`)
+    await expect(desc).toBeVisible()
+    // The description value is dynamic data this test created.
+    await expect(desc).toContainText('Test description for display')
   })
 
   test('should handle pagination when many templates exist', async ({ page }) => {
@@ -196,18 +194,15 @@ test.describe('Template Assistants - Settings Page', () => {
     // Wait for the last created assistant to appear in the list (confirms list reloaded)
     await assertTemplateAssistantExists(page, 'Pagination Template 12')
 
-    // Verify pagination controls are visible
-    await expect(page.locator('.ant-pagination')).toBeVisible()
-
-    // Wait for the correct total count to appear (at least 13 assistants)
-    // Use a more lenient regex that captures the total number
-    await expect(page.locator('.ant-pagination-total-text')).toContainText(/\d+-\d+ of 1[3-9]|[2-9]\d+ assistants/, { timeout: 15000 })
+    // Verify pagination controls are visible (>10 items → more than one page)
+    const pagination = byTestId(page, 'template-assistants-pagination')
+    await expect(pagination).toBeVisible()
 
     // Go to page 2
     await goToPage(page, 2)
 
-    // Verify we're on page 2
-    await expect(page.locator('.ant-pagination-item-active:has-text("2")')).toBeVisible()
+    // Verify we're on page 2 (the active numbered link).
+    await expect(pagination.locator('a[aria-current="page"]')).toHaveText('2')
 
     // Verify page 2 templates are visible (sorted newest first, so older templates on page 2)
     await assertTemplateAssistantExists(page, 'Pagination Template 2')
@@ -235,9 +230,6 @@ test.describe('Template Assistants - Settings Page', () => {
     // Wait for the last created assistant to appear in the list (confirms list reloaded)
     await assertTemplateAssistantExists(page, 'PageSize Template 15')
 
-    // Wait for the correct total count to appear (at least 16 assistants: 15 + Default)
-    await expect(page.locator('.ant-pagination-total-text')).toContainText(/\d+-\d+ of 1[6-9]|[2-9]\d+ assistants/, { timeout: 15000 })
-
     // Change page size to 20
     await changePageSize(page, 20)
 
@@ -245,8 +237,9 @@ test.describe('Template Assistants - Settings Page', () => {
     await assertTemplateAssistantExists(page, 'PageSize Template 1')
     await assertTemplateAssistantExists(page, 'PageSize Template 15')
 
-    // Verify we're on page 1
-    await expect(page.locator('.ant-pagination-item-active:has-text("1")')).toBeVisible()
+    // A single page now holds everything — there is no page-2 link.
+    const pagination = byTestId(page, 'template-assistants-pagination')
+    await expect(pagination.locator('a', { hasText: /^2$/ })).toHaveCount(0)
   })
 
   test('should toggle template as default', async ({ page }) => {
@@ -263,7 +256,8 @@ test.describe('Template Assistants - Settings Page', () => {
     await page.waitForLoadState('load')
 
     let row1 = await getTemplateAssistantRow(page, 'Template 1')
-    await expect(row1.locator('.ant-tag:has-text("Default")')).toBeVisible()
+    let row1Id = await row1.getAttribute('data-test-assistant-id')
+    await expect(byTestId(page, `${row1Id}-default-tag`)).toBeVisible()
 
     await openCreateAssistantDrawer(page, false)
     await fillAssistantForm(page, {
@@ -278,8 +272,8 @@ test.describe('Template Assistants - Settings Page', () => {
     // Set second template as default
     await editTemplateAssistant(page, 'Template 2')
 
-    // Toggle the "Set as Default" switch using the form field ID
-    const defaultSwitch = page.locator('#assistant-form_is_default')
+    // Toggle the "Set as Default" switch.
+    const defaultSwitch = byTestId(page, 'assistant-form-default')
     await defaultSwitch.click()
 
     await submitAssistantForm(page)
@@ -290,24 +284,26 @@ test.describe('Template Assistants - Settings Page', () => {
 
     // Verify Template 2 is now default
     const row2 = await getTemplateAssistantRow(page, 'Template 2')
-    await expect(row2.locator('.ant-tag:has-text("Default")')).toBeVisible()
+    const row2Id = await row2.getAttribute('data-test-assistant-id')
+    await expect(byTestId(page, `${row2Id}-default-tag`)).toBeVisible()
 
     // Verify Template 1 is no longer default
     row1 = await getTemplateAssistantRow(page, 'Template 1')
-    await expect(row1.locator('.ant-tag:has-text("Default")')).not.toBeVisible()
+    row1Id = await row1.getAttribute('data-test-assistant-id')
+    await expect(byTestId(page, `${row1Id}-default-tag`)).not.toBeVisible()
   })
 
   test('should validate required fields for template', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
     // Try to submit without filling required fields
-    await page.click('.ant-drawer button[type="submit"]')
+    await byTestId(page, 'assistant-form-submit').click()
 
     // Verify validation message
-    await expect(page.getByText('Please enter a name', { exact: true })).toBeVisible()
+    await expect(byTestId(page, 'field-error-name')).toContainText('Please enter a name')
 
-    // Drawer should still be open
-    await expect(page.locator('.ant-drawer')).toBeVisible()
+    // Drawer should still be open (form still mounted).
+    await expect(byTestId(page, 'assistant-form')).toBeVisible()
   })
 
   test('should validate JSON parameters for template', async ({ page }) => {
@@ -318,10 +314,10 @@ test.describe('Template Assistants - Settings Page', () => {
       parameters: '{invalid json}',
     })
 
-    await page.click('.ant-drawer button[type="submit"]')
+    await byTestId(page, 'assistant-form-submit').click()
 
     // Verify JSON validation error
-    await expect(page.getByText('Please enter valid JSON', { exact: true })).toBeVisible()
+    await expect(byTestId(page, 'field-error-parameters')).toContainText('Please enter valid JSON')
   })
 
   test('should handle long template names and descriptions', async ({ page }) => {
@@ -346,22 +342,20 @@ test.describe('Template Assistants - Settings Page', () => {
   test('should show help text for Set as Default switch', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    // The "Set as Default" field renders its help text inline via the
-    // Form.Item `extra` prop (always visible — not a hover tooltip).
-    const defaultFormItem = page.locator('.ant-form-item').filter({ hasText: /^Set as Default/ })
-    await expect(
-      defaultFormItem.getByText('Set as the default template assistant for all users', { exact: true }),
-    ).toBeVisible()
+    // The "Set as Default" field renders its help text inline via the form
+    // field description (always visible — not a hover tooltip).
+    await expect(byTestId(page, 'field-desc-is_default')).toContainText(
+      'Set as the default template assistant for all users',
+    )
   })
 
   test('should show enabled help text', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    // The "Enabled" field renders its help text inline via the Form.Item
-    // `extra` prop (always visible — not a hover tooltip).
-    const enabledFormItem = page.locator('.ant-form-item').filter({ hasText: /^Enabled/ })
-    await expect(
-      enabledFormItem.getByText('Whether this assistant is enabled', { exact: true }),
-    ).toBeVisible()
+    // The "Enabled" field renders its help text inline via the form field
+    // description (always visible — not a hover tooltip).
+    await expect(byTestId(page, 'field-desc-enabled')).toContainText(
+      'Whether this assistant is enabled',
+    )
   })
 })

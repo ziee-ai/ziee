@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the Memory admin page must offer the right models in each picker.
@@ -84,41 +85,29 @@ test.describe('Memory — admin extraction-model picker', () => {
     })
 
     await page.goto(`${baseURL}/settings/memory-admin`)
-    await expect(page.getByText(/Default extraction model/)).toBeVisible()
+    await expect(byTestId(page, 'memory-extraction-model-combobox')).toBeVisible({
+      timeout: 30000,
+    })
 
-    const openDropdown = '.ant-select-dropdown:not(.ant-select-dropdown-hidden)'
-    // Assert on the option ELEMENT (not getByText().toBeVisible()) to
-    // sidestep antd-v6's virtual-scroll visibility quirk that other specs
-    // in this dir document; option-count assertions also auto-retry while
-    // the async model fetch settles.
-    const option = (dropdown: ReturnType<typeof page.locator>, name: string) =>
-      dropdown.locator('.ant-select-item-option').filter({ hasText: name })
+    // Assert on the option ELEMENT (role=option), filtered by the model name
+    // the test itself created (dynamic data). Count assertions auto-retry
+    // while the async model fetch settles.
+    const option = (name: string) =>
+      page.getByRole('option').filter({ hasText: name })
 
     // ── Extraction picker → chat model present, embedding model absent ──
-    await page
-      .locator('.ant-form-item:has-text("Default extraction model")')
-      .first()
-      .getByRole('combobox')
-      .click()
-    const extractionDropdown = page.locator(openDropdown)
-    await expect(extractionDropdown).toBeVisible()
-    await expect(option(extractionDropdown, chatName)).toHaveCount(1)
-    await expect(option(extractionDropdown, embedName)).toHaveCount(0)
+    await byTestId(page, 'memory-extraction-model-combobox').click()
+    await expect(option(chatName)).toHaveCount(1)
+    await expect(option(embedName)).toHaveCount(0)
 
-    // Close before opening the next picker; assert it actually closed so
-    // the `openDropdown` locator can't match two dropdowns at once.
+    // Close before opening the next picker; assert it actually closed so the
+    // option locator can't match two open popovers at once.
     await page.keyboard.press('Escape')
-    await expect(page.locator(openDropdown)).toHaveCount(0)
+    await expect(page.getByRole('option')).toHaveCount(0)
 
     // ── Embedding picker → embedding model present, chat model absent ──
-    await page
-      .locator('.ant-form-item:has-text("Embedding model")')
-      .first()
-      .getByRole('combobox')
-      .click()
-    const embeddingDropdown = page.locator(openDropdown)
-    await expect(embeddingDropdown).toBeVisible()
-    await expect(option(embeddingDropdown, embedName)).toHaveCount(1)
-    await expect(option(embeddingDropdown, chatName)).toHaveCount(0)
+    await byTestId(page, 'memory-semantic-model-combobox').click()
+    await expect(option(embedName)).toHaveCount(1)
+    await expect(option(chatName)).toHaveCount(0)
   })
 })

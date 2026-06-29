@@ -33,7 +33,7 @@ export function GroupMembersDrawer() {
         rowKey="id"
         data-testid="user-group-members-list"
         renderItem={user => (
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3" data-testid={`user-group-member-row-${user.username}`}>
             <User aria-hidden="true" className="mt-0.5 shrink-0" />
             <div className="flex flex-col gap-1">
               <span className="font-medium">{user.username}</span>

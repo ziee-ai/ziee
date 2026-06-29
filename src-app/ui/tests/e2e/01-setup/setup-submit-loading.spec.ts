@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the "Create Admin Account" submit button shows a loading state
@@ -31,19 +32,19 @@ test.describe('App Setup — submit button loading state', () => {
     })
 
     await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
 
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
+    await byTestId(page, 'app-setup-username-input').fill('admin')
+    await byTestId(page, 'app-setup-email-input').fill('admin@example.com')
+    await byTestId(page, 'app-setup-password-input').fill('password123')
+    await byTestId(page, 'app-setup-confirm-password-input').fill('password123')
 
-    const submit = page.getByRole('button', { name: /create admin account/i })
+    const submit = byTestId(page, 'app-setup-submit-button')
     await submit.click()
 
-    // While the (delayed) request is in flight the antd Button renders its
-    // loading spinner and is disabled.
-    await expect(submit.locator('.ant-btn-loading-icon')).toBeVisible({
+    // While the (delayed) request is in flight the kit Button enters its
+    // loading state: aria-busy + activation-blocked (disabled).
+    await expect(submit).toHaveAttribute('aria-busy', 'true', {
       timeout: 5000,
     })
     await expect(submit).toBeDisabled()

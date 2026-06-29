@@ -5,8 +5,10 @@ import {
   createModelViaAPI,
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
+import { byTestId } from '../testid'
 import {
   fillProjectForm,
+  getProjectCard,
   goToProjectsPage,
   openCreateProjectDrawer,
   submitProjectForm,
@@ -32,7 +34,7 @@ test.describe('Projects - default assistant/model selection', () => {
       'openai',
     )
     await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
-    await createModelViaAPI(
+    const modelId = await createModelViaAPI(
       apiURL,
       adminToken,
       providerId,
@@ -46,7 +48,7 @@ test.describe('Projects - default assistant/model selection', () => {
     await fillProjectForm(page, { name: 'Defaults Probe' })
     await submitProjectForm(page)
 
-    await page.locator('.ant-card', { hasText: 'Defaults Probe' }).click()
+    await getProjectCard(page, 'Defaults Probe').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
 
     const advanced = page.locator('[data-test-section="advanced"]')
@@ -56,14 +58,15 @@ test.describe('Projects - default assistant/model selection', () => {
       advanced.locator('[data-test-default-model-set="false"]'),
     ).toBeVisible()
 
-    // Open the "Default model" Select and choose the seeded model.
-    await advanced
-      .locator('[data-test-default-model-set] .ant-select')
-      .click()
-    await page.getByRole('option', { name: 'GPT-4o Mini' }).click()
+    // Open the "Default model" combobox and choose the seeded model
+    // (kit Combobox derives option testids as `<testid>-opt-<value>`).
+    await byTestId(advanced, 'project-default-model-combobox').click()
+    await byTestId(page, `project-default-model-combobox-opt-${modelId}`).click()
 
     // Persisted: success toast + the status flag flips to 'true'.
-    await expect(page.getByText('Default model updated')).toBeVisible()
+    await expect(
+      page.locator('[data-sonner-toast][data-type="success"]').first(),
+    ).toBeVisible()
     await expect(
       advanced.locator('[data-test-default-model-set="true"]'),
     ).toBeVisible()

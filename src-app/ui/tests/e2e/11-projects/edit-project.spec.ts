@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   assertProjectExists,
   assertSuccessMessage,
@@ -33,16 +34,22 @@ test.describe('Projects - Edit project', () => {
     // rewrite replaced the Dropdown menu with inline icon buttons).
     await clickCardAction(page, 'Edit Target', 'Edit')
 
-    // The drawer should be in Edit mode with prefilled values.
+    // The drawer should be in Edit mode with prefilled values (the
+    // prefilled name/description prove edit-mode hydration).
+    await expect(byTestId(page, 'project-form-name-input')).toHaveValue(
+      'Edit Target',
+    )
     await expect(
-      page.locator('.ant-drawer.ant-drawer-open').getByText(/edit project/i),
-    ).toBeVisible()
-    await expect(page.getByLabel('Name')).toHaveValue('Edit Target')
-    await expect(page.getByLabel('Description')).toHaveValue('Original')
+      byTestId(page, 'project-form-description-textarea'),
+    ).toHaveValue('Original')
 
     // Update + save.
-    await page.getByLabel('Description').fill('Updated description')
-    await page.getByLabel('Instructions').fill('Speak in haiku.')
+    await byTestId(page, 'project-form-description-textarea').fill(
+      'Updated description',
+    )
+    await byTestId(page, 'project-form-instructions-textarea').fill(
+      'Speak in haiku.',
+    )
     await submitProjectForm(page)
     await assertSuccessMessage(page, /project updated/i)
   })

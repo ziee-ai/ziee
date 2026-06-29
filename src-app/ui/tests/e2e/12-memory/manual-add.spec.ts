@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -38,48 +39,30 @@ test.describe('Memory — manual add', () => {
     await login(page, baseURL, username, 'password123')
 
     await page.goto(`${baseURL}/settings/memory`)
-    // After the settings-page consolidation, "My memories" is a Card
-    // section title (not a Typography heading), so anchor on the
-    // section's unique CTA instead.
-    await expect(
-      page.getByRole('button', { name: /Add memory/ }),
-    ).toBeVisible()
+    // Anchor on the section's unique CTA.
+    await expect(byTestId(page, 'memory-add-btn')).toBeVisible()
 
     // Add
-    await page.getByRole('button', { name: /Add memory/ }).click()
+    await byTestId(page, 'memory-add-btn').click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
-    await dialog.getByLabel('Content').fill('User prefers TypeScript over JavaScript')
-    await dialog.getByRole('button', { name: /^Add$/ }).click()
-    await expect(page.getByText('Memory added')).toBeVisible({ timeout: 5000 })
+    await byTestId(dialog, 'memory-create-content-input').fill(
+      'User prefers TypeScript over JavaScript',
+    )
+    await byTestId(page, 'memory-create-submit-btn').click()
 
-    // List row appears
-    await expect(
-      page.getByText('User prefers TypeScript over JavaScript'),
-    ).toBeVisible()
-
-    // Delete — memories render as divs with `data-memory-id`, NOT as
-    // table rows. Find the memory's wrapper by content, then click the
-    // delete button by its aria-label prefix. After clicking, the
-    // Popconfirm opens AND the trash icon's tooltip "Delete memory"
-    // also lingers (it's a portaled overlay at body-level, so scoping
-    // to the Popconfirm doesn't escape it). `force: true` bypasses the
-    // pointer-intercept check on the OK button — standard antd
-    // tooltip-over-popconfirm workaround.
-    await page
+    // List row appears (content is dynamic data the test typed).
+    const row = page
       .locator('[data-memory-id]')
-      .filter({ hasText: 'TypeScript' })
-      .getByRole('button', { name: /Delete memory/ })
-      .click()
-    // dispatchEvent('click') sends a synthetic click directly to the
-    // button regardless of viewport / overlays — `force: true` needs
-    // the element in viewport, and `click()` blocks on the tooltip
-    // intercept. The Popconfirm's onConfirm fires identically.
-    await page
-      .locator('.ant-popconfirm')
-      .getByRole('button', { name: 'Delete', exact: true })
-      .dispatchEvent('click')
-    await expect(page.getByText('Memory deleted')).toBeVisible({ timeout: 5000 })
+      .filter({ hasText: 'User prefers TypeScript over JavaScript' })
+    await expect(row).toBeVisible({ timeout: 5000 })
+
+    // Delete — memories render as divs with `data-memory-id`; the per-row
+    // delete button + its confirm carry derived testids keyed on the id.
+    const id = await row.getAttribute('data-memory-id')
+    await byTestId(row, `memory-row-delete-btn-${id}`).click()
+    await byTestId(page, `memory-row-delete-confirm-${id}-confirm`).click()
+    await expect(row).toHaveCount(0, { timeout: 5000 })
   })
 
   test('edit a memory via the Edit drawer', async ({ page, testInfra }) => {
@@ -97,24 +80,25 @@ test.describe('Memory — manual add', () => {
     expect(created.status()).toBe(201)
 
     await page.goto(`${baseURL}/settings/memory`)
-    await expect(page.getByText(original)).toBeVisible({ timeout: 15000 })
+    const row = page.locator('[data-memory-id]').filter({ hasText: original })
+    await expect(row).toBeVisible({ timeout: 15000 })
 
     // Open the row's Edit drawer, change the Content, save.
-    await page
-      .locator('[data-memory-id]')
-      .filter({ hasText: original })
-      .getByRole('button', { name: 'Edit memory' })
-      .click()
-    const drawer = page.getByRole('dialog', { name: 'Edit memory' })
-    await expect(drawer).toBeVisible()
+    const id = await row.getAttribute('data-memory-id')
+    await byTestId(row, `memory-row-edit-btn-${id}`).click()
+    const drawer = page.getByRole('dialog')
+    await expect(byTestId(drawer, 'memory-edit-form')).toBeVisible()
     const updated = `${original}_UPDATED`
-    await drawer.getByLabel('Content').fill(updated)
-    await drawer.getByRole('button', { name: 'Save' }).click()
+    await byTestId(drawer, 'memory-edit-content-input').fill(updated)
+    await byTestId(page, 'memory-edit-submit-btn').click()
 
-    await expect(page.getByText('Memory updated')).toBeVisible({ timeout: 5000 })
     // The list reflects the edited content (and no longer the original).
-    await expect(page.getByText(updated)).toBeVisible()
-    await expect(page.getByText(original, { exact: true })).toHaveCount(0)
+    await expect(
+      page.locator('[data-memory-id]').filter({ hasText: updated }),
+    ).toBeVisible({ timeout: 5000 })
+    await expect(
+      page.locator('[data-memory-id]').filter({ hasText: original }),
+    ).toHaveCount(0)
   })
 
   test('exports memories as JSON and CSV', async ({ page, testInfra }) => {
@@ -129,21 +113,21 @@ test.describe('Memory — manual add', () => {
     expect(created.status()).toBe(201)
 
     await page.goto(`${baseURL}/settings/memory`)
-    await expect(page.getByText('Exportable memory row')).toBeVisible({
-      timeout: 15000,
-    })
+    await expect(
+      page.locator('[data-memory-id]').filter({ hasText: 'Exportable memory row' }),
+    ).toBeVisible({ timeout: 15000 })
 
     // Export as JSON → a ziee-memories-*.json download.
     let download = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Export' }).click()
-    await page.getByText('Export as JSON').click()
+    await byTestId(page, 'memory-export-btn').click()
+    await byTestId(page, 'memory-export-dropdown-item-json').click()
     const jsonFile = await download
     expect(jsonFile.suggestedFilename()).toMatch(/^ziee-memories-.*\.json$/)
 
     // Export as CSV → a ziee-memories-*.csv download.
     download = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Export' }).click()
-    await page.getByText('Export as CSV').click()
+    await byTestId(page, 'memory-export-btn').click()
+    await byTestId(page, 'memory-export-dropdown-item-csv').click()
     const csvFile = await download
     expect(csvFile.suggestedFilename()).toMatch(/^ziee-memories-.*\.csv$/)
   })

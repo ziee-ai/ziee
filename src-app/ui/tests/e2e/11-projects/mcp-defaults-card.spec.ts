@@ -1,7 +1,9 @@
 import { test, expect } from '../../fixtures/test-context'
 import { getAdminToken, loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   fillProjectForm,
+  getProjectCard,
   goToProjectsPage,
   openCreateProjectDrawer,
   submitProjectForm,
@@ -23,7 +25,7 @@ test.describe('Projects - MCP Defaults card', () => {
     await openCreateProjectDrawer(page)
     await fillProjectForm(page, { name })
     await submitProjectForm(page)
-    await page.locator('.ant-card', { hasText: name }).click()
+    await getProjectCard(page, name).click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     const url = new URL(page.url())
     return url.pathname.split('/').pop()!
@@ -45,11 +47,13 @@ test.describe('Projects - MCP Defaults card', () => {
     await expect(
       mcp.locator('[data-test-mcp-approval-mode="manual_approve"]'),
     ).toBeVisible()
-    // Empty state copy from Empty component.
-    await expect(mcp.getByText(/no per-server rules/i)).toBeVisible()
-    // No "Auto-approved" / "Disabled" headings.
-    await expect(mcp.getByText('Auto-approved', { exact: true })).toHaveCount(0)
-    await expect(mcp.getByText('Disabled', { exact: true })).toHaveCount(0)
+    // Neutral empty state from the Empty component.
+    await expect(byTestId(mcp, 'mcp-project-empty')).toBeVisible()
+    // No per-server rule tags render at all (so neither the
+    // Auto-approved nor the Disabled section appears).
+    await expect(
+      mcp.locator('[data-testid^="mcp-project-rule-"]'),
+    ).toHaveCount(0)
   })
 
   test('renders per-server lists with display name + All-tools / per-tool tags', async ({
@@ -132,18 +136,18 @@ test.describe('Projects - MCP Defaults card', () => {
       mcp.locator('[data-test-mcp-approval-mode="auto_approve"]'),
     ).toBeVisible()
 
-    // Auto-approved heading shows; Disabled heading hidden.
-    await expect(mcp.getByText('Auto-approved', { exact: true })).toBeVisible()
-    await expect(mcp.getByText('Disabled', { exact: true })).toHaveCount(0)
-
-    // Both servers' display names appear in the body.
-    await expect(mcp.getByText('Web Fetch', { exact: true })).toBeVisible()
-    await expect(mcp.getByText('Web Search', { exact: true })).toBeVisible()
-
-    // Per-tool entry shows the tool name as a tag; whole-server entry
-    // shows the "All tools" tag.
-    await expect(mcp.getByText('fetch', { exact: true })).toBeVisible()
-    await expect(mcp.getByText('All tools', { exact: true })).toBeVisible()
+    // Both servers render under the (info-tone) Auto-approved list,
+    // keyed by server id: fetch as a per-tool tag, search as an
+    // "All tools" tag. No warning-tone (Disabled) rules render.
+    await expect(
+      byTestId(mcp, `mcp-project-rule-info-${fetchId}-fetch`),
+    ).toBeVisible()
+    await expect(
+      byTestId(mcp, `mcp-project-rule-info-${searchId}`),
+    ).toBeVisible()
+    await expect(
+      mcp.locator('[data-testid^="mcp-project-rule-warning-"]'),
+    ).toHaveCount(0)
   })
 
   test('fully-disabled server suppresses its stale auto-approve entry', async ({
@@ -214,16 +218,24 @@ test.describe('Projects - MCP Defaults card', () => {
     const mcp = page.locator('[data-test-section="mcp-defaults"]')
     await expect(mcp).toBeVisible()
 
-    // Disabled heading shows; Auto-approved heading hidden because
-    // the only auto-approve rule was for a fully-disabled server.
-    await expect(mcp.getByText('Disabled', { exact: true })).toBeVisible()
-    await expect(mcp.getByText('Auto-approved', { exact: true })).toHaveCount(0)
-    // The stale tool tag (some_tool) must NOT appear anywhere in the panel.
-    await expect(mcp.getByText('some_tool', { exact: true })).toHaveCount(0)
-    // The server appears exactly ONCE (under Disabled), not twice.
-    await expect(mcp.getByText('Conflicted Server', { exact: true })).toHaveCount(1)
-    // All-tools tag appears (the disabled rule's tools: [] = whole server).
-    await expect(mcp.getByText('All tools', { exact: true })).toBeVisible()
+    // Disabled rule (warning tone, whole-server "All tools") shows for
+    // the conflicted server.
+    await expect(
+      byTestId(mcp, `mcp-project-rule-warning-${sid}`),
+    ).toBeVisible()
+    // No auto-approved (info-tone) rules render — the only auto-approve
+    // entry was for a fully-disabled server and is filtered out.
+    await expect(
+      mcp.locator('[data-testid^="mcp-project-rule-info-"]'),
+    ).toHaveCount(0)
+    // The stale tool tag (some_tool) must NOT appear anywhere.
+    await expect(
+      byTestId(mcp, `mcp-project-rule-info-${sid}-some_tool`),
+    ).toHaveCount(0)
+    // The server renders exactly ONCE (a single Disabled rule), not twice.
+    await expect(
+      mcp.locator('[data-testid^="mcp-project-rule-warning-"]'),
+    ).toHaveCount(1)
   })
 
   // Regression for the modal state-bleed bug: McpComposer.store
@@ -276,16 +288,12 @@ test.describe('Projects - MCP Defaults card', () => {
     const projectId = await createProject(page, 'MCP State-Bleed')
 
     const openModal = async () => {
-      await page.getByRole('button', { name: 'Edit MCP defaults' }).click()
-      await expect(page.getByText('MCP Defaults for Project')).toBeVisible()
+      await byTestId(page, 'mcp-project-edit-btn').click()
+      await expect(byTestId(page, 'mcp-config-modal')).toBeVisible()
     }
-    // The per-server toggle lives in the Collapse HEADER (the per-tool
-    // auto-approve switches are in the collapsed body), so scope to the
-    // header to avoid matching those.
+    // The per-server toggle is the modal's server switch, keyed by id.
     const serverSwitch = () =>
-      page
-        .locator('.ant-collapse-header', { hasText: 'Bleed Test Server' })
-        .getByRole('switch')
+      byTestId(page, `mcp-config-server-switch-${sid}`)
 
     // PHASE 1: open modal — the server starts ENABLED (it's in the default
     // group, fresh project has no disabled_servers) — toggle OFF, Save & Close.
@@ -298,7 +306,7 @@ test.describe('Projects - MCP Defaults card', () => {
     )
     await serverSwitch().click()
     await expect(serverSwitch()).not.toBeChecked()
-    await page.getByRole('button', { name: 'Save & Close' }).click()
+    await byTestId(page, 'mcp-config-close-btn').click()
     await savePut
 
     // PHASE 2: reload, reopen the modal — the switch must read the persisted

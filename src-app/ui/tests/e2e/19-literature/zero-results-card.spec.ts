@@ -6,6 +6,7 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import { seedLiteratureResult, type LitStructured } from './fixtures/mock-literature-result'
+import { byTestId } from '../testid'
 
 // Deterministic zero-results coverage for LiteratureToolResultCard
 // (LiteratureToolResultCard.tsx:67-73). When a `literature_search` tool_result
@@ -41,13 +42,12 @@ test.describe('Literature inline card — zero results', () => {
     await seedLiteratureResult(page, testInfra.baseURL, empty)
 
     // The inline card itself renders (header + zero-results body).
-    await expect(page.getByText('Literature search').first()).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-tool-result-card')).toBeVisible({ timeout: 10000 })
     // The zero-results branch (records.length === 0, no degraded sources).
-    await expect(page.getByText(/No records returned for this query\./)).toBeVisible()
+    await expect(byTestId(page, 'lit-tool-result-empty')).toBeVisible()
+    await expect(byTestId(page, 'lit-tool-result-empty')).toContainText('for this query')
 
     // The records-list path must NOT render: no "Open in screening" button.
-    await expect(
-      page.getByRole('button', { name: /Open in screening/ }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'lit-tool-result-open-button')).toHaveCount(0)
   })
 })

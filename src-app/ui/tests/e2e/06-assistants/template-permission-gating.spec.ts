@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -27,12 +28,10 @@ test.describe('Assistant Templates — permission gating', () => {
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
     await page.goto(`${baseURL}/settings/assistant-templates`)
-    await expect(
-      page.getByRole('heading', { name: 'Assistant Templates' }),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(
-      page.getByRole('button', { name: 'Create assistant' }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'template-assistants-card')).toBeVisible({
+      timeout: 30000,
+    })
+    await expect(byTestId(page, 'template-assistants-create-btn')).toBeVisible()
 
     // Read-only template user: page renders, create button is gated out.
     const uname = `tmplro_${Date.now().toString(36)}`
@@ -47,12 +46,10 @@ test.describe('Assistant Templates — permission gating', () => {
     await clearAuthState(page)
     await login(page, baseURL, uname, 'password123')
     await page.goto(`${baseURL}/settings/assistant-templates`)
-    await expect(
-      page.getByRole('heading', { name: 'Assistant Templates' }),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(
-      page.getByRole('button', { name: 'Create assistant' }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'template-assistants-card')).toBeVisible({
+      timeout: 30000,
+    })
+    await expect(byTestId(page, 'template-assistants-create-btn')).toHaveCount(0)
   })
 
   test('user without template read is denied the templates page (route gate)', async ({
@@ -84,19 +81,12 @@ test.describe('Assistant Templates — permission gating', () => {
     await page.goto(`${baseURL}/settings/assistant-templates`)
 
     // The inline 403 panel is shown...
-    await expect(
-      page.getByText('Not authorized', { exact: true }),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(
-      page.getByText(/don't have permission to view/i),
-    ).toBeVisible()
+    const forbidden = byTestId(page, 'settings-forbidden-result')
+    await expect(forbidden).toBeVisible({ timeout: 30000 })
+    await expect(forbidden).toContainText(/don't have permission to view/i)
 
     // ...and the templates surface itself never renders for this user.
-    await expect(
-      page.getByRole('heading', { name: 'Assistant Templates' }),
-    ).toHaveCount(0)
-    await expect(
-      page.getByRole('button', { name: 'Create assistant' }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'template-assistants-card')).toHaveCount(0)
+    await expect(byTestId(page, 'template-assistants-create-btn')).toHaveCount(0)
   })
 })

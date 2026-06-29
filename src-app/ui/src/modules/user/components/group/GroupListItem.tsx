@@ -128,7 +128,7 @@ export function GroupListItem({
 
   return (
     <Card data-testid={`user-group-card-${group.id}`}>
-      <div className="flex items-start gap-3 flex-wrap">
+      <div className="flex items-start gap-3 flex-wrap" data-testid={`user-group-row-${group.name}`}>
         {/* Group Info */}
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -138,7 +138,7 @@ export function GroupListItem({
                 <Text className="font-medium">{group.name}</Text>
                 {group.is_system && <Tag tone="warning" data-testid={`user-group-system-tag-${group.id}`}>System</Tag>}
                 <Badge color={group.is_active ? 'green' : 'red'} data-testid={`user-group-active-badge-${group.id}`} />
-                <Text>{group.is_active ? 'Active' : 'Inactive'}</Text>
+                <Text data-testid={`user-group-status-text-${group.id}`}>{group.is_active ? 'Active' : 'Inactive'}</Text>
               </Flex>
             </div>
             <div className={'flex gap-1 items-center justify-end'}>

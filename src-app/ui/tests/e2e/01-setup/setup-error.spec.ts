@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 
 /**
  * E2E — SetupPage surfaces a server-side error.
@@ -32,17 +33,18 @@ test.describe('App Setup — server error', () => {
     })
 
     await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
 
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin/i }).click()
+    await byTestId(page, 'app-setup-username-input').fill('admin')
+    await byTestId(page, 'app-setup-email-input').fill('admin@example.com')
+    await byTestId(page, 'app-setup-password-input').fill('password123')
+    await byTestId(page, 'app-setup-confirm-password-input').fill('password123')
+    await byTestId(page, 'app-setup-submit-button').click()
 
     // The upstream message bubbles up into the page-level Alert.
-    await expect(page.getByText('Admin already exists')).toBeVisible({
-      timeout: 30000,
-    })
+    await expect(byTestId(page, 'app-setup-error-alert')).toContainText(
+      'Admin already exists',
+      { timeout: 30000 },
+    )
   })
 })

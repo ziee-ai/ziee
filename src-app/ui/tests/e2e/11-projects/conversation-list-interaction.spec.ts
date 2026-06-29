@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — project detail-page conversation LIST interaction.
@@ -57,9 +58,9 @@ test.describe('Projects — conversation list interaction', () => {
     await expect(section).toBeVisible({ timeout: 30000 })
     // No longer the empty state — the seeded conversation card appears.
     await expect(
-      section.getByText(/no conversations in this project yet/i),
+      byTestId(section, 'project-conversations-empty'),
     ).toHaveCount(0)
-    const card = section.locator('.ant-card').filter({ hasText: convTitle })
+    const card = byTestId(section, `chat-conversation-card-${conversationId}`)
     await expect(card).toBeVisible({ timeout: 15000 })
 
     // Clicking the card navigates into that conversation's chat.

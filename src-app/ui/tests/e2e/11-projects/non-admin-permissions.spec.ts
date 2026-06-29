@@ -70,13 +70,13 @@ test.describe('Projects — non-admin permission gating on ProjectCard', () => {
 
     // But every mutating action button is gated away — none render.
     await expect(
-      card.getByRole('button', { name: `Edit ${projectName}` }),
+      card.locator('[data-testid^="project-card-edit-button-"]'),
     ).toHaveCount(0)
     await expect(
-      card.getByRole('button', { name: `Duplicate ${projectName}` }),
+      card.locator('[data-testid^="project-card-duplicate-button-"]'),
     ).toHaveCount(0)
     await expect(
-      card.getByRole('button', { name: `Delete ${projectName}` }),
+      card.locator('[data-testid^="project-card-delete-button-"]'),
     ).toHaveCount(0)
   })
 
@@ -99,13 +99,13 @@ test.describe('Projects — non-admin permission gating on ProjectCard', () => {
 
     // Admin holds the `*` wildcard → all three gated actions render.
     await expect(
-      card.getByRole('button', { name: `Edit ${projectName}` }),
+      card.locator('[data-testid^="project-card-edit-button-"]'),
     ).toBeVisible()
     await expect(
-      card.getByRole('button', { name: `Duplicate ${projectName}` }),
+      card.locator('[data-testid^="project-card-duplicate-button-"]'),
     ).toBeVisible()
     await expect(
-      card.getByRole('button', { name: `Delete ${projectName}` }),
+      card.locator('[data-testid^="project-card-delete-button-"]'),
     ).toBeVisible()
   })
 })

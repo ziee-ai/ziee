@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — RebuildStatusSection live progress polling on /settings/memory-admin.
@@ -44,19 +45,20 @@ test.describe('Memory — rebuild status polling', () => {
     await page.goto(`${baseURL}/settings/memory-admin`)
 
     // The progress card renders because a rebuild is in flight.
-    await expect(page.getByText('Re-embedding memories')).toBeVisible({
+    await expect(byTestId(page, 'memory-rebuild-embedding-card')).toBeVisible({
       timeout: 15000,
     })
-    // First poll snapshot.
-    await expect(page.getByText('10 memories remaining.')).toBeVisible({
+    const remaining = byTestId(page, 'memory-rebuild-embedding-remaining')
+    // First poll snapshot. The count is dynamic data driven by our mock.
+    await expect(remaining).toContainText('10 memories remaining.', {
       timeout: 10000,
     })
     // Polling (every 2s) refetches the decreasing count → the text updates
     // without a manual reload.
-    await expect(page.getByText('6 memories remaining.')).toBeVisible({
+    await expect(remaining).toContainText('6 memories remaining.', {
       timeout: 10000,
     })
-    await expect(page.getByText('2 memories remaining.')).toBeVisible({
+    await expect(remaining).toContainText('2 memories remaining.', {
       timeout: 10000,
     })
   })

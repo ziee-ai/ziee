@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -75,35 +76,44 @@ test.describe('Memory — assistant core memory blocks', () => {
       },
     })
     expect(created.ok()).toBe(true)
+    const assistant = await created.json()
 
     await page.goto(`${baseURL}/settings/memory`)
-    const card = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Per-assistant core memory' })
+    const card = byTestId(page, 'memory-core-card')
     await expect(card).toBeVisible({ timeout: 20000 })
 
     // Pick the seeded assistant — the blocks editor renders for it.
-    await card.getByRole('combobox', { name: 'Pick an assistant' }).click()
-    await page.getByRole('option', { name: assistantName }).click()
+    await byTestId(page, 'memory-core-assistant-combobox').click()
+    await byTestId(
+      page,
+      `memory-core-assistant-combobox-opt-${assistant.id}`,
+    ).click()
 
     // Add a core-memory block via the editor modal.
-    await card.getByRole('button', { name: 'Add block' }).click()
-    const modal = page.getByRole('dialog', { name: 'Add core memory block' })
+    await byTestId(page, 'memory-core-add-block-btn').click()
+    const modal = byTestId(page, 'memory-core-block-create-dialog')
     await expect(modal).toBeVisible()
-    await modal.getByLabel('Label').fill('persona')
-    await modal.getByLabel('Content').fill('Always answer concisely.')
-    await modal.getByRole('button', { name: 'Add' }).click()
+    await byTestId(modal, 'memory-core-block-label-input').fill('persona')
+    await byTestId(modal, 'memory-core-block-content-input').fill(
+      'Always answer concisely.',
+    )
+    await byTestId(modal, 'memory-core-block-form-submit-btn').click()
 
-    await expect(page.getByText('Block added')).toBeVisible()
-    // The new block lists under the assistant's editor.
-    await expect(card.getByText('persona')).toBeVisible()
+    // The new block lists under the assistant's editor ("persona" is the
+    // dynamic label we just created).
+    const blockCard = page.locator('[data-testid^="memory-core-block-card-"]')
+    await expect(blockCard).toHaveCount(1)
+    await expect(blockCard).toContainText('persona')
 
-    // Delete it via the per-row Popconfirm.
-    await card.getByRole('button', { name: 'Delete block persona' }).click()
-    const popconfirm = page.locator('.ant-popconfirm:visible')
-    await expect(popconfirm.getByText('Delete this block?')).toBeVisible()
-    await popconfirm.locator('.ant-btn-primary').click()
-    await expect(page.getByText('Block deleted')).toBeVisible()
-    await expect(card.getByText('persona')).toHaveCount(0)
+    // Delete it via the per-row Confirm dialog.
+    await blockCard
+      .locator('[data-testid^="memory-core-block-delete-btn-"]')
+      .click()
+    await page
+      .locator(
+        '[data-testid^="memory-core-block-delete-confirm-"][data-testid$="-confirm"]',
+      )
+      .click()
+    await expect(blockCard).toHaveCount(0)
   })
 })

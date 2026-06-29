@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -10,13 +11,12 @@ import {
 /**
  * E2E — MyMemoriesSection export dropdown (audit gap e4ddd68f3791).
  *
- * MyMemoriesSection.tsx:87-101 renders an antd `<Dropdown>` "Export"
- * button with two menu items — "Export as JSON" and "Export as CSV" —
- * each calling the client-side `exportMemories(memories, fmt)` helper
- * (MyMemoriesSection.tsx:334) which builds a Blob and triggers a
- * `ziee-memories-<date>.{json,csv}` download. No prior spec drove that
- * dropdown; this seeds a memory, exports each format through the real
- * UI, and asserts the downloaded bytes are correctly shaped (parseable
+ * MyMemoriesSection renders a kit `<Dropdown>` "Export" button with two
+ * menu items — "Export as JSON" and "Export as CSV" — each calling the
+ * client-side `exportMemories(memories, fmt)` helper which builds a Blob
+ * and triggers a `ziee-memories-<date>.{json,csv}` download. No prior spec
+ * drove that dropdown; this seeds a memory, exports each format through the
+ * real UI, and asserts the downloaded bytes are correctly shaped (parseable
  * JSON containing the memory; CSV with the documented header row + the
  * memory content), proving the real export output — nothing mocked.
  */
@@ -73,14 +73,15 @@ test.describe('Memory — My memories export dropdown', () => {
       data: { content, kind: 'fact' },
     })
     expect(res.status()).toBe(201)
+    const memoryId = (await res.json()).id as string
 
     await page.goto(`${baseURL}/settings/memory`)
-    await expect(page.getByText(content)).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator(`[data-memory-id="${memoryId}"]`)).toBeVisible({ timeout: 10_000 })
 
     // --- Export as JSON ---
     const json = await downloadText(page, async () => {
-      await page.getByRole('button', { name: 'Export' }).click()
-      await page.getByRole('menuitem', { name: 'Export as JSON' }).click()
+      await byTestId(page, 'memory-export-btn').click()
+      await byTestId(page, 'memory-export-dropdown-item-json').click()
     })
     expect(json.filename).toMatch(/^ziee-memories-\d{4}-\d{2}-\d{2}\.json$/)
     const parsed = JSON.parse(json.body) as Array<{ content: string }>
@@ -89,12 +90,12 @@ test.describe('Memory — My memories export dropdown', () => {
 
     // --- Export as CSV ---
     const csv = await downloadText(page, async () => {
-      await page.getByRole('button', { name: 'Export' }).click()
-      await page.getByRole('menuitem', { name: 'Export as CSV' }).click()
+      await byTestId(page, 'memory-export-btn').click()
+      await byTestId(page, 'memory-export-dropdown-item-csv').click()
     })
     expect(csv.filename).toMatch(/^ziee-memories-\d{4}-\d{2}-\d{2}\.csv$/)
     const lines = csv.body.split('\n')
-    // Documented header row (MyMemoriesSection.tsx:341-351).
+    // Documented header row.
     expect(lines[0]).toBe(
       'id,content,kind,source,importance,confidence,recall_count,created_at,updated_at',
     )

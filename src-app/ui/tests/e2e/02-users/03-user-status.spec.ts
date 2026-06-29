@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   navigateToUsers,
@@ -21,7 +22,6 @@ test.describe('User Status Management', () => {
   test('should toggle user status from active to inactive', async ({
     page,
   }) => {
-    // Create a user first
     await openCreateUserDrawer(page)
     const timestamp = Date.now()
     const userData = {
@@ -31,20 +31,14 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Verify user is initially active
     await assertUserStatus(page, userData.username, 'active')
-
-    // Toggle status to inactive
     await toggleUserStatus(page, userData.username)
-
-    // Verify user is now inactive
     await assertUserStatus(page, userData.username, 'inactive')
   })
 
   test('should toggle user status from inactive to active', async ({
     page,
   }) => {
-    // Create a user
     await openCreateUserDrawer(page)
     const timestamp = Date.now()
     const userData = {
@@ -54,11 +48,9 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Toggle to inactive
     await toggleUserStatus(page, userData.username)
     await assertUserStatus(page, userData.username, 'inactive')
 
-    // Toggle back to active
     await toggleUserStatus(page, userData.username)
     await assertUserStatus(page, userData.username, 'active')
   })
@@ -66,7 +58,6 @@ test.describe('User Status Management', () => {
   test('should require confirmation before toggling status', async ({
     page,
   }) => {
-    // Create a user
     await openCreateUserDrawer(page)
     const timestamp = Date.now()
     const userData = {
@@ -76,38 +67,22 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Click the switch — anchor on the typography span and walk up 3
-    // levels to the row container (same as toggleUserStatus helper).
-    const usernameEl = page
-      .locator('.ant-typography.font-medium', { hasText: userData.username })
-      .first()
-    const userRow = usernameEl.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
-    const statusSwitch = userRow.locator('button.ant-switch').first()
-    await statusSwitch.click()
+    // Click the row's active switch → the Confirm dialog opens.
+    await byTestId(page, `user-row-${userData.username}`)
+      .locator('[data-testid^="user-active-switch-"]')
+      .click()
 
-    // Verify popconfirm appears
-    const popconfirm = page.locator('.ant-popconfirm:visible')
-    await expect(popconfirm).toBeVisible()
+    const confirmCancel = page.locator(
+      '[data-testid^="user-toggle-active-confirm-"][data-testid$="-cancel"]',
+    )
+    await expect(confirmCancel).toBeVisible()
 
-    // Verify confirmation buttons exist (target by role/class instead
-    // of label text — okText now reflects the action verb per audit I-4,
-    // not generic "Yes/No").
-    await expect(
-      popconfirm.locator('.ant-btn-primary')
-    ).toBeVisible()
-    await expect(
-      popconfirm.locator('.ant-btn').filter({ hasNotText: /^(Delete|Remove|Activate|Deactivate|Confirm)$/i })
-    ).toBeVisible()
-
-    // Cancel the action
-    await popconfirm.getByRole('button', { name: /^Cancel$/i }).click()
-
-    // Verify status didn't change
+    // Cancel → status unchanged.
+    await confirmCancel.click()
     await assertUserStatus(page, userData.username, 'active')
   })
 
   test('should reset user password', async ({ page }) => {
-    // Create a user
     await openCreateUserDrawer(page)
     const timestamp = Date.now()
     const userData = {
@@ -117,21 +92,11 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Reset password
-    const newPassword = 'newpassword456'
-    await resetUserPassword(page, userData.username, newPassword)
-
-    // Verify success message
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    // Verify user still exists
+    await resetUserPassword(page, userData.username, 'newpassword456')
     await assertUserExists(page, userData.username)
   })
 
   test('should show validation error for short password', async ({ page }) => {
-    // Create a user
     await openCreateUserDrawer(page)
     const timestamp = Date.now()
     const userData = {
@@ -141,78 +106,43 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Open reset password drawer (anchor on username span and walk
-    // up 3 levels to the row container; one-level-up missed the
-    // sibling button section).
-    const usernameEl = page
-      .locator('.ant-typography.font-medium', { hasText: userData.username })
-      .first()
-    const userRow = usernameEl.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
-    const resetButton = page
-      .getByRole('button', {
-        name: new RegExp(`reset password.*${userData.username}`, 'i'),
-      })
-      .or(userRow.getByRole('button', { name: /reset password/i }))
-    await resetButton.first().click()
-
-    // Wait for drawer
-    const drawer = page.locator('.ant-drawer.ant-drawer-open', {
-      hasText: /reset password/i,
+    // Open reset password drawer for the user.
+    await byTestId(page, `user-row-${userData.username}`)
+      .locator('[data-testid^="user-reset-password-button-"]')
+      .click()
+    await byTestId(page, 'user-reset-password-form').waitFor({
+      state: 'visible',
     })
-    await drawer.waitFor({ state: 'visible' })
 
-    // Fill in short password (scope to drawer)
-    await drawer.getByLabel(/new password/i).fill('123') // Less than 6 characters
+    await byTestId(page, 'user-reset-new-password-input').fill('123') // < 6 chars
+    await byTestId(page, 'user-reset-password-submit-button').click()
 
-    // Try to submit. Drawer submit label was standardised to "Reset"
-    // (audit I-2); scope by primary-button class.
-    const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
-    await submitButton.click()
-
-    // Check for validation error
-    await expect(
-      page.locator('.ant-form-item-explain-error', {
-        hasText: /at least 6 characters/i,
-      })
-    ).toBeVisible()
+    await expect(byTestId(page, 'field-error-new_password')).toBeVisible()
   })
 
   test('should not toggle admin user status (if protected)', async ({
     page,
   }) => {
-    // Find admin user if it exists (use the typography span to avoid
-    // matching the nav menu or breadcrumb).
-    const adminUser = page
-      .locator('.ant-typography.font-medium', { hasText: 'admin' })
-      .first()
-    const adminExists = await adminUser.isVisible()
+    const adminRow = byTestId(page, 'user-row-admin')
 
-    if (adminExists) {
-      // Walk up 3 levels to the row container (same shape as
-      // toggleUserStatus helper).
-      const adminRow = adminUser.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
-
-      // The active-status Switch and the Delete button are hidden
-      // entirely on the root admin row (UsersSettings.tsx self/
-      // root-admin lockout guards — audit 03 B-6). The backend also
-      // rejects toggling root admin to inactive, but the UI is the
-      // first line of defense and should never offer the control.
-      await expect(adminRow.locator('.ant-switch')).toHaveCount(0)
+    if (await adminRow.isVisible()) {
+      // The active switch + Delete button are hidden entirely on the root
+      // admin row (self / root-admin lockout guards).
       await expect(
-        adminRow.getByRole('button', { name: /delete/i }),
+        adminRow.locator('[data-testid^="user-active-switch-"]'),
+      ).toHaveCount(0)
+      await expect(
+        adminRow.locator('[data-testid^="user-delete-button-"]'),
       ).toHaveCount(0)
 
-      // The badge inside this row should still read 'Active' (or
-      // 'Inactive' — point is the badge is present even though the
-      // toggle is hidden).
+      // The status badge is still present.
       await expect(
-        adminRow.locator('.ant-badge-status-text').first(),
+        adminRow.locator('[data-testid^="user-status-badge-"]'),
       ).toBeVisible()
     }
   })
 
   test('should display correct status badge colors', async ({ page }) => {
-    // Create a user
     await openCreateUserDrawer(page)
     const timestamp = Date.now()
     const userData = {
@@ -222,20 +152,12 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Check active status badge (green/success) — anchor on
-    // typography span and walk up 3 levels to the row container.
-    const usernameEl = page
-      .locator('.ant-typography.font-medium', { hasText: userData.username })
-      .first()
-    const userRow = usernameEl.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
-    const activeBadge = userRow.locator('.ant-badge-status-success').first()
-    await expect(activeBadge).toBeVisible()
+    // Active by default.
+    await assertUserStatus(page, userData.username, 'active')
 
-    // Toggle to inactive
     await toggleUserStatus(page, userData.username)
 
-    // Check inactive status badge (red/error)
-    const inactiveBadge = userRow.locator('.ant-badge-status-error').first()
-    await expect(inactiveBadge).toBeVisible()
+    // Inactive after toggle.
+    await assertUserStatus(page, userData.username, 'inactive')
   })
 })

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — detach a conversation from the PROJECT DETAIL PAGE conversations list.
@@ -66,26 +67,23 @@ test.describe('Projects — detach from the detail page conversations list', () 
     await page.goto(`${baseURL}/projects/${projectId}`)
 
     // The conversation appears in the project's detail-page list.
-    const card = page.locator('.ant-card').filter({ hasText: convTitle })
+    const card = byTestId(page, `chat-conversation-card-${conversationId}`)
     await expect(card).toBeVisible({ timeout: 30000 })
 
     // Hover to reveal + click the per-card "Remove from project" button.
     await card.hover()
-    await card.getByRole('button', { name: 'Remove from project' }).click()
+    await byTestId(card, 'project-conv-remove-trigger-button').click()
 
-    // Confirm the Popconfirm.
-    const popconfirm = page.locator('.ant-popconfirm:visible').filter({
-      hasText: 'Remove from project?',
-    })
-    await expect(popconfirm).toBeVisible()
-    await popconfirm.getByRole('button', { name: 'Remove' }).click()
+    // Confirm via the remove dialog.
+    await expect(byTestId(page, 'project-conv-remove-dialog')).toBeVisible()
+    await byTestId(page, 'project-conv-remove-confirm-button').click()
 
     // The DELETE fired and the card leaves the project list.
     await expect
       .poll(() => detachSeen, { timeout: 10000 })
       .toBe(true)
     await expect(
-      page.locator('.ant-card').filter({ hasText: convTitle }),
+      byTestId(page, `chat-conversation-card-${conversationId}`),
     ).toHaveCount(0, { timeout: 10000 })
   })
 })

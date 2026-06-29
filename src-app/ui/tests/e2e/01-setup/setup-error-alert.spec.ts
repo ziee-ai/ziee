@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the SetupPage renders a server-error Alert when admin setup fails
@@ -46,18 +47,18 @@ test.describe('App Setup — server-error alert', () => {
     })
 
     await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
 
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
+    await byTestId(page, 'app-setup-username-input').fill('admin')
+    await byTestId(page, 'app-setup-email-input').fill('admin@example.com')
+    await byTestId(page, 'app-setup-password-input').fill('password123')
+    await byTestId(page, 'app-setup-confirm-password-input').fill('password123')
 
-    await page.getByRole('button', { name: /create admin account/i }).click()
+    await byTestId(page, 'app-setup-submit-button').click()
 
-    // The server-error Alert (role=alert) appears carrying the server message,
-    // and the user is NOT redirected — setup did not complete.
-    const alert = page.getByRole('alert')
+    // The server-error Alert appears carrying the server message, and the user
+    // is NOT redirected — setup did not complete.
+    const alert = byTestId(page, 'app-setup-error-alert')
     await expect(alert).toBeVisible({ timeout: 10000 })
     await expect(alert).toContainText(FORCED_ERROR)
     await expect(page).toHaveURL(`${baseURL}/setup`)
@@ -67,7 +68,7 @@ test.describe('App Setup — server-error alert', () => {
     // app redirects home — proving the error state cleared on a real retry,
     // not a fake.
     failNext = false
-    await page.getByRole('button', { name: /create admin account/i }).click()
+    await byTestId(page, 'app-setup-submit-button').click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
   })
 })

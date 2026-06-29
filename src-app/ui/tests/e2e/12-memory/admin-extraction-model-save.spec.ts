@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Memory admin ExtractionSection: changing the default extraction model
@@ -65,42 +66,26 @@ test.describe('Memory — admin extraction-model save', () => {
     await createModel(page.request, apiURL, adminToken, providerId, chatName)
 
     await page.goto(`${baseURL}/settings/memory-admin`)
-    await expect(page.getByText(/Default extraction model/)).toBeVisible({
+    await expect(byTestId(page, 'memory-extraction-model-combobox')).toBeVisible({
       timeout: 30000,
     })
 
     // Open the extraction picker and choose the seeded chat model.
-    await page
-      .locator('.ant-form-item:has-text("Default extraction model")')
-      .first()
-      .getByRole('combobox')
-      .click()
-    const dropdown = page.locator(
-      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
-    )
-    await expect(dropdown).toBeVisible()
-    await dropdown
-      .locator('.ant-select-item-option')
-      .filter({ hasText: chatName })
-      .click()
+    await byTestId(page, 'memory-extraction-model-combobox').click()
+    await page.getByRole('option').filter({ hasText: chatName }).click()
 
     // Save → success toast.
-    await page.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(page.getByText('Extraction settings saved.')).toBeVisible({
-      timeout: 10000,
-    })
+    await byTestId(page, 'memory-extraction-save-btn').click()
+    await expect(page.locator('[data-sonner-toast]')).toContainText(
+      'Extraction settings saved.',
+      { timeout: 10000 },
+    )
 
-    // Reload → the chosen model is still selected (PUT persisted).
+    // Reload → the chosen model is still selected (PUT persisted). The kit
+    // Combobox renders the selected option's label in its trigger.
     await page.reload()
     await expect(
-      page
-        .locator('.ant-form-item:has-text("Default extraction model")')
-        .getByTitle(chatName)
-        .or(
-          page
-            .locator('.ant-form-item:has-text("Default extraction model")')
-            .locator('.ant-select-selection-item', { hasText: chatName }),
-        ),
-    ).toBeVisible({ timeout: 30000 })
+      byTestId(page, 'memory-extraction-model-combobox'),
+    ).toContainText(chatName, { timeout: 30000 })
   })
 })

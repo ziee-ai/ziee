@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — CoreMemorySection assistant-picker → editor combo flow
@@ -27,26 +28,31 @@ test.describe('Memory — per-assistant core memory section', () => {
       body: JSON.stringify({ name: aName, is_template: false, enabled: true }),
     })
     if (!res.ok) throw new Error(`assistant create failed: ${res.status} ${await res.text()}`)
+    const assistant = await res.json()
 
     await page.goto(`${baseURL}/settings/memory`)
     await page.waitForLoadState('load')
 
     // The per-assistant core-memory card + its picker render.
-    await expect(page.getByText('Per-assistant core memory')).toBeVisible({
+    await expect(byTestId(page, 'memory-core-card')).toBeVisible({
       timeout: 30000,
     })
-    const picker = page.getByLabel('Pick an assistant')
+    const picker = byTestId(page, 'memory-core-assistant-combobox')
     await expect(picker).toBeVisible({ timeout: 15000 })
 
-    // Open the Select and choose the created assistant.
+    // Open the Combobox and choose the created assistant (options derive
+    // `${comboboxTestid}-opt-${value}`, value = assistant id).
     await picker.click()
-    await page.getByRole('option', { name: aName }).click()
+    await byTestId(
+      page,
+      `memory-core-assistant-combobox-opt-${assistant.id}`,
+    ).click()
 
     // The editor for that assistant mounts: an empty assistant shows the
     // "Add block" affordance + the "No blocks yet" empty state.
-    await expect(page.getByRole('button', { name: 'Add block' })).toBeVisible({
+    await expect(byTestId(page, 'memory-core-add-block-btn')).toBeVisible({
       timeout: 10000,
     })
-    await expect(page.getByText('No blocks yet')).toBeVisible()
+    await expect(byTestId(page, 'memory-core-blocks-empty')).toBeVisible()
   })
 })

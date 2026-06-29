@@ -9,6 +9,10 @@ import {
   seedLiteratureResult,
   sampleResult,
 } from './fixtures/mock-literature-result'
+import { byTestId } from '../testid'
+
+// recordKey() derives `doi:<lowercased-doi>` for the seeded sampleResult rows.
+const KEY1 = 'doi:10.1/aaa'
 
 /**
  * E2E — per-row screening Segmented decisions + the preprint badge in the
@@ -39,19 +43,15 @@ test.describe('Literature — per-row screening', () => {
     testInfra,
   }) => {
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(
-      page.getByRole('heading', { name: 'Screening' }),
-    ).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 10000 })
 
     // The first record's own Segmented control → Include.
-    await page
-      .locator('[aria-label="Screening decision"]')
-      .first()
-      .getByText('Include', { exact: true })
-      .click()
+    await byTestId(page, `lit-screening-record-decision-${KEY1}-opt-include`).click()
 
-    await expect(page.getByText('Included: 1')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('1', {
+      timeout: 10000,
+    })
   })
 
   test('a preprint record renders the "preprint" badge', async ({
@@ -62,12 +62,10 @@ test.describe('Literature — per-row screening', () => {
     result.records[0].is_preprint = true
     await seedLiteratureResult(page, testInfra.baseURL, result)
 
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(
-      page.getByRole('heading', { name: 'Screening' }),
-    ).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({ timeout: 10000 })
 
-    await expect(page.getByText('preprint', { exact: true })).toBeVisible({
+    await expect(byTestId(page, 'lit-screening-preprint-0')).toBeVisible({
       timeout: 10000,
     })
   })

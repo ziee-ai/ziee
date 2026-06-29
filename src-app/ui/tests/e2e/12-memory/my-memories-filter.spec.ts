@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
@@ -29,24 +30,20 @@ test.describe('Memory — my-memories kind/source filter', () => {
     }
 
     await page.goto(`${baseURL}/settings/memory`)
-    const card = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Search content' })
+    const card = byTestId(page, 'memory-my-card')
     await expect(card).toBeVisible({ timeout: 20000 })
 
-    // Both memories show with no filter.
-    await expect(page.getByText(factText)).toBeVisible({ timeout: 15000 })
-    await expect(page.getByText(prefText)).toBeVisible()
+    // Both memories show with no filter (content is dynamic data the test created).
+    const factRow = page.locator('[data-memory-id]').filter({ hasText: factText })
+    const prefRow = page.locator('[data-memory-id]').filter({ hasText: prefText })
+    await expect(factRow).toBeVisible({ timeout: 15000 })
+    await expect(prefRow).toBeVisible()
 
     // Filter by Kind = Fact → only the fact memory remains (backend re-query).
-    // The Kind Select is identified by its "Kind" placeholder.
-    const kindSelect = card
-      .locator('.ant-select')
-      .filter({ has: page.getByText('Kind', { exact: true }) })
-    await kindSelect.click()
-    await page.getByRole('option', { name: 'Fact', exact: true }).click()
+    await byTestId(page, 'memory-kind-filter').click()
+    await byTestId(page, 'memory-kind-filter-opt-fact').click()
 
-    await expect(page.getByText(factText)).toBeVisible()
-    await expect(page.getByText(prefText)).toHaveCount(0)
+    await expect(factRow).toBeVisible()
+    await expect(prefRow).toHaveCount(0)
   })
 })

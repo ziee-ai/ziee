@@ -6,6 +6,11 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import { seedLiteratureResult, sampleResult } from './fixtures/mock-literature-result'
+import { byTestId } from '../testid'
+
+// recordKey() derives `doi:<lowercased-doi>` for the seeded sampleResult rows.
+const KEY1 = 'doi:10.1/aaa'
+const KEY2 = 'doi:10.1/bbb'
 
 // The bulk "Unscreen" action (LiteratureScreeningPanel.tsx:175-177) calls
 // bulkDecide('unscreened') on the checkbox selection — resetting prior
@@ -33,35 +38,34 @@ test.describe('Literature screening — Unscreen bulk action', () => {
   }) => {
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
 
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    await expect(byTestId(page, 'lit-screening-panel')).toBeVisible({
       timeout: 10000,
     })
 
     // Bulk-include both rows → Included: 2 (non-zero precondition).
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Include', exact: true }).click()
-    await expect(page.getByText('Included: 2')).toBeVisible()
+    await byTestId(page, 'lit-screening-select-all-checkbox').click()
+    await byTestId(page, 'lit-screening-bulk-include-button').click()
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('2')
 
-    // Each row's Segmented now reflects Include.
-    const segmenteds = page.getByLabel('Screening decision')
-    await expect(segmenteds.first().locator('.ant-segmented-item-selected')).toHaveText(
-      'Include',
-    )
+    // Each row's Segmented now reflects Include (selected option data-state="on").
+    await expect(
+      byTestId(page, `lit-screening-record-decision-${KEY1}-opt-include`),
+    ).toHaveAttribute('data-state', 'on')
 
     // Re-select all and click Unscreen → decisions cleared, counts reset.
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Unscreen', exact: true }).click()
+    await byTestId(page, 'lit-screening-select-all-checkbox').click()
+    await byTestId(page, 'lit-screening-bulk-unscreen-button').click()
 
-    await expect(page.getByText('Included: 0')).toBeVisible()
-    await expect(page.getByText('Excluded: 0')).toBeVisible()
+    await expect(byTestId(page, 'lit-screening-tag-included')).toContainText('0')
+    await expect(byTestId(page, 'lit-screening-tag-excluded')).toContainText('0')
 
     // Both rows' Segmented controls are back to Unscreened.
     await expect(
-      segmenteds.first().locator('.ant-segmented-item-selected'),
-    ).toHaveText('Unscreened')
+      byTestId(page, `lit-screening-record-decision-${KEY1}-opt-unscreened`),
+    ).toHaveAttribute('data-state', 'on')
     await expect(
-      segmenteds.last().locator('.ant-segmented-item-selected'),
-    ).toHaveText('Unscreened')
+      byTestId(page, `lit-screening-record-decision-${KEY2}-opt-unscreened`),
+    ).toHaveAttribute('data-state', 'on')
   })
 })

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
@@ -29,11 +30,11 @@ test.describe('Memory — composer pill UI', () => {
 
     await page.goto(`${baseURL}/chat/${convId}`)
 
-    const pill = page.getByLabel(/Memory mode:/).first()
+    const pill = byTestId(page, 'memory-status-pill')
     await expect(pill).toBeVisible({ timeout: 30000 })
     await pill.click()
 
-    // The dropdown exposes the memory-mode options; selecting one PUTs the
+    // The dropdown exposes the memory-mode options; selecting "on" PUTs the
     // per-conversation memory mode.
     const putResp = page.waitForResponse(
       r =>
@@ -41,7 +42,7 @@ test.describe('Memory — composer pill UI', () => {
         r.request().method() === 'PUT',
       { timeout: 30000 },
     )
-    await page.getByRole('menuitem', { name: /Always retrieve memories/ }).click()
+    await byTestId(page, 'memory-status-pill-dropdown-item-on').click()
     expect((await putResp).status()).toBeLessThan(400)
   })
 })

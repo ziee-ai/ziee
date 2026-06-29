@@ -1,7 +1,9 @@
 import { test, expect } from '../../fixtures/test-context'
 import { getAdminToken, loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   fillProjectForm,
+  getProjectCard,
   goToProjectsPage,
   openCreateProjectDrawer,
   submitProjectForm,
@@ -32,7 +34,7 @@ test.describe('Projects - Knowledge / file attach', () => {
   test('inline knowledge preview shows empty state on a new project', async ({
     page,
   }) => {
-    await page.locator('.ant-card', { hasText: 'Knowledge Target' }).click()
+    await getProjectCard(page, 'Knowledge Target').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
 
     // Knowledge section is now an inline block (section[data-test-section="knowledge"])
@@ -44,7 +46,7 @@ test.describe('Projects - Knowledge / file attach', () => {
     // "Manage" button is always present, even when there are no files
     // (so users can navigate to attach their first one).
     await expect(
-      page.getByRole('button', { name: /manage knowledge files/i }),
+      byTestId(page, 'project-knowledge-manage-button'),
     ).toBeVisible()
   })
 
@@ -54,7 +56,7 @@ test.describe('Projects - Knowledge / file attach', () => {
   }) => {
     const { baseURL } = testInfra
     // Drive directly to the project's detail page via its known card.
-    await page.locator('.ant-card', { hasText: 'Knowledge Target' }).click()
+    await getProjectCard(page, 'Knowledge Target').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     const url = new URL(page.url())
     const projectId = url.pathname.split('/').pop()!
@@ -102,15 +104,11 @@ test.describe('Projects - Knowledge / file attach', () => {
     ).toBeVisible({ timeout: 10000 })
 
     // Manage drawer (full row layout) also shows the file.
-    await page
-      .getByRole('button', { name: /manage knowledge files/i })
-      .click()
-    await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
+    await byTestId(page, 'project-knowledge-manage-button').click()
+    const drawer = page.getByRole('dialog')
+    await drawer.waitFor({ state: 'visible' })
     await expect(
-      page
-        .locator('.ant-drawer.ant-drawer-open')
-        .getByText('notes.txt')
-        .first(),
+      drawer.locator('[data-testid="file-card"][data-filename="notes.txt"]'),
     ).toBeVisible()
   })
 
@@ -124,7 +122,7 @@ test.describe('Projects - Knowledge / file attach', () => {
     // are FileCard's square variant in `stretch` mode — the wrapper
     // no longer hard-codes 96px width; the grid track owns the size.
     const { baseURL } = testInfra
-    await page.locator('.ant-card', { hasText: 'Knowledge Target' }).click()
+    await getProjectCard(page, 'Knowledge Target').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     const projectId = page.url().split('/').pop()!
     const token = await getAdminToken(baseURL)
@@ -203,7 +201,7 @@ test.describe('Projects - Knowledge / file attach', () => {
     // bug. Manage drawer's row-variant FileCard now wraps its delete
     // button in a Popconfirm; Cancel must not delete.
     const { baseURL } = testInfra
-    await page.locator('.ant-card', { hasText: 'Knowledge Target' }).click()
+    await getProjectCard(page, 'Knowledge Target').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     const projectId = page.url().split('/').pop()!
     const token = await getAdminToken(baseURL)
@@ -224,48 +222,31 @@ test.describe('Projects - Knowledge / file attach', () => {
     expect(status).toBe(201)
 
     await page.reload()
-    await page
-      .getByRole('button', { name: /manage knowledge files/i })
-      .click()
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    await byTestId(page, 'project-knowledge-manage-button').click()
+    const drawer = page.getByRole('dialog')
     await drawer.waitFor({ state: 'visible' })
-    await expect(drawer.getByText('doomed.txt').first()).toBeVisible()
+    const row = () =>
+      drawer.locator('[data-testid="file-card"][data-filename="doomed.txt"]')
+    await expect(row()).toBeVisible()
 
-    // Click the row's delete button — should trigger Popconfirm, NOT delete.
-    await drawer
-      .getByRole('button', { name: /^delete doomed\.txt$/i })
-      .click()
+    // Click the row's delete button — should open the Confirm
+    // (AlertDialog), NOT delete immediately.
+    await row().locator('[data-testid^="file-project-delete-btn-"]').click()
+    const confirm = page.getByRole('alertdialog')
+    await expect(confirm).toBeVisible({ timeout: 5000 })
 
-    // Popconfirm renders as a portal — match the title text.
-    const confirmPopover = page.locator('.ant-popover-content', {
-      hasText: 'Delete this file?',
-    })
-    await expect(confirmPopover).toBeVisible({ timeout: 5000 })
+    // Cancel (Escape dismisses the Confirm) — the file must remain.
+    await page.keyboard.press('Escape')
+    await expect(confirm).toBeHidden()
+    await expect(row()).toBeVisible()
 
-    // Click Cancel — the file must remain.
-    await confirmPopover.getByRole('button', { name: /^cancel$/i }).click()
-    // Drawer still open, file still listed.
-    await expect(drawer.getByText('doomed.txt').first()).toBeVisible()
-
-    // Now confirm via the Popconfirm's Delete button. Move the mouse
-    // off the trash button first so the lingering antd Tooltip
-    // ("Delete") dismisses — otherwise the tooltip layer sits over
-    // the popover and intercepts pointer events when the popover's
-    // Delete button is in roughly the same screen region.
-    await page.mouse.move(10, 10)
-    await drawer
-      .getByRole('button', { name: /^delete doomed\.txt$/i })
-      .click()
-    await page.mouse.move(10, 10)
-    await expect(confirmPopover).toBeVisible()
-    await confirmPopover
-      .getByRole('button', { name: /^delete$/i })
-      .click({ force: true })
+    // Reopen + confirm via the Confirm's primary (Delete) button.
+    await row().locator('[data-testid^="file-project-delete-btn-"]').click()
+    await expect(confirm).toBeVisible()
+    await confirm.locator('[data-testid$="-confirm"]').click()
 
     // File disappears after confirmed delete.
-    await expect(drawer.getByText('doomed.txt')).toHaveCount(0, {
-      timeout: 5000,
-    })
+    await expect(row()).toHaveCount(0, { timeout: 5000 })
   })
 
   test('uploads a file through the real Manage-drawer Upload control', async ({
@@ -273,17 +254,15 @@ test.describe('Projects - Knowledge / file attach', () => {
   }) => {
     // Drive the actual antd <Upload> control (not page.evaluate + fetch): the
     // beforeUpload handler → uploadAndAttachFiles → combined upload endpoint.
-    await page.locator('.ant-card', { hasText: 'Knowledge Target' }).click()
+    await getProjectCard(page, 'Knowledge Target').click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
 
-    await page
-      .getByRole('button', { name: /manage knowledge files/i })
-      .click()
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    await byTestId(page, 'project-knowledge-manage-button').click()
+    const drawer = page.getByRole('dialog')
     await drawer.waitFor({ state: 'visible' })
 
-    // The antd Upload renders a hidden <input type="file"> — set a real file
-    // on it (the genuine UI upload path, exercising beforeUpload).
+    // The Upload control renders a hidden <input type="file"> — set a real
+    // file on it (the genuine UI upload path, exercising beforeUpload).
     await drawer.locator('input[type="file"]').setInputFiles({
       name: 'ui-upload.txt',
       mimeType: 'text/plain',
@@ -291,8 +270,8 @@ test.describe('Projects - Knowledge / file attach', () => {
     })
 
     // The uploaded file appears in the drawer's knowledge-file list.
-    await expect(drawer.getByText('ui-upload.txt')).toBeVisible({
-      timeout: 15000,
-    })
+    await expect(
+      drawer.locator('[data-testid="file-card"][data-filename="ui-upload.txt"]'),
+    ).toBeVisible({ timeout: 15000 })
   })
 })

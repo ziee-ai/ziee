@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   createProviderViaAPI,
   createModelViaAPI,
@@ -107,7 +108,7 @@ test.describe('Projects - message uses project context (real LLM)', () => {
     await expect(textarea).toBeVisible({ timeout: 10000 })
     await textarea.fill('Say hello.')
 
-    const sendButton = page.getByRole('button', { name: 'Send message' })
+    const sendButton = byTestId(page, 'chat-input-send-btn')
     await expect(sendButton).toBeEnabled({ timeout: 10000 })
     await sendButton.click()
 
@@ -127,9 +128,9 @@ test.describe('Projects - message uses project context (real LLM)', () => {
 
     // Visual proof the header chip correctly identifies the
     // conversation's project.
-    await expect(page.getByText(/In project: E2E Magic Project/i)).toBeVisible(
-      { timeout: 5000 },
-    )
+    await expect(byTestId(page, 'project-header-chip-tag')).toBeVisible({
+      timeout: 5000,
+    })
   })
 
   test('unfiled conversation does NOT receive project context', async ({
@@ -185,7 +186,7 @@ test.describe('Projects - message uses project context (real LLM)', () => {
     await expect(textarea).toBeVisible({ timeout: 10000 })
     await textarea.fill('Say hello.')
 
-    const sendButton = page.getByRole('button', { name: 'Send message' })
+    const sendButton = byTestId(page, 'chat-input-send-btn')
     await expect(sendButton).toBeEnabled({ timeout: 10000 })
     await sendButton.click()
 
