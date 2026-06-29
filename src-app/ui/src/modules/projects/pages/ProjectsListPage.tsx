@@ -1,9 +1,5 @@
 import { useEffect, useState } from 'react'
-<<<<<<< HEAD
 import { Button, Spin, Text, Title, message } from '@/components/ui'
-=======
-import { Button, Spin, Text, Title } from '@/components/ui'
->>>>>>> origin/batchfix/postfix-3
 import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -15,7 +11,6 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 export function ProjectsListPage() {
   const { projects: projectsMap, loading, error } = Stores.Projects
   const projects = Array.from(projectsMap.values())
-<<<<<<< HEAD
   // Per-card mutation state so the duplicate/delete buttons can show a
   // spinner on the exact card being acted on (the store single-flights
   // globally, but feedback should be card-local).
@@ -23,13 +18,6 @@ export function ProjectsListPage() {
     id: string
     action: 'duplicate' | 'delete'
   } | null>(null)
-=======
-  // Per-card mutation feedback: the store's duplicating/deleting flags are
-  // global (one in-flight op), so track WHICH project id is mutating to
-  // scope the spinner to the acting card.
-  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
->>>>>>> origin/batchfix/postfix-3
 
   // Surface mutation/load failures to the user before clearing, so a
   // failed duplicate/delete isn't swallowed silently.
@@ -45,7 +33,6 @@ export function ProjectsListPage() {
     Stores.ProjectDrawer.openProjectDrawer(project)
 
   const handleDuplicate = async (project: Project) => {
-<<<<<<< HEAD
     setBusy({ id: project.id, action: 'duplicate' })
     try {
       await Stores.Projects.duplicateProject(project.id)
@@ -53,19 +40,10 @@ export function ProjectsListPage() {
       // Surfaced via the store `error` -> message.error effect above.
     } finally {
       setBusy(null)
-=======
-    setDuplicatingId(project.id)
-    try {
-      await Stores.Projects.duplicateProject(project.id)
-    } catch (_err) {
-    } finally {
-      setDuplicatingId(null)
->>>>>>> origin/batchfix/postfix-3
     }
   }
 
   const handleDelete = async (project: Project) => {
-<<<<<<< HEAD
     setBusy({ id: project.id, action: 'delete' })
     try {
       await Stores.Projects.deleteProject(project.id)
@@ -73,14 +51,6 @@ export function ProjectsListPage() {
       // Surfaced via the store `error` -> message.error effect above.
     } finally {
       setBusy(null)
-=======
-    setDeletingId(project.id)
-    try {
-      await Stores.Projects.deleteProject(project.id)
-    } catch (_err) {
-    } finally {
-      setDeletingId(null)
->>>>>>> origin/batchfix/postfix-3
     }
   }
 
@@ -115,17 +85,12 @@ export function ProjectsListPage() {
                       onEdit={handleEdit}
                       onDuplicate={p => void handleDuplicate(p)}
                       onDelete={p => void handleDelete(p)}
-<<<<<<< HEAD
                       duplicating={
                         busy?.id === project.id && busy.action === 'duplicate'
                       }
                       deleting={
                         busy?.id === project.id && busy.action === 'delete'
                       }
-=======
-                      duplicating={duplicatingId === project.id}
-                      deleting={deletingId === project.id}
->>>>>>> origin/batchfix/postfix-3
                     />
                   </div>
                 ))}

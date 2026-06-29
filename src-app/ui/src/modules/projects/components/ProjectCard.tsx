@@ -9,15 +9,9 @@ interface ProjectCardProps {
   onEdit: (project: Project) => void
   onDuplicate: (project: Project) => void
   onDelete: (project: Project) => void
-<<<<<<< HEAD
   /** Duplicate request in flight for this card — shows a button spinner. */
   duplicating?: boolean
   /** Delete request in flight for this card — shows a button spinner. */
-=======
-  /** Duplicate mutation for THIS card is in flight (spinner + inert button). */
-  duplicating?: boolean
-  /** Delete mutation for THIS card is in flight (spinner + inert button). */
->>>>>>> origin/batchfix/postfix-3
   deleting?: boolean
 }
 
