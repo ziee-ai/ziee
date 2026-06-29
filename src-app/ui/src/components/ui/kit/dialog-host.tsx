@@ -20,6 +20,8 @@ interface DialogItem {
   cancelText?: string
   danger?: boolean
   tone?: Tone
+  /** Optional unique data-testid for the OK/confirm button (i18n-safe select). */
+  okTestId?: string
   resolve: (ok: boolean) => void
 }
 
@@ -43,6 +45,8 @@ export interface ConfirmOptions {
   okText: string
   cancelText: string
   danger?: boolean
+  /** Optional unique data-testid for the OK/confirm button (i18n-safe select). */
+  okTestId?: string
 }
 export interface AlertOptions {
   title: React.ReactNode
@@ -96,6 +100,7 @@ export function DialogHost() {
           )}
           <AlertDialogAction
             onClick={() => close(it, true)}
+            data-testid={it.okTestId}
             className={cn(it.danger && 'bg-destructive text-destructive-foreground hover:bg-destructive/90')}
           >
             {it.okText}

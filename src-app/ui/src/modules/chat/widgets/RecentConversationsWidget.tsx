@@ -162,6 +162,7 @@ function ConversationRowLabel({
       okText: 'Delete',
       cancelText: 'Cancel',
       danger: true,
+      okTestId: 'chat-conversation-delete-confirm-btn',
     })
     if (ok) {
       setDeleting(true)
