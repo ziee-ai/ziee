@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E tests for the user-llm-providers settings page
@@ -24,10 +25,6 @@ interface CreatedProvider {
 /**
  * Create a provider directly via the admin API. Keeps test fixtures
  * decoupled from the admin-provider UI.
- *
- * `apiKey: null` produces a `custom` provider with no system key — the only
- * combination the backend accepts for an enabled provider with no key. This
- * is what the orange "No admin key" tag covers in the UI.
  */
 async function createProviderViaApi(
   apiURL: string,
@@ -96,14 +93,11 @@ async function assignProviderToDefaultGroup(
 }
 
 /**
- * Click a provider in the page's provider menu (desktop) or dropdown (mobile).
- * Uses getByRole('menuitem') which covers both Ant Design Menu (desktop) and
- * Dropdown (mobile) rendering.
+ * Click a provider in the page's provider menu. Menu items derive their id
+ * from the provider id (`ullm-provider-menu-item-${id}`).
  */
-async function selectProviderInMenu(page: import('@playwright/test').Page, providerName: string) {
-  // Desktop: provider sits in an Ant Menu rendered in the left sidebar.
-  // Mobile: provider sits in an Ant Dropdown.  Both render menu items with role="menuitem".
-  await page.getByRole('menuitem', { name: providerName }).first().click()
+async function selectProviderInMenu(page: import('@playwright/test').Page, providerId: string) {
+  await byTestId(page, `ullm-provider-menu-item-${providerId}`).first().click()
 }
 
 // ---------- tests ----------
@@ -123,20 +117,16 @@ test.describe('User LLM Providers settings page', () => {
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
 
-    await selectProviderInMenu(page, providerName)
+    await selectProviderInMenu(page, provider.id)
 
-    // The page should now show the provider's detail panel with the orange "No admin key" tag.
-    await expect(
-      page.getByRole('heading', { level: 4, name: providerName }),
-    ).toBeVisible()
-    await expect(page.getByText('No admin key')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Save Key' })).toBeVisible()
+    // The provider's detail panel renders with the orange "No admin key" tag.
+    await expect(byTestId(page, 'ullm-key-form')).toBeVisible()
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('No admin key')
+    await expect(byTestId(page, 'ullm-save-key-button')).toContainText('Save Key')
   })
 
   test('displays provider with admin key as blue tag', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
-    // loginAsAdmin creates the admin via the setup form on first run; getAdminToken
-    // requires the admin to already exist, so this order matters.
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
     const providerName = `e2e-admin-key-${Date.now()}`
@@ -152,15 +142,13 @@ test.describe('User LLM Providers settings page', () => {
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
 
-    await selectProviderInMenu(page, providerName)
+    await selectProviderInMenu(page, provider.id)
 
-    await expect(page.getByText('Admin key configured')).toBeVisible()
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('Admin key configured')
   })
 
   test('saves a user API key end-to-end', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
-    // loginAsAdmin creates the admin via the setup form on first run; getAdminToken
-    // requires the admin to already exist, so this order matters.
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
     const providerName = `e2e-save-${Date.now()}`
@@ -171,28 +159,25 @@ test.describe('User LLM Providers settings page', () => {
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
 
-    await selectProviderInMenu(page, providerName)
+    await selectProviderInMenu(page, provider.id)
 
-    // Fill the password input (Ant Design Input.Password — no native label, use placeholder)
-    await page
-      .getByPlaceholder('Enter your API key (e.g. sk-...)')
-      .fill('sk-my-personal-key')
+    // Fill the key input.
+    await byTestId(page, 'ullm-key-password-input').fill('sk-my-personal-key')
 
     // Save button becomes enabled when input has content.
-    const saveBtn = page.getByRole('button', { name: 'Save Key' })
+    const saveBtn = byTestId(page, 'ullm-save-key-button')
     await expect(saveBtn).toBeEnabled()
     await saveBtn.click()
 
-    // After save, tag flips to green "Your key configured", and the Update/Remove pair appears.
-    await expect(page.getByText('Your key configured')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Update Key' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Remove Key' })).toBeVisible()
+    // After save, tag flips to green "Your key configured", button becomes
+    // "Update Key", and the Remove pair appears.
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('Your key configured')
+    await expect(byTestId(page, 'ullm-save-key-button')).toContainText('Update Key')
+    await expect(byTestId(page, 'ullm-remove-key-button')).toBeVisible()
   })
 
   test('save button is disabled while input is empty', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
-    // loginAsAdmin creates the admin via the setup form on first run; getAdminToken
-    // requires the admin to already exist, so this order matters.
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
     const providerName = `e2e-empty-${Date.now()}`
@@ -203,22 +188,18 @@ test.describe('User LLM Providers settings page', () => {
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
 
-    await selectProviderInMenu(page, providerName)
+    await selectProviderInMenu(page, provider.id)
 
     // No text in the input → Save button is disabled.
-    await expect(page.getByRole('button', { name: 'Save Key' })).toBeDisabled()
+    await expect(byTestId(page, 'ullm-save-key-button')).toBeDisabled()
 
     // Whitespace-only input → still disabled (handleSave trims).
-    await page
-      .getByPlaceholder('Enter your API key (e.g. sk-...)')
-      .fill('   ')
-    await expect(page.getByRole('button', { name: 'Save Key' })).toBeDisabled()
+    await byTestId(page, 'ullm-key-password-input').fill('   ')
+    await expect(byTestId(page, 'ullm-save-key-button')).toBeDisabled()
   })
 
   test('updates an existing user API key', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
-    // loginAsAdmin creates the admin via the setup form on first run; getAdminToken
-    // requires the admin to already exist, so this order matters.
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
     const providerName = `e2e-update-${Date.now()}`
@@ -229,32 +210,28 @@ test.describe('User LLM Providers settings page', () => {
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
 
-    await selectProviderInMenu(page, providerName)
+    await selectProviderInMenu(page, provider.id)
 
     // Initial save.
-    await page
-      .getByPlaceholder('Enter your API key (e.g. sk-...)')
-      .fill('sk-first')
-    await page.getByRole('button', { name: 'Save Key' }).click()
-    await expect(page.getByText('Your key configured')).toBeVisible()
+    await byTestId(page, 'ullm-key-password-input').fill('sk-first')
+    await byTestId(page, 'ullm-save-key-button').click()
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('Your key configured')
 
     // Update: input now shows the masked placeholder; focusing must clear it
     // and entering a new key + clicking "Update Key" must succeed.
-    const updateInput = page.getByPlaceholder('Enter new key to replace')
+    const updateInput = byTestId(page, 'ullm-key-password-input')
     await updateInput.click() // focus → clears the display placeholder
     await updateInput.fill('sk-second')
 
-    await page.getByRole('button', { name: 'Update Key' }).click()
+    await byTestId(page, 'ullm-save-key-button').click()
 
     // Still green; still in the "Your key configured" state.
-    await expect(page.getByText('Your key configured')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Update Key' })).toBeVisible()
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('Your key configured')
+    await expect(byTestId(page, 'ullm-save-key-button')).toContainText('Update Key')
   })
 
   test('deletes a user API key and reverts tag', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
-    // loginAsAdmin creates the admin via the setup form on first run; getAdminToken
-    // requires the admin to already exist, so this order matters.
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
     const providerName = `e2e-delete-${Date.now()}`
@@ -265,25 +242,22 @@ test.describe('User LLM Providers settings page', () => {
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
 
-    await selectProviderInMenu(page, providerName)
+    await selectProviderInMenu(page, provider.id)
 
     // Save a key first.
-    await page
-      .getByPlaceholder('Enter your API key (e.g. sk-...)')
-      .fill('sk-delete-me')
-    await page.getByRole('button', { name: 'Save Key' }).click()
-    await expect(page.getByText('Your key configured')).toBeVisible()
+    await byTestId(page, 'ullm-key-password-input').fill('sk-delete-me')
+    await byTestId(page, 'ullm-save-key-button').click()
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('Your key configured')
 
     // Delete it.
-    await page.getByRole('button', { name: 'Remove Key' }).click()
+    await byTestId(page, 'ullm-remove-key-button').click()
 
-    // Tag reverts to the orange "No admin key" state (this provider has no system key)
-    // and the Save Key button reappears.
-    await expect(page.getByText('No admin key')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Save Key' })).toBeVisible()
-    // Update/Remove buttons must be gone.
-    await expect(page.getByRole('button', { name: 'Update Key' })).not.toBeVisible()
-    await expect(page.getByRole('button', { name: 'Remove Key' })).not.toBeVisible()
+    // Tag reverts to the orange "No admin key" state (this provider has no
+    // system key) and the Save Key button reappears.
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('No admin key')
+    await expect(byTestId(page, 'ullm-save-key-button')).toContainText('Save Key')
+    // The Remove button must be gone (no user key).
+    await expect(byTestId(page, 'ullm-remove-key-button')).not.toBeVisible()
   })
 
   // audit id c7c6a450bf5d — the page's error branch (UserLlmProvidersPage.tsx
@@ -306,7 +280,7 @@ test.describe('User LLM Providers settings page', () => {
     )
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await expect(page.locator('.ant-alert-error')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'ullm-error-alert')).toBeVisible({ timeout: 15000 })
   })
 
   // audit id 9b9a621f318b — the mobile (sub-`sm`) responsive layout swaps the
@@ -328,18 +302,14 @@ test.describe('User LLM Providers settings page', () => {
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
 
-    // The desktop sidebar "Providers" title is hidden on mobile…
-    await expect(
-      page.getByRole('heading', { level: 4, name: 'Providers' }),
-    ).toHaveCount(0)
+    // The desktop sidebar provider menu is hidden on mobile…
+    await expect(byTestId(page, 'ullm-provider-menu')).toHaveCount(0)
     // …and the mobile Dropdown trigger is present. Open it and pick the provider.
-    await page.locator('.ant-dropdown-trigger').first().click()
-    await page.getByRole('menuitem', { name: providerName }).first().click()
+    await byTestId(page, 'ullm-provider-dropdown-trigger').first().click()
+    await byTestId(page, `ullm-provider-dropdown-item-${provider.id}`).first().click()
 
-    // The provider detail panel renders (heading = the provider name).
-    await expect(
-      page.getByRole('heading', { level: 4, name: providerName }),
-    ).toBeVisible({ timeout: 10000 })
+    // The provider detail panel renders (key form visible).
+    await expect(byTestId(page, 'ullm-key-form')).toBeVisible({ timeout: 10000 })
   })
 
   // audit id all-eab883dfd4e1 — the "No AI providers available" empty state
@@ -362,8 +332,6 @@ test.describe('User LLM Providers settings page', () => {
     )
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await expect(
-      page.getByText('No AI providers are available yet.'),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'ullm-no-providers-empty')).toBeVisible({ timeout: 15000 })
   })
 })

@@ -53,7 +53,7 @@ export async function seedRepository(
 /** Locate the repository row by name on the settings page. */
 export function repoRow(page: Page, name: string) {
   return page
-    .locator('div')
-    .filter({ hasText: new RegExp(`^${name}`) })
+    .locator('[data-testid^="llmrepo-row-"]')
+    .filter({ hasText: name })
     .first()
 }

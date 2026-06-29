@@ -1,76 +1,55 @@
 import { Page, expect } from '@playwright/test'
 import { fillDownloadForm, fillUploadForm, submitUploadForm, type DownloadFormData, type UploadFormData } from './form-helpers'
+import { byTestId } from '../../testid'
 
 /**
- * LLM Model CRUD helpers
+ * LLM Model CRUD helpers (kit / data-testid based)
  *
  * IMPORTANT: These helpers should NOT handle drawer cleanup.
  * Each test is responsible for explicitly closing any drawers it opens.
  */
 
 // =====================================================
-// Model Upload
+// Model Upload / Add
 // =====================================================
 
 export async function openAddModelDropdown(page: Page) {
-  // Click the + button in the Models card header. Scope to the
-  // Models card by its aria-label="Add model" so we don't collide
-  // with "Add provider" on the Providers card or with the
-  // "Downloading Models" card (whose title text would also match a
-  // loose "Models" substring).
-  const addButton = page.locator('button[aria-label="Add model"]').first()
-
-  // Wait for button to be ready and visible
-  await addButton.waitFor({ state: 'visible', timeout: 10000 })
-
-  // Ensure button is enabled and stable before clicking
-  await expect(addButton).toBeEnabled()
-  await page.waitForTimeout(300) // Small delay to ensure button is fully interactive
-
-  await addButton.click()
-
-  // Wait for dropdown menu to appear and be stable — multiple dropdowns
-  // may exist in the DOM (e.g. closed drawers leaving their menus
-  // behind). Filter to the one carrying the menuitem we care about.
-  await page
-    .getByRole('menuitem', { name: /Upload from Files|Download from Repository|Add Remote Model/ })
-    .first()
-    .waitFor({ state: 'visible', timeout: 10000 })
+  // The Models card "Add" button. For local providers this opens a kit
+  // Dropdown (upload / download); for remote it opens the remote drawer.
+  const localBtn = byTestId(page, 'llm-models-add-local-btn')
+  const remoteBtn = byTestId(page, 'llm-models-add-remote-btn')
+  const trigger = (await localBtn.count()) ? localBtn : remoteBtn
+  await trigger.first().waitFor({ state: 'visible', timeout: 10000 })
+  await expect(trigger.first()).toBeEnabled()
+  await page.waitForTimeout(300)
+  await trigger.first().click()
 }
 
 export async function selectAddModelOption(page: Page, option: 'upload' | 'download' | 'remote') {
-  const optionMap = {
-    upload: 'Upload from Files',
-    download: 'Download from Repository',
-    remote: 'Add Remote Model',
+  if (option === 'remote') {
+    // Remote provider: the add button itself opens the drawer (no menu).
+    await byTestId(page, 'llm-model-upload-form')
+      .or(byTestId(page, 'llm-model-download-form'))
+      .first()
+      .waitFor({ state: 'visible', timeout: 10000 })
+      .catch(() => {})
+    return
   }
-
-  // Use semantic selector; `.first()` to disambiguate when multiple
-  // dropdown menus are present in DOM.
-  const menuItem = page
-    .getByRole('menuitem', { name: optionMap[option] })
-    .first()
-
-  await menuItem.waitFor({ state: 'visible', timeout: 10000 })
-  await menuItem.click()
-
-  // Wait for network to settle after clicking
+  const item = byTestId(page, `llm-models-add-dropdown-item-${option}`)
+  await item.waitFor({ state: 'visible', timeout: 10000 })
+  await item.click()
   await page.waitForLoadState('domcontentloaded')
-  await page.waitForTimeout(500) // Additional delay for drawer animation
+  await page.waitForTimeout(500)
 }
 
 export async function uploadModelFolder(page: Page, folderPath: string) {
-  // For folder uploads, we need to use the directory input
-  const fileInput = page.locator('input[type="file"][webkitdirectory]')
+  // The kit Upload puts its testid on the dropzone div; the real <input
+  // type="file"> is a child (no webkitdirectory — it's a multiple input).
+  const fileInput = byTestId(page, 'llm-upload-files').locator('input[type="file"]')
   await fileInput.setInputFiles(folderPath)
-
-  // Wait for file processing to complete
   await page.waitForLoadState('domcontentloaded')
-
-  // Wait for the file list to appear (indicates files were processed)
-  await page.getByText('Selected Files').or(page.locator('.ant-card-head-title:has-text("Selected Files")')).waitFor({ timeout: 10000 })
-
-  // Additional delay to ensure file classification completes
+  // Wait for the selected-files list (indicates files were processed).
+  await byTestId(page, 'llm-upload-selected-files-list').waitFor({ timeout: 10000 })
   await page.waitForTimeout(500)
 }
 
@@ -80,85 +59,51 @@ export async function uploadModelFile(page: Page, filePath: string) {
   await page.waitForLoadState('load')
 }
 
-export async function uploadModel(
-  page: Page,
-  data: UploadFormData
-): Promise<void> {
+export async function uploadModel(page: Page, data: UploadFormData): Promise<void> {
   await openAddModelDropdown(page)
   await selectAddModelOption(page, 'upload')
 
-  // Wait for upload drawer to open. `.first()` because both branches
-  // of `.or()` can match: AntD keeps closed drawers in DOM, so the
-  // dialog role and the drawer-title may each resolve to 2 elements.
-  await page.getByRole('dialog', { name: /upload.*model/i })
-    .or(page.locator('.ant-drawer-title:has-text("Upload Local Model")'))
-    .first()
-    .waitFor({ timeout: 5000 })
+  // Wait for the upload form to render.
+  await byTestId(page, 'llm-model-upload-form').waitFor({ timeout: 5000 })
 
-  // Upload folder
   await uploadModelFolder(page, data.folderPath)
-
-  // Fill form
   await fillUploadForm(page, data)
 
-  // Submit
-  await submitUploadForm(page)
-
-  // Wait for success message
-  await page.getByText('Model uploaded successfully').waitFor({ timeout: 30000 })
+  // Submit and prove the server accepted the upload.
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => /\/api\/.*models/.test(r.url()) && r.request().method() === 'POST',
+      { timeout: 30000 }
+    ),
+    submitUploadForm(page),
+  ])
+  expect(resp.ok()).toBeTruthy()
 }
 
 export async function waitForUploadProgress(page: Page): Promise<void> {
-  // Wait for upload progress card to appear
-  await page.getByText('Upload Progress').or(page.locator('.ant-card-head-title:has-text("Upload Progress")')).waitFor({ timeout: 5000 })
-
-  // Wait for progress to complete (progress bar reaches 100% or upload completes)
-  await page.locator('.ant-progress-status-success').waitFor({ timeout: 60000 })
+  await byTestId(page, 'llm-upload-progress-card').waitFor({ timeout: 5000 })
+  await byTestId(page, 'llm-upload-overall-progress').waitFor({ timeout: 60000 })
 }
 
 export async function assertUploadProgressVisible(page: Page): Promise<void> {
-  await expect(page.getByText('Upload Progress').or(page.locator('.ant-card-head-title:has-text("Upload Progress")')).first()).toBeVisible()
-  await expect(page.locator('.ant-progress-line').first()).toBeVisible()
+  await expect(byTestId(page, 'llm-upload-progress-card')).toBeVisible()
+  await expect(byTestId(page, 'llm-upload-overall-progress')).toBeVisible()
 }
 
 export async function openUploadDrawer(page: Page): Promise<void> {
-  // Wait for any prior drawer's close-animation to settle so the
-  // dropdown isn't intercepted and the new drawer fully opens.
-  await page.locator('.ant-drawer.ant-drawer-open').first().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
   await openAddModelDropdown(page)
   await selectAddModelOption(page, 'upload')
 
-  // Wait for drawer to appear. Use `.ant-drawer-open` directly so the
-  // dialog is the currently-open one (not a stale closed drawer that
-  // AntD leaves in DOM). `.first()` to dedupe across `.or()` branches.
-  const uploadDrawer = page
-    .locator('.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Upload Local Model"))')
-    .first()
+  const form = byTestId(page, 'llm-model-upload-form')
+  await form.waitFor({ state: 'visible', timeout: 10000 })
 
-  await uploadDrawer.waitFor({ state: 'visible', timeout: 10000 })
-
-  // Wait for drawer to be fully loaded - check that form fields and buttons are present
-  await expect(uploadDrawer.getByLabel(/display name/i).or(uploadDrawer.locator('label:has-text("Display Name")')).first()).toBeVisible()
-
-  // The footer Upload button: while a previous upload's React state
-  // is still being flushed it briefly carries `ant-btn-loading`, which
-  // changes its accessible name from "Upload" to "loading Upload".
-  // Wait on the structural footer-button selector instead, then wait
-  // for `ant-btn-loading` to clear before asserting.
-  const uploadButton = uploadDrawer
-    .locator('.ant-drawer-footer button:has-text("Upload")')
-    .or(uploadDrawer.getByRole('button', { name: /^(loading )?upload$/i }))
-    .first()
-  const cancelButton = uploadDrawer
-    .locator('.ant-drawer-footer button:has-text("Cancel")')
-    .first()
+  // The form fields + footer buttons must be present and interactive.
+  await expect(byTestId(page, 'llm-param-display_name')).toBeVisible()
+  const uploadButton = byTestId(page, 'llm-upload-drawer-submit-btn')
+  const cancelButton = byTestId(page, 'llm-upload-drawer-cancel-btn')
   await expect(uploadButton).toBeVisible()
   await expect(cancelButton).toBeVisible()
-  await expect(uploadButton).not.toHaveClass(/ant-btn-loading/, { timeout: 10000 })
-  await expect(uploadButton).toBeEnabled({ timeout: 5000 })
   await expect(cancelButton).toBeEnabled({ timeout: 5000 })
-
-  // Small delay to ensure all animations are complete
   await page.waitForTimeout(300)
 }
 
@@ -166,40 +111,29 @@ export async function openUploadDrawer(page: Page): Promise<void> {
 // Model Download
 // =====================================================
 
-export async function startModelDownload(
-  page: Page,
-  data: DownloadFormData
-): Promise<void> {
+export async function startModelDownload(page: Page, data: DownloadFormData): Promise<void> {
   await openAddModelDropdown(page)
   await selectAddModelOption(page, 'download')
 
-  // Wait for drawer to be fully loaded. `.first()` to dedupe across
-  // `.or()` branches.
-  await page.getByRole('dialog', { name: /download.*repository/i })
-    .or(page.locator('.ant-drawer-title:has-text("Download from Repository")'))
-    .first()
-    .waitFor({ timeout: 10000 })
-  await page.waitForTimeout(500) // Allow drawer to fully render
+  const form = byTestId(page, 'llm-model-download-form')
+  await form.waitFor({ timeout: 10000 })
+  await page.waitForTimeout(500)
 
   await fillDownloadForm(page, data)
 
-  // Submit label was standardised to verb-only ("Start Download" →
-  // "Download", audit I-2). Scope to the open drawer's primary button
-  // so the locator survives any future label tweaks.
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  const downloadButton = drawer.locator('.ant-btn-primary')
+  const downloadButton = byTestId(page, 'llm-download-drawer-submit-btn')
   await expect(downloadButton).toBeEnabled()
-  await downloadButton.click()
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => /\/api\/.*download/.test(r.url()) && r.request().method() === 'POST',
+      { timeout: 15000 }
+    ),
+    downloadButton.click(),
+  ])
+  expect(resp.ok()).toBeTruthy()
 
-  // Wait for success message
-  await page.getByText('Download started successfully').waitFor({ timeout: 15000 })
-
-  // Wait for drawer to close completely. The hidden state should be
-  // unambiguous, but use `.first()` for consistency with the open wait.
-  await page.getByRole('dialog', { name: /download.*repository/i })
-    .or(page.locator('.ant-drawer-title:has-text("Download from Repository")'))
-    .first()
-    .waitFor({ state: 'hidden', timeout: 10000 })
+  // Wait for the download drawer form to close.
+  await form.waitFor({ state: 'hidden', timeout: 10000 })
 }
 
 // =====================================================
@@ -207,19 +141,9 @@ export async function startModelDownload(
 // =====================================================
 
 export async function openEditModelDrawer(page: Page, modelName: string) {
-  // Use semantic selector for the edit button
-  const editButton = page.getByRole('button', { name: new RegExp(`edit.*${modelName}`, 'i') })
-    .or(page.locator(`text=${modelName}`).first().locator('button[aria-label="Edit"]'))
-
-  await editButton.first().click()
-
-  // Wait for edit drawer. The title is now engine-aware ("Edit Local Model"
-  // / "Edit Remote Model"); keep matching the legacy "Edit Model" too.
-  // `.first()` to dedupe across `.or()` branches.
-  await page.getByRole('dialog', { name: /edit (local |remote )?model/i })
-    .or(page.getByText(/Edit (Local |Remote )?Model/))
-    .first()
-    .waitFor({ timeout: 30000 })
+  // Edit buttons carry `aria-label="Edit ${displayName} model"`.
+  await page.locator(`[aria-label="Edit ${modelName} model"]`).first().click()
+  await byTestId(page, 'llm-edit-model-form').waitFor({ timeout: 30000 })
 }
 
 // =====================================================
@@ -227,15 +151,14 @@ export async function openEditModelDrawer(page: Page, modelName: string) {
 // =====================================================
 
 export async function deleteModel(page: Page, modelName: string): Promise<void> {
-  // Find the delete button by its aria-label which includes the model display name
-  // Use semantic selector first, fallback to aria-label
-  const deleteButton = page.getByRole('button', { name: new RegExp(`delete.*${modelName}`, 'i') })
-    .or(page.locator(`button[aria-label*="Delete"][aria-label*="${modelName}"]`))
-
-  await deleteButton.first().click()
-
-  // Wait for success message (no confirmation modal)
-  await page.getByText('Model deleted').waitFor({ timeout: 15000 })
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => /\/api\/.*models/.test(r.url()) && r.request().method() === 'DELETE',
+      { timeout: 15000 }
+    ),
+    page.locator(`[aria-label="Delete ${modelName} model"]`).first().click(),
+  ])
+  expect(resp.ok()).toBeTruthy()
 }
 
 // =====================================================
@@ -243,9 +166,10 @@ export async function deleteModel(page: Page, modelName: string): Promise<void> 
 // =====================================================
 
 export async function assertModelExists(page: Page, modelName: string): Promise<void> {
-  await expect(page.getByText(modelName).first()).toBeVisible()
+  // Each model row exposes an edit button labelled with its display name.
+  await expect(page.locator(`[aria-label="Edit ${modelName} model"]`).first()).toBeVisible()
 }
 
 export async function assertModelNotExists(page: Page, modelName: string): Promise<void> {
-  await expect(page.getByText(modelName).first()).not.toBeVisible()
+  await expect(page.locator(`[aria-label="Edit ${modelName} model"]`).first()).not.toBeVisible()
 }

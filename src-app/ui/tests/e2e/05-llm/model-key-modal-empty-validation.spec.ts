@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { createModelViaAPI } from '../../common/provider-helpers'
 import { goToNewChatPage } from '../09-chat/helpers/chat-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E (deterministic, no LLM) — the empty-key validation branch of
@@ -101,16 +102,21 @@ test.describe('LLM — model key modal empty-key validation', () => {
     await goToNewChatPage(page, baseURL)
 
     // Select the keyless Haiku model → the API-key modal appears.
-    await page.click('[data-testid="model-selector"] .ant-select')
-    await page.getByRole('option', { name: 'Haiku Keyless' }).first().click()
-    const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
+    await byTestId(page, 'ullm-model-select').click()
+    await page
+      .locator('[data-testid^="ullm-model-select-opt-"]')
+      .filter({ hasText: 'Haiku Keyless' })
+      .first()
+      .click()
+    const modal = byTestId(page, 'ullm-apikey-dialog')
     await expect(modal).toBeVisible({ timeout: 10000 })
 
     // Leave the key field empty and click "Save & Select Model".
-    await modal.getByRole('button', { name: 'Save & Select Model' }).click()
+    await byTestId(page, 'ullm-apikey-save-button').click()
 
-    // The inline validation error renders and the modal stays open.
-    await expect(modal.getByText('API key cannot be empty')).toBeVisible({
+    // The inline validation error renders (kit FieldError → role="alert")
+    // and the modal stays open.
+    await expect(modal.getByRole('alert')).toContainText('API key cannot be empty', {
       timeout: 5000,
     })
     await expect(modal).toBeVisible()

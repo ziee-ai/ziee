@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { createProviderViaAPI } from '../../common/provider-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Dynamic + OPTIONAL route segments (router/types.ts: ":providerId?"). The LLM
@@ -26,20 +27,17 @@ test.describe('Routing — optional dynamic route segment', () => {
       'openai',
     )
 
-    // Param ABSENT → the list view renders.
+    // Param ABSENT → the list view renders (provider nav present).
     await page.goto(`${baseURL}/settings/llm-providers`)
-    await expect(
-      page.getByRole('heading', { name: 'LLM Providers' }),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'llm-provider-nav-add-provider')).toBeVisible({ timeout: 15000 })
 
     // Param PRESENT → the SAME route renders the detail view for that id (the
-    // provider's name becomes the page heading).
+    // header reflects the provider; its enable switch aria-label embeds the name).
     await page.goto(`${baseURL}/settings/llm-providers/${providerId}`)
     await expect(page).toHaveURL(
       new RegExp(`/settings/llm-providers/${providerId}$`),
     )
-    await expect(
-      page.getByRole('heading', { name: providerName }),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'llm-models-section-card')).toBeVisible({ timeout: 15000 })
+    await expect(page.locator(`[aria-label*="${providerName} provider"]`).first()).toBeVisible()
   })
 })

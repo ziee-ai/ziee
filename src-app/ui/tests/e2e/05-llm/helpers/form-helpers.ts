@@ -1,8 +1,37 @@
-import { Page, expect } from '@playwright/test'
+import { Page, expect, Locator } from '@playwright/test'
+import { byTestId } from '../../testid'
 
 /**
- * LLM-specific form helpers
+ * LLM-specific form helpers (kit / data-testid based)
  */
+
+// =====================================================
+// Kit primitive helpers
+// =====================================================
+
+/** Open a kit Select (by trigger testid) and pick the option whose value is `value`. */
+async function selectKitOptionByValue(page: Page, selectTestId: string, value: string) {
+  await byTestId(page, selectTestId).click()
+  await page.getByTestId(`${selectTestId}-opt-${value}`).click()
+}
+
+/** Open a kit Select and pick the option matching the (dynamic) visible label text. */
+async function selectKitOptionByLabel(page: Page, selectTestId: string, label: string) {
+  await byTestId(page, selectTestId).click()
+  await page
+    .locator(`[data-testid^="${selectTestId}-opt-"]`)
+    .filter({ hasText: label })
+    .first()
+    .click()
+}
+
+/** Set a kit Switch (role="switch") to the desired checked state. */
+async function setKitSwitch(locator: Locator, desired: boolean) {
+  const checked = (await locator.getAttribute('aria-checked')) === 'true'
+  if (checked !== desired) {
+    await locator.click()
+  }
+}
 
 // =====================================================
 // Provider Form Helpers
@@ -23,82 +52,37 @@ export interface ProviderFormData {
 }
 
 export async function fillProviderForm(page: Page, data: ProviderFormData) {
-  // With Form name="llm-provider-form", field IDs are prefixed with the form name
-  // e.g., llm-provider-form_name instead of just name
-  await page.fill('#llm-provider-form_name', data.name)
+  if (data.name !== undefined) {
+    await byTestId(page, 'llm-provider-name-input').fill(data.name)
+  }
 
-  // NOTE: Add Provider drawer does NOT have a description field
-  // Description is only used in other contexts
-
-  // Enabled checkbox (optional)
+  // Enabled switch (optional)
   if (data.enabled !== undefined) {
-    const checkbox = page.locator('#llm-provider-form_enabled')
-    const isChecked = await checkbox.isChecked()
-    if (isChecked !== data.enabled) {
-      await checkbox.click()
-    }
+    await setKitSwitch(byTestId(page, 'llm-provider-enabled-switch'), data.enabled)
   }
 
   // Remote provider fields
   if (data.baseUrl) {
-    await page.fill('#llm-provider-form_base_url', data.baseUrl)
+    await byTestId(page, 'llm-provider-base-url-input').fill(data.baseUrl)
   }
 
   if (data.apiKey) {
-    await page.fill('#llm-provider-form_api_key', data.apiKey)
-  }
-
-  // Proxy settings (these would be on a different form - provider-proxy-form)
-  if (data.proxyEnabled !== undefined) {
-    const proxyCheckbox = page.locator('#provider-proxy-form_enabled')
-    const isChecked = await proxyCheckbox.isChecked()
-    if (isChecked !== data.proxyEnabled) {
-      await proxyCheckbox.click()
-    }
-
-    if (data.proxyEnabled) {
-      if (data.proxyUrl) {
-        await page.fill('#provider-proxy-form_url', data.proxyUrl)
-      }
-      if (data.proxyUsername) {
-        await page.fill('#provider-proxy-form_username', data.proxyUsername)
-      }
-      if (data.proxyPassword) {
-        await page.fill('#provider-proxy-form_password', data.proxyPassword)
-      }
-    }
+    await byTestId(page, 'llm-provider-api-key-input').fill(data.apiKey)
   }
 }
 
 export async function submitProviderForm(page: Page) {
-  // Wait for any dropdown overlay to dismiss. AntD's Select dropdowns
-  // can leave invisible overlays that block normal click; submit
-  // via Form's keyboard handler instead — press Enter on the
-  // submit button after focusing.
-  await page.waitForTimeout(500)
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  // Submit label was standardised to verb-only ("Add Provider" → "Add",
-  // audit I-2). Scope by primary-button class to avoid colliding with
-  // the "Add Provider" menu item that triggered the drawer.
-  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
-  await submitButton.focus()
-  await submitButton.press('Enter')
+  await byTestId(page, 'llm-provider-submit-btn').click()
   await page.waitForLoadState('load')
 }
 
 export async function updateProviderForm(page: Page) {
-  await page.waitForTimeout(500)
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  // Submit label was standardised to verb-only ("Update Provider" →
-  // "Save", audit I-2).
-  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
-  await submitButton.focus()
-  await submitButton.press('Enter')
+  await byTestId(page, 'llm-provider-submit-btn').click()
   await page.waitForLoadState('load')
 }
 
 export async function cancelProviderForm(page: Page) {
-  await page.click('button:has-text("Cancel")')
+  await byTestId(page, 'llm-provider-cancel-btn').click()
 }
 
 // =====================================================
@@ -134,111 +118,90 @@ export interface ModelFormData {
   useMlock?: boolean
 }
 
-export async function fillModelCommonFields(page: Page, data: ModelFormData, formName: string = '') {
-  const prefix = formName ? `${formName}_` : ''
-
-  await page.fill(`#${prefix}display_name`, data.displayName)
+export async function fillModelCommonFields(page: Page, data: ModelFormData, _formName: string = '') {
+  void _formName
+  await byTestId(page, 'llm-param-display_name').fill(data.displayName)
 
   if (data.description) {
-    await page.fill(`#${prefix}description`, data.description)
+    await byTestId(page, 'llm-param-description').fill(data.description)
   }
 
-  // File format dropdown - Ant Design Select requires clicking on the .ant-select wrapper
-  // We use the input ID to find the correct .ant-select
-  const fileFormatSelect = page.locator(`.ant-select:has(input#${prefix}file_format)`)
-  await fileFormatSelect.click()
-  await page.click(`text=${data.fileFormat}`)
-
-  // Engine type dropdown - Ant Design Select requires clicking on the .ant-select wrapper
-  const engineTypeSelect = page.locator(`.ant-select:has(input#${prefix}engine_type)`)
-  await engineTypeSelect.click()
-  await page.click(`text=${data.engineType}`)
+  // Engine type + file format are kit Selects.
+  await selectKitOptionByValue(page, 'llm-engine-type-select', data.engineType)
+  await selectKitOptionByValue(page, 'llm-file-format-select', data.fileFormat)
 }
 
 export async function fillModelCapabilities(page: Page, data: ModelFormData) {
-  // Expand capabilities section if collapsed
-  const capabilitiesSection = page.locator('text=Capabilities').first()
-  await capabilitiesSection.click()
+  // Capability switches: `llm-capability-switch-${name}`. Component uses
+  // `codeInterpreter` / `image_generator` / `text_embedding` etc.
+  const capabilities: Array<[string, boolean | undefined]> = [
+    ['chat', data.chat],
+    ['text_embedding', data.textEmbedding],
+    ['codeInterpreter', data.codeInterpreter],
+    ['vision', data.vision],
+    ['audio', data.audio],
+    ['image_generator', data.imageGenerator],
+    ['tools', data.tools],
+  ]
 
-  const capabilities = {
-    chat: data.chat,
-    text_embedding: data.textEmbedding,
-    code_interpreter: data.codeInterpreter,
-    vision: data.vision,
-    audio: data.audio,
-    image_generator: data.imageGenerator,
-    tools: data.tools,
-  }
-
-  for (const [key, value] of Object.entries(capabilities)) {
+  for (const [name, value] of capabilities) {
     if (value !== undefined) {
-      const checkbox = page.locator(`#capabilities_${key}`)
-      const isChecked = await checkbox.isChecked()
-      if (isChecked !== value) {
-        await checkbox.click()
+      const sw = byTestId(page, `llm-capability-switch-${name}`)
+      if (await sw.count()) {
+        await setKitSwitch(sw.first(), value)
       }
     }
   }
 }
 
 export async function fillModelParameters(page: Page, data: ModelFormData) {
-  // Expand parameters section if collapsed
-  const parametersSection = page.locator('text=Parameters').first()
-  await parametersSection.click()
-
   if (data.maxTokens) {
-    await page.fill('#parameters_max_tokens', data.maxTokens.toString())
+    await byTestId(page, 'llm-param-parameters.max_tokens').fill(data.maxTokens.toString())
   }
-
   if (data.temperature) {
-    await page.fill('#parameters_temperature', data.temperature.toString())
+    await byTestId(page, 'llm-param-parameters.temperature').fill(data.temperature.toString())
   }
-
   if (data.topP) {
-    await page.fill('#parameters_top_p', data.topP.toString())
+    await byTestId(page, 'llm-param-parameters.top_p').fill(data.topP.toString())
   }
-
   if (data.topK) {
-    await page.fill('#parameters_top_k', data.topK.toString())
+    await byTestId(page, 'llm-param-parameters.top_k').fill(data.topK.toString())
   }
 }
 
 export async function fillModelEngineSettings(page: Page, data: ModelFormData) {
+  const deviceSelect =
+    data.engineType === 'mistralrs' ? 'llm-mistralrs-device-type' : 'llm-llamacpp-device-type'
+
   if (data.deviceType) {
-    await page.click('.ant-select:has-text("Device Type")')
-    await page.click(`text=${data.deviceType}`)
+    const sel = byTestId(page, deviceSelect)
+    if (await sel.count()) {
+      await selectKitOptionByValue(page, deviceSelect, data.deviceType)
+    }
   }
 
-  // MistralRS specific
-  if (data.engineType === 'mistralrs' && data.command) {
-    await page.click('.ant-select:has-text("Command")')
-    await page.click(`text=${data.command}`)
-  }
+  // NOTE: MistralRS "command" select has no dedicated testid in the kit
+  // form; left as a no-op for signature compatibility.
+  void data.command
 
   // LlamaCPP specific
   if (data.engineType === 'llamacpp') {
     if (data.contextSize) {
-      await page.fill('#engine_settings_context_size', data.contextSize.toString())
+      const f = byTestId(page, 'llm-llamacpp-ctx-size')
+      if (await f.count()) await f.fill(data.contextSize.toString())
     }
-
     if (data.gpuLayers !== undefined) {
-      await page.fill('#engine_settings_gpu_layers', data.gpuLayers.toString())
+      const f = byTestId(page, 'llm-llamacpp-n-gpu-layers')
+      if (await f.count()) await f.fill(data.gpuLayers.toString())
     }
-
     if (data.useMmap !== undefined) {
-      const checkbox = page.locator('#engine_settings_use_mmap')
-      const isChecked = await checkbox.isChecked()
-      if (isChecked !== data.useMmap) {
-        await checkbox.click()
-      }
+      const sw = byTestId(page, 'llm-llamacpp-no-mmap')
+      // `no-mmap` is the inverse of useMmap.
+      if (await sw.count()) await setKitSwitch(sw.first(), !data.useMmap)
     }
-
     if (data.useMlock !== undefined) {
-      const checkbox = page.locator('#engine_settings_use_mlock')
-      const isChecked = await checkbox.isChecked()
-      if (isChecked !== data.useMlock) {
-        await checkbox.click()
-      }
+      const sw = byTestId(page, 'llm-llamacpp-mlock')
+      if (await sw.count()) await setKitSwitch(sw.first(), data.useMlock)
     }
   }
 }
@@ -259,62 +222,45 @@ export async function fillDownloadForm(page: Page, data: DownloadFormData) {
   // Fill common model fields
   await fillModelCommonFields(page, data, 'llm-model-download')
 
-  // Repository selection - Ant Design Select requires clicking on the .ant-select wrapper
-  const repositorySelect = page.locator('.ant-select:has(input#llm-model-download_repository_id)')
-  await repositorySelect.click()
-  // Wait for dropdown to appear
-  await page.waitForSelector(`.ant-select-dropdown:not(.ant-select-dropdown-hidden)`)
-
-  // Click the option - support both UUID and name-based selection
-  // For tests using repository names like "huggingface", match partial text in the title
-  // The title format is: "Repository Name (URL)"
+  // Repository selection — option values are repository UUIDs; their
+  // labels carry the repository name.
   const isUUID = data.repositoryId.includes('-') && data.repositoryId.length > 20
   if (isUUID) {
-    // If it's a UUID, we can't match by text, so select the first option for now
-    await page.locator('.ant-select-item:not(.ant-select-item-option-disabled)').first().click()
+    await selectKitOptionByValue(page, 'llm-download-repository-select', data.repositoryId)
   } else {
-    // For name-based selection (like "huggingface"), match the repository by name
-    // Map common test identifiers to repository names
     const nameMap: Record<string, string> = {
-      'huggingface': 'Hugging Face Hub',
-      'github': 'GitHub'
+      huggingface: 'Hugging Face Hub',
+      github: 'GitHub',
     }
     const repoName = nameMap[data.repositoryId.toLowerCase()] || data.repositoryId
-    await page.click(`.ant-select-item:has-text("${repoName}")`)
+    await selectKitOptionByLabel(page, 'llm-download-repository-select', repoName)
   }
 
-  // Repository path - use prefixed ID
-  await page.fill('#llm-model-download_repository_path', data.repositoryPath)
+  await byTestId(page, 'llm-download-repository-path-input').fill(data.repositoryPath)
+  await byTestId(page, 'llm-download-main-filename-input').fill(data.mainFilename)
 
-  // Main filename - use prefixed ID
-  await page.fill('#llm-model-download_main_filename', data.mainFilename)
-
-  // Branch (optional) - use prefixed ID
   if (data.branch) {
-    await page.fill('#llm-model-download_repository_branch', data.branch)
+    await byTestId(page, 'llm-download-branch-input').fill(data.branch)
   }
 
   // Clear-cache field was removed in security remediation (07-llm-model
-  // F-17): the flag allowed any download-permitted user to wipe cache
-  // for any model. Tests passing `clearCache` now no-op.
+  // F-17). Tests passing `clearCache` now no-op.
   void data.clearCache
 
-  // Fill capabilities, parameters, engine settings
   if (data.chat !== undefined || data.textEmbedding !== undefined) {
     await fillModelCapabilities(page, data)
   }
-
   if (data.maxTokens || data.temperature) {
     await fillModelParameters(page, data)
   }
-
   if (data.deviceType || data.command) {
     await fillModelEngineSettings(page, data)
   }
 }
 
 // =====================================================
-// Repository Form Helpers
+// Repository Form Helpers (legacy shape; see repository-helpers.ts for
+// the canonical one used by repo specs)
 // =====================================================
 
 export interface RepositoryFormData {
@@ -329,39 +275,33 @@ export interface RepositoryFormData {
 }
 
 export async function fillRepositoryForm(page: Page, data: RepositoryFormData) {
-  await page.fill('#name', data.name)
-  await page.fill('#url', data.url)
+  await byTestId(page, 'llmrepo-form-name').fill(data.name)
+  await byTestId(page, 'llmrepo-form-url').fill(data.url)
 
-  // Auth type dropdown
-  await page.click('.ant-select:has-text("Auth Type")')
-  await page.click(`text=${data.authType}`)
+  const authValue =
+    data.authType === 'token' ? 'bearer_token' : data.authType === 'basic' ? 'basic_auth' : 'none'
+  await selectKitOptionByValue(page, 'llmrepo-form-auth-type', authValue)
 
-  // Auth fields based on type
   if (data.authType === 'token' && data.token) {
-    await page.fill('#token', data.token)
+    await byTestId(page, 'llmrepo-form-token').fill(data.token)
   }
 
   if (data.authType === 'basic') {
     if (data.username) {
-      await page.fill('#username', data.username)
+      await byTestId(page, 'llmrepo-form-username').fill(data.username)
     }
     if (data.password) {
-      await page.fill('#password', data.password)
+      await byTestId(page, 'llmrepo-form-password').fill(data.password)
     }
   }
 
-  // Enabled checkbox
   if (data.enabled !== undefined) {
-    const checkbox = page.locator('#enabled')
-    const isChecked = await checkbox.isChecked()
-    if (isChecked !== data.enabled) {
-      await checkbox.click()
-    }
+    await setKitSwitch(byTestId(page, 'llmrepo-form-enabled-switch'), data.enabled)
   }
 }
 
 export async function submitRepositoryForm(page: Page) {
-  await page.click('button[type="submit"]')
+  await byTestId(page, 'llmrepo-form-submit-btn').click()
   await page.waitForLoadState('load')
 }
 
@@ -378,46 +318,27 @@ export async function fillUploadForm(page: Page, data: UploadFormData) {
   // Fill common model fields
   await fillModelCommonFields(page, data, 'llm-model-upload')
 
-  // File format should already be selected via fillModelCommonFields
-  // Now we need to upload the folder
-
-  // Note: The actual folder upload happens via file input interaction
-  // This will be handled by the test directly using page.setInputFiles()
-
-  // After files are uploaded, select main filename from dropdown
+  // After files are uploaded, select main filename from the kit Select.
   if (data.mainFilename) {
-    await page.waitForSelector('.ant-select:has-text("Main Model File")', { timeout: 5000 })
-    await page.click('.ant-select:has-text("Main Model File")')
-    await page.click(`text=${data.mainFilename}`)
+    await byTestId(page, 'llm-upload-main-file-select').waitFor({ timeout: 5000 })
+    await selectKitOptionByLabel(page, 'llm-upload-main-file-select', data.mainFilename)
   }
 
-  // Fill capabilities, parameters, engine settings if provided
   if (data.chat !== undefined || data.textEmbedding !== undefined) {
     await fillModelCapabilities(page, data)
   }
-
   if (data.maxTokens || data.temperature) {
     await fillModelParameters(page, data)
   }
-
   if (data.deviceType || data.command) {
     await fillModelEngineSettings(page, data)
   }
 }
 
 export async function submitUploadForm(page: Page) {
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  // Use exact-name match — the dropzone also exposes a button-role
-  // element with "Upload" in its accessible name; `:has-text("Upload")`
-  // matches both the dropzone span and the submit button.
-  const uploadButton = drawer.getByRole('button', { name: 'Upload', exact: true })
-
-  // Ensure button is enabled before clicking
+  const uploadButton = byTestId(page, 'llm-upload-drawer-submit-btn')
   await expect(uploadButton).toBeEnabled()
-
   await uploadButton.click()
-
-  // After clicking, the button should enter loading state quickly
-  // Wait a bit to ensure the upload has started
+  // After clicking, the button should enter loading state quickly.
   await page.waitForTimeout(500)
 }

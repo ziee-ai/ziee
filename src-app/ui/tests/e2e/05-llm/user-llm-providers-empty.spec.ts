@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * The self-service "LLM Providers" page (/settings/user-llm-providers,
@@ -16,17 +17,10 @@ test.describe('User LLM providers — no-provider fallback', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await expect(
-      page.getByRole('heading', { name: 'LLM Providers' }),
-    ).toBeVisible({ timeout: 15000 })
 
     // No provider configured anywhere → the page renders its Empty fallback
     // instead of a provider key form.
-    await expect(
-      page.getByText('No AI providers are available yet.'),
-    ).toBeVisible()
-    await expect(
-      page.getByRole('button', { name: /save key/i }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'ullm-no-providers-empty')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'ullm-save-key-button')).toHaveCount(0)
   })
 })

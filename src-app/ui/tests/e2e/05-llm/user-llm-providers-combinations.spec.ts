@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // audit id all-e8a9d734fadf — the user-facing providers page was only tested
 // with a single (openai/custom) provider. This seeds MULTIPLE real chat
@@ -45,18 +46,21 @@ test.describe('User providers page — multiple chat-provider combinations', () 
       anthropic: `e2e-anthropic-${stamp}`,
       gemini: `e2e-gemini-${stamp}`,
     }
+    const ids: string[] = []
     for (const [type, name] of Object.entries(names)) {
       const id = await createTypedProvider(apiURL, token, name, type as 'openai' | 'anthropic' | 'gemini')
       await assignToDefaultGroup(apiURL, token, id)
+      ids.push(id)
     }
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
 
-    // All three provider types appear in the page's provider menu.
-    for (const name of Object.values(names)) {
+    // All three provider types appear in the page's provider menu (items keyed
+    // by provider id).
+    for (const id of ids) {
       await expect(
-        page.getByRole('menuitem', { name }).first(),
+        byTestId(page, `ullm-provider-menu-item-${id}`).first(),
       ).toBeVisible({ timeout: 30000 })
     }
   })

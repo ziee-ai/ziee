@@ -35,23 +35,21 @@ test('list Switch ON against a failing mock shows error toast + Alert and stays 
 
     const row = repoRow(page, name)
     await expect(row).toBeVisible()
-    const toggle = row.locator('.ant-switch')
+    const toggle = row.locator('[data-testid^="llmrepo-toggle-"]').first()
     await expect(toggle).toHaveAttribute('aria-checked', 'false')
 
     await toggle.click()
 
     // Error toast surfaces the probe reason.
     await expect(
-      page
-        .locator('.ant-message-error, .ant-notification-notice-error')
-        .first(),
+      page.locator('[data-sonner-toast][data-type="error"]').first(),
     ).toBeVisible({ timeout: 15_000 })
 
     // The store's auto_disabled listener re-fetches; the row's
     // last_health_check_status is now 'unhealthy' and the Alert
     // renders inline.
     await expect(toggle).toHaveAttribute('aria-checked', 'false')
-    await expect(row.locator('.ant-alert-error').first()).toBeVisible({
+    await expect(row.locator('[data-testid^="llmrepo-health-alert-"]').first()).toBeVisible({
       timeout: 10_000,
     })
   } finally {

@@ -237,7 +237,7 @@ export function LlmRepositorySettings() {
             ) : (
               <div>
                 {repositories.map((repository, index) => (
-                  <div key={repository.id}>
+                  <div key={repository.id} data-testid={`llmrepo-row-${repository.id}`}>
                     <div className="flex items-start gap-3 flex-wrap">
                       {/* Repository Info */}
                       <div className="flex-1">
