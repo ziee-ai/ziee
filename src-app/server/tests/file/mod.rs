@@ -1966,6 +1966,10 @@ async fn dedup_collapses_identical_uploads_in_resolve_available_files() {
 #[serial_test::serial(repos)]
 async fn provider_routing_enforces_ownership_and_routes_text_file() {
     let server = crate::common::TestServer::start().await;
+    // `Repos.pool()` is used in-process below; point the global factory at
+    // THIS test's DB so it sees the HTTP-uploaded file. (Re-init-able factory
+    // + `#[serial(repos)]`.)
+    ziee::init_repositories(sqlx::PgPool::connect(&server.database_url).await.unwrap());
     let owner = test_helpers::create_user_with_permissions(
         &server,
         "routing_owner",
@@ -2037,6 +2041,8 @@ async fn provider_routing_image_file_routes_to_base64_image_block() {
     use base64::Engine;
 
     let server = crate::common::TestServer::start().await;
+    // In-process `Repos.pool()` below must target THIS test's DB.
+    ziee::init_repositories(sqlx::PgPool::connect(&server.database_url).await.unwrap());
     let owner = test_helpers::create_user_with_permissions(
         &server,
         "routing_img_owner",

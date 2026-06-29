@@ -698,6 +698,8 @@ async fn ask_user_accept_persists_status_and_response_content_to_db() {
 #[serial_test::serial(repos)]
 async fn elicitation_builtin_upsert_is_idempotent_and_reasserts_url() {
     let server = crate::common::TestServer::start().await;
+    // Point the in-process factory at THIS test's DB before reading Repos.pool().
+    ziee::init_repositories(sqlx::PgPool::connect(&server.database_url).await.unwrap());
     let pool = ziee::Repos.pool().clone();
     let repo = ziee::ElicitationMcpRepository::new(pool.clone());
     let id = ziee::elicitation_mcp_server_id();
