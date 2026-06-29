@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Spin, Switch, message } from 'antd'
+import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Switch, message } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

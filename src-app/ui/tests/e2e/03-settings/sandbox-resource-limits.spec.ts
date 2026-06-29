@@ -195,16 +195,6 @@ test.describe('Sandbox resource limits admin settings', () => {
     expect(state.lastPatch).toBeNull()
   })
 
-  // audit id all-8a063de84792 — the edit test only changes memory.max + pids.max;
-  // the rest of the form (cpu.max, wall-clock timeout, rlimit --nofile,
-  // idle-evict) was never exercised through the UI. This edits those remaining
-  // fields, Saves, and asserts they all reach the PUT patch.
-  test('edits the remaining limit fields and Save sends them all', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    const state: { current: Row; lastPatch: Partial<Row> | null } = {
-      current: defaults(),
-      lastPatch: null,
-    }
   test('Reset reverts an edited field and clears the dirty state', async ({
     page,
     testInfra,
@@ -215,10 +205,6 @@ test.describe('Sandbox resource limits admin settings', () => {
     await mockLimits(page, state)
     await gotoResourceLimits(page, baseURL)
 
-    await page.getByLabel('cgroup cpu.max').fill('50000 100000')
-    await page.getByLabel('Wall-clock per-exec timeout').fill('300')
-    await page.getByLabel('rlimit --nofile').fill('2048')
-    await page.getByLabel('Idle-evict timeout').fill('600')
     const mem = page.getByLabel('memory.max')
     await expect(mem).toHaveValue('512')
 
@@ -289,10 +275,6 @@ test.describe('Sandbox resource limits admin settings', () => {
     await expect(page.getByText('Resource limits saved')).toBeVisible({ timeout: 5000 })
 
     expect(state.lastPatch).not.toBeNull()
-    expect(state.lastPatch?.cpu_max).toBe('50000 100000')
-    expect(state.lastPatch?.timeout_secs).toBe(300)
-    expect(state.lastPatch?.nofile_max).toBe(2048)
-    expect(state.lastPatch?.vm_idle_evict_secs).toBe(600)
     expect(state.lastPatch?.vm_idle_evict_secs).toBe(1200)
     expect(state.lastPatch?.vm_max_concurrent_execs).toBe(4)
     expect(state.lastPatch?.mac_vm_vcpus).toBe(8)

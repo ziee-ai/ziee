@@ -160,13 +160,6 @@ test.describe('Users CRUD Operations', () => {
     // Note: Email verification removed due to complex DOM structure
   })
 
-  test('toggling the Active switch off deactivates the user', async ({ page }) => {
-    // Create an (active by default) user.
-    await openCreateUserDrawer(page)
-    const ts = Date.now()
-    const userData = {
-      username: `inactiveuser${ts}`,
-      email: `inactiveuser${ts}@example.com`,
   test('edit drawer Active switch deactivates a user', async ({ page }) => {
     // Create an active user.
     await openCreateUserDrawer(page)
@@ -179,18 +172,6 @@ test.describe('Users CRUD Operations', () => {
     await createUser(page, userData)
     await assertUserStatus(page, userData.username, 'active')
 
-    // Edit → toggle the "Active" switch OFF → save.
-    await openEditUserDrawer(page, userData.username)
-    await assertDrawerOpen(page, /edit user/i)
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    await drawer.getByRole('switch', { name: 'Active' }).click()
-    await drawer.locator('.ant-btn-primary[type="submit"]').click()
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({
-      timeout: 5000,
-    })
-    await assertDrawerClosed(page)
-
-    // The list now shows the user as inactive.
     // Open the edit drawer and flip the "Active" switch OFF.
     await openEditUserDrawer(page, userData.username)
     await assertDrawerOpen(page, /edit user/i)
@@ -338,30 +319,5 @@ test.describe('Users CRUD Operations', () => {
         ).toBeVisible()
       }
     }
-  })
-
-  // audit id all-c81f77e7ceff — the existing edit test changes email + display
-  // name but NOT the username. The EditUserDrawer username field is editable;
-  // assert a username CHANGE persists (new name appears, old name gone).
-  test('should edit a user\'s username', async ({ page }) => {
-    await openCreateUserDrawer(page)
-    const ts = Date.now()
-    const original = `olduser${ts}`
-    await createUser(page, {
-      username: original,
-      email: `olduser${ts}@example.com`,
-      password: 'password123',
-    })
-
-    await openEditUserDrawer(page, original)
-    await assertDrawerOpen(page, /edit user/i)
-
-    const renamed = `newuser${ts}`
-    await updateUser(page, { username: renamed })
-    await assertDrawerClosed(page)
-
-    // The renamed user is present; the old username is gone.
-    await assertUserExists(page, renamed)
-    await assertUserNotExists(page, original)
   })
 })

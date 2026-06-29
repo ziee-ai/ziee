@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Form, Spin, Typography, message } from 'antd'
+import { Alert, Button, Card, Form, Typography, message } from 'antd'
 import { DatabaseOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

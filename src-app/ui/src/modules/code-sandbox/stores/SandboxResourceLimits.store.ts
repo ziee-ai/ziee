@@ -6,11 +6,9 @@ import {
   Permissions,
   type CodeSandboxResourceLimits,
   type UpdateCodeSandboxResourceLimits,
-  Permissions,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
-import { hasPermissionNow } from '@/core/permissions'
 
 /**
  * Runtime-configurable resource caps for the code sandbox (Plan 1 §6).

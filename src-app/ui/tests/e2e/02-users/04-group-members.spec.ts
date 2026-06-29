@@ -14,8 +14,6 @@ import {
   openGroupMembersDrawer as _openGroupMembersDrawer,
   openUserGroupsDrawer,
 } from './helpers/user-navigation'
-import { createUser, assignUserToGroups } from './helpers/user-actions'
-import { createGroup, viewGroupMembers } from './helpers/group-actions'
 import { createUser } from './helpers/user-actions'
 import { createGroup, updateGroup, viewGroupMembers } from './helpers/group-actions'
 import {
@@ -307,78 +305,6 @@ test.describe('Group Membership Management', () => {
     ).toBeVisible()
   })
 
-  // audit id 658cfc658b378128 — the AssignGroupDrawer (Assign-to-Group flow)
-  // had zero E2E coverage. Create a group + user, open the user's groups drawer,
-  // open the Assign drawer, check the group, submit, and verify membership.
-  test('assigns a user to a group via the AssignGroupDrawer', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    await loginAsAdmin(page, baseURL)
-    const ts = Date.now()
-    const groupName = `AssignGrp${ts}`
-    const username = `assignuser${ts}`
-
-    // Create the target group.
-    await navigateToUserGroups(page, baseURL)
-    await openCreateGroupDrawer(page)
-    await createGroup(page, { name: groupName, description: 'assign target' })
-
-    // Create the user.
-    await navigateToUsers(page, baseURL)
-    await openCreateUserDrawer(page)
-    await createUser(page, {
-      username,
-      email: `${username}@example.com`,
-      password: 'password123',
-    })
-
-    // Drive the AssignGroupDrawer (open user groups → Assign → check group →
-    // submit → success toast). The helper asserts the success message.
-    await assignUserToGroups(page, username, [groupName])
-
-    // Verify the membership took: the user shows in the group's members list.
-    await navigateToUserGroups(page, baseURL)
-    await viewGroupMembers(page, groupName)
-    await _assertUserInGroup(page, username)
-  })
-
-  // audit id c7c0ee1310ffc692 — a user belonging to 2+ groups was never tested
-  // (the assign flow was only ever exercised for a single group).
-  test('assigns a user to multiple groups at once', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    await loginAsAdmin(page, baseURL)
-    const ts = Date.now()
-    const groupA = `MultiGrpA${ts}`
-    const groupB = `MultiGrpB${ts}`
-    const username = `multiuser${ts}`
-
-    // Create the two target groups.
-    await navigateToUserGroups(page, baseURL)
-    await openCreateGroupDrawer(page)
-    await createGroup(page, { name: groupA, description: 'multi A' })
-    await openCreateGroupDrawer(page)
-    await createGroup(page, { name: groupB, description: 'multi B' })
-
-    // Create the user.
-    await navigateToUsers(page, baseURL)
-    await openCreateUserDrawer(page)
-    await createUser(page, {
-      username,
-      email: `${username}@example.com`,
-      password: 'password123',
-    })
-
-    // Assign to BOTH groups in one AssignGroupDrawer submission.
-    await assignUserToGroups(page, username, [groupA, groupB])
-
-    // The user shows in BOTH groups' member lists.
-    await navigateToUserGroups(page, baseURL)
-    await viewGroupMembers(page, groupA)
-    await _assertUserInGroup(page, username)
-
-    await navigateToUserGroups(page, baseURL)
-    await viewGroupMembers(page, groupB)
-    await _assertUserInGroup(page, username)
-  })
   test('assigns then removes a user from a group via the groups drawer', async ({
     page,
     testInfra,

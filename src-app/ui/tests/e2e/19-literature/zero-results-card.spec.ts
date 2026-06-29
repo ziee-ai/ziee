@@ -5,11 +5,6 @@ import {
   createModelViaAPI,
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
-import { seedLiteratureResult } from './fixtures/mock-literature-result'
-
-// audit id all-bb15fde043d4 — the literature inline card's zero-results branch
-// (LiteratureToolResultCard.tsx:67-73) was untested. Seed a literature_search
-// tool_result with EMPTY records and assert the "No records returned" state.
 import { seedLiteratureResult, type LitStructured } from './fixtures/mock-literature-result'
 
 // Deterministic zero-results coverage for LiteratureToolResultCard
@@ -23,7 +18,6 @@ test.describe('Literature inline card — zero results', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
-    const token = await page.evaluate(() => JSON.parse(localStorage.getItem('auth-storage')!).state.token)
     const token = await page.evaluate(() =>
       JSON.parse(localStorage.getItem('auth-storage')!).state.token,
     )
@@ -32,9 +26,6 @@ test.describe('Literature inline card — zero results', () => {
     await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
   })
 
-  test('renders the empty-results state for a query with no records', async ({ page, testInfra }) => {
-    await seedLiteratureResult(page, testInfra.baseURL, {
-      query: 'an obscure query with no hits',
   test('an empty literature_search result renders the no-records empty state', async ({
     page,
     testInfra,
@@ -46,8 +37,6 @@ test.describe('Literature inline card — zero results', () => {
       after_dedup: 0,
       degraded_sources: [],
       completeness: null,
-    })
-    await expect(page.getByText('No records returned')).toBeVisible({ timeout: 15000 })
     }
     await seedLiteratureResult(page, testInfra.baseURL, empty)
 

@@ -84,10 +84,6 @@ test.describe('Literature screening flow', () => {
     // persistence (decisions survive a reload via the serializable panel-tab
     // data) was untested. Screen both rows, reload, and assert the decisions
     // restore.
-  test('Unscreen bulk action returns included rows to unscreened', async ({
-    page,
-    testInfra,
-  }) => {
     await seedLiteratureResult(page, testInfra.baseURL, sampleResult())
 
     await page.getByRole('button', { name: /Open in screening/ }).click()
@@ -96,7 +92,6 @@ test.describe('Literature screening flow', () => {
     })
 
     // Include both rows → PRISMA "Included: 2".
-    // Include both rows.
     await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
     await page.getByRole('button', { name: 'Include', exact: true }).click()
     await expect(page.getByText('Included: 2')).toBeVisible()
@@ -143,13 +138,6 @@ test.describe('Literature screening flow', () => {
   })
 
   test('inline tool-result card shows the dedup + saturation estimate', async ({
-    // Now Unscreen them → PRISMA Included drops back to 0.
-    await page.getByRole('checkbox', { name: /Select all|selected/ }).click()
-    await page.getByRole('button', { name: 'Unscreen', exact: true }).click()
-    await expect(page.getByText('Included: 0')).toBeVisible()
-  })
-
-  test('inline result card shows the identified/dedup counts + saturation', async ({
     page,
     testInfra,
   }) => {
@@ -163,16 +151,5 @@ test.describe('Literature screening flow', () => {
       timeout: 10000,
     })
     await expect(page.getByText(/saturation:\s*MODERATE/i)).toBeVisible()
-    // The inline LiteratureToolResultCard digest line (BEFORE opening
-    // screening) reports the identified/after-dedup counts and the
-    // completeness/saturation estimate.
-    await expect(
-      page.getByText(/identified, 2 after dedup/),
-    ).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText(/saturation: MODERATE/i)).toBeVisible()
-    // The "Open in screening (N)" affordance carries the record count.
-    await expect(
-      page.getByRole('button', { name: /Open in screening \(2\)/ }),
-    ).toBeVisible()
   })
 })

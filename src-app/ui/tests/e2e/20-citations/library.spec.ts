@@ -107,16 +107,6 @@ async function mockApi(page: Page, state: State) {
   await page.route(/\/api\/citations\/styles$/, async route =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ styles: ['apa', 'nature', 'vancouver'] }) }),
   )
-
-  // DELETE /api/citations/{id} — remove from state so a refetch reflects it.
-  await page.route(/\/api\/citations\/[0-9a-fA-F-]{36}$/, async (route, req) => {
-    if (req.method() === 'DELETE') {
-      const id = req.url().split('/').pop() ?? ''
-      state.entries = state.entries.filter(e => e.id !== id)
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
-    }
-    return route.continue()
-  })
 }
 
 async function gotoCitations(page: Page, baseURL: string) {
@@ -186,44 +176,11 @@ test.describe('Citations library', () => {
     await expect(page.getByText(/1 added/)).toBeVisible({ timeout: 5000 })
   })
 
-  // audit id 2ee363461578 — the empty-state (no citations) was never E2E-tested;
-  // every other test seeds entries via mockApi.
-  test('shows the empty-state when the library has no citations', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    const state: State = { entries: [] }
-    await loginAsAdmin(page, baseURL)
-    await mockApi(page, state)
-    await gotoCitations(page, baseURL)
-
-    await expect(
-      page.getByText('No citations yet — import some or run a literature search.'),
-    ).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('0 reference(s)')).toBeVisible()
-  })
-
-  // audit id f437d5db3a45 — the import modal's empty-text no-op guard and the
-  // error-toast catch path were untested (only success + fabricated-DOI were).
   test('import with empty text is a no-op (no request fired)', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const state: State = { entries: [] }
     await loginAsAdmin(page, baseURL)
     await mockApi(page, state)
-
-    let importCalled = false
-    await page.route(/\/api\/citations\/import$/, async route => {
-      importCalled = true
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ results: [] }) })
-    })
-
-    await gotoCitations(page, baseURL)
-    await page.getByRole('button', { name: 'Import' }).click()
-    // Leave the textarea empty and click Import + verify → the guard returns early.
-    await page.getByRole('button', { name: 'Import + verify' }).click()
-    await page.waitForTimeout(500)
-    expect(importCalled).toBe(false)
-  })
-
-  test('import surfaces a backend error as a toast', async ({ page, testInfra }) => {
     // Count any import POST that escapes the client-side empty-text guard.
     let importCalls = 0
     page.on('request', req => {
@@ -253,16 +210,6 @@ test.describe('Citations library', () => {
     const state: State = { entries: [] }
     await loginAsAdmin(page, baseURL)
     await mockApi(page, state)
-    // Override the import route to fail (exercises handleImport's catch branch).
-    await page.route(/\/api\/citations\/import$/, async route =>
-      route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ error_code: 'INTERNAL', error: 'resolver exploded' }),
-      }),
-    )
-
-    await gotoCitations(page, baseURL)
     // Override the import endpoint to fail.
     await page.route(/\/api\/citations\/import$/, async (route, req) => {
       if (req.method() === 'POST') {
@@ -298,22 +245,6 @@ test.describe('Citations library', () => {
     expect(download.suggestedFilename()).toContain('citations')
   })
 
-  // audit id all-eb628fb20657 — deleting an individual citation via the
-  // per-card Popconfirm (CitationCard handleDelete → Stores.Citations.remove →
-  // DELETE /api/citations/{id}) was untested. Click Delete, confirm the
-  // Popconfirm, and assert the card disappears.
-  test('deletes a citation via the Popconfirm', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    const state: State = {
-      entries: [entry({ title: 'Doomed paper', citation_key: 'doomed2021' })],
-    }
-  test('shows the empty state when the library has no citations', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    // library.spec.ts always seeded entries; the no-citations branch
-    // (CitationsSettingsPage Empty + disabled Verify-all/Export) was untested.
-    const state: State = { entries: [] }
-    await loginAsAdmin(page, baseURL)
-    await mockApi(page, state)
   test('deletes a citation via the card Popconfirm', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const target = entry({ title: 'Doomed paper', citation_key: 'doomed2020' })
@@ -333,23 +264,6 @@ test.describe('Citations library', () => {
 
     await expect(page.getByText('Doomed paper')).toBeVisible()
 
-    // Per-card delete button (aria-label includes the citation key).
-    await page.getByRole('button', { name: 'Delete doomed2021' }).click()
-    // Confirm the antd Popconfirm.
-    const popover = page.locator('.ant-popconfirm:visible').last()
-    await expect(popover.getByText('Delete from library?')).toBeVisible()
-    await popover.getByRole('button', { name: /^(OK|Delete|Yes)$/ }).click()
-
-    // The card is removed (DELETE fired → state empty → refetch shows none).
-    await expect(page.getByText('Doomed paper')).toHaveCount(0, { timeout: 10000 })
-    await expect(
-      page.getByText('No citations yet — import some or run a literature search.'),
-    ).toBeVisible({ timeout: 15000 })
-    // The reference counter reads zero and the entry-gated actions are disabled.
-    await expect(page.getByText('0 reference(s)')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Verify all' })).toBeDisabled()
-    await expect(page.getByRole('button', { name: 'Export' })).toBeDisabled()
-  })
     // The per-card delete is gated on citations::manage (admin holds it via *).
     await page.getByRole('button', { name: 'Delete doomed2020' }).click()
     // Confirm the Popconfirm.

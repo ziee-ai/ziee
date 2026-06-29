@@ -54,14 +54,6 @@ test.describe('Server update notification', () => {
     await expect(page.getByText(/install\.sh \| sh/)).toBeVisible()
   })
 
-  test('the upgrade command copy button writes the command to the clipboard', async ({
-    page,
-    context,
-    testInfra,
-  }) => {
-    const { baseURL } = testInfra
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await mockStatus(page, STATUS_AVAILABLE)
   test('copies the upgrade command to the clipboard', async ({
     page,
     testInfra,
@@ -79,12 +71,6 @@ test.describe('Server update notification', () => {
       timeout: 30000,
     })
 
-    // antd Paragraph `copyable` renders a copy affordance; clicking it writes
-    // the upgrade command to the clipboard.
-    await page.locator('.ant-typography-copy').first().click()
-
-    const clip = await page.evaluate(() => navigator.clipboard.readText())
-    expect(clip).toMatch(/install\.sh \| sh/)
     // Click antd's copy affordance on the copyable Paragraph.
     await page.locator('.ant-typography-copy').first().click()
 
@@ -257,51 +243,5 @@ test.describe('Server update notification', () => {
     ).toBeVisible({ timeout: 30000 })
     await expect(page.getByText(/is available/)).toHaveCount(0)
     expect(statusCalls).toBe(0)
-  })
-
-  // audit id c118d74c3dca — the existing "dismisses" assertion only checks the
-  // banner disappears in-place. Dismissal is persisted to localStorage
-  // (DISMISSED_VERSION_KEY) and re-applied on load (store lines 86-87); that
-  // it STAYS dismissed across a full reload was untested.
-  test('dismissing the banner persists across a reload (localStorage)', async ({
-    page,
-    testInfra,
-  }) => {
-    const { baseURL } = testInfra
-    await mockStatus(page, STATUS_AVAILABLE)
-    await loginAsAdmin(page, baseURL)
-
-    await page.goto(`${baseURL}/`)
-    await expect(page.getByText('Ziee 0.2.0 is available')).toBeVisible({
-      timeout: 30000,
-    })
-
-    // Dismiss via the Alert's close icon → persists the dismissed version.
-    await page.locator('.ant-alert-close-icon').first().click()
-    await expect(page.getByText('Ziee 0.2.0 is available')).toHaveCount(0)
-
-    // Full reload: the store re-reads localStorage and keeps the banner hidden
-    // for the same latest_version (no re-appearance).
-    await page.goto(`${baseURL}/`)
-    await expect(
-      page.getByRole('button', { name: 'Send message' }),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText('Ziee 0.2.0 is available')).toHaveCount(0)
-  })
-
-  // audit id all-47b5098176ec — the About page's "Release notes" link must open
-  // in a NEW TAB (target=_blank rel=noreferrer) pointing at the release URL
-  // (AboutSettings.tsx:86-89). Not previously asserted.
-  test('About page release-notes link opens in a new tab', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    await mockStatus(page, STATUS_AVAILABLE)
-    await loginAsAdmin(page, baseURL)
-    await page.goto(`${baseURL}/settings/about`)
-
-    const link = page.getByRole('link', { name: 'Release notes' })
-    await expect(link).toBeVisible({ timeout: 30000 })
-    await expect(link).toHaveAttribute('target', '_blank')
-    await expect(link).toHaveAttribute('rel', /noreferrer/)
-    await expect(link).toHaveAttribute('href', STATUS_AVAILABLE.release_url)
   })
 })

@@ -76,7 +76,6 @@ export function FullTextSearchSection() {
     error,
     ftsRebuildStatus,
     triggeringFtsRebuild,
-    error,
   } = Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
   const [pendingDictionary, setPendingDictionary] =

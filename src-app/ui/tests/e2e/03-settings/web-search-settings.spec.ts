@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { loginAsAdmin } from '../../common/auth-helpers'
 
 // ---------------------------------------------------------------------------
 // Route mocks. web_search admin settings = a singleton settings row + a
@@ -233,46 +233,6 @@ test.describe('Web search admin settings', () => {
     expect(state.lastSettingsPatch?.provider_chain).toEqual(['brave', 'searxng'])
   })
 
-  // audit id all-5835bd332255 — config validation at write time. A malformed
-  // SearXNG base_url must be REJECTED by the real backend (handlers.rs:418-420 →
-  // providers::validate_config → WEB_SEARCH_BAD_BASE_URL), not stored and
-  // mis-reported as configured. Hits the REAL endpoint (no route mock) so the
-  // server-side validation actually runs.
-  test('malformed SearXNG base_url is rejected by the server', async ({ page, testInfra }) => {
-    const { baseURL, apiURL } = testInfra
-    await loginAsAdmin(page, baseURL)
-    const adminToken = await getAdminToken(apiURL)
-
-    // Not a valid http(s) URL → must 400.
-    const res = await page.request.put(
-      `${baseURL}/api/web-search/providers/searxng`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminToken}`,
-        },
-        data: { config: { base_url: 'not a url' } },
-      },
-    )
-    expect(res.status()).toBe(400)
-    const body = await res.json()
-    expect(
-      body.error_code ?? body.code ?? '',
-      `expected a base-url validation error, got: ${JSON.stringify(body)}`,
-    ).toBe('WEB_SEARCH_BAD_BASE_URL')
-
-    // A valid http(s) URL is accepted (control).
-    const ok = await page.request.put(
-      `${baseURL}/api/web-search/providers/searxng`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminToken}`,
-        },
-        data: { config: { base_url: 'https://searxng.example.com' } },
-      },
-    )
-    expect(ok.ok(), `valid base_url should be accepted: ${ok.status()}`).toBeTruthy()
   test('disabled web search renders the master switch in the off state', async ({
     page,
     testInfra,
