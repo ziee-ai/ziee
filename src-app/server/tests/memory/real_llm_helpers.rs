@@ -161,13 +161,20 @@ pub async fn configure_builtin_provider(
 
     // The provider-update endpoint takes POST (not PUT) — see
     // llm_provider/routes.rs.
+    // Test seam: redirect at a local LLM bridge per provider
+    // (`<PROVIDER>_BASE_URL` / `ZIEE_TEST_LLM_BASE_URL`) — shared resolver in
+    // chat::helpers (mirrors chat::helpers::configure_provider_with_api_key).
+    let mut provider_payload = json!({
+        "api_key": api_key,
+        "enabled": true,
+    });
+    if let Some(base_url) = crate::chat::helpers::test_provider_base_url(env_var) {
+        provider_payload["base_url"] = json!(base_url);
+    }
     let res = reqwest::Client::new()
         .post(server.api_url(&format!("/llm-providers/{provider_id}")))
         .header("Authorization", format!("Bearer {token}"))
-        .json(&json!({
-            "api_key": api_key,
-            "enabled": true,
-        }))
+        .json(&provider_payload)
         .send()
         .await
         .expect("POST provider");

@@ -475,6 +475,20 @@ pub async fn ensure_user_has_model_access(
 
 /// Configure a built-in provider with API key from environment
 /// Supports: anthropic, openai, gemini, groq
+/// Resolve a real-LLM test base-URL override for a provider, given its API-key
+/// env var (e.g. `ANTHROPIC_API_KEY`). Returns the per-provider override
+/// (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `GEMINI_BASE_URL`, `GROQ_BASE_URL`
+/// — derived by `*_API_KEY` -> `*_BASE_URL`) if set, else the global
+/// `ZIEE_TEST_LLM_BASE_URL` fallback, else `None`. Lets real-LLM tiers point at
+/// a local bridge per provider. Shared with `memory::real_llm_helpers`.
+pub fn test_provider_base_url(api_key_env: &str) -> Option<String> {
+    let per_provider = api_key_env.strip_suffix("_API_KEY").map(|p| format!("{p}_BASE_URL"));
+    per_provider
+        .and_then(|v| std::env::var(v).ok())
+        .or_else(|| std::env::var("ZIEE_TEST_LLM_BASE_URL").ok())
+        .filter(|s| !s.is_empty())
+}
+
 async fn configure_provider_with_api_key(
     server: &crate::common::TestServer,
     token: &str,
@@ -513,11 +527,25 @@ async fn configure_provider_with_api_key(
 
     eprintln!("Configuring provider '{}' with API key from {}", provider_name, env_var);
 
-    // Configure provider with API key
-    let update_payload = json!({
+    // Configure provider with API key.
+    //
+    // Test seam: redirect the provider at a local OpenAI/Anthropic-compatible
+    // bridge (e.g. the DeepSeek/Qwen LiteLLM bridge on :4000) so real-LLM tiers
+    // run against a self-hosted model instead of the paid SaaS endpoint. The
+    // per-provider base URL is derived from the key var — `ANTHROPIC_API_KEY` ->
+    // `ANTHROPIC_BASE_URL` (the official SDK convention), `OPENAI_API_KEY` ->
+    // `OPENAI_BASE_URL`, etc. `ZIEE_TEST_LLM_BASE_URL` is a global fallback that
+    // applies to every provider. A bridge wildcard-maps any model name, so the
+    // hardcoded `claude-*`/`gpt-*` names need no change. Loopback is permitted
+    // by the provider's DEV_LOCAL base_url validation policy.
+    let mut update_payload = json!({
         "enabled": true,
         "api_key": api_key
     });
+    if let Some(base_url) = test_provider_base_url(env_var) {
+        update_payload["base_url"] = json!(base_url);
+        eprintln!("  (redirecting provider base_url -> {base_url})");
+    }
 
     let response = reqwest::Client::new()
         .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
