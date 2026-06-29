@@ -45,12 +45,12 @@ test.describe('Chat - assistant deletion recovery', () => {
     await goToNewChatPage(page, baseURL)
 
     // Select the assistant → its chip appears in the toolbar status row.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByText('Select assistant').click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'assistant-menu-trigger').click()
     await expect(page.getByText(assistantName)).toBeVisible()
     await page.getByText(assistantName).click()
     await expect(
-      page.locator('.ant-tag').filter({ hasText: assistantName }),
+      byTestId(page, 'assistant-status-chip'),
     ).toBeVisible()
 
     // Delete the assistant out from under the chat.
@@ -66,12 +66,12 @@ test.describe('Chat - assistant deletion recovery', () => {
 
     // The composer is still functional (no crash / error boundary).
     await expect(
-      page.getByRole('button', { name: 'Send message' }),
+      byTestId(page, 'chat-input-send-btn'),
     ).toBeVisible({ timeout: 30000 })
 
     // The deleted assistant is gone from the picker (no stale reference).
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByText('Select assistant').click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'assistant-menu-trigger').click()
     await expect(page.getByText(assistantName)).toHaveCount(0)
   })
 })

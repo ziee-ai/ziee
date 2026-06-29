@@ -41,12 +41,12 @@ test.describe('Chat — combined multi-feature journey', () => {
     await goToNewChatPage(page, baseURL)
 
     // Feature 1: select the assistant via the "+" dropdown.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByText('Select assistant').click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'assistant-menu-trigger').click()
     await expect(page.getByText(assistantName)).toBeVisible({ timeout: 10000 })
     await page.getByText(assistantName).click()
     await expect(
-      page.locator('.ant-tag').filter({ hasText: assistantName }),
+      byTestId(page, 'assistant-status-chip'),
     ).toBeVisible({ timeout: 10000 })
 
     // Feature 2: attach a file via the "+" dropdown.
@@ -58,7 +58,7 @@ test.describe('Chat — combined multi-feature journey', () => {
     // Combined state: BOTH the assistant chip AND the file preview are present
     // together in the composer.
     await expect(
-      page.locator('.ant-tag').filter({ hasText: assistantName }),
+      byTestId(page, 'assistant-status-chip'),
     ).toBeVisible()
     await expect(
       page.locator(`[data-testid="file-card"][data-filename="${PPTX_FILENAME}"]`),

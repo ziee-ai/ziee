@@ -62,22 +62,23 @@ test.describe('Chat — assistant picker resets across conversation switches', (
     await page.goto(`${baseURL}/chat/${convA}`)
     await page.waitForLoadState('load')
 
-    const addBtn = page.getByRole('button', { name: 'Add attachment' })
+    const addBtn = byTestId(page, 'chat-input-add-btn')
     await expect(addBtn).toBeVisible({ timeout: 30000 })
 
     const chip = () =>
-      page.locator('.ant-tag').filter({ hasText: assistantName })
+      byTestId(page, 'assistant-status-chip')
 
     // --- Select the assistant in conversation A → its status chip shows. ---
     await addBtn.click()
-    await page.getByText('Select assistant').click()
+    await byTestId(page, 'assistant-menu-trigger').click()
     await expect(page.getByText(assistantName)).toBeVisible({ timeout: 10000 })
     await page.getByText(assistantName).click()
     await expect(chip()).toBeVisible({ timeout: 10000 })
 
-    // Both conversations are reachable in the sidebar (client-side nav).
-    const rowA = page.getByRole('menuitem', { name: new RegExp(titleA) })
-    const rowB = page.getByRole('menuitem', { name: new RegExp(titleB) })
+    // Both conversations are reachable in the sidebar (client-side nav). The
+    // recent-conversations Menu derives one item per conversation id.
+    const rowA = byTestId(page, `chat-recent-conversations-menu-item-${convA}`)
+    const rowB = byTestId(page, `chat-recent-conversations-menu-item-${convB}`)
     await expect(rowB).toBeVisible({ timeout: 15000 })
 
     // --- Switch to conversation B via the sidebar (SPA navigation). ---

@@ -68,13 +68,13 @@ test.describe('Chat — edit restores assistant attribution', () => {
     await selectModelInDropdown(page, 'Claude Haiku 4.5')
 
     // Select the assistant in the composer via the "+" dropdown.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByText('Select assistant').click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'assistant-menu-trigger').click()
     await expect(page.getByText(ASSISTANT_NAME)).toBeVisible()
     await page.getByText(ASSISTANT_NAME).click()
     // The status chip reflects the selected assistant.
     await expect(
-      page.locator('.ant-tag').filter({ hasText: ASSISTANT_NAME }),
+      byTestId(page, 'assistant-status-chip'),
     ).toBeVisible()
 
     // Send a message (records the message→assistant attribution) + await reply.
@@ -87,12 +87,12 @@ test.describe('Chat — edit restores assistant attribution', () => {
       .last()
     await userMsg.hover()
     await page.locator('[data-testid="edit-message-button"]').click()
-    await expect(page.getByText('Editing message')).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'chat-editing-banner')).toBeVisible({ timeout: 5000 })
 
     // The assistant attribution is restored into the picker → its status chip
     // shows the originally-attributed assistant.
     await expect(
-      page.locator('.ant-tag').filter({ hasText: ASSISTANT_NAME }),
+      byTestId(page, 'assistant-status-chip'),
     ).toBeVisible({ timeout: 10000 })
   })
 })
