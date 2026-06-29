@@ -16,7 +16,7 @@ async function seedConversation(
   apiURL: string,
   token: string,
   title: string,
-): Promise<void> {
+): Promise<string> {
   const res = await fetch(`${apiURL}/api/conversations`, {
     method: 'POST',
     headers: {
@@ -30,11 +30,12 @@ async function seedConversation(
       `seedConversation(${title}) failed: ${res.status} ${await res.text()}`,
     )
   }
+  return (await res.json()).id as string
 }
 
-/** Locate the conversation Card that contains a given title. */
-function cardByTitle(page: Page, title: string) {
-  return page.locator('.ant-card').filter({ hasText: title })
+/** Locate the conversation Card by its conversation id (kit derived testid). */
+function cardById(page: Page, id: string) {
+  return byTestId(page, `chat-conversation-card-${id}`)
 }
 
 async function gotoChats(page: Page, baseURL: string) {
@@ -55,56 +56,56 @@ test.describe('Conversation deletion', () => {
 
   test('delete a single conversation via the card Popconfirm', async ({ page, testInfra }) => {
     const token = await getAdminToken(testInfra.apiURL)
-    await seedConversation(testInfra.apiURL, token, 'E2E Delete Me')
-    await seedConversation(testInfra.apiURL, token, 'E2E Keep Me')
+    const delId = await seedConversation(testInfra.apiURL, token, 'E2E Delete Me')
+    const keepId = await seedConversation(testInfra.apiURL, token, 'E2E Keep Me')
 
     await gotoChats(page, testInfra.baseURL)
 
-    const target = cardByTitle(page, 'E2E Delete Me')
+    const target = cardById(page, delId)
     await expect(target).toBeVisible({ timeout: 15000 })
 
     // Reveal + click the per-card delete (icon-only) button, then confirm.
     await target.hover()
-    await target.locator('button:has(.anticon-delete)').click()
+    await byTestId(page, `chat-conversation-delete-btn-${delId}`).click()
 
-    const popconfirm = page.locator('.ant-popover').filter({ hasText: 'Delete conversation?' })
-    await expect(popconfirm).toBeVisible()
-    await popconfirm.getByRole('button', { name: 'Delete', exact: true }).click()
+    const confirm = byTestId(page, `chat-conversation-delete-confirm-${delId}`)
+    await expect(confirm).toBeVisible()
+    await byTestId(page, `chat-conversation-delete-confirm-${delId}-confirm`).click()
 
-    await expect(cardByTitle(page, 'E2E Delete Me')).toHaveCount(0, { timeout: 10000 })
+    await expect(cardById(page, delId)).toHaveCount(0, { timeout: 10000 })
     // The other conversation is untouched.
-    await expect(cardByTitle(page, 'E2E Keep Me')).toBeVisible()
+    await expect(cardById(page, keepId)).toBeVisible()
   })
 
   test('bulk-delete selected conversations', async ({ page, testInfra }) => {
     const token = await getAdminToken(testInfra.apiURL)
-    await seedConversation(testInfra.apiURL, token, 'E2E Bulk One')
-    await seedConversation(testInfra.apiURL, token, 'E2E Bulk Two')
+    const oneId = await seedConversation(testInfra.apiURL, token, 'E2E Bulk One')
+    const twoId = await seedConversation(testInfra.apiURL, token, 'E2E Bulk Two')
 
     await gotoChats(page, testInfra.baseURL)
 
-    const one = cardByTitle(page, 'E2E Bulk One')
-    const two = cardByTitle(page, 'E2E Bulk Two')
+    const one = cardById(page, oneId)
+    const two = cardById(page, twoId)
     await expect(one).toBeVisible({ timeout: 15000 })
     await expect(two).toBeVisible()
 
     // Select both via their checkboxes; the first selection enters selection mode.
     await one.hover()
-    await one.getByRole('checkbox').click()
+    await byTestId(page, `chat-conversation-select-${oneId}`).click()
     await two.hover()
-    await two.getByRole('checkbox').click()
+    await byTestId(page, `chat-conversation-select-${twoId}`).click()
 
-    // The bulk-action bar appears once something is selected.
-    await expect(page.getByText(/2 conversations selected/i)).toBeVisible()
+    // The bulk-action bar appears once something is selected (count is live data).
+    const bulkBar = byTestId(page, 'chat-bulk-actions-card')
+    await expect(bulkBar).toBeVisible()
+    await expect(bulkBar).toContainText('2 conversation')
 
-    await page.getByRole('button', { name: 'Delete Selected' }).click()
-    const popconfirm = page
-      .locator('.ant-popover')
-      .filter({ hasText: 'Delete selected conversations' })
-    await expect(popconfirm).toBeVisible()
-    await popconfirm.getByRole('button', { name: 'Delete', exact: true }).click()
+    await byTestId(page, 'chat-bulk-delete-btn').click()
+    const confirm = byTestId(page, 'chat-bulk-delete-confirm')
+    await expect(confirm).toBeVisible()
+    await byTestId(page, 'chat-bulk-delete-confirm-confirm').click()
 
-    await expect(cardByTitle(page, 'E2E Bulk One')).toHaveCount(0, { timeout: 10000 })
-    await expect(cardByTitle(page, 'E2E Bulk Two')).toHaveCount(0)
+    await expect(cardById(page, oneId)).toHaveCount(0, { timeout: 10000 })
+    await expect(cardById(page, twoId)).toHaveCount(0)
   })
 })

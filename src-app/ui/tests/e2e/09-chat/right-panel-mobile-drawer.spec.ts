@@ -56,18 +56,17 @@ test.describe('Chat - Right Panel mobile drawer', () => {
     await setupChatAtNewConversation(page, baseURL, apiURL)
 
     // Attach + send so the user message carries a clickable FileCard.
-    const sendButton = page.getByRole('button', { name: 'Send message' })
+    const sendButton = byTestId(page, 'chat-input-send-btn')
     await expect(sendButton).toBeEnabled({ timeout: 30000 })
     await attachFileViaUI(page, FILE_ASSETS.md)
-    await page
-      .locator('textarea[placeholder*="Type your message"]')
-      .fill('see attached')
+    await byTestId(page, 'chat-message-textarea').fill('see attached')
     await expect(sendButton).toBeEnabled({ timeout: 30000 })
     await sendButton.click()
     await waitForAssistantResponse(page)
 
-    // Before opening: the mobile drawer (role=dialog) is not present.
-    const drawer = page.getByRole('dialog', { name: 'Chat panel' })
+    // Before opening: the mobile drawer (the right panel, role=dialog on mobile)
+    // is not present.
+    const drawer = byTestId(page, 'chat-right-panel')
     await expect(drawer).toHaveCount(0)
 
     // Click the most-recent file card to display it in the right panel.
@@ -89,10 +88,11 @@ test.describe('Chat - Right Panel mobile drawer', () => {
     await expect(panel).toHaveClass(/inset-0/)
     // The desktop side-panel marker must be absent in mobile mode.
     await expect(panel).not.toHaveAttribute('data-panel-open', 'true')
-    // The opened tab's content surfaced inside the drawer.
+    // The opened tab's content surfaced inside the drawer (tab labelled by the
+    // uploaded filename — dynamic data).
     await expect(
-      page
-        .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab')
+      byTestId(page, 'chat-right-panel-tab-list')
+        .getByRole('tab')
         .filter({ hasText: 'test.md' }),
     ).toBeVisible()
 

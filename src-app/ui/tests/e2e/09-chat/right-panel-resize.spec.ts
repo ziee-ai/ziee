@@ -32,17 +32,18 @@ test.describe('Chat — right panel resize', () => {
     // Seed a literature_search tool_result → its inline card opens the screening
     // right panel.
     await seedLiteratureResult(page, baseURL, sampleResult())
-    await page.getByRole('button', { name: /Open in screening/ }).click()
-    await expect(page.getByRole('heading', { name: 'Screening' })).toBeVisible({
+    await byTestId(page, 'lit-tool-result-open-button').click()
+    // The screening panel opened (its summary tags are screening-specific).
+    await expect(byTestId(page, 'lit-screening-tag-identified')).toBeVisible({
       timeout: 15000,
     })
 
-    const panel = page.locator('[data-testid="chat-right-panel"]')
+    const panel = byTestId(page, 'chat-right-panel')
     await expect(panel).toBeVisible({ timeout: 10000 })
     const before = (await panel.boundingBox())!.width
 
     // Drag the left-edge resize handle further LEFT to widen the panel.
-    const handle = panel.locator('.cursor-col-resize').first()
+    const handle = panel.getByRole('separator').first()
     const hb = (await handle.boundingBox())!
     await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
     await page.mouse.down()
