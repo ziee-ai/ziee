@@ -49,10 +49,7 @@ test.describe('Assign-to-Group drawer', () => {
 
     // Pick the group via its checkbox, then submit.
     await byTestId(page, 'user-assign-group-checkboxes').waitFor({ state: 'visible' })
-    await page
-      .locator('[data-testid^="user-assign-group-checkboxes-opt-"]')
-      .filter({ hasText: groupName })
-      .click()
+    await page.getByRole('checkbox', { name: groupName }).click()
     await byTestId(page, 'user-assign-group-submit-button').click()
 
     await expect(

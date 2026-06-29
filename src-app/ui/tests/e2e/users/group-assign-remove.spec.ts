@@ -63,10 +63,7 @@ test.describe('Users — group assign + remove workflow', () => {
     await byTestId(page, 'user-groups-drawer-assign-button').click()
     await byTestId(page, 'user-assign-group-form').waitFor({ state: 'visible' })
     await byTestId(page, 'user-assign-group-checkboxes').waitFor({ state: 'visible' })
-    await page
-      .locator('[data-testid^="user-assign-group-checkboxes-opt-"]')
-      .filter({ hasText: groupName })
-      .click()
+    await page.getByRole('checkbox', { name: groupName }).click()
     await byTestId(page, 'user-assign-group-submit-button').click()
     await expect(
       page.locator('[data-sonner-toast][data-type="success"]').first(),

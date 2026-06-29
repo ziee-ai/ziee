@@ -453,10 +453,15 @@ export async function clearAuthState(page: Page) {
   // (HTTP-only refresh-token cookies aren't visible to JS but ARE sent
   // automatically on requests, which can cause the backend to re-authenticate
   // the user even after localStorage is cleared.)
-  await page.evaluate(() => {
-    localStorage.clear()
-    sessionStorage.clear()
-  })
+  // Guarded: when the page hasn't navigated to the app origin yet (still
+  // about:blank), localStorage access throws a SecurityError. There's nothing
+  // to clear in that case, so swallow it rather than failing the caller.
+  await page
+    .evaluate(() => {
+      try { localStorage.clear() } catch { /* no storage on this document */ }
+      try { sessionStorage.clear() } catch { /* no storage on this document */ }
+    })
+    .catch(() => {})
   await page.context().clearCookies()
   // Detach the React tree so Zustand's in-memory state is discarded, then
   // navigate fresh so the next page.goto from the caller starts with
