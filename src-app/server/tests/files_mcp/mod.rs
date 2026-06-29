@@ -994,39 +994,6 @@ async fn test_write_tool_denied_without_files_upload_permission() {
 // read_file tests only exercise the Text branch (line slicing); these cover the
 // two non-text branches end-to-end through the real handler + file store.
 
-/// Upload arbitrary bytes with an explicit mime; returns the new file id.
-async fn upload_bytes_v2(
-    server: &TestServer,
-    user: &TestUser,
-    filename: &str,
-    mime: &str,
-    bytes: Vec<u8>,
-) -> String {
-    use reqwest::multipart;
-    let form = multipart::Form::new().part(
-        "file",
-        multipart::Part::bytes(bytes)
-            .file_name(filename.to_string())
-            .mime_str(mime)
-            .unwrap(),
-    );
-    let resp = reqwest::Client::new()
-        .post(server.api_url("/files/upload"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .multipart(form)
-        .send()
-        .await
-        .expect("upload");
-    assert_eq!(
-        resp.status(),
-        reqwest::StatusCode::CREATED,
-        "upload {filename}: {}",
-        resp.text().await.unwrap_or_default()
-    );
-    let v: Value = resp.json().await.unwrap();
-    v["id"].as_str().unwrap().to_string()
-}
-
 /// A minimal, valid 1×1 transparent PNG. The magic sniffer keys on the 8-byte
 /// PNG signature (`\x89PNG\r\n\x1a\n`), so this is classified `image/png`.
 fn one_by_one_png() -> Vec<u8> {
@@ -1268,24 +1235,6 @@ async fn test_model_authored_file_is_readable_in_later_turn() {
         text.contains("AUTHORED_MARKER"),
         "read_file must return the model-authored content; got: {text}"
     );
-}
-
-/// Upload raw BYTES with an explicit mime type; returns the new file id.
-async fn upload_bytes_v3(server: &TestServer, user: &TestUser, filename: &str, bytes: Vec<u8>, mime: &str) -> String {
-    use reqwest::multipart;
-    let form = multipart::Form::new().part(
-        "file",
-        multipart::Part::bytes(bytes).file_name(filename.to_string()).mime_str(mime).unwrap(),
-    );
-    let resp = reqwest::Client::new()
-        .post(server.api_url("/files/upload"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .multipart(form)
-        .send()
-        .await
-        .expect("upload bytes");
-    assert_eq!(resp.status(), reqwest::StatusCode::CREATED, "upload: {}", resp.text().await.unwrap_or_default());
-    resp.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string()
 }
 
 /// read_file on an IMAGE returns an image content block (handlers.rs:545-560);

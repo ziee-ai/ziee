@@ -959,19 +959,6 @@ async fn real_llm_invokes_get_tool_result_to_recall_a_prior_result() {
     );
 }
 
-/// Seed a conversation owned by `user_id` carrying one persisted `tool_result`
-/// content block (`tool_use_id`, `content` text, optional `structured_content`).
-/// Returns (conversation_id, message_id).
-async fn seed_tool_result_v2(
-    server: &TestServer,
-    user_id: &str,
-    tool_use_id: &str,
-    content: &str,
-    structured: Option<Value>,
-) -> (Uuid, Uuid) {
-    seed_tool_result_ex(server, user_id, tool_use_id, content, structured, false).await
-}
-
 /// Like `seed_tool_result` but lets the caller mark the block as an ERROR
 /// result (`is_error: true`) — the failure path a failing MCP tool persists.
 async fn seed_tool_result_ex(

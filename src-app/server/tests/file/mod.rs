@@ -1289,7 +1289,7 @@ async fn test_get_text_content_specific_page() {
 
     let upload_body: serde_json::Value = upload_response.json().await.unwrap();
     let file_id = upload_body["id"].as_str().unwrap();
-    let text_page_count = upload_body["text_page_count"].as_i64().unwrap();
+    let _text_page_count = upload_body["text_page_count"].as_i64().unwrap();
 
     // Get specific page
     let text_url = server.api_url(&format!("/files/{}/text?page=1", file_id));

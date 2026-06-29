@@ -102,8 +102,6 @@ pub async fn get_by_engine_and_version(
     }))
 }
 
-/// Default page size for paginated list queries
-const DEFAULT_PAGE_SIZE: i64 = 50;
 /// Maximum page size — acts as a safety cap.
 const MAX_PAGE_SIZE: i64 = 500;
 
@@ -180,25 +178,6 @@ pub async fn list_by_engine(
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
         })
         .collect())
-}
-
-/// Count all runtime versions (for pagination metadata).
-pub async fn count_all(pool: &PgPool) -> Result<i64, sqlx::Error> {
-    let row = sqlx::query!("SELECT COUNT(*) AS \"count!\" FROM llm_runtime_versions")
-        .fetch_one(pool)
-        .await?;
-    Ok(row.count)
-}
-
-/// Count runtime versions for a specific engine (for pagination metadata).
-pub async fn count_by_engine(pool: &PgPool, engine: &str) -> Result<i64, sqlx::Error> {
-    let row = sqlx::query!(
-        "SELECT COUNT(*) AS \"count!\" FROM llm_runtime_versions WHERE engine = $1",
-        engine
-    )
-    .fetch_one(pool)
-    .await?;
-    Ok(row.count)
 }
 
 /// Get the latest runtime version for an engine

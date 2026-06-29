@@ -266,10 +266,6 @@ async fn workflow_run_emits_owner_scoped_run_frame() {
     assert_eq!(final_run["status"], "completed", "mocked run completes: {final_run}");
 }
 
-const EVENT_TIMEOUT_v2: Duration = Duration::from_secs(5);
-
-const SILENCE_WINDOW_v2: Duration = Duration::from_secs(1);
-
 const WF_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
 inputs: []
 steps:

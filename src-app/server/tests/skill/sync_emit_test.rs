@@ -98,8 +98,6 @@ async fn system_skill_install_emits_skill_system_to_admin_and_skill_to_users() {
     assert!(!viewer_frame.id.is_empty(), "skill/create carries an id");
 }
 
-const EVENT_TIMEOUT_v2: Duration = Duration::from_secs(10);
-
 const SILENCE: Duration = Duration::from_secs(2);
 
 #[tokio::test]

@@ -316,21 +316,6 @@ pub async fn update_provider(
     Ok(assemble_provider(pool, row).await)
 }
 
-/// Delete an auth_providers row. CASCADE drops any user_auth_links
-/// + oauth_sessions referencing it.
-pub async fn delete_provider(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
-    let res = sqlx::query!(
-        r#"
-        DELETE FROM auth_providers WHERE id = $1
-        "#,
-        id,
-    )
-    .execute(pool)
-    .await
-    .map_err(AppError::database_error)?;
-    Ok(res.rows_affected())
-}
-
 /// Atomically delete a provider and return its name + the number of
 /// `user_auth_links` that were cascade-removed.
 ///
@@ -424,20 +409,4 @@ pub async fn record_test_result(
     .await
     .map_err(AppError::database_error)?;
     Ok(())
-}
-
-/// Count user_auth_links that reference a provider — used by the
-/// delete-provider confirm flow to warn the admin how many users
-/// will lose this login method.
-pub async fn count_links_for_provider(pool: &PgPool, id: Uuid) -> Result<i64, AppError> {
-    let row = sqlx::query!(
-        r#"
-        SELECT COUNT(*) as "count!" FROM user_auth_links WHERE provider_id = $1
-        "#,
-        id,
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::database_error)?;
-    Ok(row.count)
 }

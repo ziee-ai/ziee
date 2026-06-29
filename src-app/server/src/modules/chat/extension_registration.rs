@@ -34,8 +34,6 @@ pub fn auto_register_extensions(pool: PgPool, config: Arc<Config>) -> ExtensionR
 mod tests {
     use super::CHAT_EXTENSIONS;
 
-    use super::*;
-
 
     /// Reproduce the production pipeline ordering exactly as
     /// `auto_register_extensions` does (sort the linkme-collected
