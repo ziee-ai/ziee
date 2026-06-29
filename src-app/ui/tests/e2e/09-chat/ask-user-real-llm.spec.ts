@@ -71,14 +71,15 @@ test.describe('ask_user — real LLM end-to-end (form renders + click works)', (
     // fixed field testid.) The chat stream reconnect cycles can re-render the
     // message and flicker the antd dropdown, so retry open→pick until the value
     // sticks (Playwright's expect.toPass), then submit.
-    const select = pending.locator('.ant-select').first()
+    const select = pending.getByTestId(/^elicitation-field-/).first()
     await expect(select).toBeVisible()
     await expect(async () => {
       const current = (await select.textContent())?.toLowerCase() ?? ''
       if (!current.includes('green')) {
         await select.click()
         await page
-          .locator('.ant-select-item-option', { hasText: /green/i })
+          .getByTestId(/^elicitation-field-.*-opt-/)
+          .filter({ hasText: /green/i })
           .first()
           .click({ force: true, timeout: 4000 })
       }
@@ -87,12 +88,7 @@ test.describe('ask_user — real LLM end-to-end (form renders + click works)', (
     }).toPass({ timeout: 30000 })
 
     // Make sure the option list is closed so it can't overlay the Submit button.
-    await page
-      .waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 3000 })
-      .catch(async () => {
-        await page.keyboard.press('Escape')
-      })
-    await pending.locator('[data-testid="elicitation-submit"]').first().click()
+    await pending.getByTestId('elicitation-submit').first().click()
 
     // The form flips to the accepted card — proves the submit click drove a
     // successful /respond POST — and the accepted card shows the chosen value.

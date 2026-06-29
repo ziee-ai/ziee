@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -196,7 +197,7 @@ async function injectElicitation(
 
   const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
   await textarea.fill('trigger')
-  const sendButton = page.getByRole('button', { name: 'Send message' })
+  const sendButton = byTestId(page, 'chat-input-send-btn')
   await sendButton.click()
 
   await expect(

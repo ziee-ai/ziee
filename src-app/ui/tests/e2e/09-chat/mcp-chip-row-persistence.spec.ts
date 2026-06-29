@@ -54,7 +54,7 @@ test.describe('MCP Chip Row — persistence and visibility', () => {
     await expect(chip).toBeVisible({ timeout: 10000 })
 
     // 3. Remove the chip
-    await chip.locator('.ant-tag-close-icon').click()
+    await chip.getByTestId(`mcp-chip-${serverId}-close`).click()
     await page.waitForTimeout(500)
     await expect(chip).not.toBeVisible()
 
