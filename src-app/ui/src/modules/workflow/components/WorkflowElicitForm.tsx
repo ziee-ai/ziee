@@ -2,10 +2,13 @@ import { PenLine } from 'lucide-react'
 import {
   Alert,
   Button,
+  DatePicker,
   Form,
   FormField,
   Input,
   InputNumber,
+  MultiSelect,
+  PasswordInput,
   Select,
   Switch,
   Text,
@@ -23,6 +26,42 @@ import {
   validateTableValue,
 } from './workflowElicitSchema'
 
+// ---------------------------------------------------------------------------
+// Select-option + field-kind helpers (parity with the MCP elicitation form's
+// kit port in mcp/chat-extension/components/ElicitationFormContent.tsx).
+// ---------------------------------------------------------------------------
+
+/** A primitive array whose items are enum/anyOf/oneOf → renders a multi-Select.
+ *  (Object-item arrays are tables — caught earlier by `isTableProperty`.) */
+function isMultiSelectField(field: FieldSchema): boolean {
+  return (
+    field.type === 'array' &&
+    !!(field.items?.enum || field.items?.anyOf || field.items?.oneOf)
+  )
+}
+
+/** Titled single-select: top-level anyOf/oneOf. (`enum` keeps its own path.) */
+function isTitledSelectField(field: FieldSchema): boolean {
+  return !!(field.anyOf || field.oneOf)
+}
+
+/** {value,label} options for a single- or multi-select field. */
+function selectOptions(field: FieldSchema): { value: string; label: string }[] {
+  if (field.anyOf || field.oneOf) {
+    const choices = field.anyOf ?? field.oneOf ?? []
+    return choices.map(c => ({ value: c.const, label: c.title ?? c.const }))
+  }
+  const items = field.items
+  if (items?.anyOf || items?.oneOf) {
+    const choices = items.anyOf ?? items.oneOf ?? []
+    return choices.map(c => ({ value: c.const, label: c.title ?? c.const }))
+  }
+  if (items?.enum) {
+    return items.enum.map(v => ({ value: String(v), label: String(v) }))
+  }
+  return []
+}
+
 interface WorkflowElicitFormProps {
   elicitation: SSEElicitationRequiredData
   submitting: boolean
@@ -37,6 +76,53 @@ interface WorkflowElicitFormProps {
 // ---------------------------------------------------------------------------
 
 function buildFieldZodType(field: FieldSchema, required: boolean): z.ZodTypeAny {
+  const label = field.title || 'This field'
+
+  // Array-of-objects → per-column zod shape so per-cell errors surface inline.
+  // Checked FIRST so a table array is never mistaken for a multi-select.
+  if (isTableProperty(field)) {
+    const f = field as unknown as {
+      items?: {
+        properties?: Record<string, FieldSchema>
+        required?: string[]
+      }
+      minItems?: number
+      maxItems?: number
+    }
+    const itemProps = f.items?.properties ?? {}
+    const itemRequired = new Set<string>(f.items?.required ?? [])
+    const itemShape: Record<string, z.ZodTypeAny> = {}
+    for (const [k, v] of Object.entries(itemProps)) {
+      itemShape[k] = buildFieldZodType(v, itemRequired.has(k))
+    }
+    let arr = z.array(z.object(itemShape).passthrough())
+    if (f.minItems !== undefined && f.minItems > 0) arr = arr.min(f.minItems)
+    if (f.maxItems !== undefined) arr = arr.max(f.maxItems)
+    // Arrays are always present (even if empty); mark optional only when not required.
+    return required ? arr : arr.optional()
+  }
+
+  // Primitive multi-select array (enum/anyOf/oneOf items) → string[].
+  if (isMultiSelectField(field)) {
+    let s = z.array(z.string())
+    if (field.minItems !== undefined && field.minItems > 0) {
+      s = s.min(field.minItems, `Select at least ${field.minItems} item(s)`)
+    }
+    if (field.maxItems !== undefined) {
+      s = s.max(field.maxItems, `Select at most ${field.maxItems} item(s)`)
+    }
+    return required
+      ? s.min(Math.max(1, field.minItems ?? 1), `${label} is required`)
+      : s.optional()
+  }
+
+  // Titled single-select (anyOf/oneOf): values are the string `const`s.
+  if (isTitledSelectField(field)) {
+    return required
+      ? z.string().min(1, `${label} is required`)
+      : z.string().optional().or(z.literal(''))
+  }
+
   let schema: z.ZodTypeAny
 
   if (field.enum) {
@@ -53,34 +139,30 @@ function buildFieldZodType(field: FieldSchema, required: boolean): z.ZodTypeAny 
     if (field.minimum !== undefined) s = s.min(field.minimum)
     if (field.maximum !== undefined) s = s.max(field.maximum)
     schema = s
-  } else if (isTableProperty(field)) {
-    // Array-of-objects: build per-column zod shape so per-cell errors surface inline.
-    const f = field as unknown as {
-      items?: {
-        properties?: Record<string, FieldSchema>
-        required?: string[]
-      }
-      minItems?: number
-      maxItems?: number
-    }
-    const itemProps = f.items?.properties ?? {}
-    const itemRequired = new Set<string>(f.items?.required ?? [])
-    const itemShape: Record<string, z.ZodTypeAny> = {}
-    for (const [k, v] of Object.entries(itemProps)) {
-      itemShape[k] = buildFieldZodType(v, itemRequired.has(k))
-    }
-    let arr = z.array(z.object(itemShape).passthrough())
-    if (required && f.minItems !== undefined && f.minItems > 0) {
-      arr = arr.min(f.minItems)
-    } else if (f.minItems !== undefined && f.minItems > 0) {
-      arr = arr.min(f.minItems)
-    }
-    if (f.maxItems !== undefined) arr = arr.max(f.maxItems)
-    // Arrays are always present (even if empty); mark optional only when not required.
-    return required ? arr : arr.optional()
   } else {
-    // default: string
-    schema = z.string()
+    // String, including date / date-time / email / uri / password formats.
+    // The kit DatePicker / Input emit serializable strings into form state,
+    // so no Dayjs→ISO conversion is needed at submit (unlike the antd original).
+    let s = z.string()
+    if (field.minLength !== undefined) {
+      s = s.min(field.minLength, `${label} must be at least ${field.minLength} character(s)`)
+    }
+    if (field.maxLength !== undefined) {
+      s = s.max(field.maxLength, `${label} must be at most ${field.maxLength} character(s)`)
+    }
+    if (field.pattern) {
+      try {
+        s = s.regex(new RegExp(field.pattern), `${label} must match the required pattern`)
+      } catch {
+        // Server sent a malformed regex — skip rather than crashing the form.
+      }
+    }
+    if (field.format === 'email') s = s.email('Enter a valid email address')
+    if (field.format === 'uri') s = s.url('Enter a valid URL')
+    // Presence: required enforces non-empty; optional tolerates '' / cleared.
+    return required
+      ? s.min(1, `${label} is required`)
+      : s.optional().or(z.literal(''))
   }
 
   // Optional fields accept undefined (and null from cleared controls).
@@ -142,6 +224,48 @@ function renderField(
 
   const description = field.description ?? undefined
 
+  // Primitive multi-select array (enum/anyOf/oneOf items) → kit MultiSelect.
+  if (isMultiSelectField(field)) {
+    return (
+      <FormField
+        key={name}
+        name={name}
+        label={label}
+        required={required}
+        description={description}
+      >
+        <MultiSelect
+          data-testid={`wf-elicit-multiselect-${name}`}
+          options={selectOptions(field)}
+          placeholder={`Select ${label.toLowerCase()}`}
+          searchPlaceholder="Search…"
+          emptyText="No options"
+          removeLabel={v => `Remove ${v}`}
+          aria-label={label}
+        />
+      </FormField>
+    )
+  }
+
+  // Titled single-select (anyOf/oneOf) → kit Select with titled choices.
+  if (isTitledSelectField(field)) {
+    return (
+      <FormField
+        key={name}
+        name={name}
+        label={label}
+        required={required}
+        description={description}
+      >
+        <Select
+          data-testid={`wf-elicit-anyof-${name}`}
+          options={selectOptions(field)}
+          placeholder={`Select ${label.toLowerCase()}`}
+        />
+      </FormField>
+    )
+  }
+
   if (field.enum) {
     return (
       <FormField
@@ -191,6 +315,69 @@ function renderField(
       </FormField>
     )
   }
+
+  // ─── String formats with dedicated controls ───────────────────────────
+  // The kit DatePicker stores an ISO string in form state (no Dayjs), so no
+  // submit-time conversion is needed. It is date-only (no time picker), so a
+  // `date-time` field selects the date and emits T00:00:00 for the time part.
+  if (field.format === 'date') {
+    return (
+      <FormField
+        key={name}
+        name={name}
+        label={label}
+        required={required}
+        description={description}
+      >
+        <DatePicker
+          data-testid={`wf-elicit-date-${name}`}
+          placeholder={`Select ${label.toLowerCase()}`}
+          aria-label={label}
+          valueFormat="yyyy-MM-dd"
+          className="w-full"
+        />
+      </FormField>
+    )
+  }
+  if (field.format === 'date-time') {
+    return (
+      <FormField
+        key={name}
+        name={name}
+        label={label}
+        required={required}
+        description={description}
+      >
+        <DatePicker
+          data-testid={`wf-elicit-datetime-${name}`}
+          placeholder={`Select ${label.toLowerCase()}`}
+          aria-label={label}
+          valueFormat="yyyy-MM-dd'T'HH:mm:ss"
+          className="w-full"
+        />
+      </FormField>
+    )
+  }
+  if (field.format === 'password') {
+    return (
+      <FormField
+        key={name}
+        name={name}
+        label={label}
+        required={required}
+        description={description}
+      >
+        <PasswordInput
+          data-testid={`wf-elicit-password-${name}`}
+          showLabel="Show"
+          hideLabel="Hide"
+        />
+      </FormField>
+    )
+  }
+
+  const inputType =
+    field.format === 'email' ? 'email' : field.format === 'uri' ? 'url' : 'text'
   return (
     <FormField
       key={name}
@@ -199,7 +386,7 @@ function renderField(
       required={required}
       description={description}
     >
-      <Input data-testid={`wf-elicit-input-${name}`} />
+      <Input data-testid={`wf-elicit-input-${name}`} type={inputType} />
     </FormField>
   )
 }
