@@ -517,13 +517,16 @@ async fn update_system_server_can_change_sandbox_flavor() {
 }
 
 /// User-policy force-sandbox enforcement, through the REAL user-create handler.
-/// The default MCP user policy allows the `stdio` transport, and
-/// `enforce_on_user_create` then FORCES the new user server into the sandbox —
-/// which `require_sandbox_state` gates on `code_sandbox` being enabled. The
-/// test deployment runs with `code_sandbox.enabled = false`, so a user trying
-/// to create a stdio server is rejected pre-persist with 422
-/// `MCP_SANDBOX_DISABLED` (rather than silently creating an un-sandboxed stdio
-/// server). This exercises the force-sandbox path the chat consumer relies on.
+/// The default MCP user policy allows the `stdio` transport, but
+/// `McpUserPolicy::load` projects the live sandbox state into the effective
+/// policy: when `code_sandbox.enabled = false`, `stdio` is filtered OUT of
+/// `allowed_transports` (see mcp/user_policy/repository.rs). The test
+/// deployment runs with the sandbox disabled, so a user trying to create a
+/// stdio server is rejected pre-persist with 422 `MCP_TRANSPORT_NOT_ALLOWED`
+/// — the transport-allowlist guard fires first, which is the intended UX (the
+/// repository comment explicitly prefers it over the older, more confusing
+/// `MCP_SANDBOX_DISABLED` at submit time). Either way no un-sandboxed stdio
+/// server is ever created while the sandbox is off.
 #[tokio::test]
 async fn user_stdio_server_create_is_force_sandbox_gated_when_sandbox_disabled() {
     let server = TestServer::start().await;
@@ -556,7 +559,8 @@ async fn user_stdio_server_create_is_force_sandbox_gated_when_sandbox_disabled()
     );
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(
-        body["error_code"], "MCP_SANDBOX_DISABLED",
-        "the rejection must be the force-sandbox guard, not a generic error: {body}"
+        body["error_code"], "MCP_TRANSPORT_NOT_ALLOWED",
+        "with the sandbox disabled, stdio is projected out of the effective \
+         allowed_transports, so the transport-allowlist guard rejects pre-persist: {body}"
     );
 }

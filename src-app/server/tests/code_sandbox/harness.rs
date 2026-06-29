@@ -583,15 +583,35 @@ pub fn github_fetch_server_options(
 /// via SQL (faster than building a chat-extension request).
 pub async fn create_test_conversation(pool: &sqlx::PgPool, user_id: Uuid) -> Uuid {
     let conv_id = Uuid::new_v4();
+    // Mirror the production create path (chat/core/repository/conversations.rs):
+    // a conversation gets a default root branch and `active_branch_id` set to
+    // it. Tests that resolve files/messages on the active branch need this.
+    let mut tx = pool.begin().await.expect("begin conversation tx");
     sqlx::query(
         r#"INSERT INTO conversations (id, user_id, title, created_at, updated_at)
            VALUES ($1, $2, 'Test conversation', NOW(), NOW())"#,
     )
     .bind(conv_id)
     .bind(user_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .expect("insert conversation");
+    let branch_id: Uuid = sqlx::query_scalar(
+        r#"INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id)
+           VALUES ($1, NULL, NULL)
+           RETURNING id"#,
+    )
+    .bind(conv_id)
+    .fetch_one(&mut *tx)
+    .await
+    .expect("insert root branch");
+    sqlx::query("UPDATE conversations SET active_branch_id = $1 WHERE id = $2")
+        .bind(branch_id)
+        .bind(conv_id)
+        .execute(&mut *tx)
+        .await
+        .expect("set active branch");
+    tx.commit().await.expect("commit conversation tx");
     conv_id
 }
 

@@ -461,14 +461,20 @@ async fn e2e_get_resource_link_for_user_attachment_returns_saved_url() {
     // Create a `files` row (+ v1 head) owned by the user, then attach it to the
     // conversation as a `file_attachment` message content on the active branch —
     // the shape get_conversation_files (and thus get_resource_link) resolves.
+    // `files.current_version_id` → `file_versions.id` is DEFERRABLE INITIALLY
+    // DEFERRED (see file/repository.rs), so the file row may reference a version
+    // that is inserted later in the SAME transaction. Both inserts must share
+    // one transaction; separate autocommits would trip the FK at the first
+    // commit (before the version exists).
     let file_id = Uuid::new_v4();
+    let mut tx = pool.begin().await.expect("begin file insert tx");
     sqlx::query(
         r#"INSERT INTO files (id, user_id, filename, mime_type, file_size, current_version_id, created_at)
            VALUES ($1, $2, 'report.csv', 'text/csv', 3, $1, NOW())"#,
     )
     .bind(file_id)
     .bind(user_id)
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
     .expect("insert file");
     sqlx::query(
@@ -476,9 +482,10 @@ async fn e2e_get_resource_link_for_user_attachment_returns_saved_url() {
            VALUES ($1, $1, 1, true, $1, 3, 'text/csv', 'user')"#,
     )
     .bind(file_id)
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
     .expect("insert file v1");
+    tx.commit().await.expect("commit file insert tx");
 
     let branch_id: Uuid =
         sqlx::query_scalar("SELECT active_branch_id FROM conversations WHERE id = $1")
