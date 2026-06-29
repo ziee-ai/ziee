@@ -230,12 +230,31 @@ async fn chat_completions(
     }
 
     if stream {
-        let events = vec![
+        // Mirror real OpenAI: emit a final usage-only chunk (empty `choices`)
+        // when the client sets `stream_options.include_usage`. The ziee
+        // OpenAI provider sets this on every streaming request, so token
+        // accounting can read `usage` off the stream.
+        let include_usage = v
+            .get("stream_options")
+            .and_then(|o| o.get("include_usage"))
+            .and_then(|b| b.as_bool())
+            .unwrap_or(false);
+        let mut events = vec![
             sse_chunk(&model, serde_json::json!({"role": "assistant"}), None),
             sse_chunk(&model, serde_json::json!({"content": "Hello"}), None),
             sse_chunk(&model, serde_json::json!({"content": " from stub"}), Some("stop")),
-            Event::default().data("[DONE]"),
         ];
+        if include_usage {
+            let usage_data = serde_json::json!({
+                "id": "chatcmpl-stub",
+                "object": "chat.completion.chunk",
+                "model": model,
+                "choices": [],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 3, "total_tokens": 4}
+            });
+            events.push(Event::default().data(usage_data.to_string()));
+        }
+        events.push(Event::default().data("[DONE]"));
         let delay = s.chunk_delay_ms;
         // `unfold` lets each emission `.await` a sleep, pacing the deltas so a
         // test can subscribe / cancel mid-stream. The leading role chunk

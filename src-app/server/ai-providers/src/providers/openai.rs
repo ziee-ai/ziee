@@ -654,6 +654,15 @@ impl OpenAIProvider {
             "stream": !requires_non_streaming,
         });
 
+        // When streaming, ask the provider to emit a final usage chunk
+        // (`stream_options.include_usage`). Without this, OpenAI-compatible
+        // backends omit `usage` from streamed responses, so token accounting
+        // (chat cost, workflow run `total_tokens`) silently reads 0. The
+        // streaming parser already consumes the usage chunk when present.
+        if !requires_non_streaming {
+            body["stream_options"] = json!({ "include_usage": true });
+        }
+
         // Thinking → reasoning_effort. A reasoning model rejects temperature/top_p
         // and the penalties, so gate those below.
         let is_reasoning_model = match &request.thinking {
