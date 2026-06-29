@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { byTestId } from '../testid'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 

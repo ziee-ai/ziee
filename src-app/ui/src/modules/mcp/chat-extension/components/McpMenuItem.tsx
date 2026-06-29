@@ -22,6 +22,7 @@ export function McpMenuItem() {
   return (
     <>
       <div
+        data-testid="mcp-menu-trigger"
         className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer",
           "text-foreground",

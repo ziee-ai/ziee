@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin, login, createTestUser, getAdminToken, clearAuthState } from '../../common/auth-helpers'
 import {
@@ -88,9 +89,9 @@ test.describe('Chat - Basic Flow', () => {
     await goToNewChatPage(page, baseURL)
 
     // Verify page elements
-    await expect(page.locator('text=How can I help you today?')).toBeVisible()
-    await expect(page.locator('textarea[placeholder*="Type your message"]')).toBeVisible()
-    await expect(page.locator('.ant-select')).toBeVisible() // Model selector
+    await expect(byTestId(page, 'new-chat-greeting')).toBeVisible()
+    await expect(byTestId(page, 'chat-message-textarea')).toBeVisible()
+    await expect(byTestId(page, 'chat-model-select')).toBeVisible() // Model selector
   })
 
   test('should create conversation and send first message', async ({
@@ -207,7 +208,7 @@ test.describe('Chat - Basic Flow', () => {
 
     // No need to navigate again - we're already on the conversation page
     // Verify model selector is visible and shows both models
-    await expect(page.locator('.ant-select')).toBeVisible()
+    await expect(byTestId(page, 'chat-model-select')).toBeVisible()
 
     const visibleModels = await getVisibleModelsInDropdown(page)
     expect(visibleModels).toContain('GPT-4o Mini')

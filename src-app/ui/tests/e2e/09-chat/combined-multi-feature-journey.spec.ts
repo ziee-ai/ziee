@@ -1,4 +1,5 @@
 import path from 'path'
+import { byTestId } from '../testid'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { goToNewChatPage } from './helpers/chat-helpers'

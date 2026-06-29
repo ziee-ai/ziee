@@ -55,6 +55,7 @@ export function AssistantMenuItem() {
       align="start"
     >
       <div
+        data-testid="assistant-menu-trigger"
         className="flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px]"
         onMouseEnter={e => {
           e.currentTarget.className = 'flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px] bg-muted'

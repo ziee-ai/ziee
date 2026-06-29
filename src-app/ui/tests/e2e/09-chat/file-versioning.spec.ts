@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { byTestId } from '../testid'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
@@ -31,9 +32,9 @@ async function startChatWithFile(page: Page, baseURL: string, asset: string): Pr
   await goToNewChatPage(page, baseURL)
   await selectModelInDropdown(page, MODEL_DISPLAY)
   await attachFileViaUI(page, asset)
-  const textarea = page.locator('textarea[placeholder*="Type your message"]')
+  const textarea = byTestId(page, 'chat-message-textarea')
   await textarea.fill('here is the file')
-  await page.getByRole('button', { name: 'Send message' }).click()
+  await byTestId(page, 'chat-input-send-btn').click()
   await page.waitForURL(/\/chat\/[a-f0-9-]+/, { timeout: 15000 })
   return page.url().split('/chat/')[1]!
 }
@@ -99,12 +100,10 @@ test.describe('file version bar', () => {
     const bar = page.locator('[data-testid="file-version-bar"]')
     await expect(bar).toBeVisible({ timeout: 10000 })
 
-    // Switch to v1 → the Restore button appears.
-    await page.locator('[data-testid="file-version-select"]').click()
-    await page
-      .locator('.ant-select-dropdown .ant-select-item-option', { hasText: 'v1' })
-      .first()
-      .click()
+    // Switch to v1 → the Restore button appears. The option value is the
+    // version number (String(ver.version)), so v1 → `file-version-select-opt-1`.
+    await byTestId(page, 'file-version-select').click()
+    await byTestId(page, 'file-version-select-opt-1').first().click()
     await expect(page.locator('[data-testid="file-version-restore"]')).toBeVisible()
 
     // Restore v1 → appends a new head (v3). Wait for the restore to actually
