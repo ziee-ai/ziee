@@ -35,7 +35,9 @@ async fn summarization_settings_update_emits_to_read_holders_only() {
     let res = reqwest::Client::new()
         .put(server.api_url("/summarization/settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&serde_json::json!({ "summarize_after_tokens": 600 }))
+        // Must stay above the default summarizer_keep_recent_tokens (3000),
+        // else the cross-field validation rejects the update.
+        .json(&serde_json::json!({ "summarize_after_tokens": 8000 }))
         .send()
         .await
         .unwrap();

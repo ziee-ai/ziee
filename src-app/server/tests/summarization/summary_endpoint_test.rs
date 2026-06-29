@@ -206,9 +206,11 @@ async fn test_summary_endpoint_requires_conversations_read_permission() {
     .await;
     let conv_id = create_conversation(&server, &owner.token).await;
 
-    // This user is intentionally missing `conversations::read` (only a
-    // profile perm so the account is valid/active).
-    let no_read = crate::common::test_helpers::create_user_with_permissions(
+    // This user is intentionally missing `conversations::read`. Use
+    // `create_user_with_only_permissions` so it does NOT inherit the default
+    // Users group (which grants conversations::read) — otherwise the perm gate
+    // can't fire.
+    let no_read = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "summ_perm_no_read",
         &["profile::read"],

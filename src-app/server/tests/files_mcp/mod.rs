@@ -960,7 +960,9 @@ async fn test_read_file_image_and_binary_types() {
 async fn test_write_tool_denied_without_files_upload_permission() {
     let server = TestServer::start().await;
     // read + conversations::create, but deliberately NO files::upload.
-    let user = create_user_with_permissions(
+    // `_only_` so the user does NOT inherit the default Users group (which
+    // grants files::upload) — otherwise the write gate can't fire.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "files_mcp_readonly",
         &["files::read", "conversations::create"],
@@ -1409,7 +1411,9 @@ async fn test_grep_files_truncates_at_match_cap_v3() {
 async fn test_write_tools_denied_without_files_upload_permission() {
     let server = TestServer::start().await;
     // files::read + conversation perms, but deliberately NO files::upload.
-    let user = crate::common::test_helpers::create_user_with_permissions(
+    // `_only_` so the user does NOT inherit the default Users group (which
+    // grants files::upload) — otherwise the write gate can't fire.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "files_mcp_readonly",
         &["files::read", "conversations::create", "conversations::read"],

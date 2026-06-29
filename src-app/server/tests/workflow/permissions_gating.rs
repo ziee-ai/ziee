@@ -98,7 +98,9 @@ async fn assign_to_groups_requires_assign_permission() {
 async fn run_level_endpoints_require_execute_permission() {
     let server = plain_server().await;
     // read-only (+ install/manage) but explicitly NOT workflows::execute.
-    let user = create_user_with_permissions(
+    // `_only_` so the user does NOT inherit the default Users group (which
+    // grants workflows::execute) — otherwise the perm gate can't fire.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "wf_run_noexec",
         &["workflows::read", "workflows::install", "workflows::manage"],
