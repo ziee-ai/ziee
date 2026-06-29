@@ -885,8 +885,36 @@ async fn test_update_zero_config_builtin_is_immutable() {
         "files built-in rejection must carry BUILT_IN_SERVER; got: {body}"
     );
 
-    // memory_mcp built-in — same immutability.
+    // memory_mcp built-in — same immutability. The memory built-in row is only
+    // registered by the server when memory is ENABLED (which requires an
+    // embedding model — out of scope here), so materialize the row directly
+    // (mirroring upsert_builtin_server) to exercise the immutability guard,
+    // which is independent of memory being functionally enabled.
     let memory_id = memory_mcp_server_id();
+    {
+        let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+        sqlx::query(
+            r#"INSERT INTO mcp_servers (
+                   id, user_id, name, display_name, description,
+                   enabled, is_system, is_built_in,
+                   transport_type, url, headers,
+                   timeout_seconds, supports_sampling, usage_mode, max_concurrent_sessions,
+                   created_at, updated_at
+               ) VALUES (
+                   $1, NULL, 'memory', 'Memory',
+                   'Built-in memory tools (remember / recall / forget)',
+                   true, true, true,
+                   'http', 'http://127.0.0.1:0/api/memories/mcp', '{}'::jsonb,
+                   30, false, 'auto', 4,
+                   NOW(), NOW()
+               )
+               ON CONFLICT (id) DO NOTHING"#,
+        )
+        .bind(memory_id)
+        .execute(&pool)
+        .await
+        .expect("materialize memory built-in row");
+    }
     wait_for_system_server(&server, &admin.token, memory_id).await;
     let update_url = server.api_url(&format!("/mcp/system-servers/{}", memory_id));
     let response = reqwest::Client::new()
