@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -43,11 +44,11 @@ test.describe('Onboarding - MCP server install on Next', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers → MCP Servers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
 
     // Enable the first system MCP server toggle (antd Switch → role="switch").
     const firstSwitch = page.getByRole('switch').first()
@@ -59,9 +60,9 @@ test.describe('Onboarding - MCP server install on Next', () => {
 
     // Next runs applyMcpServerChanges; the wizard must advance (no silent
     // failure stalling on the MCP step) to the Memory step.
-    await page.getByRole('button', { name: 'Next' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
     await expect(
-      page.getByRole('heading', { name: 'Persistent Memory' }),
+      byTestId(page, 'onboarding-step-memory-setup'),
     ).toBeVisible({ timeout: 15000 })
   })
 })

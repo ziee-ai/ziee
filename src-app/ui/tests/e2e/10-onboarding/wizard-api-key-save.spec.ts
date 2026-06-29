@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -73,14 +74,14 @@ test.describe('Onboarding — API key entry + save', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
     await expect(
-      page.getByRole('heading', { name: 'AI Providers' }),
+      byTestId(page, 'onboarding-step-api-keys'),
     ).toBeVisible()
 
     // Enter a personal API key for the seeded provider.
-    await page.getByLabel('Your API Key').fill('sk-onboarding-personal-key')
+    await byTestId(page, 'onboarding-apikeys-password-input').fill('sk-onboarding-personal-key')
 
     // Next triggers registerBeforeNext → saveKey (POST user-api-keys).
     const saveResp = page.waitForResponse(
@@ -89,12 +90,12 @@ test.describe('Onboarding — API key entry + save', () => {
         r.request().method() === 'POST',
       { timeout: 30000 },
     )
-    await page.getByRole('button', { name: 'Next' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
     expect((await saveResp).status()).toBeLessThan(400)
 
     // The wizard advanced past the providers step.
     await expect(
-      page.getByRole('heading', { name: 'MCP Servers' }),
+      byTestId(page, 'onboarding-step-mcp-servers'),
     ).toBeVisible({ timeout: 30000 })
   })
 })

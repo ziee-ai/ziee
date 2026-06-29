@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -47,7 +48,7 @@ test.describe('Onboarding — progress persists across reload', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Fresh user starts at the Welcome step.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
 
     // Advance one step — "Next" marks the Welcome step complete server-side
     // and moves the wizard to AI Providers.
@@ -57,10 +58,10 @@ test.describe('Onboarding — progress persists across reload', () => {
         r.request().method() === 'POST',
       { timeout: 30000 },
     )
-    await page.getByRole('button', { name: 'Next' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
     expect((await stepComplete).status()).toBeLessThan(400)
     await expect(
-      page.getByRole('heading', { name: 'AI Providers' }),
+      byTestId(page, 'onboarding-step-api-keys'),
     ).toBeVisible()
 
     // (a) Server-side persistence: GET /api/onboarding/progress now reports a
@@ -86,10 +87,10 @@ test.describe('Onboarding — progress persists across reload', () => {
     // incomplete step), never restarting at Welcome.
     await page.reload()
     await expect(
-      page.getByRole('heading', { name: 'AI Providers' }),
+      byTestId(page, 'onboarding-step-api-keys'),
     ).toBeVisible({ timeout: 30000 })
     await expect(
-      page.getByRole('heading', { name: /Welcome/ }),
+      byTestId(page, 'onboarding-step-welcome'),
     ).toHaveCount(0)
   })
 })
