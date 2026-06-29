@@ -4,17 +4,18 @@
 
 mod common;
 
-use serial_test::serial;
 use std::time::Duration;
 
-/// Test that the backend module can find an available port
+/// Test that the backend module can reserve an available port.
+///
+/// Port reservation now goes through `portpicker::pick_unused_port()` (the
+/// OS chooses), so we assert only that a non-zero port is returned — the
+/// old hard-coded range no longer applies (it eliminated the TOCTOU race).
 #[test]
 fn test_find_available_port() {
     let port = common::find_available_port(19000, 19100);
-    assert!(port.is_some(), "Should find an available port");
-
-    let port = port.unwrap();
-    assert!(port >= 19000 && port < 19100, "Port should be in range");
+    assert!(port.is_some(), "Should reserve an available port");
+    assert!(port.unwrap() > 0, "Reserved port should be non-zero");
 }
 
 /// Test that the test config generates valid configuration
@@ -23,7 +24,7 @@ fn test_config_generation() {
     let temp_dir = tempfile::tempdir().unwrap();
     let config = common::TestConfig::new(temp_dir.path().to_path_buf());
 
-    assert!(config.server_port >= 18080 && config.server_port < 18180);
+    assert!(config.server_port > 0, "server_port should be reserved");
     assert_eq!(config.data_dir, temp_dir.path());
 }
 
@@ -41,12 +42,11 @@ fn test_server_config_yaml() {
     assert!(yaml.contains(&format!("port: {}", config.server_port)));
 }
 
-// Note: Full server startup tests require the embedded PostgreSQL setup
-// and are marked with #[serial] to avoid port conflicts
+// Note: port reservation is now parallel-safe (portpicker), so these
+// tests no longer need `#[serial]` to avoid port conflicts.
 
 /// Test server readiness check with non-existent server
 #[tokio::test]
-#[serial]
 async fn test_wait_for_server_timeout() {
     // Use a port that's definitely not in use
     let result = common::server::wait_for_server_ready(
@@ -60,10 +60,8 @@ async fn test_wait_for_server_timeout() {
 // Full integration test that starts the actual server
 // This test is expensive and should be run selectively
 #[tokio::test]
-#[serial]
 #[ignore = "Requires full server startup - run with --ignored"]
 async fn test_full_server_lifecycle() {
-    use common;
     let temp_dir = tempfile::tempdir().unwrap();
     let config = common::TestConfig::new(temp_dir.path().to_path_buf());
 
