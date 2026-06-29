@@ -1102,10 +1102,17 @@ async fn default_model_round_trips_and_sets_null_on_model_delete() {
         .unwrap();
     let provider_id = provider["id"].as_str().unwrap();
     // `alias` was removed from CreateLlmModelRequest; `name` is the identifier.
+    // `alias` was removed; `engine_type` + `file_format` are now required.
     let model: Value = client
         .post(server.api_url("/llm-models"))
         .header("Authorization", &bearer)
-        .json(&json!({ "provider_id": provider_id, "name": "default-model", "display_name": "default-model" }))
+        .json(&json!({
+            "provider_id": provider_id,
+            "name": "default-model",
+            "display_name": "default-model",
+            "engine_type": "none",
+            "file_format": "gguf",
+        }))
         .send()
         .await
         .unwrap()
