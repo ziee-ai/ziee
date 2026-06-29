@@ -367,14 +367,28 @@ pub async fn user_can_access(
 }
 
 pub async fn delete(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+    // Drop the hub-install tracking row in the same transaction. There is no FK
+    // cascade (`hub_entities.entity_id` is a plain UUID), so deleting a
+    // hub-installed workflow through any path would otherwise orphan its
+    // hub_entities row. Idempotent: a no-op for non-hub workflows.
+    sqlx::query!(
+        "DELETE FROM hub_entities WHERE entity_type = 'workflow' AND entity_id = $1",
+        id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
     let n = sqlx::query!("DELETE FROM workflows WHERE id = $1", id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(AppError::database_error)?
         .rows_affected();
     if n == 0 {
+        // Roll back the hub_entities delete — the workflow did not exist.
         return Err(AppError::not_found("Workflow"));
     }
+    tx.commit().await.map_err(AppError::database_error)?;
     Ok(())
 }
 
