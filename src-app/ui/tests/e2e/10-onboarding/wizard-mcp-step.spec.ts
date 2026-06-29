@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -59,19 +60,19 @@ test.describe('Onboarding wizard — MCP Servers step', () => {
     await expect(page).toHaveURL(new RegExp('/onboarding'))
 
     // Welcome → AI Providers → MCP Servers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
 
     // The seeded system server row renders with an enabled toggle.
-    await expect(page.getByText(serverName, { exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId(/^onboarding-mcp-system-server-row-/).filter({ hasText: serverName })).toBeVisible({ timeout: 15000 })
     const row = page
-      .locator('div.rounded-lg')
+      .getByTestId(/^onboarding-mcp-system-server-row-/)
       .filter({ hasText: serverName })
       .first()
-    const toggle = row.getByRole('switch')
+    const toggle = row.getByTestId(/^onboarding-mcp-system-server-switch-/)
     await expect(toggle).toBeChecked()
 
     // Toggle it off → the wizard step's toggleSystemServer flips the control.

@@ -167,6 +167,7 @@ export default function OnboardingPage() {
           return (
             <div
               key={g.id}
+              data-testid={`onboarding-guide-card-${g.id}`}
               className={`p-3 rounded-lg cursor-pointer transition-colors ${isActive ? 'bg-accent border border-primary' : 'border border-border'}`}
               onClick={() => handleSelectGuide(g)}
             >
@@ -190,7 +191,7 @@ export default function OnboardingPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header with steps */}
         <div className="p-4 md:p-6 border-b border-border bg-card">
-          <Title level={4} className="!mb-3">
+          <Title level={4} className="!mb-3" data-testid="onboarding-guide-title">
             {guide.title}
           </Title>
           <Progress
@@ -215,9 +216,19 @@ export default function OnboardingPage() {
             />
           )}
           {StepComponent && (
-            <Suspense fallback={<Spin className="flex justify-center mt-8" label="Loading step" />}>
-              <StepComponent {...stepProps} />
-            </Suspense>
+            <div data-testid={`onboarding-step-${currentStep.id}`}>
+              <Suspense
+                fallback={
+                  <Spin
+                    data-testid="onboarding-step-loading"
+                    className="flex justify-center mt-8"
+                    label="Loading step"
+                  />
+                }
+              >
+                <StepComponent {...stepProps} />
+              </Suspense>
+            </div>
           )}
         </div>
 

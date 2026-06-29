@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
@@ -35,7 +36,7 @@ async function createTemplate(
 async function gotoTemplates(page: import('@playwright/test').Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/assistant-templates`)
   await expect(
-    page.getByRole('heading', { name: 'Assistant Templates', level: 4 }),
+    byTestId(page, 'template-assistants-card'),
   ).toBeVisible({ timeout: 30000 })
 }
 
@@ -59,8 +60,8 @@ test.describe('Realtime sync — assistant templates (everyone, cross-window)', 
       // Create on A (via API) → both windows list it live.
       const name = `XSync Template ${Date.now()}`
       const id = await createTemplate(baseURL, token, name)
-      await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 })
-      await expect(pageB.getByText(name).first()).toBeVisible({
+      await expect(byTestId(page, 'template-assistants-card').filter({ hasText: name })).toBeVisible({ timeout: 15_000 })
+      await expect(byTestId(pageB, 'template-assistants-card').filter({ hasText: name })).toBeVisible({
         timeout: 15_000,
       })
 
@@ -75,7 +76,7 @@ test.describe('Realtime sync — assistant templates (everyone, cross-window)', 
         body: JSON.stringify({ name: renamed }),
       })
       expect(upd.ok).toBeTruthy()
-      await expect(pageB.getByText(renamed).first()).toBeVisible({
+      await expect(byTestId(pageB, 'template-assistants-card').filter({ hasText: renamed })).toBeVisible({
         timeout: 15_000,
       })
 
@@ -85,7 +86,7 @@ test.describe('Realtime sync — assistant templates (everyone, cross-window)', 
         headers: { Authorization: `Bearer ${token}` },
       })
       expect(del.ok || del.status === 204).toBeTruthy()
-      await expect(pageB.getByText(renamed)).toHaveCount(0, { timeout: 15_000 })
+      await expect(byTestId(pageB, 'template-assistants-card')).not.toContainText(renamed, { timeout: 15_000 })
     } finally {
       await ctxB.close()
     }

@@ -13,6 +13,7 @@
 import { test, expect } from './no-403'
 import { loginAsMember, loginWithPerms } from './fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid'
 
 test.describe('summarization-admin — permission gating', () => {
   test('member without summarization::settings::read: entry hidden + deep-link 403', async ({
@@ -24,12 +25,12 @@ test.describe('summarization-admin — permission gating', () => {
     // The admin sidebar entry is gated → hidden.
     await page.goto(`${testInfra.baseURL}/settings`)
     await expect(
-      page.getByRole('menuitem', { name: /^Summarization$/ }),
+      byTestId(page, 'settings-nav-menu-item-summarization-admin'),
     ).toHaveCount(0)
 
     // Deep-link → inline "Not authorized", URL preserved (route gate fires).
     await page.goto(`${testInfra.baseURL}/settings/summarization-admin`)
-    await expect(page.getByText(/Not authorized/i)).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible({ timeout: 10_000 })
     expect(page.url()).toContain('/settings/summarization-admin')
   })
 
@@ -45,8 +46,8 @@ test.describe('summarization-admin — permission gating', () => {
 
     // The gated page renders for a holder of the read perm (no 403).
     await expect(
-      page.getByText('Summarize after N tokens'),
+      byTestId(page, 'summ-after-tokens-input'),
     ).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(/Not authorized/i)).toHaveCount(0)
+    await expect(byTestId(page, 'settings-forbidden-result')).toHaveCount(0)
   })
 })

@@ -6,6 +6,7 @@ import {
   createTestUser,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // ---------------------------------------------------------------------------
 // Server self-update NOTIFICATION UI (admin-only). The server polls GitHub and
@@ -46,12 +47,14 @@ test.describe('Server update notification', () => {
 
     await page.goto(`${baseURL}/settings/about`)
 
-    // Auto-loads via the store __init__ (no Refresh click needed).
-    await expect(page.getByText('0.1.0').first()).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText('0.2.0').first()).toBeVisible()
-    await expect(page.getByText('update available')).toBeVisible()
+    // Auto-loads via the store __init__ (no Refresh click needed). The version
+    // strings are dynamic data from the mocked /status payload — asserted inside
+    // the About descriptions block by testid scope.
+    await expect(byTestId(page, 'serverupd-about-descriptions')).toContainText('0.1.0', { timeout: 30000 })
+    await expect(byTestId(page, 'serverupd-about-descriptions')).toContainText('0.2.0')
+    await expect(byTestId(page, 'serverupd-update-available-tag')).toBeVisible()
     // The copy-paste upgrade command is present.
-    await expect(page.getByText(/install\.sh \| sh/)).toBeVisible()
+    await expect(byTestId(page, 'serverupd-upgrade-command')).toBeVisible()
   })
 
   test('copies the upgrade command to the clipboard', async ({
@@ -67,12 +70,12 @@ test.describe('Server update notification', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/about`)
-    await expect(page.getByText(/install\.sh \| sh/)).toBeVisible({
+    await expect(byTestId(page, 'serverupd-upgrade-command')).toBeVisible({
       timeout: 30000,
     })
 
-    // Click antd's copy affordance on the copyable Paragraph.
-    await page.locator('.ant-typography-copy').first().click()
+    // Click the kit copy affordance on the copyable Paragraph.
+    await byTestId(page, 'serverupd-copy-cmd-btn').first().click()
 
     const clip = await page.evaluate(() => navigator.clipboard.readText())
     expect(clip).toContain('install.sh | sh')
@@ -87,19 +90,21 @@ test.describe('Server update notification', () => {
     await mockStatus(page, STATUS_AVAILABLE)
     await loginAsAdmin(page, baseURL)
 
-    // The banner lives in AppLayout (every authenticated page).
-    const banner = page.getByText('Ziee 0.2.0 is available')
+    // The banner lives in AppLayout (every authenticated page). '0.2.0' is
+    // dynamic data from the mocked status payload.
+    const banner = byTestId(page, 'serverupd-banner-alert')
     await expect(banner).toBeVisible({ timeout: 30000 })
+    await expect(banner).toContainText('0.2.0')
 
     // "How to update" routes to the About page.
-    await page.getByText('How to update').click()
+    await byTestId(page, 'serverupd-banner-howto-btn').click()
     await expect(page).toHaveURL(/\/settings\/about$/)
 
     // Dismiss hides it for the session.
     await page.goto(`${baseURL}/`)
-    await expect(page.getByText('Ziee 0.2.0 is available')).toBeVisible()
-    await page.locator('.ant-alert-close-icon').first().click()
-    await expect(page.getByText('Ziee 0.2.0 is available')).toHaveCount(0)
+    await expect(byTestId(page, 'serverupd-banner-alert')).toBeVisible()
+    await byTestId(page, 'serverupd-banner-alert-close').first().click()
+    await expect(byTestId(page, 'serverupd-banner-alert')).toHaveCount(0)
   })
 
   test('no banner when up to date', async ({ page, testInfra }) => {
@@ -114,7 +119,7 @@ test.describe('Server update notification', () => {
     )
     await loginAsAdmin(page, baseURL)
     await sawStatus
-    await expect(page.getByText(/is available/)).toHaveCount(0)
+    await expect(byTestId(page, 'serverupd-banner-alert')).toHaveCount(0)
   })
 
   test('Refresh re-fetches the status', async ({ page, testInfra }) => {
@@ -130,9 +135,9 @@ test.describe('Server update notification', () => {
     })
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/about`)
-    await expect(page.getByText('0.2.0').first()).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'serverupd-about-descriptions')).toContainText('0.2.0', { timeout: 30000 })
     const before = calls
-    await page.getByRole('button', { name: 'Refresh' }).click()
+    await byTestId(page, 'serverupd-refresh-btn').click()
     await expect.poll(() => calls).toBeGreaterThan(before)
   })
 
@@ -147,8 +152,8 @@ test.describe('Server update notification', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/about`)
     // Refresh deterministically triggers loadStatus (which sets `error`).
-    await page.getByRole('button', { name: 'Refresh' }).click()
-    await expect(page.locator('.ant-alert-error')).toBeVisible({ timeout: 30000 })
+    await byTestId(page, 'serverupd-refresh-btn').click()
+    await expect(byTestId(page, 'serverupd-error-alert')).toBeVisible({ timeout: 30000 })
   })
 
   test('About page shows the green "up to date" tag when current', async ({
@@ -164,12 +169,10 @@ test.describe('Server update notification', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/about`)
 
-    // Latest == current and no update → the green "up to date" Tag renders
-    // (NOT the blue "update available" one).
-    await expect(
-      page.locator('.ant-tag-green', { hasText: 'up to date' }),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText('update available')).toHaveCount(0)
+    // Latest == current and no update → the "up to date" Tag renders
+    // (NOT the "update available" one).
+    await expect(byTestId(page, 'serverupd-uptodate-tag')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'serverupd-update-available-tag')).toHaveCount(0)
   })
 
   test('About page shows "not checked yet" before the first poll', async ({
@@ -188,7 +191,7 @@ test.describe('Server update notification', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/about`)
 
-    await expect(page.getByText('not checked yet')).toBeVisible({
+    await expect(byTestId(page, 'serverupd-not-checked')).toBeVisible({
       timeout: 30000,
     })
   })
@@ -204,9 +207,7 @@ test.describe('Server update notification', () => {
     })
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/about`)
-    await expect(
-      page.getByText('Update checks are disabled by operator config'),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'serverupd-disabled-alert')).toBeVisible({ timeout: 30000 })
   })
 
   test('non-admin sees no banner and never calls the status endpoint', async ({
@@ -238,10 +239,8 @@ test.describe('Server update notification', () => {
     // admin-only banner has had its full mount chance. NOT `networkidle` (SSE
     // streams never idle). The banner is <Can>-gated, so for a permission-less
     // user it must never mount and therefore never fetch /status.
-    await expect(
-      page.getByRole('button', { name: 'Send message' }),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText(/is available/)).toHaveCount(0)
+    await expect(byTestId(page, 'chat-input-send-btn')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'serverupd-banner-alert')).toHaveCount(0)
     expect(statusCalls).toBe(0)
   })
 })

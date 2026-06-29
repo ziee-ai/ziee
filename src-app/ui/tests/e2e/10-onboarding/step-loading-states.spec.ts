@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -49,16 +50,16 @@ test.describe('Onboarding step loading states', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // The fetch is held open → the loading Spin renders (no content heading yet).
-    await expect(page.locator('.ant-spin')).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-loading')).toBeVisible()
 
     // Release the fetch → the loading branch is replaced by the real step.
     release()
     await expect(
-      page.getByRole('heading', { name: 'AI Providers' }),
+      byTestId(page, 'onboarding-step-api-keys'),
     ).toBeVisible({ timeout: 15000 })
   })
 })

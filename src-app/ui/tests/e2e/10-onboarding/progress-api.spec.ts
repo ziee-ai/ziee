@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -39,7 +40,7 @@ test.describe('Onboarding — progress API via UI', () => {
     )
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
 
     // Clicking "Next" marks the current step complete via the step endpoint.
     const stepComplete = page.waitForResponse(
@@ -48,19 +49,19 @@ test.describe('Onboarding — progress API via UI', () => {
         r.request().method() === 'POST',
       { timeout: 30000 },
     )
-    await page.getByRole('button', { name: 'Next' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
     expect((await stepComplete).status()).toBeLessThan(400)
 
     // Walk the rest of the wizard to the finish step.
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
     await expect(
-      page.getByRole('heading', { name: 'Persistent Memory' }),
+      byTestId(page, 'onboarding-step-memory-setup'),
     ).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-finish')).toBeVisible()
 
     // "Start Chatting" completes the guide via the guide-complete endpoint.
     const guideComplete = page.waitForResponse(
@@ -69,7 +70,7 @@ test.describe('Onboarding — progress API via UI', () => {
         r.request().method() === 'POST',
       { timeout: 30000 },
     )
-    await page.getByRole('button', { name: 'Start Chatting' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
     expect((await guideComplete).status()).toBeLessThan(400)
   })
 })

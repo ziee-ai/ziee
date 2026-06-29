@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -40,25 +41,23 @@ test.describe('Onboarding — mid-flow navigation', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Forward: Welcome → AI Providers → MCP Servers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
 
     // Backward (mid-onboarding): Back → AI Providers → Welcome.
-    await page.getByRole('button', { name: 'Back' }).click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Back' }).click()
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await byTestId(page, 'onboarding-page-back-button').click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
+    await byTestId(page, 'onboarding-page-back-button').click()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
     // Back is disabled on the first step.
-    await expect(page.getByRole('button', { name: 'Back' })).toBeDisabled()
+    await expect(byTestId(page, 'onboarding-page-back-button')).toBeDisabled()
 
     // Re-select the "Getting Started" guide entry in the sidebar
     // (handleSelectGuide) → stays on the same guide.
-    await page.getByText('Getting Started').first().click()
-    await expect(
-      page.getByRole('heading', { name: 'Getting Started' }),
-    ).toBeVisible()
+    await byTestId(page, 'onboarding-guide-card-getting-started').click()
+    await expect(byTestId(page, 'onboarding-guide-title')).toContainText('Getting Started')
   })
 })

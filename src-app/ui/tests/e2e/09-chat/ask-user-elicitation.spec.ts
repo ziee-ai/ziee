@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -63,18 +64,11 @@ test.describe('ask_user elicitation — assistant-initiated form', () => {
     // Pick "green" from the enum Select. Wait for the portal dropdown to open,
     // pick the option, then wait for it to CLOSE (Escape fallback) so the
     // floating option list can't overlay + swallow the Submit click.
-    const sel = page.locator(`[data-testid="elicitation-field-color"]`).first()
+    const sel = byTestId(page, 'elicitation-field-color').first()
     await sel.click({ force: true })
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
-    await page.locator('.ant-select-item-option:has-text("green")').first().click()
-    await page
-      .waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 })
-      .catch(async () => {
-        await page.keyboard.press('Escape')
-        await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 })
-      })
+    await byTestId(page, 'elicitation-field-color-opt-green').click()
 
-    await page.locator('[data-testid="elicitation-submit"]').first().click()
+    await byTestId(page, 'elicitation-submit').first().click()
 
     await expect(
       page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`).first(),
@@ -169,9 +163,9 @@ async function injectAskUser(
   await goToNewChatPage(page, baseURL)
   await selectModelInDropdown(page, 'GPT-4o Mini')
 
-  const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
+  const textarea = byTestId(page, 'chat-message-textarea').first()
   await textarea.fill('pick a color')
-  await page.getByRole('button', { name: 'Send message' }).click()
+  await byTestId(page, 'chat-input-send-btn').click()
 
   const pending = page.locator(`[data-testid="elicitation-pending-${elicitationId}"]`).first()
   await expect(pending).toBeVisible({ timeout: 10000 })

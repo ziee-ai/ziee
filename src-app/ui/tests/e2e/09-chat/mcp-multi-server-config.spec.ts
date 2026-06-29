@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -53,21 +54,19 @@ test.describe('Chat — multi-server MCP config', () => {
     await seedServer(apiURL, token, srvB)
 
     await goToNewChatPage(page, baseURL)
-    await page.getByRole('button', { name: 'Add attachment' }).first().click()
-    await page.getByText('MCP tools & servers').first().click()
-    await expect(
-      page.locator('.ant-modal-title:has-text("MCP Configuration")'),
-    ).toBeVisible({ timeout: 10000 })
+    await byTestId(page, 'chat-input-add-btn').first().click()
+    await byTestId(page, 'chat-mcp-menu-item').first().click()
+    await expect(byTestId(page, 'mcp-config-modal')).toBeVisible({ timeout: 10000 })
 
     // BOTH servers are listed in the modal.
-    const headerA = page.locator('.ant-collapse-item').filter({ hasText: srvA })
-    const headerB = page.locator('.ant-collapse-item').filter({ hasText: srvB })
+    const headerA = page.getByTestId(/^mcp-config-server-row-/).filter({ hasText: srvA })
+    const headerB = page.getByTestId(/^mcp-config-server-row-/).filter({ hasText: srvB })
     await expect(headerA).toBeVisible({ timeout: 10000 })
     await expect(headerB).toBeVisible()
 
     // Enable BOTH server toggles → both become selected.
-    const toggleA = headerA.locator('.ant-switch').first()
-    const toggleB = headerB.locator('.ant-switch').first()
+    const toggleA = headerA.getByTestId(/^mcp-config-server-switch-/)
+    const toggleB = headerB.getByTestId(/^mcp-config-server-switch-/)
     if ((await toggleA.getAttribute('aria-checked')) === 'false') await toggleA.click()
     if ((await toggleB.getAttribute('aria-checked')) === 'false') await toggleB.click()
     await expect(toggleA).toHaveAttribute('aria-checked', 'true', { timeout: 5000 })

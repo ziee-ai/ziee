@@ -266,7 +266,7 @@ function AvailableVersionRow({
     progress.status !== 'failed'
   const failed = progress?.status === 'failed'
   return (
-    <HoverRow>
+    <HoverRow data-testid={`llmrt-version-row-${v.version}`}>
       <Flex vertical gap="small">
         <Flex justify="between" align="center" gap="small" wrap>
           <Space wrap>

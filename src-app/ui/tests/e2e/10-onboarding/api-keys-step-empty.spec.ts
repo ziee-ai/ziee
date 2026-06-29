@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -46,24 +47,27 @@ test.describe('Onboarding — AI Providers step empty state', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
     await expect(
-      page.getByRole('heading', { name: 'AI Providers' }),
+      byTestId(page, 'onboarding-step-api-keys'),
     ).toBeVisible()
 
-    // The empty-state copy from ApiKeysStep.tsx:55-69 renders…
-    await expect(
-      page.getByText(/No AI providers are currently enabled/i),
-    ).toBeVisible({ timeout: 10_000 })
-    await expect(
-      page.getByText(/administrator can add\s+providers in the Admin settings/i),
-    ).toBeVisible()
+    // The empty-state copy from ApiKeysStep.tsx renders…
+    await expect(byTestId(page, 'onboarding-apikeys-empty')).toBeVisible({
+      timeout: 10_000,
+    })
+    await expect(byTestId(page, 'onboarding-apikeys-empty')).toContainText(
+      /No AI providers are currently enabled/i,
+    )
+    await expect(byTestId(page, 'onboarding-apikeys-empty')).toContainText(
+      /administrator can add/i,
+    )
 
     // …and the provider picker (the non-empty branch's API-key form) is absent.
-    await expect(page.getByLabel(/API key/i)).toHaveCount(0)
+    await expect(byTestId(page, 'onboarding-apikeys-password-input')).toHaveCount(0)
 
     // The wizard can still advance past the (empty) providers step.
-    await expect(page.getByRole('button', { name: 'Next' })).toBeEnabled()
+    await expect(byTestId(page, 'onboarding-page-next-button')).toBeEnabled()
   })
 })

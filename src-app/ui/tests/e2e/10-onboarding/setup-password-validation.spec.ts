@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 
 /**
  * E2E — SetupPage password validation surfaced through the UI.
@@ -18,23 +19,23 @@ test.describe('Setup — admin password validation', () => {
     const { baseURL } = testInfra
 
     await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
+    await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
+    await byTestId(page, 'app-setup-username-input').fill('admin')
+    await byTestId(page, 'app-setup-email-input').fill('admin@example.com')
 
     // Too-short password → inline length error, no navigation.
-    await page.getByLabel('Password', { exact: true }).fill('short')
-    await page.getByLabel('Confirm Password').fill('short')
-    await page.getByRole('button', { name: /create admin account/i }).click()
+    await byTestId(page, 'app-setup-password-input').fill('short')
+    await byTestId(page, 'app-setup-confirm-password-input').fill('short')
+    await byTestId(page, 'app-setup-submit-button').click()
     await expect(
-      page.getByText('Password must be at least 8 characters'),
+      byTestId(page, 'field-error-password'),
     ).toBeVisible({ timeout: 10000 })
 
     // Valid-length password but a mismatched confirmation → mismatch error.
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password999')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page.getByText('Passwords do not match')).toBeVisible({
+    await byTestId(page, 'app-setup-password-input').fill('password123')
+    await byTestId(page, 'app-setup-confirm-password-input').fill('password999')
+    await byTestId(page, 'app-setup-submit-button').click()
+    await expect(byTestId(page, 'field-error-confirm_password')).toBeVisible({
       timeout: 10000,
     })
 

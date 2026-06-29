@@ -1,4 +1,5 @@
 import { Page } from '@playwright/test'
+import { byTestId } from '../../testid'
 
 /**
  * MCP-specific navigation helpers
@@ -21,31 +22,25 @@ export async function goToMcpAdminPage(page: Page, baseURL: string) {
 }
 
 export async function waitForMcpPageLoad(page: Page) {
-  // Wait for the heading to be visible (more specific than text=MCP Servers)
-  await page.waitForSelector('h4:has-text("MCP Servers")', { timeout: 30000 })
-  // Wait for loading spinner to disappear (if it appears)
-  await page.waitForSelector('text=Loading MCP servers...', { state: 'hidden', timeout: 5000 }).catch(() => {
-    // Loading might be too fast to see, that's ok
-  })
-  // Wait for content to be ready - either servers or empty state
-  await page.waitForSelector('button:has-text("Add Server")', { timeout: 10000 })
+  // The Add button only renders once the page data has loaded, so gating on
+  // its testid covers both the heading-present + not-loading conditions.
+  await byTestId(page, 'mcp-settings-add-btn').waitFor({ state: 'visible', timeout: 30000 })
 }
 
 export async function waitForMcpAdminPageLoad(page: Page) {
-  // Wait for the heading to be visible (more specific)
-  await page.waitForSelector('h4:has-text("System MCP Servers")', { timeout: 30000 })
-  // Wait for loading to complete
-  await page.waitForSelector('text=Loading system servers...', { state: 'hidden', timeout: 5000 }).catch(() => {
-    // Loading might be too fast to see, that's ok
-  })
-  // Wait for content to be ready (same button text as user page)
-  await page.waitForSelector('button:has-text("Add Server")', { timeout: 10000 })
+  // The system Add button only renders after the page data loads.
+  await byTestId(page, 'mcp-system-add-btn').waitFor({ state: 'visible', timeout: 30000 })
 }
 
-export async function clickServerCard(page: Page, serverDisplayName: string, _isAdmin: boolean = false) {
-  // Wait for server card to be visible and scroll into view
-  // Note: There's no separate detail page - cards are shown inline on the list page
-  const serverCard = page.locator(`.ant-card:has-text("${serverDisplayName}")`).first()
+export async function clickServerCard(page: Page, serverDisplayName: string, isAdmin: boolean = false) {
+  // Cards are keyed by server id (mcp-server-card-<id> on the user page,
+  // mcp-system-server-card-<id> on the admin page). Match the card whose
+  // content carries the dynamic display name the test created.
+  const cardPrefix = isAdmin ? /^mcp-system-server-card-/ : /^mcp-server-card-/
+  const serverCard = page
+    .getByTestId(cardPrefix)
+    .filter({ hasText: serverDisplayName })
+    .first()
   await serverCard.waitFor({ state: 'visible', timeout: 10000 })
 
   // Scroll the server card into view

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 // Realtime sync for the `hub_settings` singleton entity. When an admin
@@ -53,18 +54,14 @@ async function gotoHub(
   // page (and the HubCatalog store subscribing to sync:hub_settings)
   // has mounted.
   await expect(
-    page.getByRole('button', { name: /select hub catalog version/i }),
+    byTestId(page, 'hub-version-tag'),
   ).toBeVisible({ timeout: 30_000 })
 }
 
 function versionTag(page: import('@playwright/test').Page) {
-  // VersionPicker renders `<Tag>v{hubVersion}</Tag>` inside the picker
-  // button. Scope to the button so the picker dropdown's own list
-  // items (which also render version tags) don't collide.
-  return page
-    .getByRole('button', { name: /select hub catalog version/i })
-    .locator('.ant-tag')
-    .first()
+  // The installed-catalog version renders as `<Tag>v{hubVersion}</Tag>` with
+  // the hub-version-tag testid on the Hub page header.
+  return byTestId(page, 'hub-version-tag')
 }
 
 test.describe('Realtime sync — hub_settings (real GitHub)', () => {

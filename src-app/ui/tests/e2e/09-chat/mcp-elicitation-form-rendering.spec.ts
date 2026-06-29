@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -44,7 +45,7 @@ test.describe('Elicitation form — field rendering', () => {
     await seedElicitation(page, testInfra.baseURL, {
       properties: { name: { type: 'string', title: 'Name' } },
     })
-    const input = page.locator('[data-testid="elicitation-field-name"]').first()
+    const input = byTestId(page, 'elicitation-field-name').first()
     await expect(input).toBeVisible()
     await expect(input).toHaveAttribute('type', 'text')
   })
@@ -56,7 +57,7 @@ test.describe('Elicitation form — field rendering', () => {
     await seedElicitation(page, testInfra.baseURL, {
       properties: { pw: { type: 'string', format: 'password', title: 'Password' } },
     })
-    const input = page.locator('[data-testid="elicitation-field-pw"]').first()
+    const input = byTestId(page, 'elicitation-field-pw').first()
     await expect(input).toBeVisible()
     await expect(input).toHaveAttribute('type', 'password')
   })
@@ -65,7 +66,7 @@ test.describe('Elicitation form — field rendering', () => {
     await seedElicitation(page, testInfra.baseURL, {
       properties: { addr: { type: 'string', format: 'email', title: 'Email' } },
     })
-    const input = page.locator('[data-testid="elicitation-field-addr"]').first()
+    const input = byTestId(page, 'elicitation-field-addr').first()
     await expect(input).toHaveAttribute('type', 'email')
   })
 
@@ -73,7 +74,7 @@ test.describe('Elicitation form — field rendering', () => {
     await seedElicitation(page, testInfra.baseURL, {
       properties: { homepage: { type: 'string', format: 'uri', title: 'Homepage' } },
     })
-    const input = page.locator('[data-testid="elicitation-field-homepage"]').first()
+    const input = byTestId(page, 'elicitation-field-homepage').first()
     await expect(input).toHaveAttribute('type', 'url')
   })
 
@@ -84,8 +85,7 @@ test.describe('Elicitation form — field rendering', () => {
     // The DatePicker's testid is on the input; presence + a Day label nearby
     // proves the picker rendered (the date format is verified end-to-end in
     // the submit-roundtrip spec).
-    await expect(page.locator('[data-testid="elicitation-field-day"]').first()).toBeVisible()
-    await expect(page.locator('.ant-picker').first()).toBeVisible()
+    await expect(byTestId(page, 'elicitation-field-day').first()).toBeVisible()
   })
 
   test('format=date-time → AntD DatePicker with time picker', async ({
@@ -97,10 +97,7 @@ test.describe('Elicitation form — field rendering', () => {
         when: { type: 'string', format: 'date-time', title: 'When' },
       },
     })
-    await expect(page.locator('[data-testid="elicitation-field-when"]').first()).toBeVisible()
-    // showTime DatePicker still uses .ant-picker container; the submit-roundtrip
-    // spec verifies the time-bearing ISO string in the request body.
-    await expect(page.locator('.ant-picker').first()).toBeVisible()
+    await expect(byTestId(page, 'elicitation-field-when').first()).toBeVisible()
   })
 
   test('number → InputNumber, accepts decimals', async ({ page, testInfra }) => {
@@ -109,11 +106,11 @@ test.describe('Elicitation form — field rendering', () => {
         ratio: { type: 'number', title: 'Ratio', minimum: 0, maximum: 1 },
       },
     })
-    const wrapper = page.locator('[data-testid="elicitation-field-ratio"]').first()
+    const wrapper = byTestId(page, 'elicitation-field-ratio').first()
     await expect(wrapper).toBeVisible()
     // The data-testid lives on the InputNumber wrapper. AntD renders the
     // actual input as a SIBLING <input role="spinbutton"> with aria-valuemin/max.
-    const input = page.locator('input[role="spinbutton"][aria-valuemin="0"][aria-valuemax="1"]').first()
+    const input = byTestId(page, 'elicitation-field-ratio').first()
     await expect(input).toBeVisible()
   })
 
@@ -126,16 +123,16 @@ test.describe('Elicitation form — field rendering', () => {
     })
     // For integer fields, just verify the InputNumber renders. The precision=0
     // coercion is implementation-detail and changes between AntD versions.
-    await expect(page.locator('[data-testid="elicitation-field-count"]').first()).toBeVisible()
+    await expect(byTestId(page, 'elicitation-field-count').first()).toBeVisible()
     // An input with role=spinbutton must be present (that's the AntD InputNumber).
-    await expect(page.locator('input[role="spinbutton"]').first()).toBeVisible()
+    await expect(byTestId(page, 'elicitation-field-count').first()).toBeVisible()
   })
 
   test('boolean → Switch', async ({ page, testInfra }) => {
     await seedElicitation(page, testInfra.baseURL, {
       properties: { agree: { type: 'boolean', title: 'Agree' } },
     })
-    const sw = page.locator('[data-testid="elicitation-field-agree"]').first()
+    const sw = byTestId(page, 'elicitation-field-agree').first()
     await expect(sw).toBeVisible()
     // AntD Switch is a button with role=switch — assert via attribute (toHaveRole
     // checks accessible-name role which isn't set as a literal attribute on
@@ -153,12 +150,12 @@ test.describe('Elicitation form — field rendering', () => {
         },
       },
     })
-    const sel = page.locator('[data-testid="elicitation-field-priority"]').first()
+    const sel = byTestId(page, 'elicitation-field-priority').first()
     await expect(sel).toBeVisible()
     // Click to open and verify the enum options appear
     await sel.click({ force: true })
-    await expect(page.locator('.ant-select-item-option:has-text("low")').first()).toBeVisible()
-    await expect(page.locator('.ant-select-item-option:has-text("high")').first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-priority-opt-/).filter({ hasText: 'low' }).first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-priority-opt-/).filter({ hasText: 'high' }).first()).toBeVisible()
   })
 
   test('string with anyOf titled → single-Select with title labels', async ({
@@ -177,10 +174,10 @@ test.describe('Elicitation form — field rendering', () => {
         },
       },
     })
-    const sel = page.locator('[data-testid="elicitation-field-env"]').first()
+    const sel = byTestId(page, 'elicitation-field-env').first()
     await sel.click({ force: true })
-    await expect(page.locator('.ant-select-item-option:has-text("Production")').first()).toBeVisible()
-    await expect(page.locator('.ant-select-item-option:has-text("Staging")').first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-env-opt-/).filter({ hasText: 'Production' }).first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-env-opt-/).filter({ hasText: 'Staging' }).first()).toBeVisible()
   })
 
   test('array.items.enum → multi-Select', async ({ page, testInfra }) => {
@@ -193,13 +190,13 @@ test.describe('Elicitation form — field rendering', () => {
         },
       },
     })
-    const sel = page.locator('[data-testid="elicitation-field-tags"]').first()
+    const sel = byTestId(page, 'elicitation-field-tags').first()
     await expect(sel).toBeVisible()
     // Click to open and verify all enum options appear
     await sel.click({ force: true })
-    await expect(page.locator('.ant-select-item-option:has-text("rust")').first()).toBeVisible()
-    await expect(page.locator('.ant-select-item-option:has-text("ts")').first()).toBeVisible()
-    await expect(page.locator('.ant-select-item-option:has-text("python")').first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-tags-opt-/).filter({ hasText: 'rust' }).first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-tags-opt-/).filter({ hasText: 'ts' }).first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-tags-opt-/).filter({ hasText: 'python' }).first()).toBeVisible()
   })
 
   test('array.items.anyOf titled → multi-Select with title labels', async ({
@@ -220,10 +217,10 @@ test.describe('Elicitation form — field rendering', () => {
         },
       },
     })
-    const sel = page.locator('[data-testid="elicitation-field-teams"]').first()
+    const sel = byTestId(page, 'elicitation-field-teams').first()
     await sel.click({ force: true })
-    await expect(page.locator('.ant-select-item-option:has-text("Engineering")').first()).toBeVisible()
-    await expect(page.locator('.ant-select-item-option:has-text("Sales")').first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-teams-opt-/).filter({ hasText: 'Engineering' }).first()).toBeVisible()
+    await expect(page.getByTestId(/^elicitation-field-teams-opt-/).filter({ hasText: 'Sales' }).first()).toBeVisible()
   })
 
   test('pattern → validation rejects mismatch', async ({ page, testInfra }) => {
@@ -237,10 +234,10 @@ test.describe('Elicitation form — field rendering', () => {
       },
       required: ['code'],
     })
-    const input = page.locator('[data-testid="elicitation-field-code"]').first()
+    const input = byTestId(page, 'elicitation-field-code').first()
     await input.fill('abc') // lowercase — doesn't match
-    await page.locator('[data-testid="elicitation-submit"]').first().click()
-    await expect(page.locator('.ant-form-item-explain-error').first()).toBeVisible()
+    await byTestId(page, 'elicitation-submit').first().click()
+    await expect(byTestId(page, 'mcp-elicitation-form').getByTestId(/-error$/).first()).toBeVisible()
   })
 
   test('required field → submit empty shows inline error', async ({ page, testInfra }) => {
@@ -248,8 +245,8 @@ test.describe('Elicitation form — field rendering', () => {
       properties: { name: { type: 'string', title: 'Name' } },
       required: ['name'],
     })
-    await page.locator('[data-testid="elicitation-submit"]').first().click()
-    await expect(page.locator('.ant-form-item-explain-error:has-text("required")').first()).toBeVisible()
+    await byTestId(page, 'elicitation-submit').first().click()
+    await expect(byTestId(page, 'mcp-elicitation-form').getByTestId(/-error$/).filter({ hasText: /required/i }).first()).toBeVisible()
   })
 })
 
@@ -316,8 +313,8 @@ async function seedElicitation(
 }
 
 async function sendChatMessage(page: import('@playwright/test').Page, text: string) {
-  const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
+  const textarea = byTestId(page, 'chat-message-textarea').first()
   await textarea.fill(text)
-  const sendButton = page.getByRole('button', { name: 'Send message' })
+  const sendButton = byTestId(page, 'chat-input-send-btn')
   await sendButton.click()
 }

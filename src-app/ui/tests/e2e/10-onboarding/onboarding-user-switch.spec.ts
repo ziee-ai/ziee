@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   clearAuthState,
@@ -52,7 +53,7 @@ test.describe('Onboarding store — user switch isolation', () => {
 
     await loginExpectingOnboarding(page, baseURL, userA, 'password123')
     // A resumes PAST welcome — at AI Providers (proves A has stored progress).
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
 
     // Switch to a brand-new user B with NO progress.
     await clearAuthState(page)
@@ -60,7 +61,7 @@ test.describe('Onboarding store — user switch isolation', () => {
     await loginExpectingOnboarding(page, baseURL, userB, 'password123')
 
     // B must start at Welcome — A's completed-step progress must NOT leak.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeHidden()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeHidden()
   })
 })

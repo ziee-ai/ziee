@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { byTestId } from '../testid'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { goToNewChatPage } from '../09-chat/helpers/chat-helpers'
@@ -106,10 +107,10 @@ test.describe('Realtime sync (conversations, cross-window)', () => {
       await createConversation(baseURL, token, title)
 
       // Both windows' recent-conversations sidebar must list it live.
-      await expect(page.getByText(title).first()).toBeVisible({
+      await expect(page.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: title })).toBeVisible({
         timeout: 15_000,
       })
-      await expect(pageB.getByText(title).first()).toBeVisible({
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: title })).toBeVisible({
         timeout: 15_000,
       })
     } finally {
@@ -135,20 +136,20 @@ test.describe('Realtime sync (conversations, cross-window)', () => {
 
       const original = `XSync Rename ${Date.now()}`
       const id = await createConversation(baseURL, token, original)
-      await expect(pageB.getByText(original).first()).toBeVisible({
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: original })).toBeVisible({
         timeout: 15_000,
       })
 
       // Rename → device B shows the new title.
       const renamed = `${original} (renamed)`
       await renameConversation(baseURL, token, id, renamed)
-      await expect(pageB.getByText(renamed).first()).toBeVisible({
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: renamed })).toBeVisible({
         timeout: 15_000,
       })
 
       // Delete → device B drops it from the list.
       await deleteConversation(baseURL, token, id)
-      await expect(pageB.getByText(renamed)).toHaveCount(0, { timeout: 15_000 })
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: renamed })).toHaveCount(0, { timeout: 15_000 })
     } finally {
       await ctxB.close()
     }
@@ -185,7 +186,7 @@ test.describe('Realtime sync (conversations, cross-window)', () => {
       // B's view must not keep pointing at the dead conversation: the sidebar
       // drops it (the Chat store also `reset()`s the open view on a remote
       // delete — see Chat.store `sync:conversation` handler).
-      await expect(pageB.getByText(title)).toHaveCount(0, { timeout: 15_000 })
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: title })).toHaveCount(0, { timeout: 15_000 })
     } finally {
       await ctxB.close()
     }
@@ -246,7 +247,7 @@ test.describe('Realtime sync — conversation born from chat input (cross-window
       const marker = `XSync FromInput ${Date.now()}`
       const textarea = page.locator('textarea[placeholder*="Type your message"]')
       await textarea.fill(`Please acknowledge the phrase ${marker}.`)
-      const sendButton = page.getByRole('button', { name: 'Send message' })
+      const sendButton = byTestId(page, 'chat-input-send-btn')
       await expect(sendButton).toBeEnabled({ timeout: 15_000 })
       await sendButton.click()
 
@@ -255,7 +256,7 @@ test.describe('Realtime sync — conversation born from chat input (cross-window
 
       // Device B's sidebar lists the new conversation live (notify→refetch),
       // matched by the auto-derived title (first user message text).
-      await expect(pageB.getByText(marker).first()).toBeVisible({
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: marker })).toBeVisible({
         timeout: 30_000,
       })
     } finally {
@@ -273,7 +274,7 @@ test.describe('Realtime sync — conversation born from chat input (cross-window
 // the conversation is API-seeded (title only), only the delete goes through UI.
 
 function cardByTitle(p: Page, title: string) {
-  return p.locator('.ant-card').filter({ hasText: title })
+  return p.getByTestId(/^chat-conversation-card-/).filter({ hasText: title })
 }
 
 test.describe('Realtime sync — UI delete with confirmation (cross-window)', () => {
@@ -302,7 +303,7 @@ test.describe('Realtime sync — UI delete with confirmation (cross-window)', ()
     try {
       await loginAsAdmin(pageB, baseURL)
       await goToNewChatPage(pageB, baseURL)
-      await expect(pageB.getByText(title).first()).toBeVisible({
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: title })).toBeVisible({
         timeout: 15_000,
       })
 
@@ -312,17 +313,15 @@ test.describe('Realtime sync — UI delete with confirmation (cross-window)', ()
       const target = cardByTitle(page, title)
       await expect(target).toBeVisible({ timeout: 15_000 })
       await target.hover()
-      await target.locator('button:has(.anticon-delete)').click()
-      const popconfirm = page
-        .locator('.ant-popover')
-        .filter({ hasText: 'Delete conversation?' })
-      await expect(popconfirm).toBeVisible()
-      await popconfirm.getByRole('button', { name: 'Delete', exact: true }).click()
+      await target.getByTestId(/^chat-conversation-delete-btn-/).click()
+      const confirmBtn = page.getByTestId(/^chat-conversation-delete-confirm-.+-confirm$/)
+      await expect(confirmBtn).toBeVisible()
+      await confirmBtn.click()
 
       // Device A's card is gone…
       await expect(cardByTitle(page, title)).toHaveCount(0, { timeout: 10_000 })
       // …and device B's sidebar drops it live via sync (no reload).
-      await expect(pageB.getByText(title)).toHaveCount(0, { timeout: 15_000 })
+      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: title })).toHaveCount(0, { timeout: 15_000 })
     } finally {
       await ctxB.close()
     }

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   navigateToUsers,
@@ -67,10 +68,7 @@ test.describe('Realtime sync — admin user/group tables (perm-scoped)', () => {
       // manual reload — the SSE sync event makes the users store refetch.
       // assertUserExists has its own 5s wait; Playwright auto-retries the
       // expect, but bump the timeout to absorb SSE delivery latency.
-      const userElementB = pageB.locator('.ant-typography.font-medium', {
-        hasText: userData.username,
-      })
-      await expect(userElementB.first()).toBeVisible({ timeout: 15_000 })
+      await expect(byTestId(pageB, 'user-list-card')).toContainText(userData.username, { timeout: 15_000 })
     } finally {
       await ctxB.close()
     }

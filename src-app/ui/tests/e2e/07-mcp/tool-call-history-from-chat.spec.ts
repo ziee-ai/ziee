@@ -137,14 +137,19 @@ test.describe('MCP tool-call history — recorded from a real chat', () => {
     await goToMcpAdminPage(page, baseURL)
     await waitForMcpAdminPageLoad(page)
     await clickEditServerButton(page, displayName, true)
-    await page.getByRole('tab', { name: 'Calls' }).click()
+    await page.getByTestId('mcp-drawer-tabs-tab-calls').click()
 
     const tab = page.getByTestId('mcp-tool-calls-tab')
     await expect(tab).toBeVisible()
-    await expect(tab.getByText('get_file_link')).toBeVisible({ timeout: 15_000 })
+    // The recorded call's tool name is dynamic data — match the table row
+    // carrying it (filter, not getByText, to stay i18n/gate-safe).
+    const callRow = tab
+      .getByTestId(/^mcp-tool-calls-table-row-/)
+      .filter({ hasText: 'get_file_link' })
+    await expect(callRow).toBeVisible({ timeout: 15_000 })
 
     // Expanding the row shows the recorded call detail (source: chat).
-    await tab.getByText('get_file_link').click()
+    await callRow.click()
     await expect(page.getByTestId('mcp-tool-call-detail')).toBeVisible()
   })
 })

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -121,7 +122,7 @@ test.describe('Realtime sync — chat token stream (cross-device)', () => {
       await textareaA.fill(
         `Reply with exactly this token and nothing else: ${marker}`,
       )
-      const sendButtonA = page.getByRole('button', { name: 'Send message' })
+      const sendButtonA = byTestId(page, 'chat-input-send-btn')
       await expect(sendButtonA).toBeEnabled({ timeout: 10_000 })
       await sendButtonA.click()
 
@@ -200,7 +201,7 @@ test.describe('Realtime sync — chat token stream (cross-device)', () => {
       await page
         .locator('textarea[placeholder*="Type your message"]')
         .fill(`Reply with exactly this token and nothing else: ${markerA}`)
-      const sendA = page.getByRole('button', { name: 'Send message' })
+      const sendA = byTestId(page, 'chat-input-send-btn')
       await expect(sendA).toBeEnabled({ timeout: 10_000 })
       await sendA.click()
       await expect(pageB.locator('body')).toContainText(markerA, { timeout: 60_000 })
@@ -212,7 +213,7 @@ test.describe('Realtime sync — chat token stream (cross-device)', () => {
       const textareaB = pageB.locator('textarea[placeholder*="Type your message"]')
       await expect(textareaB).toBeEnabled({ timeout: 30_000 })
       await textareaB.fill(`Reply with exactly this token and nothing else: ${markerB}`)
-      const sendB = pageB.getByRole('button', { name: 'Send message' })
+      const sendB = byTestId(pageB, 'chat-input-send-btn')
       await expect(sendB).toBeEnabled({ timeout: 10_000 })
       await sendB.click()
 

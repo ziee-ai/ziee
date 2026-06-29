@@ -96,17 +96,18 @@ test.describe('MCP Server Assignment in User Groups', () => {
 
     // Verify drawer is open with correct title
     await expect(
-      page.locator(`.ant-drawer-title:has-text("Assign System MCP Servers - ${groupName}")`)
+      page.getByTestId('mcp-group-assign-save-btn')
     ).toBeVisible()
 
     // Verify server appears in the drawer
-    await expect(page.locator(`.ant-drawer.ant-drawer-open:has-text("${serverDisplayName}")`)).toBeVisible()
+    await expect(page.getByTestId(/^mcp-group-assign-card-/).filter({ hasText: `${serverDisplayName}` })).toBeVisible()
 
     // Verify switch exists
-    const serverCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
-    )
-    const switchElement = serverCard.locator('.ant-switch')
+    const serverCard = page
+      .getByTestId(/^mcp-group-assign-card-/)
+      .filter({ hasText: `${serverDisplayName}` })
+      .first()
+    const switchElement = serverCard.getByTestId(/^mcp-group-assign-switch-/)
     await expect(switchElement).toBeVisible()
 
     // Close drawer
@@ -218,9 +219,10 @@ test.describe('MCP Server Assignment in User Groups', () => {
 
     // Verify drawer shows default system servers (Web Fetch, Filesystem, etc.)
     // These are created in migrations
-    const webFetchCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("Web Fetch"))`
-    )
+    const webFetchCard = page
+      .getByTestId(/^mcp-group-assign-card-/)
+      .filter({ hasText: `Web Fetch` })
+      .first()
     await expect(webFetchCard).toBeVisible()
 
     // Close drawer
@@ -247,13 +249,14 @@ test.describe('MCP Server Assignment in User Groups', () => {
     await openServerAssignmentDrawerFromGroup(page, groupName)
 
     // Find the server card
-    const serverCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
-    )
+    const serverCard = page
+      .getByTestId(/^mcp-group-assign-card-/)
+      .filter({ hasText: `${serverDisplayName}` })
+      .first()
     await expect(serverCard).toBeVisible()
 
     // Verify it shows Enabled tag (servers are enabled by default)
-    await expect(serverCard.locator('.ant-tag:has-text("Enabled")')).toBeVisible()
+    await expect(serverCard.getByTestId(/^mcp-group-assign-status-tag-/).filter({ hasText: 'Enabled' })).toBeVisible()
 
     // Close drawer
     await cancelServerAssignment(page)
@@ -353,10 +356,11 @@ test.describe('MCP Server Assignment in User Groups', () => {
     await openServerAssignmentDrawerFromGroup(page, groupName)
 
     // Get the server card and switch
-    const serverCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
-    )
-    const switchElement = serverCard.locator('.ant-switch')
+    const serverCard = page
+      .getByTestId(/^mcp-group-assign-card-/)
+      .filter({ hasText: `${serverDisplayName}` })
+      .first()
+    const switchElement = serverCard.getByTestId(/^mcp-group-assign-switch-/)
 
     // Verify initially unchecked
     await expect(switchElement).toHaveAttribute('aria-checked', 'false')
@@ -402,9 +406,10 @@ test.describe('MCP Server Assignment in User Groups', () => {
     await openServerAssignmentDrawerFromGroup(page, groupName)
 
     // Find the server card
-    const serverCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
-    )
+    const serverCard = page
+      .getByTestId(/^mcp-group-assign-card-/)
+      .filter({ hasText: `${serverDisplayName}` })
+      .first()
     await expect(serverCard).toBeVisible()
 
     // Verify description is shown
@@ -439,19 +444,22 @@ test.describe('MCP Server Assignment in User Groups', () => {
     await openServerAssignmentDrawerFromGroup(page, groupName)
 
     // Search for "Alpha"
-    const searchInput = page.locator('.ant-drawer.ant-drawer-open input[placeholder*="Search"]')
+    const searchInput = page.getByTestId('mcp-group-assign-search-input')
     if (await searchInput.count() > 0) {
       await searchInput.fill('Alpha')
       await page.waitForTimeout(500)
 
       // Should show Alpha server
       await expect(
-        page.locator(`.ant-drawer.ant-drawer-open:has-text("${server1DisplayName}")`)
+        page.getByTestId(/^mcp-group-assign-card-/).filter({ hasText: `${server1DisplayName}` })
       ).toBeVisible()
 
       // Should not show Beta server
       await expect(
-        page.locator(`.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("${server2DisplayName}")`)
+        page
+      .getByTestId(/^mcp-group-assign-card-/)
+      .filter({ hasText: `${server2DisplayName}` })
+      .first()
       ).not.toBeVisible()
     }
 
@@ -479,14 +487,14 @@ test.describe('MCP Server Assignment in User Groups', () => {
     await openServerAssignmentDrawerFromGroup(page, groupName)
 
     // Search for non-existent server
-    const searchInput = page.locator('.ant-drawer.ant-drawer-open input[placeholder*="Search"]')
+    const searchInput = page.getByTestId('mcp-group-assign-search-input')
     if (await searchInput.count() > 0) {
       await searchInput.fill('nonexistent-server-xyz-12345')
       await page.waitForTimeout(500)
 
       // Should display empty state
       await expect(
-        page.locator('.ant-drawer.ant-drawer-open:has-text("No servers found")')
+        page.getByTestId('mcp-group-assign-empty')
       ).toBeVisible()
     }
 

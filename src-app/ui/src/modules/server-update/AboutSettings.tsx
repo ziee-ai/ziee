@@ -83,7 +83,7 @@ export default function AboutSettings() {
                   )}
                 </>
               ) : (
-                <Text type="secondary">{enabled ? 'not checked yet' : '—'}</Text>
+                <Text data-testid="serverupd-not-checked" type="secondary">{enabled ? 'not checked yet' : '—'}</Text>
               ),
             },
             ...(checkedAt
@@ -121,7 +121,7 @@ export default function AboutSettings() {
             <Paragraph>
               A newer version is available.{' '}
               {releaseUrl && (
-                <Link href={releaseUrl} target="_blank" rel="noreferrer">
+                <Link data-testid="serverupd-release-notes-link" href={releaseUrl} target="_blank" rel="noreferrer">
                   Release notes
                 </Link>
               )}
@@ -135,7 +135,8 @@ export default function AboutSettings() {
               To update, run on the server host:
             </Paragraph>
             <Paragraph
-              copyable={{ text: UPGRADE_COMMAND, label: 'Copy upgrade command' }}
+              data-testid="serverupd-upgrade-command"
+              copyable={{ text: UPGRADE_COMMAND, label: 'Copy upgrade command', testId: 'serverupd-copy-cmd-btn' }}
               code
               className="whitespace-pre-wrap"
             >

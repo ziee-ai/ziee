@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   createTestUser,
   getAdminToken,
@@ -32,7 +33,7 @@ async function gotoProfile(
   await page.goto(`${baseURL}/settings/profile`)
   await page.waitForLoadState('load')
   await expect(
-    page.getByRole('heading', { name: /^Profile$/ }),
+    byTestId(page, 'profile-account-descriptions'),
   ).toBeVisible({ timeout: 15_000 })
 }
 
@@ -75,7 +76,7 @@ test.describe('Realtime sync — profile (owner-scoped)', () => {
       // The form's "Display Name" Form.Item label is "Display name"
       // (per ProfileSettingsPage); getByLabel matches the antd label
       // text and resolves to the underlying <input>.
-      const displayInput = pageB.getByLabel(/^display name$/i)
+      const displayInput = byTestId(pageB, 'profile-display-name-input')
       await expect(displayInput).toBeVisible({ timeout: 15_000 })
       // Sanity: createTestUser did not pass display_name, so the
       // backend stores null and the form seeds with empty string.
@@ -149,7 +150,7 @@ test.describe('Realtime sync — profile (owner-scoped)', () => {
       })
       await gotoProfile(pageB, baseURL)
 
-      const displayInput = pageB.getByLabel(/^display name$/i)
+      const displayInput = byTestId(pageB, 'profile-display-name-input')
       await expect(displayInput).toBeVisible({ timeout: 15_000 })
       const bystanderInitialVal = await displayInput.inputValue()
 
@@ -212,21 +213,23 @@ test.describe('Realtime sync — profile (owner-scoped)', () => {
       await login(b, baseURL, username, password, { completeOnboarding: true })
       await gotoProfile(b, baseURL)
 
-      const inputA = a.getByLabel(/^display name$/i)
-      const inputB = b.getByLabel(/^display name$/i)
+      const inputA = byTestId(a, 'profile-display-name-input')
+      const inputB = byTestId(b, 'profile-display-name-input')
 
       // Device A edits + saves → device B reflects it via sync (no reload).
       const nameFromA = `From A ${ts}`
       await inputA.fill(nameFromA)
-      await a.getByRole('button', { name: 'Save' }).click()
-      await expect(a.getByText('Profile saved.')).toBeVisible()
+      const _saved_a = a.waitForResponse(r => /\/api\/auth\/profile$/.test(r.url()) && r.request().method() === 'POST')
+      await byTestId(a, 'profile-save-button').click()
+      await _saved_a
       await expect(inputB).toHaveValue(nameFromA, { timeout: 20_000 })
 
       // Now device B edits + saves → device A converges on B's value.
       const nameFromB = `From B ${ts}`
       await inputB.fill(nameFromB)
-      await b.getByRole('button', { name: 'Save' }).click()
-      await expect(b.getByText('Profile saved.')).toBeVisible()
+      const _saved_b = b.waitForResponse(r => /\/api\/auth\/profile$/.test(r.url()) && r.request().method() === 'POST')
+      await byTestId(b, 'profile-save-button').click()
+      await _saved_b
       await expect(inputA).toHaveValue(nameFromB, { timeout: 20_000 })
     } finally {
       await ctxA.close()

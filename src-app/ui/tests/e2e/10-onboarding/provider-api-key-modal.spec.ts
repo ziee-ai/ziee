@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { createProviderViaAPI, createModelViaAPI } from '../../common/provider-helpers'
 import { goToNewChatPage } from '../09-chat/helpers/chat-helpers'
@@ -71,19 +72,19 @@ test.describe('Provider API key modal (chat model selector)', () => {
     // "Keyed Provider" sorts before "Keyless Custom", so the keyed model is the
     // default selection; switching to the custom model fires onChange.
     await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
-    await page.click('[data-testid="model-selector"] .ant-select')
-    const customOption = page.getByRole('option', { name: 'Custom Model' })
+    await byTestId(page, 'ullm-model-select').click()
+    const customOption = page.getByTestId(/^ullm-model-select-opt-/).filter({ hasText: 'Custom Model' })
     await customOption.waitFor({ state: 'visible' })
     await customOption.click()
 
     // The modal appears because the custom provider has no key configured.
-    const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
+    const modal = byTestId(page, 'ullm-apikey-dialog')
     await expect(modal).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByText(/API Key Required — Keyless Custom/)).toBeVisible()
+    await expect(modal).toContainText('Keyless Custom')
 
     // Enter a key and save → modal closes.
-    await modal.locator('input[type="password"]').fill('sk-my-key')
-    await modal.getByRole('button', { name: 'Save & Select Model' }).click()
+    await byTestId(modal, 'ullm-apikey-password-input').fill('sk-my-key')
+    await byTestId(modal, 'ullm-apikey-save-button').click()
     await expect(modal).toBeHidden({ timeout: 10000 })
   })
 
@@ -118,16 +119,16 @@ test.describe('Provider API key modal (chat model selector)', () => {
     await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
 
     // Select the keyless custom model → the modal opens.
-    await page.click('[data-testid="model-selector"] .ant-select')
-    const customOption = page.getByRole('option', { name: 'Custom Model' })
+    await byTestId(page, 'ullm-model-select').click()
+    const customOption = page.getByTestId(/^ullm-model-select-opt-/).filter({ hasText: 'Custom Model' })
     await customOption.waitFor({ state: 'visible' })
     await customOption.click()
-    const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
+    const modal = byTestId(page, 'ullm-apikey-dialog')
     await expect(modal).toBeVisible({ timeout: 10000 })
 
     // Cancel → the modal closes and the selection reverts to the keyed model
     // (setModelId is only called on success, so the custom model is NOT selected).
-    await modal.getByRole('button', { name: 'Cancel' }).click()
+    await byTestId(modal, 'ullm-apikey-cancel-button').click()
     await expect(modal).toBeHidden({ timeout: 10000 })
     await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
     await expect(page.locator('[data-testid="model-selector"]')).not.toContainText('Custom Model')
@@ -163,14 +164,14 @@ test.describe('Provider API key modal (chat model selector)', () => {
     // without prompting, first move OFF local onto the keyed model (its
     // provider is configured with a key, so no modal), then switch back.
     await expect(page.locator('[data-testid="model-selector"]')).toContainText('Local Model')
-    await page.click('[data-testid="model-selector"] .ant-select')
-    const keyedOption = page.getByRole('option', { name: 'Keyed Model' })
+    await byTestId(page, 'ullm-model-select').click()
+    const keyedOption = page.getByTestId(/^ullm-model-select-opt-/).filter({ hasText: 'Keyed Model' })
     await keyedOption.waitFor({ state: 'visible' })
     await keyedOption.click()
     await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
 
-    await page.click('[data-testid="model-selector"] .ant-select')
-    const localOption = page.getByRole('option', { name: 'Local Model' })
+    await byTestId(page, 'ullm-model-select').click()
+    const localOption = page.getByTestId(/^ullm-model-select-opt-/).filter({ hasText: 'Local Model' })
     await localOption.waitFor({ state: 'visible' })
     await localOption.click()
 
@@ -178,7 +179,7 @@ test.describe('Provider API key modal (chat model selector)', () => {
     // erroneously-mounted modal has had time to appear...
     await expect(page.locator('[data-testid="model-selector"]')).toContainText('Local Model')
     // ...THEN assert the modal never appeared — local providers select directly.
-    const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
+    const modal = byTestId(page, 'ullm-apikey-dialog')
     await expect(modal).toHaveCount(0)
   })
 
@@ -217,17 +218,17 @@ test.describe('Provider API key modal (chat model selector)', () => {
     await assignToAdminGroup(apiURL, auth, customId)
 
     await goToNewChatPage(page, baseURL)
-    await page.click('[data-testid="model-selector"] .ant-select')
-    const customOption = page.getByRole('option', { name: 'Custom Model' })
+    await byTestId(page, 'ullm-model-select').click()
+    const customOption = page.getByTestId(/^ullm-model-select-opt-/).filter({ hasText: 'Custom Model' })
     await customOption.waitFor({ state: 'visible' })
     await customOption.click()
 
-    const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
+    const modal = byTestId(page, 'ullm-apikey-dialog')
     await expect(modal).toBeVisible({ timeout: 10000 })
 
     // Click Save with an EMPTY key field → guard rejects it.
-    await modal.getByRole('button', { name: 'Save & Select Model' }).click()
-    await expect(modal.getByText('API key cannot be empty')).toBeVisible({ timeout: 5000 })
+    await byTestId(modal, 'ullm-apikey-save-button').click()
+    await expect(byTestId(modal, 'apiKey-error')).toBeVisible({ timeout: 5000 })
     // The modal stays open (save did not proceed).
     await expect(modal).toBeVisible()
   })

@@ -154,7 +154,7 @@ export default function UserLlmProvidersPage() {
       <div className="max-w-lg">
         <Flex align="center" gap="small" className="mb-1">
           <IconComponent className="text-2xl" />
-          <Title level={4} className="!mb-0">
+          <Title level={4} className="!mb-0" data-testid="ullm-provider-title">
             {currentProvider.name}
           </Title>
           <Tag data-testid="ullm-key-status-tag" tone={hasUserKey ? 'success' : currentProvider.api_key_configured ? 'info' : 'warning'}>

@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // ---------------------------------------------------------------------------
 // AboutSettings AUTO-LOAD error path (audit all-abe941c1b486).
@@ -57,15 +58,19 @@ test.describe('Server update — About auto-load error', () => {
     await page.goto(`${baseURL}/settings/about`)
 
     // Auto-load failure surfaces the error Alert WITHOUT clicking Refresh.
-    await expect(page.locator('.ant-alert-error')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'serverupd-error-alert')).toBeVisible({ timeout: 30000 })
 
     // Recovery: with the endpoint healthy, Reload status clears the error and
     // renders the version, proving the error state was transient (not latched).
     failing = false
-    await page.getByRole('button', { name: /Reload status|Refresh/ }).click()
-    await expect(page.locator('.ant-alert-error')).toHaveCount(0, {
+    await byTestId(page, 'serverupd-refresh-btn').click()
+    await expect(byTestId(page, 'serverupd-error-alert')).toHaveCount(0, {
       timeout: 30000,
     })
-    await expect(page.getByText('0.1.0').first()).toBeVisible({ timeout: 30000 })
+    // '0.1.0' is dynamic data from the mocked /status payload — assert it
+    // inside the About descriptions block (testid scope + data-value text).
+    await expect(byTestId(page, 'serverupd-about-descriptions')).toContainText('0.1.0', {
+      timeout: 30000,
+    })
   })
 })

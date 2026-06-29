@@ -136,7 +136,7 @@ test.describe('Chat — MCP sampling (real LLM + mock server)', () => {
     await page.goto(`${testInfra.baseURL}/settings/mcp-servers`)
     await page.waitForLoadState('load')
     // Find Mock Sampling card; verify it carries the Sampling badge
-    const card = page.locator('.ant-card:has-text("Mock Sampling")').first()
+    const card = page.getByTestId(/^mcp-server-card-/).filter({ hasText: 'Mock Sampling' }).first()
     await expect(card).toBeVisible({ timeout: 10000 })
     await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
   })

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -194,9 +195,9 @@ async function injectElicitation(
   await goToNewChatPage(page, baseURL)
   await selectModelInDropdown(page, 'GPT-4o Mini')
 
-  const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
+  const textarea = byTestId(page, 'chat-message-textarea').first()
   await textarea.fill('trigger')
-  const sendButton = page.getByRole('button', { name: 'Send message' })
+  const sendButton = byTestId(page, 'chat-input-send-btn')
   await sendButton.click()
 
   await expect(

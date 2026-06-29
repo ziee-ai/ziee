@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 // audit id all-0b03df3dc8f5 — accessing /settings/about WITHOUT authentication
 // must not expose the page. AuthGuard renders the auth page (login) for an
@@ -15,7 +16,7 @@ test.describe('About page — unauthenticated access', () => {
     await page.goto(`${baseURL}/settings/about`)
 
     // The login form is shown (AuthGuard → AuthPage); the About content is not.
-    await expect(page.getByLabel('Username', { exact: true })).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText('Server version and updates')).toHaveCount(0)
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'serverupd-about-card')).toHaveCount(0)
   })
 })

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getAdminToken,
@@ -87,20 +88,20 @@ test.describe('Onboarding → first chat message (real LLM)', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Click straight through the skippable getting-started guide.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
     await expect(
-      page.getByRole('heading', { name: 'AI Providers' }),
+      byTestId(page, 'onboarding-step-api-keys'),
     ).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
     await expect(
-      page.getByRole('heading', { name: 'Persistent Memory' }),
+      byTestId(page, 'onboarding-step-memory-setup'),
     ).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible()
-    await page.getByRole('button', { name: 'Start Chatting' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-finish')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // Landed on a real chat (AuthGuard released; composer present).
     await expect(page).toHaveURL(/\/chat/, { timeout: 15000 })

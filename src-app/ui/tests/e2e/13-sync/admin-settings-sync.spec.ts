@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   getCurrentUserToken,
@@ -37,7 +38,7 @@ async function gotoRepositories(
   await page.waitForLoadState('load')
   // The settings card heading is the stable "page loaded" signal.
   await expect(
-    page.getByText('LLM Repositories', { exact: true }).first(),
+    byTestId(page, 'llmrepo-card'),
   ).toBeVisible({ timeout: 30_000 })
 }
 
@@ -50,10 +51,7 @@ async function gotoRuntimeSettings(
   // The Runtime configuration card is the stable signal that the singleton
   // settings store has mounted (and subscribed to sync:runtime_settings).
   await expect(
-    page
-      .locator('.ant-card')
-      .filter({ hasText: /Runtime configuration/i })
-      .first(),
+    byTestId(page, 'llmrt-runtime-config-card'),
   ).toBeVisible({ timeout: 30_000 })
 }
 
@@ -69,7 +67,7 @@ async function gotoSandboxSettings(
   // singleton (GET/PUT /api/code-sandbox/resource-limits), independent of
   // whether bwrap/squashfuse is wired up.
   await expect(
-    page.getByRole('heading', { name: 'Code Sandbox' }),
+    byTestId(page, 'sandbox-resource-limits-card'),
   ).toBeVisible({ timeout: 30_000 })
 }
 
@@ -123,9 +121,9 @@ test.describe('Realtime sync — admin settings (permission-scoped)', () => {
 
       // Device B must show the new repository row WITHOUT a manual reload —
       // the SSE sync:llm_repository event makes B's store refetch the list.
-      await expect(
-        pageB.getByText(name, { exact: true }).first(),
-      ).toBeVisible({ timeout: 15_000 })
+      await expect(byTestId(pageB, 'llmrepo-card')).toContainText(name, {
+        timeout: 15_000,
+      })
     } finally {
       await ctxB.close()
     }
@@ -153,11 +151,8 @@ test.describe('Realtime sync — admin settings (permission-scoped)', () => {
       // The first spinbutton in the Runtime configuration card is
       // idle_unload_secs ("Idle unload timeout (seconds)"). Read B's current
       // value so we pick a NEW value distinct from it (avoids a no-op assert).
-      const configCardB = pageB
-        .locator('.ant-card')
-        .filter({ hasText: /Runtime configuration/i })
-        .first()
-      const idleInputB = configCardB.locator('input[role="spinbutton"]').first()
+      const configCardB = byTestId(pageB, 'llmrt-runtime-config-card')
+      const idleInputB = configCardB.getByTestId('llmrt-config-idle-unload')
       await expect(idleInputB).toBeVisible({ timeout: 15_000 })
       const beforeValB = (await idleInputB.inputValue()).trim()
 
@@ -211,7 +206,7 @@ test.describe('Realtime sync — admin settings (permission-scoped)', () => {
       // conversion, unlike the MiB↔bytes memory fields — so the on-screen
       // value maps 1:1 to the persisted integer). Read B's current value to
       // pick a distinct new one (valid range 8..=100000).
-      const pidsB = pageB.getByLabel('cgroup pids.max')
+      const pidsB = byTestId(pageB, 'sandbox-rl-pids-max')
       await expect(pidsB).toBeVisible({ timeout: 15_000 })
       const beforePidsB = (await pidsB.inputValue()).trim()
       const newPids = beforePidsB === '128' ? 192 : 128

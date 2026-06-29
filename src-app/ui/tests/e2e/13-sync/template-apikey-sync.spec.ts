@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   login,
@@ -44,12 +45,7 @@ async function gotoTemplateAssistantsSettings(
   // /settings/assistants is the per-user "My Assistants" page. Match the
   // working 06-assistants helper.
   await page.goto(`${baseURL}/settings/assistant-templates`)
-  await page
-    .getByRole('heading', { name: 'Assistant Templates', level: 4 })
-    .waitFor({ timeout: 15000 })
-  await page
-    .locator('.ant-card-head-title:has-text("Template Assistants")')
-    .waitFor({ timeout: 15000 })
+  await byTestId(page, 'template-assistants-card').waitFor({ state: 'visible', timeout: 15000 })
 }
 
 /**
@@ -66,15 +62,14 @@ async function gotoUserLlmProvidersAndSelect(
   await page.goto(`${baseURL}/settings/user-llm-providers`)
   // Stable "page rendered" signal: the provider sits in a role=menuitem
   // (desktop Menu or mobile Dropdown both expose this role).
-  await page
-    .getByRole('menuitem', { name: providerName })
+  const provItem = page
+    .getByTestId(/^ullm-provider-menu-item-/)
+    .filter({ hasText: providerName })
     .first()
-    .waitFor({ timeout: 15000 })
-  await page.getByRole('menuitem', { name: providerName }).first().click()
+  await provItem.waitFor({ state: 'visible', timeout: 15000 })
+  await provItem.click()
   // The detail panel for the selected provider renders its name as an h4.
-  await expect(
-    page.getByRole('heading', { level: 4, name: providerName }),
-  ).toBeVisible({ timeout: 15000 })
+  await expect(byTestId(page, 'ullm-provider-title')).toContainText(providerName, { timeout: 15000 })
 }
 
 // ── REST fixtures (driven via baseURL, which proxies /api to this test's
@@ -237,36 +232,36 @@ test.describe('Realtime sync — api key (owner-scoped)', () => {
       await gotoUserLlmProvidersAndSelect(pageB, baseURL, providerName)
 
       // Baseline: every device starts with no personal key → orange tag.
-      await expect(page.getByText('No admin key')).toBeVisible()
-      await expect(pageA2.getByText('No admin key')).toBeVisible()
-      await expect(pageB.getByText('No admin key')).toBeVisible()
+      await expect(page.getByTestId('ullm-key-status-tag')).toContainText('No admin key')
+      await expect(pageA2.getByTestId('ullm-key-status-tag')).toContainText('No admin key')
+      await expect(pageB.getByTestId('ullm-key-status-tag')).toContainText('No admin key')
 
       // Owner saves a personal key on device 1.
       await page
-        .getByPlaceholder('Enter your API key (e.g. sk-...)')
+        .getByTestId('ullm-key-password-input')
         .fill('sk-owner-personal-key')
-      const saveBtn = page.getByRole('button', { name: 'Save Key' })
+      const saveBtn = byTestId(page, 'ullm-save-key-button')
       await expect(saveBtn).toBeEnabled()
       await saveBtn.click()
 
       // Device 1's own panel flips to the green "Your key configured" state.
-      await expect(page.getByText('Your key configured')).toBeVisible()
+      await expect(page.getByTestId('ullm-key-status-tag')).toContainText('Your key configured')
 
       // Positive control: the owner's OTHER device reflects the masked-key
       // change live — the SSE `sync:api_key` event makes UserLlmProviders
       // refetch, so the tag flips WITHOUT a reload. Proves the event fired +
       // was delivered, making B's absence below meaningful.
-      await expect(pageA2.getByText('Your key configured')).toBeVisible({
+      await expect(pageA2.getByTestId('ullm-key-status-tag')).toContainText('Your key configured', {
         timeout: 15_000,
       })
       await expect(
-        pageA2.getByRole('button', { name: 'Update Key' }),
+        byTestId(pageA2, 'ullm-save-key-button'),
       ).toBeVisible()
 
       // Isolation: a DIFFERENT user had the same delivery window (A2 already
       // received it) yet never sees the owner's key — their panel stays orange.
-      await expect(pageB.getByText('Your key configured')).not.toBeVisible()
-      await expect(pageB.getByText('No admin key')).toBeVisible()
+      await expect(pageB.getByTestId('ullm-key-status-tag')).not.toContainText('Your key configured')
+      await expect(pageB.getByTestId('ullm-key-status-tag')).toContainText('No admin key')
     } finally {
       await ctxA2.close()
       await ctxB.close()

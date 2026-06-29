@@ -1,319 +1,183 @@
-import { Page, expect } from '@playwright/test'
+import { Page, Locator, expect } from '@playwright/test'
+import { byTestId } from '../../testid'
 
 /**
- * Helpers for managing MCP server <-> User group relationships
+ * Helpers for managing MCP server <-> User group relationships (kit/testid).
+ *
+ * Components are keyed by entity id (user-group-card-<id>, mcp-group-widget-*,
+ * mcp-groups-*); the helpers receive names, so we bridge name → element by
+ * filtering the id-keyed testid on the dynamic name text the test created.
  */
 
 // =====================================================
-// User Group Navigation (reuse from LLM helpers)
+// User Group Navigation
 // =====================================================
 
 export async function goToUserGroupsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/user-groups`)
   await page.waitForLoadState('load')
-  // Wait for page to fully load before proceeding
   await waitForUserGroupsPageLoad(page)
 }
 
 export async function waitForUserGroupsPageLoad(page: Page) {
-  // Wait for the page heading
-  await page.waitForSelector('text=User Groups', { timeout: 30000 })
-  // Wait for groups list to load
-  await page.waitForLoadState('load')
-  // Wait for content to render and API calls to complete
-  await page.waitForTimeout(3000)
+  // The create button only renders once the groups page is interactive.
+  await byTestId(page, 'user-groups-create-button').waitFor({ state: 'visible', timeout: 30000 })
+}
+
+/** Locate the group card carrying the given (dynamic) group name. */
+function groupCardByName(page: Page, groupName: string): Locator {
+  return page.getByTestId(/^user-group-card-/).filter({ hasText: groupName }).first()
 }
 
 export async function clickGroupItem(page: Page, groupName: string) {
-  // Note: Groups don't need to be "clicked" to expand - widgets are always visible
-  // This function just waits for the group to be visible and scrolls it into view
-  const groupText = page.locator(`text="${groupName}"`).first()
-  await groupText.waitFor({ state: 'visible', timeout: 10000 })
-
-  // Scroll the group into view to ensure widgets can render
-  await groupText.scrollIntoViewIfNeeded()
-
-  // Wait for lazy-loaded widgets to render
-  await page.waitForTimeout(6000)
+  const card = groupCardByName(page, groupName)
+  await card.waitFor({ state: 'visible', timeout: 10000 })
+  await card.scrollIntoViewIfNeeded()
 }
 
 // =====================================================
 // MCP Server Assignment in User Groups (Widget + Drawer)
 // =====================================================
 
-export async function openServerAssignmentDrawerFromGroup(
-  page: Page,
-  groupName: string
-) {
-  // First, expand the group if not already expanded
-  await clickGroupItem(page, groupName)
-
-  // Find the edit button with the specific aria-label
-  const editButton = page.locator(`button[aria-label="Edit System MCP Servers for ${groupName}"]`)
-  await editButton.waitFor({ state: 'visible', timeout: 10000 })
-  await editButton.click()
-
-  // Wait for drawer to open
-  await page.waitForSelector('.ant-drawer-title:has-text("Assign System MCP Servers")', {
-    state: 'visible',
-    timeout: 5000,
-  })
+export async function openServerAssignmentDrawerFromGroup(page: Page, groupName: string) {
+  const card = groupCardByName(page, groupName)
+  await card.waitFor({ state: 'visible', timeout: 10000 })
+  await card.scrollIntoViewIfNeeded()
+  // The System-MCP-servers widget's edit button lives inside the group card.
+  await card.getByTestId(/^mcp-group-widget-edit-btn-/).click()
+  // Drawer open = its save button is present.
+  await byTestId(page, 'mcp-group-assign-save-btn').waitFor({ state: 'visible', timeout: 5000 })
 }
 
-export async function toggleServerInDrawer(
-  page: Page,
-  serverName: string,
-  enable: boolean
-) {
-  // Find the server card in the drawer by looking for the strong tag with the server name
-  const serverCard = page.locator(
-    `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverName}"))`
-  )
+export async function toggleServerInDrawer(page: Page, serverName: string, enable: boolean) {
+  // The drawer's per-server card carries the server's display name.
+  const serverCard = page
+    .getByTestId(/^mcp-group-assign-card-/)
+    .filter({ hasText: serverName })
+    .first()
   await serverCard.waitFor({ state: 'visible', timeout: 5000 })
-
-  // Get the switch state
-  const switchElement = serverCard.locator('.ant-switch')
+  const switchElement = serverCard.getByTestId(/^mcp-group-assign-switch-/)
   const isChecked = (await switchElement.getAttribute('aria-checked')) === 'true'
-
-  // Toggle if needed
   if (isChecked !== enable) {
     await switchElement.click()
-    await page.waitForTimeout(300) // Wait for switch animation
   }
 }
 
 export async function saveServerAssignment(page: Page) {
-  // Click Save button in drawer
-  const saveButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Save")')
-  await saveButton.click()
-
-  // Wait for success message
-  await page.waitForSelector('text=Server assignments updated', { timeout: 10000 })
-
-  // Wait for drawer to close
-  await page.waitForSelector('.ant-drawer-title:has-text("Assign System MCP Servers")', {
-    state: 'hidden',
-    timeout: 5000,
-  })
-
-  // Wait for event propagation and widget update
-  // Need longer wait to allow store cache to invalidate and reload
-  await page.waitForTimeout(2000)
+  await byTestId(page, 'mcp-group-assign-save-btn').click()
+  // Drawer closes on success → the save button leaves the DOM.
+  await byTestId(page, 'mcp-group-assign-save-btn').waitFor({ state: 'detached', timeout: 10000 })
 }
 
 export async function cancelServerAssignment(page: Page) {
-  const cancelButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Cancel")')
-  await cancelButton.click()
-
-  // Wait for drawer to close
-  await page.waitForSelector('.ant-drawer-title:has-text("Assign System MCP Servers")', {
-    state: 'hidden',
-    timeout: 5000,
-  })
+  await byTestId(page, 'mcp-group-assign-cancel-btn').click()
+  await byTestId(page, 'mcp-group-assign-cancel-btn').waitFor({ state: 'detached', timeout: 5000 })
 }
 
-export async function assignServerToGroup(
-  page: Page,
-  groupName: string,
-  serverName: string
-) {
-  // Ensure we're on the right page first
+export async function assignServerToGroup(page: Page, groupName: string, serverName: string) {
   await waitForUserGroupsPageLoad(page)
   await openServerAssignmentDrawerFromGroup(page, groupName)
   await toggleServerInDrawer(page, serverName, true)
   await saveServerAssignment(page)
 }
 
-export async function removeServerFromGroup(
-  page: Page,
-  groupName: string,
-  serverName: string
-) {
-  // Ensure we're on the right page first
+export async function removeServerFromGroup(page: Page, groupName: string, serverName: string) {
   await waitForUserGroupsPageLoad(page)
   await openServerAssignmentDrawerFromGroup(page, groupName)
   await toggleServerInDrawer(page, serverName, false)
   await saveServerAssignment(page)
 }
 
-export async function assertServerInGroupWidget(
-  page: Page,
-  groupName: string,
-  serverName: string
-) {
-  // Ensure page has loaded
+export async function assertServerInGroupWidget(page: Page, groupName: string, serverName: string) {
   await waitForUserGroupsPageLoad(page)
-
-  // Expand the group if needed
   await clickGroupItem(page, groupName)
-
-  // Find the specific widget by using the unique button as a locator
-  const widget = page.locator(`[data-widget="system-mcp-servers"]:has(button[aria-label="Edit System MCP Servers for ${groupName}"])`).first()
-  await widget.waitFor({ state: 'visible', timeout: 10000 })
-
-  // Now find the server tag within this specific widget (no container)
-  const serverTag = widget.locator(`.ant-tag:has-text("${serverName}")`)
+  const card = groupCardByName(page, groupName)
+  const serverTag = card
+    .getByTestId(/^mcp-group-widget-server-tag-/)
+    .filter({ hasText: serverName })
   await expect(serverTag).toBeVisible()
 }
 
-export async function assertServerNotInGroupWidget(
-  page: Page,
-  groupName: string,
-  serverName: string
-) {
-  // Ensure page has loaded
+export async function assertServerNotInGroupWidget(page: Page, groupName: string, serverName: string) {
   await waitForUserGroupsPageLoad(page)
-
-  // Expand the group if needed
   await clickGroupItem(page, groupName)
-
-  // Find the specific widget
-  const widget = page.locator(`[data-widget="system-mcp-servers"]:has(button[aria-label="Edit System MCP Servers for ${groupName}"])`).first()
-  await widget.waitFor({ state: 'visible', timeout: 10000 })
-
-  // Now find the server tag within this specific widget
-  const serverTag = widget.locator(`.ant-tag:has-text("${serverName}")`)
-  await expect(serverTag).not.toBeVisible()
+  const card = groupCardByName(page, groupName)
+  const serverTag = card
+    .getByTestId(/^mcp-group-widget-server-tag-/)
+    .filter({ hasText: serverName })
+  await expect(serverTag).toHaveCount(0)
 }
 
-export async function assertGroupWidgetShowsCount(
-  page: Page,
-  groupName: string,
-  expectedCount: number
-) {
-  // Ensure page has loaded
+export async function assertGroupWidgetShowsCount(page: Page, groupName: string, expectedCount: number) {
   await waitForUserGroupsPageLoad(page)
-
-  // Expand the group if needed
   await clickGroupItem(page, groupName)
-
-  // Find the specific widget
-  const widget = page.locator(`[data-widget="system-mcp-servers"]:has(button[aria-label="Edit System MCP Servers for ${groupName}"])`).first()
-  await widget.waitFor({ state: 'visible', timeout: 10000 })
-
-  if (expectedCount === 0) {
-    // Look for "No servers assigned" text within this specific widget
-    const noServersText = widget.locator('text=No servers assigned')
-    await expect(noServersText).toBeVisible()
-  } else {
-    // Count tags within this specific widget only (no container)
-    const tags = widget.locator('.ant-tag')
-    await expect(tags).toHaveCount(expectedCount)
-  }
+  const card = groupCardByName(page, groupName)
+  await expect(card.getByTestId(/^mcp-group-widget-server-tag-/)).toHaveCount(expectedCount)
 }
 
 // =====================================================
 // Group Assignment in MCP Servers (Card + Drawer)
 // =====================================================
 
-/**
- * Locate the User Groups widget for a specific server. After the
- * Card→Collapse refactor (feat/mcp-rewrite-v2), the widget is identified by
- * `[data-card-type="user-groups-assignment"]` and scoped per-server via the
- * outer `[data-server-name]` Card wrapper.
- */
-function groupsWidgetForServer(page: Page, serverDisplayName?: string) {
+/** The user-groups assignment accordion for a server (by name, or the first). */
+function groupsWidgetForServer(page: Page, serverDisplayName?: string): Locator {
   if (serverDisplayName) {
     return page
-      .locator(`[data-server-name="${serverDisplayName}"]`)
-      .locator('[data-card-type="user-groups-assignment"]')
+      .getByTestId(/^mcp-system-server-card-/)
+      .filter({ hasText: serverDisplayName })
+      .first()
+      .getByTestId(/^mcp-groups-accordion-/)
   }
-  return page.locator('[data-card-type="user-groups-assignment"]').first()
+  return page.getByTestId(/^mcp-groups-accordion-/).first()
 }
 
-/** Expand the Collapse so the assigned-groups list (or empty state) is visible. */
+/** Expand the accordion so the assigned-groups list (or empty state) shows. */
 async function expandGroupsCollapseFor(page: Page, serverDisplayName?: string) {
   const widget = groupsWidgetForServer(page, serverDisplayName)
   await widget.waitFor({ state: 'visible', timeout: 10000 })
-  const header = widget.locator('.ant-collapse-header').first()
-  const expanded = (await header.getAttribute('aria-expanded')) === 'true'
+  const trigger = widget.getByRole('button').first()
+  const expanded = (await trigger.getAttribute('aria-expanded')) === 'true'
   if (!expanded) {
-    // Click the panel summary (the "User Groups" label). Avoid the edit
-    // button's bounding box — it has `e.stopPropagation()`.
-    await header.getByText('User Groups').first().click()
-    await page.waitForTimeout(300)
+    await trigger.click()
   }
 }
 
-export async function openGroupAssignmentDrawerFromServer(
-  page: Page,
-  serverDisplayName?: string
-) {
+export async function openGroupAssignmentDrawerFromServer(page: Page, serverDisplayName?: string) {
   const widget = groupsWidgetForServer(page, serverDisplayName)
-  if (serverDisplayName) {
-    await page
-      .locator(`[data-server-name="${serverDisplayName}"]`)
-      .scrollIntoViewIfNeeded()
-    await page.waitForTimeout(300)
-  }
+  await widget.scrollIntoViewIfNeeded()
   await widget.waitFor({ state: 'visible', timeout: 10000 })
-
-  const editButton = widget.locator('button[aria-label="Manage user groups"]')
-  await editButton.click()
-
-  // Wait for drawer to open
-  await page.waitForSelector('.ant-drawer-title:has-text("Assign User Groups")', {
-    state: 'visible',
-    timeout: 5000,
-  })
+  await widget.getByTestId(/^mcp-groups-assign-btn-/).click()
+  await byTestId(page, 'mcp-groups-drawer-save-btn').waitFor({ state: 'visible', timeout: 5000 })
 }
 
-export async function toggleGroupInDrawer(
-  page: Page,
-  groupName: string,
-  enable: boolean
-) {
-  // Find the group card in the drawer
-  const groupCard = page.locator(
-    `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("${groupName}"))`
-  )
+export async function toggleGroupInDrawer(page: Page, groupName: string, enable: boolean) {
+  const groupCard = page
+    .getByTestId(/^mcp-groups-drawer-card-/)
+    .filter({ hasText: groupName })
+    .first()
   await groupCard.waitFor({ state: 'visible', timeout: 5000 })
-
-  // Get the switch state
-  const switchElement = groupCard.locator('.ant-switch')
+  const switchElement = groupCard.getByTestId(/^mcp-groups-drawer-switch-/)
   const isChecked = (await switchElement.getAttribute('aria-checked')) === 'true'
-
-  // Toggle if needed
   if (isChecked !== enable) {
     await switchElement.click()
-    await page.waitForTimeout(300) // Wait for switch animation
   }
 }
 
 export async function saveGroupAssignment(page: Page) {
-  // Click Save button in drawer
-  const saveButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Save")')
-  await saveButton.click()
-
-  // Wait for success message
-  await page.waitForSelector('text=Group assignments updated', { timeout: 10000 })
-
-  // Wait for drawer to close
-  await page.waitForSelector('.ant-drawer-title:has-text("Assign User Groups")', {
-    state: 'hidden',
-    timeout: 5000,
-  })
-
-  // Wait for event propagation and card update
-  await page.waitForTimeout(1000)
+  await byTestId(page, 'mcp-groups-drawer-save-btn').click()
+  await byTestId(page, 'mcp-groups-drawer-save-btn').waitFor({ state: 'detached', timeout: 10000 })
 }
 
 export async function cancelGroupAssignment(page: Page) {
-  const cancelButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Cancel")')
-  await cancelButton.click()
-
-  // Wait for drawer to close
-  await page.waitForSelector('.ant-drawer-title:has-text("Assign User Groups")', {
-    state: 'hidden',
-    timeout: 5000,
-  })
+  await byTestId(page, 'mcp-groups-drawer-cancel-btn').click()
+  await byTestId(page, 'mcp-groups-drawer-cancel-btn').waitFor({ state: 'detached', timeout: 5000 })
 }
 
 export async function assignGroupToServer(
   page: Page,
   _serverId: string,
   groupName: string,
-  serverDisplayName?: string
+  serverDisplayName?: string,
 ) {
   await openGroupAssignmentDrawerFromServer(page, serverDisplayName)
   await toggleGroupInDrawer(page, groupName, true)
@@ -324,51 +188,31 @@ export async function removeGroupFromServer(
   page: Page,
   _serverId: string,
   groupName: string,
-  serverDisplayName?: string
+  serverDisplayName?: string,
 ) {
   await openGroupAssignmentDrawerFromServer(page, serverDisplayName)
   await toggleGroupInDrawer(page, groupName, false)
   await saveGroupAssignment(page)
 }
 
-export async function assertGroupInServerCard(
-  page: Page,
-  groupName: string,
-  serverDisplayName?: string
-) {
+export async function assertGroupInServerCard(page: Page, groupName: string, serverDisplayName?: string) {
   await expandGroupsCollapseFor(page, serverDisplayName)
   const widget = groupsWidgetForServer(page, serverDisplayName)
-  const groupTag = widget.locator(`.ant-tag:has-text("${groupName}")`)
+  const groupTag = widget.getByTestId(/^mcp-group-tag-/).filter({ hasText: groupName })
   await expect(groupTag).toBeVisible()
 }
 
-export async function assertGroupNotInServerCard(
-  page: Page,
-  groupName: string,
-  serverDisplayName?: string
-) {
+export async function assertGroupNotInServerCard(page: Page, groupName: string, serverDisplayName?: string) {
   await expandGroupsCollapseFor(page, serverDisplayName)
   const widget = groupsWidgetForServer(page, serverDisplayName)
-  const groupTag = widget.locator(`.ant-tag:has-text("${groupName}")`)
-  await expect(groupTag).not.toBeVisible()
+  const groupTag = widget.getByTestId(/^mcp-group-tag-/).filter({ hasText: groupName })
+  await expect(groupTag).toHaveCount(0)
 }
 
-export async function assertServerCardShowsCount(
-  page: Page,
-  expectedCount: number,
-  serverDisplayName?: string
-) {
+export async function assertServerCardShowsCount(page: Page, expectedCount: number, serverDisplayName?: string) {
   await expandGroupsCollapseFor(page, serverDisplayName)
   const widget = groupsWidgetForServer(page, serverDisplayName)
-
-  if (expectedCount === 0) {
-    await expect(
-      widget.locator('.ant-empty-description:has-text("No groups assigned")'),
-    ).toBeVisible()
-  } else {
-    const tags = widget.locator('.ant-tag')
-    await expect(tags).toHaveCount(expectedCount)
-  }
+  await expect(widget.getByTestId(/^mcp-group-tag-/)).toHaveCount(expectedCount)
 }
 
 // =====================================================
@@ -379,63 +223,36 @@ export async function createUserGroup(
   page: Page,
   baseURL: string,
   groupName: string,
-  description?: string
+  description?: string,
 ): Promise<void> {
   await goToUserGroupsPage(page, baseURL)
   await waitForUserGroupsPageLoad(page)
 
-  // Wait for and click Create group button
-  const createButton = page.locator('button[aria-label="Create group"]')
-  await createButton.waitFor({ state: 'visible', timeout: 10000 })
-  await createButton.click()
+  await byTestId(page, 'user-groups-create-button').click()
+  await byTestId(page, 'user-create-group-form').waitFor({ state: 'visible', timeout: 5000 })
 
-  // Wait for drawer to open
-  await page.waitForSelector('.ant-drawer-title:has-text("Create User Group")', {
-    timeout: 5000,
-  })
-
-  // Fill form
-  await page.fill('input[placeholder="Enter group name"]', groupName)
+  await byTestId(page, 'user-create-group-name-input').fill(groupName)
   if (description) {
-    await page.fill('textarea[placeholder="Enter group description"]', description)
+    await byTestId(page, 'user-create-group-description-textarea').fill(description)
   }
 
-  // Submit — label was standardised to verb-only ("Create Group" →
-  // "Create", audit I-2). Scope by primary-button class.
-  await page.locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]').click()
+  await byTestId(page, 'user-create-group-submit-button').click()
+  // Drawer closes on success.
+  await byTestId(page, 'user-create-group-form').waitFor({ state: 'detached', timeout: 10000 })
 
-  // Wait for success message
-  await page.waitForSelector('text=User group created successfully', { timeout: 10000 })
-
-  // Wait for drawer to close
-  await page.waitForSelector('.ant-drawer-title:has-text("Create User Group")', {
-    state: 'hidden',
-    timeout: 5000,
-  })
-
-  // Verify group appears in list
-  await expect(page.locator(`text=${groupName}`).first()).toBeVisible()
+  // Verify the new group appears in the list.
+  await expect(groupCardByName(page, groupName)).toBeVisible()
 }
 
-export async function deleteUserGroup(
-  page: Page,
-  groupName: string
-): Promise<void> {
-  // Wait for the group to be visible
-  await clickGroupItem(page, groupName)
+export async function deleteUserGroup(page: Page, groupName: string): Promise<void> {
+  const card = groupCardByName(page, groupName)
+  await card.waitFor({ state: 'visible', timeout: 10000 })
+  await card.scrollIntoViewIfNeeded()
 
-  // Click delete button using aria-label
-  const deleteButton = page.locator(`button[aria-label="Delete ${groupName}"]`).first()
-  await deleteButton.waitFor({ state: 'visible', timeout: 10000 })
-  await deleteButton.click()
+  await card.getByTestId(/^user-group-delete-button-/).click()
+  // Confirm dialog OK button is `${confirmTestid}-confirm`.
+  await page.getByTestId(/^user-group-delete-confirm-.+-confirm$/).click()
 
-  // Confirm deletion
-  await page.waitForSelector('.ant-popconfirm', { state: 'visible', timeout: 5000 })
-  await page.click('.ant-popconfirm .ant-btn-primary')
-
-  // Wait for success message
-  await page.waitForSelector('text=User group deleted successfully', { timeout: 10000 })
-
-  // Verify group is gone
-  await expect(page.locator(`text="${groupName}"`).first()).not.toBeVisible()
+  // The group card leaves the DOM.
+  await expect(card).toHaveCount(0)
 }

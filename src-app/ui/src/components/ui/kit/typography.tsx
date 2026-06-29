@@ -21,6 +21,8 @@ export interface Copyable {
   text: string
   /** Accessible name for the copy button. */
   label: string
+  /** Optional unique data-testid for the copy button (i18n-safe selection). */
+  testId?: string
 }
 
 function CopyButton({ copyable }: { copyable: Copyable }) {
@@ -31,6 +33,7 @@ function CopyButton({ copyable }: { copyable: Copyable }) {
     <button
       type="button"
       aria-label={copyable.label}
+      data-testid={copyable.testId}
       onClick={() => {
         void navigator.clipboard?.writeText(copyable.text).then(() => {
           setDone(true)

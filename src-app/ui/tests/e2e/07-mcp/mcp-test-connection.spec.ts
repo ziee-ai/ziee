@@ -51,16 +51,17 @@ test.describe('MCP - Test Connection', () => {
       enabled: true,
     })
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    await drawer
-      .getByRole('button', { name: 'Save & Test Connection' })
-      .click()
+    const drawer = page.getByTestId('mcp-drawer-form')
+    await page.getByTestId('mcp-drawer-save-test-btn').click()
 
     // Save + a successful probe both report via an antd success message, and
     // the drawer stays open (now in edit mode).
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({
+    // Save+probe success flips the drawer Add->Edit (the create-only Name
+    // field disappears) and renders no health-error alert.
+    await expect(page.getByTestId('mcp-drawer-name-input')).toHaveCount(0, {
       timeout: 10000,
     })
+    await expect(page.getByTestId('mcp-drawer-health-alert')).toHaveCount(0)
     await expect(drawer).toBeVisible()
   })
 
@@ -77,13 +78,11 @@ test.describe('MCP - Test Connection', () => {
       enabled: true,
     })
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    await drawer
-      .getByRole('button', { name: 'Save & Test Connection' })
-      .click()
+    await page.getByTestId('mcp-drawer-save-test-btn').click()
 
     // The connection failure surfaces as an antd error message.
-    await expect(page.locator('.ant-message-error')).toBeVisible({
+    // The connection failure surfaces as the drawer's health-error alert.
+    await expect(page.getByTestId('mcp-drawer-health-alert')).toBeVisible({
       timeout: 10000,
     })
   })
@@ -102,18 +101,14 @@ test.describe('MCP - Test Connection', () => {
       enabled: true,
     })
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    await drawer
-      .getByRole('button', { name: 'Save & Test Connection' })
-      .click()
+    await page.getByTestId('mcp-drawer-save-test-btn').click()
 
     // The fresh create is persisted, so the drawer flips Add → Edit (and stays
     // open). The Name field is create-only, so its disappearance + the title
     // change both prove the transition.
-    await expect(
-      page.locator('.ant-drawer-title:has-text("Edit MCP Server")'),
-    ).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({
+    // The fresh create is persisted -> Add flips to Edit: the create-only Name
+    // field disappears, proving the transition.
+    await expect(page.getByTestId('mcp-drawer-name-input')).toHaveCount(0, {
       timeout: 10000,
     })
   })
@@ -132,31 +127,30 @@ test.describe('MCP - Test Connection', () => {
       enabled: true,
     })
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    const saveAndTest = drawer.getByRole('button', {
-      name: 'Save & Test Connection',
-    })
+    const saveAndTest = page.getByTestId('mcp-drawer-save-test-btn')
 
     // First click creates the server and transitions the drawer to edit mode.
     await saveAndTest.click()
-    await expect(
-      page.locator('.ant-drawer-title:has-text("Edit MCP Server")'),
-    ).toBeVisible({ timeout: 10000 })
-    // Let the create/test toasts auto-dismiss so they can't mask the next round.
-    await expect(page.locator('.ant-message-success').first()).toBeHidden({
-      timeout: 8000,
-    })
-
-    // Second click now runs the UPDATE path (same server), not a second create.
-    await saveAndTest.click()
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({
+    // First click creates -> drawer flips to edit (Name field gone).
+    await expect(page.getByTestId('mcp-drawer-name-input')).toHaveCount(0, {
       timeout: 10000,
     })
+    // Wait for the save&test round to finish (button re-enabled) before re-click.
+    await expect(saveAndTest).toBeEnabled({ timeout: 8000 })
+
+    // Second click now runs the UPDATE path (same server), not a second create.
+    const secondTest = page.waitForResponse(
+      r =>
+        /\/api\/mcp\/(servers|system-servers)\/test-connection$/.test(r.url()) &&
+        r.request().method() === 'POST',
+    )
+    await saveAndTest.click()
+    await secondTest
 
     // Close the drawer and confirm exactly one card exists for this server.
-    await drawer.getByRole('button', { name: 'Cancel' }).click()
+    await page.getByTestId('mcp-drawer-cancel-btn').click()
     await expect(
-      page.locator(`.ant-card:has-text("${displayName}")`),
+      page.getByTestId(/^mcp-server-card-/).filter({ hasText: displayName }),
     ).toHaveCount(1)
   })
 
@@ -173,19 +167,19 @@ test.describe('MCP - Test Connection', () => {
     })
     await submitMcpServerForm(page, 'create')
 
-    // The creation success toast auto-dismisses; wait it out so the next
-    // assertion can't match a stale message.
-    await expect(page.locator('.ant-message-success')).toBeHidden({
-      timeout: 6000,
-    })
-
     const card = page
-      .locator(`.ant-card:has-text("Test Conn Card ${tag}")`)
+      .getByTestId(/^mcp-server-card-/)
+      .filter({ hasText: `Test Conn Card ${tag}` })
       .first()
-    await card.locator('[data-testid="mcp-server-test-btn"]').click()
-
-    await expect(page.locator('.ant-message-success')).toBeVisible({
-      timeout: 10000,
-    })
+    await expect(card).toBeVisible()
+    // Triggering the card's test runs the connection probe; assert the
+    // test-connection round-trip succeeds.
+    const cardTest = page.waitForResponse(
+      r =>
+        /\/api\/mcp\/(servers|system-servers)\/test-connection$/.test(r.url()) &&
+        r.request().method() === 'POST',
+    )
+    await card.getByTestId('mcp-server-test-btn').click()
+    expect((await cardTest).status()).toBe(200)
   })
 })

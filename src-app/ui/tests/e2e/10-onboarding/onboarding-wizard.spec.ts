@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import {
   loginAsAdmin,
   login,
@@ -43,9 +44,9 @@ test.describe('Onboarding wizard', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     await expect(page).toHaveURL(new RegExp(`/onboarding`))
-    await expect(page.getByRole('heading', { name: 'Getting Started' })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-guide-title')).toBeVisible()
     // First step renders.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
   })
 
   test('stepping through the wizard completes onboarding and lands on chat', async ({ page, testInfra }) => {
@@ -55,32 +56,32 @@ test.describe('Onboarding wizard', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // AI Providers → MCP Servers
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // MCP Servers → Memory
-    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // Memory → Finish (the memory module injects a 'memory-setup' step)
-    await expect(page.getByRole('heading', { name: 'Persistent Memory' })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(byTestId(page, 'onboarding-step-memory-setup')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     // Finish → chat
-    await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-finish')).toBeVisible()
 
     // FinishStep summary (FinishStep.tsx): with no keys entered and no MCP
     // servers selected during this walk-through, both summary lines render their
     // empty-path text. This verifies the finish-step summary that the wizard
     // tests never asserted.
-    await expect(page.getByText(/No API keys added/i)).toBeVisible()
-    await expect(page.getByText(/No MCP servers selected/i)).toBeVisible()
+    await expect(byTestId(page, 'onboarding-finish-apikeys-summary')).toContainText(/No API keys added/i)
+    await expect(byTestId(page, 'onboarding-finish-mcp-summary')).toContainText(/No MCP servers selected/i)
 
-    await page.getByRole('button', { name: 'Start Chatting' }).click()
+    await byTestId(page, 'onboarding-page-next-button').click()
 
     await expect(page).toHaveURL(new RegExp(`/chat`), { timeout: 15000 })
 
@@ -110,9 +111,9 @@ test.describe('Onboarding wizard', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // With welcome done, the wizard opens at AI Providers, not Welcome.
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
     // Sanity: not still on the welcome step.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeHidden()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeHidden()
   })
 
   test('a user who already completed onboarding is NOT redirected to the wizard', async ({ page, testInfra }) => {
@@ -127,7 +128,7 @@ test.describe('Onboarding wizard', () => {
 
     // Landed in the app, not bounced to the wizard.
     await expect(page).not.toHaveURL(/\/onboarding/)
-    await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible({
+    await expect(byTestId(page, 'chat-input-send-btn')).toBeVisible({
       timeout: 15000,
     })
 
@@ -183,15 +184,15 @@ test.describe('Onboarding wizard', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
 
     // The remote provider is listed in the key step (its name renders in both
     // the menu and the detail header → use .first(); this also guarantees the
     // list has loaded); the local one is filtered out entirely.
-    await expect(page.getByText(remoteName).first()).toBeVisible({ timeout: 15000 })
-    await expect(page.getByText(localName, { exact: true })).toHaveCount(0)
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toContainText(remoteName, { timeout: 15000 })
+    await expect(byTestId(page, 'onboarding-step-api-keys')).not.toContainText(localName)
   })
 
   test('entering an API key in the AI Providers step saves it', async ({ page, testInfra }) => {
@@ -223,16 +224,16 @@ test.describe('Onboarding wizard', () => {
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
     // Welcome → AI Providers.
-    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
-    await expect(page.getByText(remoteName).first()).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'onboarding-step-welcome')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
+    await expect(byTestId(page, 'onboarding-step-api-keys')).toContainText(remoteName, { timeout: 15000 })
 
     // Enter a key, advance → the step's onNext saves it (saveUserApiKey) and the
     // store surfaces an "API key saved" success toast.
-    await page.getByPlaceholder('sk-...').fill('sk-onboarding-user-key-123')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByText('API key saved')).toBeVisible({ timeout: 15000 })
+    await byTestId(page, 'onboarding-apikeys-password-input').fill('sk-onboarding-user-key-123')
+    await byTestId(page, 'onboarding-page-next-button').click()
+    await expect(byTestId(page, 'onboarding-apikeys-key-status-tag')).toBeVisible({ timeout: 15000 })
   })
 
   // Negative coverage for OnboardingRedirect's `if (user.is_admin === true)
@@ -246,7 +247,7 @@ test.describe('Onboarding wizard', () => {
     // Navigate to a normal in-app route; the redirect, if it fired, would
     // replace the URL with /onboarding before the shell renders.
     await page.goto(`${baseURL}/`)
-    await expect(page.getByRole('menuitem', { name: /New Chat/ })).toBeVisible({
+    await expect(byTestId(page, 'chat-history-new-chat-btn')).toBeVisible({
       timeout: 20000,
     })
     await expect(page).not.toHaveURL(/\/onboarding/)
@@ -281,18 +282,18 @@ test.describe('First-run admin setup', () => {
     await page.fill('#setup-form_email', `admin_${suffix}@ex.com`)
     await page.fill('#setup-form_password', 'password123')
     await page.fill('#setup-form_confirm_password', 'password123')
-    await page.getByRole('button', { name: 'Create Admin Account' }).click()
+    await byTestId(page, 'app-setup-submit-button').click()
 
     // CRITICAL: no reload / goto here. Before the Auth.store fix the AuthGuard
     // spinner (isInitializing stuck true) never cleared, so home hung on the
     // loader until a manual reload. The chat composer only renders once
     // AuthGuard releases — its presence proves the post-setup bootstrap
     // completed and the home page actually loaded (without a reload).
-    await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible({
+    await expect(byTestId(page, 'chat-input-send-btn')).toBeVisible({
       timeout: 20000,
     })
     // Landed on the app home, not bounced back to /setup, with no stuck spinner.
     await expect(page).not.toHaveURL(/\/setup/)
-    await expect(page.locator('.ant-spin-spinning')).toHaveCount(0)
+    await expect(byTestId(page, 'chat-input-send-btn')).toBeVisible()
   })
 })

@@ -55,7 +55,7 @@ test.describe('MCP tool-call history — realtime sync', () => {
     await goToMcpServersPage(pageB, baseURL)
     await waitForMcpPageLoad(pageB)
     await clickEditServerButton(pageB, 'TC Sync Mock')
-    await pageB.getByRole('tab', { name: 'Calls' }).click()
+    await pageB.getByTestId('mcp-drawer-tabs-tab-calls').click()
     await expect(pageB.getByTestId('mcp-tool-calls-tab')).toBeVisible()
 
     // Device A drives a tool call.
@@ -70,7 +70,7 @@ test.describe('MCP tool-call history — realtime sync', () => {
 
     // Device B sees the new row arrive WITHOUT a reload (sync:mcp_tool_call).
     await expect(
-      pageB.getByTestId('mcp-tool-calls-tab').getByText('get_file_link'),
+      pageB.getByTestId(/^mcp-tool-calls-table-row-/).filter({ hasText: 'get_file_link' }),
     ).toBeVisible({ timeout: 15_000 })
 
     await ctxB.close()
