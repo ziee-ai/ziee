@@ -1938,6 +1938,18 @@ async fn dedup_collapses_identical_uploads_in_resolve_available_files() {
     let conv_id = uuid::Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
     let user_uuid = uuid::Uuid::parse_str(&user.user_id).unwrap();
 
+    // File the conversation under the project via the explicit attach endpoint.
+    // (Conversations are created UNFILED; project membership lives in the
+    // `project_conversations` join table, set by this call — see the project
+    // chat-extension attach handler.)
+    let attach = client
+        .post(server.api_url(&format!("/projects/{project_id}/conversations/{conv_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(attach.status().is_success(), "attach conversation: {}", attach.status());
+
     let resolved = ziee::file_available::resolve_available_files(conv_id, user_uuid)
         .await
         .expect("resolve_available_files");

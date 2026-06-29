@@ -79,9 +79,10 @@ async fn run_sse_opens_with_snapshot_and_delivers_terminal_status() {
             let frame: String = buf.drain(..idx + 2).collect();
             if let Some((ev, data)) = parse_sse_frame(&frame) {
                 let json: Json = serde_json::from_str(&data).unwrap_or(Json::Null);
-                let status = json.get("status").and_then(|s| s.as_str()).map(String::from);
+                let is_terminal =
+                    matches!(ev.as_str(), "runCompleted" | "runFailed" | "runCancelled");
                 frames.push((ev, json));
-                if matches!(status.as_deref(), Some("completed" | "failed" | "cancelled")) {
+                if is_terminal {
                     break 'outer; // terminal delivered
                 }
             }
@@ -91,9 +92,9 @@ async fn run_sse_opens_with_snapshot_and_delivers_terminal_status() {
     assert!(!frames.is_empty(), "the SSE stream must deliver at least one frame");
     // Ordering: the stream opens with a snapshot.
     assert_eq!(frames[0].0, "snapshot", "the first SSE frame must be the snapshot; got {:?}", frames[0].0);
-    // Completeness: a frame reports the run reaching a terminal (completed) status.
+    // Completeness: the stream delivers the terminal `runCompleted` event.
     assert!(
-        frames.iter().any(|(_, j)| j.get("status").and_then(|s| s.as_str()) == Some("completed")),
-        "the stream must deliver the terminal 'completed' status; frames={frames:?}"
+        frames.iter().any(|(ev, _)| ev == "runCompleted"),
+        "the stream must deliver the terminal 'runCompleted' event; frames={frames:?}"
     );
 }
