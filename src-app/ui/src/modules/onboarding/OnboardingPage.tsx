@@ -215,9 +215,19 @@ export default function OnboardingPage() {
             />
           )}
           {StepComponent && (
-            <Suspense fallback={<Spin className="flex justify-center mt-8" label="Loading step" />}>
-              <StepComponent {...stepProps} />
-            </Suspense>
+            <div data-testid={`onboarding-step-${currentStep.id}`}>
+              <Suspense
+                fallback={
+                  <Spin
+                    data-testid="onboarding-step-loading"
+                    className="flex justify-center mt-8"
+                    label="Loading step"
+                  />
+                }
+              >
+                <StepComponent {...stepProps} />
+              </Suspense>
+            </div>
           )}
         </div>
 

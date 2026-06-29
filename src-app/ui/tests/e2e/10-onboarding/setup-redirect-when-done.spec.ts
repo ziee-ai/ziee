@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 
 /**
@@ -26,6 +27,6 @@ test.describe('Setup — redirect when already done', () => {
     await expect(page).not.toHaveURL(/\/setup/, { timeout: 15000 })
 
     // The setup-only "Confirm Password" field is not present after redirect.
-    await expect(page.getByLabel('Confirm Password')).toHaveCount(0)
+    await expect(byTestId(page, 'app-setup-confirm-password-input')).toHaveCount(0)
   })
 })
