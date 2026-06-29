@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Document-RAG user JOURNEY stitched across surfaces in one flow:
@@ -26,12 +27,8 @@ test.describe('Document RAG — configure + upload + attach journey', () => {
 
     // ── Leg 1: RAG admin config surface is reachable. ──────────────────
     await page.goto(`${baseURL}/settings/file-rag-admin`)
-    await expect(
-      page.getByText('Document search', { exact: true }),
-    ).toBeVisible({ timeout: 30000 })
-    await expect(
-      page.getByText('Embedding (semantic search)', { exact: true }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'filerag-enable-card')).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'filerag-embedding-card')).toBeVisible()
 
     // ── Leg 2: create a project + upload/attach a knowledge file. ──────
     const projRes = await page.request.post(`${apiURL}/api/projects`, {

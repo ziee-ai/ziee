@@ -5,6 +5,7 @@ import {
   createTestUser,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Document-RAG admin read-only permission gating (EnableSection.tsx
@@ -39,16 +40,11 @@ test.describe('Document RAG — read-only permission gating', () => {
     await page.goto(`${baseURL}/settings/file-rag-admin`)
 
     // The card renders (read is permitted)...
-    const enableSwitch = page.getByRole('switch', {
-      name: 'Enable Document RAG deployment-wide',
-    })
+    const enableSwitch = byTestId(page, 'filerag-enable-switch')
     await expect(enableSwitch).toBeVisible({ timeout: 30000 })
 
     // ...but management controls are disabled (form `disabled={!canManage}`).
     await expect(enableSwitch).toBeDisabled()
-    const card = page.locator(
-      '.ant-card:has([aria-label="Enable Document RAG deployment-wide"])',
-    )
-    await expect(card.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await expect(byTestId(page, 'filerag-enable-save')).toBeDisabled()
   })
 })

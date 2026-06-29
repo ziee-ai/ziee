@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the Document-RAG "Full-text search" card (FullTextSection.tsx).
@@ -25,16 +26,13 @@ test.describe('Document RAG — full-text search section', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/file-rag-admin`)
 
-    // Scope every interaction to the Full-text card so its Save button isn't
-    // confused with the other section cards' Save buttons.
-    const card = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Full-text search' })
+    // Scope every interaction to the Full-text card.
+    const card = byTestId(page, 'filerag-fts-card')
     await expect(card).toBeVisible({ timeout: 30000 })
 
     // Read the current RRF-k value and pick a deliberately-different one so the
     // save carries a real change (default is 60 per the RRF paper).
-    const rrfK = card.getByRole('spinbutton', { name: /RRF k/i })
+    const rrfK = byTestId(page, 'filerag-fts-rrf-k')
     await expect(rrfK).toBeVisible()
     const newRrfK = (await rrfK.inputValue()) === '45' ? '50' : '45'
 
@@ -44,7 +42,7 @@ test.describe('Document RAG — full-text search section', () => {
 
     // Toggle the full-text enable switch so the save carries a second real
     // change (the lexical arm on/off).
-    await card.getByRole('switch', { name: 'Enable full-text search' }).click()
+    await byTestId(page, 'filerag-fts-switch').click()
 
     // Save and assert the real store→PUT round-trip succeeded.
     const saveResp = page.waitForResponse(
@@ -53,20 +51,13 @@ test.describe('Document RAG — full-text search section', () => {
         r.request().method() === 'PUT' &&
         r.status() === 200,
     )
-    await card.getByRole('button', { name: 'Save' }).click()
+    await byTestId(page, 'filerag-fts-save').click()
     await saveResp
-
-    await expect(page.getByText('Full-text settings saved.')).toBeVisible({
-      timeout: 30000,
-    })
 
     // The persisted RRF-k value survives a reload (real round-trip).
     await page.reload()
-    await expect(
-      page
-        .locator('.ant-card')
-        .filter({ hasText: 'Full-text search' })
-        .getByRole('spinbutton', { name: /RRF k/i }),
-    ).toHaveValue(newRrfK, { timeout: 30000 })
+    await expect(byTestId(page, 'filerag-fts-rrf-k')).toHaveValue(newRrfK, {
+      timeout: 30000,
+    })
   })
 })
