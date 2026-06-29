@@ -34,6 +34,26 @@ export async function createProviderViaAPI(
     local: 'http://localhost:11434',
   }
 
+  // Local-bridge seam: when an override env var is set, point the provider at a
+  // local OpenAI/Anthropic-compatible bridge (e.g. Qwen on http://localhost:4000/v1)
+  // so real-LLM specs run without hitting the paid SaaS endpoint. Per-provider
+  // override (ANTHROPIC_BASE_URL, OPENAI_BASE_URL, GEMINI_BASE_URL, GROQ_BASE_URL),
+  // with a global fallback ZIEE_TEST_LLM_BASE_URL. If none set, the default
+  // SaaS base_url above is used (unchanged behavior). The override must include
+  // the path suffix the backend expects (Anthropic: .../v1, since the ziee
+  // provider appends /messages).
+  const baseUrlOverrideMap = {
+    openai: process.env.OPENAI_BASE_URL,
+    anthropic: process.env.ANTHROPIC_BASE_URL,
+    gemini: process.env.GEMINI_BASE_URL,
+    groq: process.env.GROQ_BASE_URL,
+    local: process.env.LOCAL_BASE_URL,
+  }
+  const baseUrl =
+    baseUrlOverrideMap[providerType] ||
+    process.env.ZIEE_TEST_LLM_BASE_URL ||
+    baseUrlMap[providerType]
+
   const response = await fetch(`${apiURL}/api/llm-providers`, {
     method: 'POST',
     headers: {
@@ -44,7 +64,7 @@ export async function createProviderViaAPI(
       name,
       provider_type: providerType,
       enabled: true,
-      base_url: baseUrlMap[providerType],
+      base_url: baseUrl,
       api_key: apiKeyMap[providerType],
     }),
   })
