@@ -46,7 +46,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
         </div>
         <div className="flex items-center gap-2">
           <CircleCheck className="text-success" />
-          <Text>
+          <Text data-testid="onboarding-finish-mcp-summary">
             {mcpCount > 0
               ? `${mcpCount} MCP server${mcpCount > 1 ? 's' : ''} selected for installation`
               : 'No MCP servers selected (you can add them later)'}
