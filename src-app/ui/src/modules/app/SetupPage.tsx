@@ -90,7 +90,7 @@ export default function SetupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center  p-4">
       <Card className="w-full max-w-md" data-testid="app-setup-card">
-        <div className="mb-6">
+        <div className="mb-6" data-testid="app-setup-welcome">
           <Title level={2}>Welcome to Ziee</Title>
           <Paragraph>
             No administrator account exists. Let's create your first admin

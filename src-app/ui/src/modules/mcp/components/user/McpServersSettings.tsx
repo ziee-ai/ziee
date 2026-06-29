@@ -192,7 +192,7 @@ export function McpServersSettings() {
         </div>
 
         {filteredServers.length === 0 && (
-          <div className="text-center py-12">
+          <div className="text-center py-12" data-testid="mcp-settings-empty">
             <Text type="secondary">
               {searchTerm || statusFilter !== 'all'
                 ? 'No servers match your search criteria'

@@ -42,6 +42,7 @@ export const HeaderBarContainer = ({
           clipped by the header — smoother than a hard line. */}
       <div
         aria-hidden="true"
+        data-testid="layout-header-fade-overlay"
         // Theme-token gradient (card surface → same color at alpha 0); a two-stop
         // gradient can't be expressed as a single semantic utility class.
         data-allow-custom-color

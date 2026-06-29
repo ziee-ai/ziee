@@ -238,12 +238,16 @@ export function SkillDetailDrawer() {
           </Text>
         )}
         {bodyError && !bodyLoading && (
-          <Text type="secondary" className="text-xs">
+          <Text
+            type="secondary"
+            className="text-xs"
+            data-testid="skill-detail-body-error"
+          >
             Couldn't load skill content.
           </Text>
         )}
         {body && (
-          <div className="overflow-auto">
+          <div className="overflow-auto" data-testid="skill-detail-body">
             <Title level={5}>Skill content (SKILL.md)</Title>
             <StreamdownErrorBoundary fallbackText={body}>
               <Streamdown shikiTheme={['github-light', 'github-dark']}>

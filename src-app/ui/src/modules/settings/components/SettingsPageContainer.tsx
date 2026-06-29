@@ -6,12 +6,14 @@ interface SettingsPageContainerProps {
   title: string | ReactNode
   subtitle?: string
   children: ReactNode
+  'data-testid'?: string
 }
 
 export function SettingsPageContainer({
   title,
   subtitle,
   children,
+  'data-testid': testid,
 }: SettingsPageContainerProps) {
   const titleId = useId()
   return (
@@ -26,7 +28,12 @@ export function SettingsPageContainer({
     <DivScrollY className="h-full" role="region" aria-labelledby={titleId}>
       <div className="w-full flex justify-center pt-3">
         <div className={'max-w-4xl w-full flex flex-col gap-2 px-3'}>
-          <Title level={4} id={titleId} className="!m-0 !leading-tight">
+          <Title
+            level={4}
+            id={titleId}
+            data-testid={testid ?? 'settings-page-title'}
+            className="!m-0 !leading-tight"
+          >
             {title}
           </Title>
           {subtitle && (

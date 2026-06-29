@@ -22,6 +22,7 @@ export function SkillMenuItem() {
         className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[180px] focus-visible:outline focus-visible:outline-2"
         role="button"
         tabIndex={0}
+        data-testid="skill-conversation-menu-item"
         aria-label="Skills in this chat"
         onClick={() => {
           Stores.SkillConversationDrawer.openDrawer()

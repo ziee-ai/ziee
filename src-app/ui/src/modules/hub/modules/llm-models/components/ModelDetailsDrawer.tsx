@@ -18,7 +18,7 @@ export function ModelDetailsDrawer({
 
   return (
     <Drawer title={model.display_name} open={open} onClose={onClose}>
-      <Flex direction="column" className="gap-4">
+      <Flex direction="column" className="gap-4" data-testid="hub-model-detail-sheet">
         {/* Basic Info */}
         <div>
           <Title level={3} className="!m-0 !mb-2">

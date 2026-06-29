@@ -61,6 +61,25 @@ export default defineConfig({
   globalSetup: './tests/global-setup.ts',
   globalTeardown: './tests/global-teardown.ts',
 
+  // Dependency DAG / ordering
+  // ---------------------------
+  // Test dirs are SEMANTICALLY named (setup/ auth/ llm/ chat/ ...); the old
+  // numeric prefixes (01-/02-/...) were cosmetic — Playwright never enforced
+  // them as order. The real ordering need is a DAG, encoded here, NOT in
+  // filenames (see .claude/audit/TEST_CONVENTIONS.md).
+  //
+  // Because every TEST is fully self-isolated — each one CREATEs its own
+  // `ziee_test_<id>` database + spawns its own `cargo run` backend on
+  // per-worker ports (tests/fixtures/test-context.ts) and seeds its own state
+  // via loginAsAdmin/setup — there are NO inter-suite state dependencies. The
+  // only global prerequisite (the shared Postgres container + the one-time
+  // `vite build`) runs in `globalSetup` BEFORE any project, which is the single
+  // root of the DAG. Adding setup→auth→features project edges would serialize
+  // independent suites and destroy the parallelism the per-test isolation
+  // buys, so the DAG is intentionally flat:
+  //
+  //   globalSetup  ──▶  { all feature suites, run fully in parallel }
+  //
   // Configure projects for major browsers
   projects: [
     {

@@ -101,7 +101,7 @@ export function AuthProvidersListSection() {
   const renderRowActions = (row: AuthProviderResponse) => (
     <Can permission={Permissions.AuthProvidersManage}>
       <Switch
-        data-testid={`authprov-toggle-switch-${row.id}`}
+        data-testid={`authprov-toggle-switch-${row.name}`}
         className="!mr-2"
         checked={row.enabled}
         loading={pendingToggleId === row.id}
@@ -109,7 +109,7 @@ export function AuthProvidersListSection() {
         aria-label={`Toggle ${row.name}`}
       />
       <Button
-        data-testid={`authprov-test-button-${row.id}`}
+        data-testid={`authprov-test-button-${row.name}`}
         variant="ghost"
         icon={<FlaskConical />}
         aria-label={`Test ${row.name}`}
@@ -119,7 +119,7 @@ export function AuthProvidersListSection() {
         Test
       </Button>
       <Button
-        data-testid={`authprov-edit-button-${row.id}`}
+        data-testid={`authprov-edit-button-${row.name}`}
         variant="ghost"
         icon={<Pencil />}
         aria-label={`Edit ${row.name}`}
@@ -128,7 +128,7 @@ export function AuthProvidersListSection() {
         Edit
       </Button>
       <Confirm
-        data-testid={`authprov-delete-confirm-${row.id}`}
+        data-testid={`authprov-delete-confirm-${row.name}`}
         title={`Delete ${row.name}?`}
         description="Linked users lose this sign-in method; their accounts remain."
         okText="Delete"
@@ -137,7 +137,7 @@ export function AuthProvidersListSection() {
         onConfirm={() => onDelete(row)}
       >
         <Button
-          data-testid={`authprov-delete-button-${row.id}`}
+          data-testid={`authprov-delete-button-${row.name}`}
           variant="ghost"
           icon={<Trash2 />}
           aria-label={`Delete ${row.name}`}
@@ -192,7 +192,7 @@ export function AuthProvidersListSection() {
           <Flex className="flex-col gap-4">
             <div>
               {providers.map((row, index) => (
-                <div key={row.id}>
+                <div key={row.id} data-testid={`authprov-row-${row.id}`}>
                   <div className="flex items-start gap-3 flex-wrap">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">
@@ -200,7 +200,11 @@ export function AuthProvidersListSection() {
                           <Flex align="center" gap="small">
                             <Text className="font-medium">{row.name}</Text>
                             {!row.enabled && (
-                              <Text type="secondary" className="text-xs">
+                              <Text
+                                type="secondary"
+                                className="text-xs"
+                                data-testid={`authprov-disabled-marker-${row.name}`}
+                              >
                                 (Disabled)
                               </Text>
                             )}
@@ -221,7 +225,7 @@ export function AuthProvidersListSection() {
                       {row.last_test_ok === false && (
                         <Alert
                           tone="error"
-                          data-testid={`authprov-test-failed-alert-${row.id}`}
+                          data-testid={`authprov-test-failed-alert-${row.name}`}
                           className="!mt-2"
                           title={
                             row.last_test_at

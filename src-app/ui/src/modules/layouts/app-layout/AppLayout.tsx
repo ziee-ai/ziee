@@ -354,6 +354,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         // override applies `backdrop-filter` so the mask reads as a
         // frosted glass surface instead of a flat dim).
         data-sidebar-mask=""
+        data-testid="layout-sidebar-mask"
         // Present only when the overlay is ACTUALLY active so build
         // overrides can gate filter / blur on it. Without this,
         // anything applied to `[data-sidebar-mask]` unconditionally
@@ -382,6 +383,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div
         ref={sidebarRef}
         id="app-sidebar"
+        data-testid="app-sidebar"
         // Mobile-only dialog semantics for screen readers. Inert
         // for sighted users on desktop. (audit 02 R-1)
         role={windowMinSize.xs ? ('dialog' as const) : undefined}
@@ -494,6 +496,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             // forward synthetic mousedowns into this handler. No
             // styling depends on it; the attribute is platform-blind.
             data-sidebar-resize-handle=""
+            data-testid="layout-sidebar-resize-handle"
             className="absolute top-0 left-0 w-1 h-full cursor-col-resize z-3"
             onMouseDown={handleMouseDown}
           />

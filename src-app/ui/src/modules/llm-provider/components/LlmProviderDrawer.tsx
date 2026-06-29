@@ -155,7 +155,7 @@ export function LlmProviderDrawer() {
 
         {providerType === 'local' ? (
           <div className="mb-4">
-            <Text type="secondary">
+            <Text type="secondary" data-testid="llm-provider-local-note">
               Local providers don't require API keys. Configure your local
               inference server separately.
             </Text>

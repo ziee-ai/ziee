@@ -10,6 +10,7 @@
  */
 import { test, expect } from './no-403'
 import { loginAsMember } from './fixtures'
+import { byTestId } from '../testid'
 
 test.describe('llm-repositories — permission gating', () => {
   test('member without llm_repositories::read cannot access the repositories page', async ({
@@ -21,12 +22,12 @@ test.describe('llm-repositories — permission gating', () => {
     // The settings menu entry is hidden for a user without the read perm.
     await page.goto(`${testInfra.baseURL}/settings`)
     await expect(
-      page.getByRole('menuitem', { name: /^LLM Repositories$/ }),
+      byTestId(page, 'settings-nav-menu-item-llm-repositories'),
     ).toHaveCount(0)
 
     // Deep-link → inline 403, URL preserved (not a silent redirect).
     await page.goto(`${testInfra.baseURL}/settings/llm-repositories`)
-    await expect(page.getByText(/Not authorized/i)).toBeVisible()
+    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/settings/llm-repositories')
   })
 })

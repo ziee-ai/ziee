@@ -180,6 +180,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           <button
             type="button"
             aria-label={clearLabel}
+            data-testid={testid ? `${testid}-clear` : undefined}
             onClick={clear}
             // pointer-down stop so clearing via mouse doesn't also open the Radix dropdown.
             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation() }}

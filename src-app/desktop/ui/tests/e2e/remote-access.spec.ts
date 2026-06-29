@@ -70,40 +70,39 @@ test.describe('desktop Remote Access settings', () => {
 
   test('Remote Access menu entry is visible', async ({ page }) => {
     await page.goto('/settings')
-    await expect(page.getByRole('menuitem').first()).toBeVisible({
+    await expect(page.getByTestId('desktop-settings-menu')).toBeVisible({
       timeout: 10_000,
     })
-    const menu = page.getByRole('menu')
-    await expect(menu.getByText(/Remote Access/i)).toBeVisible()
+    await expect(
+      page.getByTestId('desktop-settings-menu-item-remote-access'),
+    ).toBeVisible()
   })
 
   test('clicking Remote Access lands on the settings page', async ({ page }) => {
     await page.goto('/settings')
-    await page.getByRole('menu').getByText(/Remote Access/i).click()
+    await page.getByTestId('desktop-settings-menu-item-remote-access').click()
     await expect(page).toHaveURL(/\/settings\/remote-access\b/)
-    await expect(page.getByRole('heading', { name: 'Remote Access' })).toBeVisible()
+    // The page rendered — its first section (the ngrok token card) is up.
+    await expect(page.getByTestId('desktop-remote-token-card')).toBeVisible()
   })
 
   test('starts with auth-token gate; tunnel start hidden until saved', async ({
     page,
   }) => {
     await page.goto('/settings/remote-access')
-    // Token card visible — match the card title exactly (the Alert
-    // below also contains the substring "ngrok auth token", which
-    // would cause Playwright strict-mode to throw on a loose match).
-    await expect(page.getByText('ngrok auth token', { exact: true })).toBeVisible()
+    // Token card visible (step 1 of the setup flow).
+    await expect(page.getByTestId('desktop-remote-token-card')).toBeVisible()
     // The "Start tunnel" button only renders once a token is saved.
-    await expect(page.getByRole('button', { name: 'Start tunnel' })).toHaveCount(0)
+    await expect(
+      page.getByTestId('desktop-remote-start-tunnel-btn'),
+    ).toHaveCount(0)
     // And the gate alert is shown.
-    await expect(page.getByText(/Add your ngrok auth token first/i)).toBeVisible()
+    await expect(page.getByTestId('desktop-remote-no-token-alert')).toBeVisible()
   })
 
   test('password authentication toggle defaults OFF', async ({ page }) => {
     await page.goto('/settings/remote-access')
-    const toggle = page
-      .locator('.ant-form-item-label', { hasText: 'Enable password authentication' })
-      .locator('..')
-      .getByRole('switch')
+    const toggle = page.getByTestId('desktop-remote-password-enable-switch')
     await expect(toggle).toHaveCount(1)
     await expect(toggle).not.toBeChecked()
   })

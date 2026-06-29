@@ -187,7 +187,12 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
           <Text strong>{toolUseData.name || 'Tool Call'}</Text>
           <Text type="secondary" className="text-xs">({serverName})</Text>
           {toolResultData && (
-            <Text type="secondary" className="text-xs">
+            <Text
+              type="secondary"
+              className="text-xs"
+              data-testid={`mcp-tooluse-status-${toolUseData.id}`}
+              data-status={toolResultData.is_error ? 'failed' : 'completed'}
+            >
               {toolResultData.is_error ? 'Failed' : 'Completed'}
             </Text>
           )}

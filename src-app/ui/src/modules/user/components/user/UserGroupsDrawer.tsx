@@ -159,7 +159,7 @@ export function UserGroupsDrawer() {
               )
             ) : null
             return (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3" data-testid={`user-groups-drawer-row-${group.name}`}>
                 <Users />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">

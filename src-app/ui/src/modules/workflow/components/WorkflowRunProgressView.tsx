@@ -130,7 +130,7 @@ export function WorkflowRunProgressView({
           {run.totalTokens.toLocaleString()} tokens
         </Text>
         {!run.connected && !terminal && (
-          <Text type="warning" className="text-xs">
+          <Text data-testid="wf-progress-reconnecting" type="warning" className="text-xs">
             reconnecting…
           </Text>
         )}

@@ -159,6 +159,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         title: 'Select Quantization',
         okText: 'Continue',
         cancelText: 'Cancel',
+        testid: 'hub-model-download-quant-dialog',
         description: (
           <div className="flex flex-col gap-2">
             <Text>
@@ -209,6 +210,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         title: 'Select Local Provider',
         okText: 'Continue',
         cancelText: 'Cancel',
+        testid: 'hub-model-download-provider-dialog',
         description: (
           <div className="flex flex-col gap-2">
             <Text>
@@ -282,7 +284,10 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               <div className="flex-1 min-w-48">
                 <Flex className="gap-2 items-center">
                   <LayoutGrid />
-                  <Text className="font-medium cursor-pointer">
+                  <Text
+                    className="font-medium cursor-pointer"
+                    data-testid={`hub-model-name-${model.name}`}
+                  >
                     {model.display_name}
                   </Text>
                   {/* v2 per-entry version — see AssistantHubCard. */}

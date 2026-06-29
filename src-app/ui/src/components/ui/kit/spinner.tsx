@@ -27,13 +27,14 @@ export interface SpinProps {
   description?: React.ReactNode
   children?: React.ReactNode
   className?: string
+  'data-testid'?: string
 }
 
 /** Overlays a spinner on its children while `spinning` (bare spinner with no children). */
-export function Spin({ spinning = true, size, label, description, children, className }: SpinProps) {
+export function Spin({ spinning = true, size, label, description, children, className, 'data-testid': testid }: SpinProps) {
   if (children === undefined) {
     return (
-      <div className={cn('inline-flex flex-col items-center gap-2', className)}>
+      <div data-testid={testid} className={cn('inline-flex flex-col items-center gap-2', className)}>
         <Spinner size={size} label={label} />
         {description != null && <span className="text-sm text-muted-foreground">{description}</span>}
       </div>

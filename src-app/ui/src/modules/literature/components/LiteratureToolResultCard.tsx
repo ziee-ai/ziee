@@ -53,7 +53,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
       <Text strong>
         <FileSearch /> Literature search
       </Text>
-      <Text type="secondary" className="!mb-2 text-xs block">
+      <Text type="secondary" className="!mb-2 text-xs block" data-testid="lit-tool-result-summary">
         “{sc.query}” — {total} identified, {sc.after_dedup ?? sc.records.length} after dedup
         {sc.completeness ? ` · saturation: ${sc.completeness.estimate.toUpperCase()}` : ''}
         {sc.degraded_sources && sc.degraded_sources.length > 0 && (
@@ -65,7 +65,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
         )}
       </Text>
       {sc.records.length === 0 ? (
-        <Text type="secondary" className="text-xs block mb-2">
+        <Text type="secondary" className="text-xs block mb-2" data-testid="lit-tool-result-empty">
           No records returned
           {sc.degraded_sources && sc.degraded_sources.length > 0
             ? ' — every source errored or was skipped (see above).'

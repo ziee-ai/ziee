@@ -104,6 +104,8 @@ export function MemoryStatusPill() {
         disabled={loading}
       >
         <span
+          data-testid="memory-status-pill"
+          data-mode={mode}
           aria-label={`Memory mode: ${labelByMode[mode]}`}
           className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium"
           style={{ cursor: 'pointer' }}

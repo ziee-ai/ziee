@@ -39,7 +39,7 @@ export function MemoryCombinedPage() {
       title="Memory"
       subtitle="Persistent memory the assistant keeps about you, plus deployment-wide configuration."
     >
-      <Title level={5} className="!mt-2 !mb-0">
+      <Title level={5} className="!mt-2 !mb-0" data-testid="memory-combined-preferences-heading">
         Your preferences
       </Title>
       <PreferencesSection />
@@ -49,7 +49,7 @@ export function MemoryCombinedPage() {
 
       <Separator className="!my-4" />
 
-      <Title level={5} className="!mt-2 !mb-0">
+      <Title level={5} className="!mt-2 !mb-0" data-testid="memory-combined-administration-heading">
         Administration
       </Title>
       <RebuildStatusSection />

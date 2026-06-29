@@ -10,6 +10,7 @@
 import { test, expect } from './no-403'
 import { loginAsMember, loginWithPerms } from './fixtures'
 import { Permissions } from '../../../src/api-client/types'
+import { byTestId } from '../testid'
 
 test.describe('assistant-templates — permission gating', () => {
   test('member without assistant_templates::read: entry hidden + deep-link 403', async ({
@@ -21,12 +22,12 @@ test.describe('assistant-templates — permission gating', () => {
     // The admin sidebar entry is gated → hidden.
     await page.goto(`${testInfra.baseURL}/settings`)
     await expect(
-      page.getByRole('menuitem', { name: /^Assistant Templates$/ }),
+      byTestId(page, 'settings-nav-menu-item-assistant-templates'),
     ).toHaveCount(0)
 
     // Deep-link → inline "Not authorized", URL preserved (route gate fires).
     await page.goto(`${testInfra.baseURL}/settings/assistant-templates`)
-    await expect(page.getByText(/Not authorized/i)).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible({ timeout: 10_000 })
     expect(page.url()).toContain('/settings/assistant-templates')
   })
 
@@ -39,10 +40,10 @@ test.describe('assistant-templates — permission gating', () => {
     ])
 
     await page.goto(`${testInfra.baseURL}/settings/assistant-templates`)
-    await expect(page.getByText(/Not authorized/i)).toHaveCount(0)
-    // The templates page renders (its unique subtitle), proving access is granted.
+    await expect(byTestId(page, 'settings-forbidden-result')).toHaveCount(0)
+    // The templates page renders, proving access is granted.
     await expect(
-      page.getByText(/Manage template assistants/i),
+      byTestId(page, 'template-assistants-card'),
     ).toBeVisible({ timeout: 10_000 })
   })
 })

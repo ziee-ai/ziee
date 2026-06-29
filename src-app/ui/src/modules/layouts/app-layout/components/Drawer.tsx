@@ -119,6 +119,7 @@ export const Drawer: React.FC<DrawerProps> = ({
           />
         )}
         <DialogPrimitive.Content
+          data-testid="layout-drawer-content"
           // maskClosable=false → backdrop/outside click doesn't dismiss (Escape still does).
           onPointerDownOutside={maskClosable ? undefined : e => e.preventDefault()}
           onInteractOutside={maskClosable ? undefined : e => e.preventDefault()}

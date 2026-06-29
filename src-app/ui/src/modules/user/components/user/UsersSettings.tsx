@@ -241,7 +241,7 @@ export function UsersSettings() {
             ) : (
               <div>
                 {users.map((user, index) => (
-                  <div key={user.id}>
+                  <div key={user.id} data-testid={`user-row-${user.username}`}>
                     <div className="flex items-start gap-3 flex-wrap">
                       {/* User Info */}
                       <div className="flex-1">

@@ -74,6 +74,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
             {systemServers.map(server => (
               <div
                 key={server.id}
+                data-testid={`onboarding-mcp-system-server-row-${server.id}`}
                 className="flex items-start gap-3 border rounded-lg p-3"
               >
                 <Switch
