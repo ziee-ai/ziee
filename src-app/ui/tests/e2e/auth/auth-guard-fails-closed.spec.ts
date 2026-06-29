@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { byTestId } from '../testid'
+import { getAdminToken } from '../../common/auth-helpers'
 
 /**
  * E2E — AuthGuard FAILS CLOSED on an invalid / tampered token.
@@ -48,7 +49,11 @@ test.describe('Auth — AuthGuard fails closed', () => {
     page,
     testInfra,
   }) => {
-    const { baseURL } = testInfra
+    const { baseURL, apiURL } = testInfra
+
+    // An admin must exist so the fail-closed destination is the LOGIN wall
+    // (not /setup, which the app shows when no account exists at all).
+    await getAdminToken(apiURL)
 
     // A structurally-bogus token: present in storage, but not a token the
     // server will accept → `/auth/me` 401.
@@ -84,7 +89,10 @@ test.describe('Auth — AuthGuard fails closed', () => {
     page,
     testInfra,
   }) => {
-    const { baseURL } = testInfra
+    const { baseURL, apiURL } = testInfra
+
+    // Admin must exist so fail-closed lands on the login wall, not /setup.
+    await getAdminToken(apiURL)
 
     // An unknown deep-link hits the `path="*"` route, which is wrapped in the
     // SAME guard (RouterComponent.tsx:200) — it must fail closed too.
