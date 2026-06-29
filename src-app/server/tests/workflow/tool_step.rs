@@ -214,7 +214,13 @@ async fn tool_step_resource_link_is_saved_false_persists_a_workflow_file() {
     // route → the dispatcher fetches the bytes over HTTP and `persist_links`
     // ingests them: a `files` row `created_by="workflow"` + `workflow_run_id`
     // set, the blob stored, and the step output carries `files[0].{file_id}`.
-    let server = crate::common::TestServer::start().await;
+    // The resource_link points at a loopback mock download server; relax the
+    // resource_link external-fetch SSRF policy so it's reachable in tests.
+    let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: vec![("MCP_RESOURCE_LINK_ALLOW_LOOPBACK".into(), "1".into())],
+        ..Default::default()
+    })
+    .await;
     let user = workflow_tool_user(&server, "wf_tool_rl_unsaved").await;
     let (_stub, model_id) = stub_model_for(&server, &user.user_id).await;
 

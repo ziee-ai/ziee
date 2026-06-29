@@ -328,7 +328,13 @@ async fn tool_call_resource_link_persists_file_and_emits_sync() {
     // A workflow with a `tool` step whose mock returns a `resource_link
     // is_saved:false` → persist_links → ingest_bytes → publish_file_changed
     // → the owner observes `file`/`update` on their sync stream.
-    let server = crate::common::TestServer::start().await;
+    // The resource_link points at a loopback mock download server; relax the
+    // resource_link external-fetch SSRF policy so it's reachable in tests.
+    let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: vec![("MCP_RESOURCE_LINK_ALLOW_LOOPBACK".into(), "1".into())],
+        ..Default::default()
+    })
+    .await;
     let user = crate::workflow::workflow_tool_user(&server, "sync_rl_file_owner").await;
     let (_stub, model_id) = crate::workflow::stub_model_for(&server, &user.user_id).await;
 

@@ -391,19 +391,25 @@ pub async fn persist_links(
                 }
             }
         } else {
-            if let Err(e) = crate::utils::url_validator::validate_outbound_url(
-                &link.uri,
-                &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
-            ) {
+            // Debug-only test seam (compiled out of release via
+            // `cfg!(debug_assertions)`): relax to DEV_LOCAL so a loopback mock
+            // download server can stand in for a public host. Mirrors
+            // `WEB_SEARCH_FETCH_ALLOW_LOOPBACK` / `LIT_SEARCH_ALLOW_LOOPBACK`.
+            let policy = if cfg!(debug_assertions)
+                && std::env::var("MCP_RESOURCE_LINK_ALLOW_LOOPBACK").as_deref() == Ok("1")
+            {
+                crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+            } else {
+                crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+            };
+            if let Err(e) = crate::utils::url_validator::validate_outbound_url(&link.uri, &policy) {
                 tracing::error!(
                     "resource_link external fetch rejected by SSRF policy for '{}': {e}",
                     link.uri
                 );
                 continue;
             }
-            match crate::utils::url_validator::build_validated_client(
-                crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
-            ) {
+            match crate::utils::url_validator::build_validated_client(policy) {
                 Ok(c) => c,
                 Err(e) => {
                     tracing::error!("Failed to build HTTP client for resource_link fetch: {e}");
