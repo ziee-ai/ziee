@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the Document-RAG master "Document search" card (EnableSection.tsx).
@@ -20,19 +21,23 @@ test.describe('Document RAG — master enable section', () => {
     await page.goto(`${baseURL}/settings/file-rag-admin`)
 
     // The master "Document search" card.
-    const card = page.locator(
-      '.ant-card:has([aria-label="Enable Document RAG deployment-wide"])',
-    )
+    const card = byTestId(page, 'filerag-enable-card')
     await expect(card).toBeVisible({ timeout: 30000 })
 
-    const topK = card.getByLabel('Default top-K')
+    const topK = byTestId(page, 'filerag-enable-top-k')
     await topK.click()
     await topK.press('ControlOrMeta+a')
     await topK.fill('8')
 
-    await card.getByRole('button', { name: 'Save' }).click()
-    await expect(
-      page.getByText('Document search settings saved.'),
-    ).toBeVisible({ timeout: 30000 })
+    // Save → real store→PUT round-trip.
+    const saveResp = page.waitForResponse(
+      r =>
+        r.url().includes('/api/file-rag/admin-settings') &&
+        r.request().method() === 'PUT' &&
+        r.status() === 200,
+      { timeout: 30000 },
+    )
+    await byTestId(page, 'filerag-enable-save').click()
+    await saveResp
   })
 })

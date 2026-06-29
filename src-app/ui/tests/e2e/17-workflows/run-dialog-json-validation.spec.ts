@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — WorkflowRunDialog raw-JSON input mode validation (WorkflowRunDialog.tsx
@@ -42,16 +43,19 @@ test.describe('Workflows - run dialog JSON validation', () => {
     await openWorkflowCard(page, 'e2e-json-validate')
 
     // Open the Run dialog.
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    const dialog = page.getByRole('dialog', { name: /^Run / })
+    await byTestId(page, 'wf-detail-run-btn').click()
+    const dialog = byTestId(page, 'wf-run-dialog')
     await expect(dialog).toBeVisible({ timeout: 10000 })
 
     // Type malformed JSON, then click the modal's Run (OK) button.
-    await dialog.getByRole('textbox').fill('{ not: valid json,, }')
-    await dialog.getByRole('button', { name: 'Run', exact: true }).click()
+    await byTestId(page, 'wf-run-json-textarea').fill('{ not: valid json,, }')
+    await byTestId(page, 'wf-run-submit-btn').click()
 
     // The validation Alert renders and the dialog stays open (run aborted).
-    await expect(dialog.getByText('Inputs must be valid JSON')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'wf-run-json-error-alert')).toContainText(
+      'Inputs must be valid JSON',
+      { timeout: 10000 },
+    )
     await expect(dialog).toBeVisible()
   })
 })

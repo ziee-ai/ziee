@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Error-path coverage for the run UI (audit gap all-d9d8b6762eaa).
@@ -87,29 +88,34 @@ test.describe('Workflows - failed run surfaces an error Alert', () => {
 
     // Open the Run dialog from the drawer (drawer button name is the icon
     // aria-label + "Run"; match the trailing word).
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+    await byTestId(page, 'wf-detail-run-btn').click()
+    await expect(byTestId(page, 'wf-run-dialog')).toBeVisible({
       timeout: 10000,
     })
 
     // Pick the registered model (required for a standalone run).
-    const modelSelect = page.getByLabel('Model')
-    await modelSelect.click()
-    await page.getByRole('option').first().click()
+    await byTestId(page, 'wf-run-model-select').click()
+    await page
+      .locator('[data-testid^="wf-run-model-select-opt-"]')
+      .first()
+      .click()
 
     // Kick the run (the dialog's own OK "Run" button).
-    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
     // Run-progress view appears, the run transitions to `failed`, and the
     // error Alert renders the dispatch error text. The Alert title is the
     // raw `run.error`; assert on the stable substring from
     // resolve_tool_server's WORKFLOW_TOOL_SERVER_NOT_ACCESSIBLE message.
-    await expect(page.getByText('Run progress')).toBeVisible({ timeout: 15000 })
-    await expect(
-      page.getByText('failed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 30000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'failed',
+      { timeout: 30000 },
+    )
 
-    const errorAlert = page.locator('.ant-alert-error')
+    const errorAlert = byTestId(page, 'wf-progress-error-alert')
     await expect(errorAlert).toBeVisible({ timeout: 30000 })
     await expect(errorAlert).toContainText(/not accessible|nonexistent_server_e2e/i)
   })

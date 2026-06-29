@@ -43,6 +43,8 @@ test.describe('Citations — tool result renders in chat', () => {
     })
 
     // The assistant turn (backed by the citations tool_result) renders.
-    await expect(page.getByText(verified)).toBeVisible({ timeout: 15000 })
+    await expect(page.locator('[data-role="assistant"]')).toContainText(verified, {
+      timeout: 15000,
+    })
   })
 })

@@ -34,8 +34,8 @@ test.describe('LLM Repositories — delete cancel', () => {
     await openDeleteRepositoryDialog(page, repositoryName)
     await cancelDeleteRepository(page)
 
-    // The Popconfirm closes and the repository is still present.
-    await expect(page.locator('.ant-popover:visible')).toHaveCount(0)
+    // The confirm dialog closes and the repository is still present.
+    await expect(page.locator('[data-testid^="llmrepo-delete-confirm-"]')).toHaveCount(0)
     await assertRepositoryExists(page, repositoryName)
   })
 })

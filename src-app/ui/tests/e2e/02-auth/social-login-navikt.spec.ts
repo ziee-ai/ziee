@@ -19,6 +19,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { getAdminToken, loginAsAdmin } from '../../common/auth-helpers'
 import { startNaviktMock } from '../../common/navikt-mock'
+import { byTestId } from '../testid'
 
 test.describe('Social login — navikt end-to-end parity', () => {
   test('full OIDC flow against navikt mock-oauth2-server', async ({
@@ -84,11 +85,11 @@ test.describe('Social login — navikt end-to-end parity', () => {
         sessionStorage.clear()
       })
       await page.goto(`${baseURL}/auth`, { waitUntil: 'domcontentloaded' })
-      await page.getByLabel('Username or Email').waitFor({ timeout: 30_000 })
+      await byTestId(page, 'auth-login-username').waitFor({ timeout: 30_000 })
 
       // The provider button should be rendered (public endpoint
       // includes our new enabled row).
-      const button = page.getByRole('button', { name: /sign in with navikt/i })
+      const button = byTestId(page, `auth-provider-btn-${providerName}`)
       await expect(button).toBeVisible({ timeout: 10_000 })
 
       // Click triggers full-page navigation → backend /authorize →
@@ -112,8 +113,8 @@ test.describe('Social login — navikt end-to-end parity', () => {
         .fill(
           '{"email":"navikt-e2e-user@example.com","email_verified":true}',
         )
-      // Navikt's submit button is labelled "Sign-in" (with hyphen).
-      await page.getByRole('button', { name: /sign-?in/i }).click()
+      // Navikt's mock login page is external (not our kit) — submit its form.
+      await page.locator('button[type="submit"]').first().click()
 
       // Bounce: navikt → our /callback (with code) → AuthCallbackPage
       // (#token=...&return_to=...) → AuthCallbackPage scrubs + navigates
@@ -134,9 +135,9 @@ test.describe('Social login — navikt end-to-end parity', () => {
       // we navigate to the chat surface (the '/chat' new-chat page) and assert
       // the composer's send affordance renders for the OAuth-authenticated user.
       await page.goto(`${baseURL}/chat`, { waitUntil: 'domcontentloaded' })
-      await expect(
-        page.getByRole('button', { name: 'Send message' }),
-      ).toBeVisible({ timeout: 30_000 })
+      await expect(byTestId(page, 'chat-input-send-btn')).toBeVisible({
+        timeout: 30_000,
+      })
     } finally {
       await mock!.stop()
     }

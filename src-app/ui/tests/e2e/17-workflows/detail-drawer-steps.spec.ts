@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — WorkflowDetailDrawer step list + dependency rendering
@@ -49,11 +50,11 @@ test.describe('Workflows - detail drawer steps', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-detail-steps')
 
-    // Both step messages render in the Steps list.
-    await expect(page.getByText('Gather sources')).toBeVisible({ timeout: 15000 })
-    await expect(page.getByText('Synthesize answer')).toBeVisible()
-
-    // The dependent step shows its dependency line.
-    await expect(page.getByText('depends on: gather')).toBeVisible({ timeout: 10000 })
+    // Both step messages render in the Steps list (dynamic data from the
+    // seeded workflow), and the dependent step shows its dependency line.
+    const dialog = byTestId(page, 'wf-detail-dialog')
+    await expect(dialog).toContainText('Gather sources', { timeout: 15000 })
+    await expect(dialog).toContainText('Synthesize answer')
+    await expect(dialog).toContainText('depends on: gather', { timeout: 10000 })
   })
 })

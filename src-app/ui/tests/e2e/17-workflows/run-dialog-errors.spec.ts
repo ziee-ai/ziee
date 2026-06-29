@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Workflow run-dialog error handling (WorkflowRunDialog.handleRun). The dialog
@@ -42,16 +43,17 @@ test.describe('Workflows - run dialog error handling', () => {
     await openWorkflowCard(page, slug)
 
     // Open the Run dialog from the drawer.
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    const dialog = page.getByRole('dialog', { name: /^Run / })
+    await byTestId(page, 'wf-detail-run-btn').click()
+    const dialog = byTestId(page, 'wf-run-dialog')
     await expect(dialog).toBeVisible({ timeout: 10000 })
 
     // No model is configured on a fresh deploy → the picker is empty. Clicking
-    // Run hits the "Select a model to run this workflow" guard (handleRun).
-    await dialog.getByRole('button', { name: 'Run', exact: true }).click()
+    // Run hits the "Select a model to run this workflow" guard (handleRun),
+    // surfaced as an error toast (sonner).
+    await byTestId(page, 'wf-run-submit-btn').click()
     await expect(
-      page.getByText('Select a model to run this workflow'),
-    ).toBeVisible({ timeout: 10000 })
+      page.locator('[data-sonner-toast][data-type="error"]'),
+    ).toContainText('Select a model to run this workflow', { timeout: 10000 })
 
     // The dialog stays open (the run never started).
     await expect(dialog).toBeVisible()
@@ -87,15 +89,15 @@ outputs:
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, slug)
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    const dialog = page.getByRole('dialog', { name: /^Run / })
+    await byTestId(page, 'wf-detail-run-btn').click()
+    const dialog = byTestId(page, 'wf-run-dialog')
     await expect(dialog).toBeVisible({ timeout: 10000 })
 
     // The structured form renders the required `topic` field. Clicking Run with
     // it empty fails validateFields() → the required message shows + no run.
-    await expect(dialog.getByLabel('topic')).toBeVisible()
-    await dialog.getByRole('button', { name: 'Run', exact: true }).click()
-    await expect(dialog.getByText('topic is required')).toBeVisible({
+    await expect(byTestId(page, 'wf-run-input-topic')).toBeVisible()
+    await byTestId(page, 'wf-run-submit-btn').click()
+    await expect(byTestId(page, 'wf-run-form')).toContainText('topic is required', {
       timeout: 10000,
     })
     await expect(dialog).toBeVisible()

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the USER-facing LLM providers page "No AI providers available" empty
@@ -16,8 +17,6 @@ import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
  * proving the empty state is conditional (not always rendered).
  */
 
-const EMPTY_TEXT = /No AI providers are available yet/i
-
 test.describe('User LLM Providers — empty state', () => {
   test('shows "No AI providers available" when the user has no accessible providers', async ({
     page,
@@ -30,11 +29,10 @@ test.describe('User LLM Providers — empty state', () => {
     // branch renders the empty state.
     await page.goto(`${baseURL}/settings/user-llm-providers`)
 
-    await expect(page.getByText(EMPTY_TEXT)).toBeVisible({ timeout: 15_000 })
+    const empty = byTestId(page, 'ullm-no-providers-empty')
+    await expect(empty).toBeVisible({ timeout: 15_000 })
     // The empty state guidance points the user at an administrator.
-    await expect(
-      page.getByText(/administrator needs to add a provider/i),
-    ).toBeVisible()
+    await expect(empty).toContainText(/administrator needs to add a provider/i)
 
     // --- Positive control: once a provider exists, the empty state is gone. ---
     const adminToken = await getAdminToken(apiURL)
@@ -50,9 +48,11 @@ test.describe('User LLM Providers — empty state', () => {
       body: JSON.stringify({ name, provider_type: 'custom', enabled: true }),
     })
     expect(res.ok, `create provider: ${res.status}`).toBeTruthy()
+    const created = await res.json()
 
     await page.reload()
-    await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText(EMPTY_TEXT)).toHaveCount(0)
+    // The provider now appears as a menu item and the empty state is gone.
+    await expect(byTestId(page, `ullm-provider-menu-item-${created.id}`)).toBeVisible({ timeout: 15_000 })
+    await expect(byTestId(page, 'ullm-no-providers-empty')).toHaveCount(0)
   })
 })

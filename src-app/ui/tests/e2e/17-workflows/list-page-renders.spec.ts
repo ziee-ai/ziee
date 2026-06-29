@@ -5,6 +5,7 @@ import {
   assertWorkflowsEmptyState,
   goToWorkflowsPage,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 test.describe('Workflows - List page render', () => {
   test.beforeEach(async ({ page, testInfra }) => {
@@ -14,9 +15,7 @@ test.describe('Workflows - List page render', () => {
   })
 
   test('renders the page heading', async ({ page }) => {
-    await expect(
-      page.getByRole('heading', { level: 4, name: 'Workflows', exact: true }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'wf-list-page-title')).toBeVisible()
   })
 
   test('passes accessibility checks', async ({ page }) => {
@@ -40,8 +39,6 @@ test.describe('Workflows - List page render', () => {
   test('admin sees the permission-gated Import affordance', async ({ page }) => {
     // Admin holds workflows::install via the `*` wildcard, so the
     // <Can permission={WorkflowsInstall}>-gated "Import" button renders.
-    await expect(
-      page.getByRole('button', { name: /import/i }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'wf-list-import-btn')).toBeVisible()
   })
 })

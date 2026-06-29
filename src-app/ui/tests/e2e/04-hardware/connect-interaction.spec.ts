@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — hardware monitoring CONNECT interaction. The existing hardware.spec.ts
@@ -28,17 +29,22 @@ test.describe('Hardware — manual connect interaction', () => {
 
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+    await byTestId(page, 'hardware-os-card').waitFor({ timeout: 30000 })
 
     // The connection-status card shows Disconnected with a Connect button.
-    await expect(page.getByText('Disconnected')).toBeVisible({ timeout: 30000 })
-    const connect = page.getByRole('button', { name: 'Connect', exact: true })
+    await expect(byTestId(page, 'hardware-settings-connection-tag')).toContainText(
+      'Disconnected',
+      { timeout: 30000 },
+    )
+    const connect = byTestId(page, 'hardware-settings-connect-btn')
     await expect(connect).toBeVisible({ timeout: 30000 })
 
-    // Click it → handleManualConnect fires the subscribe + its success toast.
+    // Click it → handleManualConnect fires the subscribe, which opens the
+    // hardware usage SSE stream (the external boundary we mocked to fail).
+    const streamReq = page.waitForRequest(/\/api\/hardware\/usage-stream/, {
+      timeout: 10000,
+    })
     await connect.click()
-    await expect(
-      page.getByText('Connecting to hardware monitoring...'),
-    ).toBeVisible({ timeout: 10000 })
+    await streamReq
   })
 })

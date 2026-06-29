@@ -16,8 +16,9 @@ import {
   assertProviderNotInGroupWidget,
   assertGroupWidgetShowsCount,
 } from './helpers/group-provider-helpers'
-import { createLocalProvider, deleteProvider } from './helpers/provider-helpers'
-import { goToProvidersPage, waitForProvidersPageLoad } from './helpers/navigation-helpers'
+import { createLocalProvider, deleteProvider, disableProvider } from './helpers/provider-helpers'
+import { goToProvidersPage } from './helpers/navigation-helpers'
+import { byTestId } from '../testid'
 
 test.describe('LLM Provider Assignment in User Groups', () => {
   test('should pass accessibility checks on user groups page with widget', async ({
@@ -93,19 +94,18 @@ test.describe('LLM Provider Assignment in User Groups', () => {
     await goToUserGroupsPage(page, baseURL)
     await openProviderAssignmentDrawerFromGroup(page, groupName)
 
-    // Verify drawer is open with correct title
-    await expect(
-      page.locator(`.ant-drawer-title:has-text("Assign LLM Providers - ${groupName}")`)
-    ).toBeVisible()
+    // Drawer is open (save button present) and the provider card appears.
+    await expect(byTestId(page, 'llm-group-providers-save-btn')).toBeVisible()
 
-    // Verify provider appears in the drawer
-    await expect(page.locator(`.ant-drawer.ant-drawer-open:has-text("${providerName}")`)).toBeVisible()
+    const providerCard = page
+      .locator('[data-testid^="llm-group-provider-card-"]')
+      .filter({ hasText: providerName })
+      .first()
+    await expect(providerCard).toBeVisible()
 
-    // Verify switch exists
-    const providerCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("${providerName}")`
-    )
-    const switchElement = providerCard.locator('.ant-switch')
+    const switchElement = providerCard
+      .locator('[data-testid^="llm-group-provider-switch-"]')
+      .first()
     await expect(switchElement).toBeVisible()
 
     // Close drawer
@@ -214,28 +214,28 @@ test.describe('LLM Provider Assignment in User Groups', () => {
 
     // Disable the provider
     await goToProvidersPage(page, baseURL)
-    await waitForProvidersPageLoad(page)
-    const providerMenuItem = page.locator(`[role="menu"] [role="menuitem"]:has-text("${providerName}")`)
-    await providerMenuItem.click()
-    const toggle = page.locator(`.ant-switch[aria-label*="${providerName}"]`)
-    await toggle.click()
-    await page.waitForTimeout(500)
+    await disableProvider(page, providerName)
 
     // Open drawer and verify disabled provider is shown and can be assigned
     await goToUserGroupsPage(page, baseURL)
     await openProviderAssignmentDrawerFromGroup(page, groupName)
 
     // Verify provider appears even though it's disabled
-    const providerCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("${providerName}")`
-    ).first()
+    const providerCard = page
+      .locator('[data-testid^="llm-group-provider-card-"]')
+      .filter({ hasText: providerName })
+      .first()
     await expect(providerCard).toBeVisible()
 
-    // Verify it shows "Disabled" tag
-    await expect(providerCard.locator('.ant-tag:has-text("Disabled")').first()).toBeVisible()
+    // Verify it shows a "Disabled" status tag
+    await expect(
+      providerCard.locator('[data-testid^="llm-group-provider-status-tag-"]')
+    ).toContainText('Disabled')
 
     // Verify we can still toggle it
-    const switchElement = providerCard.locator('.ant-switch').first()
+    const switchElement = providerCard
+      .locator('[data-testid^="llm-group-provider-switch-"]')
+      .first()
     await expect(switchElement).toBeEnabled()
 
     // Close drawer
@@ -335,14 +335,16 @@ test.describe('LLM Provider Assignment in User Groups', () => {
     await openProviderAssignmentDrawerFromGroup(page, groupName)
 
     // Look for Ollama (which is built-in)
-    const ollamaCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("Ollama")`
-    )
+    const ollamaCard = page
+      .locator('[data-testid^="llm-group-provider-card-"]')
+      .filter({ hasText: 'Ollama' })
 
     // If Ollama exists, verify it has Built-in tag
     const ollamaCount = await ollamaCard.count()
     if (ollamaCount > 0) {
-      await expect(ollamaCard.locator('.ant-tag:has-text("Built-in")')).toBeVisible()
+      await expect(
+        ollamaCard.first().locator('[data-testid^="llm-group-provider-builtin-tag-"]')
+      ).toBeVisible()
     }
 
     // Close drawer
@@ -368,10 +370,13 @@ test.describe('LLM Provider Assignment in User Groups', () => {
     await openProviderAssignmentDrawerFromGroup(page, groupName)
 
     // Get the provider card and switch
-    const providerCard = page.locator(
-      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("${providerName}")`
-    )
-    const switchElement = providerCard.locator('.ant-switch')
+    const providerCard = page
+      .locator('[data-testid^="llm-group-provider-card-"]')
+      .filter({ hasText: providerName })
+      .first()
+    const switchElement = providerCard
+      .locator('[data-testid^="llm-group-provider-switch-"]')
+      .first()
 
     // Verify initially unchecked
     await expect(switchElement).toHaveAttribute('aria-checked', 'false')

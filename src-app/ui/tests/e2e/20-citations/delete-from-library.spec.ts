@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — deleting a citation from the library through the UI (audit gap
@@ -63,37 +64,28 @@ test.describe('Citations library — delete via the card', () => {
     try {
       // --- The UI lists it via the REAL GET /api/citations ---
       await page.goto(`${baseURL}/settings/citations`)
-      await expect(
-        page.getByRole('heading', { name: 'Citations' }),
-      ).toBeVisible({ timeout: 10000 })
-      await expect(page.getByText(title)).toBeVisible({ timeout: 10000 })
+      await expect(byTestId(page, 'cite-settings-card')).toBeVisible({ timeout: 10000 })
+      const card = byTestId(page, `cite-card-${entryId}`)
+      await expect(card).toBeVisible({ timeout: 10000 })
 
       // --- Drive the per-card Delete: button → Popconfirm → confirm ---
-      // The card's Delete button is aria-labelled `Delete <citation_key>`.
-      await page
-        .getByRole('button', { name: `Delete ${citationKey}` })
-        .click()
+      await byTestId(page, `cite-card-delete-button-${entryId}`).click()
 
-      // Confirm the Popconfirm and capture the REAL DELETE round-trip.
-      const popconfirm = page.locator('.ant-popconfirm:visible').last()
-      await expect(popconfirm).toBeVisible({ timeout: 5000 })
-
+      // Capture the REAL DELETE round-trip fired by the confirm control.
       const deleteResp = page.waitForResponse(
         r =>
           r.request().method() === 'DELETE' &&
           new RegExp(`/api/citations/${entryId}$`).test(r.url()),
         { timeout: 15000 },
       )
-      // The Popconfirm's confirm button carries danger styling; "OK" is the
-      // default confirm label.
-      await popconfirm.getByRole('button', { name: 'OK' }).click()
+      await byTestId(page, `cite-card-delete-confirm-${entryId}`).click()
 
       const resp = await deleteResp
       expect(resp.status(), 'DELETE /api/citations/{id} succeeded').toBeLessThan(300)
       deleted = true
 
       // The row leaves the live list (the store removed it + refetched).
-      await expect(page.getByText(title)).toHaveCount(0, { timeout: 10000 })
+      await expect(card).toHaveCount(0, { timeout: 10000 })
     } finally {
       // Belt-and-suspenders: if the UI delete didn't land, clean up via API.
       if (!deleted) {

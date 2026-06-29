@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — WorkflowElicitForm submit-VALIDATION error display
@@ -88,12 +89,12 @@ test.describe('Workflows - elicit form submit validation', () => {
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-elicit-validate')
-    await page.getByText('Workflow page', { exact: true }).first().click()
-    await expect(page.getByText(/input required/i)).toBeVisible({ timeout: 15000 })
+    await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
+    await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({ timeout: 15000 })
 
     // Submit without filling the required `label` → the validation Alert renders.
-    await page.getByTestId('elicitation-submit').click()
-    await expect(page.getByText('Please fix the highlighted fields')).toBeVisible({
+    await byTestId(page, 'wf-elicit-submit-btn').click()
+    await expect(byTestId(page, 'wf-elicit-error-alert')).toBeVisible({
       timeout: 10000,
     })
   })

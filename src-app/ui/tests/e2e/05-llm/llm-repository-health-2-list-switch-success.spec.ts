@@ -32,18 +32,18 @@ test('list Switch ON against a healthy mock enables the row + no Alert', async (
     await waitForRepositoriesPageLoad(page)
 
     const row = repoRow(page, name)
-    const toggle = row.locator('.ant-switch')
+    const toggle = row.locator('[data-testid^="llmrepo-toggle-"]').first()
     await expect(toggle).toHaveAttribute('aria-checked', 'false')
 
     await toggle.click()
 
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({
+    await expect(page.locator('[data-sonner-toast][data-type="success"]').first()).toBeVisible({
       timeout: 10_000,
     })
     await expect(toggle).toHaveAttribute('aria-checked', 'true', {
       timeout: 10_000,
     })
-    await expect(row.locator('.ant-alert-error')).toHaveCount(0)
+    await expect(row.locator('[data-testid^="llmrepo-health-alert-"]')).toHaveCount(0)
   } finally {
     await mock.dispose()
   }

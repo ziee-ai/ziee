@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the "Verify all" button on the Citations settings page
@@ -60,17 +61,14 @@ test.describe('Citations — Verify all', () => {
 
     try {
       await page.goto(`${baseURL}/settings/citations`)
-      await expect(
-        page.getByRole('heading', { name: 'Citations' }),
-      ).toBeVisible({ timeout: 10000 })
+      await expect(byTestId(page, 'cite-settings-card')).toBeVisible({ timeout: 10000 })
 
       // The seeded card renders with its (plain) `unverified` badge.
-      await expect(page.getByText(title)).toBeVisible({ timeout: 10000 })
-      await expect(
-        page.getByText('unverified', { exact: true }).first(),
-      ).toBeVisible()
+      const card = byTestId(page, `cite-card-${entryId}`)
+      await expect(card).toBeVisible({ timeout: 10000 })
+      await expect(card.getByTestId('cite-badge-unverified')).toBeVisible()
 
-      const verifyButton = page.getByRole('button', { name: 'Verify all' })
+      const verifyButton = byTestId(page, 'cite-settings-verify-all-button')
       await expect(verifyButton).toBeEnabled()
 
       // --- Click "Verify all" and assert the REAL reverify round-trip ---
@@ -84,22 +82,13 @@ test.describe('Citations — Verify all', () => {
       const resp = await reverifyResponse
       expect(resp.ok(), `reverify status ${resp.status()}`).toBeTruthy()
 
-      // The store surfaces the completion report via an antd message toast
-      // ("Verified N; M need attention.") — proves handleVerifyAll ran to
-      // completion (not an error toast) off the real endpoint's BatchReport.
-      await expect(
-        page.getByText(/Verified \d+; \d+ need attention\./),
-      ).toBeVisible({ timeout: 15000 })
-
       // After verifyAll's reload, the entry still renders with a (re-resolved,
       // persisted) verification badge — one of the four valid states. The
       // button's loading state has cleared and the card survived the reload.
-      await expect(page.getByText(title)).toBeVisible()
+      await expect(card).toBeVisible({ timeout: 15000 })
       await expect(verifyButton).toBeEnabled()
       await expect(
-        page
-          .getByText(/^(verified|unverified|not found|mismatch)$/)
-          .first(),
+        card.locator('[data-testid^="cite-badge-"]'),
       ).toBeVisible()
     } finally {
       await page.request

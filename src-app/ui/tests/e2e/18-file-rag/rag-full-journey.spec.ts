@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   createProviderViaAPI,
   createModelViaAPI,
@@ -75,14 +76,9 @@ async function writeBeaconDoc(): Promise<string> {
 async function enableDocumentRagDeploymentWide(page: import('@playwright/test').Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/file-rag-admin`)
 
-  const card = page.locator(
-    '.ant-card:has([aria-label="Enable Document RAG deployment-wide"])',
-  )
-  await expect(card).toBeVisible({ timeout: 30000 })
+  await expect(byTestId(page, 'filerag-enable-card')).toBeVisible({ timeout: 30000 })
 
-  const enableSwitch = card.getByRole('switch', {
-    name: 'Enable Document RAG deployment-wide',
-  })
+  const enableSwitch = byTestId(page, 'filerag-enable-switch')
   // Idempotent enable — only flip when currently off.
   if ((await enableSwitch.getAttribute('aria-checked')) !== 'true') {
     await enableSwitch.click()
@@ -94,11 +90,8 @@ async function enableDocumentRagDeploymentWide(page: import('@playwright/test').
       r.request().method() === 'PUT' &&
       r.status() === 200,
   )
-  await card.getByRole('button', { name: 'Save' }).click()
+  await byTestId(page, 'filerag-enable-save').click()
   await saveResp
-  await expect(
-    page.getByText('Document search settings saved.'),
-  ).toBeVisible({ timeout: 30000 })
 }
 
 test.describe('Document RAG — full journey (configure → upload → retrieve)', () => {

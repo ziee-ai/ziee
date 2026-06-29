@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — workflow run-progress SSE reconnection.
@@ -85,38 +86,47 @@ test.describe('Workflows - run-progress SSE reconnect', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-sse-reconnect')
 
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+    await byTestId(page, 'wf-detail-run-btn').click()
+    await expect(byTestId(page, 'wf-run-dialog')).toBeVisible({
       timeout: 10000,
     })
 
-    const topicField = page.getByLabel('topic')
+    const topicField = byTestId(page, 'wf-run-input-topic')
     if (await topicField.count()) {
       await topicField.first().fill('the water cycle')
     } else {
-      await page.getByPlaceholder(/"topic"/).fill('{ "topic": "the water cycle" }')
+      await byTestId(page, 'wf-run-json-textarea').fill(
+        '{ "topic": "the water cycle" }',
+      )
     }
-    const modelSelect = page.getByLabel('Model')
-    await modelSelect.click()
-    await page.getByRole('option', { name: /Claude Haiku 4\.5/ }).first().click()
-    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+    await byTestId(page, 'wf-run-model-select').click()
+    await page
+      .locator('[data-testid^="wf-run-model-select-opt-"]')
+      .first()
+      .click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
     // The progress view mounts + the SSE stream connects.
-    await expect(page.getByText('Run progress')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toBeVisible({
+      timeout: 15000,
+    })
 
     // Drop the network mid-run → the client loses its stream and the view shows
     // the "reconnecting…" warning (run is still non-terminal on the client).
     await context.setOffline(true)
-    await expect(page.getByText('reconnecting…')).toBeVisible({ timeout: 20000 })
+    await expect(byTestId(page, 'wf-progress-reconnecting')).toBeVisible({
+      timeout: 20000,
+    })
 
     // Restore the network → the client reconnects, the warning clears, and the
     // run reaches a terminal status.
     await context.setOffline(false)
-    await expect(page.getByText('reconnecting…')).toHaveCount(0, {
+    await expect(byTestId(page, 'wf-progress-reconnecting')).toHaveCount(0, {
       timeout: 30000,
     })
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 60000 })
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 60000 },
+    )
   })
 })

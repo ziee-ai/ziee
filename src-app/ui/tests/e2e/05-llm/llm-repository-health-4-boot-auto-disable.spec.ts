@@ -70,11 +70,11 @@ test('boot-time probe auto-disables a failing enabled row on next mount', async 
 
     const row = repoRow(page, name)
     await expect(row).toBeVisible()
-    await expect(row.locator('.ant-switch')).toHaveAttribute(
+    await expect(row.locator('[data-testid^="llmrepo-toggle-"]').first()).toHaveAttribute(
       'aria-checked',
       'false',
     )
-    await expect(row.locator('.ant-alert-error').first()).toBeVisible({
+    await expect(row.locator('[data-testid^="llmrepo-health-alert-"]').first()).toBeVisible({
       timeout: 10_000,
     })
   } finally {

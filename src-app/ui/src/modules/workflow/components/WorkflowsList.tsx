@@ -20,6 +20,7 @@ export function WorkflowsList() {
 
   return (
     <SettingsPageContainer
+      data-testid="wf-list-page-title"
       title="Workflows"
       subtitle="Declarative multi-step LLM chains you can run on demand"
     >

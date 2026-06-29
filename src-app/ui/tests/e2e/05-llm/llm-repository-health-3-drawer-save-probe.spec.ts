@@ -16,6 +16,7 @@ import {
   waitForRepositoriesPageLoad,
 } from './helpers/repository-helpers'
 import { RepoHealthMock } from './helpers/repository-health-mock'
+import { byTestId } from '../testid'
 import {
   seedRepository,
   uniqueRepoName,
@@ -38,39 +39,36 @@ test('drawer Enabled toggle: 401 reverts + Alert; flipping mock to 200 enables',
     await waitForRepositoriesPageLoad(page)
 
     const row = repoRow(page, name)
-    await row.locator('button:has-text("Edit")').click()
+    await row.locator('[data-testid^="llmrepo-edit-btn-"]').first().click()
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await drawer.locator('.ant-drawer-title').waitFor({ state: 'visible' })
+    await byTestId(page, 'llmrepo-form').waitFor({ state: 'visible' })
 
-    const drawerSwitch = drawer.locator(
-      'button.ant-switch[aria-label="Enable repository"]',
-    )
+    const drawerSwitch = byTestId(page, 'llmrepo-form-enabled-switch')
     await expect(drawerSwitch).toHaveAttribute('aria-checked', 'false')
 
     await drawerSwitch.click()
 
     // 401 → error toast + Switch snaps back off + body-top Alert renders.
-    await expect(page.locator('.ant-message-error').first()).toBeVisible({
+    await expect(page.locator('[data-sonner-toast][data-type="error"]').first()).toBeVisible({
       timeout: 15_000,
     })
     await expect(drawerSwitch).toHaveAttribute('aria-checked', 'false', {
       timeout: 10_000,
     })
-    await expect(drawer.locator('.ant-alert-error').first()).toBeVisible({
+    await expect(byTestId(page, 'llmrepo-drawer-health-alert').first()).toBeVisible({
       timeout: 10_000,
     })
 
     // Flip mock to 200; click again — Switch sticks + Alert disappears.
     mock.respondWith(200)
     await drawerSwitch.click()
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({
+    await expect(page.locator('[data-sonner-toast][data-type="success"]').first()).toBeVisible({
       timeout: 10_000,
     })
     await expect(drawerSwitch).toHaveAttribute('aria-checked', 'true', {
       timeout: 10_000,
     })
-    await expect(drawer.locator('.ant-alert-error')).toHaveCount(0)
+    await expect(byTestId(page, 'llmrepo-drawer-health-alert')).toHaveCount(0)
   } finally {
     await mock.dispose()
   }

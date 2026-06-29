@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * DownloadIndicatorWidget (sidebarBottom slot). The widget self-hides when
@@ -60,13 +61,14 @@ test.describe('LLM Providers - download indicator widget', () => {
 
     // The badge appears (one active download). Click the indicator to open the
     // popover.
-    const indicator = page.locator('.anticon-download').first()
+    const indicator = byTestId(page, 'llm-download-indicator-badge')
     await expect(indicator).toBeVisible({ timeout: 30000 })
     await indicator.click()
 
-    // The "Downloads" popover lists the in-flight download.
-    await expect(page.getByText('Downloads')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('Active Downloads (1)')).toBeVisible()
-    await expect(page.getByText('Tiny Test Model')).toBeVisible()
+    // The "Downloads" popover lists the in-flight download: exactly one
+    // active download item card, carrying the (dynamic) display name.
+    const items = page.locator('[data-testid="llm-download-item-card"]')
+    await expect(items).toHaveCount(1, { timeout: 10000 })
+    await expect(items.first()).toContainText('Tiny Test Model')
   })
 })

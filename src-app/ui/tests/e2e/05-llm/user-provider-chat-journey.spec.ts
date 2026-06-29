@@ -13,6 +13,7 @@ import {
   sendChatMessage,
   getLastMessageContent,
 } from '../09-chat/helpers/chat-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — a USER-configured provider key is actually usable for a real chat
@@ -127,14 +128,12 @@ test.describe('User LLM provider — personal key drives a real chat', () => {
     // 4) The user saves THEIR OWN valid key on the user-providers page.
     await page.goto(`${baseURL}/settings/user-llm-providers`)
     await page.waitForLoadState('load')
-    await page.getByRole('menuitem', { name: providerName }).first().click()
-    await page
-      .getByPlaceholder('Enter your API key (e.g. sk-...)')
-      .fill(realKey)
-    const saveBtn = page.getByRole('button', { name: 'Save Key' })
+    await byTestId(page, `ullm-provider-menu-item-${provider.id}`).first().click()
+    await byTestId(page, 'ullm-key-password-input').fill(realKey)
+    const saveBtn = byTestId(page, 'ullm-save-key-button')
     await expect(saveBtn).toBeEnabled()
     await saveBtn.click()
-    await expect(page.getByText('Your key configured')).toBeVisible({ timeout: 15_000 })
+    await expect(byTestId(page, 'ullm-key-status-tag')).toContainText('Your key configured', { timeout: 15_000 })
 
     // 5) The user chats with the Haiku model — success proves the personal
     //    key was used (the system key is invalid).

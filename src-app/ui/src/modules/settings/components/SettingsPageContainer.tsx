@@ -6,12 +6,14 @@ interface SettingsPageContainerProps {
   title: string | ReactNode
   subtitle?: string
   children: ReactNode
+  'data-testid'?: string
 }
 
 export function SettingsPageContainer({
   title,
   subtitle,
   children,
+  'data-testid': testid,
 }: SettingsPageContainerProps) {
   const titleId = useId()
   return (
@@ -29,7 +31,7 @@ export function SettingsPageContainer({
           <Title
             level={4}
             id={titleId}
-            data-testid="settings-page-title"
+            data-testid={testid ?? 'settings-page-title'}
             className="!m-0 !leading-tight"
           >
             {title}

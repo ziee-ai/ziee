@@ -39,14 +39,14 @@ test('list reloads on auto_disabled event without a manual refresh', async ({
 
     const row = repoRow(page, name)
     // Initial mount: status is 'untested' (no Alert).
-    await expect(row.locator('.ant-alert-error')).toHaveCount(0)
+    await expect(row.locator('[data-testid^="llmrepo-health-alert-"]')).toHaveCount(0)
 
     // Click Switch → backend probe fails → auto_disabled event →
     // store re-fetches list → row now has 'unhealthy' status →
     // Alert renders WITHOUT page.reload().
-    await row.locator('.ant-switch').click()
+    await row.locator('[data-testid^="llmrepo-toggle-"]').first().click()
 
-    await expect(row.locator('.ant-alert-error').first()).toBeVisible({
+    await expect(row.locator('[data-testid^="llmrepo-health-alert-"]').first()).toBeVisible({
       timeout: 10_000,
     })
   } finally {

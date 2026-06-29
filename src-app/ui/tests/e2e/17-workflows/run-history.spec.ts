@@ -10,6 +10,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * A4/A5 — the Runs tab: a completed run lists with its invocation-source badge
@@ -88,59 +89,59 @@ test.describe('Workflows - run history (Runs tab) (real LLM)', () => {
     // Run once. The drawer Run button has a PlayCircle icon → accessible name
     // "play-circle Run"; match the trailing "Run" (the dialog OK button below
     // is a plain exact "Run").
-    await page.getByRole('button', { name: /Run$/ }).first().click()
-    // The Run dialog (a Modal titled "Run <workflow>") opened — target it by
-    // dialog role + name, not getByText(/^Run /), which also matches the
-    // drawer's "Run tests" button text behind the modal (strict-mode clash).
-    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+    await byTestId(page, 'wf-detail-run-btn').click()
+    // The Run dialog (titled "Run <workflow>") opened — target it by testid.
+    await expect(byTestId(page, 'wf-run-dialog')).toBeVisible({
       timeout: 10000,
     })
-    const topicField = page.getByLabel('topic')
+    const topicField = byTestId(page, 'wf-run-input-topic')
     if (await topicField.count()) {
       await topicField.first().fill('photosynthesis')
     } else {
-      await page.getByPlaceholder(/"topic"/).fill('{ "topic": "photosynthesis" }')
+      await byTestId(page, 'wf-run-json-textarea').fill(
+        '{ "topic": "photosynthesis" }',
+      )
     }
-    await page.getByLabel('Model').click()
-    await page.getByRole('option', { name: /Claude Haiku 4\.5/ }).first().click()
-    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+    await byTestId(page, 'wf-run-model-select').click()
+    await page
+      .locator('[data-testid^="wf-run-model-select-opt-"]')
+      .first()
+      .click()
+    await byTestId(page, 'wf-run-submit-btn').click()
 
-    // Wait for the run to complete. Both the run-level status Tag and the
-    // step's status Tag read "completed", so target the first (the header tag).
-    await expect(
-      page.getByText('completed', { exact: true }).first(),
-    ).toBeVisible({ timeout: 60000 })
+    // Wait for the run to complete (the run-level status tag reads "completed").
+    await expect(byTestId(page, 'wf-progress-status-tag')).toContainText(
+      'completed',
+      { timeout: 60000 },
+    )
 
     // The Runs section lists the run with the "Workflow page" source badge.
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await expect(
-      page.getByText('Workflow page', { exact: true }).first(),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    const sourceTag = page.locator('[data-testid^="wf-run-source-tag-"]')
+    await expect(sourceTag.first()).toBeVisible({ timeout: 15000 })
+    await expect(sourceTag.first()).toContainText('Workflow page')
 
     // Click the run row → the run-progress view shows it.
-    await page.getByText('Workflow page', { exact: true }).first().click()
-    await expect(page.getByText('Run progress')).toBeVisible({ timeout: 10000 })
+    await sourceTag.first().click()
+    await expect(byTestId(page, 'wf-progress-status-tag')).toBeVisible({
+      timeout: 10000,
+    })
 
-    // Delete the run from the Runs list → Popconfirm → confirm. The per-row
-    // delete is an icon-only Button whose accessible name is exactly "delete"
-    // (the DeleteOutlined icon's aria-label). Match it exactly so we don't grab
-    // the drawer's workflow "delete Delete" button (which a bare /delete/i would
-    // hit first in DOM order, deleting the workflow instead of the run).
-    const deleteBtn = page
-      .getByRole('button', { name: 'delete', exact: true })
-      .first()
-    await deleteBtn.click()
-    // Popconfirm: "Delete this run?" with an OK button labeled "Delete".
-    await expect(page.getByText(/delete this run\?/i)).toBeVisible()
+    // Delete the run from the Runs list → Confirm → confirm. The per-row delete
+    // is an icon-only Button; the workflow-level delete lives in the drawer
+    // footer with a distinct testid, so this only targets the run row's delete.
+    await page.locator('[data-testid^="wf-run-delete-btn-"]').first().click()
+    // Confirm popover: "Delete this run?" with an OK button labeled "Delete".
+    await expect(
+      page.locator('[data-testid^="wf-run-delete-confirm-"]').first(),
+    ).toBeVisible()
     await page
-      .getByRole('button', { name: 'Delete', exact: true })
-      .last()
+      .locator('[data-testid^="wf-run-delete-confirm-"][data-testid$="-confirm"]')
+      .first()
       .click()
 
     // The run row is gone from the list.
-    await expect(
-      page.getByText('Workflow page', { exact: true }),
-    ).toHaveCount(0, { timeout: 15000 })
+    await expect(sourceTag).toHaveCount(0, { timeout: 15000 })
   })
 
   test('cancelling the delete Popconfirm keeps the run in the list', async ({
@@ -187,20 +188,23 @@ test.describe('Workflows - run history (Runs tab) (real LLM)', () => {
     await openWorkflowCard(page, 'e2e-history-cancel-wf')
 
     // The run lists in the Runs tab.
-    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
-    await expect(
-      page.getByText('Workflow page', { exact: true }).first(),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
+    const sourceTag = page.locator('[data-testid^="wf-run-source-tag-"]')
+    await expect(sourceTag.first()).toBeVisible({ timeout: 15000 })
 
-    // Open the per-row delete Popconfirm, then CANCEL it.
-    await page.getByRole('button', { name: 'delete', exact: true }).first().click()
-    await expect(page.getByText(/delete this run\?/i)).toBeVisible()
-    await page.getByRole('button', { name: 'Cancel', exact: true }).last().click()
+    // Open the per-row delete Confirm, then CANCEL it.
+    await page.locator('[data-testid^="wf-run-delete-btn-"]').first().click()
+    const confirm = page.locator('[data-testid^="wf-run-delete-confirm-"]')
+    await expect(confirm.first()).toBeVisible()
+    await page
+      .locator('[data-testid^="wf-run-delete-confirm-"][data-testid$="-cancel"]')
+      .first()
+      .click()
 
     // The run row is still present (cancel did not delete it).
-    await expect(page.getByText(/delete this run\?/i)).toHaveCount(0, { timeout: 10000 })
     await expect(
-      page.getByText('Workflow page', { exact: true }).first(),
-    ).toBeVisible()
+      page.locator('[data-testid^="wf-run-delete-confirm-"][data-testid$="-cancel"]'),
+    ).toHaveCount(0, { timeout: 10000 })
+    await expect(sourceTag.first()).toBeVisible()
   })
 })

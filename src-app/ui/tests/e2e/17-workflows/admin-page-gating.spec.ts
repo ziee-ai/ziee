@@ -7,6 +7,7 @@ import {
   assertAdminWorkflowsEmptyState,
   goToAdminWorkflowsPage,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 test.describe('Workflows - Admin page gating', () => {
   test('admin can view the System Workflows page', async ({
@@ -17,13 +18,7 @@ test.describe('Workflows - Admin page gating', () => {
     await loginAsAdmin(page, baseURL)
     await goToAdminWorkflowsPage(page, baseURL)
 
-    await expect(
-      page.getByRole('heading', {
-        level: 4,
-        name: 'System Workflows',
-        exact: true,
-      }),
-    ).toBeVisible()
+    await expect(byTestId(page, 'wf-admin-page-title')).toBeVisible()
 
     // Fresh DB → no system workflows installed.
     await assertAdminWorkflowsEmptyState(page)
@@ -50,9 +45,7 @@ test.describe('Workflows - Admin page gating', () => {
 
     await page.goto(`${baseURL}/settings/workflows-admin`)
 
-    await expect(page.getByText(/not authorized/i)).toBeVisible()
-    await expect(
-      page.getByRole('heading', { name: 'System Workflows', exact: true }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
+    await expect(byTestId(page, 'wf-admin-page-title')).toHaveCount(0)
   })
 })

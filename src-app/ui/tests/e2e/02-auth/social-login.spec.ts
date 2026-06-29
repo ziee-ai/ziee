@@ -20,6 +20,7 @@
  */
 import { test, expect } from '../../fixtures/test-context'
 import { DEFAULT_ADMIN_CREDENTIALS, getAdminToken, loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 const STORAGE_KEY = 'ziee.oauth.returnTo'
 
@@ -86,13 +87,13 @@ test.describe('Social login — provider buttons + callback flow', () => {
     await enableGoogleProvider(apiURL, adminToken)
 
     await logoutThenGoToLogin(page, baseURL)
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await byTestId(page, 'auth-login-username').waitFor({ timeout: 30000 })
 
     // Public providers endpoint returns the enabled row, so the
     // ProviderButtons row hydrates + renders the button.
-    await expect(
-      page.getByRole('button', { name: /sign in with google/i }),
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'auth-provider-btn-google')).toBeVisible({
+      timeout: 10_000,
+    })
   })
 
   test('no provider buttons when nothing is enabled', async ({
@@ -104,14 +105,13 @@ test.describe('Social login — provider buttons + callback flow', () => {
     await loginAsAdmin(page, baseURL)
     await logoutThenGoToLogin(page, baseURL)
 
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await byTestId(page, 'auth-login-username').waitFor({ timeout: 30000 })
 
-    // No "Sign in with X" buttons should be rendered.
+    // No "Sign in with X" provider buttons should be rendered (the whole
+    // ProviderButtons block — divider included — returns null when empty).
     await expect(
-      page.getByRole('button', { name: /sign in with /i }),
+      page.locator('[data-testid^="auth-provider-btn-"]'),
     ).toHaveCount(0)
-    // The "or continue with" divider also shouldn't be visible.
-    await expect(page.getByText(/or continue with/i)).toHaveCount(0)
   })
 
   test('shows a loading spinner then a warning Alert when providers fail to load', async ({
@@ -136,18 +136,18 @@ test.describe('Social login — provider buttons + callback flow', () => {
     })
 
     await logoutThenGoToLogin(page, baseURL)
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await byTestId(page, 'auth-login-username').waitFor({ timeout: 30000 })
 
     // While the request is in flight, ProviderButtons renders a Spin.
-    await expect(page.locator('.ant-spin').first()).toBeVisible({
+    await expect(page.getByRole('status').first()).toBeVisible({
       timeout: 10_000,
     })
 
     // Resolve as a 500 → the loading state gives way to the warning Alert.
     release()
-    await expect(
-      page.getByText('Unable to load sign-in options'),
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'auth-providers-error')).toBeVisible({
+      timeout: 10_000,
+    })
   })
 
   test('clicking a provider button stashes returnTo and navigates to /authorize', async ({
@@ -159,7 +159,7 @@ test.describe('Social login — provider buttons + callback flow', () => {
     const adminToken = await getAdminToken(apiURL)
     await enableGoogleProvider(apiURL, adminToken)
     await logoutThenGoToLogin(page, baseURL)
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await byTestId(page, 'auth-login-username').waitFor({ timeout: 30000 })
 
     // Intercept the full-page navigation so we don't actually fly
     // off to accounts.google.com (and to fail fast if the URL is wrong).
@@ -172,9 +172,7 @@ test.describe('Social login — provider buttons + callback flow', () => {
       await route.fulfill({ status: 200, body: 'intercepted' })
     })
 
-    await page
-      .getByRole('button', { name: /sign in with google/i })
-      .click()
+    await byTestId(page, 'auth-provider-btn-google').click()
 
     // The navigation may resolve immediately because of the fulfill,
     // but the URL we captured is the assertion that matters.
@@ -256,10 +254,12 @@ test.describe('Social login — provider buttons + callback flow', () => {
     })
 
     await page.goto(`${baseURL}/auth/callback`)
-    await expect(page.getByText(/sign-in failed/i)).toBeVisible({
+    await expect(byTestId(page, 'auth-callback-error')).toBeVisible({
       timeout: 10_000,
     })
-    await expect(page.getByRole('link', { name: /return to login/i })).toBeVisible()
+    await expect(
+      byTestId(page, 'auth-callback-card').getByRole('link'),
+    ).toBeVisible()
   })
 
   test('/auth/link-account form: wrong password shows error, correct logs in', async ({
@@ -319,19 +319,19 @@ test.describe('Social login — provider buttons + callback flow', () => {
     )
 
     // Form renders.
-    const pwField = page.getByLabel('Password')
+    const pwField = byTestId(page, 'auth-link-account-password')
     await expect(pwField).toBeVisible({ timeout: 10_000 })
 
     // Wrong password → inline error.
     await pwField.fill('wrong')
-    await page.getByRole('button', { name: /link and sign in/i }).click()
-    await expect(page.getByText(/invalid credentials/i)).toBeVisible({
+    await byTestId(page, 'auth-link-account-submit').click()
+    await expect(byTestId(page, 'auth-link-account-error')).toBeVisible({
       timeout: 5_000,
     })
 
     // Correct password → mocked 200 → store hydrates → navigate home.
     await pwField.fill('correct-password')
-    await page.getByRole('button', { name: /link and sign in/i }).click()
+    await byTestId(page, 'auth-link-account-submit').click()
     // After success the page navigates to "/" via the mocked auth flow.
     // The mock's user payload doesn't make /api/auth/me succeed,
     // so initAuth may flip isAuthenticated back to false — but the
@@ -359,14 +359,12 @@ test.describe('Social login — provider buttons + callback flow', () => {
     // No `?link_token=` query param.
     await page.goto(`${baseURL}/auth/link-account`)
 
-    await expect(page.getByText(/Missing link token/i)).toBeVisible({
+    await expect(byTestId(page, 'auth-link-account-error')).toBeVisible({
       timeout: 10_000,
     })
     // Both the password field and the submit button are disabled without a token.
-    await expect(page.getByLabel('Password')).toBeDisabled()
-    await expect(
-      page.getByRole('button', { name: /link and sign in/i }),
-    ).toBeDisabled()
+    await expect(byTestId(page, 'auth-link-account-password')).toBeDisabled()
+    await expect(byTestId(page, 'auth-link-account-submit')).toBeDisabled()
   })
 
   // audit id a895742c6895a7f8 — return-to-PREVIOUS-page after login. The

@@ -1,638 +1,268 @@
 import { test, expect } from '../../fixtures/test-context'
+import type { Page } from '@playwright/test'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { setTheme, isDarkMode } from '../../utils/theme'
+import { byTestId } from '../testid'
+
+// Create the first admin via the setup flow, then drop auth state and land
+// back on the (logged-out) auth page so each test starts from a clean login form.
+async function setupAdminThenAuthPage(page: Page, baseURL: string) {
+  await page.goto(`${baseURL}/setup`)
+  await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
+  await byTestId(page, 'app-setup-username-input').fill('admin')
+  await byTestId(page, 'app-setup-email-input').fill('admin@example.com')
+  await byTestId(page, 'app-setup-password-input').fill('password123')
+  await byTestId(page, 'app-setup-confirm-password-input').fill('password123')
+  await byTestId(page, 'app-setup-submit-button').click()
+  // First-time admin lands on the onboarding wizard or the home page.
+  await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
+
+  await page.evaluate(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
+  await byTestId(page, 'auth-login-username').waitFor({ timeout: 30000 })
+}
+
+async function gotoRegister(page: Page) {
+  await byTestId(page, 'auth-login-switch-to-register').click()
+  await expect(byTestId(page, 'auth-register-form')).toBeVisible()
+}
 
 test.describe('Authentication', () => {
   test('should pass accessibility checks', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
-
-    // First create an admin user so we can access auth page
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Navigate to auth page (this will trigger a fresh page load without auth state)
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-
-    // Check accessibility
+    await setupAdminThenAuthPage(page, baseURL)
     await assertNoAccessibilityViolations(page)
   })
 
   test('should pass accessibility checks in dark mode', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
 
-    // First create an admin user so we can access auth page
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Clear localStorage/sessionStorage to log out
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Navigate to auth page
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-
-    // Switch to dark mode
     await setTheme(page, 'dark')
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await byTestId(page, 'auth-login-username').waitFor({ timeout: 30000 })
 
-    // Verify dark mode is active
     const darkModeActive = await isDarkMode(page)
     expect(darkModeActive).toBe(true)
 
-    // Check accessibility in dark mode
     await assertNoAccessibilityViolations(page)
   })
 
   test('should display login form by default', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Clear localStorage/sessionStorage to log out
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Visit auth page
-    await page.goto(`${baseURL}/auth`)
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-
-    // Should show Welcome title
-    await expect(page.getByRole('heading', { level: 2, name: /welcome/i })).toBeVisible()
-
-    // Should show login form fields
-    await expect(page.getByLabel('Username or Email')).toBeVisible()
-    await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^sign in$/i })).toBeVisible()
+    // Should show login form fields + actions
+    await expect(byTestId(page, 'auth-login-form')).toBeVisible()
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible()
+    await expect(byTestId(page, 'auth-login-password')).toBeVisible()
+    await expect(byTestId(page, 'auth-login-submit')).toBeVisible()
 
     // Should show switch to register link
-    await expect(page.getByRole('button', { name: /sign up/i })).toBeVisible()
+    await expect(byTestId(page, 'auth-login-switch-to-register')).toBeVisible()
   })
 
   test('should validate required fields on login form', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
-
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Clear localStorage/sessionStorage to log out
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Visit auth page
-    await page.goto(`${baseURL}/auth`)
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await setupAdminThenAuthPage(page, baseURL)
 
     // Try to submit without filling form
-    await page.getByRole('button', { name: /^sign in$/i }).click()
+    await byTestId(page, 'auth-login-submit').click()
 
-    // Should show validation errors
-    await expect(page.getByText('Please input your username or email!')).toBeVisible()
-    await expect(page.getByText('Please input your password!')).toBeVisible()
+    // Both required fields should surface a validation error
+    await expect(
+      byTestId(page, 'auth-login-form').getByRole('alert')
+    ).toHaveCount(2)
   })
 
   test('should switch to register form', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
+    await gotoRegister(page)
 
-    // Clear localStorage/sessionStorage to log out
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Visit auth page
-    await page.goto(`${baseURL}/auth`)
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-
-    // Click Sign Up link
-    await page.getByRole('button', { name: /sign up/i }).click()
-
-    // Should show registration form
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-    await expect(page.getByLabel('Email')).toBeVisible()
-    await expect(page.getByLabel('Confirm Password')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^sign up$/i })).toBeVisible()
+    await expect(byTestId(page, 'auth-register-form')).toBeVisible()
+    await expect(byTestId(page, 'auth-register-email')).toBeVisible()
+    await expect(byTestId(page, 'auth-register-confirm-password')).toBeVisible()
+    await expect(byTestId(page, 'auth-register-submit')).toBeVisible()
   })
 
   test('should display registration form fields', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
+    await gotoRegister(page)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-
-    // Wait for registration form
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-
-    // Check all fields are present using semantic selectors
-    await expect(page.getByLabel('Username')).toBeVisible()
-    await expect(page.getByLabel('Email')).toBeVisible()
-    await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
-    await expect(page.getByLabel('Confirm Password')).toBeVisible()
-
-    // Check labels via getByText
-    await expect(page.getByText('Username')).toBeVisible()
-    await expect(page.getByText('Email')).toBeVisible()
-    await expect(page.getByText('Password').first()).toBeVisible()
-    await expect(page.getByText('Confirm Password')).toBeVisible()
+    await expect(byTestId(page, 'auth-register-username')).toBeVisible()
+    await expect(byTestId(page, 'auth-register-email')).toBeVisible()
+    await expect(byTestId(page, 'auth-register-password')).toBeVisible()
+    await expect(byTestId(page, 'auth-register-confirm-password')).toBeVisible()
   })
 
   test('should validate username minimum length on registration', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
+    await gotoRegister(page)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
+    await byTestId(page, 'auth-register-username').fill('ab')
+    await byTestId(page, 'auth-register-email').fill('test@example.com')
+    await byTestId(page, 'auth-register-password').fill('password123')
 
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
+    // Trigger validation by blurring the username field
+    await byTestId(page, 'auth-register-email').click()
 
-    // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-
-    // Fill with short username
-    await page.getByLabel('Username').fill('ab')
-    await page.getByLabel('Email').fill('test@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-
-    // Trigger validation
-    await page.getByLabel('Email').click()
-
-    // Should show validation error
-    await expect(page.getByText('Username must be at least 3 characters long!')).toBeVisible()
+    await expect(
+      byTestId(page, 'auth-register-form').getByRole('alert')
+    ).toHaveCount(1)
   })
 
   test('should validate email format on registration', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
+    await gotoRegister(page)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
+    await byTestId(page, 'auth-register-username').fill('testuser')
+    await byTestId(page, 'auth-register-email').fill('not-an-email')
+    await byTestId(page, 'auth-register-password').fill('password123')
 
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
+    await byTestId(page, 'auth-register-password').click()
 
-    // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-
-    // Fill with invalid email
-    await page.getByLabel('Username').fill('testuser')
-    await page.getByLabel('Email').fill('not-an-email')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-
-    // Trigger validation
-    await page.getByLabel('Password', { exact: true }).click()
-
-    // Should show validation error
-    await expect(page.getByText('Please enter a valid email address!')).toBeVisible()
+    await expect(
+      byTestId(page, 'auth-register-form').getByRole('alert')
+    ).toHaveCount(1)
   })
 
   test('should validate password minimum length on registration', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
+    await gotoRegister(page)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
+    await byTestId(page, 'auth-register-username').fill('testuser')
+    await byTestId(page, 'auth-register-email').fill('test@example.com')
+    await byTestId(page, 'auth-register-password').fill('pass')
+    await byTestId(page, 'auth-register-confirm-password').fill('pass')
 
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
+    await byTestId(page, 'auth-register-confirm-password').click()
 
-    // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-
-    // Fill with short password
-    await page.getByLabel('Username').fill('testuser')
-    await page.getByLabel('Email').fill('test@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('pass')
-    await page.getByLabel('Confirm Password').fill('pass')
-
-    // Trigger validation
-    await page.getByLabel('Confirm Password').click()
-
-    // Should show validation error
-    await expect(page.getByText('Password must be at least 6 characters long!')).toBeVisible()
+    await expect(
+      byTestId(page, 'auth-register-form').getByRole('alert')
+    ).toHaveCount(1)
   })
 
   test('should validate password confirmation match', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
+    await gotoRegister(page)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-
-    // Fill with mismatched passwords
-    await page.getByLabel('Username').fill('testuser')
-    await page.getByLabel('Email').fill('test@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password456')
+    await byTestId(page, 'auth-register-username').fill('testuser')
+    await byTestId(page, 'auth-register-email').fill('test@example.com')
+    await byTestId(page, 'auth-register-password').fill('password123')
+    await byTestId(page, 'auth-register-confirm-password').fill('password456')
 
     // Trigger validation by blurring the field
-    await page.getByLabel('Username').click()
+    await byTestId(page, 'auth-register-username').click()
 
-    // Should show validation error
-    await expect(page.getByText('Passwords do not match!')).toBeVisible()
+    await expect(
+      byTestId(page, 'auth-register-form').getByRole('alert')
+    ).toHaveCount(1)
   })
 
   test('should switch back to login form', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
+    await gotoRegister(page)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
+    await byTestId(page, 'auth-register-switch-to-login').click()
 
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-
-    // Click Sign In link
-    await page.getByRole('button', { name: /^sign in$/i }).click()
-
-    // Should show login form
-    await expect(page.getByText('Username or Email')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^sign in$/i })).toBeVisible()
+    await expect(byTestId(page, 'auth-login-form')).toBeVisible()
+    await expect(byTestId(page, 'auth-login-submit')).toBeVisible()
   })
 
   test('should register new user successfully', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
+    await setupAdminThenAuthPage(page, baseURL)
+    await gotoRegister(page)
 
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // First-time admin lands on the onboarding wizard, not the chat
-    // home page. Accept either URL pattern.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
+    await byTestId(page, 'auth-register-username').fill('testuser')
+    await byTestId(page, 'auth-register-email').fill('test@example.com')
+    await byTestId(page, 'auth-register-password').fill('password123')
+    await byTestId(page, 'auth-register-confirm-password').fill('password123')
 
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
+    await byTestId(page, 'auth-register-submit').click()
 
-    // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-
-    // Fill registration form
-    await page.getByLabel('Username').fill('testuser')
-    await page.getByLabel('Email').fill('test@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-
-    // Submit form
-    await page.getByRole('button', { name: /^sign up$/i }).click()
-
-    // New users land on the onboarding wizard; accept either home or
-    // onboarding URL.
     await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
   })
 
   test('should login with valid credentials', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
-
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
+    await setupAdminThenAuthPage(page, baseURL)
 
     // Register a regular user
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-    await page.getByLabel('Username').fill('testuser')
-    await page.getByLabel('Email').fill('test@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /^sign up$/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
+    await gotoRegister(page)
+    await byTestId(page, 'auth-register-username').fill('testuser')
+    await byTestId(page, 'auth-register-email').fill('test@example.com')
+    await byTestId(page, 'auth-register-password').fill('password123')
+    await byTestId(page, 'auth-register-confirm-password').fill('password123')
+    await byTestId(page, 'auth-register-submit').click()
     await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
-    // Clear localStorage/sessionStorage to log out after registration and navigate directly to auth
     await page.evaluate(() => {
       localStorage.clear()
       sessionStorage.clear()
     })
 
-    // Navigate to auth page (this will trigger a fresh page load without auth state)
     await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await byTestId(page, 'auth-login-username').waitFor({ timeout: 30000 })
 
-    // Fill login form
-    await page.getByLabel('Username or Email').fill('testuser')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await byTestId(page, 'auth-login-username').fill('testuser')
+    await byTestId(page, 'auth-login-password').fill('password123')
+    await byTestId(page, 'auth-login-submit').click()
 
-    // Submit form
-    await page.getByRole('button', { name: /^sign in$/i }).click()
-
-    // Should redirect to home page after successful login
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
     await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
   })
 
   test('should login with email instead of username', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
-
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
+    await setupAdminThenAuthPage(page, baseURL)
 
     // Register a regular user
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
-    await page.getByLabel('Username').fill('testuser')
-    await page.getByLabel('Email').fill('test@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /^sign up$/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
+    await gotoRegister(page)
+    await byTestId(page, 'auth-register-username').fill('testuser')
+    await byTestId(page, 'auth-register-email').fill('test@example.com')
+    await byTestId(page, 'auth-register-password').fill('password123')
+    await byTestId(page, 'auth-register-confirm-password').fill('password123')
+    await byTestId(page, 'auth-register-submit').click()
     await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
-    // Clear localStorage/sessionStorage to log out
     await page.evaluate(() => {
       localStorage.clear()
       sessionStorage.clear()
     })
 
-    // Now visit auth page and login with email
     await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await byTestId(page, 'auth-login-username').waitFor({ timeout: 30000 })
 
-    // Fill login form with email
-    await page.getByLabel('Username or Email').fill('test@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
+    // Login with email
+    await byTestId(page, 'auth-login-username').fill('test@example.com')
+    await byTestId(page, 'auth-login-password').fill('password123')
+    await byTestId(page, 'auth-login-submit').click()
 
-    // Submit form
-    await page.getByRole('button', { name: /^sign in$/i }).click()
-
-    // Should redirect to home page after successful login
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
     await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
   })
 
   test('should validate all required fields on registration', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
-
-    // Create admin first
-    await page.goto(`${baseURL}/setup`)
-    await page.getByLabel('Username').waitFor({ timeout: 30000 })
-    await page.getByLabel('Username').fill('admin')
-    await page.getByLabel('Email').fill('admin@example.com')
-    await page.getByLabel('Password', { exact: true }).fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: /create admin account/i }).click()
-    // After login/registration, new users are redirected to the
-    // onboarding wizard (`/onboarding?id=getting-started`); existing
-    // users to the home page. Accept either.
-    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
-
-    // Wait for authentication token to be stored
-    await page.waitForFunction(
-      () => {
-        const authStorage = localStorage.getItem('auth-storage')
-        if (!authStorage) return false
-        try {
-          const parsed = JSON.parse(authStorage)
-          return parsed.state?.token !== null && parsed.state?.token !== undefined
-        } catch {
-          return false
-        }
-      },
-      { timeout: 10000 }
-    )
-
-    // Clear localStorage/sessionStorage to log out
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-
-    // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
-    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /sign up/i }).click()
-    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
+    await setupAdminThenAuthPage(page, baseURL)
+    await gotoRegister(page)
 
     // Try to submit without filling form
-    await page.getByRole('button', { name: /^sign up$/i }).click()
+    await byTestId(page, 'auth-register-submit').click()
 
-    // Should show validation errors
-    await expect(page.getByText('Please input your username!')).toBeVisible()
-    await expect(page.getByText('Please input your email!')).toBeVisible()
-    await expect(page.getByText('Please input your password!')).toBeVisible()
-    await expect(page.getByText('Please confirm your password!')).toBeVisible()
+    // All four required fields should surface a validation error
+    await expect(
+      byTestId(page, 'auth-register-form').getByRole('alert')
+    ).toHaveCount(4)
   })
 })

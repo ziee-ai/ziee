@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Hardware settings USER INTERACTION (not just a page-load smoke test).
@@ -19,9 +20,9 @@ test.describe('Hardware Settings — monitor interaction', () => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+    await byTestId(page, 'hardware-os-card').waitFor({ timeout: 30000 })
 
-    const monitorButton = page.getByRole('button', { name: 'Monitor' })
+    const monitorButton = byTestId(page, 'hardware-monitor-btn')
     await expect(monitorButton).toBeVisible()
 
     const [popup] = await Promise.all([
@@ -33,9 +34,9 @@ test.describe('Hardware Settings — monitor interaction', () => {
     await expect(popup).toHaveURL(/\/hardware-monitor$/)
     // The popup renders the dedicated monitor view (sr-only h1 in
     // HardwareMonitor.tsx).
-    await expect(
-      popup.getByRole('heading', { name: 'Hardware Monitor' }),
-    ).toBeAttached({ timeout: 30000 })
+    await expect(byTestId(popup, 'hardware-monitor-heading')).toBeAttached({
+      timeout: 30000,
+    })
 
     await popup.close()
   })

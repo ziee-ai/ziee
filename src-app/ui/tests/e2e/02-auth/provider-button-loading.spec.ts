@@ -19,6 +19,7 @@
  */
 import { test, expect } from '../../fixtures/test-context'
 import { getAdminToken, loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Enable the pre-seeded `google` row (migration 47) with stub creds so
@@ -89,18 +90,18 @@ test.describe('Auth — provider-button loading + error states', () => {
 
     // The login form renders immediately; the ProviderButtons region
     // shows the spinner while the (delayed) providers fetch is pending.
-    await expect(page.getByLabel('Username or Email')).toBeVisible({
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.locator('.ant-spin').first()).toBeVisible({
+    await expect(page.getByRole('status').first()).toBeVisible({
       timeout: 5_000,
     })
 
     // Once the delayed response lands, the loaded branch renders the
     // real provider button — proving the loading→loaded transition.
-    await expect(
-      page.getByRole('button', { name: /sign in with google/i }),
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'auth-provider-btn-google')).toBeVisible({
+      timeout: 10_000,
+    })
   })
 
   test('shows the warning Alert when the providers fetch fails', async ({
@@ -125,11 +126,11 @@ test.describe('Auth — provider-button loading + error states', () => {
 
     await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
 
-    await expect(page.getByLabel('Username or Email')).toBeVisible({
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({
       timeout: 30_000,
     })
-    await expect(
-      page.getByText(/unable to load sign-in options/i),
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'auth-providers-error')).toBeVisible({
+      timeout: 10_000,
+    })
   })
 })

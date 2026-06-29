@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { setTheme, isDarkMode } from '../../utils/theme'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   goToProvidersPage,
   waitForProvidersPageLoad,
@@ -21,6 +22,12 @@ import {
   createProvider,
 } from './helpers/provider-helpers'
 import { submitProviderForm } from './helpers/form-helpers'
+
+// Header enable/disable switch carries the provider name in its aria-label
+// (`Enable/Disable ${name} provider`) — a durable, dynamic-data proof that the
+// detail header is rendered for this provider.
+const headerForProvider = (page: import('@playwright/test').Page, name: string) =>
+  page.locator(`[aria-label*="${name} provider"]`).first()
 
 test.describe('LLM Providers - List Page', () => {
   test('should pass accessibility checks', async ({ page, testInfra }) => {
@@ -59,9 +66,8 @@ test.describe('LLM Providers - List Page', () => {
     // Verify we're on the providers page
     await expect(page).toHaveURL(new RegExp('/settings/llm-providers'))
 
-    // Verify Add Provider menu item exists (in desktop sidebar or mobile dropdown)
-    const addProviderMenuItem = page.locator('.ant-menu-item:has-text("Add Provider")')
-    await expect(addProviderMenuItem).toBeVisible()
+    // Verify Add Provider affordance exists.
+    await expect(byTestId(page, 'llm-provider-nav-add-provider')).toBeVisible()
   })
 })
 
@@ -89,33 +95,18 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
 
     await openAddProviderDrawer(page)
 
-    // Verify drawer is open with correct title
-    await expect(page.locator('.ant-drawer-title:has-text("Add Provider")')).toBeVisible()
+    // Verify drawer is open with the provider form.
+    await expect(byTestId(page, 'llm-provider-form')).toBeVisible()
 
-    // Verify Provider Type field exists and is a Select dropdown
-    await expect(page.locator('label:has-text("Provider Type")')).toBeVisible()
-    // Newer AntD versions render `.ant-select-content` instead of
-    // `.ant-select-selector`; the outer `.ant-select` is consistent.
-    const providerTypeSelect = page.locator('.ant-select').first()
-    await expect(providerTypeSelect).toBeVisible()
-
-    // Verify Provider Name field (with form-prefixed ID)
-    await expect(page.locator('label:has-text("Provider Name")')).toBeVisible()
-    await expect(page.locator('#llm-provider-form_name')).toBeVisible()
-
-    // Verify Enable Provider switch
-    await expect(page.locator('label:has-text("Enable Provider")')).toBeVisible()
-    await expect(page.locator('#llm-provider-form_enabled')).toBeVisible()
-
-    // Verify buttons. Drawer submit label was standardised to verb-only
-    // (audit I-2): "Add Provider" → "Add". Scope by primary-button
-    // class to keep the assertion stable across naming changes.
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await expect(drawer.locator('button:has-text("Cancel")')).toBeVisible()
-    await expect(drawer.locator('.ant-btn-primary[type="submit"]')).toBeVisible()
+    // Provider Type Select, Name input, Enable switch, and the buttons.
+    await expect(byTestId(page, 'llm-provider-type-select')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-name-input')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-enabled-switch')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-cancel-btn')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-submit-btn')).toBeVisible()
 
     // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llm-provider-cancel-btn').click()
   })
 
   test('should show different fields for local vs remote provider types', async ({ page, testInfra }) => {
@@ -129,18 +120,16 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
 
     // Local provider should NOT show API Key and Base URL
     await selectProviderType(page, 'local')
-    await expect(page.locator('#llm-provider-form_api_key')).not.toBeVisible()
-    await expect(page.locator('#llm-provider-form_base_url')).not.toBeVisible()
+    await expect(byTestId(page, 'llm-provider-api-key-input')).not.toBeVisible()
+    await expect(byTestId(page, 'llm-provider-base-url-input')).not.toBeVisible()
 
     // OpenAI provider should show API Key and Base URL
     await selectProviderType(page, 'openai')
-    await expect(page.locator('label:has-text("API Key")')).toBeVisible()
-    await expect(page.locator('#llm-provider-form_api_key')).toBeVisible()
-    await expect(page.locator('label:has-text("Base URL")')).toBeVisible()
-    await expect(page.locator('#llm-provider-form_base_url')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-api-key-input')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-base-url-input')).toBeVisible()
 
     // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llm-provider-cancel-btn').click()
   })
 
   test('should validate required provider name field', async ({ page, testInfra }) => {
@@ -158,11 +147,11 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
     // Try to submit without provider name
     await submitProviderForm(page)
 
-    // Should show validation error - actual message is "Please enter a provider name"
-    await expect(page.locator('.ant-form-item-explain-error:has-text("Please enter a provider name")')).toBeVisible()
+    // Should surface a validation error (FieldError renders role="alert").
+    await expect(byTestId(page, 'llm-provider-form').getByRole('alert').first()).toBeVisible()
 
     // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llm-provider-cancel-btn').click()
   })
 
   test('should edit a local provider name', async ({ page, testInfra }) => {
@@ -180,22 +169,25 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
     await expect(page).toHaveURL(new RegExp(`/settings/llm-providers/[a-f0-9-]+`))
 
     // Click edit button in provider header
-    await page.click('button[aria-label="Edit provider name"]')
+    await byTestId(page, 'llm-provider-header-edit-name-btn').click()
 
     // Wait for edit mode
-    await expect(page.locator('input[value="' + originalName + '"]')).toBeVisible()
+    const input = byTestId(page, 'llm-provider-header-name-input')
+    await expect(input).toBeVisible()
 
-    // Update name
-    await page.fill('input[value="' + originalName + '"]', updatedName)
+    // Update name + save (assert the server accepted the rename).
+    await input.fill(updatedName)
+    const [resp] = await Promise.all([
+      page.waitForResponse(
+        r => r.url().includes('/api/llm-providers') && r.request().method() === 'PUT',
+        { timeout: 15000 }
+      ),
+      byTestId(page, 'llm-provider-header-save-name-btn').click(),
+    ])
+    expect(resp.ok()).toBeTruthy()
 
-    // Save
-    await page.click('button[aria-label="Save provider name"]')
-
-    // Wait for update to complete
-    await page.waitForTimeout(500)
-
-    // Verify new name appears in the header (use heading to be specific)
-    await expect(page.getByRole('heading', { name: updatedName })).toBeVisible()
+    // The header now reflects the new name (switch aria-label embeds it).
+    await expect(headerForProvider(page, updatedName)).toBeVisible()
 
     // Go back and cleanup
     await page.goBack()
@@ -214,20 +206,17 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
     await clickProviderCard(page, originalName)
     await expect(page).toHaveURL(/\/settings\/llm-providers\/[a-f0-9-]+/)
 
-    await page.click('button[aria-label="Edit provider name"]')
-    const input = page.locator('input[value="' + originalName + '"]')
+    await byTestId(page, 'llm-provider-header-edit-name-btn').click()
+    const input = byTestId(page, 'llm-provider-header-name-input')
     await expect(input).toBeVisible()
 
     // Type a new value then CANCEL — the change must NOT persist.
     await input.fill(`${originalName}-discarded`)
-    await page.click('button[aria-label="Cancel editing provider name"]')
+    await byTestId(page, 'llm-provider-header-cancel-name-btn').click()
 
-    await expect(
-      page.getByRole('heading', { name: originalName }),
-    ).toBeVisible()
-    await expect(
-      page.getByRole('heading', { name: `${originalName}-discarded` }),
-    ).toHaveCount(0)
+    // Header still shows the original name; the discarded one never landed.
+    await expect(headerForProvider(page, originalName)).toBeVisible()
+    await expect(headerForProvider(page, `${originalName}-discarded`)).toHaveCount(0)
 
     await page.goBack()
     await deleteProvider(page, originalName)
@@ -245,23 +234,20 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
     await clickProviderCard(page, originalName)
     await expect(page).toHaveURL(/\/settings\/llm-providers\/[a-f0-9-]+/)
 
-    await page.click('button[aria-label="Edit provider name"]')
-    const input = page.locator('input[value="' + originalName + '"]')
+    await byTestId(page, 'llm-provider-header-edit-name-btn').click()
+    const input = byTestId(page, 'llm-provider-header-name-input')
     await expect(input).toBeVisible()
 
     // Clear the field and try to save → the required rule blocks it.
     await input.fill('')
-    await page.click('button[aria-label="Save provider name"]')
+    await byTestId(page, 'llm-provider-header-save-name-btn').click()
 
-    await expect(
-      page.locator('.ant-form-item-explain-error:has-text("Name is required")'),
-    ).toBeVisible()
-    // Still in edit mode (save was rejected) and the original name is intact.
-    await expect(
-      page.getByRole('button', { name: 'Save provider name' }),
-    ).toBeVisible()
+    // A validation error appears (FieldError role="alert").
+    await expect(byTestId(page, 'llm-provider-header-name-form').getByRole('alert').first()).toBeVisible()
+    // Still in edit mode (save was rejected).
+    await expect(byTestId(page, 'llm-provider-header-save-name-btn')).toBeVisible()
 
-    await page.click('button[aria-label="Cancel editing provider name"]')
+    await byTestId(page, 'llm-provider-header-cancel-name-btn').click()
     await page.goBack()
     await deleteProvider(page, originalName)
   })
@@ -343,31 +329,30 @@ test.describe('LLM Providers - Remote Provider CRUD', () => {
 
     await openAddProviderDrawer(page)
 
-    // Open provider type dropdown (use `.ant-select` not the inner
-    // `.ant-select-selector` — newer AntD uses `.ant-select-content`).
-    await page.locator('.ant-drawer.ant-drawer-open').locator('.ant-select').first().click()
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
+    // Open the provider type Select.
+    await byTestId(page, 'llm-provider-type-select').click()
 
-    // Verify all provider types are available
-    const providerTypes = [
-      'Local',
-      'OpenAI',
-      'Anthropic',
-      'Groq',
-      'Google Gemini',
-      'Mistral AI',
-      'DeepSeek',
-      'Hugging Face',
-      'Custom',
+    // Verify all provider types are available (kit Select derives
+    // `${trigger}-opt-${value}` per option).
+    const providerTypeValues = [
+      'local',
+      'openai',
+      'anthropic',
+      'groq',
+      'gemini',
+      'mistral',
+      'deepseek',
+      'huggingface',
+      'custom',
     ]
 
-    for (const type of providerTypes) {
-      await expect(page.locator(`.ant-select-item-option:has-text("${type}")`)).toBeVisible()
+    for (const value of providerTypeValues) {
+      await expect(byTestId(page, `llm-provider-type-select-opt-${value}`)).toBeVisible()
     }
 
     // Close dropdown and drawer
     await page.keyboard.press('Escape')
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llm-provider-cancel-btn').click()
   })
 
   // The visibility test above only proves the 9 types render in the dropdown.
@@ -429,12 +414,12 @@ test.describe('LLM Providers - Navigation & Detail Page', () => {
     // Verify we're on the detail page
     await expect(page).toHaveURL(new RegExp(`/settings/llm-providers/[a-f0-9-]+`))
 
-    // Verify provider name in header
-    await expect(page.getByRole('heading', { name: providerName })).toBeVisible()
+    // Verify provider header reflects this provider.
+    await expect(headerForProvider(page, providerName)).toBeVisible()
 
     // NOTE: Provider detail page has NO TABS - it shows sections directly
-    // Verify the Models section is present (DownloadsSection only appears when there are active downloads)
-    await expect(page.locator('.ant-card-head-title:has-text("Models")')).toBeVisible()
+    // Verify the Models section is present.
+    await expect(byTestId(page, 'llm-models-section-card')).toBeVisible()
 
     // Go back and cleanup
     await page.goBack()
@@ -460,15 +445,12 @@ test.describe('LLM Providers - Navigation & Detail Page', () => {
     await clickProviderCard(page, providerName)
 
     // The Models card renders with the empty state (no models yet).
-    const modelsCard = page.locator('.ant-card:has(.ant-card-head-title:has-text("Models"))')
-    await expect(modelsCard).toBeVisible()
-    await expect(modelsCard.getByText('No models yet')).toBeVisible()
+    await expect(byTestId(page, 'llm-models-section-card')).toBeVisible()
+    await expect(byTestId(page, 'llm-models-empty')).toBeVisible()
 
     // Interact: click the "Add model" affordance → the Add Remote Model drawer opens.
-    await modelsCard.getByRole('button', { name: 'Add model' }).click()
-    await expect(
-      page.locator('.ant-drawer-title:has-text("Add Remote Model")'),
-    ).toBeVisible({ timeout: 15000 })
+    await byTestId(page, 'llm-models-add-remote-btn').click()
+    await expect(byTestId(page, 'llm-add-remote-model-form')).toBeVisible({ timeout: 15000 })
 
     // Cancel out and clean up.
     await page.keyboard.press('Escape')
@@ -494,10 +476,10 @@ test.describe('LLM Providers - Navigation & Detail Page', () => {
     // Navigate to detail page
     await clickProviderCard(page, providerName)
 
-    // Verify API Configuration card exists for remote provider (not present for local providers)
-    await expect(page.locator('.ant-card-head-title:has-text("API Configuration")')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'API Key', level: 5 })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Base URL', level: 5 })).toBeVisible()
+    // Verify API Configuration card + its fields exist for the remote provider.
+    await expect(byTestId(page, 'llm-remote-api-config-card')).toBeVisible()
+    await expect(byTestId(page, 'llm-remote-api-key-input')).toBeVisible()
+    await expect(byTestId(page, 'llm-remote-base-url-input')).toBeVisible()
 
     // Go back and cleanup
     await page.goBack()
@@ -517,11 +499,11 @@ test.describe('LLM Providers - Navigation & Detail Page', () => {
     await clickProviderCard(page, providerName)
 
     // Verify header actions exist
-    await expect(page.locator('button[aria-label="Edit provider name"]')).toBeVisible()
-    await expect(page.locator('button[aria-label="Delete provider"]')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-header-edit-name-btn')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-delete-btn')).toBeVisible()
 
-    // Verify provider enable/disable switch (filter by aria-label to get the header one, not drawer one)
-    const providerSwitch = page.locator(`.ant-switch[aria-label*="${providerName}"]`)
+    // Verify provider enable/disable switch (header one carries the name).
+    const providerSwitch = byTestId(page, 'llm-provider-header-enabled-switch')
     await expect(providerSwitch).toBeVisible()
     await expect(providerSwitch).toHaveAttribute('aria-label', new RegExp(providerName))
 
@@ -539,9 +521,8 @@ test.describe('LLM Providers - Empty States', () => {
     await goToProvidersPage(page, baseURL)
     await waitForProvidersPageLoad(page)
 
-    // If no providers exist, the page should still be functional
-    // (No specific empty state component is required - just verify page loads)
-    await expect(page.locator('.ant-menu-item:has-text("Add Provider")')).toBeVisible()
+    // The page is still functional — the Add Provider affordance is present.
+    await expect(byTestId(page, 'llm-provider-nav-add-provider')).toBeVisible()
   })
 })
 

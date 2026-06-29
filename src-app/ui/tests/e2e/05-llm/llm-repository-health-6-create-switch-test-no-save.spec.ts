@@ -17,6 +17,7 @@ import {
   openAddRepositoryDrawer,
 } from './helpers/repository-helpers'
 import { RepoHealthMock } from './helpers/repository-health-mock'
+import { byTestId } from '../testid'
 
 async function listRepositoryCount(
   apiURL: string,
@@ -48,15 +49,12 @@ test('create-mode Enable switch tests the form WITHOUT persisting on failure', a
     // Fill the form with the failing mock's URL. Auth type stays
     // 'none' (drawer default) — no secret fields needed.
     const name = `create-test-${Math.random().toString(36).slice(2, 8)}`
-    await page.fill('#llm-repository-form_name', name)
-    await page.fill('#llm-repository-form_url', mock.url())
+    await byTestId(page, 'llmrepo-form-name').fill(name)
+    await byTestId(page, 'llmrepo-form-url').fill(mock.url())
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
     // The "Enable Repository" label maps to the visible Switch under
-    // the hidden form field — locate via the new aria-label.
-    const drawerSwitch = drawer.locator(
-      'button.ant-switch[aria-label="Enable repository"]',
-    )
+    // the hidden form field.
+    const drawerSwitch = byTestId(page, 'llmrepo-form-enabled-switch')
     await expect(drawerSwitch).toHaveAttribute('aria-checked', 'true')
 
     // Switch is ON by default for create mode. Toggle OFF first so
@@ -69,7 +67,7 @@ test('create-mode Enable switch tests the form WITHOUT persisting on failure', a
 
     // Error toast + switch snaps back to OFF.
     await expect(
-      page.locator('.ant-message-error').first(),
+      page.locator('[data-sonner-toast][data-type="error"]').first(),
     ).toBeVisible({ timeout: 15_000 })
     await expect(drawerSwitch).toHaveAttribute('aria-checked', 'false', {
       timeout: 10_000,

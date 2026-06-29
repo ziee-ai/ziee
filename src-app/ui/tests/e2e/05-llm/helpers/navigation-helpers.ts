@@ -1,4 +1,5 @@
 import { Page } from '@playwright/test'
+import { byTestId } from '../../testid'
 
 /**
  * LLM-specific navigation helpers
@@ -15,12 +16,15 @@ export async function goToProvidersPage(page: Page, baseURL: string) {
 }
 
 export async function waitForProvidersPageLoad(page: Page) {
-  // Wait for the providers page to load
-  // The page shows a provider list in the sidebar which takes time to load from the API
-  // Use 'load' instead of 'networkidle' to avoid issues with SSE connections
+  // Wait for the providers page to load. The provider nav (sidebar of
+  // provider buttons + the "Add Provider" button) renders once the
+  // provider list resolves; the add-provider nav button is always
+  // present when the user can create.
   await page.waitForLoadState('load')
-  // Wait a bit more for the provider list to render
-  await page.waitForTimeout(1000)
+  await page
+    .locator('[data-testid^="llm-provider-nav-"]')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30000 })
 }
 
 export async function goToProviderDetail(
@@ -34,22 +38,24 @@ export async function goToProviderDetail(
 }
 
 export async function clickProviderCard(page: Page, providerName: string) {
-  // Wait for provider to be visible in the sidebar menu
-  // Use exact text match and first() to avoid strict mode violations when provider appears in multiple places
-  const providerMenuItem = page.locator('[role="menu"]').getByRole('menuitem').filter({ hasText: new RegExp(`^${providerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) })
-  await providerMenuItem.first().waitFor({ state: 'visible', timeout: 10000 })
+  // Provider nav buttons render as `llm-provider-nav-${providerId}` and
+  // carry the provider name as text. Filter the nav-button collection by
+  // the (dynamic) provider name the test created.
+  const providerNav = page
+    .locator('[data-testid^="llm-provider-nav-"]')
+    .filter({ hasText: providerName })
+    .first()
+  await providerNav.waitFor({ state: 'visible', timeout: 10000 })
+  await providerNav.click()
 
-  // Click the provider
-  await providerMenuItem.first().click()
-
-  // Wait for page to load - use 'load' instead of 'networkidle' to avoid issues with SSE connections
+  // Wait for page to load - use 'load' instead of 'networkidle'
   await page.waitForLoadState('load')
 
-  // Wait for provider detail content to render (wait for any card to appear as indicator)
-  await page.waitForSelector('.ant-card', { timeout: 10000 })
-
-  // Additional wait for all cards to render, including ones that might be lower on the page
-  await page.waitForTimeout(1000)
+  // Provider detail surfaces the Models card once loaded.
+  await byTestId(page, 'llm-models-section-card').waitFor({
+    state: 'visible',
+    timeout: 10000,
+  })
 }
 
 // =====================================================
@@ -63,7 +69,7 @@ export async function goToRepositoriesPage(page: Page, baseURL: string) {
 }
 
 export async function waitForRepositoriesPageLoad(page: Page) {
-  await page.waitForSelector('text=LLM Repositories', { timeout: 30000 })
+  await byTestId(page, 'llmrepo-card').waitFor({ state: 'visible', timeout: 30000 })
 }
 
 // =====================================================
@@ -72,13 +78,22 @@ export async function waitForRepositoriesPageLoad(page: Page) {
 
 export type ProviderTab = 'models' | 'downloads' | 'settings'
 
+const TAB_CARD: Record<ProviderTab, string> = {
+  models: 'llm-models-section-card',
+  downloads: 'llm-downloads-section-card',
+  settings: 'llm-provider-settings-empty',
+}
+
 export async function switchToTab(page: Page, tab: ProviderTab) {
-  const tabText = tab.charAt(0).toUpperCase() + tab.slice(1)
-  await page.click(`text=${tabText}`)
-  // Use 'load' instead of 'networkidle' to avoid issues with SSE connections
+  // The provider detail page renders all sections on one page (no real
+  // tab bar); wait for the section's card to be present.
+  await byTestId(page, TAB_CARD[tab])
+    .first()
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .catch(() => {})
   await page.waitForLoadState('load')
 }
 
-export async function waitForTabLoad(page: Page, tabName: string) {
-  await page.waitForSelector(`text=${tabName}`, { timeout: 30000 })
+export async function waitForTabLoad(page: Page, tabTestId: string) {
+  await byTestId(page, tabTestId).first().waitFor({ state: 'visible', timeout: 30000 })
 }

@@ -19,6 +19,7 @@ import {
   waitForRepositoriesPageLoad,
 } from './helpers/repository-helpers'
 import { RepoHealthMock } from './helpers/repository-health-mock'
+import { byTestId } from '../testid'
 import {
   seedRepository,
   uniqueRepoName,
@@ -58,24 +59,23 @@ test('edit-mode Test Connection button persists outcome + renders Alert', async 
     await waitForRepositoriesPageLoad(page)
 
     const row = repoRow(page, name)
-    await row.locator('button:has-text("Edit")').click()
+    await row.locator('[data-testid^="llmrepo-edit-btn-"]').first().click()
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await drawer.locator('.ant-drawer-title').waitFor({ state: 'visible' })
+    await byTestId(page, 'llmrepo-form').waitFor({ state: 'visible' })
 
     // No Alert on a fresh edit drawer for an 'untested' row.
-    await expect(drawer.locator('.ant-alert-error')).toHaveCount(0)
+    await expect(byTestId(page, 'llmrepo-drawer-health-alert')).toHaveCount(0)
 
     // Flip mock to 401 + click Test Connection — the button only
     // appears when URL + auth are populated; the row has both.
     mock.respondWith(401)
-    const testButton = drawer.locator('button:has-text("Test Connection")')
+    const testButton = byTestId(page, 'llmrepo-form-test-btn')
     await expect(testButton).toBeVisible({ timeout: 10_000 })
     await testButton.click()
 
     // Error toast surfaces the failure.
     await expect(
-      page.locator('.ant-message-error').first(),
+      page.locator('[data-sonner-toast][data-type="error"]').first(),
     ).toBeVisible({ timeout: 15_000 })
 
     // Persisted status flipped to unhealthy (verify via API — the UI
@@ -88,7 +88,7 @@ test('edit-mode Test Connection button persists outcome + renders Alert', async 
 
     // Drawer's inline Alert renders without manual reload.
     await expect(
-      drawer.locator('.ant-alert-error').first(),
+      byTestId(page, 'llmrepo-drawer-health-alert').first(),
     ).toBeVisible({ timeout: 10_000 })
   } finally {
     await mock.dispose()

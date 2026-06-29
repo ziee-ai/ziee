@@ -55,7 +55,7 @@ export function DryRunPreviewDialog({
       footer={null}
       className="!max-w-[640px]"
     >
-      {loading && <Spin label="Running dry run" className="block my-8 mx-auto" />}
+      {loading && <Spin data-testid="wf-dry-run-spin" label="Running dry run" className="block my-8 mx-auto" />}
       {error && <Alert data-testid="wf-dry-run-error-alert" tone="error" title={error} />}
       {result && (
         <div className="flex flex-col gap-3">

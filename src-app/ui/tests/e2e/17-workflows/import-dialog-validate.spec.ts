@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToWorkflowsPage } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the Import-Workflow dialog (ImportWorkflowDialog.tsx).
@@ -39,9 +40,9 @@ test.describe('Workflows — Import dialog validate', () => {
     await loginAsAdmin(page, baseURL)
     await goToWorkflowsPage(page, baseURL)
 
-    await page.getByRole('button', { name: /import/i }).click()
+    await byTestId(page, 'wf-list-import-btn').click()
 
-    const dialog = page.getByRole('dialog', { name: 'Import Workflow' })
+    const dialog = byTestId(page, 'wf-import-dialog')
     await expect(dialog).toBeVisible()
 
     // Drop a workflow.yaml into the antd Dragger's hidden <input type=file>.
@@ -51,11 +52,12 @@ test.describe('Workflows — Import dialog validate', () => {
       buffer: Buffer.from(VALID_WORKFLOW_YAML, 'utf8'),
     })
 
-    await dialog.getByRole('button', { name: 'Validate' }).click()
+    await byTestId(dialog, 'wf-import-validate-btn').click()
 
     // The /validate round-trip renders the success Alert ("Valid workflow — N steps...").
-    await expect(dialog.getByText(/Valid workflow/)).toBeVisible({
-      timeout: 30000,
-    })
+    await expect(byTestId(dialog, 'wf-import-validation-alert')).toContainText(
+      /Valid workflow/,
+      { timeout: 30000 },
+    )
   })
 })

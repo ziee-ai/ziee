@@ -1,6 +1,8 @@
 import { test, expect } from '../../fixtures/test-context'
+import type { Page } from '@playwright/test'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   clickProviderCard,
 } from './helpers/navigation-helpers'
@@ -24,25 +26,28 @@ import * as os from 'os'
  *
  * Tests for uploading local model files following backend test patterns from:
  * - src-web/tests/llm_model/upload_test.rs
- *
- * Key testing areas:
- * 1. File selection and validation
- * 2. File format detection (safetensors, gguf, pytorch)
- * 3. Main file selection
- * 4. Upload progress tracking
- * 5. Form validation
- * 6. Success and error flows
  */
+
+// ---- local helpers (testid-based) ----
+
+async function selectUploadFormat(page: Page, value: string) {
+  await byTestId(page, 'llm-file-format-select').click()
+  await byTestId(page, `llm-file-format-select-opt-${value}`).click()
+}
+
+async function cancelUploadForm(page: Page) {
+  await byTestId(page, 'llm-upload-drawer-cancel-btn').click()
+}
+
+async function expectUploadSucceeded(page: Page) {
+  // The upload drawer closes (its form unmounts) once the upload succeeds.
+  await byTestId(page, 'llm-model-upload-form').waitFor({ state: 'hidden', timeout: 30000 })
+}
 
 // Helper to create a test model folder with dummy files
 async function createTestModelFolder(format: 'safetensors' | 'gguf' | 'pytorch'): Promise<string> {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-model-'))
 
-  // Backend's upload validator rejects:
-  //   - weight files < 1KB ("suspiciously small")
-  //   - config.json / tokenizer.json that aren't valid JSON
-  // Pad weight files to 2KB+ and write minimal valid JSON for the
-  // config/tokenizer files so the validator passes.
   const validJsonContent = JSON.stringify({
     model_type: 'test',
     architectures: ['TestModel'],
@@ -85,9 +90,7 @@ async function createTestModelFolder(format: 'safetensors' | 'gguf' | 'pytorch')
 
 /**
  * A model folder with a deliberately LARGE weight file so the upload takes long
- * enough to be cancelled mid-transfer (the standard 2KB fixture completes in
- * <1s, which is why mid-transfer cancel was previously untestable). `sizeMb`
- * MB of weight chunked through the multipart upload gives a wide cancel window.
+ * enough to be cancelled mid-transfer.
  */
 function createLargeTestModelFolder(sizeMb: number): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-model-large-'))
@@ -114,7 +117,6 @@ function createLargeTestModelFolder(sizeMb: number): string {
   return tempDir
 }
 
-// Helper to cleanup test model folder
 async function cleanupTestModelFolder(folderPath: string) {
   if (fs.existsSync(folderPath)) {
     fs.rmSync(folderPath, { recursive: true, force: true })
@@ -130,9 +132,6 @@ test.describe('LLM Models - Local Upload - UI Structure', () => {
 
     await loginAsAdmin(page, baseURL)
     await createLocalProvider(page, baseURL, testProvider, 'Upload test provider')
-
-    // Click on the provider in the sidebar to open its detail page
-    // The provider should already be visible after createLocalProvider
     await clickProviderCard(page, testProvider)
   })
 
@@ -144,47 +143,32 @@ test.describe('LLM Models - Local Upload - UI Structure', () => {
   test('should display upload drawer with correct structure', async ({ page }) => {
     await openUploadDrawer(page)
 
-    // Scope to the upload drawer
-    const uploadDrawer = page.locator('.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Upload Local Model"))')
+    // Verify form fields + controls are present.
+    await expect(byTestId(page, 'llm-param-display_name')).toBeVisible()
+    await expect(byTestId(page, 'llm-param-description')).toBeVisible()
+    await expect(byTestId(page, 'llm-engine-type-select')).toBeVisible()
+    await expect(byTestId(page, 'llm-file-format-select')).toBeVisible()
+    await expect(byTestId(page, 'llm-upload-files')).toBeVisible()
+    await expect(byTestId(page, 'llm-upload-main-file-select')).toBeVisible()
 
-    // Verify drawer title
-    await expect(uploadDrawer.locator('.ant-drawer-title:has-text("Upload Local Model")')).toBeVisible()
+    // Verify buttons.
+    await expect(byTestId(page, 'llm-upload-drawer-cancel-btn')).toBeVisible()
+    await expect(byTestId(page, 'llm-upload-drawer-submit-btn')).toBeVisible()
 
-    // Verify form fields
-    await expect(uploadDrawer.locator('label:has-text("Display Name")')).toBeVisible()
-    await expect(uploadDrawer.locator('label:has-text("Description")')).toBeVisible()
-    await expect(uploadDrawer.locator('label:has-text("Engine")')).toBeVisible()
-    await expect(uploadDrawer.locator('label:has-text("File Format")')).toBeVisible()
-    await expect(uploadDrawer.locator('label:has-text("Model Folder")')).toBeVisible()
-    await expect(uploadDrawer.locator('label:has-text("Main Model File")')).toBeVisible()
-
-    // Verify Upload.Dragger component
-    await expect(uploadDrawer.locator('.ant-upload-drag')).toBeVisible()
-    await expect(uploadDrawer.locator('text=Click or drag folder to select model files')).toBeVisible()
-
-    // Verify buttons
-    await expect(uploadDrawer.locator('button:has-text("Cancel")')).toBeVisible()
-    await expect(uploadDrawer.locator('button:has-text("Upload")')).toBeVisible()
-
-    // Close drawer
-    await uploadDrawer.locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should show file format options', async ({ page }) => {
     await openUploadDrawer(page)
 
-    // Click file format dropdown - find the form item with "File Format" label, then click its select
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
+    await byTestId(page, 'llm-file-format-select').click()
 
-    // Verify format options
-    await expect(page.locator('.ant-select-item-option:has-text("SafeTensors")')).toBeVisible()
-    await expect(page.locator('.ant-select-item-option:has-text("GGUF")')).toBeVisible()
-    await expect(page.locator('.ant-select-item-option:has-text("PyTorch Binary")')).toBeVisible()
+    await expect(byTestId(page, 'llm-file-format-select-opt-safetensors')).toBeVisible()
+    await expect(byTestId(page, 'llm-file-format-select-opt-gguf')).toBeVisible()
+    await expect(byTestId(page, 'llm-file-format-select-opt-pytorch')).toBeVisible()
 
-    // Close dropdown
     await page.keyboard.press('Escape')
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 })
 
@@ -198,9 +182,6 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
 
     await loginAsAdmin(page, baseURL)
     await createLocalProvider(page, baseURL, testProvider, 'Upload test provider')
-
-    // Click on the provider in the sidebar to open its detail page
-    // The provider should already be visible after createLocalProvider
     await clickProviderCard(page, testProvider)
   })
 
@@ -214,23 +195,16 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     testModelFolder = await createTestModelFolder('safetensors')
 
     await openUploadDrawer(page)
-
-    // Upload folder
     await uploadModelFolder(page, testModelFolder)
-
-    // Wait for files to be processed
     await page.waitForTimeout(500)
 
-    // Verify "Selected Files" card appears
-    await expect(page.locator('.ant-card-head-title:has-text("Selected Files")')).toBeVisible()
+    // The "Selected Files" card appears and lists each file.
+    await expect(byTestId(page, 'llm-upload-selected-files-card')).toBeVisible()
+    await expect(byTestId(page, 'llm-upload-file-tag-model.safetensors')).toBeVisible()
+    await expect(byTestId(page, 'llm-upload-file-tag-config.json')).toBeVisible()
+    await expect(byTestId(page, 'llm-upload-file-tag-tokenizer.json')).toBeVisible()
 
-    // Verify files are listed in the file list
-    await expect(page.locator('.ant-list-item:has-text("model.safetensors")')).toBeVisible()
-    await expect(page.locator('.ant-list-item:has-text("config.json")')).toBeVisible()
-    await expect(page.locator('.ant-list-item:has-text("tokenizer.json")')).toBeVisible()
-
-    // Close drawer
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should classify files by purpose', async ({ page }) => {
@@ -240,16 +214,12 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Verify file purpose tags
-    const modelTag = page.locator('.ant-tag:has-text("model")').first()
-    const configTag = page.locator('.ant-tag:has-text("config")').first()
-    const tokenizerTag = page.locator('.ant-tag:has-text("tokenizer")').first()
+    // Each file's tag carries its classified purpose.
+    await expect(byTestId(page, 'llm-upload-file-tag-model.safetensors')).toContainText('model')
+    await expect(byTestId(page, 'llm-upload-file-tag-config.json')).toContainText('config')
+    await expect(byTestId(page, 'llm-upload-file-tag-tokenizer.json')).toContainText('tokenizer')
 
-    await expect(modelTag).toBeVisible()
-    await expect(configTag).toBeVisible()
-    await expect(tokenizerTag).toBeVisible()
-
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should auto-detect main model file', async ({ page }) => {
@@ -259,11 +229,10 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Verify main filename dropdown is populated
-    const mainFilenameSelect = page.locator('.ant-form-item:has-text("Main Model File") .ant-select-content')
-    await expect(mainFilenameSelect).toContainText('model.gguf')
+    // Main filename select is populated with the detected model file.
+    await expect(byTestId(page, 'llm-upload-main-file-select')).toContainText('model.gguf')
 
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should allow selecting different main file', async ({ page }) => {
@@ -273,16 +242,18 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Click main filename dropdown
-    await page.locator('.ant-form-item:has-text("Main Model File") .ant-select').click()
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
+    await byTestId(page, 'llm-upload-main-file-select').click()
 
-    // Verify only model files are in dropdown (not config or tokenizer)
-    await expect(page.locator('.ant-select-item-option:has-text("model.safetensors")')).toBeVisible()
-    await expect(page.locator('.ant-select-item-option:has-text("config.json")')).not.toBeVisible()
+    // Only model files appear in the dropdown (config.json must not).
+    await expect(
+      page.locator('[data-testid^="llm-upload-main-file-select-opt-"]').filter({ hasText: 'model.safetensors' }),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid^="llm-upload-main-file-select-opt-"]').filter({ hasText: 'config.json' }),
+    ).not.toBeVisible()
 
     await page.keyboard.press('Escape')
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 })
 
@@ -296,9 +267,6 @@ test.describe('LLM Models - Local Upload - Validation', () => {
 
     await loginAsAdmin(page, baseURL)
     await createLocalProvider(page, baseURL, testProvider, 'Upload test provider')
-
-    // Click on the provider in the sidebar to open its detail page
-    // The provider should already be visible after createLocalProvider
     await clickProviderCard(page, testProvider)
   })
 
@@ -311,13 +279,10 @@ test.describe('LLM Models - Local Upload - Validation', () => {
   test('should validate required fields', async ({ page }) => {
     await openUploadDrawer(page)
 
-    // Try to submit without any data
     await submitUploadForm(page)
+    await expect(page.getByRole('alert').first()).toBeVisible({ timeout: 5000 })
 
-    // Should show validation errors
-    await expect(page.locator('.ant-form-item-explain-error').first()).toBeVisible({ timeout: 5000 })
-
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should validate display name is required', async ({ page }) => {
@@ -327,103 +292,64 @@ test.describe('LLM Models - Local Upload - Validation', () => {
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Wait for Main Model File to be populated (indicates upload processing is done)
-    await expect(page.locator('.ant-form-item:has-text("Main Model File") .ant-select-content')).toContainText('model.safetensors', { timeout: 5000 })
+    // Wait for Main Model File to be populated (processing done).
+    await expect(byTestId(page, 'llm-upload-main-file-select')).toContainText('model.safetensors', { timeout: 5000 })
 
-    // Clear the display name field using fill (more reliable than clear)
-    await page.fill('#llm-model-upload_display_name', '')
-
-    // Submit without display name
+    await byTestId(page, 'llm-param-display_name').fill('')
     await submitUploadForm(page)
 
-    // Check for inline error message on the display name field
-    await expect(page.locator('.ant-form-item-explain-error:has-text("Display Name is required")')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('alert').first()).toBeVisible({ timeout: 5000 })
 
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should validate model folder is required', async ({ page }) => {
     await openUploadDrawer(page)
 
-    // Fill display name only
-    await page.fill('#llm-model-upload_display_name', 'Test Model')
-
-    // Try to submit without uploading files
+    await byTestId(page, 'llm-param-display_name').fill('Test Model')
     await submitUploadForm(page)
 
-    // Should show error message
-    await page.waitForSelector('text=Please select a model folder', { timeout: 5000 })
+    // The "model folder required" error renders as a role=alert message.
+    await expect(page.getByRole('alert').first()).toBeVisible({ timeout: 5000 })
 
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should validate main filename is required', async ({ page }) => {
-    // Create a test folder with files classified as "other" (no main model file)
-    // so the Main Model File dropdown will be empty
+    // A folder with no model file → the Main Model File dropdown stays empty.
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-no-main-file-'))
     testModelFolder = tempDir
-
-    // Create only non-model files
     fs.writeFileSync(path.join(tempDir, 'README.md'), 'Test readme')
     fs.writeFileSync(path.join(tempDir, 'config.json'), '{"test": "config"}')
 
     await openUploadDrawer(page)
-
-    // Fill display name
-    await page.fill('#llm-model-upload_display_name', 'Test Model')
-
-    // Upload folder with no model files
+    await byTestId(page, 'llm-param-display_name').fill('Test Model')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Scroll to make Main Model File dropdown visible
-    await page.locator('.ant-form-item:has-text("Main Model File")').scrollIntoViewIfNeeded()
-
-    // The dropdown should be empty since there are no model files
-    // Try to submit without selecting main file
     await submitUploadForm(page)
+    await expect(page.getByRole('alert').first()).toBeVisible({ timeout: 5000 })
 
-    // Check for inline error message on the main file field
-    await expect(page.locator('.ant-form-item-explain-error:has-text("Please select the main model file")')).toBeVisible({ timeout: 5000 })
-
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should warn if no tokenizer files detected', async ({ page }) => {
-    // Create folder with only model file (no tokenizer). Pad to 2KB+
-    // so the backend's "suspiciously small weight file" validator passes.
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-model-no-tokenizer-'))
     fs.writeFileSync(path.join(tempDir, 'model.safetensors'), Buffer.alloc(2048, 'A'))
     testModelFolder = tempDir
 
     await openUploadDrawer(page)
 
-    // Select safetensors format
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
-    await page.click('.ant-select-item-option:has-text("SafeTensors")')
-
-    // Fill form
-    await page.fill('#llm-model-upload_display_name', 'Test Model No Tokenizer')
+    await selectUploadFormat(page, 'safetensors')
+    await byTestId(page, 'llm-param-display_name').fill('Test Model No Tokenizer')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Submit - this should show a warning but allow upload to continue
+    // Submit — a missing-tokenizer warning may flash, but the upload proceeds.
     await submitUploadForm(page)
 
-    // Should show warning notification about missing tokenizer
-    // Note: Ant Design notifications appear briefly and may disappear, so we check for either:
-    // 1. The warning message is visible, or
-    // 2. Upload succeeds (warning was shown but disappeared)
-    try {
-      await page.waitForSelector('text=No tokenizer or configuration files detected', { timeout: 2000 })
-    } catch (e) {
-      // Warning may have appeared and disappeared already - that's ok
-    }
-
-    // Upload should complete successfully despite the warning
-    await page.waitForSelector('text=Model uploaded successfully', { timeout: 30000 })
-
-    // Verify model appears in the list
+    // Upload completes successfully despite the warning.
+    await expectUploadSucceeded(page)
     await assertModelExists(page, 'Test Model No Tokenizer')
   })
 })
@@ -438,9 +364,6 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
 
     await loginAsAdmin(page, baseURL)
     await createLocalProvider(page, baseURL, testProvider, 'Upload test provider')
-
-    // Click on the provider in the sidebar to open its detail page
-    // The provider should already be visible after createLocalProvider
     await clickProviderCard(page, testProvider)
   })
 
@@ -454,96 +377,62 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     testModelFolder = await createTestModelFolder('safetensors')
 
     await openUploadDrawer(page)
-
-    // Select safetensors format
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
-    await page.click('.ant-select-item-option:has-text("SafeTensors")')
-
-    // Upload folder
+    await selectUploadFormat(page, 'safetensors')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Verify .safetensors file is detected as model
-    const modelFile = page.locator('.ant-list-item:has-text("model.safetensors")')
-    await expect(modelFile.locator('.ant-tag:has-text("model")')).toBeVisible()
+    // .safetensors file is detected as the model file.
+    await expect(byTestId(page, 'llm-upload-file-tag-model.safetensors')).toContainText('model')
 
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should handle gguf format', async ({ page }) => {
     testModelFolder = await createTestModelFolder('gguf')
 
     await openUploadDrawer(page)
-
-    // Select gguf format
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
-    await page.click('.ant-select-item-option:has-text("GGUF")')
-
-    // Upload folder
+    await selectUploadFormat(page, 'gguf')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Verify .gguf file is detected as model
-    const modelFile = page.locator('.ant-list-item:has-text("model.gguf")')
-    await expect(modelFile.locator('.ant-tag:has-text("model")')).toBeVisible()
+    await expect(byTestId(page, 'llm-upload-file-tag-model.gguf')).toContainText('model')
 
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should handle pytorch format', async ({ page }) => {
     testModelFolder = await createTestModelFolder('pytorch')
 
     await openUploadDrawer(page)
-
-    // Select pytorch format
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
-    await page.click('.ant-select-item-option:has-text("PyTorch Binary")')
-
-    // Upload folder
+    await selectUploadFormat(page, 'pytorch')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Verify .bin file is detected as model
-    const modelFile = page.locator('.ant-list-item:has-text("pytorch_model.bin")')
-    await expect(modelFile.locator('.ant-tag:has-text("model")')).toBeVisible()
+    await expect(byTestId(page, 'llm-upload-file-tag-pytorch_model.bin')).toContainText('model')
 
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 
   test('should re-filter files when format changes', async ({ page }) => {
     testModelFolder = await createTestModelFolder('safetensors')
 
     await openUploadDrawer(page)
-
-    // Upload with safetensors format
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Verify safetensors file is detected as model
-    await expect(page.locator('.ant-list-item:has-text("model.safetensors") .ant-tag:has-text("model")')).toBeVisible()
+    // safetensors file is detected as model.
+    await expect(byTestId(page, 'llm-upload-file-tag-model.safetensors')).toContainText('model')
 
-    // Scroll to File Format field
-    await page.locator('.ant-form-item:has-text("File Format")').scrollIntoViewIfNeeded()
-
-    // Change format to gguf
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
-    await page.click('.ant-select-item-option:has-text("GGUF")')
+    // Change format to gguf (no GGUF files present).
+    await selectUploadFormat(page, 'gguf')
     await page.waitForTimeout(500)
 
-    // Scroll to Main Model File dropdown to make it visible
-    await page.locator('.ant-form-item:has-text("Main Model File")').scrollIntoViewIfNeeded()
-    await page.waitForTimeout(500)
-
-    // Now safetensors file should NOT be classified as model (no .gguf files present)
-    // The file list should update based on new format
-    // After changing to GGUF format with no GGUF files, the dropdown should be empty or show placeholder
-    const mainFilenameSelector = page.locator('.ant-form-item:has-text("Main Model File") .ant-select')
-
-    // Check that either the dropdown shows placeholder or doesn't have model.safetensors selected
-    const dropdownText = await mainFilenameSelector.textContent()
+    // The Main Model File select should no longer hold model.safetensors.
+    const mainSelect = byTestId(page, 'llm-upload-main-file-select')
+    const dropdownText = await mainSelect.textContent()
     expect(dropdownText).not.toContain('model.safetensors')
 
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
+    await cancelUploadForm(page)
   })
 })
 
@@ -557,9 +446,6 @@ test.describe('LLM Models - Local Upload - Progress Tracking', () => {
 
     await loginAsAdmin(page, baseURL)
     await createLocalProvider(page, baseURL, testProvider, 'Upload test provider')
-
-    // Click on the provider in the sidebar to open its detail page
-    // The provider should already be visible after createLocalProvider
     await clickProviderCard(page, testProvider)
   })
 
@@ -567,62 +453,45 @@ test.describe('LLM Models - Local Upload - Progress Tracking', () => {
     if (testModelFolder) {
       await cleanupTestModelFolder(testModelFolder)
     }
-
   })
 
   test('should show upload progress card during upload', async ({ page }) => {
     testModelFolder = await createTestModelFolder('safetensors')
 
     await openUploadDrawer(page)
-
-    // Fill form
-    await page.fill('#llm-model-upload_display_name', 'Test Upload Progress')
+    await byTestId(page, 'llm-param-display_name').fill('Test Upload Progress')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Submit
     await submitUploadForm(page)
 
-    // Assert: Upload completes successfully
-    await page.waitForSelector('text=Model uploaded successfully', { timeout: 30000 })
-
-    // Assert: Model appears in list
+    await expectUploadSucceeded(page)
     await assertModelExists(page, 'Test Upload Progress')
   })
 
-  test('cancels a real in-flight upload via "Cancel Upload" and creates no model', async ({
-    page,
-  }) => {
+  test('cancels a real in-flight upload via "Cancel Upload" and creates no model', async ({ page }) => {
     // A large weight file keeps the transfer in-flight long enough to cancel.
     testModelFolder = createLargeTestModelFolder(120)
     const modelName = 'Test Cancel Mid Transfer'
 
     await openUploadDrawer(page)
-    await page.fill('#llm-model-upload_display_name', modelName)
+    await byTestId(page, 'llm-param-display_name').fill(modelName)
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
     await submitUploadForm(page)
 
-    // The Upload Progress card appears while transferring; its "Cancel Upload"
-    // link aborts the in-flight request mid-transfer.
-    const cancelUpload = page.getByRole('button', { name: 'Cancel Upload' })
+    // The Upload Progress card's "Cancel Upload" link aborts mid-transfer.
+    const cancelUpload = byTestId(page, 'llm-upload-cancel-btn')
     await expect(cancelUpload).toBeVisible({ timeout: 15000 })
     await cancelUpload.click()
 
-    // The upload must NOT report success and the model must NOT be created.
-    await expect(page.locator('text=Model uploaded successfully')).toHaveCount(0)
-    // The uploading state clears (the progress card is gone).
+    // No success toast, and the uploading state clears.
+    await expect(page.locator('[data-sonner-toast][data-type="success"]')).toHaveCount(0)
     await expect(cancelUpload).toBeHidden({ timeout: 15000 })
 
-    // Close the drawer (now allowed — no longer uploading) and confirm the
-    // model never landed in the list.
-    await page
-      .locator('.ant-drawer.ant-drawer-open')
-      .last()
-      .locator('button:has-text("Cancel"), button:has-text("Close")')
-      .first()
-      .click()
+    // Close the drawer and confirm the model never landed in the list.
+    await cancelUploadForm(page)
     await assertModelNotExists(page, modelName)
   })
 
@@ -630,32 +499,21 @@ test.describe('LLM Models - Local Upload - Progress Tracking', () => {
     testModelFolder = await createTestModelFolder('safetensors')
 
     await openUploadDrawer(page)
-
-    // Fill form
-    await page.fill('#llm-model-upload_display_name', 'Test Upload Prevent Close')
+    await byTestId(page, 'llm-param-display_name').fill('Test Upload Prevent Close')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Submit
     await submitUploadForm(page)
 
-    // Wait briefly for upload to start, then check if cancel button is disabled
-    // Note: With small test files, upload completes very quickly, so we check immediately
+    // The footer Cancel button is disabled while uploading (or the upload
+    // already finished for the tiny fixture).
     await page.waitForTimeout(100)
-    const cancelButton = page.locator('button:has-text("Cancel")')
-
-    // The button should be disabled during upload OR the upload completed successfully
-    // Check if either the button is disabled OR we see the success message
+    const cancelButton = byTestId(page, 'llm-upload-drawer-cancel-btn')
     const isButtonDisabled = await cancelButton.isDisabled().catch(() => false)
-    const hasSuccessMessage = await page.locator('text=Model uploaded successfully').isVisible().catch(() => false)
+    const succeeded = await byTestId(page, 'llm-model-upload-form').isHidden().catch(() => false)
+    expect(isButtonDisabled || succeeded).toBe(true)
 
-    // At least one should be true (either uploading or completed)
-    expect(isButtonDisabled || hasSuccessMessage).toBe(true)
-
-    // Wait for upload to complete
-    await page.waitForSelector('text=Model uploaded successfully', { timeout: 30000 })
-
-    // Cleanup
+    await expectUploadSucceeded(page)
     await deleteModel(page, 'Test Upload Prevent Close')
   })
 
@@ -663,20 +521,13 @@ test.describe('LLM Models - Local Upload - Progress Tracking', () => {
     testModelFolder = await createTestModelFolder('safetensors')
 
     await openUploadDrawer(page)
-
-    // Fill form
-    await page.fill('#llm-model-upload_display_name', 'Test Overall Progress')
+    await byTestId(page, 'llm-param-display_name').fill('Test Overall Progress')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Submit
     await submitUploadForm(page)
 
-    // Check for progress display (if visible before completion)
-    // Assert: Upload completes successfully
-    await page.waitForSelector('text=Model uploaded successfully', { timeout: 30000 })
-
-    // Cleanup
+    await expectUploadSucceeded(page)
     await deleteModel(page, 'Test Overall Progress')
   })
 })
@@ -691,9 +542,6 @@ test.describe('LLM Models - Local Upload - Success Flow', () => {
 
     await loginAsAdmin(page, baseURL)
     await createLocalProvider(page, baseURL, testProvider, 'Upload test provider')
-
-    // Click on the provider in the sidebar to open its detail page
-    // The provider should already be visible after createLocalProvider
     await clickProviderCard(page, testProvider)
   })
 
@@ -708,28 +556,17 @@ test.describe('LLM Models - Local Upload - Success Flow', () => {
     const modelName = `test-model-upload-${Date.now()}`
 
     await openUploadDrawer(page)
-
-    // Fill form
-    await page.fill('#llm-model-upload_display_name', modelName)
-    await page.fill('#llm-model-upload_description', 'Test model upload description')
-
-    // Upload folder
+    await byTestId(page, 'llm-param-display_name').fill(modelName)
+    await byTestId(page, 'llm-param-description').fill('Test model upload description')
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
 
-    // Submit
     await submitUploadForm(page)
 
-    // Wait for success message
-    await page.waitForSelector('text=Model uploaded successfully', { timeout: 30000 })
-
-    // Verify drawer closes
-    await expect(page.locator('.ant-drawer-title:has-text("Upload Local Model")')).not.toBeVisible({ timeout: 5000 })
-
-    // Verify model appears in provider's model list
+    // Drawer closes on success and the model appears in the list.
+    await expectUploadSucceeded(page)
     await assertModelExists(page, modelName)
 
-    // Cleanup
     await deleteModel(page, modelName)
   })
 
@@ -738,41 +575,22 @@ test.describe('LLM Models - Local Upload - Success Flow', () => {
     const modelName = `test-model-reset-${Date.now()}`
 
     await openUploadDrawer(page)
-
-    // Fill and submit
-    await page.fill('#llm-model-upload_display_name', modelName)
+    await byTestId(page, 'llm-param-display_name').fill(modelName)
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
     await submitUploadForm(page)
 
-    // Wait for success + drawer close animation to finish AND the
-    // toast to disappear before reopening (the toast can intercept
-    // pointer events on the page-level dropdown trigger).
-    await page.waitForSelector('text=Model uploaded successfully', { timeout: 30000 })
-    await page
-      .locator('.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Upload Local Model"))')
-      .waitFor({ state: 'hidden', timeout: 5000 })
-      .catch(() => {})
-    // AntD message toasts auto-dismiss in 3s — wait for them to clear.
-    await page
-      .locator('text=Model uploaded successfully')
-      .waitFor({ state: 'hidden', timeout: 10000 })
-      .catch(() => {})
+    await expectUploadSucceeded(page)
+    // Let any success toast clear before reopening.
+    await page.locator('[data-sonner-toast][data-type="success"]').first().waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
     await page.waitForTimeout(500)
 
-    // Open drawer again
+    // Open drawer again — form is reset.
     await openUploadDrawer(page)
+    await expect(byTestId(page, 'llm-param-display_name')).toHaveValue('')
+    await expect(byTestId(page, 'llm-upload-selected-files-card')).not.toBeVisible()
 
-    // Verify form is reset
-    const displayNameInput = page.locator('#llm-model-upload_display_name')
-    await expect(displayNameInput).toHaveValue('')
-
-    const fileList = page.locator('.ant-card-head-title:has-text("Selected Files")')
-    await expect(fileList).not.toBeVisible()
-
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
-
-    // Cleanup
+    await cancelUploadForm(page)
     await deleteModel(page, modelName)
   })
 
@@ -781,20 +599,14 @@ test.describe('LLM Models - Local Upload - Success Flow', () => {
     const modelName = `test-model-immediate-${Date.now()}`
 
     await openUploadDrawer(page)
-
-    // Fill and submit
-    await page.fill('#llm-model-upload_display_name', modelName)
+    await byTestId(page, 'llm-param-display_name').fill(modelName)
     await uploadModelFolder(page, testModelFolder)
     await page.waitForTimeout(500)
     await submitUploadForm(page)
 
-    // Wait for success
-    await page.waitForSelector('text=Model uploaded successfully', { timeout: 30000 })
-
-    // Model should appear immediately without page refresh
+    await expectUploadSucceeded(page)
     await assertModelExists(page, modelName)
 
-    // Cleanup
     await deleteModel(page, modelName)
   })
 })

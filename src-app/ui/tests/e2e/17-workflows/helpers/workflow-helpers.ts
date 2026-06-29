@@ -1,5 +1,6 @@
 import { APIRequestContext, Page, expect } from '@playwright/test'
 import { gzipSync } from 'node:zlib'
+import { byTestId } from '../../testid'
 
 /**
  * Navigation helpers for the Workflows E2E suite. Mirrors the shape of
@@ -22,16 +23,12 @@ import { gzipSync } from 'node:zlib'
 // need is already in flight.
 export async function goToWorkflowsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/workflows`)
-  await page
-    .getByRole('heading', { level: 4, name: 'Workflows', exact: true })
-    .first()
-    .waitFor({ timeout: 15000 })
+  await byTestId(page, 'wf-list-page-title').first().waitFor({ timeout: 15000 })
 }
 
 export async function goToAdminWorkflowsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/workflows-admin`)
-  await page
-    .getByRole('heading', { level: 4, name: 'System Workflows', exact: true })
+  await byTestId(page, 'wf-admin-page-title')
     .first()
     .waitFor({ timeout: 15000 })
 }
@@ -42,9 +39,7 @@ export async function goToAdminWorkflowsPage(page: Page, baseURL: string) {
  * `WorkflowsList.tsx`).
  */
 export async function assertWorkflowsEmptyState(page: Page) {
-  await expect(
-    page.getByText(/no workflows installed yet/i),
-  ).toBeVisible()
+  await expect(byTestId(page, 'wf-list-empty')).toBeVisible()
 }
 
 /**
@@ -52,9 +47,7 @@ export async function assertWorkflowsEmptyState(page: Page) {
  * from the user list (see `admin/AdminWorkflowsPage.tsx`).
  */
 export async function assertAdminWorkflowsEmptyState(page: Page) {
-  await expect(
-    page.getByText(/no system workflows installed/i),
-  ).toBeVisible()
+  await expect(byTestId(page, 'wf-admin-empty')).toBeVisible()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,10 +64,7 @@ export async function assertAdminWorkflowsEmptyState(page: Page) {
  */
 export async function goToWorkflowsSettingsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/workflows`)
-  await page
-    .getByRole('heading', { level: 4, name: 'Workflows', exact: true })
-    .first()
-    .waitFor({ timeout: 15000 })
+  await byTestId(page, 'wf-list-page-title').first().waitFor({ timeout: 15000 })
 }
 
 /**
@@ -150,9 +140,14 @@ export async function seedDevWorkflow(
  * selector reads naturally.
  */
 export async function openWorkflowCard(page: Page, name: string) {
-  await page.locator('.ant-card', { hasText: name }).first().click()
-  // The drawer renders the workflow name as a level-5 heading.
-  await expect(
-    page.getByRole('heading', { name, exact: false }).first(),
-  ).toBeVisible({ timeout: 15000 })
+  await page
+    .locator('[data-testid^="wf-list-card-"]')
+    .filter({ hasText: name })
+    .first()
+    .click()
+  // The detail dialog opens; assert on its testid (i18n-safe) + that it shows
+  // the workflow name the test created (dynamic data).
+  const dialog = byTestId(page, 'wf-detail-dialog')
+  await expect(dialog).toBeVisible({ timeout: 15000 })
+  await expect(dialog).toContainText(name)
 }

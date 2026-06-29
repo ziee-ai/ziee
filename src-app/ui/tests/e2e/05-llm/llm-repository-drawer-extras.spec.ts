@@ -5,11 +5,12 @@ import {
   waitForRepositoriesPageLoad,
   openAddRepositoryDrawer,
 } from './helpers/repository-helpers'
+import { byTestId } from '../testid'
 
 // Coverage for previously-untested LlmRepositoryDrawer behaviors:
 //   - fa516d97e5f1 — built-in repository auth-field editing through the UI
 //   - 8dc42d659a43 — Test Connection button conditional visibility (partial auth)
-//   - 13a18f59293f — Drawer mask is NOT closable (mask:{closable:false})
+//   - 13a18f59293f — Drawer mask is NOT closable (maskClosable:false)
 
 test.describe('LLM Repository drawer — extras', () => {
   test.describe.configure({ retries: 2 })
@@ -26,27 +27,25 @@ test.describe('LLM Repository drawer — extras', () => {
     await waitForRepositoriesPageLoad(page)
     await openAddRepositoryDrawer(page)
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    const testButton = drawer.locator('button:has-text("Test Connection")')
+    const testButton = byTestId(page, 'llmrepo-form-test-btn')
 
     // Pick API Key auth + a URL but leave the api_key empty → button hidden.
-    await page.fill('#llm-repository-form_name', 'Partial Auth Repo')
-    await page.fill('#llm-repository-form_url', 'https://example.com/api')
-    await page.click('.ant-select:has(#llm-repository-form_auth_type)')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-    await page.click('.ant-select-item-option:has-text("API Key")')
+    await byTestId(page, 'llmrepo-form-name').fill('Partial Auth Repo')
+    await byTestId(page, 'llmrepo-form-url').fill('https://example.com/api')
+    await byTestId(page, 'llmrepo-form-auth-type').click()
+    await byTestId(page, 'llmrepo-form-auth-type-opt-api_key').click()
 
     await expect(testButton).toHaveCount(0)
 
     // Provide the api_key → the button becomes visible.
-    await page.fill('#llm-repository-form_api_key', 'sk-partial-auth-123')
+    await byTestId(page, 'llmrepo-form-api-key').fill('sk-partial-auth-123')
     await expect(testButton).toBeVisible({ timeout: 10000 })
 
-    await drawer.locator('button:has-text("Cancel")').click()
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 
-  // 13a18f59293f — the drawer is opened with mask:{closable:false}; clicking the
-  // mask overlay must NOT close it (prevents losing in-progress edits).
+  // 13a18f59293f — the drawer is opened with maskClosable:false; clicking
+  // outside the panel must NOT close it (prevents losing in-progress edits).
   test('clicking the drawer mask does not close the drawer', async ({
     page,
     testInfra,
@@ -56,18 +55,15 @@ test.describe('LLM Repository drawer — extras', () => {
     await waitForRepositoriesPageLoad(page)
     await openAddRepositoryDrawer(page)
 
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await expect(drawer).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form')).toBeVisible()
 
-    // Click the mask overlay (force: it sits under the drawer panel z-stack).
-    await page.locator('.ant-drawer-mask').click({ force: true, position: { x: 5, y: 5 } })
+    // Click the overlay area (top-left corner, outside the right-side panel).
+    await page.mouse.click(5, 5)
 
     // The drawer is still open — the mask is non-closable.
-    await expect(
-      page.locator('.ant-drawer-title:has-text("Add Repository")'),
-    ).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form')).toBeVisible()
 
-    await drawer.locator('button:has-text("Cancel")').click()
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 
   // fa516d97e5f1 — a built-in repository's name/url are locked, but its auth
@@ -81,29 +77,30 @@ test.describe('LLM Repository drawer — extras', () => {
     await waitForRepositoriesPageLoad(page)
 
     const hfRepo = page
-      .locator('div')
-      .filter({ hasText: /^Hugging Face/ })
+      .locator('[data-testid^="llmrepo-row-"]')
+      .filter({ hasText: 'Hugging Face' })
       .first()
     await expect(hfRepo).toBeVisible({ timeout: 15000 })
-    await hfRepo.locator('button:has-text("Edit")').click()
-    await page.waitForSelector('.ant-drawer-title', { timeout: 30000 })
-
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+    await hfRepo.locator('[data-testid^="llmrepo-edit-btn-"]').first().click()
+    await byTestId(page, 'llmrepo-form').waitFor({ timeout: 30000 })
 
     // Built-in: identity is locked …
-    await expect(page.locator('#llm-repository-form_name')).toBeDisabled()
-    await expect(page.locator('#llm-repository-form_url')).toBeDisabled()
+    await expect(byTestId(page, 'llmrepo-form-name')).toBeDisabled()
+    await expect(byTestId(page, 'llmrepo-form-url')).toBeDisabled()
 
     // … but the API-key auth field is editable.
-    const apiKeyField = page.locator('#llm-repository-form_api_key')
+    const apiKeyField = byTestId(page, 'llmrepo-form-api-key')
     await expect(apiKeyField).toBeEnabled()
     await apiKeyField.fill('hf_builtin_auth_edit_token')
 
-    await drawer.locator('.ant-btn-primary[type="submit"]').click()
-
     // The auth-only update round-trips (no enabled-transition probe).
-    await expect(
-      page.getByText('Repository updated successfully'),
-    ).toBeVisible({ timeout: 15000 })
+    const [resp] = await Promise.all([
+      page.waitForResponse(
+        r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+        { timeout: 15000 }
+      ),
+      byTestId(page, 'llmrepo-form-submit-btn').click(),
+    ])
+    expect(resp.ok()).toBeTruthy()
   })
 })

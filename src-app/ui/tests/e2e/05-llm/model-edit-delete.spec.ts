@@ -16,6 +16,7 @@ import {
   assertModelExists,
   assertModelNotExists,
 } from './helpers/model-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Model edit + delete from the provider detail page (LlmModelsSection +
@@ -57,11 +58,15 @@ test.describe('LLM Models - edit + delete from provider detail', () => {
 
     // EDIT: change the display name and save.
     await openEditModelDrawer(page, 'Original Model Name')
-    const drawer = page.locator('.ant-drawer-content')
-    const nameInput = drawer.getByLabel('Display Name')
-    await nameInput.fill('Renamed Model')
-    await drawer.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Model updated successfully')).toBeVisible()
+    await byTestId(page, 'llm-param-display_name').fill('Renamed Model')
+    const [editResp] = await Promise.all([
+      page.waitForResponse(
+        r => /\/api\/.*models/.test(r.url()) && r.request().method() === 'PUT',
+        { timeout: 15000 },
+      ),
+      byTestId(page, 'llm-edit-model-save-btn').click(),
+    ])
+    expect(editResp.ok()).toBeTruthy()
     await assertModelExists(page, 'Renamed Model')
 
     // DELETE: remove the model from the list.

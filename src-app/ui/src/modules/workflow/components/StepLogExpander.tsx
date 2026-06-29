@@ -75,7 +75,7 @@ export function StepLogExpander({
           children: loading ? (
             <Spin size="sm" label="Loading log" />
           ) : error ? (
-            <Paragraph type="secondary" className="text-xs">
+            <Paragraph data-testid="wf-step-log-empty" type="secondary" className="text-xs">
               Log not available
             </Paragraph>
           ) : (

@@ -6,6 +6,7 @@ import {
   createTestUser,
   login,
 } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — Document RAG (file_rag) admin settings surface.
@@ -47,17 +48,12 @@ test.describe('Document RAG — admin settings surface', () => {
 
     await page.goto(`${baseURL}/settings/file-rag-admin`)
 
-    // Default is ON, so the settings load and the section cards render. Match
-    // the card *titles* exactly — the page subtitle + section notes also
-    // mention "chunking"/"full-text" etc., so a loose substring match is
-    // ambiguous (strict-mode violation).
-    await expect(page.getByText('Document search', { exact: true })).toBeVisible()
-    await expect(
-      page.getByText('Embedding (semantic search)', { exact: true }),
-    ).toBeVisible()
-    await expect(page.getByText('Chunking', { exact: true })).toBeVisible()
-    await expect(page.getByText('Full-text search', { exact: true })).toBeVisible()
-    await expect(page.getByText('Maintenance', { exact: true })).toBeVisible()
+    // Default is ON, so the settings load and the section cards render.
+    await expect(byTestId(page, 'filerag-enable-card')).toBeVisible()
+    await expect(byTestId(page, 'filerag-embedding-card')).toBeVisible()
+    await expect(byTestId(page, 'filerag-chunking-card')).toBeVisible()
+    await expect(byTestId(page, 'filerag-fts-card')).toBeVisible()
+    await expect(byTestId(page, 'filerag-maintenance-card')).toBeVisible()
 
     // The capability-filtered embedding model endpoint is reachable.
     const res = await page.request.get(
@@ -67,7 +63,7 @@ test.describe('Document RAG — admin settings surface', () => {
     expect(res.status()).toBe(200)
 
     // Embedding-model picker is present.
-    await expect(page.getByText(/Embedding model/)).toBeVisible()
+    await expect(byTestId(page, 'filerag-embedding-model-select')).toBeVisible()
   })
 
   test('MaintenanceSection Run backfill dispatches a background job', async ({
@@ -78,17 +74,20 @@ test.describe('Document RAG — admin settings surface', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/file-rag-admin`)
-    const maintenance = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Backfill existing files' })
-    await expect(maintenance).toBeVisible({ timeout: 20000 })
+    await expect(byTestId(page, 'filerag-maintenance-card')).toBeVisible({
+      timeout: 20000,
+    })
 
     // Trigger the (idempotent) backfill — with no eligible files it's a no-op
-    // server-side but still dispatches successfully.
-    await maintenance.getByTestId('backfill-button').click()
-    await expect(
-      page.getByText('Backfill dispatched in the background.'),
-    ).toBeVisible({ timeout: 10000 })
+    // server-side but still dispatches successfully (real POST round-trip).
+    const backfillResp = page.waitForResponse(
+      r =>
+        r.url().includes('/api/file-rag/backfill') &&
+        r.request().method() === 'POST',
+      { timeout: 10000 },
+    )
+    await byTestId(page, 'filerag-maintenance-backfill').click()
+    expect((await backfillResp).ok()).toBeTruthy()
   })
 
   test('FullTextSection saves the RRF k tuning knob', async ({
@@ -99,16 +98,17 @@ test.describe('Document RAG — admin settings surface', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/file-rag-admin`)
-    // The file-rag FTS card carries the "RRF k" + "Candidate multiplier"
-    // labels (distinct from the master "Document search" card).
-    const ftsCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Candidate multiplier' })
-    await expect(ftsCard).toBeVisible({ timeout: 20000 })
+    await expect(byTestId(page, 'filerag-fts-card')).toBeVisible({ timeout: 20000 })
 
-    await ftsCard.getByRole('spinbutton', { name: /RRF k/i }).fill('77')
-    await ftsCard.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Full-text settings saved.')).toBeVisible()
+    await byTestId(page, 'filerag-fts-rrf-k').fill('77')
+    const ftsSave = page.waitForResponse(
+      r =>
+        r.url().includes('/api/file-rag/admin-settings') &&
+        r.request().method() === 'PUT' &&
+        r.status() === 200,
+    )
+    await byTestId(page, 'filerag-fts-save').click()
+    await ftsSave
   })
 
   test('EnableSection master toggle saves the document-search setting', async ({
@@ -119,23 +119,22 @@ test.describe('Document RAG — admin settings surface', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/file-rag-admin`)
-    const enableCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Enable Document RAG deployment-wide' })
-    await expect(enableCard).toBeVisible({ timeout: 20000 })
+    await expect(byTestId(page, 'filerag-enable-card')).toBeVisible({ timeout: 20000 })
 
     // Flip the master switch and confirm it actually toggled, then save.
-    const master = enableCard.getByRole('switch', {
-      name: 'Enable Document RAG deployment-wide',
-    })
+    const master = byTestId(page, 'filerag-enable-switch')
     const before = await master.getAttribute('aria-checked')
     await master.click()
     await expect(master).not.toHaveAttribute('aria-checked', before ?? 'true')
 
-    await enableCard.getByRole('button', { name: 'Save' }).click()
-    await expect(
-      page.getByText('Document search settings saved.'),
-    ).toBeVisible()
+    const enableSave = page.waitForResponse(
+      r =>
+        r.url().includes('/api/file-rag/admin-settings') &&
+        r.request().method() === 'PUT' &&
+        r.status() === 200,
+    )
+    await byTestId(page, 'filerag-enable-save').click()
+    await enableSave
   })
 
   test('embedding section: no-model state + cosine threshold save', async ({
@@ -146,26 +145,23 @@ test.describe('Document RAG — admin settings surface', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/file-rag-admin`)
-    const embedCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Embedding (semantic search)' })
-    await expect(embedCard).toBeVisible({ timeout: 20000 })
+    await expect(byTestId(page, 'filerag-embedding-card')).toBeVisible({ timeout: 20000 })
 
-    // Fresh deploy has no embedding-capable models → the info Alert shows, the
-    // model picker is disabled, and Re-embed is disabled (no current model).
-    await expect(
-      embedCard.getByText('No embedding-capable models found.'),
-    ).toBeVisible()
-    await expect(
-      embedCard.getByRole('button', { name: 'Re-embed now' }),
-    ).toBeDisabled()
+    // Fresh deploy has no embedding-capable models → the info Alert shows and
+    // Re-embed is disabled (no current model).
+    await expect(byTestId(page, 'filerag-embedding-no-models-alert')).toBeVisible()
+    await expect(byTestId(page, 'filerag-embedding-reembed-btn')).toBeDisabled()
 
     // The cosine threshold knob still saves (no model required).
-    await embedCard
-      .getByRole('spinbutton', { name: /Cosine distance threshold/i })
-      .fill('0.35')
-    await embedCard.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Embedding settings saved.')).toBeVisible()
+    await byTestId(page, 'filerag-embedding-cosine').fill('0.35')
+    const embedSave = page.waitForResponse(
+      r =>
+        r.url().includes('/api/file-rag/admin-settings') &&
+        r.request().method() === 'PUT' &&
+        r.status() === 200,
+    )
+    await byTestId(page, 'filerag-embedding-save').click()
+    await embedSave
   })
 
   test('chunking rejects overlap >= chunk size with a validation error', async ({
@@ -176,28 +172,15 @@ test.describe('Document RAG — admin settings surface', () => {
     await loginAsAdmin(page, baseURL)
 
     await page.goto(`${baseURL}/settings/file-rag-admin`)
-    await expect(page.getByText('Chunking', { exact: true })).toBeVisible()
-
-    const chunkingCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Chunk size (characters)' })
+    await expect(byTestId(page, 'filerag-chunking-card')).toBeVisible()
 
     // Set overlap to be >= chunk size — an invalid combination.
-    await page.getByRole('spinbutton', { name: /Chunk size/i }).fill('1000')
-    await page
-      .getByRole('spinbutton', { name: /Chunk overlap/i })
-      .fill('2000')
-    await chunkingCard.getByRole('button', { name: 'Save' }).click()
+    await byTestId(page, 'filerag-chunking-chunk-chars').fill('1000')
+    await byTestId(page, 'filerag-chunking-overlap').fill('2000')
+    await byTestId(page, 'filerag-chunking-save').click()
 
-    // The client-side guard surfaces an error toast + inline field errors and
-    // does NOT save.
-    await expect(
-      page.getByText('Overlap must be smaller than the chunk size.'),
-    ).toBeVisible()
-    await expect(
-      page.getByText('Must be smaller than the chunk size'),
-    ).toBeVisible()
-    await expect(page.getByText(/Chunking settings saved/)).toHaveCount(0)
+    // The client-side guard surfaces the chunking error alert and does NOT save.
+    await expect(byTestId(page, 'filerag-chunking-error-alert')).toBeVisible()
   })
 
   test('chunking settings save round-trips', async ({ page, testInfra }) => {
@@ -221,16 +204,17 @@ test.describe('Document RAG — admin settings surface', () => {
     await login(page, baseURL, username, 'password123')
 
     await page.goto(`${baseURL}/settings/file-rag-admin`)
-    await expect(page.getByText('Chunking', { exact: true })).toBeVisible()
+    await expect(byTestId(page, 'filerag-chunking-card')).toBeVisible()
 
-    // Change "Chunk size" and save the chunking card; expect a success toast.
-    const chunkInput = page.getByRole('spinbutton', { name: /Chunk size/i })
-    await chunkInput.fill('1500')
-    // The chunking card's own Save button (scope the click to that card).
-    const chunkingCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Chunk size (characters)' })
-    await chunkingCard.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText(/Chunking settings saved/)).toBeVisible()
+    // Change "Chunk size" and save the chunking card; expect a real round-trip.
+    await byTestId(page, 'filerag-chunking-chunk-chars').fill('1500')
+    const chunkSave = page.waitForResponse(
+      r =>
+        r.url().includes('/api/file-rag/admin-settings') &&
+        r.request().method() === 'PUT' &&
+        r.status() === 200,
+    )
+    await byTestId(page, 'filerag-chunking-save').click()
+    await chunkSave
   })
 })

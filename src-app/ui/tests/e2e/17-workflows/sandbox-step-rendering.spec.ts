@@ -5,6 +5,7 @@ import {
   openWorkflowCard,
   seedDevWorkflow,
 } from './helpers/workflow-helpers'
+import { byTestId } from '../testid'
 
 /**
  * A workflow with a `kind: sandbox` step renders in the UI step list with its
@@ -53,10 +54,10 @@ test.describe('Workflows - sandbox step rendering', () => {
 
     // The drawer's step list renders both steps; the second carries the
     // `sandbox` kind tag and declares its dependency on the llm step.
-    const drawer = page.getByRole('dialog')
-    await expect(drawer.getByText('plan')).toBeVisible({ timeout: 15000 })
-    await expect(drawer.getByText('process')).toBeVisible()
-    await expect(drawer.getByText('sandbox', { exact: true })).toBeVisible()
-    await expect(drawer.getByText(/depends on:\s*plan/)).toBeVisible()
+    const drawer = byTestId(page, 'wf-detail-dialog')
+    await expect(drawer).toContainText('plan', { timeout: 15000 })
+    await expect(drawer).toContainText('process')
+    await expect(drawer).toContainText('sandbox')
+    await expect(drawer).toContainText(/depends on:\s*plan/)
   })
 })

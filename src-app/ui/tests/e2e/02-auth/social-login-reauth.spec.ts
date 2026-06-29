@@ -12,11 +12,13 @@ import { test, expect } from '../../fixtures/test-context'
 import type { Page } from '@playwright/test'
 import { getAdminToken, loginAsAdmin } from '../../common/auth-helpers'
 import { startNaviktMock } from '../../common/navikt-mock'
+import { byTestId } from '../testid'
 
 async function naviktLogin(
   page: Page,
   baseURL: string,
   mockBaseUrl: string,
+  providerName: string,
   sub: string,
   email: string,
 ) {
@@ -26,13 +28,14 @@ async function naviktLogin(
     sessionStorage.clear()
   })
   await page.goto(`${baseURL}/auth`, { waitUntil: 'domcontentloaded' })
-  await page.getByLabel('Username or Email').waitFor({ timeout: 30_000 })
+  await byTestId(page, 'auth-login-username').waitFor({ timeout: 30_000 })
 
-  await expect(
-    page.getByRole('button', { name: /sign in with navikt/i }),
-  ).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('button', { name: /sign in with navikt/i }).click()
+  const providerBtn = byTestId(page, `auth-provider-btn-${providerName}`)
+  await expect(providerBtn).toBeVisible({ timeout: 10_000 })
+  await providerBtn.click()
 
+  // The mock OIDC server's login page is external (not our kit) — select on
+  // its form attributes.
   await page.waitForURL((url) => url.toString().includes(mockBaseUrl), {
     timeout: 15_000,
   })
@@ -41,7 +44,7 @@ async function naviktLogin(
     .locator('textarea[name="claims"], #claims')
     .first()
     .fill(JSON.stringify({ email, email_verified: true }))
-  await page.getByRole('button', { name: /sign-?in/i }).click()
+  await page.locator('button[type="submit"]').first().click()
   await page.waitForURL(`${baseURL}/`, { timeout: 30_000 })
 }
 
@@ -99,23 +102,27 @@ test.describe('Social login — re-auth after profile rename', () => {
       const renamed = `${sub}-renamed`
 
       // First login → provisions the account (username = sub).
-      await naviktLogin(page, baseURL, mock.baseUrl, sub, email)
+      await naviktLogin(page, baseURL, mock.baseUrl, providerName, sub, email)
 
       // Rename the username on the profile page.
       await page.goto(`${baseURL}/settings/profile`)
-      await page.getByRole('heading', { name: 'Profile' }).waitFor({ timeout: 30_000 })
-      await page.getByLabel('Username').fill(renamed)
-      await page.getByRole('button', { name: 'Save' }).click()
-      await expect(page.getByText('Profile saved.')).toBeVisible()
+      await byTestId(page, 'profile-username-input').waitFor({ timeout: 30_000 })
+      await byTestId(page, 'profile-username-input').fill(renamed)
+      const savePromise = page.waitForResponse(
+        r => r.url().includes('/api/auth/profile') && r.request().method() === 'POST',
+        { timeout: 15_000 },
+      )
+      await byTestId(page, 'profile-save-button').click()
+      expect((await savePromise).ok()).toBeTruthy()
 
       // Log out + log in AGAIN with the same external identity (sub).
-      await naviktLogin(page, baseURL, mock.baseUrl, sub, email)
+      await naviktLogin(page, baseURL, mock.baseUrl, providerName, sub, email)
 
       // Re-auth reached the SAME account and the rename is intact (the callback
       // did not overwrite the local username from the IdP sub).
       await page.goto(`${baseURL}/settings/profile`)
-      await page.getByRole('heading', { name: 'Profile' }).waitFor({ timeout: 30_000 })
-      await expect(page.getByLabel('Username')).toHaveValue(renamed)
+      await byTestId(page, 'profile-username-input').waitFor({ timeout: 30_000 })
+      await expect(byTestId(page, 'profile-username-input')).toHaveValue(renamed)
     } finally {
       await mock!.stop()
     }

@@ -5,6 +5,7 @@ import {
   waitForProvidersPageLoad,
 } from './helpers/navigation-helpers'
 import { createLocalProvider } from './helpers/provider-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the zero-providers empty state on the LLM Providers settings page
@@ -62,7 +63,7 @@ test.describe('LLM Providers - Empty State (all deleted)', () => {
     await goToProvidersPage(page, baseURL)
     await waitForProvidersPageLoad(page)
     await expect(
-      page.locator('[role="menu"]').getByRole('menuitem', { name: providerName }),
+      page.locator('[data-testid^="llm-provider-nav-"]').filter({ hasText: providerName }),
     ).toBeVisible()
 
     // Delete EVERY provider via the real API, then reload the page.
@@ -71,16 +72,16 @@ test.describe('LLM Providers - Empty State (all deleted)', () => {
     await goToProvidersPage(page, baseURL)
     await waitForProvidersPageLoad(page)
 
-    // Empty state: no provider rows remain in the sidebar menu, but the
-    // "Add Provider" affordance is still present...
+    // Empty state: no provider rows remain in the sidebar, but the
+    // "Add Provider" affordance is still present (the only nav button left)...
     await expect(
-      page.locator('[role="menu"]').getByRole('menuitem', { name: providerName }),
+      page.locator('[data-testid^="llm-provider-nav-"]').filter({ hasText: providerName }),
     ).toHaveCount(0)
-    const menuItems = page.locator('[role="menu"]').getByRole('menuitem')
-    await expect(menuItems).toHaveCount(1)
-    await expect(menuItems).toHaveText(/Add Provider/)
+    const navButtons = page.locator('[data-testid^="llm-provider-nav-"]')
+    await expect(navButtons).toHaveCount(1)
+    await expect(byTestId(page, 'llm-provider-nav-add-provider')).toBeVisible()
 
     // ...and the main pane shows the "No provider selected" Empty.
-    await expect(page.getByText('No provider selected')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-settings-empty')).toBeVisible()
   })
 })

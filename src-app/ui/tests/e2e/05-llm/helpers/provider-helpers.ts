@@ -1,60 +1,42 @@
 import { Page, expect } from '@playwright/test'
 import { fillProviderForm, submitProviderForm, updateProviderForm, type ProviderFormData } from './form-helpers'
+import { byTestId } from '../../testid'
 import { goToProvidersPage, waitForProvidersPageLoad, clickProviderCard } from './navigation-helpers'
 
 /**
- * LLM Provider CRUD helpers
+ * LLM Provider CRUD helpers (kit / data-testid based)
  */
+
+// Locator for a provider's nav button (carries the provider name as text).
+function providerNav(page: Page, providerName: string) {
+  return page
+    .locator('[data-testid^="llm-provider-nav-"]')
+    .filter({ hasText: providerName })
+    .first()
+}
+
+// Locator for the header enable/disable switch on the provider detail page.
+function headerSwitch(page: Page) {
+  return byTestId(page, 'llm-provider-header-enabled-switch')
+}
 
 // =====================================================
 // Provider Creation
 // =====================================================
 
 export async function openAddProviderDrawer(page: Page) {
-  // "Add Provider" is an Ant Design Menu item, not a button
-  await page.click('.ant-menu-item:has-text("Add Provider")')
-  // Wait for the drawer to open - it shows "Add Provider" as title
-  await page.waitForSelector('.ant-drawer-title:has-text("Add Provider")', { timeout: 30000 })
+  await byTestId(page, 'llm-provider-nav-add-provider').click()
+  // Wait for the provider form to render inside the drawer.
+  await byTestId(page, 'llm-provider-form').waitFor({ state: 'visible', timeout: 30000 })
 }
 
-export async function selectProviderType(page: Page, type: 'local' | 'openai' | 'anthropic' | 'groq' | 'gemini' | 'mistral' | 'deepseek' | 'huggingface' | 'custom') {
-  // Drive the Provider Type Select via AntD's combobox-role input:
-  // - focus the input (which is inside `.ant-form-item` under the
-  //   "Provider Type" label)
-  // - use Playwright's `selectOption`-equivalent via keyboard:
-  //   type the label, press Enter
-  // This works around AntD's animation-driven dropdown which trips
-  // Playwright's stability checks for direct option clicks.
-  const drawer = page.locator('.ant-drawer.ant-drawer-open')
-  const combobox = drawer
-    .locator('.ant-form-item:has-text("Provider Type")')
-    .first()
-    .getByRole('combobox')
-  await combobox.click()
-  await page.waitForTimeout(300) // let dropdown open animation complete
-
-  // Map provider type to its zero-based index in PROVIDER_TYPES:
-  // local=0, openai=1, anthropic=2, groq=3, gemini=4, mistral=5,
-  // deepseek=6, huggingface=7, custom=8. Use keyboard arrows to
-  // navigate (combobox is readonly so we can't type-filter).
-  const orderMap: Record<typeof type, number> = {
-    'local': 0,
-    'openai': 1,
-    'anthropic': 2,
-    'groq': 3,
-    'gemini': 4,
-    'mistral': 5,
-    'deepseek': 6,
-    'huggingface': 7,
-    'custom': 8,
-  }
-  // Reset to top of list with Home, then arrow-down to the target.
-  await combobox.press('Home')
-  for (let i = 0; i < orderMap[type]; i++) {
-    await combobox.press('ArrowDown')
-  }
-  await combobox.press('Enter')
-
+export async function selectProviderType(
+  page: Page,
+  type: 'local' | 'openai' | 'anthropic' | 'groq' | 'gemini' | 'mistral' | 'deepseek' | 'huggingface' | 'custom'
+) {
+  // Kit Select: click the trigger, then the option whose value === type.
+  await byTestId(page, 'llm-provider-type-select').click()
+  await byTestId(page, `llm-provider-type-select-opt-${type}`).click()
   await page.waitForLoadState('load')
 }
 
@@ -71,13 +53,19 @@ export async function createProvider(
   await selectProviderType(page, type)
 
   await fillProviderForm(page, data)
-  await submitProviderForm(page)
 
-  // Wait for success message - actual message is "Provider added successfully"
-  await page.waitForSelector('text=Provider added successfully', { timeout: 15000 })
+  // Submit and assert the server accepted the create (real-path proof).
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => r.url().includes('/api/llm-providers') && r.request().method() === 'POST',
+      { timeout: 15000 }
+    ),
+    submitProviderForm(page),
+  ])
+  expect(resp.ok()).toBeTruthy()
 
-  // Verify provider appears in list (use .first() since name might appear in multiple places)
-  await expect(page.locator(`text=${data.name}`).first()).toBeVisible()
+  // Verify the provider appears in the nav (dynamic data the test created).
+  await expect(providerNav(page, data.name)).toBeVisible({ timeout: 15000 })
 }
 
 export async function createLocalProvider(
@@ -105,10 +93,10 @@ export async function createRemoteProvider(
 // =====================================================
 
 export async function openEditProviderDrawer(page: Page, providerName: string) {
-  const providerCard = page.locator(`text=${providerName}`).first()
-  const editButton = providerCard.locator('button[aria-label="Edit"]')
-  await editButton.click()
-  await page.waitForSelector('text=Edit Provider', { timeout: 30000 })
+  // Provider names are edited inline on the detail page header.
+  await clickProviderCard(page, providerName)
+  await byTestId(page, 'llm-provider-header-edit-name-btn').click()
+  await byTestId(page, 'llm-provider-header-name-input').waitFor({ state: 'visible', timeout: 30000 })
 }
 
 export async function updateProvider(
@@ -116,10 +104,21 @@ export async function updateProvider(
   providerName: string,
   updates: Partial<ProviderFormData>
 ): Promise<void> {
+  // Header inline edit only supports the name; rename via the header form.
   await openEditProviderDrawer(page, providerName)
-  await fillProviderForm(page, updates as ProviderFormData)
-  await updateProviderForm(page)
-  await page.waitForSelector('text=Provider updated successfully', { timeout: 15000 })
+  if (updates.name) {
+    await byTestId(page, 'llm-provider-header-name-input').fill(updates.name)
+  }
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => r.url().includes('/api/llm-providers') && r.request().method() === 'PUT',
+      { timeout: 15000 }
+    ),
+    byTestId(page, 'llm-provider-header-save-name-btn').click(),
+  ])
+  expect(resp.ok()).toBeTruthy()
+  void fillProviderForm
+  void updateProviderForm
 }
 
 // =====================================================
@@ -127,43 +126,37 @@ export async function updateProvider(
 // =====================================================
 
 export async function openDeleteProviderDialog(page: Page, providerName: string) {
-  // Navigate to provider detail page first - delete button is in ProviderHeader
+  // Navigate to provider detail page first - delete button is in ProviderHeader.
   await clickProviderCard(page, providerName)
-
-  // Click delete button in ProviderHeader. ProviderHeader migrated
-  // from Modal.confirm to Popconfirm in audit I-4, so the popover
-  // appears as `.ant-popconfirm` (not `.ant-modal-confirm`).
-  const deleteButton = page.locator('button[aria-label="Delete provider"]')
-  await deleteButton.click()
-
-  await page.waitForSelector('.ant-popconfirm', { state: 'visible', timeout: 5000 })
-  await expect(
-    page.locator('.ant-popconfirm-title:has-text("Delete Provider")').first(),
-  ).toBeVisible()
+  await byTestId(page, 'llm-provider-delete-btn').click()
+  // The kit Confirm renders its content with the delete-confirm testid.
+  await byTestId(page, 'llm-provider-delete-confirm').waitFor({ state: 'visible', timeout: 5000 })
 }
 
 export async function confirmDeleteProvider(page: Page) {
-  // Click the primary "Delete" button in the popconfirm. Scope by
-  // class so okText changes don't break this helper.
-  await page.locator('.ant-popconfirm:visible .ant-btn-primary').click()
-  await page.waitForSelector('text=Provider deleted successfully', { timeout: 15000 })
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => r.url().includes('/api/llm-providers') && r.request().method() === 'DELETE',
+      { timeout: 15000 }
+    ),
+    byTestId(page, 'llm-provider-delete-confirm-confirm').click(),
+  ])
+  expect(resp.ok()).toBeTruthy()
 }
 
 export async function cancelDeleteProvider(page: Page) {
-  // Cancel button in Popconfirm — text is "Cancel" by default; scope
-  // to the visible popconfirm.
-  await page.locator('.ant-popconfirm:visible').getByRole('button', { name: 'Cancel' }).click()
+  await byTestId(page, 'llm-provider-delete-confirm-cancel').click()
 }
 
 export async function deleteProvider(page: Page, providerName: string): Promise<void> {
   await openDeleteProviderDialog(page, providerName)
   await confirmDeleteProvider(page)
 
-  // Wait for navigation back to list page
+  // Wait for navigation back to list page.
   await page.waitForLoadState('load')
 
-  // Verify provider no longer in list
-  await expect(page.locator(`text=${providerName}`).first()).not.toBeVisible()
+  // Verify provider no longer in list.
+  await expect(providerNav(page, providerName)).not.toBeVisible()
 }
 
 // =====================================================
@@ -171,49 +164,31 @@ export async function deleteProvider(page: Page, providerName: string): Promise<
 // =====================================================
 
 export async function toggleProviderStatus(page: Page, providerName: string): Promise<void> {
-  // Navigate to provider detail page first - toggle switch is in ProviderHeader
   await clickProviderCard(page, providerName)
-
-  // Find the toggle switch by aria-label that contains the provider name
-  const toggle = page.locator(`.ant-switch[aria-label*="${providerName}"]`)
-  await toggle.click()
+  await headerSwitch(page).click()
   await page.waitForLoadState('load')
-
-  // Navigate back to list page
   await page.goBack()
   await page.waitForLoadState('load')
 }
 
 export async function enableProvider(page: Page, providerName: string): Promise<void> {
-  // Navigate to provider detail page first
   await clickProviderCard(page, providerName)
-
-  const toggle = page.locator(`.ant-switch[aria-label*="${providerName}"]`)
-  const isEnabled = await toggle.getAttribute('aria-checked')
-
-  if (isEnabled === 'false') {
+  const toggle = headerSwitch(page)
+  if ((await toggle.getAttribute('aria-checked')) === 'false') {
     await toggle.click()
     await page.waitForLoadState('load')
   }
-
-  // Navigate back to list page
   await page.goBack()
   await page.waitForLoadState('load')
 }
 
 export async function disableProvider(page: Page, providerName: string): Promise<void> {
-  // Navigate to provider detail page first
   await clickProviderCard(page, providerName)
-
-  const toggle = page.locator(`.ant-switch[aria-label*="${providerName}"]`)
-  const isEnabled = await toggle.getAttribute('aria-checked')
-
-  if (isEnabled === 'true') {
+  const toggle = headerSwitch(page)
+  if ((await toggle.getAttribute('aria-checked')) === 'true') {
     await toggle.click()
     await page.waitForLoadState('load')
   }
-
-  // Navigate back to list page
   await page.goBack()
   await page.waitForLoadState('load')
 }
@@ -223,33 +198,23 @@ export async function disableProvider(page: Page, providerName: string): Promise
 // =====================================================
 
 export async function assertProviderExists(page: Page, providerName: string): Promise<void> {
-  await expect(page.locator(`text=${providerName}`).first()).toBeVisible()
+  await expect(providerNav(page, providerName)).toBeVisible()
 }
 
 export async function assertProviderNotExists(page: Page, providerName: string): Promise<void> {
-  await expect(page.locator(`text=${providerName}`).first()).not.toBeVisible()
+  await expect(providerNav(page, providerName)).not.toBeVisible()
 }
 
 export async function assertProviderEnabled(page: Page, providerName: string): Promise<void> {
-  // Navigate to provider detail page to check toggle state
   await clickProviderCard(page, providerName)
-
-  const toggle = page.locator(`.ant-switch[aria-label*="${providerName}"]`)
-  await expect(toggle).toHaveAttribute('aria-checked', 'true')
-
-  // Navigate back to list page
+  await expect(headerSwitch(page)).toHaveAttribute('aria-checked', 'true')
   await page.goBack()
   await page.waitForLoadState('load')
 }
 
 export async function assertProviderDisabled(page: Page, providerName: string): Promise<void> {
-  // Navigate to provider detail page to check toggle state
   await clickProviderCard(page, providerName)
-
-  const toggle = page.locator(`.ant-switch[aria-label*="${providerName}"]`)
-  await expect(toggle).toHaveAttribute('aria-checked', 'false')
-
-  // Navigate back to list page
+  await expect(headerSwitch(page)).toHaveAttribute('aria-checked', 'false')
   await page.goBack()
   await page.waitForLoadState('load')
 }

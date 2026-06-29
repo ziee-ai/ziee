@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginWithPerms } from '../permissions/fixtures'
+import { byTestId } from '../testid'
 import { Permissions } from '../../../src/api-client/types'
 
 /**
@@ -23,15 +24,13 @@ test.describe('Hardware — monitor-permission gating', () => {
     await loginWithPerms(page, baseURL, apiURL, [Permissions.HardwareRead])
 
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForSelector('text=Hardware', { timeout: 30000 })
+    await byTestId(page, 'hardware-os-card').waitFor({ timeout: 30000 })
 
     // The static monitoring status still renders (the tag is permission-agnostic)…
-    await expect(page.getByText('Real-time Monitoring:')).toBeVisible({
+    await expect(byTestId(page, 'hardware-settings-connection-tag')).toBeVisible({
       timeout: 15000,
     })
     // …but the Connect control is hidden for a non-monitor viewer.
-    await expect(
-      page.getByRole('button', { name: 'Connect', exact: true }),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'hardware-settings-connect-btn')).toHaveCount(0)
   })
 })

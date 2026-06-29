@@ -22,6 +22,7 @@ export function AdminWorkflowsPage() {
 
   return (
     <SettingsPageContainer
+      data-testid="wf-admin-page-title"
       title="System Workflows"
       subtitle="Workflows installed for the whole deployment"
     >

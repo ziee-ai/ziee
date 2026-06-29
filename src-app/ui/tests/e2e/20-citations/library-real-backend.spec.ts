@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the citations library against the REAL backend pipeline
@@ -68,22 +69,19 @@ test.describe('Citations library — real backend pipeline', () => {
     try {
       // --- The UI lists it via the REAL GET /api/citations ---
       await page.goto(`${baseURL}/settings/citations`)
-      await expect(
-        page.getByRole('heading', { name: 'Citations' }),
-      ).toBeVisible({ timeout: 10000 })
+      await expect(byTestId(page, 'cite-settings-card')).toBeVisible({ timeout: 10000 })
 
-      // The card text + its plain (uncolored) `unverified` tag come straight
+      // The card + its plain (uncolored) `unverified` badge come straight
       // from the database via the real list endpoint.
-      await expect(page.getByText(title)).toBeVisible({ timeout: 10000 })
-      await expect(
-        page.getByText('unverified', { exact: true }).first(),
-      ).toBeVisible()
+      const card = byTestId(page, `cite-card-${entryId}`)
+      await expect(card).toBeVisible({ timeout: 10000 })
+      await expect(card.getByTestId('cite-badge-unverified')).toBeVisible()
 
       // --- Export via the REAL GET /api/citations/export (RIS = pure-Rust
       // writer, no pandoc) and assert the downloaded body carries the title ---
       const downloadPromise = page.waitForEvent('download')
-      await page.getByRole('button', { name: 'Export' }).click()
-      await page.getByText('RIS (.ris)').click()
+      await byTestId(page, 'cite-settings-export-button').click()
+      await byTestId(page, 'cite-settings-export-dropdown-item-ris').click()
       const download = await downloadPromise
       expect(download.suggestedFilename()).toContain('citations')
 

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — `BlankLayout` (audit 38f65974c5c3).
@@ -33,9 +34,9 @@ test.describe('Layouts — BlankLayout (/hardware-monitor)', () => {
     await page.goto(`${baseURL}/hardware-monitor`)
 
     // The dedicated monitor view renders (sr-only h1 from HardwareMonitor.tsx).
-    await expect(
-      page.getByRole('heading', { name: 'Hardware Monitor' }),
-    ).toBeAttached({ timeout: 30000 })
+    await expect(byTestId(page, 'hardware-monitor-heading')).toBeAttached({
+      timeout: 30000,
+    })
 
     // No app shell: the sidebar element and its toggle button are both absent.
     await expect(page.locator('#app-sidebar')).toHaveCount(0)

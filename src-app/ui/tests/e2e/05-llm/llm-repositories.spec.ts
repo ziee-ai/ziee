@@ -21,7 +21,23 @@ import {
   assertTestConnectionButtonInDrawerVisible,
   waitForConnectionTestResult,
 } from './helpers/repository-helpers'
+import { byTestId } from '../testid'
 import { RepoHealthMock } from './helpers/repository-health-mock'
+import type { Page } from '@playwright/test'
+
+// A repository row scoped by the (dynamic) repository name it contains.
+const repoRow = (page: Page, name: string) =>
+  page.locator('[data-testid^="llmrepo-row-"]').filter({ hasText: name }).first()
+
+// Drive the auth-type kit Select (trigger then option-by-value).
+async function selectAuthType(
+  page: Page,
+  value: 'none' | 'api_key' | 'basic_auth' | 'bearer_token',
+) {
+  await byTestId(page, 'llmrepo-form-auth-type').click()
+  await byTestId(page, `llmrepo-form-auth-type-opt-${value}`).click()
+  await page.waitForLoadState('load')
+}
 
 test.describe('LLM Repositories - List Page', () => {
   test('should pass accessibility checks', async ({ page, testInfra }) => {
@@ -60,12 +76,9 @@ test.describe('LLM Repositories - List Page', () => {
     // Verify we're on the repositories page
     await expect(page).toHaveURL(new RegExp('/settings/llm-repositories'))
 
-    // Verify page title and subtitle
-    await expect(page.getByRole('heading', { name: 'LLM Repositories' })).toBeVisible()
-    await expect(page.locator('text=Manage your LLM model repositories and their authentication settings')).toBeVisible()
-
-    // Verify Add Repository button exists (icon button with plus)
-    await expect(page.locator('button:has([data-icon="plus"])')).toBeVisible()
+    // Verify the repositories card + Add Repository button render.
+    await expect(byTestId(page, 'llmrepo-card')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-add-btn')).toBeVisible()
   })
 })
 
@@ -102,14 +115,11 @@ test.describe('LLM Repositories - Create Repository', () => {
       enabled: true,
     })
 
-    // Verify repository appears in list
     await assertRepositoryExists(page, repositoryName)
 
-    // Verify auth type is displayed
-    const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-    await expect(repositoryRow.locator('text=API Key')).toBeVisible()
+    // Verify auth type is displayed in the row.
+    await expect(repoRow(page, repositoryName)).toContainText('API Key')
 
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
@@ -127,14 +137,9 @@ test.describe('LLM Repositories - Create Repository', () => {
       enabled: true,
     })
 
-    // Verify repository appears in list
     await assertRepositoryExists(page, repositoryName)
+    await expect(repoRow(page, repositoryName)).toContainText('Basic Auth')
 
-    // Verify auth type is displayed
-    const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-    await expect(repositoryRow.locator('text=Basic Auth')).toBeVisible()
-
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
@@ -151,14 +156,9 @@ test.describe('LLM Repositories - Create Repository', () => {
       enabled: true,
     })
 
-    // Verify repository appears in list
     await assertRepositoryExists(page, repositoryName)
+    await expect(repoRow(page, repositoryName)).toContainText('Bearer Token')
 
-    // Verify auth type is displayed
-    const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-    await expect(repositoryRow.locator('text=Bearer Token')).toBeVisible()
-
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
@@ -171,47 +171,23 @@ test.describe('LLM Repositories - Create Repository', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Verify drawer is open with correct title
-    await expect(page.locator('.ant-drawer-title:has-text("Add Repository")')).toBeVisible()
+    // Verify the form + its fields render.
+    await expect(byTestId(page, 'llmrepo-form')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form-name')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form-url')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form-auth-type')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form-enabled-switch')).toBeVisible()
 
-    // Verify Repository Name field
-    await expect(page.locator('label:has-text("Repository Name")')).toBeVisible()
-    await expect(page.locator('#llm-repository-form_name')).toBeVisible()
+    // Verify footer buttons.
+    await expect(byTestId(page, 'llmrepo-form-cancel-btn')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form-submit-btn')).toBeVisible()
 
-    // Verify Repository URL field
-    await expect(page.locator('label:has-text("Repository URL")')).toBeVisible()
-    await expect(page.locator('#llm-repository-form_url')).toBeVisible()
-
-    // Verify Authentication Type field
-    await expect(page.locator('label:has-text("Authentication Type")')).toBeVisible()
-    await expect(page.locator('#llm-repository-form_auth_type')).toBeVisible()
-
-    // Verify Enable Repository switch. The form field (#..._enabled) is a
-    // HIDDEN Form.Item; the user-visible Switch is a separate local-state
-    // control with aria-label "Enable repository".
-    await expect(page.locator('label:has-text("Enable Repository")')).toBeVisible()
-    await expect(
-      page.getByRole('switch', { name: 'Enable repository' }),
-    ).toBeVisible()
-
-    // Verify buttons. Drawer submit label was standardised to verb-only
-    // (audit I-2): "Add Repository" → "Add". Scope by primary-button
-    // class to keep the assertion stable across naming changes.
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await expect(drawer.locator('button:has-text("Cancel")')).toBeVisible()
-    await expect(drawer.locator('.ant-btn-primary[type="submit"]')).toBeVisible()
-
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 
   test('should show auth fields based on auth type selection', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
 
-    // Tall viewport so the drawer's full form fits and the auth_type
-    // Select stays in view across all toggles. The default viewport
-    // is just tall enough that opening the drawer pushes the Select
-    // partially offscreen mid-test.
     await page.setViewportSize({ width: 1280, height: 1400 })
 
     await loginAsAdmin(page, baseURL)
@@ -220,68 +196,20 @@ test.describe('LLM Repositories - Create Repository', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Fresh locators each call — Form.Item children change as the
-    // conditional sections render, which can invalidate cached
-    // locators that hold a snapshot of the DOM.
-    const authTypeCombobox = () => page
-      .locator('.ant-form-item:has-text("Authentication Type")')
-      .first()
-      .getByRole('combobox')
+    // API Key
+    await selectAuthType(page, 'api_key')
+    await expect(byTestId(page, 'llmrepo-form-api-key')).toBeVisible()
 
-    const selectAuthType = async (
-      value: 'none' | 'api_key' | 'basic_auth' | 'bearer_token',
-    ) => {
-      // Drive the Select by walking React Fiber up from the Select's
-      // input element to find the rc-select's onChange handler. This
-      // is the same handler the option's mousedown triggers.
-      await page.evaluate((v) => {
-        const input = document.getElementById(
-          'llm-repository-form_auth_type',
-        )
-        if (!input) throw new Error('auth_type input not found')
-        // Walk Fiber up to find the rc-select wrapper that has the
-        // `onChange` prop accepting (value, option) signature.
-        const fiberKey = Object.keys(input).find(k => k.startsWith('__reactFiber$'))
-        if (!fiberKey) throw new Error('input has no React Fiber')
-        let fiber = (input as any)[fiberKey]
-        let onChange: ((val: any, opt: any) => void) | null = null
-        while (fiber && !onChange) {
-          const props = fiber.memoizedProps || fiber.pendingProps
-          if (props?.onChange && (props.options || props.children)) {
-            onChange = props.onChange
-            break
-          }
-          fiber = fiber.return
-        }
-        if (!onChange) throw new Error('Could not find Select onChange via Fiber')
-        // rc-select onChange signature is (value, option)
-        onChange(v, { value: v, label: v })
-      }, value)
-      await page.waitForTimeout(500) // let conditional fields render
-    }
+    // Basic Authentication
+    await selectAuthType(page, 'basic_auth')
+    await expect(byTestId(page, 'llmrepo-form-username')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form-password')).toBeVisible()
 
-    // Select API Key
-    await selectAuthType('api_key')
-    await expect(page.locator('label:has-text("API Key")')).toBeVisible()
-    await expect(page.locator('#llm-repository-form_api_key')).toBeVisible()
+    // Bearer Token
+    await selectAuthType(page, 'bearer_token')
+    await expect(byTestId(page, 'llmrepo-form-token')).toBeVisible()
 
-    // Select Basic Authentication
-    await selectAuthType('basic_auth')
-    await expect(page.locator('label:has-text("Username")')).toBeVisible()
-    await expect(page.locator('#llm-repository-form_username')).toBeVisible()
-    await expect(page.locator('label:has-text("Password")')).toBeVisible()
-    await expect(page.locator('#llm-repository-form_password')).toBeVisible()
-
-    // Select Bearer Token
-    await selectAuthType('bearer_token')
-    await authTypeCombobox().press('Enter')
-
-    // Verify Bearer Token field appears
-    await expect(page.locator('label:has-text("Bearer Token")')).toBeVisible()
-    await expect(page.locator('#llm-repository-form_token')).toBeVisible()
-
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 })
 
@@ -292,7 +220,6 @@ test.describe('LLM Repositories - Edit Repository', () => {
 
     await loginAsAdmin(page, baseURL)
 
-    // Create repository
     await createRepository(page, baseURL, {
       name: repositoryName,
       url: 'https://example.com',
@@ -300,27 +227,24 @@ test.describe('LLM Repositories - Edit Repository', () => {
       enabled: true,
     })
 
-    // Open edit drawer
     await goToRepositoriesPage(page, baseURL)
     await waitForRepositoriesPageLoad(page)
 
-    const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-    await repositoryRow.locator('button:has-text("Edit")').click()
+    await repoRow(page, repositoryName).locator('[data-testid^="llmrepo-edit-btn-"]').first().click()
+    await byTestId(page, 'llmrepo-form').waitFor({ timeout: 30000 })
 
-    // Wait for drawer
-    await page.waitForSelector('.ant-drawer-title', { timeout: 30000 })
+    // Update URL (example.org is resolvable; the SSRF validator rejects unresolvable hosts).
+    await byTestId(page, 'llmrepo-form-url').fill('https://example.org')
 
-    // Update URL
-    // Use `example.org` (resolvable real domain) — backend's outbound
-    // URL validator (A2) rejects unresolvable hosts as potential SSRF.
-    await page.fill('#llm-repository-form_url', 'https://example.org')
+    const [resp] = await Promise.all([
+      page.waitForResponse(
+        r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+        { timeout: 15000 }
+      ),
+      byTestId(page, 'llmrepo-form-submit-btn').click(),
+    ])
+    expect(resp.ok()).toBeTruthy()
 
-    // Submit
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await drawer.locator('.ant-btn-primary[type="submit"]').click()
-    await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
-
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
@@ -330,7 +254,6 @@ test.describe('LLM Repositories - Edit Repository', () => {
 
     await loginAsAdmin(page, baseURL)
 
-    // Create repository with no auth
     await createRepository(page, baseURL, {
       name: repositoryName,
       url: 'https://example.com',
@@ -338,41 +261,28 @@ test.describe('LLM Repositories - Edit Repository', () => {
       enabled: true,
     })
 
-    // Open edit drawer
     await goToRepositoriesPage(page, baseURL)
     await waitForRepositoriesPageLoad(page)
 
-    const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-    await repositoryRow.locator('button:has-text("Edit")').click()
-    await page.waitForSelector('.ant-drawer-title', { timeout: 30000 })
+    await repoRow(page, repositoryName).locator('[data-testid^="llmrepo-edit-btn-"]').first().click()
+    await byTestId(page, 'llmrepo-form').waitFor({ timeout: 30000 })
 
-    // Change auth type to API key (index 1: none, api_key, basic, bearer)
-    // Use keyboard nav — option click is flaky due to AntD animation.
-    {
-      const combobox = page
-        .locator('.ant-form-item:has-text("Authentication Type")')
-        .first()
-        .getByRole('combobox')
-      await combobox.click()
-      await page.waitForTimeout(200)
-      await combobox.press('Home')
-      await combobox.press('ArrowDown')
-      await combobox.press('Enter')
-      await page.waitForLoadState('load')
-    }
+    // Change auth type to API key.
+    await selectAuthType(page, 'api_key')
+    await byTestId(page, 'llmrepo-form-api-key').fill('new-api-key-123')
 
-    // Fill API key
-    await page.fill('#llm-repository-form_api_key', 'new-api-key-123')
+    const [resp] = await Promise.all([
+      page.waitForResponse(
+        r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+        { timeout: 15000 }
+      ),
+      byTestId(page, 'llmrepo-form-submit-btn').click(),
+    ])
+    expect(resp.ok()).toBeTruthy()
 
-    // Submit
-    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await drawer.locator('.ant-btn-primary[type="submit"]').click()
-    await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
+    // Verify auth type changed.
+    await expect(repoRow(page, repositoryName)).toContainText('API Key')
 
-    // Verify auth type changed
-    await expect(repositoryRow.locator('text=API Key')).toBeVisible()
-
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
@@ -383,27 +293,21 @@ test.describe('LLM Repositories - Edit Repository', () => {
     await goToRepositoriesPage(page, baseURL)
     await waitForRepositoriesPageLoad(page)
 
-    // Look for Hugging Face repository (built-in)
-    const hfRepo = page.locator('div').filter({ hasText: /^Hugging Face/ }).first()
+    const hfRepo = repoRow(page, 'Hugging Face')
 
     if (await hfRepo.isVisible()) {
-      // Open edit drawer
-      await hfRepo.locator('button:has-text("Edit")').click()
-      await page.waitForSelector('.ant-drawer-title', { timeout: 30000 })
+      await hfRepo.locator('[data-testid^="llmrepo-edit-btn-"]').first().click()
+      await byTestId(page, 'llmrepo-form').waitFor({ timeout: 30000 })
 
-      // Verify name and URL fields are disabled
-      await expect(page.locator('#llm-repository-form_name')).toBeDisabled()
-      await expect(page.locator('#llm-repository-form_url')).toBeDisabled()
+      // Name and URL fields are disabled for built-ins.
+      await expect(byTestId(page, 'llmrepo-form-name')).toBeDisabled()
+      await expect(byTestId(page, 'llmrepo-form-url')).toBeDisabled()
 
-      // Close drawer
-      await page.click('button:has-text("Cancel")')
+      await byTestId(page, 'llmrepo-form-cancel-btn').click()
     }
   })
 
-  test('edit drawer pre-fills the existing auth fields', async ({
-    page,
-    testInfra,
-  }) => {
+  test('edit drawer pre-fills the existing auth fields', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const repositoryName = `test-prefill-${Date.now()}`
     const username = 'prefilluser123'
@@ -422,29 +326,17 @@ test.describe('LLM Repositories - Edit Repository', () => {
     // Re-open the EDIT drawer — the form must rehydrate from the saved row.
     await openEditRepositoryDrawer(page, repositoryName)
 
-    await expect(page.locator('#llm-repository-form_name')).toHaveValue(
-      repositoryName,
-    )
-    await expect(page.locator('#llm-repository-form_url')).toHaveValue(
-      'https://example.com',
-    )
-    // Username + the auth-test endpoint are pre-filled from auth_config
-    // (the password is intentionally NOT echoed for security).
-    await expect(page.locator('#llm-repository-form_username')).toHaveValue(
-      username,
-    )
-    await expect(
-      page.locator('#llm-repository-form_auth_test_api_endpoint'),
-    ).toHaveValue(endpoint)
+    await expect(byTestId(page, 'llmrepo-form-name')).toHaveValue(repositoryName)
+    await expect(byTestId(page, 'llmrepo-form-url')).toHaveValue('https://example.com')
+    // Username + the auth-test endpoint are pre-filled (password is NOT echoed).
+    await expect(byTestId(page, 'llmrepo-form-username')).toHaveValue(username)
+    await expect(byTestId(page, 'llmrepo-form-auth-test-endpoint')).toHaveValue(endpoint)
 
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
     await deleteRepository(page, repositoryName)
   })
 
-  test('Enable switch OFF in the edit drawer disables the repository', async ({
-    page,
-    testInfra,
-  }) => {
+  test('Enable switch OFF in the edit drawer disables the repository', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const repositoryName = `test-edit-disable-${Date.now()}`
 
@@ -457,17 +349,20 @@ test.describe('LLM Repositories - Edit Repository', () => {
     })
     await assertRepositoryEnabled(page, repositoryName)
 
-    // Open the EDIT drawer and flip the Enable switch OFF. Edit-mode OFF is a
-    // minimal PUT (enabled:false, no connection probe) → "Repository disabled".
+    // Open the EDIT drawer and flip the Enable switch OFF (minimal PUT, no probe).
     await openEditRepositoryDrawer(page, repositoryName)
-    const enableSwitch = page.locator('#llm-repository-form_enabled')
+    const enableSwitch = byTestId(page, 'llmrepo-form-enabled-switch')
     await expect(enableSwitch).toBeChecked()
-    await enableSwitch.click()
-    await expect(
-      page.locator('.ant-message-success', { hasText: 'Repository disabled' }),
-    ).toBeVisible({ timeout: 10000 })
+    const [resp] = await Promise.all([
+      page.waitForResponse(
+        r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+        { timeout: 10000 }
+      ),
+      enableSwitch.click(),
+    ])
+    expect(resp.ok()).toBeTruthy()
 
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
     await assertRepositoryDisabled(page, repositoryName)
 
     await deleteRepository(page, repositoryName)
@@ -484,14 +379,15 @@ test.describe('LLM Repositories - Form Validation', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Try to submit without name
+    // Try to submit without name.
     await submitRepositoryForm(page)
 
-    // Should show validation error
-    await expect(page.locator('.ant-form-item-explain-error:has-text("Please enter a repository name")')).toBeVisible()
+    // Should show a validation error (FieldError carries role="alert").
+    await expect(
+      byTestId(page, 'llmrepo-form').getByRole('alert').filter({ hasText: 'repository name' })
+    ).toBeVisible()
 
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 
   test('should validate required repository URL field', async ({ page, testInfra }) => {
@@ -503,17 +399,14 @@ test.describe('LLM Repositories - Form Validation', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Fill name but not URL
-    await page.fill('#llm-repository-form_name', 'Test Repository')
-
-    // Try to submit
+    await byTestId(page, 'llmrepo-form-name').fill('Test Repository')
     await submitRepositoryForm(page)
 
-    // Should show validation error
-    await expect(page.locator('.ant-form-item-explain-error:has-text("Please enter a repository URL")')).toBeVisible()
+    await expect(
+      byTestId(page, 'llmrepo-form').getByRole('alert').filter({ hasText: 'repository URL' })
+    ).toBeVisible()
 
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 
   test('should validate URL format', async ({ page, testInfra }) => {
@@ -525,18 +418,13 @@ test.describe('LLM Repositories - Form Validation', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Fill with invalid URL
-    await page.fill('#llm-repository-form_name', 'Test Repository')
-    await page.fill('#llm-repository-form_url', 'not-a-valid-url')
-
-    // Try to submit
+    await byTestId(page, 'llmrepo-form-name').fill('Test Repository')
+    await byTestId(page, 'llmrepo-form-url').fill('not-a-valid-url')
     await submitRepositoryForm(page)
 
-    // Should show validation error
-    await expect(page.locator('.ant-form-item-explain-error')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-form').getByRole('alert').first()).toBeVisible()
 
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 })
 
@@ -547,17 +435,14 @@ test.describe('LLM Repositories - Delete Repository', () => {
 
     await loginAsAdmin(page, baseURL)
 
-    // Create repository
     await createRepository(page, baseURL, {
       name: repositoryName,
       url: 'https://example.com',
       authType: 'none',
     })
 
-    // Delete the repository
     await deleteRepository(page, repositoryName)
 
-    // Verify repository is gone
     await assertRepositoryNotExists(page, repositoryName)
   })
 
@@ -568,15 +453,13 @@ test.describe('LLM Repositories - Delete Repository', () => {
     await goToRepositoriesPage(page, baseURL)
     await waitForRepositoriesPageLoad(page)
 
-    // Look for Hugging Face repository (built-in)
-    const hfRepo = page.locator('div').filter({ hasText: /^Hugging Face/ }).first()
+    const hfRepo = repoRow(page, 'Hugging Face')
 
     if (await hfRepo.isVisible()) {
-      // Built-in repository should NOT have a delete button
-      await expect(hfRepo.locator('button:has-text("Delete")')).not.toBeVisible()
-
-      // Should have (Built-in) indicator
-      await expect(hfRepo.locator('text=Built-in')).toBeVisible()
+      // Built-in repository should NOT have a delete button.
+      await expect(hfRepo.locator('[data-testid^="llmrepo-delete-btn-"]')).not.toBeVisible()
+      // Should have a (Built-in) indicator.
+      await expect(hfRepo.filter({ hasText: 'Built-in' })).toBeVisible()
     }
   })
 })
@@ -588,7 +471,6 @@ test.describe('LLM Repositories - Enable/Disable Toggle', () => {
 
     await loginAsAdmin(page, baseURL)
 
-    // Create enabled repository
     await createRepository(page, baseURL, {
       name: repositoryName,
       url: 'https://example.com',
@@ -597,30 +479,23 @@ test.describe('LLM Repositories - Enable/Disable Toggle', () => {
     })
     await assertRepositoryEnabled(page, repositoryName)
 
-    // Toggle to disabled
     await toggleRepositoryStatus(page, repositoryName)
-    await page.waitForTimeout(500) // Wait for state update
+    await page.waitForTimeout(500)
     await assertRepositoryDisabled(page, repositoryName)
 
-    // Toggle back to enabled
     await toggleRepositoryStatus(page, repositoryName)
     await page.waitForTimeout(500)
     await assertRepositoryEnabled(page, repositoryName)
 
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
-  test('should create a DISABLED repository and enable it afterwards', async ({
-    page,
-    testInfra,
-  }) => {
+  test('should create a DISABLED repository and enable it afterwards', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const repositoryName = `test-disabled-create-${Date.now()}`
 
     await loginAsAdmin(page, baseURL)
 
-    // Create with the enabled switch OFF — the repo lands disabled.
     await createRepository(page, baseURL, {
       name: repositoryName,
       url: 'https://example.com',
@@ -630,26 +505,20 @@ test.describe('LLM Repositories - Enable/Disable Toggle', () => {
     await assertRepositoryExists(page, repositoryName)
     await assertRepositoryDisabled(page, repositoryName)
 
-    // Later enable it from the list toggle.
     await toggleRepositoryStatus(page, repositoryName)
     await page.waitForTimeout(500)
     await assertRepositoryEnabled(page, repositoryName)
 
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 })
 
 test.describe('LLM Repositories - Connection Testing', () => {
-  test('the built-in Hugging Face repo exposes a working Test button', async ({
-    page,
-    testInfra,
-  }) => {
+  test('the built-in Hugging Face repo exposes a working Test button', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
 
-    // Mock the probe so the built-in repo's Test button is deterministic
-    // (no real network call to huggingface.co).
+    // Mock the probe so the built-in repo's Test button is deterministic.
     await page.route(/\/api\/llm-repositories(\/[0-9a-f-]+)?\/test$/, async (route, req) => {
       if (req.method() === 'POST') {
         return route.fulfill({
@@ -664,14 +533,11 @@ test.describe('LLM Repositories - Connection Testing', () => {
     await goToRepositoriesPage(page, baseURL)
     await waitForRepositoriesPageLoad(page)
 
-    // The seeded built-in repo shows a Test button (canEdit gates it on, even
-    // for built-ins). Clicking it runs the health probe → success toast.
     await assertTestConnectionButtonVisible(page, 'Hugging Face Hub')
     await clickTestConnectionFromList(page, 'Hugging Face Hub')
     await waitForConnectionTestResult(page, 'success')
   })
 
-  // Get HuggingFace API key from environment
   const HF_API_KEY = process.env.HUGGINGFACE_API_KEY || ''
 
   test('should show test connection button for repositories', async ({ page, testInfra }) => {
@@ -680,7 +546,6 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await loginAsAdmin(page, baseURL)
 
-    // Create a repository
     await createRepository(page, baseURL, {
       name: repositoryName,
       url: 'https://huggingface.co',
@@ -688,10 +553,8 @@ test.describe('LLM Repositories - Connection Testing', () => {
       enabled: true,
     })
 
-    // Verify Test button is visible
     await assertTestConnectionButtonVisible(page, repositoryName)
 
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
@@ -701,7 +564,6 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await loginAsAdmin(page, baseURL)
 
-    // Create repository with valid HuggingFace credentials
     await createRepository(page, baseURL, {
       name: repositoryName,
       url: 'https://huggingface.co',
@@ -711,13 +573,9 @@ test.describe('LLM Repositories - Connection Testing', () => {
       enabled: true,
     })
 
-    // Test connection
     await clickTestConnectionFromList(page, repositoryName)
-
-    // Should show success message
     await waitForConnectionTestResult(page, 'success')
 
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
@@ -727,7 +585,6 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await loginAsAdmin(page, baseURL)
 
-    // Create repository with invalid API key
     await createRepository(page, baseURL, {
       name: repositoryName,
       url: 'https://huggingface.co',
@@ -737,13 +594,9 @@ test.describe('LLM Repositories - Connection Testing', () => {
       enabled: true,
     })
 
-    // Test connection
     await clickTestConnectionFromList(page, repositoryName)
-
-    // Should show error message (backend now has 10s timeout for faster feedback)
     await waitForConnectionTestResult(page, 'error')
 
-    // Cleanup
     await deleteRepository(page, repositoryName)
   })
 
@@ -751,15 +604,8 @@ test.describe('LLM Repositories - Connection Testing', () => {
     const { baseURL } = testInfra
     const repositoryName = `test-connection-unreachable-${Date.now()}`
 
-    // The original test used an UNRESOLVABLE hostname, which the outbound
-    // URL validator (security A2, F-01/F-03) now rejects at create time to
-    // prevent SSRF / DNS-rebinding. Instead use a RESOLVABLE-but-unreachable
-    // URL: start the local mock to claim a free 127.0.0.1 port, then dispose
-    // it so nothing is listening. 127.0.0.1 resolves, so create-validation
-    // (DEV_LOCAL policy in debug builds, allow_localhost: true) accepts it;
-    // the connection test then gets ECONNREFUSED — exercising the
-    // connection-failure error UI deterministically and fully offline
-    // (distinct from the invalid-credentials/401 path covered above).
+    // Resolvable-but-unreachable URL: claim a free 127.0.0.1 port then dispose
+    // it so the connection test gets ECONNREFUSED deterministically.
     const mock = await RepoHealthMock.start()
     const unreachableUrl = mock.url()
     await mock.dispose()
@@ -788,15 +634,12 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Fill in valid repository data
-    await page.fill('#llm-repository-form_name', 'Test Repository')
-    await page.fill('#llm-repository-form_url', 'https://huggingface.co')
+    await byTestId(page, 'llmrepo-form-name').fill('Test Repository')
+    await byTestId(page, 'llmrepo-form-url').fill('https://huggingface.co')
 
-    // Test Connection button should be visible now
     await assertTestConnectionButtonInDrawerVisible(page)
 
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 
   test('should successfully test connection from drawer with valid credentials', async ({ page, testInfra }) => {
@@ -808,40 +651,17 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Fill in repository data with valid HuggingFace credentials
-    await page.fill('#llm-repository-form_name', 'Test HF Repository')
-    await page.fill('#llm-repository-form_url', 'https://huggingface.co')
+    await byTestId(page, 'llmrepo-form-name').fill('Test HF Repository')
+    await byTestId(page, 'llmrepo-form-url').fill('https://huggingface.co')
 
-    // Select bearer token auth (index 3) via keyboard
-    {
-      const combobox = page
-        .locator('.ant-form-item:has-text("Authentication Type")')
-        .first()
-        .getByRole('combobox')
-      await combobox.click()
-      await page.waitForTimeout(200)
-      await combobox.press('Home')
-      await combobox.press('ArrowDown')
-      await combobox.press('ArrowDown')
-      await combobox.press('ArrowDown')
-      await combobox.press('Enter')
-      await page.waitForLoadState('load')
-    }
+    await selectAuthType(page, 'bearer_token')
+    await byTestId(page, 'llmrepo-form-token').fill(HF_API_KEY)
+    await byTestId(page, 'llmrepo-form-auth-test-endpoint').fill('https://huggingface.co/api/whoami-v2')
 
-    // Fill valid bearer token
-    await page.fill('#llm-repository-form_token', HF_API_KEY)
-
-    // Fill auth test endpoint
-    await page.fill('#llm-repository-form_auth_test_api_endpoint', 'https://huggingface.co/api/whoami-v2')
-
-    // Click Test Connection
     await clickTestConnectionFromDrawer(page)
-
-    // Should show success message
     await waitForConnectionTestResult(page, 'success')
 
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 
   test('should fail connection test from drawer with invalid credentials', async ({ page, testInfra }) => {
@@ -853,40 +673,17 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Fill in repository data with invalid credentials
-    await page.fill('#llm-repository-form_name', 'Test Invalid Repository')
-    await page.fill('#llm-repository-form_url', 'https://huggingface.co')
+    await byTestId(page, 'llmrepo-form-name').fill('Test Invalid Repository')
+    await byTestId(page, 'llmrepo-form-url').fill('https://huggingface.co')
 
-    // Select bearer token auth (index 3) via keyboard
-    {
-      const combobox = page
-        .locator('.ant-form-item:has-text("Authentication Type")')
-        .first()
-        .getByRole('combobox')
-      await combobox.click()
-      await page.waitForTimeout(200)
-      await combobox.press('Home')
-      await combobox.press('ArrowDown')
-      await combobox.press('ArrowDown')
-      await combobox.press('ArrowDown')
-      await combobox.press('Enter')
-      await page.waitForLoadState('load')
-    }
+    await selectAuthType(page, 'bearer_token')
+    await byTestId(page, 'llmrepo-form-token').fill('hf_invalid_token_xyz')
+    await byTestId(page, 'llmrepo-form-auth-test-endpoint').fill('https://huggingface.co/api/whoami-v2')
 
-    // Fill invalid bearer token
-    await page.fill('#llm-repository-form_token', 'hf_invalid_token_xyz')
-
-    // Fill auth test endpoint
-    await page.fill('#llm-repository-form_auth_test_api_endpoint', 'https://huggingface.co/api/whoami-v2')
-
-    // Click Test Connection
     await clickTestConnectionFromDrawer(page)
-
-    // Should show error message (backend now has 10s timeout for faster feedback)
     await waitForConnectionTestResult(page, 'error')
 
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 
   test('should hide Test Connection button without URL', async ({ page, testInfra }) => {
@@ -898,15 +695,12 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await openAddRepositoryDrawer(page)
 
-    // Fill only name, no URL
-    await page.fill('#llm-repository-form_name', 'Test Repository')
+    await byTestId(page, 'llmrepo-form-name').fill('Test Repository')
 
-    // Test Connection button should not be visible (form validation)
-    const testButton = page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Test Connection")')
-    await expect(testButton).not.toBeVisible()
+    // Test Connection button should not be visible (form validation).
+    await expect(byTestId(page, 'llmrepo-form-test-btn')).not.toBeVisible()
 
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    await byTestId(page, 'llmrepo-form-cancel-btn').click()
   })
 })
 
@@ -918,42 +712,27 @@ test.describe('LLM Repositories - Empty States', () => {
     await goToRepositoriesPage(page, baseURL)
     await waitForRepositoriesPageLoad(page)
 
-    // The page should still be functional even if there are repositories
-    // (Empty state would show if no repositories exist, but we likely have built-ins)
-    await expect(page.locator('button:has([data-icon="plus"])')).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-add-btn')).toBeVisible()
   })
 
-  test('renders the Empty state when no repositories exist', async ({
-    page,
-    testInfra,
-  }) => {
+  test('renders the Empty state when no repositories exist', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
 
-    // Built-in repos are always seeded, so force an empty list to reach the
-    // Empty component (CloudDownloadOutlined + the get-started copy).
+    // Force an empty list to reach the Empty component.
     await page.route(/\/api\/llm-repositories(\?.*)?$/, async (route, req) => {
       if (req.method() === 'GET') {
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            repositories: [],
-            page: 1,
-            per_page: 20,
-            total: 0,
-          }),
+          body: JSON.stringify({ repositories: [], page: 1, per_page: 20, total: 0 }),
         })
       }
       return route.continue()
     })
 
     await goToRepositoriesPage(page, baseURL)
-    await expect(page.getByText('No repositories yet')).toBeVisible({
-      timeout: 15000,
-    })
-    await expect(
-      page.getByText('Add a repository to get started'),
-    ).toBeVisible()
+    await expect(byTestId(page, 'llmrepo-empty')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'llmrepo-empty')).toContainText('No repositories yet')
   })
 })

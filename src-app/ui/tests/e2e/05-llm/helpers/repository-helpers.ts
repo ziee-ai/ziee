@@ -1,7 +1,8 @@
-import { Page, expect } from '@playwright/test'
+import { Page, expect, Locator } from '@playwright/test'
+import { byTestId } from '../../testid'
 
 /**
- * LLM Repository CRUD helpers
+ * LLM Repository CRUD helpers (kit / data-testid based)
  */
 
 export interface RepositoryFormData {
@@ -17,6 +18,19 @@ export interface RepositoryFormData {
   authTestEndpoint?: string
 }
 
+// A repository row scoped by the (dynamic) repository name it contains.
+function repoRow(page: Page, repositoryName: string): Locator {
+  return page
+    .locator('[data-testid^="llmrepo-row-"]')
+    .filter({ hasText: repositoryName })
+    .first()
+}
+
+async function setKitSwitch(locator: Locator, desired: boolean) {
+  const checked = (await locator.getAttribute('aria-checked')) === 'true'
+  if (checked !== desired) await locator.click()
+}
+
 // =====================================================
 // Navigation
 // =====================================================
@@ -27,8 +41,7 @@ export async function goToRepositoriesPage(page: Page, baseURL: string) {
 }
 
 export async function waitForRepositoriesPageLoad(page: Page) {
-  // Wait for the repositories page to load
-  await page.waitForSelector('text=LLM Repositories', { timeout: 30000 })
+  await byTestId(page, 'llmrepo-card').waitFor({ state: 'visible', timeout: 30000 })
   await page.waitForLoadState('load')
 }
 
@@ -37,71 +50,39 @@ export async function waitForRepositoriesPageLoad(page: Page) {
 // =====================================================
 
 export async function openAddRepositoryDrawer(page: Page) {
-  // Click Add Repository button (icon button with plus icon in the card header)
-  await page.click('button:has([data-icon="plus"])')
-  // Wait for the drawer to open
-  await page.waitForSelector('.ant-drawer-title:has-text("Add Repository")', { timeout: 30000 })
+  await byTestId(page, 'llmrepo-add-btn').click()
+  await byTestId(page, 'llmrepo-form').waitFor({ state: 'visible', timeout: 30000 })
 }
 
 export async function fillRepositoryForm(page: Page, data: RepositoryFormData) {
-  // Fill name
-  await page.fill('#llm-repository-form_name', data.name)
+  await byTestId(page, 'llmrepo-form-name').fill(data.name)
+  await byTestId(page, 'llmrepo-form-url').fill(data.url)
 
-  // Fill URL
-  await page.fill('#llm-repository-form_url', data.url)
-
-  // Select auth type - click the container, not the input
-  await page.click('.ant-select:has(#llm-repository-form_auth_type)')
-  await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-
-  const authTypeLabels: Record<RepositoryFormData['authType'], string> = {
-    'none': 'No Authentication',
-    'api_key': 'API Key',
-    'basic_auth': 'Basic Authentication',
-    'bearer_token': 'Bearer Token',
-  }
-
-  await page.click(`.ant-select-item-option:has-text("${authTypeLabels[data.authType]}")`)
+  // Auth type — kit Select keyed by value.
+  await byTestId(page, 'llmrepo-form-auth-type').click()
+  await byTestId(page, `llmrepo-form-auth-type-opt-${data.authType}`).click()
   await page.waitForLoadState('load')
 
-  // Fill auth fields based on type
   if (data.authType === 'api_key' && data.apiKey) {
-    await page.fill('#llm-repository-form_api_key', data.apiKey)
+    await byTestId(page, 'llmrepo-form-api-key').fill(data.apiKey)
   }
-
   if (data.authType === 'basic_auth') {
-    if (data.username) {
-      await page.fill('#llm-repository-form_username', data.username)
-    }
-    if (data.password) {
-      await page.fill('#llm-repository-form_password', data.password)
-    }
+    if (data.username) await byTestId(page, 'llmrepo-form-username').fill(data.username)
+    if (data.password) await byTestId(page, 'llmrepo-form-password').fill(data.password)
   }
-
   if (data.authType === 'bearer_token' && data.bearerToken) {
-    await page.fill('#llm-repository-form_token', data.bearerToken)
+    await byTestId(page, 'llmrepo-form-token').fill(data.bearerToken)
   }
-
-  // Fill optional auth test endpoint
   if (data.authTestEndpoint) {
-    await page.fill('#llm-repository-form_auth_test_api_endpoint', data.authTestEndpoint)
+    await byTestId(page, 'llmrepo-form-auth-test-endpoint').fill(data.authTestEndpoint)
   }
-
-  // Handle enabled toggle if specified
   if (data.enabled !== undefined) {
-    const toggle = page.locator('#llm-repository-form_enabled')
-    const isChecked = await toggle.isChecked()
-    if (isChecked !== data.enabled) {
-      await toggle.click()
-    }
+    await setKitSwitch(byTestId(page, 'llmrepo-form-enabled-switch'), data.enabled)
   }
 }
 
 export async function submitRepositoryForm(page: Page) {
-  // Submit label was standardised to verb-only ("Add Repository" →
-  // "Add", audit I-2). Scope by primary-button class.
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  await drawer.locator('.ant-btn-primary[type="submit"]').click()
+  await byTestId(page, 'llmrepo-form-submit-btn').click()
   await page.waitForLoadState('load')
 }
 
@@ -115,13 +96,18 @@ export async function createRepository(
 
   await openAddRepositoryDrawer(page)
   await fillRepositoryForm(page, data)
-  await submitRepositoryForm(page)
 
-  // Wait for success message
-  await page.waitForSelector('text=Repository added successfully', { timeout: 15000 })
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'POST',
+      { timeout: 15000 }
+    ),
+    submitRepositoryForm(page),
+  ])
+  expect(resp.ok()).toBeTruthy()
 
-  // Verify repository appears in list
-  await expect(page.locator(`text=${data.name}`).first()).toBeVisible()
+  // Verify repository appears in the list (dynamic data the test created).
+  await expect(repoRow(page, data.name)).toBeVisible({ timeout: 15000 })
 }
 
 // =====================================================
@@ -129,21 +115,15 @@ export async function createRepository(
 // =====================================================
 
 export async function openEditRepositoryDrawer(page: Page, repositoryName: string) {
-  // Find the repository by name and click its edit button
-  // Repositories are in a list, each with name, URL, and action buttons
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const editButton = repositoryRow.locator('button:has-text("Edit")')
-  await editButton.click()
-
-  // Wait for drawer - could be "Edit Repository" or "Edit Built-in Repository"
-  await page.waitForSelector('.ant-drawer-title', { timeout: 30000 })
+  await repoRow(page, repositoryName)
+    .locator('[data-testid^="llmrepo-edit-btn-"]')
+    .first()
+    .click()
+  await byTestId(page, 'llmrepo-form').waitFor({ state: 'visible', timeout: 30000 })
 }
 
 export async function updateRepositoryForm(page: Page) {
-  // Submit label was standardised to verb-only ("Update Repository" →
-  // "Save", audit I-2). Scope by primary-button class.
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  await drawer.locator('.ant-btn-primary[type="submit"]').click()
+  await byTestId(page, 'llmrepo-form-submit-btn').click()
   await page.waitForLoadState('load')
 }
 
@@ -154,8 +134,14 @@ export async function updateRepository(
 ): Promise<void> {
   await openEditRepositoryDrawer(page, repositoryName)
   await fillRepositoryForm(page, updates as RepositoryFormData)
-  await updateRepositoryForm(page)
-  await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+      { timeout: 15000 }
+    ),
+    updateRepositoryForm(page),
+  ])
+  expect(resp.ok()).toBeTruthy()
 }
 
 // =====================================================
@@ -163,64 +149,66 @@ export async function updateRepository(
 // =====================================================
 
 export async function openDeleteRepositoryDialog(page: Page, repositoryName: string) {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const deleteButton = repositoryRow.locator('button:has-text("Delete")')
-  await deleteButton.click()
-
-  // Wait for confirmation popconfirm
-  await page.waitForSelector('.ant-popover:visible', { timeout: 5000 })
+  await repoRow(page, repositoryName)
+    .locator('[data-testid^="llmrepo-delete-btn-"]')
+    .first()
+    .click()
+  // Kit Confirm dialog content.
+  await page
+    .locator('[data-testid^="llmrepo-delete-confirm-"]')
+    .first()
+    .waitFor({ state: 'visible', timeout: 5000 })
 }
 
 export async function confirmDeleteRepository(page: Page) {
-  // Popconfirm uses popover, not modal
-  await page.click('.ant-popover .ant-btn-primary:has-text("Delete")')
-  await page.waitForSelector('text=Repository removed successfully', { timeout: 15000 })
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'DELETE',
+      { timeout: 15000 }
+    ),
+    page
+      .locator('[data-testid^="llmrepo-delete-confirm-"][data-testid$="-confirm"]')
+      .first()
+      .click(),
+  ])
+  expect(resp.ok()).toBeTruthy()
 }
 
 export async function cancelDeleteRepository(page: Page) {
-  await page.click('.ant-popover .ant-btn-default:has-text("Cancel")')
+  await page
+    .locator('[data-testid^="llmrepo-delete-confirm-"][data-testid$="-cancel"]')
+    .first()
+    .click()
 }
 
 export async function deleteRepository(page: Page, repositoryName: string): Promise<void> {
   await openDeleteRepositoryDialog(page, repositoryName)
   await confirmDeleteRepository(page)
-
-  // Wait for removal from list
   await page.waitForLoadState('load')
-  await expect(page.locator(`text=${repositoryName}`).first()).not.toBeVisible()
+  await expect(repoRow(page, repositoryName)).not.toBeVisible()
 }
 
 // =====================================================
 // Repository Enable/Disable
 // =====================================================
 
+function repoToggle(page: Page, repositoryName: string): Locator {
+  return repoRow(page, repositoryName).locator('[data-testid^="llmrepo-toggle-"]').first()
+}
+
 export async function toggleRepositoryStatus(page: Page, repositoryName: string): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const toggle = repositoryRow.locator('.ant-switch')
-  await toggle.click()
+  await repoToggle(page, repositoryName).click()
   await page.waitForLoadState('load')
 }
 
 export async function enableRepository(page: Page, repositoryName: string): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const toggle = repositoryRow.locator('.ant-switch')
-  const isEnabled = await toggle.getAttribute('aria-checked')
-
-  if (isEnabled === 'false') {
-    await toggle.click()
-    await page.waitForLoadState('load')
-  }
+  await setKitSwitch(repoToggle(page, repositoryName), true)
+  await page.waitForLoadState('load')
 }
 
 export async function disableRepository(page: Page, repositoryName: string): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const toggle = repositoryRow.locator('.ant-switch')
-  const isEnabled = await toggle.getAttribute('aria-checked')
-
-  if (isEnabled === 'true') {
-    await toggle.click()
-    await page.waitForLoadState('load')
-  }
+  await setKitSwitch(repoToggle(page, repositoryName), false)
+  await page.waitForLoadState('load')
 }
 
 // =====================================================
@@ -228,28 +216,25 @@ export async function disableRepository(page: Page, repositoryName: string): Pro
 // =====================================================
 
 export async function assertRepositoryExists(page: Page, repositoryName: string): Promise<void> {
-  await expect(page.locator(`text=${repositoryName}`).first()).toBeVisible()
+  await expect(repoRow(page, repositoryName)).toBeVisible()
 }
 
 export async function assertRepositoryNotExists(page: Page, repositoryName: string): Promise<void> {
-  await expect(page.locator(`text=${repositoryName}`).first()).not.toBeVisible()
+  await expect(repoRow(page, repositoryName)).not.toBeVisible()
 }
 
 export async function assertRepositoryEnabled(page: Page, repositoryName: string): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const toggle = repositoryRow.locator('.ant-switch')
-  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await expect(repoToggle(page, repositoryName)).toHaveAttribute('aria-checked', 'true')
 }
 
 export async function assertRepositoryDisabled(page: Page, repositoryName: string): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const toggle = repositoryRow.locator('.ant-switch')
-  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  await expect(repoToggle(page, repositoryName)).toHaveAttribute('aria-checked', 'false')
 }
 
 export async function assertRepositoryBuiltIn(page: Page, repositoryName: string): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  await expect(repositoryRow.locator('text=Built-in')).toBeVisible()
+  await expect(
+    repoRow(page, repositoryName).filter({ hasText: 'Built-in' })
+  ).toBeVisible()
 }
 
 // =====================================================
@@ -257,48 +242,48 @@ export async function assertRepositoryBuiltIn(page: Page, repositoryName: string
 // =====================================================
 
 export async function clickTestConnectionFromList(page: Page, repositoryName: string): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const testButton = repositoryRow.locator('button:has-text("Test")')
-  await testButton.click()
+  await repoRow(page, repositoryName)
+    .locator('[data-testid^="llmrepo-test-btn-"]')
+    .first()
+    .click()
 }
 
 export async function clickTestConnectionFromDrawer(page: Page): Promise<void> {
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  const testButton = drawer.locator('button:has-text("Test Connection")')
-  await testButton.click()
+  await byTestId(page, 'llmrepo-form-test-btn').click()
 }
 
 export async function assertTestButtonLoading(page: Page, repositoryName: string, loading: boolean): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const testButton = repositoryRow.locator('button:has-text("Test")')
-
+  const testButton = repoRow(page, repositoryName)
+    .locator('[data-testid^="llmrepo-test-btn-"]')
+    .first()
+  // Kit Button reflects loading via [data-loading] / disabled.
   if (loading) {
-    await expect(testButton).toHaveClass(/ant-btn-loading/)
+    await expect(testButton).toBeDisabled()
   } else {
-    await expect(testButton).not.toHaveClass(/ant-btn-loading/)
+    await expect(testButton).toBeEnabled()
   }
 }
 
 export async function assertTestConnectionButtonVisible(page: Page, repositoryName: string): Promise<void> {
-  const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
-  const testButton = repositoryRow.locator('button:has-text("Test")')
-  await expect(testButton).toBeVisible()
+  await expect(
+    repoRow(page, repositoryName).locator('[data-testid^="llmrepo-test-btn-"]').first()
+  ).toBeVisible()
 }
 
 export async function assertTestConnectionButtonInDrawerVisible(page: Page): Promise<void> {
-  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  const testButton = drawer.locator('button:has-text("Test Connection")')
-  await expect(testButton).toBeVisible()
+  await expect(byTestId(page, 'llmrepo-form-test-btn')).toBeVisible()
 }
 
 export async function waitForConnectionTestResult(page: Page, expectedType: 'success' | 'error'): Promise<void> {
   if (expectedType === 'success') {
-    // Wait for success message containing "Connection" and "successful"
-    await page.waitForSelector('.ant-message-success', { timeout: 15000 })
+    await page
+      .locator('[data-sonner-toast][data-type="success"]')
+      .first()
+      .waitFor({ timeout: 15000 })
   } else {
-    // Wait for error message or warning
-    const messageSelector = page.locator('.ant-message-error, .ant-message-warning').first()
-    await expect(messageSelector).toBeVisible({ timeout: 15000 })
+    await expect(
+      page.locator('[data-sonner-toast][data-type="error"], [data-sonner-toast][data-type="warning"]').first()
+    ).toBeVisible({ timeout: 15000 })
   }
 }
 
@@ -307,10 +292,8 @@ export async function waitForConnectionTestResult(page: Page, expectedType: 'suc
 // =====================================================
 
 /**
- * Configure the built-in HuggingFace repository with API key from environment
- * This is required for download tests that access HuggingFace models
- *
- * Mirrors backend test helper: src-web/tests/llm_model/download_test.rs::get_huggingface_repository
+ * Configure the built-in HuggingFace repository with API key from environment.
+ * Required for download tests that access HuggingFace models.
  */
 export async function configureHuggingFaceAuth(page: Page, baseURL: string): Promise<void> {
   const apiKey = process.env.HUGGINGFACE_API_KEY
@@ -319,24 +302,22 @@ export async function configureHuggingFaceAuth(page: Page, baseURL: string): Pro
     throw new Error('HUGGINGFACE_API_KEY not set in environment. Please ensure tests/.env.test is loaded.')
   }
 
-  // Navigate to repositories page
   await goToRepositoriesPage(page, baseURL)
   await waitForRepositoriesPageLoad(page)
 
-  // Open edit drawer for Hugging Face Hub
   await openEditRepositoryDrawer(page, 'Hugging Face Hub')
+  await byTestId(page, 'llmrepo-form-api-key').fill(apiKey)
 
-  // Fill in the API key
-  await page.fill('#llm-repository-form_api_key', apiKey)
+  const [resp] = await Promise.all([
+    page.waitForResponse(
+      r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+      { timeout: 15000 }
+    ),
+    updateRepositoryForm(page),
+  ])
+  expect(resp.ok()).toBeTruthy()
 
-  // Update the repository
-  await updateRepositoryForm(page)
-  await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
-
-  // Navigate to Settings > LLM Providers to clean up UI state
-  // This ensures any open drawers are closed and we're on a clean page
-  await page.goto(`${baseURL}/settings`)
-  await page.waitForLoadState('load')
-  await page.click('text=LLM Providers')
+  // Navigate to a clean providers page so any open drawer is dismissed.
+  await page.goto(`${baseURL}/settings/llm-providers`)
   await page.waitForLoadState('load')
 }

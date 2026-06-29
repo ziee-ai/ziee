@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the Document-RAG "Embedding (semantic search)" card (EmbeddingSection.tsx).
@@ -30,55 +31,39 @@ test.describe('Document RAG — embedding (semantic search) section', () => {
 
     // Scope every interaction to the Embedding card so its Save button isn't
     // confused with the other section cards' Save buttons.
-    const card = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Embedding (semantic search)' })
+    const card = byTestId(page, 'filerag-embedding-card')
     await expect(card).toBeVisible({ timeout: 30000 })
 
-    // No embedding-capable model on a fresh deployment → the picker carries
-    // its empty placeholder and "Re-embed now" is disabled (handleReembed
+    // No embedding-capable model on a fresh deployment → the empty-models
+    // alert is shown and "Re-embed now" is disabled (handleReembed
     // early-returns when settings.embedding_model_id is null).
-    await expect(
-      card.getByText('No embedding-capable models found.'),
-    ).toBeVisible()
-    await expect(
-      card.getByRole('button', { name: 'Re-embed now' }),
-    ).toBeDisabled()
+    await expect(byTestId(page, 'filerag-embedding-no-models-alert')).toBeVisible()
+    await expect(byTestId(page, 'filerag-embedding-reembed-btn')).toBeDisabled()
 
     // Edit the cosine-distance threshold (InputNumber) to a new value.
-    const cosine = card.getByRole('spinbutton', {
-      name: /Cosine distance threshold/i,
-    })
+    const cosine = byTestId(page, 'filerag-embedding-cosine')
     await cosine.click()
     await cosine.press('ControlOrMeta+a')
     await cosine.fill('0.35')
 
     // Toggle the semantic-search switch so the save carries a real change.
-    await card.getByRole('switch', { name: 'Enable semantic search' }).click()
+    await byTestId(page, 'filerag-embedding-switch').click()
 
-    // Save and assert the real store→PUT round-trip succeeded. Because no
-    // model changed, the unchanged-model success copy is shown.
+    // Save and assert the real store→PUT round-trip succeeded.
     const saveResp = page.waitForResponse(
       r =>
         r.url().includes('/api/file-rag/admin-settings') &&
         r.request().method() === 'PUT' &&
         r.status() === 200,
     )
-    await card.getByRole('button', { name: 'Save' }).click()
+    await byTestId(page, 'filerag-embedding-save').click()
     await saveResp
-
-    await expect(page.getByText('Embedding settings saved.')).toBeVisible({
-      timeout: 30000,
-    })
 
     // The persisted cosine value survives a reload (real round-trip, not a
     // transient client edit).
     await page.reload()
-    await expect(
-      page
-        .locator('.ant-card')
-        .filter({ hasText: 'Embedding (semantic search)' })
-        .getByRole('spinbutton', { name: /Cosine distance threshold/i }),
-    ).toHaveValue('0.35', { timeout: 30000 })
+    await expect(byTestId(page, 'filerag-embedding-cosine')).toHaveValue('0.35', {
+      timeout: 30000,
+    })
   })
 })

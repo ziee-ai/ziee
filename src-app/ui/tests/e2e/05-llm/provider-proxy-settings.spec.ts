@@ -7,14 +7,15 @@ import {
   clickProviderCard,
   switchToTab,
 } from './helpers/navigation-helpers'
+import { byTestId } from '../testid'
 
 /**
  * Proxy Settings card (ProviderProxySettingsForm), rendered on a REMOTE
  * provider's Settings tab via RemoteProviderSettings. Previously no E2E spec
- * exercised this card. Enable the proxy, set a URL, save → success toast.
+ * exercised this card. Enable the proxy, set a URL, save → real PUT succeeds.
  */
 test.describe('LLM Providers - Proxy Settings card', () => {
-  test('enable proxy + set URL persists with a success toast', async ({
+  test('enable proxy + set URL persists via the provider PUT', async ({
     page,
     testInfra,
   }) => {
@@ -31,22 +32,22 @@ test.describe('LLM Providers - Proxy Settings card', () => {
     await expect(page).toHaveURL(/\/settings\/llm-providers\/[a-f0-9-]+/)
     await switchToTab(page, 'settings')
 
-    const proxyCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Proxy Settings' })
+    const proxyCard = byTestId(page, 'llm-proxy-settings-card')
     await expect(proxyCard).toBeVisible({ timeout: 15000 })
 
     // Enable the proxy → the URL field becomes required/active.
-    await proxyCard
-      .getByRole('switch', { name: 'Enable or disable proxy settings' })
-      .click()
-    await proxyCard
-      .getByPlaceholder('http://proxy.example.com:8080')
-      .fill('http://proxy.company.com:8080')
+    await byTestId(page, 'llm-proxy-enabled-switch').click()
+    await byTestId(page, 'llm-proxy-url-input').fill('http://proxy.company.com:8080')
 
-    await proxyCard.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText('Proxy settings saved')).toBeVisible({
-      timeout: 10000,
-    })
+    const [resp] = await Promise.all([
+      page.waitForResponse(
+        r =>
+          r.url().includes('/api/llm-providers') &&
+          r.request().method() === 'PUT',
+        { timeout: 10000 },
+      ),
+      byTestId(page, 'llm-proxy-save-btn').click(),
+    ])
+    expect(resp.ok()).toBeTruthy()
   })
 })

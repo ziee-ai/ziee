@@ -77,7 +77,7 @@ export function HardwareMonitor() {
           )}
         </div>
         {currentUsage && (
-          <Text type="secondary" className="text-xs">
+          <Text type="secondary" className="text-xs" data-testid="hardware-last-update">
             Last update: {new Date(currentUsage.timestamp).toLocaleTimeString()}
           </Text>
         )}
@@ -161,7 +161,7 @@ export function HardwareMonitor() {
   return (
     <DivScrollY className="h-full w-full flex-col">
       <div className="p-3 max-w-4xl mx-auto w-full">
-        <h1 className="sr-only">Hardware Monitor</h1>
+        <h1 className="sr-only" data-testid="hardware-monitor-heading">Hardware Monitor</h1>
         <div className="flex flex-col gap-3">
           {renderConnectionStatus()}
 

@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — logout via the UserProfileWidget dropdown.
@@ -18,20 +19,16 @@ test.describe('Authentication — logout', () => {
     await loginAsAdmin(page, testInfra.baseURL)
 
     // Open the profile dropdown in the sidebar footer.
-    const widget = page.locator('[data-testid="user-profile-widget"]')
+    const widget = byTestId(page, 'user-profile-widget')
     await expect(widget).toBeVisible({ timeout: 30000 })
     await widget.click()
 
     // Click the "Logout" menu item.
-    await page.getByRole('menuitem', { name: 'Logout' }).click()
+    await byTestId(page, 'userprofile-menu-dropdown-item-logout').click()
 
     // The AuthPage login form replaces the app shell.
-    await expect(
-      page.getByLabel('Username or Email'),
-    ).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 15000 })
     // The authenticated sidebar widget is gone.
-    await expect(
-      page.locator('[data-testid="user-profile-widget"]'),
-    ).toHaveCount(0)
+    await expect(byTestId(page, 'user-profile-widget')).toHaveCount(0)
   })
 })
