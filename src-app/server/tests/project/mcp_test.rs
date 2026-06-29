@@ -300,7 +300,7 @@ async fn project_mcp_defaults_snapshot_group_assigned_system_server() {
     let grp: Value = reqwest::Client::new()
         .post(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", setup.token))
-        .json(&json!({ "name": format!("mcp-grp-{}", &sid[..8]), "description": "x", "permissions": {} }))
+        .json(&json!({ "name": format!("mcp-grp-{}", &sid[..8]), "description": "x", "permissions": [] }))
         .send()
         .await
         .unwrap()
