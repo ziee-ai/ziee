@@ -682,7 +682,7 @@ async fn ask_user_accept_persists_status_and_response_content_to_db() {
          FROM message_contents mc
          JOIN branch_messages bm ON bm.message_id = mc.message_id
          JOIN branches b ON b.id = bm.branch_id
-         WHERE b.conversation_id = $1 AND mc.content_type = 'elicitation'
+         WHERE b.conversation_id = $1 AND mc.content_type = 'elicitation_request'
          ORDER BY mc.created_at DESC
          LIMIT 1",
     )
@@ -768,7 +768,7 @@ async fn upload_text(server: &TestServer, token: &str, filename: &str, body: &st
         .send()
         .await
         .expect("upload");
-    assert_eq!(resp.status(), 200, "upload: {}", resp.text().await.unwrap_or_default());
+    assert_eq!(resp.status(), 201, "upload: {}", resp.text().await.unwrap_or_default());
     let v: Value = resp.json().await.unwrap();
     v["id"].as_str().unwrap().to_string()
 }
