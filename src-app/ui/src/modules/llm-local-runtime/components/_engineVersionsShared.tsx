@@ -12,9 +12,10 @@ import { type ReactNode } from 'react'
  * Shared between InstalledVersionsCard and AvailableVersionsCard so
  * both lists feel identical under the cursor.
  */
-export function HoverRow({ children }: { children: ReactNode }) {
+export function HoverRow({ children, 'data-testid': testId }: { children: ReactNode; 'data-testid'?: string }) {
   return (
     <div
+      data-testid={testId}
       className="rounded -mx-2 px-2 -my-1 py-1 duration-200"
       onMouseEnter={e => {
         e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 // Realtime sync for the `runtime_version` entity (admin local-engine
@@ -66,7 +67,7 @@ async function gotoLocalRuntime(
   // subscribes to `sync:runtime_version` in its __init__, fired on
   // first proxy access from the cards below the heading.
   await expect(
-    page.getByRole('heading', { name: /^Local Runtimes$/ }).first(),
+    byTestId(page, 'llmrt-runtime-config-card'),
   ).toBeVisible({ timeout: 30_000 })
 }
 
@@ -100,10 +101,10 @@ test.describe('Realtime sync — runtime_version (admin engine versions)', () =>
       // Sanity: both rows visible on device B. The card renders
       // `Version <version-string>` as a span.
       await expect(
-        pageB.getByText(`Version ${defaultVersion}`),
+        byTestId(pageB, `llmrt-version-desc-${defaultVersion}`),
       ).toBeVisible({ timeout: 15_000 })
       await expect(
-        pageB.getByText(`Version ${otherVersion}`),
+        byTestId(pageB, `llmrt-version-desc-${otherVersion}`),
       ).toBeVisible({ timeout: 15_000 })
 
       // Device A promotes otherVersion via REST. The handler calls
@@ -129,12 +130,8 @@ test.describe('Realtime sync — runtime_version (admin engine versions)', () =>
       // `version.is_system_default === true`, so:
       //   - newly-promoted (otherVersion): button DISAPPEARS
       //   - newly-demoted (defaultVersion): button APPEARS
-      const promotedSetDefaultBtn = pageB.getByRole('button', {
-        name: `Set version ${otherVersion} as default`,
-      })
-      const demotedSetDefaultBtn = pageB.getByRole('button', {
-        name: `Set version ${defaultVersion} as default`,
-      })
+      const promotedSetDefaultBtn = byTestId(pageB, `llmrt-version-set-default-${otherVersion}`)
+      const demotedSetDefaultBtn = byTestId(pageB, `llmrt-version-set-default-${defaultVersion}`)
 
       // After the sync arrives, the promoted row's button is gone
       // (it's now default) and the demoted row's button appears.
@@ -173,7 +170,7 @@ test.describe('Realtime sync — runtime_version (admin engine versions)', () =>
       await gotoLocalRuntime(pageB, baseURL)
 
       // Sanity: victim row visible on device B before delete.
-      const victimRow = pageB.getByText(`Version ${victimVersion}`)
+      const victimRow = byTestId(pageB, `llmrt-version-desc-${victimVersion}`)
       await expect(victimRow).toBeVisible({ timeout: 15_000 })
 
       // Device A deletes via REST. `remove_binary=false` (the URL
