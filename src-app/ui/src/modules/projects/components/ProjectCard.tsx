@@ -9,6 +9,10 @@ interface ProjectCardProps {
   onEdit: (project: Project) => void
   onDuplicate: (project: Project) => void
   onDelete: (project: Project) => void
+  /** Duplicate request in flight for this card — shows a button spinner. */
+  duplicating?: boolean
+  /** Delete request in flight for this card — shows a button spinner. */
+  deleting?: boolean
 }
 
 /**
@@ -24,6 +28,8 @@ export function ProjectCard({
   onEdit,
   onDuplicate,
   onDelete,
+  duplicating = false,
+  deleting = false,
 }: ProjectCardProps) {
   const navigate = useNavigate()
   const canEdit = usePermission(Permissions.ProjectsEdit)
@@ -95,6 +101,7 @@ export function ProjectCard({
                 variant="ghost"
                 size="sm"
                 icon={<Copy />}
+                loading={duplicating}
                 aria-label={`Duplicate ${project.name}`}
                 onClick={(e: React.MouseEvent) => {
                   stop(e)
@@ -121,6 +128,7 @@ export function ProjectCard({
                 variant="ghost"
                 size="sm"
                 icon={<Trash2 />}
+                loading={deleting}
                 aria-label={`Delete ${project.name}`}
                 onClick={stop}
               />

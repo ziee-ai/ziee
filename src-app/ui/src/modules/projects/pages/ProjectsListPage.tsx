@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { Button, Spin, Text, Title } from '@/components/ui'
+import { useEffect, useState } from 'react'
+import { Button, Spin, Text, Title, message } from '@/components/ui'
 import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -11,9 +11,19 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 export function ProjectsListPage() {
   const { projects: projectsMap, loading, error } = Stores.Projects
   const projects = Array.from(projectsMap.values())
+  // Per-card mutation state so the duplicate/delete buttons can show a
+  // spinner on the exact card being acted on (the store single-flights
+  // globally, but feedback should be card-local).
+  const [busy, setBusy] = useState<{
+    id: string
+    action: 'duplicate' | 'delete'
+  } | null>(null)
 
+  // Surface mutation/load failures to the user before clearing, so a
+  // failed duplicate/delete isn't swallowed silently.
   useEffect(() => {
     if (error) {
+      message.error(error)
       Stores.Projects.clearProjectsError()
     }
   }, [error])
@@ -23,16 +33,24 @@ export function ProjectsListPage() {
     Stores.ProjectDrawer.openProjectDrawer(project)
 
   const handleDuplicate = async (project: Project) => {
+    setBusy({ id: project.id, action: 'duplicate' })
     try {
       await Stores.Projects.duplicateProject(project.id)
     } catch (_err) {
+      // Surfaced via the store `error` -> message.error effect above.
+    } finally {
+      setBusy(null)
     }
   }
 
   const handleDelete = async (project: Project) => {
+    setBusy({ id: project.id, action: 'delete' })
     try {
       await Stores.Projects.deleteProject(project.id)
     } catch (_err) {
+      // Surfaced via the store `error` -> message.error effect above.
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -65,8 +83,14 @@ export function ProjectsListPage() {
                     <ProjectCard
                       project={project}
                       onEdit={handleEdit}
-                      onDuplicate={handleDuplicate}
+                      onDuplicate={p => void handleDuplicate(p)}
                       onDelete={p => void handleDelete(p)}
+                      duplicating={
+                        busy?.id === project.id && busy.action === 'duplicate'
+                      }
+                      deleting={
+                        busy?.id === project.id && busy.action === 'delete'
+                      }
                     />
                   </div>
                 ))}
