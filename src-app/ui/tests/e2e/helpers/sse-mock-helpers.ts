@@ -222,7 +222,7 @@ export interface ChatStreamMock {
  * are (a) wire a stub-engine-backed `custom` provider into global setup and use
  * the REAL stream, or (b) a CDP-level pushable SSE mock. Tracked in
  * `.plans/feat-realtime-sync-chat-test-coverage.md`. Until then the affected
- * 09-chat specs need a Playwright run-loop to migrate.
+ * chat specs need a Playwright run-loop to migrate.
  *
  * Call BEFORE the first send. Unregister via `page.unroute()` if a test needs
  * to swap behavior mid-flight (rare).
