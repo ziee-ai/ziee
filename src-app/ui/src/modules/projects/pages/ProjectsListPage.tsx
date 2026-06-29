@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Spin, Text, Title } from '@/components/ui'
 import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
@@ -11,6 +11,11 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 export function ProjectsListPage() {
   const { projects: projectsMap, loading, error } = Stores.Projects
   const projects = Array.from(projectsMap.values())
+  // Per-card mutation feedback: the store's duplicating/deleting flags are
+  // global (one in-flight op), so track WHICH project id is mutating to
+  // scope the spinner to the acting card.
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (error) {
@@ -23,16 +28,22 @@ export function ProjectsListPage() {
     Stores.ProjectDrawer.openProjectDrawer(project)
 
   const handleDuplicate = async (project: Project) => {
+    setDuplicatingId(project.id)
     try {
       await Stores.Projects.duplicateProject(project.id)
     } catch (_err) {
+    } finally {
+      setDuplicatingId(null)
     }
   }
 
   const handleDelete = async (project: Project) => {
+    setDeletingId(project.id)
     try {
       await Stores.Projects.deleteProject(project.id)
     } catch (_err) {
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -65,8 +76,10 @@ export function ProjectsListPage() {
                     <ProjectCard
                       project={project}
                       onEdit={handleEdit}
-                      onDuplicate={handleDuplicate}
+                      onDuplicate={p => void handleDuplicate(p)}
                       onDelete={p => void handleDelete(p)}
+                      duplicating={duplicatingId === project.id}
+                      deleting={deletingId === project.id}
                     />
                   </div>
                 ))}
