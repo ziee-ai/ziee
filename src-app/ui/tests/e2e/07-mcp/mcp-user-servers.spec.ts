@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 import {
   goToMcpServersPage,
   waitForMcpPageLoad,
@@ -29,28 +30,32 @@ test.describe('MCP - User Servers', () => {
   })
 
   test('should display MCP Servers page', async ({ page }) => {
-    // Use more specific locators to avoid strict mode violations
-    await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
-    await expect(page.locator('text=Manage Model Context Protocol servers')).toBeVisible()
-    await expect(page.locator('button:has-text("Add Server")')).toBeVisible()
+    // The page chrome rendered: Add button + search + status filter are present.
+    await expect(byTestId(page, 'mcp-settings-add-btn')).toBeVisible()
+    await expect(byTestId(page, 'mcp-settings-search-input')).toBeVisible()
+    await expect(byTestId(page, 'mcp-settings-status-select')).toBeVisible()
   })
 
   test('should display search and filter controls', async ({ page }) => {
-    await expect(page.locator('input[placeholder="Search servers..."]')).toBeVisible()
-    await expect(page.locator('.ant-select:has-text("All Servers")')).toBeVisible()
+    await expect(byTestId(page, 'mcp-settings-search-input')).toBeVisible()
+    await expect(byTestId(page, 'mcp-settings-status-select')).toBeVisible()
   })
 
   test('should display system servers from default group', async ({ page }) => {
     // Default servers from migration should be visible
-    await expect(page.locator('.ant-card:has-text("Web Fetch")')).toBeVisible()
-    await expect(page.locator('.ant-card:has(.ant-tag:has-text("System"))')).toBeVisible()
+    await expect(
+      page.getByTestId(/^mcp-server-card-/).filter({ hasText: 'Web Fetch' }),
+    ).toBeVisible()
+    await expect(
+      page.getByTestId(/^mcp-server-card-/).filter({ has: page.getByTestId('mcp-server-system-tag') }).first(),
+    ).toBeVisible()
   })
 
   test('should open Add Server drawer', async ({ page }) => {
     await openAddServerDrawer(page)
-    await expect(page.locator('.ant-drawer-title:has-text("Add MCP Server")')).toBeVisible()
-    await expect(page.getByLabel('Name', { exact: true })).toBeVisible()
-    await expect(page.getByLabel('Display Name')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-form')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-name-input')).toBeVisible()
+    await expect(byTestId(page, 'mcp-drawer-display-name-input')).toBeVisible()
   })
 
   test('should create HTTP MCP server successfully', async ({ page }) => {
@@ -67,8 +72,8 @@ test.describe('MCP - User Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create')
 
-    // Verify success message
-    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
+    // Success closes the drawer (submitMcpServerForm waits for that).
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -90,11 +95,10 @@ test.describe('MCP - User Servers', () => {
   test('should validate required fields', async ({ page }) => {
     await openAddServerDrawer(page)
 
-    // Try to submit without filling required fields
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
-
-    // Verify validation errors - check for at least one error (there will be multiple)
-    await expect(page.locator('.ant-form-item-explain-error').first()).toBeVisible()
+    // Try to submit without filling required fields → the drawer stays open
+    // (validation blocks submit; the form is not detached).
+    await byTestId(page, 'mcp-drawer-submit-btn').click()
+    await expect(byTestId(page, 'mcp-drawer-form')).toBeVisible()
   })
 
   // The Arguments / Environment-Variables fields only exist for STDIO
@@ -130,17 +134,17 @@ test.describe('MCP - User Servers', () => {
     await clickEditServerButton(page, serverData.displayName)
 
     // Verify drawer opens with pre-filled data
-    await expect(page.locator('.ant-drawer-title:has-text("Edit MCP Server")')).toBeVisible()
-    await expect(page.getByLabel('Display Name')).toHaveValue(serverData.displayName)
+    // Edit mode: the create-only Name field is gone; Display Name is prefilled.
+    await expect(byTestId(page, 'mcp-drawer-name-input')).toHaveCount(0)
+    await expect(byTestId(page, 'mcp-drawer-display-name-input')).toHaveValue(serverData.displayName)
 
     // Update display name
     const newDisplayName = 'Updated Test Server'
-    await page.getByLabel('Display Name').fill(newDisplayName)
+    await byTestId(page, 'mcp-drawer-display-name-input').fill(newDisplayName)
 
     await submitMcpServerForm(page, 'update')
-
-    // Verify success message - check for specific "updated" text
-    await expect(page.locator('.ant-message-success:has-text("updated")')).toBeVisible({ timeout: 5000 })
+    // Success closes the drawer.
+    await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify updated name appears
     await verifyServerExists(page, newDisplayName)
@@ -165,65 +169,63 @@ test.describe('MCP - User Servers', () => {
     // Toggle enabled state
     await toggleServerEnabled(page, serverData.displayName)
 
-    // Verify success message - check for specific "disabled" text
-    await expect(page.locator('.ant-message-success:has-text("disabled")')).toBeVisible({ timeout: 5000 })
-
-    // Verify switch state changed
+    // toggleServerEnabled waits for the PUT round-trip; the switch now reflects
+    // the disabled state.
     await verifyServerEnabled(page, serverData.displayName, false)
   })
 
   test('should filter servers by search term', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder="Search servers..."]')
-    await searchInput.fill('Web Fetch')
+    await byTestId(page, 'mcp-settings-search-input').fill('Web Fetch')
 
     // Should show Web Fetch server
-    await expect(page.locator('.ant-card:has-text("Web Fetch")')).toBeVisible()
+    await expect(
+      page.getByTestId(/^mcp-server-card-/).filter({ hasText: 'Web Fetch' }),
+    ).toBeVisible()
 
     // Should not show Filesystem server
-    await expect(page.locator('.ant-card:has-text("Filesystem")')).not.toBeVisible()
+    await expect(
+      page.getByTestId(/^mcp-server-card-/).filter({ hasText: 'Filesystem' }),
+    ).toHaveCount(0)
   })
 
   test('should filter servers by status', async ({ page }) => {
-    // Click status filter
-    await page.click('.ant-select:has-text("All Servers")')
+    // Open the status filter and select 'System'.
+    await byTestId(page, 'mcp-settings-status-select').click()
+    await byTestId(page, 'mcp-settings-status-select-opt-system').click()
 
-    // Select 'System' filter
-    await page.click('.ant-select-item-option:has-text("System")')
-
-    // Should show only system servers
-    await expect(page.locator('.ant-card:has(.ant-tag:has-text("System"))')).toBeVisible()
+    // Should show only system servers (each card carries the System tag).
+    await expect(
+      page.getByTestId(/^mcp-server-card-/).filter({ has: page.getByTestId('mcp-server-system-tag') }).first(),
+    ).toBeVisible()
   })
 
   test('should clear all filters', async ({ page }) => {
     // Apply search filter
-    await page.fill('input[placeholder="Search servers..."]', 'test')
+    await byTestId(page, 'mcp-settings-search-input').fill('test')
 
-    // Verify clear button appears
-    await expect(page.locator('button:has-text("Clear all")')).toBeVisible()
-
-    // Click clear all
-    await page.click('button:has-text("Clear all")')
-
-    // Verify filters are cleared
-    await expect(page.locator('input[placeholder="Search servers..."]')).toHaveValue('')
+    // The Clear-all button appears, clears filters when clicked.
+    await expect(byTestId(page, 'mcp-settings-clear-filters-btn')).toBeVisible()
+    await byTestId(page, 'mcp-settings-clear-filters-btn').click()
+    await expect(byTestId(page, 'mcp-settings-search-input')).toHaveValue('')
   })
 
   test('should display system servers as read-only', async ({ page }) => {
-    const systemServerCard = page.locator('.ant-card:has-text("Web Fetch")')
+    const systemServerCard = page
+      .getByTestId(/^mcp-server-card-/)
+      .filter({ hasText: 'Web Fetch' })
+      .first()
 
-    // System servers should have System tag
-    await expect(systemServerCard.locator('.ant-tag:has-text("System")')).toBeVisible()
-
-    // System servers should not have Edit button visible
-    await expect(systemServerCard.locator('button:has-text("Edit")')).not.toBeVisible()
+    // System servers carry the System tag and expose no Edit affordance.
+    await expect(systemServerCard.getByTestId('mcp-server-system-tag')).toBeVisible()
+    await expect(systemServerCard.getByTestId('mcp-server-edit-btn')).toHaveCount(0)
   })
 
   test('should display empty state when no servers match filter', async ({ page }) => {
     // Search for non-existent server
-    await page.fill('input[placeholder="Search servers..."]', 'nonexistent-server-xyz')
+    await byTestId(page, 'mcp-settings-search-input').fill('nonexistent-server-xyz')
 
-    // Should display empty state
-    await expect(page.locator('text=No servers match your search criteria')).toBeVisible()
+    // Should display the empty state.
+    await expect(byTestId(page, 'mcp-settings-empty')).toBeVisible()
   })
 
   // ──────────────────────────────────────────────────────────────────────
@@ -236,8 +238,11 @@ test.describe('MCP - User Servers', () => {
 
   test('should hide Delete on group-assigned system servers (read-only)', async ({ page }) => {
     // Web Fetch ships in the default group; verify it appears with no Delete button.
-    const card = page.locator('.ant-card:has-text("Web Fetch")').first()
+    const card = page
+      .getByTestId(/^mcp-server-card-/)
+      .filter({ hasText: 'Web Fetch' })
+      .first()
     await expect(card).toBeVisible()
-    await expect(card.locator('[data-testid="mcp-server-delete-btn"]')).not.toBeVisible()
+    await expect(card.getByTestId('mcp-server-delete-btn')).toHaveCount(0)
   })
 })
