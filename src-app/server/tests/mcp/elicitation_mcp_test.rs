@@ -51,7 +51,7 @@ async fn setup_with(tools: bool) -> Fixture {
     let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
     let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
 
-    let mut probe = ChatStreamProbe::open(&server, &user.token).await;
+    let probe = ChatStreamProbe::open(&server, &user.token).await;
     probe.subscribe(Some(conv_id)).await;
 
     Fixture {
@@ -697,7 +697,7 @@ async fn ask_user_accept_persists_status_and_response_content_to_db() {
 #[tokio::test]
 #[serial_test::serial(repos)]
 async fn elicitation_builtin_upsert_is_idempotent_and_reasserts_url() {
-    let server = crate::common::TestServer::start().await;
+    let _server = crate::common::TestServer::start().await;
     let pool = ziee::Repos.pool().clone();
     let repo = ziee::ElicitationMcpRepository::new(pool.clone());
     let id = ziee::elicitation_mcp_server_id();

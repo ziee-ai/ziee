@@ -84,9 +84,12 @@ pub struct LongLivedSession {
 }
 
 impl LongLivedSession {
-    /// Number of currently live processes on this session. Used by the
-    /// VM idle-evict gate (a session with live processes must keep the
-    /// VM warm).
+    /// Number of currently live processes on this session. Intended for the
+    /// VM idle-evict gate (a session with live processes must keep the VM
+    /// warm); exercised by tests today.
+    // TODO: consult this in the VM idle-evict decision path so a session with
+    // live processes is never torn down. Test-only consumer for now.
+    #[allow(dead_code)]
     pub fn live_process_count(&self) -> usize {
         self.registry.lock().unwrap().len()
     }
@@ -401,6 +404,7 @@ impl std::fmt::Debug for ProcessIo {
 
 impl ProcessIo {
     /// The handle this process was registered under. Mainly for logs / tests.
+    #[allow(dead_code)] // test-only accessor; Debug impl reads the field directly
     pub fn handle(&self) -> u64 {
         self.handle
     }
@@ -414,6 +418,7 @@ impl ProcessIo {
     /// Send an explicit KillProcess (idempotent) and mark Drop as no-op.
     /// Useful in tests where you want to assert kill semantics without
     /// the Drop side-effect.
+    #[allow(dead_code)] // test-only; production relies on the Drop impl
     pub fn kill(&mut self) {
         if !self.killed {
             self.killed = true;

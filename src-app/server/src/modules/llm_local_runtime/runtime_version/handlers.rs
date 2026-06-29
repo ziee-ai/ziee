@@ -674,23 +674,6 @@ pub async fn list_version_usage(
         std::collections::HashMap::new();
     let mut unresolved: Vec<ModelUsageInfo> = Vec::new();
 
-    // Per-request memoization caches. The naive path called
-    // `select_runtime_version` once per model, which issues up to 4 sequential
-    // queries each (model-required, provider-default, system-default, latest) —
-    // an O(models) N+1. The provider-default resolution is identical for every
-    // model of the same provider, and the system-default / latest resolutions
-    // are identical for every model of the same engine, so we memoize them and
-    // reduce the endpoint to O(distinct providers + distinct engines) lookups.
-    // The priority order below MIRRORS `BinaryManager::select_runtime_version`.
-    let mut ver_by_id: std::collections::HashMap<Uuid, Option<RuntimeVersion>> =
-        std::collections::HashMap::new();
-    let mut provider_default: std::collections::HashMap<Uuid, Option<RuntimeVersion>> =
-        std::collections::HashMap::new();
-    let mut engine_system_default: std::collections::HashMap<String, Option<RuntimeVersion>> =
-        std::collections::HashMap::new();
-    let mut engine_latest: std::collections::HashMap<String, Option<RuntimeVersion>> =
-        std::collections::HashMap::new();
-
     for m in models {
         let effective = resolution.get(&m.id).copied().flatten();
         let pinned = match effective {

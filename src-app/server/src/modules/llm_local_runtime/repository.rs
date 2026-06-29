@@ -340,11 +340,19 @@ pub struct RuntimeInstance {
     pub started_at: DateTime<Utc>,
     pub last_health_check: Option<DateTime<Utc>>,
     pub stopped_at: Option<DateTime<Utc>>,
-    // Migration 0066: health state machine columns
+    // Migration 0066: health state machine columns. `state`,
+    // `restart_attempts`, and `last_failure_reason` are read on boot to
+    // restore the in-memory `HealthStateMachine` (see
+    // `auto_start::ensure_restored`).
     pub state: String,
+    // Persisted for operator/UI visibility and audited only via SQL; not read
+    // back into Rust (the in-memory machine tracks transitions with `Instant`).
+    #[allow(dead_code)]
     pub state_changed_at: DateTime<Utc>,
     pub restart_attempts: i32,
     pub last_failure_reason: Option<String>,
-    // Migration 0068: last-used timestamp for idle eviction
+    // Migration 0068: last-used timestamp for idle eviction. Consumed only by
+    // the reaper's SQL `WHERE` clause, never read into Rust.
+    #[allow(dead_code)]
     pub last_used_at: DateTime<Utc>,
 }

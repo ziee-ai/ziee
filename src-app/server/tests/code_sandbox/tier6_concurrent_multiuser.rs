@@ -13,7 +13,6 @@ use uuid::Uuid;
 
 use super::harness::{create_test_conversation, enabled_test_server, tool_call};
 use crate::common::test_helpers::create_user_with_permissions;
-use crate::common::TestServer;
 
 #[tokio::test]
 async fn concurrent_multi_user_sandbox_runs_are_isolated() {

@@ -47,8 +47,40 @@ enum Liveness {
     NotRunning,
 }
 
-/// Feed an event to the model's state machine; create it on first use.
+/// Seed the in-memory state machine for `model_id` from its persisted
+/// instance row, once, if not already present. This is what lets the
+/// flap/give-up history (`state` / `restart_attempts` / `last_failure_reason`)
+/// survive a server restart — without it the `HEALTH` map starts empty on
+/// boot and a model the flap cap had already marked `failed` would be
+/// auto-respawned from a blank slate.
+async fn ensure_restored(model_id: Uuid) {
+    // Fast path: already in memory — never clobber live in-memory state.
+    if HEALTH.lock().await.contains_key(&model_id) {
+        return;
+    }
+    // Load the persisted row WITHOUT holding the HEALTH lock across the await.
+    let restored = match crate::core::repository::Repos
+        .local_runtime
+        .get_instance_by_model(model_id)
+        .await
+    {
+        Ok(Some(inst)) => HealthStateMachine::from_persisted(
+            MAX_RESTART_ATTEMPTS,
+            &inst.state,
+            inst.restart_attempts,
+            inst.last_failure_reason.clone(),
+        ),
+        // No row (model never started) or a transient DB error → fresh machine.
+        _ => HealthStateMachine::new(MAX_RESTART_ATTEMPTS),
+    };
+    // Race-safe insert: keep whatever a concurrent task may have inserted.
+    HEALTH.lock().await.entry(model_id).or_insert(restored);
+}
+
+/// Feed an event to the model's state machine; restore from persisted
+/// state on first use so cross-restart recovery resumes correctly.
 async fn note_event(model_id: Uuid, event: HealthEvent) -> Transition {
+    ensure_restored(model_id).await;
     HEALTH
         .lock()
         .await
@@ -58,7 +90,10 @@ async fn note_event(model_id: Uuid, event: HealthEvent) -> Transition {
 }
 
 /// True once the state machine has given up on this model (flap cap).
+/// Restores from persisted state first so a `failed` row from before a
+/// restart still gates re-spawns.
 async fn is_failed(model_id: Uuid) -> bool {
+    ensure_restored(model_id).await;
     matches!(
         HEALTH.lock().await.get(&model_id).map(|sm| &sm.state),
         Some(InstanceState::Failed { .. })

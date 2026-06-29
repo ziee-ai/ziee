@@ -36,6 +36,8 @@ pub enum SamplingContent {
 
 impl SamplingContent {
     /// Returns the text content if this is a `Text` variant, otherwise `None`.
+    /// Test-only convenience accessor (no production callers yet).
+    #[cfg(test)]
     pub fn as_text(&self) -> Option<&str> {
         match self {
             SamplingContent::Text { text } => Some(text.as_str()),
