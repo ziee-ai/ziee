@@ -46,7 +46,15 @@ export function SkillsList() {
               key={skill.id}
               hoverable
               size="sm"
+              role="button"
+              tabIndex={0}
               onClick={() => Stores.SkillDrawer.open(skill)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  Stores.SkillDrawer.open(skill)
+                }
+              }}
               data-skill-id={skill.id}
               data-testid={`skill-list-card-${skill.id}`}
               className="cursor-pointer"

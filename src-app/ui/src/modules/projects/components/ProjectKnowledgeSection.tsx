@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Button, Text } from '@/components/ui'
+import { Button, Spin, Text } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
+import { Stores } from '@/core/stores'
 import {
   DrawerOpenerProvider,
   ProjectExtensionSlot,
@@ -9,6 +10,12 @@ import {
 export function ProjectKnowledgeSection() {
   const [open, setOpen] = useState(false)
   const openDrawer = () => setOpen(true)
+  const loading = Stores.ProjectDetail.loading
+  const project = Stores.ProjectDetail.project
+
+  // Don't render anything when no project is loaded and nothing is loading
+  // (defense-in-depth — the parent page typically gates on this already).
+  if (!project && !loading) return null
 
   return (
     <DrawerOpenerProvider open={openDrawer}>
@@ -32,10 +39,16 @@ export function ProjectKnowledgeSection() {
           components top-to-bottom (file today; URLs/notes/etc. in
           the future). */}
       <div className="flex flex-col gap-4">
-        <ProjectExtensionSlot
-          name="knowledge_kinds"
-          view="inlinePreview"
-        />
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Spin label="Loading knowledge" />
+          </div>
+        ) : (
+          <ProjectExtensionSlot
+            name="knowledge_kinds"
+            view="inlinePreview"
+          />
+        )}
       </div>
 
       {/* Management drawer — stacks all kinds' managePanel components

@@ -111,7 +111,6 @@ export function ChatInput({
               disabled={sending || isStreaming || disabled || isBlockedByExtension}
               loading={sending || isStreaming || isBlockedByExtension}
               aria-label="Send message"
-              data-testid="send-message-button"
             />
           </div>
         </div>

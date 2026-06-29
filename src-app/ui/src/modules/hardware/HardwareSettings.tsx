@@ -477,19 +477,9 @@ export default function HardwareSettings() {
                       </div>
                     </div>
                   )}
-
-                <div className="flex gap-3">
-                  {gpuUsage.temperature !== undefined && (
-                    <Text type="secondary" className="text-xs">
-                      Temperature: {gpuUsage.temperature}°C
-                    </Text>
-                  )}
-                  {gpuUsage.power_usage !== undefined && (
-                    <Text type="secondary" className="text-xs">
-                      Power: {gpuUsage.power_usage}W
-                    </Text>
-                  )}
-                </div>
+                {/* Temperature & Power are already shown in the Real-time
+                    Statistics grid above; the previous trailing row here
+                    duplicated them and has been removed. */}
               </div>
             )}
           </div>

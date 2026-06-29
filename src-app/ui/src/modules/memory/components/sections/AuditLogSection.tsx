@@ -1,4 +1,5 @@
-import { Card, Empty, InputNumber, Space, Spin } from '@/components/ui'
+import { useState } from 'react'
+import { Button, Card, Empty, InputNumber, Space, Spin } from '@/components/ui'
 import { Table, Tag, Text, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -14,6 +15,7 @@ const READ_PERM = Permissions.MemoryRead
 export function AuditLogSection() {
   const canRead = usePermission(READ_PERM)
   const { entries, loading, limit } = Stores.MemoryAudit
+  const [pendingLimit, setPendingLimit] = useState<number>(limit)
 
   if (!canRead) return null
 
@@ -31,12 +33,16 @@ export function AuditLogSection() {
           data-testid="memory-audit-limit-input"
           min={1}
           max={500}
-          value={limit}
-          onChange={v =>
-            Stores.MemoryAudit.setLimit(typeof v === 'number' ? v : 100)
-          }
+          value={pendingLimit}
+          onChange={v => setPendingLimit(typeof v === 'number' ? v : 100)}
         />
         <Text>entries</Text>
+        <Button
+          data-testid="memory-audit-limit-apply"
+          onClick={() => Stores.MemoryAudit.setLimit(pendingLimit)}
+        >
+          Apply
+        </Button>
       </Space>
 
       {loading ? (

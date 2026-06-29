@@ -116,6 +116,13 @@ export function FileCard({
     Stores.FilePreviewDrawer.openPreview(file)
   }
 
+  const handleCardKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      handleCardClick()
+    }
+  }
+
   // Row-shaped upload-progress branch — added separately from the
   // square branch below (which the chat composer's FilePreviewList
   // depends on; that surface must stay square). Selected by
@@ -258,8 +265,11 @@ export function FileCard({
   if (variant === 'row') {
     return (
       <div
-        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 border border-border transition-opacity hover:opacity-80"
+        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 border border-border transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2"
+        role="button"
+        tabIndex={0}
         onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
         data-testid="file-card"
         data-file-id={file.id}
         data-filename={file.filename}
@@ -351,7 +361,7 @@ export function FileCard({
       data-filename={file.filename}
     >
       <div
-        className={`group relative cursor-pointer rounded-2xl w-full h-full flex items-center justify-center ${
+        className={`group relative cursor-pointer rounded-2xl w-full h-full flex items-center justify-center focus-visible:outline focus-visible:outline-2 ${
           stretch ? '' : 'min-h-20 min-w-20 max-h-28 max-w-28'
         } border border-border`}
         style={{
@@ -364,7 +374,10 @@ export function FileCard({
               }
             : {}),
         }}
+        role="button"
+        tabIndex={0}
         onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
       >
         {/* Square aspect ratio enforcer */}
         <img

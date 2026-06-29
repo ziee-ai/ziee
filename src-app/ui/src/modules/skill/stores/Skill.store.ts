@@ -74,7 +74,7 @@ export const useSkillStore = create<SkillState>()(
               draft.loading = true
               draft.error = null
             })
-            const response = await ApiClient.Skill.list()
+            const response = await ApiClient.Skill.list({})
             set(draft => {
               draft.skills = response.skills
               draft.isInitialized = true

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -23,7 +24,7 @@ type FormValues = z.infer<typeof schema>
 export function EnableSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.FileRagAdmin
+  const { settings, saving, error } = Stores.FileRagAdmin
   const form = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   useEffect(() => {
@@ -48,7 +49,14 @@ export function EnableSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Document search"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
+    )
 
   const handleSubmit = async (values: FormValues) => {
     try {
@@ -66,6 +74,7 @@ export function EnableSection() {
 
   return (
     <Card data-testid="filerag-enable-card" title="Document search">
+      {error && <Alert data-testid="filerag-enable-error-alert" tone="error" className="!mb-4" title={error} />}
       <Form
         data-testid="filerag-enable-form"
         name="file-rag-admin-master-form"

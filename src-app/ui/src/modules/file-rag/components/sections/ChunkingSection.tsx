@@ -17,6 +17,7 @@ import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -38,7 +39,7 @@ type FormValues = z.infer<typeof schema>
 export function ChunkingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.FileRagAdmin
+  const { settings, saving, error } = Stores.FileRagAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -70,11 +71,26 @@ export function ChunkingSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Chunking"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
+    )
 
   const handleSubmit = async (values: FormValues) => {
     if (values.chunk_overlap_chars >= values.chunk_chars) {
       message.error('Overlap must be smaller than the chunk size.')
+      form.setError('chunk_chars', {
+        type: 'manual',
+        message: 'Must be larger than the overlap',
+      })
+      form.setError('chunk_overlap_chars', {
+        type: 'manual',
+        message: 'Must be smaller than the chunk size',
+      })
       return
     }
     try {
@@ -93,6 +109,9 @@ export function ChunkingSection() {
 
   return (
     <Card data-testid="filerag-chunking-card" title="Chunking">
+      {error && (
+        <Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error} />
+      )}
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Applies to files indexed after saving; existing files keep their current
         chunking until re-uploaded or edited.

@@ -1,4 +1,4 @@
-import { Alert } from '@/components/ui'
+import { Alert, Spin } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { WebSearchGlobalSection } from './WebSearchGlobalSection'
@@ -12,7 +12,22 @@ import { WebSearchProvidersSection } from './WebSearchProvidersSection'
 export function WebSearchSettingsPage() {
   // Both loaders write the same `error` field; surface it so a failed initial
   // load isn't silently swallowed (mirrors SandboxResourceLimitsSection).
-  const { error } = Stores.WebSearchAdmin
+  const { error, loading, settings } = Stores.WebSearchAdmin
+
+  // Full-page spinner on initial load instead of relying only on section-level
+  // spinners (which flash when loading is briefly false before init fires).
+  if (loading && !settings) {
+    return (
+      <SettingsPageContainer
+        title="Web Search"
+        subtitle="Configure web search + page fetch: the provider fallback chain, API keys, and request caps. Connected-only — fetched/searched content is treated as untrusted data."
+      >
+        <div className="flex justify-center py-12">
+          <Spin size="lg" label="Loading web search settings" />
+        </div>
+      </SettingsPageContainer>
+    )
+  }
   return (
     <SettingsPageContainer
       title="Web Search"

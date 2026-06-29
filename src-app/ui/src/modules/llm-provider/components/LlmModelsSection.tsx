@@ -93,7 +93,7 @@ export function LlmModelsSection() {
         error instanceof Error && error.message
           ? error.message
           : `Failed to ${enabled ? 'enable' : 'disable'} ${modelName}.`
-      message.error({ content: reason, duration: 8 })
+      message.error(reason, { duration: 8000 })
     }
   }
 
@@ -178,8 +178,9 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="start-stop"
-          size="small"
-          type={llmModel.is_active ? 'default' : 'primary'}
+          data-testid={`llm-model-start-stop-${llmModel.id}`}
+          size="sm"
+          variant={llmModel.is_active ? 'outline' : 'default'}
           loading={busy}
           disabled={busy}
           onClick={() =>

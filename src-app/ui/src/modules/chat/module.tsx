@@ -1,4 +1,5 @@
 import { createModule } from '@/core'
+import { Permissions } from '@/api-client/types'
 import { History, Plus } from 'lucide-react'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -77,6 +78,7 @@ export default createModule({
         label: 'Chats',
         path: '/chats',
         order: 10,
+        permission: Permissions.ConversationsRead,
       },
     ],
     sidebarContent: [

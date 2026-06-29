@@ -1,5 +1,5 @@
 import { CircleMinus } from 'lucide-react'
-import { Button, Empty, Tooltip, Text, message, Dialog } from '@/components/ui'
+import { Alert, Button, Empty, Tooltip, Text, message, Dialog } from '@/components/ui'
 import { useState } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -30,6 +30,7 @@ export function ProjectConversationsList({
     conversationsLoading,
     conversationsLoadingMore,
     conversationsHasMore,
+    conversationsError,
   } = Stores.ProjectDetail
   const isSelectionMode = selectedIds.size > 0
 
@@ -38,6 +39,19 @@ export function ProjectConversationsList({
       <div className="flex justify-center py-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2"></div>
       </div>
+    )
+  }
+
+  // Surface a load failure instead of the misleading "no conversations"
+  // empty state below.
+  if (conversationsError && conversations.length === 0) {
+    return (
+      <Alert
+        data-testid="project-conversations-load-error-alert"
+        tone="error"
+        title="Failed to load conversations"
+        description={conversationsError}
+      />
     )
   }
 

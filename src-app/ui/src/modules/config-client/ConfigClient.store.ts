@@ -1,6 +1,37 @@
 import { create } from 'zustand'
-import { persist, subscribeWithSelector } from 'zustand/middleware'
+import {
+  createJSONStorage,
+  persist,
+  subscribeWithSelector,
+} from 'zustand/middleware'
 import type { StoreProxy } from '@/core/stores'
+
+// Guarded persistence storage. Accessing `localStorage` (or writing to it)
+// throws in locked-down contexts — private-mode quota, disabled storage, or a
+// sandboxed iframe where even reading the property raises SecurityError.
+// Without this guard, zustand's default `localStorage`-backed persist would
+// throw during store creation and take the whole app down. We probe once and
+// fall back to an in-memory store so the app still runs; the preference simply
+// won't survive a reload in that environment.
+const safeStorage = createJSONStorage(() => {
+  try {
+    const probe = '__ziee_ls_probe__'
+    window.localStorage.setItem(probe, probe)
+    window.localStorage.removeItem(probe)
+    return window.localStorage
+  } catch {
+    const mem = new Map<string, string>()
+    return {
+      getItem: (name: string) => mem.get(name) ?? null,
+      setItem: (name: string, value: string) => {
+        mem.set(name, value)
+      },
+      removeItem: (name: string) => {
+        mem.delete(name)
+      },
+    }
+  }
+})
 import {
   type AccentPreset,
   DEFAULT_ACCENT,
@@ -57,6 +88,7 @@ export const useConfigClientStore = create<ConfigClientState>()(
       }),
       {
         name: 'config-client-storage',
+        storage: safeStorage,
         partialize: state => ({
           themePreference: state.themePreference,
           accentPreset: state.accentPreset,

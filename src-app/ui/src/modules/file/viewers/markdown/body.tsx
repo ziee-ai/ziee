@@ -81,7 +81,7 @@ export class StreamdownErrorBoundary extends Component<StreamdownErrorBoundaryPr
       return (
         <pre
           className="whitespace-pre-wrap break-words p-2 text-sm opacity-80"
-          data-testid="streamdown-fallback"
+          data-testid="file-markdown-streamdown-fallback"
         >
           {this.props.fallbackText}
         </pre>

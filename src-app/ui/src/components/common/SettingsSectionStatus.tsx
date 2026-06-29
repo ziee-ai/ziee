@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Flex, Spin } from 'antd'
+import { Alert, Button, Card, Spinner } from '@/components/ui'
 
 interface SettingsSectionStatusProps {
   /** Card title, kept identical to the loaded section so the page layout is stable. */
@@ -22,25 +22,33 @@ export function SettingsSectionStatus({
   onRetry,
 }: SettingsSectionStatusProps) {
   return (
-    <Card title={title}>
+    <Card title={title} data-testid="settings-section-status">
       {error ? (
         <Alert
-          type="error"
-          showIcon
-          message={`Failed to load ${title.toLowerCase()} settings`}
+          tone="error"
+          title={`Failed to load ${title.toLowerCase()} settings`}
           description={error}
-          action={
-            onRetry ? (
-              <Button size="small" onClick={onRetry}>
+          data-testid="settings-section-status-error"
+        >
+          {onRetry ? (
+            <div className="mt-2">
+              <Button
+                size="sm"
+                onClick={onRetry}
+                data-testid="settings-section-status-retry"
+              >
                 Retry
               </Button>
-            ) : undefined
-          }
-        />
+            </div>
+          ) : null}
+        </Alert>
       ) : (
-        <Flex justify="center" style={{ padding: '24px 0' }}>
-          <Spin />
-        </Flex>
+        <div className="flex justify-center py-6">
+          <Spinner
+            label={`Loading ${title.toLowerCase()} settings`}
+            data-testid="settings-section-status-spinner"
+          />
+        </div>
       )}
     </Card>
   )

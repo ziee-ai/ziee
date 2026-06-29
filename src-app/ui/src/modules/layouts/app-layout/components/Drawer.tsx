@@ -163,7 +163,9 @@ export const Drawer: React.FC<DrawerProps> = ({
           {/* hidden a11y title when caller passes none (Radix requires a labelled dialog) */}
           {title == null && <DialogPrimitive.Title className="sr-only">Drawer</DialogPrimitive.Title>}
 
-          <ResizeHandle placement="left" parentLevel={[1]} />
+          <div data-testid="drawer-resize-handle">
+            <ResizeHandle placement="left" parentLevel={[1]} />
+          </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

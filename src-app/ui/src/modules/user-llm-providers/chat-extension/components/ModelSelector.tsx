@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Select } from '@/components/ui'
+import { useState, useMemo, useEffect } from 'react'
+import { Select, message } from '@/components/ui'
 import { TriangleAlert } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { ProviderWithModels } from '@/api-client/types'
@@ -32,8 +32,15 @@ function providerNeedsApiKey(
 }
 
 export function ModelSelector() {
-  const { selectedModelId, providers } = Stores.ModelPicker
+  const { selectedModelId, providers, error, loading } = Stores.ModelPicker
   const { sending } = Stores.Chat
+
+  // Surface provider-load failures (the store captured `error` but nothing
+  // rendered it, so the picker silently showed an empty dropdown).
+  useEffect(() => {
+    if (error) message.error(error)
+  }, [error])
+
   const [pendingProviderForKey, setPendingProviderForKey] = useState<{
     providerId: string
     providerName: string
@@ -107,8 +114,9 @@ export function ModelSelector() {
         value={selectedModelId ?? undefined}
         onChange={handleChange}
         popupMatchSelectWidth={false}
-        placeholder="Select Model"
+        placeholder={loading && providers.length === 0 ? 'Loading…' : 'Select Model'}
         aria-label="Model"
+        loading={loading && providers.length === 0}
         disabled={sending}
         options={availableModels}
         className="text-[15px] max-w-[130px] border-0 shadow-none bg-transparent"

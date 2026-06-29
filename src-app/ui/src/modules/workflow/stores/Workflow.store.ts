@@ -91,7 +91,7 @@ export const useWorkflowStore = create<WorkflowState>()(
               draft.loading = true
               draft.error = null
             })
-            const response = await ApiClient.Workflow.list()
+            const response = await ApiClient.Workflow.list({})
             set(draft => {
               draft.workflows = response.workflows
               draft.isInitialized = true

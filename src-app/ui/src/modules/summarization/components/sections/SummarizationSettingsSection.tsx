@@ -12,6 +12,7 @@ import {
   Textarea,
   InputNumber,
   Combobox,
+  Spin,
   Switch,
   message,
 } from '@/components/ui'
@@ -108,7 +109,15 @@ export function SummarizationSettingsSection() {
     )
   }
 
-  if (loading && !settings) return null
+  if (loading && !settings) {
+    return (
+      <Card data-testid="summarization-settings-loading-card" title="Summarization">
+        <div className="flex justify-center py-4">
+          <Spin label="Loading summarization settings" />
+        </div>
+      </Card>
+    )
+  }
   if (!settings) return null
 
   const handleSubmit = async (values: FormValues) => {

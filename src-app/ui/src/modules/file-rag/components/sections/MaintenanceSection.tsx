@@ -4,6 +4,7 @@ import { Database } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -16,7 +17,7 @@ const MANAGE_PERM = Permissions.FileRagAdminManage
 export function MaintenanceSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, triggeringBackfill } = Stores.FileRagAdmin
+  const { settings, triggeringBackfill, error } = Stores.FileRagAdmin
 
   if (!canRead) {
     return (
@@ -29,7 +30,14 @@ export function MaintenanceSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Maintenance"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
+    )
 
   const handleBackfill = async () => {
     try {
@@ -44,6 +52,7 @@ export function MaintenanceSection() {
 
   return (
     <Card data-testid="filerag-maintenance-card" title="Maintenance">
+      {error && <Alert data-testid="filerag-maintenance-error-alert" tone="error" className="!mb-4" title={error} />}
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Backfill indexes files that have extracted text but no chunks yet —
         anything uploaded before Document RAG was enabled, or that failed to

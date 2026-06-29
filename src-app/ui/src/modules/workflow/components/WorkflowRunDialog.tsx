@@ -1,3 +1,4 @@
+import { CheckCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -188,7 +189,7 @@ export function WorkflowRunDialog({
       </div>
       {conversationId && (
         <div className="mt-2 flex items-center gap-2">
-          <Switch data-testid="wf-run-conversation-output-switch" defaultChecked disabled size="sm" />
+          <CheckCircle className="size-4 text-success" />
           <Text type="secondary" className="text-xs">
             Output posts back to the current conversation
           </Text>

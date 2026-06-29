@@ -98,6 +98,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
     defaultValues: buildInit(),
   })
   const dirty = form.formState.isDirty
+  const apiKeyValue = form.watch('api_key')
 
   useEffect(() => {
     if (!form.formState.isDirty) {
@@ -241,7 +242,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
             <Button
               type="submit"
               loading={isSaving}
-              disabled={!canManage || !dirty}
+              disabled={!canManage || !dirty || (needsKey && !apiKeyValue?.trim())}
               data-testid={`lit-connector-save-button-${entry.key}`}
             >
               Save

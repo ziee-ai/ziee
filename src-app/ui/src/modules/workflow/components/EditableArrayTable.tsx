@@ -184,7 +184,7 @@ export function EditableArrayTable({
   // non-zero default so the first paint is already virtualized; the
   // observer refines the exact height once layout settles.
   const wrapRef = useRef<HTMLDivElement>(null)
-  const [bodyHeight, setBodyHeight] = useState<number>(360)
+  const [bodyHeight, setBodyHeight] = useState<number>(360 - TABLE_HEADER_PX)
   useEffect(() => {
     if (!wrapRef.current) return
     const ro = new ResizeObserver(entries => {
@@ -411,7 +411,12 @@ export function EditableArrayTable({
                               type="button"
                               disabled={disabled || !canRemoveBelowMin}
                               aria-label="Remove row"
-                              onClick={() => remove(i)}
+                              onClick={() => {
+                                remove(i)
+                                setSelectedKeys(prev =>
+                                  prev.filter(k => k !== field.id),
+                                )
+                              }}
                             >
                               <Trash2 className="size-3.5" />
                             </Button>

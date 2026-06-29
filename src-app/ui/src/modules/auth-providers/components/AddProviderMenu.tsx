@@ -38,7 +38,7 @@ export function AddProviderMenu({ onPick, existingNames, disabled }: Props) {
       const item = available.find(t => t.key === key)
       if (item) onPick(item)
     }} disabled={isDisabled}>
-      <Tooltip content="Add authentication provider">
+      <Tooltip content={allTaken ? 'All providers taken' : 'Add authentication provider'}>
         <Button
           data-testid="authprov-add-button"
           variant="ghost"

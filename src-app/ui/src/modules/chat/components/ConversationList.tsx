@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Card, Button, Text, Empty, Flex, Confirm, Input, message } from '@/components/ui'
+import { Alert, Card, Button, Text, Empty, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
@@ -23,6 +23,7 @@ interface ConversationListProps {
 export function ConversationList({ getSearchBoxContainer }: ConversationListProps) {
   const [, forceRender] = useState({})
   const [localSearchQuery, setLocalSearchQuery] = useState('')
+  const [errorDismissed, setErrorDismissed] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
 
   const {
@@ -46,12 +47,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     }
   }, [getSearchBoxContainer])
 
-  // Show errors
+  // Reset dismiss state when a new error arrives
   useEffect(() => {
     if (error) {
-      message.error(error)
+      setErrorDismissed(false)
     }
-  }, [error, message])
+  }, [error])
 
   // Debounce search query
   useEffect(() => {
@@ -180,6 +181,19 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
           </div>
         )}
 
+        {/* Inline error display */}
+        {error && !errorDismissed && (
+          <div className="px-3">
+            <Alert
+              data-testid="chat-history-error-alert"
+              tone="error"
+              title={error}
+              onClose={() => setErrorDismissed(true)}
+              closeLabel="Dismiss"
+            />
+          </div>
+        )}
+
         {/* Conversation list */}
         <DivScrollY className="flex-1 w-full flex-col !py-3 overflow-x-visible">
           <div className="gap-2 max-w-4xl w-full self-center overflow-x-visible">
@@ -223,7 +237,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                     {/* Pagination info */}
                     {visibleConversations.length > 0 && (
                       <Card data-testid="chat-history-pagination-card" className="text-center !mx-3 [&_[data-part='body']]:!p-2">
-                        <Text type="secondary">
+                        <Text type="secondary" aria-live="polite" role="status">
                           Showing {visibleConversations.length} of {total} conversations
                         </Text>
                         {hasMore && !searchQuery && (

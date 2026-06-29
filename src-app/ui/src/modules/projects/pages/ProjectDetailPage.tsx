@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, Separator, Flex, Confirm, Spin, Text, Title, Paragraph, message } from '@/components/ui'
+import { Button, Card, Separator, Flex, Confirm, Result, Spin, Text, Title, Paragraph, message } from '@/components/ui'
 import { ArrowLeft, CircleX, Copy, Pencil, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
@@ -209,10 +209,35 @@ export function ProjectDetailPage() {
     return null
   }
 
-  if (loading || !project) {
+  if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spin label="Loading project" />
+      </div>
+    )
+  }
+
+  // Load settled but no project (not found / fetch failed). Show a
+  // recoverable error state instead of an infinite spinner.
+  if (!project) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Result
+          data-testid="project-detail-load-error-result"
+          status="error"
+          title="Failed to load project"
+          subtitle={error ?? 'The project could not be loaded.'}
+          extra={
+            <Flex gap="small" justify="center">
+              <Button data-testid="project-detail-retry-btn" onClick={() => Stores.ProjectDetail.loadProject(projectId)}>
+                Retry
+              </Button>
+              <Button data-testid="project-detail-back-btn" variant="default" onClick={() => navigate('/projects')}>
+                Back to projects
+              </Button>
+            </Flex>
+          }
+        />
       </div>
     )
   }

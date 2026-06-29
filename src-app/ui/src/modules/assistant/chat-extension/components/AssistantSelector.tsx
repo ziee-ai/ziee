@@ -22,15 +22,33 @@ export function AssistantSelector({
     value: assistant.id,
   }))
 
-  // If no assistants available, don't render
+  // No assistants available: render a disabled, empty selector rather than
+  // vanishing entirely, so the control stays present and self-explanatory.
   if (availableAssistants.length === 0) {
-    return null
+    return (
+      <Tooltip content="No assistants available">
+        <Combobox
+          data-testid="assistant-selector"
+          aria-label="Select Assistant"
+          value={undefined}
+          onChange={handleChange}
+          options={[]}
+          disabled
+          placeholder="No assistants"
+          className="min-w-[120px]"
+          size="sm"
+          emptyText="No assistants available"
+          searchPlaceholder="Search assistant"
+        />
+      </Tooltip>
+    )
   }
 
   return (
     <Tooltip content="Select Assistant">
       <Combobox
         data-testid="assistant-selector"
+        aria-label="Select Assistant"
         value={selectedAssistantId ?? undefined}
         onChange={handleChange}
         options={options}

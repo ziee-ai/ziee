@@ -11,7 +11,6 @@ import { AddLocalLlmModelDownloadDrawer } from '@/modules/llm-provider/component
 import { EditLlmModelDrawer } from '@/modules/llm-provider/components/llm-models/EditLlmModelDrawer'
 
 export function LocalProviderSettings() {
-  console.log('[LocalProviderSettings] Component rendering')
   const { providerId } = useParams<{ providerId?: string }>()
 
   // Store data

@@ -35,7 +35,7 @@ type FormValues = z.infer<typeof schema>
 export function MemorySection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.MemoryAdmin
+  const { settings, saving, error } = Stores.MemoryAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { enabled: false, default_top_k: 10 },
@@ -58,6 +58,22 @@ export function MemorySection() {
           title="You don't have permission to view memory admin settings."
           data-testid="memory-admin-no-perm-alert"
         />
+      </Card>
+    )
+  }
+  if (!settings && error) {
+    return (
+      <Card title="Memory" data-testid="memory-admin-master-card">
+        <Alert
+          data-testid="memory-section-load-error-alert"
+          tone="error"
+          title="Failed to load memory settings"
+          description={error}
+        >
+          <Button data-testid="memory-section-retry-btn" size="sm" onClick={() => Stores.MemoryAdmin.load()}>
+            Retry
+          </Button>
+        </Alert>
       </Card>
     )
   }

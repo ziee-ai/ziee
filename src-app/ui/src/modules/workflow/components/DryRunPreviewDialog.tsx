@@ -1,4 +1,4 @@
-import { Alert, Dialog, Statistic, Table, Text } from '@/components/ui'
+import { Alert, Dialog, Spin, Statistic, Table, Text } from '@/components/ui'
 import { useEffect, useState } from 'react'
 import type { DryRunResult, DryRunStep, Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -55,6 +55,7 @@ export function DryRunPreviewDialog({
       footer={null}
       className="!max-w-[640px]"
     >
+      {loading && <Spin label="Running dry run" className="block my-8 mx-auto" />}
       {error && <Alert data-testid="wf-dry-run-error-alert" tone="error" title={error} />}
       {result && (
         <div className="flex flex-col gap-3">

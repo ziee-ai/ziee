@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import {
+  Alert,
   Avatar,
   Button,
   Card,
@@ -171,6 +172,14 @@ export function ProfileSettingsPage() {
           ]}
         />
 
+        {!canEdit && (
+          <Alert
+            data-testid="profile-readonly-alert"
+            tone="info"
+            title="You don't have permission to edit your profile. Fields are read-only."
+            className="mb-3"
+          />
+        )}
         <Form
           name="profile-form"
           data-testid="profile-info-form"
@@ -194,7 +203,21 @@ export function ProfileSettingsPage() {
           {canEdit && (
             <>
               <Separator className="!my-3" />
-              <Flex justify="end">
+              <Flex justify="end" gap="small">
+                <Button
+                  data-testid="profile-cancel-btn"
+                  type="button"
+                  disabled={savingProfile}
+                  onClick={() => {
+                    // Discard unsaved edits — restore the persisted values.
+                    profileForm.reset({
+                      display_name: user.display_name ?? '',
+                      username: user.username,
+                    })
+                  }}
+                >
+                  Cancel
+                </Button>
                 <Button type="submit" data-testid="profile-save-button" loading={savingProfile}>
                   Save
                 </Button>
@@ -249,12 +272,21 @@ export function ProfileSettingsPage() {
                   showLabel="Show password"
                   hideLabel="Hide password"
                   autoComplete="new-password"
+                  maxLength={72}
                   placeholder="Confirm new password"
                 />
               </FormField>
 
               <Separator className="!my-3" />
-              <Flex justify="end">
+              <Flex justify="end" gap="small">
+                <Button
+                  data-testid="profile-password-cancel-btn"
+                  type="button"
+                  disabled={savingPassword}
+                  onClick={() => passwordForm.reset()}
+                >
+                  Cancel
+                </Button>
                 <Button type="submit" data-testid="profile-change-password-button" loading={savingPassword}>
                   Change password
                 </Button>

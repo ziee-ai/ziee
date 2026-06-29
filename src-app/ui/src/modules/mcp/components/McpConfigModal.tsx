@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, Space, InputNumber } from '@/components/ui'
+import { useEffect, useMemo, useState } from 'react'
+import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, Space, InputNumber, message } from '@/components/ui'
 import { Wrench, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { Tool } from '@/api-client/types'
@@ -46,8 +46,9 @@ export function McpConfigModal() {
   const [saving, setSaving] = useState(false)
   const [savingDefaults, setSavingDefaults] = useState(false)
 
-  // Get enabled servers (available for selection)
-  const enabledServers = servers.filter(s => s.enabled)
+  // Get enabled servers (available for selection). Memoized so the array
+  // reference is stable across renders (it feeds effect deps / child props).
+  const enabledServers = useMemo(() => servers.filter(s => s.enabled), [servers])
 
   // Get the current config keyed by scope. Project scope uses the
   // `project:<id>` namespaced key (set by openConfigModalForProject);
@@ -215,7 +216,7 @@ export function McpConfigModal() {
   //     persisted on first message when the conversation is created.
   const handleSave = async () => {
     if (!isProjectScope && !currentConversationId) {
-      console.log('[MCP Config Modal] Settings stored in pending config (will save on first message)')
+      // Settings stay in pending config and persist on first message.
       return
     }
 
@@ -230,9 +231,11 @@ export function McpConfigModal() {
       } else {
         await mcpStore.saveConversationConfig(currentConversationId!, availableServerIds, serverToolsMap)
       }
-      console.log('[MCP Config Modal] Configuration saved successfully')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save configuration:', error)
+      message.error(
+        error instanceof Error ? error.message : 'Failed to save MCP configuration',
+      )
     } finally {
       setSaving(false)
     }
@@ -254,7 +257,6 @@ export function McpConfigModal() {
     try {
       const availableServerIds = enabledServers.map(s => s.id)
       await mcpStore.saveUserDefaults(currentConversationId, availableServerIds, true)
-      console.log('[MCP Config Modal] Saved as user defaults')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save as defaults:', error)
     } finally {

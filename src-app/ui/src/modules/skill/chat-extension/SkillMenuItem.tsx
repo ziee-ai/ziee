@@ -19,15 +19,31 @@ export function SkillMenuItem() {
   return (
     <>
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[180px]"
+        className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[180px] focus-visible:outline focus-visible:outline-2"
+        role="button"
+        tabIndex={0}
+        aria-label="Skills in this chat"
         onClick={() => {
           Stores.SkillConversationDrawer.openDrawer()
           close()
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            Stores.SkillConversationDrawer.openDrawer()
+            close()
+          }
         }}
         onMouseEnter={e => {
           e.currentTarget.style.backgroundColor = 'bg-muted'
         }}
         onMouseLeave={e => {
+          e.currentTarget.style.backgroundColor = 'transparent'
+        }}
+        onFocus={e => {
+          e.currentTarget.style.backgroundColor = 'bg-muted'
+        }}
+        onBlur={e => {
           e.currentTarget.style.backgroundColor = 'transparent'
         }}
       >

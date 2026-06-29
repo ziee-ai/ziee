@@ -1,4 +1,4 @@
-import { Alert, Spin } from 'antd'
+import { Alert, Spinner } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { EnableSection } from '../components/sections/EnableSection'
@@ -33,17 +33,17 @@ export function FileRagAdminPage() {
           on error). */}
       {error && !settings && (
         <Alert
-          type="error"
-          showIcon
+          tone="error"
           className="mb-4"
-          message="Failed to load Document RAG settings"
+          data-testid="file-rag-admin-load-error"
+          title="Failed to load Document RAG settings"
           description={error}
         />
       )}
       {/* Spinner while the first load is in flight so the body isn't blank. */}
       {loading && !settings && (
         <div className="flex justify-center py-8">
-          <Spin />
+          <Spinner label="Loading Document RAG settings" />
         </div>
       )}
       <EnableSection />

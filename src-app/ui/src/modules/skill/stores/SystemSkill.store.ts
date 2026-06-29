@@ -71,7 +71,7 @@ export const useSystemSkillStore = create<SystemSkillState>()(
               draft.loading = true
               draft.error = null
             })
-            const response = await ApiClient.SkillSystem.list()
+            const response = await ApiClient.SkillSystem.list({})
             set(draft => {
               draft.systemSkills = response.skills
               draft.isInitialized = true

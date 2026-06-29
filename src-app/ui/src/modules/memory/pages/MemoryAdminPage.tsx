@@ -1,4 +1,4 @@
-import { Alert, Spin } from 'antd'
+import { Alert, Spinner } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { RebuildStatusSection } from '../components/sections/RebuildStatusSection'
@@ -37,16 +37,16 @@ export function MemoryAdminPage() {
           until settings arrive, so without this the body is blank on error. */}
       {error && !settings && (
         <Alert
-          type="error"
-          showIcon
+          tone="error"
           className="mb-4"
-          message="Failed to load memory settings"
+          data-testid="memory-admin-load-error"
+          title="Failed to load memory settings"
           description={error}
         />
       )}
       {loading && !settings && (
         <div className="flex justify-center py-8">
-          <Spin />
+          <Spinner label="Loading memory settings" />
         </div>
       )}
       <RebuildStatusSection />

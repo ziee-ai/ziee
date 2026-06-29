@@ -18,6 +18,7 @@ import {
   Space,
   Empty,
   InputNumber,
+  Spin,
 } from '@/components/ui'
 import { Trash2, Plus, Pencil } from 'lucide-react'
 import { Stores } from '@/core/stores'
@@ -76,7 +77,11 @@ export function CoreMemoryBlocksEditor({
         get retrieved by similarity.
       </Paragraph>
 
-      {blocks.length === 0 && !loading ? (
+      {blocks.length === 0 && loading ? (
+        <div className="flex justify-center py-6">
+          <Spin label="Loading memory blocks" />
+        </div>
+      ) : blocks.length === 0 && !loading ? (
         <Empty description="No blocks yet" data-testid="memory-core-blocks-empty" />
       ) : (
         <div className="space-y-2">

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Button, Text, Title } from '@/components/ui'
+import { Button, Spin, Text, Title } from '@/components/ui'
 import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -76,10 +76,13 @@ export function ProjectsListPage() {
               </div>
             </div>
           </div>
+        ) : loading ? (
+          <div className="flex justify-center py-12 m-auto">
+            <Spin label="Loading projects" />
+          </div>
         ) : (
-          !loading && (
-            <div className="text-center py-12 m-auto">
-              <Folder className="text-6xl mb-4" />
+          <div className="text-center py-12 m-auto">
+            <Folder className="text-6xl mb-4" />
               <Title level={3} className="text-muted-foreground">
                 No projects yet
               </Title>
@@ -98,7 +101,6 @@ export function ProjectsListPage() {
                 </Button>
               </Can>
             </div>
-          )
         )}
       </div>
 

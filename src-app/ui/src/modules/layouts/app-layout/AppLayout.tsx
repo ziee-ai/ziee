@@ -263,9 +263,43 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const previousBodyOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
+    // Remember what was focused before the overlay opened so we can restore
+    // it on close (standard dialog focus management).
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const sidebar = document.getElementById('app-sidebar')
+
+    const focusable = (): HTMLElement[] => {
+      if (!sidebar) return []
+      return Array.from(
+        sidebar.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter(el => el.offsetParent !== null)
+    }
+
+    // Move focus into the dialog on open.
+    focusable()[0]?.focus()
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         Stores.AppLayout.setSidebarCollapsed(true)
+        return
+      }
+      if (e.key !== 'Tab') return
+      // Trap Tab focus inside the sidebar dialog.
+      const items = focusable()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement as HTMLElement | null
+      if (e.shiftKey) {
+        if (active === first || !sidebar?.contains(active)) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || !sidebar?.contains(active)) {
+        e.preventDefault()
+        first.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -273,6 +307,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return () => {
       document.body.style.overflow = previousBodyOverflow
       document.removeEventListener('keydown', onKeyDown)
+      // Restore focus to the trigger that opened the overlay.
+      previouslyFocused?.focus?.()
     }
   }, [windowMinSize.xs, isSidebarCollapsed])
 
@@ -290,6 +326,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-full w-screen flex overflow-hidden bg-card">
+      {/* Keyboard skip link — first focusable element; jumps past the
+          sidebar nav straight to the main content landmark. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-3 focus:py-1 focus:rounded focus:bg-card focus:shadow"
+      >
+        Skip to content
+      </a>
       {/* Mask for Left Sidebar (mobile-overlay mode).
         *
         * ALWAYS mounted (no `{xs && ...}` gate) — otherwise crossing
@@ -436,6 +480,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 overflow-hidden relative">
           <section
             ref={mainContentRef}
+            id="main-content"
+            tabIndex={-1}
             className="w-full h-full overflow-hidden relative"
           >
             {children}

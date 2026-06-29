@@ -9,6 +9,7 @@ import {
   useForm,
   zodResolver,
   message,
+  dialog,
 } from '@/components/ui'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
@@ -120,9 +121,31 @@ export function AssistantFormDrawer() {
     }
   }, [open, editingAssistant, form])
 
-  const handleClose = () => {
+  const doClose = () => {
     form.reset()
     Stores.AssistantDrawer.closeAssistantDrawer()
+  }
+
+  const handleClose = () => {
+    // Guard against losing edits: prompt before discarding when the user has
+    // touched any field. A pristine form (just opened / freshly reset) closes
+    // immediately. Covers both the footer Cancel button and the drawer's X.
+    if (form.formState.isDirty) {
+      void dialog
+        .confirm({
+          title: 'Discard unsaved changes?',
+          description:
+            'You have unsaved changes. Closing now will discard them.',
+          okText: 'Discard',
+          cancelText: 'Keep editing',
+          danger: true,
+        })
+        .then(ok => {
+          if (ok) doClose()
+        })
+      return
+    }
+    doClose()
   }
 
   const handleParametersBlur = () => {
@@ -244,6 +267,7 @@ export function AssistantFormDrawer() {
             data-testid="assistant-form-instructions"
             placeholder="Enter system instructions for the assistant"
             rows={6}
+            maxLength={65536}
             aria-label="Assistant instructions"
           />
         </FormField>

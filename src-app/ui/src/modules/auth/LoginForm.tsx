@@ -10,6 +10,7 @@ import {
   Text,
   useForm,
   zodResolver,
+  dialog,
 } from '@/components/ui'
 import { Lock, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -49,7 +50,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   return (
     <Card data-testid="auth-login-card" className="w-full max-w-md mx-auto">
       {error && (
-        <div className="py-4">
+        <div className="py-4" role="alert" aria-live="assertive">
           <Alert
             data-testid="auth-login-error"
             title={error}
@@ -80,6 +81,26 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
             hideLabel="Hide password"
           />
         </FormField>
+
+        <div className="text-right -mt-2 mb-2">
+          <Button
+            data-testid="auth-login-forgot-password"
+            variant="link"
+            className="p-0"
+            onClick={() =>
+              dialog.info({
+                title: 'Forgot your password?',
+                description:
+                  'Password recovery is handled by your administrator. ' +
+                  'Contact them to have your password reset — once reset, ' +
+                  'you can sign in and change it from Profile settings.',
+                okText: 'Got it',
+              })
+            }
+          >
+            Forgot password?
+          </Button>
+        </div>
 
         <Button data-testid="auth-login-submit" type="submit" loading={isLoading} className="w-full">
           Sign In

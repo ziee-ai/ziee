@@ -2,6 +2,7 @@ import { Folder } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
+import { ProjectsNavWidget } from '@/modules/projects/widgets/ProjectsNavWidget'
 import {
   useProjectDetailStore,
   useProjectDrawerStore,
@@ -87,6 +88,13 @@ export default createModule({
         path: '/projects',
         order: 20,
         permission: Permissions.ProjectsRead,
+      },
+    ],
+    sidebarContent: [
+      {
+        id: 'projects-nav',
+        component: ProjectsNavWidget,
+        order: 5,
       },
     ],
   },

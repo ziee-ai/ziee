@@ -55,7 +55,8 @@ export function LlmModelDownloadNotifications() {
     return () => {
       Stores.EventBus.removeGroupListeners(GROUP)
     }
-  }, [message])
+    // `message` is a stable module-level import — no need to re-subscribe.
+  }, [])
 
   return null
 }

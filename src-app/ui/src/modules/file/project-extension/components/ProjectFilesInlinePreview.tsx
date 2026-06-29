@@ -1,5 +1,5 @@
 import { File } from 'lucide-react'
-import { Button } from '@/components/ui'
+import { Button, Spin } from '@/components/ui'
 import { Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { FileCard } from '@/modules/file/components/FileCard'
@@ -7,7 +7,7 @@ import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
 
 export function ProjectFilesInlinePreview() {
   const openManageDrawer = useOpenManageDrawer()
-  const { files } = Stores.ProjectFiles
+  const { files, filesLoading } = Stores.ProjectFiles
   const project = Stores.ProjectDetail.project
 
   if (!project) return null
@@ -22,7 +22,11 @@ export function ProjectFilesInlinePreview() {
         </Text>
       </div>
 
-      {files.length === 0 ? (
+      {filesLoading && files.length === 0 ? (
+        <div className="flex justify-center py-4">
+          <Spin size="sm" label="Loading files" />
+        </div>
+      ) : files.length === 0 ? (
         <Button
           variant="link"
           onClick={openManageDrawer}

@@ -23,6 +23,7 @@ export function AddToProjectModal({
   const { projects, isInitialized, loading } = Stores.Projects
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open && !isInitialized && !loading) {
@@ -35,6 +36,7 @@ export function AddToProjectModal({
     if (!open) {
       setSelectedId(null)
       setSubmitting(false)
+      setError(null)
     }
   }, [open])
 
@@ -56,9 +58,10 @@ export function AddToProjectModal({
       onAttached?.(selectedId)
       onClose()
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : 'Failed to add to project',
-      )
+      const msg =
+        err instanceof Error ? err.message : 'Failed to add to project'
+      setError(msg)
+      message.error(msg)
       setSubmitting(false)
     }
   }
@@ -95,10 +98,18 @@ export function AddToProjectModal({
           searchPlaceholder="Search projects…"
           options={options}
           value={selectedId ?? undefined}
-          onChange={v => setSelectedId(v ?? null)}
+          onChange={v => {
+            setSelectedId(v ?? null)
+            setError(null)
+          }}
           emptyText={loading ? 'Loading…' : 'No projects — create one first.'}
           className="w-full"
         />
+        {error && (
+          <Text type="danger" className="text-sm">
+            {error}
+          </Text>
+        )}
       </div>
     </Dialog>
   )

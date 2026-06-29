@@ -18,7 +18,7 @@ import { Permissions } from '@/api-client/types'
 
 export default function McpServersStep({ registerBeforeNext }: OnboardingStepProps) {
   const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
-  const { systemServers, hubServers, installedNames, loadingServers, serversError } = Stores.McpServersStep
+  const { systemServers, hubServers, installedNames, loadingServers, serversError, disabledSystemIds } = Stores.McpServersStep
 
   // The step renders for every authenticated user, but the controls are
   // admin-only. Non-admins see just the intro paragraph and continue.
@@ -28,9 +28,13 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
 
   useEffect(() => {
     Stores.Onboarding.setReady(true)
-    registerBeforeNext(null)
     if (canSeeAdminControls) {
+      // Wire up the before-next handler so hub-server installations AND
+      // system-server toggles are persisted when the user clicks Next/Start Chatting.
+      registerBeforeNext(() => Stores.McpServersStep.applyMcpServerChanges())
       Stores.McpServersStep.loadMcpServers()
+    } else {
+      registerBeforeNext(null)
     }
   }, [canSeeAdminControls])
 
@@ -75,7 +79,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                 <Switch
                   data-testid={`onboarding-mcp-system-server-switch-${server.id}`}
                   size="sm"
-                  defaultChecked
+                  checked={!disabledSystemIds.has(server.id)}
                   onChange={checked => Stores.McpServersStep.toggleSystemServer(server.id, checked)}
                   className="mt-1"
                 />

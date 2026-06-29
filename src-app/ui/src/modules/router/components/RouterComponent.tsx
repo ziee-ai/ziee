@@ -5,8 +5,9 @@ import {
   Route,
   Navigate,
   Outlet,
+  Link,
 } from 'react-router-dom'
-import { Result } from '@/components/ui'
+import { Button, Result } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
@@ -34,6 +35,11 @@ function RoutePermissionGate({
         status="403"
         title="Not authorized"
         subtitle="You don't have permission to view this page."
+        extra={
+          <Link to="/">
+            <Button data-testid="router-403-back-home-btn" variant="default">Back to home</Button>
+          </Link>
+        }
       />
     )
   }

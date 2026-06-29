@@ -282,22 +282,28 @@ export function McpServerCard({
                       onConfirm={handleDelete}
                       data-testid="mcp-server-delete-confirm"
                     >
-                      <Button
-                        icon={<Trash2 />}
-                        variant="destructive"
-                        onClick={e => {
-                          e.stopPropagation()
-                          if (server.enabled) {
-                            message.warning(
-                              'Please disable the server before deleting it',
-                            )
-                          }
-                        }}
-                        aria-label={`Delete ${server.display_name}`}
-                        data-testid="mcp-server-delete-btn"
+                      {/* A disabled Button never fires onClick, so the
+                          previous click-time warning was unreachable. Surface
+                          WHY the action is blocked via a hover Tooltip
+                          instead. */}
+                      <Tooltip
+                        title={
+                          server.enabled
+                            ? 'Disable the server before deleting it'
+                            : ''
+                        }
                       >
-                        Delete
-                      </Button>
+                        <Button
+                          icon={<Trash2 />}
+                          variant="destructive"
+                          disabled={server.enabled}
+                          onClick={e => e.stopPropagation()}
+                          aria-label={`Delete ${server.display_name}`}
+                          data-testid="mcp-server-delete-btn"
+                        >
+                          Delete
+                        </Button>
+                      </Tooltip>
                     </Confirm>
                   )}
                 </>

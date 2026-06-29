@@ -44,6 +44,10 @@ export function RuntimeVersionCard({ version }: Props) {
   const canDelete = usePermission(Permissions.RuntimeVersionDelete)
 
   const [removeBinary, setRemoveBinary] = useState(false)
+  // Extra acknowledgment gate when deleting the system-default version — a
+  // mis-click here drops the version new sessions fall back to, so require an
+  // explicit confirmation beyond the standard Confirm.
+  const [ackDefault, setAckDefault] = useState(false)
 
   const handleSetDefault = async () => {
     try {
@@ -56,6 +60,7 @@ export function RuntimeVersionCard({ version }: Props) {
   const handleDelete = async () => {
     try {
       await Stores.RuntimeVersion.deleteVersion(version.id, removeBinary)
+      setAckDefault(false)
     } catch (error) {
       // Surface the in-use guard (409) reason, e.g. which models/providers
       // still depend on this version.
@@ -97,9 +102,18 @@ export function RuntimeVersionCard({ version }: Props) {
               Are you sure you want to delete version {version.version}?
             </Text>
             {version.is_system_default && (
-              <Text type="danger">
-                Warning: This is the default version.
-              </Text>
+              <>
+                <Text type="danger">
+                  Warning: This is the default version. New sessions will fall
+                  back to another version after deletion.
+                </Text>
+                <Checkbox
+                  checked={ackDefault}
+                  onChange={(e: boolean) => setAckDefault(e)}
+                  label="I understand this is the default version"
+                  data-testid={`llmrt-version-delete-ackdefault-${version.version}`}
+                />
+              </>
             )}
             <Checkbox
               checked={removeBinary}
@@ -110,9 +124,15 @@ export function RuntimeVersionCard({ version }: Props) {
           </Flex>
         }
         onConfirm={handleDelete}
+        onOpenChange={open => {
+          if (!open) setAckDefault(false)
+        }}
         okText="Delete"
         cancelText="Cancel"
-        okButtonProps={{ danger: true }}
+        okButtonProps={{
+          danger: true,
+          disabled: version.is_system_default && !ackDefault,
+        }}
       >
         <Button
           variant="destructive"

@@ -92,11 +92,20 @@ export function ConversationCard({
     <Card
       data-testid={`chat-conversation-card-${conversation.id}`}
       key={conversation.id}
+      role="button"
+      tabIndex={0}
+      aria-label={conversation.title || 'Untitled Conversation'}
       onClick={handleCardClick}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          handleCardClick()
+        }
+      }}
       onMouseEnter={() => {
         if (!hoveredOnce) setHoveredOnce(true)
       }}
-      className={`cursor-pointer relative group hover:!shadow-md transition-shadow${isSelected ? ' border-primary' : ''}`}
+      className={`cursor-pointer relative group hover:!shadow-md transition-shadow focus-visible:outline focus-visible:outline-2${isSelected ? ' border-primary' : ''}`}
       hoverable
     >
       <div className="flex flex-col gap-2 pb-6">
@@ -160,7 +169,9 @@ export function ConversationCard({
             <Button
               data-testid={`chat-conversation-delete-btn-${conversation.id}`}
               className={`transition-opacity bg-card ${
-                popconfirmOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                popconfirmOpen
+                  ? 'opacity-100'
+                  : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100'
               }`}
               variant="ghost"
               size="sm"
@@ -177,7 +188,9 @@ export function ConversationCard({
         {onSelect && (
           <div
             className={`transition-opacity ${
-              isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              isSelected
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
             }`}
             onClick={e => e.stopPropagation()}
           >

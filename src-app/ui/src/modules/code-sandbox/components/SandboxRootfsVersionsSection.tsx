@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, Button, Flex, Spin, Tag, Text } from '@/components/ui'
+import { Alert, Button, Flex, Spin, Tag, Text, message } from '@/components/ui'
 import { RotateCw, Star } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -105,6 +105,12 @@ export function SandboxRootfsVersionsSection() {
     )
   }
 
+  const doSetPin = async (version: string) => {
+    const ok = await Stores.SandboxRootfsVersions.setPin(version)
+    if (ok) message.success(`Default rootfs set to v${version}`)
+    else message.error(`Failed to set default rootfs to v${version}`)
+  }
+
   const handleSetPin = (version: string) => {
     if (isMajorBump(pinnedVersion, version)) {
       const convCount = conversationCount ?? 0
@@ -154,10 +160,10 @@ export function SandboxRootfsVersionsSection() {
         ),
         okText: 'Set as default and wipe caches',
         cancelText: 'Cancel',
-        onConfirm: () => Stores.SandboxRootfsVersions.setPin(version),
+        onConfirm: () => doSetPin(version),
       })
     } else {
-      Stores.SandboxRootfsVersions.setPin(version)
+      void doSetPin(version)
     }
   }
 
@@ -176,12 +182,21 @@ export function SandboxRootfsVersionsSection() {
     }
   }
 
-  const handleDelete = (group: VersionGroup) => {
+  const handleDelete = async (group: VersionGroup) => {
     // Version-level delete: remove every downloaded flavor of this version.
-    for (const f of group.flavors) {
-      if (f.artifact) {
-        void Stores.SandboxRootfsVersions.deleteArtifact(f.artifact.id)
-      }
+    const ids = group.flavors
+      .map(f => f.artifact?.id)
+      .filter((id): id is string => !!id)
+    const results = await Promise.all(
+      ids.map(id => Stores.SandboxRootfsVersions.deleteArtifact(id)),
+    )
+    const failed = results.filter(ok => !ok).length
+    if (failed === 0) {
+      message.success(`Deleted rootfs v${group.version}`)
+    } else {
+      message.error(
+        `Failed to delete ${failed} of ${results.length} flavor(s) of v${group.version}`,
+      )
     }
   }
 
@@ -240,7 +255,7 @@ export function SandboxRootfsVersionsSection() {
       {error && <Alert tone="error" title={error} data-testid="sandbox-rootfs-error-alert" />}
 
       {loading && groups.length === 0 ? (
-        <Spin label="Loading" />
+        <Spin label="Loading rootfs versions" />
       ) : (
         <>
           <DownloadedRootfsCard

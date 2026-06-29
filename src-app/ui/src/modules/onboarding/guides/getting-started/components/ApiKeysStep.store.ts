@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { message } from 'antd'
+import { message } from '@/components/ui'
 import { createStoreProxy } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import type { ProviderWithModels } from '@/api-client/types'
@@ -49,7 +49,7 @@ export const useApiKeysStepStore = create<ApiKeysStepStore>()(
         })
         try {
           const [providersRes, keysRes] = await Promise.all([
-            ApiClient.LlmProvider.getUserLlmProviders(undefined, undefined),
+            ApiClient.LlmProvider.getUserLlmProviders({}, undefined),
             ApiClient.LlmProvider.listUserApiKeys(undefined, undefined),
           ])
           set(state => {

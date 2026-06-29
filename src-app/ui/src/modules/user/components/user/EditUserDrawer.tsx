@@ -87,7 +87,7 @@ export function EditUserDrawer() {
           <Input placeholder="Enter display name (optional)" data-testid="user-edit-display-name-input" />
         </FormField>
         <FormField name="is_active" label="Active" valuePropName="checked">
-          <Switch data-testid="user-edit-active-switch" />
+          <Switch aria-label="Active" data-testid="user-edit-active-switch" />
         </FormField>
         {/*
          * Email + Permissions removed from this form per security work:

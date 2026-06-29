@@ -15,6 +15,7 @@ import {
 import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { Permissions } from '@/api-client/types'
 
 const READ_PERM = Permissions.MemoryAdminRead
@@ -33,7 +34,7 @@ type FormValues = z.infer<typeof schema>
 export function RetentionLimitsSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.MemoryAdmin
+  const { settings, saving, error } = Stores.MemoryAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -62,7 +63,14 @@ export function RetentionLimitsSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Retention & extraction limits"
+        error={error}
+        onRetry={() => Stores.MemoryAdmin.load()}
+      />
+    )
 
   const handleSubmit = async (values: FormValues) => {
     try {
@@ -81,7 +89,7 @@ export function RetentionLimitsSection() {
   }
 
   return (
-    <Card title="Retention &amp; extraction limits" data-testid="memory-retention-card">
+    <Card title="Retention & extraction limits" data-testid="memory-retention-card">
       <Form
         name="memory-admin-retention-form"
         form={form}

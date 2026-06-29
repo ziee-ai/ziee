@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
 import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
@@ -20,6 +20,9 @@ export default function SettingsPage() {
   // page has, regardless of what's happening upstream in the
   // AppLayout (sidebar collapse, window resize, embedded chrome).
   const containerRef = useRef<HTMLDivElement>(null)
+  // Track the mobile section-picker dropdown's open state so the trigger
+  // button can expose `aria-expanded` (the menu-button ARIA contract).
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const minSize = useElementMinSize(containerRef)
   // The settings layout needs the side-menu (~180px) + a content
   // column wide enough for cards/forms (~440px) to feel non-cramped
@@ -211,8 +214,16 @@ export default function SettingsPage() {
                 onSelect={(key) => {
                   handleMenuClick(key)
                 }}
+                onOpenChange={setMobileMenuOpen}
               >
-                <Button variant="ghost" data-testid="settings-mobile-dropdown-trigger" className={'mt-[2px]'}>
+                <Button
+                  variant="ghost"
+                  data-testid="settings-mobile-dropdown-trigger"
+                  className={'mt-[2px]'}
+                  aria-label="Select settings section"
+                  aria-haspopup="menu"
+                  aria-expanded={mobileMenuOpen}
+                >
                   {getCurrentSectionInfo().icon} {getCurrentSectionInfo().label}{' '}
                   <IoIosArrowDown />
                 </Button>
@@ -230,7 +241,11 @@ export default function SettingsPage() {
             which fights the soft fade overlay HeaderBarContainer
             paints below itself. */}
         {!useMobileLayout && (
-          <div className="w-fit pt-1">
+          <div
+            className="w-fit pt-1"
+            role="navigation"
+            aria-label="Settings sections"
+          >
             <SettingsMenu />
           </div>
         )}

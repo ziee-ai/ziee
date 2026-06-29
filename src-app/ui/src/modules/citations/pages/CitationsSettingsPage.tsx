@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Download, Import, ShieldCheck } from 'lucide-react'
 import { Button, Card, Space, Spin, Text, Empty, Dropdown } from '@/components/ui'
 import { message } from '@/components/ui'
@@ -27,10 +27,16 @@ function download(content: string, filename: string, mime: string) {
 }
 
 export function CitationsSettingsPage() {
-  const { entries, loading, importing, verifying } = Stores.Citations
+  const { entries, loading, importing, verifying, error } = Stores.Citations
   // Import / Delete require `citations::manage`; Verify-all + Export are `use`.
   const canManage = usePermission(Permissions.CitationsManage)
   const [importOpen, setImportOpen] = useState(false)
+
+  // Surface load-path failures (the store sets `error` on a failed fetch but
+  // nothing rendered it, so the list silently showed empty).
+  useEffect(() => {
+    if (error) message.error(error)
+  }, [error])
 
   const handleVerifyAll = async () => {
     try {

@@ -50,7 +50,13 @@ export function CitationCard({
         <Space align="center" className="justify-between w-full">
           <Space size={8}>
             <VerificationBadge status={entry.verification_status} />
-            <Text code>
+            <Text
+              code
+              copyable={{
+                text: entry.citation_key,
+                label: 'Copy citation key',
+              }}
+            >
               {entry.citation_key}
             </Text>
           </Space>

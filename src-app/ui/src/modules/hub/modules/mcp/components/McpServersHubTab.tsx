@@ -1,11 +1,15 @@
-import { useState, useMemo, ChangeEvent } from 'react'
+import { useState, useMemo, lazy, Suspense, ChangeEvent } from 'react'
 import { Button, Input, MultiSelect, Combobox, Text } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Search, Eraser } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
-import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
+const McpServerDrawer = lazy(() =>
+  import('@/modules/mcp/components/common/McpServerDrawer').then(m => ({
+    default: m.McpServerDrawer,
+  })),
+)
 
 export function McpServersHubTab() {
   const { servers, loading, error } = Stores.HubMcpServers // Auto-loads via __init__
@@ -205,7 +209,9 @@ export function McpServersHubTab() {
           drawer is mounted on /settings/mcp-servers and
           /settings/mcp-admin; only one is ever visible at a time
           because the user can only be on one route. */}
-      <McpServerDrawer />
+      <Suspense fallback={null}>
+        <McpServerDrawer />
+      </Suspense>
     </div>
   )
 }

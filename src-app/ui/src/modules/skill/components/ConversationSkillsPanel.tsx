@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import { deriveHiddenSkills } from '@/modules/skill/stores/ConversationSkills.store'
 import {
+  Alert,
   Button,
   Empty,
   List,
@@ -26,18 +27,33 @@ export function ConversationSkillsPanel({
   const { skills } = Stores.Skill
   const available = Stores.ConversationSkills.available[conversationId]
   const loading = Stores.ConversationSkills.loading[conversationId]
+  const error = Stores.ConversationSkills.error
 
   useEffect(() => {
     Stores.ConversationSkills.loadAvailable(conversationId)
   }, [conversationId])
 
-  // Trigger the install-list load so `skills` is populated.
-  useEffect(() => {
-    void Stores.Skill.__state.loadSkills()
-  }, [])
+  // NOTE: no manual loadSkills() here — reading `Stores.Skill.skills`
+  // above self-initializes the install list via the store's
+  // `__init__.skills` hook (and `sync:skill` keeps it fresh), so a
+  // mount-time fetch would be redundant (REACT_COMPONENT_PATTERNS:
+  // don't manually load in useEffect).
 
   if (loading && !available) {
     return <Spin size="sm" label="Loading" />
+  }
+
+  // A load failure leaves `available` undefined; surface it instead of falling
+  // through to a misleading empty panel.
+  if (error && !available) {
+    return (
+      <Alert
+        data-testid="conversation-skills-load-error-alert"
+        tone="error"
+        title="Failed to load skills"
+        description={error}
+      />
+    )
   }
 
   const availableIds = new Set((available ?? []).map(s => s.id))

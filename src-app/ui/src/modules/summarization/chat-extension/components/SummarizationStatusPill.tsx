@@ -1,4 +1,4 @@
-import { Shrink, FileText, EyeOff } from 'lucide-react'
+import { Shrink, FileText, EyeOff, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Tooltip, Tag, Dropdown, message } from '@/components/ui'
 import { Stores } from '@/core/stores'
@@ -141,8 +141,15 @@ export function SummarizationStatusPill() {
           data-testid="summ-mode-tag"
           tone={toneByMode[mode]}
           icon={
-            mode === 'off' ? <EyeOff /> : <Shrink />
+            loading ? (
+              <Loader2 className="animate-spin" />
+            ) : mode === 'off' ? (
+              <EyeOff />
+            ) : (
+              <Shrink />
+            )
           }
+          aria-label={`Summarization override: ${labelByMode[mode]}`}
           className="cursor-pointer m-0"
         >
           {labelByMode[mode]}

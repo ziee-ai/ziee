@@ -92,7 +92,7 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
         })
         try {
           const [providersRes, keysRes] = await Promise.all([
-            ApiClient.LlmProvider.getUserLlmProviders(undefined, undefined),
+            ApiClient.LlmProvider.getUserLlmProviders({}, undefined),
             ApiClient.LlmProvider.listUserApiKeys(undefined, undefined),
           ])
           set(state => {

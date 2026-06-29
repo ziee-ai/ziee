@@ -18,8 +18,17 @@ function SidebarItem({
 }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={label}
       onClick={onClick}
-      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150 text-foreground"
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick?.()
+        }
+      }}
+      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150 text-foreground focus-visible:outline focus-visible:outline-2"
       onMouseEnter={e => {
         e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.9)'
         e.currentTarget.style.color = 'white'
@@ -28,14 +37,24 @@ function SidebarItem({
         e.currentTarget.style.backgroundColor = 'transparent'
         e.currentTarget.style.color = ''
       }}
+      onFocus={e => {
+        e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.9)'
+        e.currentTarget.style.color = 'white'
+      }}
+      onBlur={e => {
+        e.currentTarget.style.backgroundColor = 'transparent'
+        e.currentTarget.style.color = ''
+      }}
     >
       <div
+        aria-hidden="true"
         className="w-4 h-4 mr-1.5 flex items-center justify-center"
         style={{ fontSize: 18 }}
       >
         {icon}
       </div>
       <span
+        title={label}
         className="text-sm"
         style={{
           opacity: collapsed ? 0 : 1,

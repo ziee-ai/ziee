@@ -15,6 +15,7 @@ import {
 } from '@/components/ui'
 import { z } from 'zod'
 import { Stores } from '@/core/stores'
+import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 
@@ -43,7 +44,7 @@ const schema = z.object({
 export function FullTextSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving } = Stores.FileRagAdmin
+  const { settings, saving, error } = Stores.FileRagAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -77,7 +78,14 @@ export function FullTextSection() {
       </Card>
     )
   }
-  if (!settings) return null
+  if (!settings)
+    return (
+      <SettingsSectionStatus
+        title="Full-text search"
+        error={error}
+        onRetry={() => Stores.FileRagAdmin.load()}
+      />
+    )
 
   const handleSubmit = async (values: FormValues) => {
     try {
@@ -97,6 +105,7 @@ export function FullTextSection() {
 
   return (
     <Card data-testid="filerag-fts-card" title="Full-text search">
+      {error && <Alert data-testid="filerag-fts-error-alert" tone="error" className="!mb-4" title={error} />}
       <Form
         data-testid="filerag-fts-form"
         name="file-rag-admin-fts-form"

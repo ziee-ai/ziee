@@ -91,7 +91,7 @@ export default function SetupPage() {
     <div className="min-h-screen flex items-center justify-center  p-4">
       <Card className="w-full max-w-md" data-testid="app-setup-card">
         <div className="mb-6">
-          <Title level={2}>Welcome to Ziee Chat</Title>
+          <Title level={2}>Welcome to Ziee</Title>
           <Paragraph>
             No administrator account exists. Let's create your first admin
             account to get started.
@@ -121,7 +121,7 @@ export default function SetupPage() {
             name="username"
             required
           >
-            <Input data-testid="app-setup-username-input" placeholder="admin" autoComplete="username" />
+            <Input data-testid="app-setup-username-input" placeholder="admin" autoComplete="username" autoFocus />
           </FormField>
 
           <FormField

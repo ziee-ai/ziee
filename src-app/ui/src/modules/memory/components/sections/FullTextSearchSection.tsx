@@ -204,11 +204,10 @@ export function FullTextSearchSection() {
       // another admin's change) can update the form again. Without this,
       // `isFieldsTouched()` latches `true` after the first dictionary-
       // swap save and the form stops syncing.
-      form.setFields(
-        (Object.entries(values) as [keyof FormValues, unknown][]).map(
-          ([name, value]) => ({ name, value, touched: false }),
-        ),
-      )
+      // Re-seed the form with the saved values and clear dirty/touched state
+      // (RHF `reset` makes these the new defaults), so future sync-driven
+      // refetches can update the form again.
+      form.reset(values)
       setPendingDictionary(null)
       message.info(
         'Full-text search rebuild started. New memories created during the rebuild are picked up automatically.',

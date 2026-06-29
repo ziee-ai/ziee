@@ -212,7 +212,7 @@ export const useModelPickerStore = create<ModelPickerState>()(
         })
         try {
           const response = await ApiClient.LlmProvider.getUserLlmProviders(
-            undefined,
+            {},
             undefined,
           )
           set(state => {

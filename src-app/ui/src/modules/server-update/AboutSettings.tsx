@@ -11,10 +11,12 @@ import {
   Button,
   Card,
   Descriptions,
+  Spin,
   Tag,
   Text,
   Paragraph,
   Link,
+  Tooltip,
 } from '@/components/ui'
 
 const UPGRADE_COMMAND =
@@ -32,6 +34,16 @@ export default function AboutSettings() {
     loading,
     error,
   } = Stores.ServerUpdate
+
+  if (loading && currentVersion == null) {
+    return (
+      <SettingsPageContainer title="About" subtitle="Server version and updates">
+        <div className="flex justify-center py-12">
+          <Spin label="Loading status" />
+        </div>
+      </SettingsPageContainer>
+    )
+  }
 
   return (
     <SettingsPageContainer title="About" subtitle="Server version and updates">
@@ -125,15 +137,17 @@ export default function AboutSettings() {
           </div>
         )}
 
-        <Button
-          data-testid="serverupd-refresh-btn"
-          className="mt-2"
-          icon={<RotateCw />}
-          loading={loading}
-          onClick={() => Stores.ServerUpdate.loadStatus()}
-        >
-          Refresh
-        </Button>
+        <Tooltip content="Reloads the most recent update check. The server checks GitHub on its own schedule; this does not force an immediate check.">
+          <Button
+            data-testid="serverupd-refresh-btn"
+            className="mt-2"
+            icon={<RotateCw />}
+            loading={loading}
+            onClick={() => Stores.ServerUpdate.loadStatus()}
+          >
+            Reload status
+          </Button>
+        </Tooltip>
       </Card>
     </SettingsPageContainer>
   )

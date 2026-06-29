@@ -12,7 +12,7 @@ import {
   Text,
 } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type Assistant } from '@/api-client/types'
@@ -23,7 +23,10 @@ export function UserAssistantsSettings() {
   // Store state
   const { assistants: assistantsMap, loading, error } = Stores.UserAssistants
 
-  const assistants = Array.from(assistantsMap.values())
+  const assistants = useMemo(
+    () => Array.from(assistantsMap.values()),
+    [assistantsMap],
+  )
 
   const canEdit = usePermission(Permissions.AssistantsEdit)
   const canDelete = usePermission(Permissions.AssistantsDelete)
@@ -117,7 +120,7 @@ export function UserAssistantsSettings() {
             <Loading />
           ) : assistants.length === 0 ? (
             <div>
-              <Empty data-testid="user-assistants-empty" description="No assistants yet" />
+              <Empty data-testid="user-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />
             </div>
           ) : (
             <div>

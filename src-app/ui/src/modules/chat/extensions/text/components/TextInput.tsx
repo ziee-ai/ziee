@@ -39,6 +39,7 @@ export function TextInput() {
       <Textarea
         data-testid="chat-message-textarea"
         ref={ref}
+        aria-label="Message"
         onKeyDown={handleKeyDown}
         placeholder="Type your message..."
         autoSize={{ minRows: 2, maxRows: 8 }}

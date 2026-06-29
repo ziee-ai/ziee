@@ -16,6 +16,7 @@ import {
   Title,
   Paragraph,
   message,
+  dialog,
 } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {
@@ -324,6 +325,27 @@ export function AuthProviderEditDrawer({
   }
   const handleSave = form.handleSubmit(onValidSubmit)
 
+  // Unsaved-changes guard: if any form field has been touched, confirm
+  // before closing so the user doesn't lose their work.
+  const handleClose = () => {
+    if (form.formState.isDirty) {
+      void dialog
+        .confirm({
+          title: 'Discard unsaved changes?',
+          description:
+            'You have unsaved changes in the form. Are you sure you want to discard them?',
+          okText: 'Discard changes',
+          cancelText: 'Keep editing',
+          danger: true,
+        })
+        .then(ok => {
+          if (ok) onClose()
+        })
+      return
+    }
+    onClose()
+  }
+
   const titleText = existing
     ? `Edit ${existing.name}`
     : template
@@ -334,7 +356,7 @@ export function AuthProviderEditDrawer({
     <Drawer
       title={titleText}
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       size={600}
       maskClosable={false}
       destroyOnHidden
@@ -345,7 +367,7 @@ export function AuthProviderEditDrawer({
         // Read-only users get a "Close" button instead of "Cancel"
         // because there's nothing to cancel.
         <Flex className="justify-end gap-2">
-          <Button variant="outline" data-testid="authprov-drawer-cancel-button" onClick={onClose} disabled={saving}>
+          <Button variant="outline" data-testid="authprov-drawer-cancel-button" onClick={handleClose} disabled={saving}>
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           <Can permission={Permissions.AuthProvidersManage}>

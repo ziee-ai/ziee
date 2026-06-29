@@ -132,7 +132,7 @@ export function AssistantsSettings() {
             <Loading />
           ) : assistants.length === 0 ? (
             <div>
-              <Empty data-testid="template-assistants-empty" description="No assistants yet" />
+              <Empty data-testid="template-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />
             </div>
           ) : (
             <div>

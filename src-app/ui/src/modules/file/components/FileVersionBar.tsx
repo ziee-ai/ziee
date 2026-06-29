@@ -69,6 +69,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
       <History className="text-muted-foreground" />
       <Select
         size="sm"
+        aria-label="Select file version"
         value={String(current)}
         className="min-w-[220px]"
         onChange={(v) => onSelectVersion(v === String(headVersion) ? null : Number(v))}

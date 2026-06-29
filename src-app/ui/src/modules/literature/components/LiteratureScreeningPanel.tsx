@@ -242,6 +242,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                 )}
                 <Segmented
                   size="sm"
+                  aria-label="Screening decision"
                   value={decision}
                   onChange={val => setDecision(key, val as ScreeningDecision)}
                   options={[
@@ -255,6 +256,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                   <Input
                     size="sm"
                     className="mt-1"
+                    aria-label="Exclusion reason"
                     placeholder="Exclusion reason (optional)"
                     value={reasonDrafts[key] ?? reasons[key] ?? ''}
                     onChange={e =>

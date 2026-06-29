@@ -9,7 +9,7 @@ import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
  * Opens a submenu to the right showing available assistants.
  */
 export function AssistantMenuItem() {
-  const { availableAssistants, selectedAssistantId, selectAssistant } =
+  const { availableAssistants, selectedAssistantId, selectAssistant, loading } =
     Stores.AssistantPicker
   const { close } = usePlusDropdown()
 
@@ -66,7 +66,11 @@ export function AssistantMenuItem() {
         <div className="flex items-center gap-2">
           <Bot style={{ fontSize: 16 }} />
           <span style={{ fontSize: 14 }}>
-            {selectedAssistant ? selectedAssistant.name : 'Select assistant'}
+            {loading && availableAssistants.length === 0
+              ? 'Loading assistants…'
+              : selectedAssistant
+                ? selectedAssistant.name
+                : 'Select assistant'}
           </span>
         </div>
         <ChevronRight style={{ fontSize: 10, opacity: 0.45 }} />
@@ -89,14 +93,31 @@ function AssistantOption({
   return (
     <>
       <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={active}
+        aria-current={active || undefined}
         onClick={onClick}
-        className={`cursor-pointer px-3 py-1.5 rounded-md text-sm ${active ? 'bg-accent text-primary' : 'text-foreground'}`}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClick()
+          }
+        }}
+        className={`cursor-pointer px-3 py-1.5 rounded-md text-sm focus-visible:outline focus-visible:outline-2 ${active ? 'bg-accent text-primary' : 'text-foreground'}`}
         onMouseEnter={e => {
           if (!active)
-            e.currentTarget.className = 'cursor-pointer px-3 py-1.5 rounded-md text-sm text-foreground bg-muted'
+            e.currentTarget.className = 'cursor-pointer px-3 py-1.5 rounded-md text-sm focus-visible:outline focus-visible:outline-2 text-foreground bg-muted'
         }}
         onMouseLeave={e => {
-          if (!active) e.currentTarget.className = 'cursor-pointer px-3 py-1.5 rounded-md text-sm text-foreground'
+          if (!active) e.currentTarget.className = 'cursor-pointer px-3 py-1.5 rounded-md text-sm focus-visible:outline focus-visible:outline-2 text-foreground'
+        }}
+        onFocus={e => {
+          if (!active)
+            e.currentTarget.className = 'cursor-pointer px-3 py-1.5 rounded-md text-sm focus-visible:outline focus-visible:outline-2 text-foreground bg-muted'
+        }}
+        onBlur={e => {
+          if (!active) e.currentTarget.className = 'cursor-pointer px-3 py-1.5 rounded-md text-sm focus-visible:outline focus-visible:outline-2 text-foreground'
         }}
       >
         {label}
