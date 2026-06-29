@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -46,31 +47,32 @@ test.describe('Chat — edit restores assistant attribution', () => {
     const ts = Date.now()
     const nameA = `EditAssistantA ${ts}`
     const nameB = `EditAssistantB ${ts}`
+    const idByName: Record<string, string> = {}
     for (const name of [nameA, nameB]) {
       const r = await page.request.post(`${apiURL}/api/assistants`, {
         headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
         data: { name, instructions: `You are ${name}.`, enabled: true },
       })
       expect(r.ok()).toBeTruthy()
+      idByName[name] = (await r.json()).id as string
     }
 
     await goToNewChatPage(page, baseURL)
     await selectModelInDropdown(page, 'GPT-4o Mini')
 
     // Select Assistant A, then send a message → the message is attributed to A.
-    await page.getByLabel('Select Assistant').click()
-    await page.getByRole('option', { name: nameA }).click()
-    await page.locator('textarea[placeholder*="Type your message"]').fill('Hello there')
-    await page.getByRole('button', { name: 'Send message' }).click()
+    const picker = byTestId(page, 'assistant-selector')
+    await picker.click()
+    await byTestId(page, `assistant-selector-opt-${idByName[nameA]}`).click()
+    await byTestId(page, 'chat-message-textarea').fill('Hello there')
+    await byTestId(page, 'chat-input-send-btn').click()
     await waitForAssistantResponse(page)
 
     // Switch the picker to Assistant B (so the current selection differs from
     // the sent message's attribution).
-    await page.getByLabel('Select Assistant').click()
-    await page.getByRole('option', { name: nameB }).click()
-    await expect(
-      page.locator('.ant-select-selection-item').filter({ hasText: nameB }),
-    ).toBeVisible()
+    await picker.click()
+    await byTestId(page, `assistant-selector-opt-${idByName[nameB]}`).click()
+    await expect(picker).toContainText(nameB)
 
     // Edit the original user message → the picker restores Assistant A.
     const userMsg = page
@@ -78,8 +80,6 @@ test.describe('Chat — edit restores assistant attribution', () => {
       .first()
     await hoverAndClickAction(page, userMsg, 'edit-message-button')
 
-    await expect(
-      page.locator('.ant-select-selection-item').filter({ hasText: nameA }),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(picker).toContainText(nameA, { timeout: 10000 })
   })
 })

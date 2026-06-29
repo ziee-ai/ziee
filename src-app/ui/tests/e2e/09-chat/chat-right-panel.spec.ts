@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { byTestId } from '../testid'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
@@ -59,7 +60,7 @@ async function attachAndSend(page: Page, filePath: string, message: string) {
   // re-enable before our next click — otherwise the second send in a row
   // racing the streaming-end finishes too quickly and we click a disabled
   // button.
-  const sendButton = page.getByRole('button', { name: 'Send message' })
+  const sendButton = byTestId(page, 'chat-input-send-btn')
   await expect(sendButton).toBeEnabled({ timeout: 30000 })
 
   await attachFileViaUI(page, filePath)
@@ -131,16 +132,16 @@ test.describe('Chat - Right Panel + File Viewers', () => {
 
     // After opening .txt second, it's the active tab.
     await expect(
-      page
-        .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab-active')
+      byTestId(page, 'chat-right-panel-tab-list')
+        .locator('[data-state="active"]')
         .filter({ hasText: 'test.txt' }),
     ).toBeVisible()
 
     // Switch back to .md.
     await activatePanelTab(page, 'test.md')
     await expect(
-      page
-        .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab-active')
+      byTestId(page, 'chat-right-panel-tab-list')
+        .locator('[data-state="active"]')
         .filter({ hasText: 'test.md' }),
     ).toBeVisible()
   })
@@ -206,8 +207,8 @@ test.describe('Chat - Right Panel + File Viewers', () => {
 
     // And .md should now be the active tab.
     await expect(
-      page
-        .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab-active')
+      byTestId(page, 'chat-right-panel-tab-list')
+        .locator('[data-state="active"]')
         .filter({ hasText: 'test.md' }),
     ).toBeVisible()
   })
@@ -232,7 +233,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     await page.waitForTimeout(1000)
     const textarea = page.locator('textarea[placeholder*="Type your message"]')
     await textarea.fill('a fresh conversation')
-    await page.getByRole('button', { name: 'Send message' }).click()
+    await byTestId(page, 'chat-input-send-btn').click()
     await waitForAssistantResponse(page)
 
     // In the new conversation the panel should be empty.
@@ -243,7 +244,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     await page.goto(convAUrl)
     await page.waitForSelector('[data-testid="chat-messages"]', { timeout: 15000 })
     await expect(
-      page.locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab').filter({ hasText: 'test.md' }),
+      byTestId(page, 'chat-right-panel-tab-list').getByRole('tab').filter({ hasText: 'test.md' }),
     ).toBeVisible({ timeout: 10000 })
     expect(await getPanelTabCount(page)).toBe(1)
   })
@@ -333,7 +334,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     // catches a regression where the table renders but with wrong /
     // missing rows.
     const panelBody = page.locator('[data-testid="chat-right-panel"]')
-    await expect(panelBody.locator('.ant-table')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(panelBody, 'file-delimited-table')).toBeVisible({ timeout: 10000 })
     // Headers from test.csv: name,age,city
     await expect(panelBody.locator('th', { hasText: 'name' })).toBeVisible()
     await expect(panelBody.locator('th', { hasText: 'age' })).toBeVisible()
@@ -485,7 +486,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     // shows). Asserting on the union pins the contract: XlsxBody never
     // hangs silently in spinner state.
     await expect(
-      panelBody.locator('.ant-table, .ant-typography-danger')
+      byTestId(panelBody, 'file-xlsx-tabs').or(byTestId(panelBody, 'file-xlsx-error'))
     ).toBeVisible({ timeout: 20000 })
 
     await expect(panelButton(page, 'Download')).toBeVisible()
@@ -540,7 +541,6 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     await expect(page.locator('[data-testid="cannot-preview"]')).toBeVisible({
       timeout: 10000,
     })
-    await expect(page.getByText('Cannot preview this file')).toBeVisible()
     // Download fallback in the panel header (FilePanel adds it when no
     // headerActions are registered).
     await expect(panelButton(page, 'Download')).toBeVisible()
@@ -600,7 +600,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     // re-renders (the file extension re-registers the 'file' renderer in
     // its initialize() hook before rehydrateTabs runs).
     await expect(
-      page.locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab').filter({ hasText: 'test.md' }),
+      byTestId(page, 'chat-right-panel-tab-list').getByRole('tab').filter({ hasText: 'test.md' }),
     ).toBeVisible({ timeout: 15000 })
   })
 })

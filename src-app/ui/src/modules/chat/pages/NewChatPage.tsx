@@ -28,7 +28,7 @@ export default function NewChatPage() {
       <div className="w-full max-w-3xl">
         {/* Welcome message */}
         <div className="text-center mb-12">
-          <Title level={2}>How can I help you today?</Title>
+          <Title level={2} data-testid="new-chat-greeting">How can I help you today?</Title>
           <Text type="secondary" className="text-lg">
             Start a new conversation by typing a message below
           </Text>

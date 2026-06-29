@@ -18,6 +18,7 @@ export function EditingMessageBanner() {
 
   return (
     <div
+      data-testid="chat-editing-banner"
       className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/40 rounded-lg rounded-b-none"
     >
       <div className="flex items-center gap-1.5">

@@ -87,7 +87,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
 
   if (loadError) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 gap-2">
+      <div className="flex flex-col items-center justify-center py-8 gap-2" data-testid="file-xlsx-error">
         <Text type="danger">Failed to load spreadsheet preview</Text>
         <Text type="secondary" className="text-xs">{loadError}</Text>
       </div>

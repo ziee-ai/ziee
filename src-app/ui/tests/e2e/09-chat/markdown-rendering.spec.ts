@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { byTestId } from '../testid'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
@@ -70,9 +71,9 @@ async function seedAssistantWithText(
   await goToNewChatPage(page, baseURL)
   await selectModelInDropdown(page, 'GPT-4o Mini')
 
-  const textarea = page.locator('textarea[placeholder*="Type your message"]').first()
+  const textarea = byTestId(page, 'chat-message-textarea').first()
   await textarea.fill('render markdown please')
-  await page.getByRole('button', { name: 'Send message' }).click()
+  await byTestId(page, 'chat-input-send-btn').click()
 
   // Wait for the canned assistant bubble to mount. The complete event
   // triggers loadMessages → renders the persisted bubble.
@@ -197,7 +198,7 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
     // Wait for the message text to render before asserting the absence.
     await expect(bubble).toContainText('Math here')
     // No .katex class anywhere — would be present if rehype-katex were active.
-    expect(await bubble.locator('.katex').count()).toBe(0)
+    expect(await bubble.evaluate(el => el.querySelectorAll('.katex').length)).toBe(0)
   })
 
   test('renders footnotes with collapsed References section', async ({
@@ -282,11 +283,9 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
 
     await goToNewChatPage(page, testInfra.baseURL)
     await selectModelInDropdown(page, 'GPT-4o Mini')
-    const textarea = page
-      .locator('textarea[placeholder*="Type your message"]')
-      .first()
+    const textarea = byTestId(page, 'chat-message-textarea').first()
     await textarea.fill('stream a table')
-    await page.getByRole('button', { name: 'Send message' }).click()
+    await byTestId(page, 'chat-input-send-btn').click()
 
     const bubble = assistantBubble(page)
     await expect(bubble).toBeVisible({ timeout: 15000 })

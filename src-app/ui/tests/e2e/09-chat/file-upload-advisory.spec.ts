@@ -76,9 +76,9 @@ test.describe('Chat - File upload suitability advisory', () => {
     // Alert is rendered alongside it.
     await attachFileViaUI(page, PPTX_FIXTURE)
 
-    // The warning Alert renders for the low-suitability file. AntD warning
-    // alerts carry the `.ant-alert-warning` class.
-    const advisory = page.locator('.ant-alert-warning').filter({
+    // The advisory Alert renders for the low-suitability file (one per file,
+    // keyed `file-preview-advisory-<id>`; scope to the one for this filename).
+    const advisory = page.locator('[data-testid^="file-preview-advisory-"]').filter({
       hasText: PPTX_FILENAME,
     })
     await expect(advisory).toBeVisible({ timeout: 30000 })

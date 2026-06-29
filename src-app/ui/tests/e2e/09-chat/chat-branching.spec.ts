@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -169,7 +170,7 @@ test.describe('Chat - Branching', () => {
     const editor = page.locator('textarea[placeholder*="Type your message"]')
     await expect(editor).toBeVisible({ timeout: 5000 })
     await editor.fill('Tell me a better joke')
-    await page.getByRole('button', { name: 'Send message' }).click()
+    await byTestId(page, 'chat-input-send-btn').click()
     await waitForAssistantResponse(page)
 
     // Now on branch-B. The user message navigator should show 2/2.
@@ -225,7 +226,7 @@ test.describe('Chat - Branching', () => {
     await editor.fill('Edited message')
 
     // Confirm the edit
-    await page.getByRole('button', { name: 'Send message' }).click()
+    await byTestId(page, 'chat-input-send-btn').click()
     await waitForAssistantResponse(page)
 
     // Wait for navigator to appear
@@ -262,17 +263,15 @@ test.describe('Chat - Branching', () => {
       await createConversationWithModel(page, baseURL, 'GPT-4o Mini', userText)
       await waitForAssistantResponse(page)
 
-      // Hover the user message and click the Copy button (the icon-only one with title="Copy")
+      // Hover the user message and click the Copy button.
       const userMsg = page.locator('[data-testid="chat-message"][data-role="user"]').last()
       await userMsg.hover()
-      // MessageActions renders three buttons in a Space; the Copy button is the first one
-      // and has Tooltip title="Copy". Find it by aria-label or by index.
-      await userMsg.getByRole('button').first().click()
+      await byTestId(userMsg, 'chat-message-copy-btn').click()
 
-      // Success toast: AntD App message — "Copied!"
-      await expect(page.getByText('Copied!')).toBeVisible({ timeout: 5000 })
+      // Success feedback toast appears.
+      await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({ timeout: 5000 })
 
-      // Read clipboard contents and assert.
+      // Read clipboard contents and assert (the durable proof the copy ran).
       const clip = await page.evaluate(() => navigator.clipboard.readText())
       expect(clip).toBe(userText)
     } finally {
@@ -302,16 +301,16 @@ test.describe('Chat - Branching', () => {
     const userMsg = page.locator('[data-testid="chat-message"][data-role="user"]').last()
     await hoverAndClickAction(page, userMsg, 'edit-message-button')
 
-    // The EditingMessageBanner should appear ("Editing message" label + Cancel button)
-    await expect(page.getByText('Editing message')).toBeVisible({ timeout: 5000 })
-    const cancelButton = page.getByRole('button', { name: 'Cancel edit' })
+    // The EditingMessageBanner should appear (banner + Cancel button)
+    await expect(byTestId(page, 'chat-editing-banner')).toBeVisible({ timeout: 5000 })
+    const cancelButton = byTestId(page, 'chat-editing-cancel-btn')
     await expect(cancelButton).toBeVisible()
 
     // Click Cancel
     await cancelButton.click()
 
     // Banner gone
-    await expect(page.getByText('Editing message')).not.toBeVisible({ timeout: 5000 })
+    await expect(byTestId(page, 'chat-editing-banner')).not.toBeVisible({ timeout: 5000 })
 
     // Messages preserved — no trimming. The original user message is still there.
     await expect(
@@ -444,7 +443,7 @@ test.describe('Chat - Branching', () => {
     page,
     testInfra,
   }) => {
-    // The MessageActions regenerate button's own .ant-btn-loading window is
+    // The MessageActions regenerate button's own loading window is
     // too short to catch reliably — handleRegenerate awaits
     // startRegenerateMessage which only does store setup, not the streaming
     // itself. The reliable signal of "regenerate in flight" is that the
@@ -460,7 +459,7 @@ test.describe('Chat - Branching', () => {
     await waitForAssistantResponse(page)
 
     const lastAssistant = page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
-    const sendButton = page.getByRole('button', { name: 'Send message' })
+    const sendButton = byTestId(page, 'chat-input-send-btn')
 
     // Sanity: send button should be enabled before regenerate fires.
     await expect(sendButton).toBeEnabled()

@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
@@ -37,18 +38,14 @@ test.describe('Chat — error recovery', () => {
     await page.goto(`${baseURL}/chats`)
 
     // The sidebar conversation list surfaces the error Alert.
-    const alert = page.locator('.ant-alert-error', {
-      hasText: 'Failed to load conversations',
-    })
+    const alert = byTestId(page, 'chat-history-error-alert')
     await expect(alert.first()).toBeVisible({ timeout: 30000 })
 
     // It is dismissable (closable Alert) → disappears on close.
     await alert.first().getByRole('button').click()
-    await expect(
-      page.locator('.ant-alert-error', {
-        hasText: 'Failed to load conversations',
-      }),
-    ).toHaveCount(0, { timeout: 10000 })
+    await expect(byTestId(page, 'chat-history-error-alert')).toHaveCount(0, {
+      timeout: 10000,
+    })
   })
 
   test('a failed regenerate recovers the composer (no stuck streaming)', async ({
@@ -112,8 +109,8 @@ test.describe('Chat — error recovery', () => {
 
     // Recovery: the composer is not stuck in a streaming state — the Send
     // button returns to enabled once sendMessage's catch clears the flags.
-    await expect(
-      page.getByRole('button', { name: 'Send message' }),
-    ).toBeEnabled({ timeout: 30000 })
+    await expect(byTestId(page, 'chat-input-send-btn')).toBeEnabled({
+      timeout: 30000,
+    })
   })
 })

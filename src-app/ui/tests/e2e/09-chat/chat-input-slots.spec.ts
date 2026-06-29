@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -47,13 +48,13 @@ test.describe('Chat input slot system', () => {
     await setupChatPage(page, baseURL, apiURL)
 
     // Click the "+" button (semantic: button with aria-label "Add attachment").
-    await page.getByRole('button', { name: 'Add attachment' }).click()
+    await byTestId(page, 'chat-input-add-btn').click()
 
     // The dropdown should appear; all three menu items from the three
     // extensions registered in `toolbar_plus_items` must be visible.
-    await expect(page.getByText('Attach files or photos')).toBeVisible()
-    await expect(page.getByText('Select assistant')).toBeVisible()
-    await expect(page.getByText('MCP tools & servers')).toBeVisible()
+    await expect(byTestId(page, 'file-attach-menu-upload')).toBeVisible()
+    await expect(byTestId(page, 'assistant-menu-trigger')).toBeVisible()
+    await expect(byTestId(page, 'chat-mcp-menu-item')).toBeVisible()
   })
 
   test('selecting an assistant shows AssistantStatusChip in toolbar_status', async ({
@@ -88,8 +89,8 @@ test.describe('Chat input slot system', () => {
     // Open "+" → click "Select assistant" → the Popover with the assistant
     // appears to the right. AssistantOption is a <div onClick> containing
     // a <span> with the assistant name.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByText('Select assistant').click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'assistant-menu-trigger').click()
 
     // Wait for the assistant name to appear inside the opened popover, then click it.
     await expect(page.getByText('Slot Test Assistant')).toBeVisible()
@@ -97,7 +98,7 @@ test.describe('Chat input slot system', () => {
 
     // After selection, AssistantStatusChip should render with the assistant name
     // (it's a purple Tag in the status row).
-    await expect(page.locator('.ant-tag').filter({ hasText: 'Slot Test Assistant' })).toBeVisible()
+    await expect(byTestId(page, 'assistant-status-chip')).toContainText('Slot Test Assistant')
   })
 
   test('toolbar_actions slot renders keyboard shortcut tips', async ({
@@ -110,7 +111,7 @@ test.describe('Chat input slot system', () => {
     // The KeyboardShortcutsHelp component renders a <span>Tips: Ctrl+Enter ...</span>
     // in the toolbar_actions slot. (Export is also in this slot but only appears
     // once there are messages — covered indirectly by chat-basic flow tests.)
-    await expect(page.getByText(/Tips: Ctrl\+Enter to send/)).toBeVisible()
+    await expect(byTestId(page, 'chat-keyboard-tips')).toBeVisible()
   })
 
   test('selecting an assistant closes the plus dropdown (PlusDropdownContext.close)', async ({
@@ -140,15 +141,15 @@ test.describe('Chat input slot system', () => {
 
     // Open dropdown → submenu → pick assistant. AssistantOption.onClick calls
     // selectAssistant + close() — so the parent dropdown must dismiss.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await expect(page.getByText('MCP tools & servers')).toBeVisible() // parent dropdown open
-    await page.getByText('Select assistant').click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await expect(byTestId(page, 'chat-mcp-menu-item')).toBeVisible() // parent dropdown open
+    await byTestId(page, 'assistant-menu-trigger').click()
     await expect(page.getByText('Close Test Assistant')).toBeVisible() // submenu open
     await page.getByText('Close Test Assistant').click()
 
     // Parent dropdown items should now be hidden — PlusDropdownContext.close fired.
-    await expect(page.getByText('MCP tools & servers')).not.toBeVisible({ timeout: 3000 })
-    await expect(page.getByText('Attach files or photos')).not.toBeVisible({ timeout: 3000 })
+    await expect(byTestId(page, 'chat-mcp-menu-item')).not.toBeVisible({ timeout: 3000 })
+    await expect(byTestId(page, 'file-attach-menu-upload')).not.toBeVisible({ timeout: 3000 })
   })
 
   test('mcp menu item opens MCP config modal', async ({ page, testInfra }) => {
@@ -156,8 +157,8 @@ test.describe('Chat input slot system', () => {
     await setupChatPage(page, baseURL, apiURL)
 
     // Open "+" → click "MCP tools & servers" → modal should appear.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
-    await page.getByText('MCP tools & servers').click()
+    await byTestId(page, 'chat-input-add-btn').click()
+    await byTestId(page, 'chat-mcp-menu-item').click()
 
     // The MCP config modal renders an Ant Modal — assert a dialog is open.
     await expect(page.getByRole('dialog')).toBeVisible()

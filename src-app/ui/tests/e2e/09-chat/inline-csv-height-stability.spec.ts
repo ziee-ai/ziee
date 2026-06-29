@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   createProviderViaAPI,
@@ -65,7 +66,7 @@ test.describe('Inline CSV preview — height stays stable (no shrink-to-zero)', 
     const body = page.locator('[data-testid="inline-file-preview-body"]').first()
     await expect(body).toBeVisible({ timeout: 15000 })
     // The data grid renders inside the inline body.
-    await expect(body.locator('.ant-table')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(body, 'file-delimited-table')).toBeVisible({ timeout: 15000 })
 
     // Let any ResizeObserver-driven layout settle — the bug needs a few frames
     // to converge toward zero.
