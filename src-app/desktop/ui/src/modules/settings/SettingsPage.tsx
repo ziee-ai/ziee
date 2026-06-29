@@ -23,7 +23,7 @@
  * the filter list + flat menu logic.
  */
 
-import { Button, Dropdown, Flex, Menu, theme, Typography } from 'antd'
+import { Button, Dropdown, Flex, Menu, Title } from '@/components/ui'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -89,7 +89,6 @@ export default function SettingsPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const minSize = useElementMinSize(containerRef)
   const useMobileLayout = minSize.sm
-  const { token } = theme.useToken()
 
   const { slots } = Stores.ModuleSystem
 
@@ -137,14 +136,8 @@ export default function SettingsPage() {
   // Extract the current settings section from the URL and validate it
   const urlSection = location.pathname.match(/\/settings\/([^/]+)/)?.[1]
   const validSections = menuItems
-    .filter(
-      item =>
-        'key' in item &&
-        item.key &&
-        (item as any).type !== 'divider' &&
-        (item as any).type !== 'group',
-    )
-    .map(item => (item as any).key)
+    .filter(item => 'key' in item && item.key)
+    .map(item => item.key)
 
   const currentSection = validSections.includes(urlSection)
     ? urlSection
@@ -176,21 +169,16 @@ export default function SettingsPage() {
 
   const SettingsMenu = () => (
     <Menu
-      className={`
-      w-fit
-      h-full
-      !p-1
-      !border-r-0
-      [&_.ant-menu]:!px-2
-      [&_.ant-menu-item]:!h-8
-      [&_.ant-menu-item]:!leading-[32px]
-      `}
-      style={{
-        lineHeight: 1,
-      }}
-      selectedKeys={[currentSection || validSections[0]]}
-      items={menuItems}
-      onClick={({ key }) => handleMenuClick(key)}
+      data-testid="desktop-settings-menu"
+      aria-label="Settings sections"
+      className="w-fit h-full p-1"
+      selectedKey={currentSection || validSections[0]}
+      items={menuItems.map(item => ({
+        key: item.key,
+        icon: item.icon,
+        label: item.label,
+      }))}
+      onSelect={key => handleMenuClick(key)}
     />
   )
 
@@ -202,61 +190,26 @@ export default function SettingsPage() {
       {/* Page Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
-          <Typography.Title level={4} className="!m-0 !leading-tight truncate">
+          <Title level={4} className="m-0 leading-tight truncate">
             Settings
-          </Typography.Title>
+          </Title>
           {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
-                styles={{
-                  root: {
-                    border: '1px solid ' + token.colorBorderSecondary,
-                  },
-                }}
-                classNames={{
-                  root: `
-                  rounded-md
-                  `,
-                }}
-                menu={{
-                  items: menuItems.map((item: any) => {
-                    if ('type' in item && item.type === 'divider') {
-                      return { type: 'divider' }
-                    }
-                    if ('type' in item && item.type === 'group') {
-                      return {
-                        type: 'group',
-                        label: (
-                          <div className={'-ml-1'}>
-                            <Typography.Text
-                              strong
-                              type={'secondary'}
-                              className={'!text-xs'}
-                            >
-                              {item.label}
-                            </Typography.Text>
-                          </div>
-                        ),
-                      }
-                    }
-                    return {
-                      key: item.key,
-                      label: (
-                        <Flex className={'gap-2 items-center'}>
-                          {item.icon}
-                          {item.label}
-                        </Flex>
-                      ),
-                    }
-                  }),
-                  onClick: ({ key }) => {
-                    handleMenuClick(key)
-                  },
-                  selectedKeys: [currentSection || validSections[0]],
-                }}
-                trigger={['click']}
+                data-testid="desktop-settings-section-dropdown"
+                align="start"
+                items={menuItems.map(item => ({
+                  key: item.key,
+                  label: (
+                    <Flex className="gap-2 items-center">
+                      {item.icon}
+                      {item.label}
+                    </Flex>
+                  ),
+                }))}
+                onSelect={key => handleMenuClick(key)}
               >
-                <Button type="text" className={'mt-[2px]'}>
+                <Button data-testid="desktop-settings-section-dropdown-btn" variant="ghost" className="mt-[2px]">
                   {getCurrentSectionInfo().icon} {getCurrentSectionInfo().label}{' '}
                   <IoIosArrowDown />
                 </Button>

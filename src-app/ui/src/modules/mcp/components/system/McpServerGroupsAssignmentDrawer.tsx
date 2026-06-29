@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Flex, Spin, Switch, Tag, Typography } from 'antd'
+import { Button, Card, Flex, Spin, Switch, Tag, Text, Title } from '@/components/ui'
+import { message } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type McpServer } from '@/api-client/types'
 import { emitMcpServerGroupsChanged } from '@/modules/mcp/events'
 
-const { Text, Title } = Typography
-
 /**
  * Drawer for assigning/removing user groups to/from a system MCP server.
  * Matches ProviderGroupAssignmentDrawer pattern exactly.
  */
 export function McpServerGroupsAssignmentDrawer() {
-  const { message } = App.useApp()
   const { isOpen, selectedServerId } = Stores.McpServerGroupsAssignment
   const { groups } = Stores.UserGroups
 
@@ -93,15 +91,16 @@ export function McpServerGroupsAssignmentDrawer() {
       size={600}
       footer={
         <div className="flex justify-end gap-2">
-          <Button onClick={handleClose} disabled={saving}>
+          <Button onClick={handleClose} disabled={saving} data-testid="mcp-groups-drawer-cancel-btn">
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           {canManage && (
             <Button
-              type="primary"
+              variant="default"
               onClick={handleSave}
               loading={saving}
               disabled={loading}
+              data-testid="mcp-groups-drawer-save-btn"
             >
               Save
             </Button>
@@ -111,12 +110,12 @@ export function McpServerGroupsAssignmentDrawer() {
     >
       {loading ? (
         <div className="flex justify-center p-8">
-          <Spin />
+          <Spin label="Loading groups" />
         </div>
       ) : (
-        <Flex vertical gap="large" style={{ width: '100%' }}>
+        <Flex direction="column" gap="large" className="w-full">
           <div>
-            <Title level={5} style={{ marginBottom: '8px' }}>
+            <Title level={5} className="mb-2">
               Available Groups
             </Title>
             <Text type="secondary">
@@ -129,36 +128,39 @@ export function McpServerGroupsAssignmentDrawer() {
               <Text type="secondary">No groups available</Text>
             </div>
           ) : (
-            <Flex vertical gap="middle" style={{ width: '100%' }}>
+            <Flex direction="column" gap="middle" className="w-full">
               {groups.map(group => {
                 const isChecked = assignedIds.includes(group.id)
                 return (
-                  <Card key={group.id}>
+                  <Card key={group.id} data-testid={`mcp-groups-drawer-card-${group.id}`}>
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
                           checked={isChecked}
                           onChange={checked => handleToggle(group.id, checked)}
                           disabled={!canManage}
-                          style={{ marginTop: '2px' }}
+                          className="mt-0.5"
+                          data-testid={`mcp-groups-drawer-switch-${group.id}`}
                         />
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
                         <div className="flex items-center gap-2">
-                          <Text strong style={{ fontSize: '14px' }}>
+                          <Text strong className="text-sm">
                             {group.name}
                           </Text>
                           {group.is_default && (
                             <Tag
-                              color="blue"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              tone="info"
+                              variant="solid"
+                              className="text-[11px] m-0"
+                              data-testid={`mcp-groups-drawer-default-tag-${group.id}`}
                             >
                               Default
                             </Tag>
                           )}
                         </div>
                         {group.description && (
-                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                          <Text type="secondary" className="text-xs">
                             {group.description}
                           </Text>
                         )}

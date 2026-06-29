@@ -1,17 +1,11 @@
-import { useState, useMemo, lazy, Suspense } from 'react'
-import { Input, Select, Typography, Button } from 'antd'
+import { useState, useMemo, ChangeEvent } from 'react'
+import { Button, Input, MultiSelect, Combobox, Text } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
+import { Search, Eraser } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
-const McpServerDrawer = lazy(() =>
-  import('@/modules/mcp/components/common/McpServerDrawer').then(m => ({
-    default: m.McpServerDrawer,
-  })),
-)
-
-const { Text } = Typography
+import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 
 export function McpServersHubTab() {
   const { servers, loading, error } = Stores.HubMcpServers // Auto-loads via __init__
@@ -85,7 +79,7 @@ export function McpServersHubTab() {
   // Show loading state
   if (loading && servers.length === 0) {
     return (
-      <Loading tip="Loading MCP servers..." />
+      <Loading tip="Loading MCP servers..." label="Loading" />
     )
   }
 
@@ -93,9 +87,9 @@ export function McpServersHubTab() {
   if (error && servers.length === 0) {
     return (
       <div className="text-center py-12">
-        <Text type="danger">Failed to load MCP servers: {error}</Text>
+        <Text tone="danger">Failed to load MCP servers: {error}</Text>
         <div className="mt-4">
-          <Button onClick={() => Stores.HubMcpServers.loadServers()}>
+          <Button onClick={() => Stores.HubMcpServers.loadServers()} data-testid="hub-mcp-retry-btn">
             Retry
           </Button>
         </div>
@@ -109,49 +103,51 @@ export function McpServersHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-mcp-search-input"
             placeholder="Search MCP servers..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search MCP servers"
           />
 
-          <Select
-            mode="multiple"
+          <MultiSelect
+            data-testid="hub-mcp-tags-multiselect"
             placeholder="Filter by tags"
+            searchPlaceholder="Search tags..."
+            emptyText="No tags found"
             value={selectedTags}
             onChange={setSelectedTags}
             className="flex-1"
-            allowClear
-            maxTagCount="responsive"
             options={serverTags.map(tag => ({
-              key: tag,
               value: tag,
               label: tag,
             }))}
-            popupMatchSelectWidth={false}
             aria-label="Filter by tags"
+            removeLabel={(label) => `Remove ${label}`}
           />
 
-          <Select
+          <Combobox
+            data-testid="hub-mcp-sort-combobox"
             placeholder="Sort by"
             value={sortBy}
-            onChange={setSortBy}
+            onChange={(value: string) => setSortBy(value)}
             className="flex-1"
             options={[
               { value: 'popular', label: 'Popular' },
               { value: 'name', label: 'Name' },
             ]}
-            popupMatchSelectWidth={false}
             aria-label="Sort MCP servers"
+            searchPlaceholder="Search sort options"
+            emptyText="No options found"
           />
         </div>
 
         {(searchTerm || selectedTags.length > 0) && (
           <div className="flex items-center gap-2 mt-2">
-            <Text type="secondary" className="text-xs">
+            <Text tone="secondary" className="text-xs">
               Filters active:{' '}
               {[
                 searchTerm && 'search',
@@ -161,11 +157,12 @@ export function McpServersHubTab() {
                 .join(', ')}
             </Text>
             <Button
-              size="small"
-              type="text"
-              icon={<ClearOutlined />}
+              size="sm"
+              variant="ghost"
+              icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
+              data-testid="hub-mcp-clear-filters-btn"
             >
               Clear all
             </Button>
@@ -189,7 +186,7 @@ export function McpServersHubTab() {
               </div>
               {visible.length === 0 && (
                 <div className="text-center py-12">
-                  <Text type="secondary">
+                  <Text tone="secondary">
                     {servers.length === 0
                       ? 'No MCP servers yet'
                       : 'No MCP servers match your search'}
@@ -208,9 +205,7 @@ export function McpServersHubTab() {
           drawer is mounted on /settings/mcp-servers and
           /settings/mcp-admin; only one is ever visible at a time
           because the user can only be on one route. */}
-      <Suspense fallback={null}>
-        <McpServerDrawer />
-      </Suspense>
+      <McpServerDrawer />
     </div>
   )
 }

@@ -1,6 +1,6 @@
+import { RotateCw } from 'lucide-react'
 import { Fragment, useEffect } from 'react'
-import { App, Button, Card, Divider, Empty, Flex, Spin, Tag, Typography } from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+import { Button, Card, Separator, Empty, Flex, Spin, Tag, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -32,7 +32,6 @@ import { VersionModelsBlock } from './VersionModelsBlock'
  * model lists + the unresolved set).
  */
 export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
-  const { message } = App.useApp()
   const { versions, loading: loadingVersions } = Stores.RuntimeVersion
   const { usage, loading: loadingUsage } = Stores.RuntimeModelUsage
   const canManage = usePermission(Permissions.LocalRuntimeManage)
@@ -44,12 +43,8 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
     // and the per-version models (Stores.RuntimeModelUsage).
     // Fire-and-forget; the loading spinners on the button + spinner
     // for empty state cover the user-visible state.
-    Stores.RuntimeVersion.loadVersions().catch(() =>
-      message.error('Failed to refresh runtime versions'),
-    )
-    Stores.RuntimeModelUsage.loadUsage(engine).catch(() =>
-      message.error('Failed to refresh version usage'),
-    )
+    Stores.RuntimeVersion.loadVersions().catch(() => {})
+    Stores.RuntimeModelUsage.loadUsage(engine).catch(() => {})
   }
 
   const engineVersions = versions.filter(v => v.engine === engine)
@@ -85,11 +80,13 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
   return (
     <Card
       title="Installed versions"
+      data-testid={`llmrt-installed-versions-card-${engine}`}
       extra={
         <Button
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           loading={refreshing}
           onClick={handleRefresh}
+          data-testid={`llmrt-installed-refresh-${engine}`}
           aria-label={`Refresh installed ${engine} versions`}
         >
           Refresh
@@ -97,17 +94,17 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
       }
     >
       {loadingVersions && engineVersions.length === 0 ? (
-        <Spin />
+        <Spin label="Loading" />
       ) : engineVersions.length === 0 ? (
         <Empty
           description="No versions installed yet — install one below."
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          data-testid={`llmrt-installed-empty-${engine}`}
         />
       ) : (
         <div>
           {engineVersions.map((v, i) => (
             <Fragment key={v.id}>
-              {i > 0 && <Divider className="!my-4" />}
+              {i > 0 && <Separator className="!my-4" />}
               {/* Installed rows are static (not "selectable"), so no
                   hover background — matches the User / Repository
                   settings pages, which also don't tint rows on hover. */}
@@ -126,14 +123,14 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
           ))}
           {engineUsage?.unresolved && engineUsage.unresolved.length > 0 && (
             <>
-              <Divider className="!my-4" />
+              <Separator className="!my-4" />
               <Flex vertical gap="small">
-                <Typography.Text type="warning">
+                <Text type="warning">
                   No installed version resolves for these models:
-                </Typography.Text>
+                </Text>
                 <div>
                   {engineUsage.unresolved.map(m => (
-                    <Tag key={m.id}>{m.display_name}</Tag>
+                    <Tag key={m.id} data-testid={`llmrt-unresolved-tag-${m.id}`}>{m.display_name}</Tag>
                   ))}
                 </div>
               </Flex>

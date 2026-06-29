@@ -1,4 +1,4 @@
-import { Alert } from 'antd'
+import { Alert } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { LitSearchGlobalSection } from './LitSearchGlobalSection'
@@ -19,11 +19,11 @@ export function LitSearchSettingsPage() {
     >
       {error && (
         <Alert
-          type="error"
-          showIcon
+          tone="error"
           title="Failed to load literature search settings"
           description={error}
           className="mb-3"
+          data-testid="lit-settings-error-alert"
         />
       )}
       <LitSearchGlobalSection />

@@ -1,6 +1,4 @@
-import { Form, Select, Button } from 'antd'
-import { SettingOutlined } from '@ant-design/icons'
-import { IoIosArrowDown } from 'react-icons/io'
+import { FormField, Select } from '@/components/ui'
 
 interface ModelSelectorProps {
   isBreaking: boolean
@@ -17,29 +15,20 @@ export function ModelSelector({
   availableModels,
 }: ModelSelectorProps) {
   return (
-    <Form.Item
+    <FormField
       name="model"
       label="Model"
-      className="mb-0"
-      style={{ display: 'inline-block' }}
+      className={`mb-0 inline-block`}
     >
       <Select
+        data-testid="chat-model-select"
         popupMatchSelectWidth={false}
         placeholder="Model"
         disabled={isDisabled}
         options={availableModels}
-        style={{ width: isBreaking ? 40 : 120 }}
-        variant={isBreaking ? 'borderless' : undefined}
+        className={isBreaking ? 'w-10' : 'w-[120px]'}
         labelRender={isBreaking ? () => '' : undefined}
-        prefix={
-          isBreaking && (
-            <Button>
-              <SettingOutlined />
-            </Button>
-          )
-        }
-        suffixIcon={<IoIosArrowDown />}
       />
-    </Form.Item>
+    </FormField>
   )
 }

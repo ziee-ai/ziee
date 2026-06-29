@@ -1,52 +1,28 @@
 import { useEffect, useState } from 'react'
 import {
-  App,
-  Typography,
   Button,
   Dropdown,
   Empty,
-  Menu,
   Spin,
-  theme,
-} from 'antd'
-import type { MenuProps } from 'antd'
-import {
-  MessageOutlined,
-  DeleteOutlined,
-  MoreOutlined,
-} from '@ant-design/icons'
+  Text,
+  dialog,
+} from '@/components/ui'
+import type { DropdownItem } from '@/components/ui'
+import { MessageSquare, Trash2, MoreHorizontal } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { Menu } from '@/components/ui'
+import type { MenuItem } from '@/components/ui'
 import {
   chatExtensionRegistry,
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
 
-const { Text } = Typography
-
-// Shared styling with the LeftSidebar's Menus so the "Recent chats"
-// group reads as the same surface family as Navigation / Tools.
-// Keep in lockstep with `LeftSidebar.tsx::menuClass`.
-const SIDEBAR_MENU_CLASS =
-  '!bg-transparent !border-none ' +
-  '[&_.ant-menu-item]:!h-7 [&_.ant-menu-item]:!leading-[28px] ' +
-  '[&_.ant-menu-item]:!mx-2 ' +
-  '[&_.ant-menu-item]:!w-[calc(100%-1rem)] ' +
-  '[&_.ant-menu-item]:!pl-2 [&_.ant-menu-item]:!pr-2 ' +
-  '[&_.ant-menu-item]:!py-0 ' +
-  '[&_.ant-menu-item]:!rounded-md ' +
-  '[&_.ant-menu-title-content]:!py-0 ' +
-  '[&_.ant-menu-item-group-title]:!px-3 [&_.ant-menu-item-group-title]:!pt-0 ' +
-  '[&_.ant-menu-item-group-title]:!pb-0.5 ' +
-  '[&_.ant-menu-item-group-title]:!text-xs ' +
-  '[&_.ant-menu-item-group-title]:!font-semibold ' +
-  '[&_.ant-menu-item-group-title]:!tracking-wide'
-
 /**
  * Sidebar list of the user's recent conversations, backed by
- * `Stores.ChatHistory.recentConversations`. Renders as an antd
+ * `Stores.ChatHistory.recentConversations`. Renders as a kit
  * `<Menu>` so hover / selected / focus styling matches the
  * Navigation + Tools menus above it in the sidebar.
  *
@@ -55,7 +31,6 @@ const SIDEBAR_MENU_CLASS =
  * per conversation without this widget knowing about it.
  */
 export function RecentConversationsWidget() {
-  const { token } = theme.useToken()
   const location = useLocation()
   const navigate = useNavigate()
   const { recentConversations, loading, isInitialized } = Stores.ChatHistory
@@ -67,14 +42,13 @@ export function RecentConversationsWidget() {
   }, [isInitialized])
 
   // Section header for the empty + loading states. Rendered as a standalone
-  // styled heading (NOT an antd <Menu>) — an empty Menu group produces a
+  // styled heading (NOT a Menu) — an empty Menu group produces a
   // `role="menu"` with no children, which fails axe-core's
   // `aria-required-children`. The classes mirror the Menu group-title
-  // typography in SIDEBAR_MENU_CLASS so it reads identically.
+  // typography so it reads identically.
   const headerOnly = (
     <div
-      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide"
-      style={{ color: token.colorTextDescription }}
+      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide text-muted-foreground"
     >
       Recent chats
     </div>
@@ -85,7 +59,7 @@ export function RecentConversationsWidget() {
       <div className="flex flex-col h-full">
         {headerOnly}
         <div className="flex justify-center items-center py-8">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       </div>
     )
@@ -97,13 +71,13 @@ export function RecentConversationsWidget() {
         {headerOnly}
         <div className="px-2 py-4">
           <Empty
-            image={<MessageOutlined className="text-4xl text-gray-400" />}
+            data-testid="chat-recent-empty"
+            image={<MessageSquare className="size-9 text-muted-foreground" />}
             description={
               <Text type="secondary" className="text-xs">
                 No conversations yet
               </Text>
             }
-            styles={{ image: { height: 40 } }}
           />
         </div>
       </div>
@@ -117,46 +91,39 @@ export function RecentConversationsWidget() {
     chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
 
   // The currently-open conversation gets the Menu's `selected`
-  // treatment (token-based colorPrimary background + colorText).
+  // treatment (bg-accent + font-medium).
   const selectedKey = recentConversations.find(
     c => location.pathname === hrefFor(c),
   )?.id
 
-  const items: MenuProps['items'] = recentConversations.map(c => ({
-    key: c.id,
-    label: <ConversationRowLabel conversation={c} />,
-  }))
+  const items: MenuItem[] = [
+    {
+      type: 'group',
+      label: 'Recent chats',
+      children: recentConversations.map(c => ({
+        key: c.id,
+        label: <ConversationRowLabel conversation={c} />,
+      })),
+    },
+  ]
 
   return (
-    <div
-      className="flex flex-col h-full min-h-0"
-      // Hold the section header outside the scroll viewport so it
-      // stays put while the list scrolls — matches how the original
-      // implementation pinned its bespoke header.
-      style={{ color: token.colorTextBase }}
-    >
+    <div className="flex flex-col h-full min-h-0 text-foreground">
       <DivScrollY className="flex-col flex-1 min-h-0">
         <Menu
-          mode="inline"
-          className={SIDEBAR_MENU_CLASS}
-          selectedKeys={selectedKey ? [selectedKey] : []}
-          items={[
-            {
-              type: 'group',
-              label: 'Recent chats',
-              children: items,
-            },
-          ]}
-          onClick={({ key, domEvent }) => {
-            // The per-row action dropdown stops propagation, so any
-            // click we see here came from the row body itself.
+          data-testid="chat-recent-conversations-menu"
+          mode="vertical"
+          aria-label="Recent conversations"
+          items={items}
+          selectedKey={selectedKey}
+          onSelect={key => {
             const c = recentConversations.find(x => x.id === key)
             if (!c) return
-            // Defensive: still bail if the click originated inside the
-            // floating dropdown menu (body-level portal), in case
-            // antd's event routing ever changes.
-            const target = domEvent.target as HTMLElement | null
-            if (target?.closest('.ant-dropdown')) return
+            // Defensive: bail if the click originated inside a floating
+            // dropdown menu (body-level portal), in case event routing
+            // ever changes.
+            const active = document.activeElement as HTMLElement | null
+            if (active?.closest('[role="menu"]')) return
             navigate(hrefFor(c))
           }}
         />
@@ -179,8 +146,6 @@ function ConversationRowLabel({
 }: {
   conversation: ConversationResponse
 }) {
-  const { token } = theme.useToken()
-  const { modal } = App.useApp()
   const [deleting, setDeleting] = useState(false)
   // Controlled dropdown open so we can suppress closing while an
   // extension overlay (popconfirm etc.) is showing.
@@ -189,26 +154,26 @@ function ConversationRowLabel({
   const { items: extensionItems, overlays, keepMenuOpen } =
     useConversationMenuContributions(conversation)
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     const title = conversation.title || 'Untitled Conversation'
-    modal.confirm({
+    const ok = await dialog.confirm({
       title: 'Delete conversation?',
-      content: `"${title}" will be permanently deleted.`,
+      description: `"${title}" will be permanently deleted.`,
       okText: 'Delete',
       cancelText: 'Cancel',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        setDeleting(true)
-        try {
-          await Stores.ChatHistory.__state.deleteConversation(conversation.id)
-        } finally {
-          setDeleting(false)
-        }
-      },
+      danger: true,
     })
+    if (ok) {
+      setDeleting(true)
+      try {
+        await Stores.ChatHistory.__state.deleteConversation(conversation.id)
+      } finally {
+        setDeleting(false)
+      }
+    }
   }
 
-  const menuItems = [
+  const menuItems: DropdownItem[] = [
     ...(extensionItems ?? []),
     ...(extensionItems && extensionItems.length > 0
       ? [{ type: 'divider' as const, key: 'div-delete' }]
@@ -216,7 +181,7 @@ function ConversationRowLabel({
     {
       key: 'delete',
       danger: true,
-      icon: <DeleteOutlined />,
+      icon: <Trash2 />,
       label: 'Delete',
       onClick: confirmDelete,
     },
@@ -247,9 +212,10 @@ function ConversationRowLabel({
         onClick={e => e.stopPropagation()}
       >
         <Dropdown
-          menu={{ items: menuItems }}
-          trigger={['click']}
-          placement="bottomRight"
+          data-testid={`chat-recent-row-menu-${conversation.id}`}
+          items={menuItems}
+          side="bottom"
+          align="end"
           open={menuOpen || keepMenuOpen}
           onOpenChange={open => {
             if (!open && keepMenuOpen) return
@@ -257,17 +223,14 @@ function ConversationRowLabel({
           }}
         >
           <Button
-            type="text"
-            size="small"
-            icon={<MoreOutlined />}
+            data-testid={`chat-recent-row-actions-btn-${conversation.id}`}
+            variant="ghost"
+            size="icon"
+            icon={<MoreHorizontal />}
             loading={deleting}
-            style={{
-              width: 22,
-              height: 22,
-              padding: 0,
-              color: token.colorText,
-            }}
+            className="w-[22px] h-[22px] p-0"
             aria-label="Conversation options"
+            tooltip="Conversation options"
           />
         </Dropdown>
       </div>

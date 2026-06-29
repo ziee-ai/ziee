@@ -1,10 +1,8 @@
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Flex, Tag, Typography, Card } from 'antd'
-import { LinkOutlined } from '@ant-design/icons'
+import { Flex, Tag, Card, Text, Title } from '@/components/ui'
+import { Link } from 'lucide-react'
 import type { HubMCPServer } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Title, Text } = Typography
 
 interface McpServerDetailsDrawerProps {
   server: HubMCPServer | null
@@ -70,17 +68,17 @@ export function McpServerDetailsDrawer({
         {firstRemote ? (
           <div>
             <Title level={5}>Remote endpoint</Title>
-            <Card size="small" className="bg-gray-50">
+            <Card size="sm" className="bg-muted" data-testid="hub-mcp-detail-remote-card">
               <a
                 href={firstRemote.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs break-all"
               >
-                <LinkOutlined /> {firstRemote.url}
+                <Link /> {firstRemote.url}
               </a>
               <div className="mt-1">
-                <Tag color="cyan" className="text-xs">
+                <Tag tone="info" className="text-xs" data-testid="hub-mcp-detail-remote-type-tag">
                   {firstRemote.type ?? 'remote'}
                 </Tag>
               </div>
@@ -89,7 +87,7 @@ export function McpServerDetailsDrawer({
         ) : firstPackage ? (
           <div>
             <Title level={5}>Install command</Title>
-            <Card size="small" className="bg-gray-50">
+            <Card size="sm" className="bg-muted" data-testid="hub-mcp-detail-install-card">
               <Text code className="text-xs break-all">
                 {firstPackage.runtimeHint ?? 'run'}{' '}
                 {(firstPackage.runtimeArguments ?? [])
@@ -103,7 +101,7 @@ export function McpServerDetailsDrawer({
                   .join(' ')}
               </Text>
               <div className="mt-1">
-                <Tag color="blue" className="text-xs">
+                <Tag tone="info" className="text-xs" data-testid="hub-mcp-detail-install-tag">
                   {firstPackage.registryType} · {firstPackage.transport?.type ?? 'stdio'}
                 </Tag>
               </div>
@@ -125,17 +123,16 @@ export function McpServerDetailsDrawer({
           firstPackage.environmentVariables.length > 0 && (
             <div>
               <Title level={5}>Environment variables</Title>
-              <Card size="small">
+              <Card size="sm" data-testid="hub-mcp-detail-env-card">
                 <Flex vertical className="gap-1">
                   {firstPackage.environmentVariables.map(ev => (
                     <Flex
                       key={ev.name}
-                      justify="space-between"
-                      className="text-xs"
+                      className="flex justify-between text-xs"
                     >
                       <Text code>{ev.name}</Text>
                       {ev.isSecret && (
-                        <Tag color="orange" className="text-xs">
+                        <Tag tone="warning" className="text-xs" data-testid={`hub-mcp-detail-env-secret-tag-${ev.name}`}>
                           secret
                         </Tag>
                       )}
@@ -150,17 +147,16 @@ export function McpServerDetailsDrawer({
         {firstRemote?.headers && firstRemote.headers.length > 0 && (
           <div>
             <Title level={5}>Headers</Title>
-            <Card size="small">
+            <Card size="sm" data-testid="hub-mcp-detail-headers-card">
               <Flex vertical className="gap-1">
                 {firstRemote.headers.map(h => (
                   <Flex
                     key={h.name}
-                    justify="space-between"
-                    className="text-xs"
+                    className="flex justify-between text-xs"
                   >
                     <Text code>{h.name}</Text>
                     {h.isSecret && (
-                      <Tag color="orange" className="text-xs">
+                      <Tag tone="warning" className="text-xs" data-testid={`hub-mcp-detail-header-secret-tag-${h.name}`}>
                         secret
                       </Tag>
                     )}
@@ -183,7 +179,7 @@ export function McpServerDetailsDrawer({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2"
                 >
-                  <LinkOutlined /> Repository
+                  <Link /> Repository
                 </a>
               )}
               {server.websiteUrl && (
@@ -193,7 +189,7 @@ export function McpServerDetailsDrawer({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2"
                 >
-                  <LinkOutlined /> Website
+                  <Link /> Website
                 </a>
               )}
             </Flex>

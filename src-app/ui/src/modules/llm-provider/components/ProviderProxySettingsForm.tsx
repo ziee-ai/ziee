@@ -1,19 +1,52 @@
 import {
   Button,
   Card,
-  Col,
-  Divider,
   Flex,
   Form,
+  FormField,
   Input,
-  Row,
+  PasswordInput,
+  Separator,
   Switch,
-  Typography,
-} from 'antd'
+  Text,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { useEffect, useState } from 'react'
 import type { ProxySettings } from '@/api-client/types'
 
-const { Text } = Typography
+const proxySettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  url: z
+    .string()
+    .optional()
+    .superRefine((value, ctx) => {
+      if (value && value.trim() !== '') {
+        try {
+          const url = new URL(value)
+          const allowedProtocols = ['http:', 'https:', 'socks5:']
+          if (!allowedProtocols.includes(url.protocol)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'URL must start with http://, https://, or socks5://',
+            })
+          }
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Invalid URL format',
+          })
+        }
+      }
+    }),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  no_proxy: z.string().optional(),
+  ignore_ssl_certificates: z.boolean().optional(),
+})
+
+type ProxySettingsFormValues = z.infer<typeof proxySettingsSchema>
 
 export interface ProviderProxySettingsFormProps {
   initialSettings: ProxySettings | null
@@ -26,22 +59,23 @@ export function ProviderProxySettingsForm({
   onSave,
   disabled = false,
 }: ProviderProxySettingsFormProps) {
-  const [form] = Form.useForm()
+  const form = useForm<ProxySettingsFormValues>({
+    resolver: zodResolver(proxySettingsSchema),
+    defaultValues: initialSettings ?? {},
+  })
   const [loading, setLoading] = useState(false)
 
   // Update form when initial settings change
   useEffect(() => {
     if (initialSettings) {
-      form.setFieldsValue(initialSettings)
+      form.reset(initialSettings)
     }
   }, [initialSettings, form])
 
-  const handleSave = async () => {
+  const handleSave = async (values: ProxySettingsFormValues) => {
     try {
       setLoading(true)
-      const values = await form.validateFields()
-
-      await onSave(values)
+      await onSave(values as ProxySettings)
     } catch (error) {
       console.error('Failed to save proxy settings:', error)
     } finally {
@@ -51,40 +85,42 @@ export function ProviderProxySettingsForm({
 
   const handleReset = () => {
     if (initialSettings) {
-      form.setFieldsValue(initialSettings)
+      form.reset(initialSettings)
     }
   }
 
   return (
-    <Card title={'Proxy Settings'}>
+    <Card title={'Proxy Settings'} data-testid="llm-proxy-settings-card">
       <Form
         name="provider-proxy-form"
         form={form}
         layout="vertical"
-        onFinish={handleSave}
+        onSubmit={handleSave}
+        disabled={disabled}
+        data-testid="llm-proxy-form"
       >
         <Flex className={'flex-col'}>
           <Flex className={'flex-col gap-3'}>
             {/* Enable Proxy Toggle */}
             <div>
               <div className={'flex justify-between items-center'}>
-                <div style={{ flex: 1, marginRight: 16 }}>
+                <div className="flex-1 mr-4">
                   <Text strong>Enable Proxy</Text>
                   <br />
                   <Text type="secondary">
                     Route all API requests through a proxy server
                   </Text>
                 </div>
-                <Form.Item
+                <FormField
                   name="enabled"
+                  aria-label="Enable proxy"
                   valuePropName="checked"
-                  style={{ margin: 0 }}
                 >
                   <Switch
-                    disabled={disabled}
                     aria-label="Enable or disable proxy settings"
+                    data-testid="llm-proxy-enabled-switch"
                   />
-                </Form.Item>
+                </FormField>
               </div>
             </div>
 
@@ -96,44 +132,17 @@ export function ProviderProxySettingsForm({
                 The URL of your proxy server (e.g.,
                 http://proxy.company.com:8080)
               </Text>
-              <Form.Item
-                name="url"
-                style={{ marginTop: 8 }}
-                dependencies={['enabled']}
-                validateTrigger={['onChange', 'onBlur']}
-                rules={[
-                  () => ({
-                    validator(_, value) {
-                      if (value && value.trim() !== '') {
-                        try {
-                          const url = new URL(value)
-                          const allowedProtocols = [
-                            'http:',
-                            'https:',
-                            'socks5:',
-                          ]
-                          if (!allowedProtocols.includes(url.protocol)) {
-                            return Promise.reject(
-                              new Error(
-                                'URL must start with http://, https://, or socks5://',
-                              ),
-                            )
-                          }
-                          return Promise.resolve()
-                        } catch {
-                          return Promise.reject(new Error('Invalid URL format'))
-                        }
-                      }
-                      return Promise.resolve()
-                    },
-                  }),
-                ]}
-              >
-                <Input
-                  placeholder={'http://proxy.example.com:8080'}
-                  disabled={disabled}
-                />
-              </Form.Item>
+              <div className="mt-2">
+                <FormField
+                  name="url"
+                  aria-label="Proxy URL"
+                >
+                  <Input
+                    placeholder={'http://proxy.example.com:8080'}
+                    data-testid="llm-proxy-url-input"
+                  />
+                </FormField>
+              </div>
             </div>
 
             {/* Authentication */}
@@ -143,24 +152,22 @@ export function ProviderProxySettingsForm({
               <Text type="secondary">
                 Optional username and password for proxy authentication
               </Text>
-              <Row gutter={8} style={{ marginTop: 8 }}>
-                <Col span={12}>
-                  <Form.Item name="username">
-                    <Input
-                      placeholder={'Username (optional)'}
-                      disabled={disabled}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="password">
-                    <Input.Password
-                      placeholder={'Password (optional)'}
-                      disabled={disabled}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <FormField name="username" aria-label="Proxy username">
+                  <Input
+                    placeholder={'Username (optional)'}
+                    data-testid="llm-proxy-username-input"
+                  />
+                </FormField>
+                <FormField name="password" aria-label="Proxy password">
+                  <PasswordInput
+                    placeholder={'Password (optional)'}
+                    showLabel="Show"
+                    hideLabel="Hide"
+                    data-testid="llm-proxy-password-input"
+                  />
+                </FormField>
+              </div>
             </div>
 
             {/* No Proxy */}
@@ -170,22 +177,18 @@ export function ProviderProxySettingsForm({
               <Text type="secondary">
                 Comma-separated list of hosts that should bypass the proxy
               </Text>
-              <Form.Item name="no_proxy" style={{ marginTop: 8 }}>
-                <Input
-                  placeholder={'localhost,127.0.0.1,.example.com'}
-                  disabled={disabled}
-                />
-              </Form.Item>
+              <div className="mt-2">
+                <FormField name="no_proxy" aria-label="No-proxy hosts">
+                  <Input
+                    placeholder={'localhost,127.0.0.1,.example.com'}
+                    data-testid="llm-proxy-no-proxy-input"
+                  />
+                </FormField>
+              </div>
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div style={{ flex: 1, marginRight: 16 }}>
+            <div className="flex justify-between items-center">
+              <div className="flex-1 mr-4">
                 <Text strong>Ignore SSL Certificate Errors</Text>
                 <br />
                 <Text type="secondary">
@@ -193,32 +196,31 @@ export function ProviderProxySettingsForm({
                   (not recommended for production)
                 </Text>
               </div>
-              <Form.Item
+              <FormField
                 name="ignore_ssl_certificates"
+                aria-label="Ignore SSL certificate errors"
                 valuePropName="checked"
-                style={{ margin: 0 }}
               >
                 <Switch
-                  disabled={disabled}
                   aria-label="Ignore SSL certificate errors"
+                  data-testid="llm-proxy-ignore-ssl-switch"
                 />
-              </Form.Item>
+              </FormField>
             </div>
           </Flex>
         </Flex>
 
-        <Divider />
+        <Separator />
 
         <div className={'flex justify-end'}>
           <Flex className="gap-2">
-            <Button onClick={handleReset} disabled={disabled}>
+            <Button variant="outline" onClick={handleReset} data-testid="llm-proxy-reset-btn">
               Reset
             </Button>
             <Button
-              type="primary"
-              htmlType="submit"
+              type="submit"
               loading={loading}
-              disabled={disabled}
+              data-testid="llm-proxy-save-btn"
             >
               Save
             </Button>

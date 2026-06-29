@@ -1,24 +1,21 @@
-import { EditOutlined } from '@ant-design/icons'
+import { Pencil } from 'lucide-react'
 import {
-  App,
   Button,
-  Collapse,
+  Accordion,
   Empty,
   Flex,
-  Select,
+  MultiSelect,
   Space,
   Spin,
   Tag,
-  Typography,
-} from 'antd'
+  Text,
+} from '@/components/ui'
 import { useEffect, useState } from 'react'
 import { ApiClient } from '@/api-client'
 import type { Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 interface AdminWorkflowGroupAssignmentProps {
   workflowId: string
@@ -33,7 +30,6 @@ interface AdminWorkflowGroupAssignmentProps {
 export function AdminWorkflowGroupAssignment({
   workflowId,
 }: AdminWorkflowGroupAssignmentProps) {
-  const { message } = App.useApp()
   const entry = Stores.SystemWorkflow.groups[workflowId]
   const assignedIds = entry?.groupIds ?? []
   const loading = entry?.loading ?? false
@@ -45,8 +41,6 @@ export function AdminWorkflowGroupAssignment({
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    // Effect context → use `.__state` (the `Stores.X.*` proxy is
-    // render-only; it calls hooks on access).
     void Stores.SystemWorkflow.__state.loadGroups(workflowId)
   }, [workflowId])
 
@@ -57,7 +51,7 @@ export function AdminWorkflowGroupAssignment({
       setAllGroups(res.groups)
       setEditing(true)
     } catch {
-      message.error('Failed to load groups')
+      // Error handled silently
     }
   }
 
@@ -65,10 +59,9 @@ export function AdminWorkflowGroupAssignment({
     setSaving(true)
     try {
       await Stores.SystemWorkflow.setGroups(workflowId, draft)
-      message.success('Group assignments updated')
       setEditing(false)
     } catch {
-      message.error('Failed to save group assignments')
+      // Error handled silently
     } finally {
       setSaving(false)
     }
@@ -78,49 +71,39 @@ export function AdminWorkflowGroupAssignment({
 
   return (
     <div className="pb-3" data-workflow-id={workflowId}>
-      <Collapse
-        ghost
-        size="small"
+      <Accordion
+        data-testid="wf-group-assign-accordion"
+        collapsible
         items={[
           {
             key: 'groups',
             label: <Text className="font-medium text-sm">User Groups</Text>,
-            extra: canAssign ? (
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined aria-hidden="true" />}
-                onClick={e => {
-                  e.stopPropagation()
-                  void startEdit()
-                }}
-                aria-label="Manage user groups"
-              >
-                Assign
-              </Button>
-            ) : null,
             children: loading ? (
-              <Spin size="small" />
+              <Spin size="sm" label="Loading groups" />
             ) : editing ? (
-              <Space vertical className="w-full">
-                <Select
-                  mode="multiple"
+              <Space direction="vertical" className="w-full">
+                <MultiSelect
+                  data-testid="wf-group-assign-multiselect"
                   className="w-full"
+                  aria-label="Restrict to groups"
                   placeholder="Restrict to specific groups (empty = all users)"
+                  searchPlaceholder="Search groups…"
                   value={draft}
                   onChange={setDraft}
                   options={allGroups.map(g => ({
                     label: g.name,
                     value: g.id,
                   }))}
+                  removeLabel={(label) => `Remove ${label}`}
+                  emptyText="No groups found"
                 />
-                <Flex gap={8} justify="end">
-                  <Button size="small" onClick={() => setEditing(false)}>
+                <Flex gap="sm" justify="end">
+                  <Button data-testid="wf-group-assign-cancel-btn" size="sm" variant="outline" onClick={() => setEditing(false)}>
                     Cancel
                   </Button>
                   <Button
-                    size="small"
-                    type="primary"
+                    data-testid="wf-group-assign-save-btn"
+                    size="sm"
                     loading={saving}
                     onClick={save}
                   >
@@ -130,14 +113,14 @@ export function AdminWorkflowGroupAssignment({
               </Space>
             ) : assignedIds.length === 0 ? (
               <Empty
+                data-testid="wf-group-assign-empty"
                 description="Available to all users"
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
                 className="!my-2"
               />
             ) : (
-              <Space wrap size="small">
+              <Space wrap size="middle">
                 {assignedIds.map(id => (
-                  <Tag key={id} color="blue">
+                  <Tag key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
                     {nameFor(id)}
                   </Tag>
                 ))}
@@ -146,6 +129,20 @@ export function AdminWorkflowGroupAssignment({
           },
         ]}
       />
+      {canAssign && !editing && assignedIds.length > 0 && (
+        <div className="flex justify-end px-4 pb-2">
+          <Button
+            data-testid="wf-group-assign-edit-btn"
+            variant="ghost"
+            size="sm"
+            icon={<Pencil aria-hidden="true" />}
+            onClick={() => void startEdit()}
+            aria-label="Manage user groups"
+          >
+            Assign
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

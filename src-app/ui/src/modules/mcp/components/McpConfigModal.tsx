@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { App, Modal, Collapse, Switch, Tag, Typography, Empty, Checkbox, Select, Divider, Button, Space, InputNumber } from 'antd'
-import type { CollapseProps } from 'antd'
-import { ToolOutlined, DeleteOutlined } from '@ant-design/icons'
+import { useEffect, useState } from 'react'
+import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, Space, InputNumber } from '@/components/ui'
+import { Wrench, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { Tool } from '@/api-client/types'
 import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/mcp/stores/McpComposer.store'
-
-const { Text, Title } = Typography
 
 /**
  * MCP Configuration Modal
@@ -25,7 +22,6 @@ const { Text, Title } = Typography
  * - Visibility controlled via store (Stores.McpComposer.openConfigModal/closeConfigModal)
  */
 export function McpConfigModal() {
-  const { message } = App.useApp()
   const { servers } = Stores.McpServer  // Reactive access to MCP module store
   const mcpStore = Stores.McpComposer
   // Extract all store properties unconditionally at the top (store proxy uses hooks).
@@ -49,13 +45,9 @@ export function McpConfigModal() {
   const [loadingTools, setLoadingTools] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [savingDefaults, setSavingDefaults] = useState(false)
-  // Controlled state for tool pickers (to allow re-selecting same value after removal)
-  const [stopToolValue, setStopToolValue] = useState<string | null>(null)
-  const [perToolLimitValue, setPerToolLimitValue] = useState<string | null>(null)
 
-  // Get enabled servers (available for selection). Memoized so the array
-  // reference is stable across renders (it feeds effect deps / child props).
-  const enabledServers = useMemo(() => servers.filter(s => s.enabled), [servers])
+  // Get enabled servers (available for selection)
+  const enabledServers = servers.filter(s => s.enabled)
 
   // Get the current config keyed by scope. Project scope uses the
   // `project:<id>` namespaced key (set by openConfigModalForProject);
@@ -73,6 +65,10 @@ export function McpConfigModal() {
     force_final_answer: false,
     per_tool_max_iteration: [],
   }
+
+  // Local state for select values
+  const [stopToolValue, setStopToolValue] = useState<string | undefined>(undefined)
+  const [perToolLimitValue, setPerToolLimitValue] = useState<string | undefined>(undefined)
 
   // Build grouped tool options for "Stop When Tools Called" picker (exclude already selected)
   const stopToolOptions = enabledServers.map(server => ({
@@ -207,8 +203,8 @@ export function McpConfigModal() {
   }
 
   // Handle approval mode change (works for both existing and new conversations)
-  const handleApprovalModeChange = (value: 'disabled' | 'auto_approve' | 'manual_approve') => {
-    mcpStore.setApprovalMode(currentConversationId, value)
+  const handleApprovalModeChange = (value: string) => {
+    mcpStore.setApprovalMode(currentConversationId, value as 'disabled' | 'auto_approve' | 'manual_approve')
   }
 
   // Handle save. Dispatches by scope:
@@ -219,7 +215,7 @@ export function McpConfigModal() {
   //     persisted on first message when the conversation is created.
   const handleSave = async () => {
     if (!isProjectScope && !currentConversationId) {
-      // Settings stay in pending config and persist on first message.
+      console.log('[MCP Config Modal] Settings stored in pending config (will save on first message)')
       return
     }
 
@@ -234,11 +230,9 @@ export function McpConfigModal() {
       } else {
         await mcpStore.saveConversationConfig(currentConversationId!, availableServerIds, serverToolsMap)
       }
+      console.log('[MCP Config Modal] Configuration saved successfully')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save configuration:', error)
-      message.error(
-        error instanceof Error ? error.message : 'Failed to save MCP configuration',
-      )
     } finally {
       setSaving(false)
     }
@@ -260,6 +254,7 @@ export function McpConfigModal() {
     try {
       const availableServerIds = enabledServers.map(s => s.id)
       await mcpStore.saveUserDefaults(currentConversationId, availableServerIds, true)
+      console.log('[MCP Config Modal] Saved as user defaults')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save as defaults:', error)
     } finally {
@@ -280,7 +275,7 @@ export function McpConfigModal() {
   }
 
   // Build collapse items
-  const collapseItems: CollapseProps['items'] = enabledServers.map(server => {
+  const collapseItems = enabledServers.map(server => {
     const tools = serverTools.get(server.id) || []
     const selection = selectedServers.get(server.id)
 
@@ -292,10 +287,11 @@ export function McpConfigModal() {
             <Switch
               checked={!!selection}
               onChange={(checked) => handleServerToggle(server.id, checked)}
-              size="small"
+              size="sm"
+              data-testid={`mcp-config-server-switch-${server.id}`}
             />
             <Text strong>{server.display_name}</Text>
-            <Tag color={server.user_id ? 'blue' : 'green'} className="text-xs">
+            <Tag tone={server.user_id ? 'info' : 'success'} className="text-xs" data-testid={`mcp-config-server-tag-${server.id}`}>
               {server.user_id ? 'User' : 'System'}
             </Tag>
           </div>
@@ -305,7 +301,7 @@ export function McpConfigModal() {
         </div>
       ),
       children: tools.length === 0 ? (
-        <Empty description="No tools yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="No tools yet" data-testid={`mcp-config-server-empty-${server.id}`} />
       ) : (
         <div className="space-y-2">
           {tools.map(tool => (
@@ -314,6 +310,7 @@ export function McpConfigModal() {
                 checked={isToolSelected(server.id, tool.name)}
                 onChange={() => handleToolToggle(server.id, tool.name)}
                 disabled={!selection}
+                data-testid={`mcp-config-tool-checkbox-${server.id}-${tool.name}`}
               />
               <div className="flex-1">
                 <div className="flex items-center justify-between">
@@ -322,16 +319,17 @@ export function McpConfigModal() {
                     <div className="flex items-center gap-1">
                       <Text type="secondary" className="text-xs">Auto Approve</Text>
                       <Switch
-                        size="small"
+                        size="sm"
                         checked={isToolAutoApproved(server.id, tool.name)}
                         onChange={() => handleAutoApproveToggle(server.id, tool.name)}
                         disabled={!selection}
+                        data-testid={`mcp-config-tool-approve-${server.id}-${tool.name}`}
                       />
                     </div>
                   )}
                 </div>
                 {tool.description && (
-                  <div className="text-xs text-gray-500 mt-1">{tool.description}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{tool.description}</div>
                 )}
               </div>
             </div>
@@ -342,28 +340,29 @@ export function McpConfigModal() {
   })
 
   return (
-    <Modal
+    <Dialog
+      open={configModalVisible}
+      onOpenChange={(v) => { if (!v) handleClose() }}
+      className="max-w-[800px]"
+      data-testid="mcp-config-modal"
       title={
         <div className="flex items-center gap-2">
-          <ToolOutlined />
+          <Wrench />
           <span>
             {isProjectScope ? 'MCP Defaults for Project' : 'MCP Configuration'}
           </span>
         </div>
       }
-      open={configModalVisible}
-      onCancel={handleClose}
-      width={800}
       footer={
         <Space>
           {/* "Save as Default" writes user_mcp_defaults — orthogonal to
               project scope, hide there to avoid confusion. */}
           {!isProjectScope && (
-            <Button onClick={handleSaveAsDefault} loading={savingDefaults}>
+            <Button onClick={handleSaveAsDefault} loading={savingDefaults} data-testid="mcp-config-save-default-btn">
               Save as Default
             </Button>
           )}
-          <Button type="primary" onClick={handleClose} loading={saving}>
+          <Button onClick={handleClose} loading={saving} data-testid="mcp-config-close-btn">
             {isProjectScope || currentConversationId ? 'Save & Close' : 'Close'}
           </Button>
         </Space>
@@ -376,7 +375,8 @@ export function McpConfigModal() {
           <Select
             value={approvalMode}
             onChange={handleApprovalModeChange}
-            style={{ width: '100%' }}
+            className="w-full"
+            data-testid="mcp-config-approval-select"
             options={[
               {
                 value: 'disabled',
@@ -394,22 +394,19 @@ export function McpConfigModal() {
           />
         </div>
 
-        <Divider />
+        <Separator />
 
         {/* Server & Tool Selection Section */}
         <div>
           <Title level={5}>Server & Tool Selection</Title>
           {enabledServers.length === 0 ? (
-            <Empty
-              description="No MCP servers available"
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            />
+            <Empty description="No MCP servers available" data-testid="mcp-config-empty-servers" />
           ) : (
-            <Collapse accordion items={collapseItems} />
+            <Accordion collapsible items={collapseItems} data-testid="mcp-config-servers-accordion" />
           )}
         </div>
 
-        <Divider />
+        <Separator />
 
         {/* Loop Settings Section */}
         <div>
@@ -422,6 +419,7 @@ export function McpConfigModal() {
               <Switch
                 checked={loopSettings.stop_when_no_tool_calling ?? true}
                 onChange={(checked) => mcpStore.setLoopSettings(currentConversationId, { stop_when_no_tool_calling: checked })}
+                data-testid="mcp-config-stop-no-tools-switch"
               />
             </div>
             <div className="flex items-center justify-between">
@@ -429,6 +427,7 @@ export function McpConfigModal() {
               <Switch
                 checked={loopSettings.force_final_answer ?? false}
                 onChange={(checked) => mcpStore.setLoopSettings(currentConversationId, { force_final_answer: checked })}
+                data-testid="mcp-config-force-final-switch"
               />
             </div>
           </div>
@@ -440,7 +439,8 @@ export function McpConfigModal() {
               min={0}
               value={loopSettings.max_iteration ?? 10}
               onChange={(value) => mcpStore.setLoopSettings(currentConversationId, { max_iteration: value ?? 10 })}
-              style={{ width: 100 }}
+              className="w-[100px]"
+              data-testid="mcp-config-max-iter-input"
             />
             <Text type="secondary" className="text-xs">(0 = unlimited)</Text>
           </div>
@@ -452,16 +452,18 @@ export function McpConfigModal() {
               {(loopSettings.stop_when_tools_called || []).map((tool) => (
                 <Tag
                   key={`${tool.server_id}-${tool.tool_name}`}
-                  closable
                   onClose={() => mcpStore.removeStopWhenToolCalled(currentConversationId, tool.server_id, tool.tool_name)}
+                  closeLabel="Remove"
+                  data-testid={`mcp-config-stop-tag-${tool.server_id}-${tool.tool_name}`}
                 >
                   {enabledServers.find(s => s.id === tool.server_id)?.display_name || tool.server_id}/{tool.tool_name}
                 </Tag>
               ))}
             </div>
-            <Select<string>
+            <Select
               placeholder="Add stop tool..."
-              style={{ width: '100%', marginTop: 8 }}
+              className="w-full mt-2"
+              data-testid="mcp-config-stop-tool-select"
               options={stopToolOptions}
               value={stopToolValue}
               onChange={(value) => {
@@ -469,7 +471,7 @@ export function McpConfigModal() {
                   const [serverId, ...rest] = value.split(':')
                   const toolName = rest.join(':')
                   mcpStore.addStopWhenToolCalled(currentConversationId, { server_id: serverId, tool_name: toolName })
-                  setStopToolValue(null)  // Reset to allow re-selecting same value
+                  setStopToolValue(undefined)  // Reset to allow re-selecting same value
                 }
               }}
             />
@@ -488,20 +490,22 @@ export function McpConfigModal() {
                     min={1}
                     value={limit.max_iteration}
                     onChange={(value) => mcpStore.updatePerToolLimit(currentConversationId, limit.server_id, limit.tool_name, value ?? 1)}
-                    style={{ width: 80 }}
+                    className="w-[80px]"
+                    data-testid={`mcp-config-pertool-input-${limit.server_id}-${limit.tool_name}`}
                   />
                   <Button
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
+                    variant="ghost"
+                    icon={<Trash2 />}
                     onClick={() => mcpStore.removePerToolLimit(currentConversationId, limit.server_id, limit.tool_name)}
+                    data-testid={`mcp-config-pertool-remove-${limit.server_id}-${limit.tool_name}`}
                   />
                 </div>
               ))}
             </div>
-            <Select<string>
+            <Select
               placeholder="Add per-tool limit..."
-              style={{ width: '100%', marginTop: 8 }}
+              className="w-full mt-2"
+              data-testid="mcp-config-pertool-select"
               options={perToolLimitOptions}
               value={perToolLimitValue}
               onChange={(value) => {
@@ -509,13 +513,13 @@ export function McpConfigModal() {
                   const [serverId, ...rest] = value.split(':')
                   const toolName = rest.join(':')
                   mcpStore.addPerToolLimit(currentConversationId, { server_id: serverId, tool_name: toolName, max_iteration: 3 })
-                  setPerToolLimitValue(null)  // Reset to allow re-selecting same value
+                  setPerToolLimitValue(undefined)  // Reset to allow re-selecting same value
                 }
               }}
             />
           </div>
         </div>
       </div>
-    </Modal>
+    </Dialog>
   )
 }

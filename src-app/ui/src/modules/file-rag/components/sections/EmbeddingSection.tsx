@@ -3,25 +3,24 @@ import {
   Alert,
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Form,
+  FormField,
   InputNumber,
-  Modal,
-  Select,
-  
+  Dialog,
+  Combobox,
   Switch,
-  Tooltip,
-  Typography,
+  Paragraph,
+  useForm,
+  zodResolver,
   message,
-} from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+} from '@/components/ui'
+import { z } from 'zod'
+import { RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
-
-const { Paragraph } = Typography
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -31,6 +30,12 @@ interface FormValues {
   embedding_model_id?: string | null
   cosine_threshold: number
 }
+
+const schema = z.object({
+  semantic_enabled: z.boolean(),
+  embedding_model_id: z.string().nullable().optional(),
+  cosine_threshold: z.number(),
+})
 
 /**
  * Embedding (vector) arm: the `semantic_enabled` kill switch, the
@@ -43,22 +48,23 @@ interface FormValues {
 export function EmbeddingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const {
-    settings,
-    embeddingModels,
-    saving,
-    loadingModels,
-    triggeringReembed,
-    error,
-  } = Stores.FileRagAdmin
-  const [form] = Form.useForm<FormValues>()
+  const { settings, embeddingModels, saving, loadingModels, triggeringReembed } =
+    Stores.FileRagAdmin
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      semantic_enabled: false,
+      embedding_model_id: null,
+      cosine_threshold: 0,
+    },
+  })
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
   const [pendingSwap, setPendingSwap] = useState<FormValues | null>(null)
 
   useEffect(() => {
     // Don't clobber the admin's unsaved edits on a mid-edit refetch.
-    if (settings && !form.isFieldsTouched()) {
-      form.setFieldsValue({
+    if (settings && !form.formState.isDirty) {
+      form.reset({
         semantic_enabled: settings.semantic_enabled,
         embedding_model_id: settings.embedding_model_id,
         cosine_threshold: settings.cosine_threshold,
@@ -68,23 +74,16 @@ export function EmbeddingSection() {
 
   if (!canRead) {
     return (
-      <Card title="Embedding (semantic search)">
+      <Card data-testid="filerag-embedding-card" title="Embedding (semantic search)">
         <Alert
-          type="warning"
-          showIcon
+          data-testid="filerag-embedding-noperm-alert"
+          tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
       </Card>
     )
   }
-  if (!settings)
-    return (
-      <SettingsSectionStatus
-        title="Embedding (semantic search)"
-        error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
-      />
-    )
+  if (!settings) return null
 
   const noModelsAvailable = embeddingModels.length === 0
 
@@ -141,20 +140,11 @@ export function EmbeddingSection() {
 
   return (
     <>
-      <Card title="Embedding (semantic search)">
-        {error && (
-          <Alert
-            type="error"
-            showIcon
-            closable={{ closeIcon: true }}
-            className="!mb-4"
-            message={error}
-          />
-        )}
+      <Card data-testid="filerag-embedding-card" title="Embedding (semantic search)">
         {noModelsAvailable && (
           <Alert
-            type="info"
-            showIcon
+            data-testid="filerag-embedding-no-models-alert"
+            tone="info"
             className="!mb-4"
             title="No embedding-capable models found."
             description={
@@ -169,85 +159,79 @@ export function EmbeddingSection() {
           />
         )}
         <Form
+          data-testid="filerag-embedding-form"
           name="file-rag-admin-embedding-form"
           form={form}
           layout="horizontal"
-          labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-          wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-          labelAlign="left"
-          colon={false}
-          onFinish={handleSubmit}
+          onSubmit={handleSubmit}
           disabled={!canManage}
         >
-          <Form.Item
+          <FormField
             name="semantic_enabled"
             label="Enable semantic search"
-            extra="When off, retrieval uses full-text only. Effective semantic recall also requires an embedding model below."
+            description="When off, retrieval uses full-text only. Effective semantic recall also requires an embedding model below."
             valuePropName="checked"
           >
-            <Switch aria-label="Enable semantic search" />
-          </Form.Item>
+            <Switch data-testid="filerag-embedding-switch" aria-label="Enable semantic search" />
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="embedding_model_id"
             label="Embedding model"
-            extra={`The model used to compute document + query vectors. The vector dimension is derived automatically from the model. Current dimension: ${settings.embedding_dimensions}`}
+            description={`The model used to compute document + query vectors. The vector dimension is derived automatically from the model. Current dimension: ${settings.embedding_dimensions}`}
           >
-            <Select
+            <Combobox
+              data-testid="filerag-embedding-model-select"
               placeholder={
                 noModelsAvailable
                   ? 'No embedding-capable models'
                   : 'Select an embedding model'
               }
+              searchPlaceholder="Search models"
+              emptyText="No embedding-capable models"
               loading={loadingModels}
               disabled={noModelsAvailable}
               options={embeddingModels.map(m => ({
                 value: m.id,
                 label: m.display_name || m.name,
               }))}
-              showSearch={{ optionFilterProp: 'label' }}
-              allowClear
-              style={{ maxWidth: 480 }}
+              className="max-w-[480px]"
             />
-          </Form.Item>
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="cosine_threshold"
             label="Cosine distance threshold"
-            extra="Chunks with distance ≥ this value are dropped from the vector arm. Lower = stricter."
+            description="Chunks with distance ≥ this value are dropped from the vector arm. Lower = stricter."
           >
-            <InputNumber min={0} max={2} step={0.05} style={{ width: 160 }} />
-          </Form.Item>
+            <InputNumber data-testid="filerag-embedding-cosine" min={0} max={2} step={0.05} className="w-40" />
+          </FormField>
 
-          <Form.Item
-            label="Force re-embed all chunks"
-            extra="Re-embeds every stored chunk with the current model. Useful after an embedder upgrade."
-          >
-            <Tooltip
-              title={
-                !settings.embedding_model_id
-                  ? 'Select an embedding model first'
-                  : !canManage
-                    ? "You don't have permission to manage file RAG settings."
-                    : undefined
-              }
+          {/* No form field — a labeled action row (Form.Item without a name). */}
+          <div className="mb-4">
+            <div className="text-sm font-medium mb-1">
+              Force re-embed all chunks
+            </div>
+            <Button
+              data-testid="filerag-embedding-reembed-btn"
+              icon={<RotateCw />}
+              loading={triggeringReembed}
+              onClick={() => setReembedConfirmOpen(true)}
+              disabled={!settings.embedding_model_id || !canManage}
             >
-              <Button
-                icon={<ReloadOutlined />}
-                loading={triggeringReembed}
-                onClick={() => setReembedConfirmOpen(true)}
-                disabled={!settings.embedding_model_id || !canManage}
-              >
-                Re-embed now
-              </Button>
-            </Tooltip>
-          </Form.Item>
+              Re-embed now
+            </Button>
+            <div className="text-muted-foreground text-sm mt-1">
+              Re-embeds every stored chunk with the current model. Useful after
+              an embedder upgrade.
+            </div>
+          </div>
 
           {canManage && (
             <>
-              <Divider className="!my-3" />
+              <Separator className="!my-3" />
               <Flex justify="end">
-                <Button type="primary" htmlType="submit" loading={saving}>
+                <Button data-testid="filerag-embedding-save" type="submit" loading={saving}>
                   Save
                 </Button>
               </Flex>
@@ -256,34 +240,54 @@ export function EmbeddingSection() {
         </Form>
       </Card>
 
-      <Modal
+      <Dialog
+        data-testid="filerag-embedding-reembed-dialog"
         open={reembedConfirmOpen}
+        onOpenChange={v => {
+          if (!v) setReembedConfirmOpen(false)
+        }}
         title="Re-embed every document chunk?"
-        okText="Re-embed"
-        okType="primary"
-        onCancel={() => setReembedConfirmOpen(false)}
-        onOk={handleReembed}
+        footer={
+          <>
+            <Button data-testid="filerag-embedding-reembed-cancel" variant="outline" onClick={() => setReembedConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button data-testid="filerag-embedding-reembed-confirm" onClick={handleReembed}>Re-embed</Button>
+          </>
+        }
       >
         <Paragraph>
           This runs in the background. Semantic search skips not-yet-embedded
           chunks (full-text still works) and catches up as the worker fills them
           in. For large corpora this can take several minutes.
         </Paragraph>
-      </Modal>
+      </Dialog>
 
-      <Modal
+      <Dialog
+        data-testid="filerag-embedding-swap-dialog"
         open={pendingSwap !== null}
-        title="Change the embedding model?"
-        okText="Change and re-embed"
-        okType="primary"
-        cancelText="Keep current model"
-        onCancel={() => setPendingSwap(null)}
-        onOk={async () => {
-          if (!pendingSwap) return
-          const captured = pendingSwap
-          setPendingSwap(null)
-          await persist(captured, true)
+        onOpenChange={v => {
+          if (!v) setPendingSwap(null)
         }}
+        title="Change the embedding model?"
+        footer={
+          <>
+            <Button data-testid="filerag-embedding-swap-cancel" variant="outline" onClick={() => setPendingSwap(null)}>
+              Keep current model
+            </Button>
+            <Button
+              data-testid="filerag-embedding-swap-confirm"
+              onClick={async () => {
+                if (!pendingSwap) return
+                const captured = pendingSwap
+                setPendingSwap(null)
+                await persist(captured, true)
+              }}
+            >
+              Change and re-embed
+            </Button>
+          </>
+        }
       >
         <Paragraph>
           Switching to <code>{swapTargetLabel}</code> re-computes every stored
@@ -294,7 +298,7 @@ export function EmbeddingSection() {
           During the rebuild, semantic search returns fewer results; full-text
           search is unaffected. New uploads are picked up automatically.
         </Paragraph>
-      </Modal>
+      </Dialog>
     </>
   )
 }

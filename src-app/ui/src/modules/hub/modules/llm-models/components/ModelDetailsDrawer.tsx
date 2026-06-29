@@ -1,9 +1,7 @@
+import { Eye, Wrench, MessageSquare } from 'lucide-react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Flex, Tag, Typography, Card } from 'antd'
-import { EyeOutlined, ToolOutlined, MessageOutlined } from '@ant-design/icons'
+import { Flex, Tag, Title, Text, Card } from '@/components/ui'
 import type { HubModel } from '@/api-client/types'
-
-const { Title, Text } = Typography
 
 interface ModelDetailsDrawerProps {
   model: HubModel | null
@@ -20,7 +18,7 @@ export function ModelDetailsDrawer({
 
   return (
     <Drawer title={model.display_name} open={open} onClose={onClose}>
-      <Flex vertical className="gap-4">
+      <Flex direction="column" className="gap-4">
         {/* Basic Info */}
         <div>
           <Title level={3} className="!m-0 !mb-2">
@@ -40,9 +38,9 @@ export function ModelDetailsDrawer({
         {(model.repository?.url || model.websiteUrl) && (
           <div>
             <Title level={5}>Links</Title>
-            <Flex vertical className="gap-2">
+            <Flex direction="column" className="gap-2">
               {model.repository?.url && (
-                <Flex justify="space-between">
+                <Flex justify="between">
                   <Text type="secondary">Repository:</Text>
                   <Text className="text-right break-all">
                     <a
@@ -56,7 +54,7 @@ export function ModelDetailsDrawer({
                 </Flex>
               )}
               {model.websiteUrl && (
-                <Flex justify="space-between">
+                <Flex justify="between">
                   <Text type="secondary">Website:</Text>
                   <Text className="text-right break-all">
                     <a
@@ -81,30 +79,30 @@ export function ModelDetailsDrawer({
         {model.sources && model.sources.length > 0 && (
           <div>
             <Title level={5}>Sources</Title>
-            <Flex vertical className="gap-3">
+            <Flex direction="column" className="gap-3">
               {model.sources.map((source, idx) => (
-                <Card key={idx} size="small">
-                  <Flex vertical className="gap-2">
-                    <Flex justify="space-between" align="center">
+                <Card key={idx} size="sm" data-testid={`hub-model-detail-source-card-${idx}`}>
+                  <Flex direction="column" className="gap-2">
+                    <Flex justify="between" align="center">
                       <Text strong>
                         {source.registryType} · {source.identifier}
                       </Text>
-                      <Tag color="blue">
+                      <Tag tone="info" data-testid={`hub-model-detail-source-format-tag-${idx}`}>
                         {source.fileFormat.toUpperCase()}
                       </Tag>
                     </Flex>
-                    <Flex justify="space-between">
+                    <Flex justify="between">
                       <Text type="secondary">Version:</Text>
                       <Text>{source.version}</Text>
                     </Flex>
                     {source.runtimeHint && (
-                      <Flex justify="space-between">
+                      <Flex justify="between">
                         <Text type="secondary">Runtime hint:</Text>
                         <Text>{source.runtimeHint}</Text>
                       </Flex>
                     )}
                     {source.contextLength && (
-                      <Flex justify="space-between">
+                      <Flex justify="between">
                         <Text type="secondary">Context length:</Text>
                         <Text>{source.contextLength}</Text>
                       </Flex>
@@ -114,17 +112,17 @@ export function ModelDetailsDrawer({
                         <Text type="secondary" className="text-xs">
                           Quantizations:
                         </Text>
-                        <Flex vertical className="gap-1 mt-1">
+                        <Flex direction="column" className="gap-1 mt-1">
                           {source.quantizations.map(q => (
                             <Flex
                               key={q.name}
-                              justify="space-between"
+                              justify="between"
                               align="center"
                             >
                               <div>
                                 <Text strong>{q.name}</Text>
                                 {q.isDefault && (
-                                  <Tag color="geekblue" className="ml-2 text-xs">
+                                  <Tag tone="info" className="ml-2 text-xs" data-testid={`hub-model-detail-quant-default-tag-${q.name}`}>
                                     default
                                   </Tag>
                                 )}
@@ -149,15 +147,15 @@ export function ModelDetailsDrawer({
         {/* Model Details */}
         <div>
           <Title level={5}>Model Details</Title>
-          <Flex vertical className="gap-2">
+          <Flex direction="column" className="gap-2">
             {model.license && (
-              <Flex justify="space-between">
+              <Flex justify="between">
                 <Text type="secondary">License:</Text>
                 <Text>{model.license}</Text>
               </Flex>
             )}
             {model.author && (
-              <Flex justify="space-between">
+              <Flex justify="between">
                 <Text type="secondary">Author:</Text>
                 <Text>{model.author}</Text>
               </Flex>
@@ -175,7 +173,8 @@ export function ModelDetailsDrawer({
                 return (
                   <Tag
                     key={`${dep.kind}-${dep.name}`}
-                    color={dep.kind === 'model' ? 'cyan' : 'purple'}
+                    data-testid={`hub-model-detail-dep-tag-${dep.kind}-${dep.name}`}
+                    tone={dep.kind === 'model' ? 'success' : 'info'}
                   >
                     {leaf} {dep.versionRange}
                   </Tag>
@@ -191,17 +190,17 @@ export function ModelDetailsDrawer({
             <Title level={5}>Capabilities</Title>
             <Flex wrap className="gap-2">
               {model.capabilities.vision && (
-                <Tag color="purple" icon={<EyeOutlined />}>
+                <Tag tone="info" icon={<Eye />} data-testid="hub-model-detail-cap-vision-tag">
                   Vision
                 </Tag>
               )}
               {model.capabilities.tools && (
-                <Tag color="blue" icon={<ToolOutlined />}>
+                <Tag tone="info" icon={<Wrench />} data-testid="hub-model-detail-cap-tools-tag">
                   Function Calling
                 </Tag>
               )}
               {model.capabilities.chat && (
-                <Tag color="cyan" icon={<MessageOutlined />}>
+                <Tag tone="success" icon={<MessageSquare />} data-testid="hub-model-detail-cap-chat-tag">
                   Chat
                 </Tag>
               )}
@@ -215,7 +214,7 @@ export function ModelDetailsDrawer({
             <Title level={5}>Tags</Title>
             <Flex wrap className="gap-1">
               {model.tags.map(tag => (
-                <Tag key={tag} color="default">
+                <Tag key={tag} data-testid={`hub-model-detail-tag-${tag}`}>
                   {tag}
                 </Tag>
               ))}
@@ -224,11 +223,11 @@ export function ModelDetailsDrawer({
         )}
 
         {/* Recommended Parameters */}
-        {model.recommended_parameters &&
-          Object.keys(model.recommended_parameters).length > 0 && (
+        {!!model.recommended_parameters &&
+          Object.keys(model.recommended_parameters as object).length > 0 && (
             <div>
               <Title level={5}>Recommended Parameters</Title>
-              <Card size="small">
+              <Card size="sm" data-testid="hub-model-detail-params-card">
                 <pre className="text-xs overflow-auto m-0">
                   {JSON.stringify(model.recommended_parameters, null, 2)}
                 </pre>

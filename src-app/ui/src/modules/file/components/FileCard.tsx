@@ -1,19 +1,11 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Button, Checkbox, Popconfirm, Progress, Spin, Tooltip, Typography, theme, App } from 'antd'
-import {
-  CloseOutlined,
-  DeleteOutlined,
-  FileTextOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons'
+import { X, Trash2, FileText, Download, RotateCw } from 'lucide-react'
+import { Button, Checkbox, Progress, Spin, Tooltip, Text, message as kitMessage } from '@/components/ui'
+import { Confirm } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type File as FileEntity } from '@/api-client/types'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
-
-const { Text } = Typography
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -26,7 +18,7 @@ function formatFileSize(bytes: number): string {
 // file-text icon when no viewer is registered or the viewer omitted the field.
 function getFileIcon(file: FileEntity): React.ReactNode {
   return getViewer(file.filename, file.mime_type ?? undefined)?.icon
-    ?? <FileTextOutlined />
+    ?? <FileText />
 }
 
 export interface FileCardProps {
@@ -46,7 +38,7 @@ export interface FileCardProps {
    *  composer's FilePreviewList depends on. */
   stretch?: boolean
   /** Row only — appended to the trailing edge in place of the default
-   *  Download button. Use this slot to pass a Popconfirm-wrapped
+   *  Download button. Use this slot to pass a Confirm-wrapped
    *  delete button, retry button, etc. */
   actions?: React.ReactNode
   /** Overrides the default "{label} · {ext}" subtitle line (row only).
@@ -85,8 +77,6 @@ export function FileCard({
   onSelectChange,
   onRetry,
 }: FileCardProps) {
-  const { token } = theme.useToken()
-  const { message } = App.useApp()
   const canDownload = usePermission(Permissions.FilesDownload)
 
   // Reactive subscription: re-render when the thumbnail blob URL lands.
@@ -126,13 +116,6 @@ export function FileCard({
     Stores.FilePreviewDrawer.openPreview(file)
   }
 
-  const handleCardKeyDown = (e: ReactKeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      handleCardClick()
-    }
-  }
-
   // Row-shaped upload-progress branch — added separately from the
   // square branch below (which the chat composer's FilePreviewList
   // depends on; that surface must stay square). Selected by
@@ -144,11 +127,7 @@ export function FileCard({
       uploadProgress.filename.split('.').pop()?.toUpperCase() || 'FILE'
     return (
       <div
-        className="w-full flex flex-row items-center gap-3 rounded-lg p-3"
-        style={{
-          border: `1px solid ${isError ? token.colorErrorBorder : token.colorBorderSecondary}`,
-          backgroundColor: token.colorBgContainer,
-        }}
+        className="w-full flex flex-row items-center gap-3 rounded-lg p-3 border border-border"
         data-testid="file-card-uploading"
         data-filename={uploadProgress.filename}
       >
@@ -158,19 +137,17 @@ export function FileCard({
           style={{ width: 40, height: 40 }}
         >
           {isError ? (
-            <Text
-              className="!text-[11px] rounded px-1"
-              style={{ backgroundColor: token.colorError, color: token.colorWhite }}
-            >
+            <Text className="!text-[9px] rounded px-1 text-white bg-destructive">
               ERROR
             </Text>
           ) : (
             <Progress
-              type="circle"
-              percent={percent}
-              size={32}
-              strokeWidth={10}
+              shape="circle"
+              value={percent}
+              size="sm"
               format={() => ext}
+              aria-label={`Upload progress for ${uploadProgress.filename}`}
+              data-testid="file-card-upload-progress"
             />
           )}
         </div>
@@ -181,7 +158,7 @@ export function FileCard({
             {uploadProgress.filename}
           </Text>
           {isError ? (
-            <Text type="danger" className="!text-xs truncate">
+            <Text type="secondary" className="!text-xs truncate text-destructive">
               {(uploadProgress as { error?: string }).error ?? 'Upload failed'}
             </Text>
           ) : (
@@ -193,22 +170,24 @@ export function FileCard({
 
         {/* Trailing: retry on error if onRetry provided, else cancel */}
         {isError && onRetry ? (
-          <Tooltip title="Retry upload">
+          <Tooltip content="Retry upload">
             <Button
-              type="text"
-              icon={<ReloadOutlined />}
+              variant="ghost"
+              icon={<RotateCw />}
               onClick={() => onRetry()}
               aria-label={`Retry upload ${uploadProgress.filename}`}
+              data-testid="file-card-retry-btn"
             />
           </Tooltip>
         ) : (
           onRemove && (
-            <Tooltip title="Dismiss">
+            <Tooltip content="Dismiss">
               <Button
-                type="text"
-                icon={<CloseOutlined />}
+                variant="ghost"
+                icon={<X />}
                 onClick={() => onRemove()}
                 aria-label={`Dismiss ${uploadProgress.filename}`}
+                data-testid="file-card-dismiss-btn"
               />
             </Tooltip>
           )
@@ -221,11 +200,7 @@ export function FileCard({
     return (
       <div className="relative flex flex-col w-full h-full">
         <div
-          className="group relative rounded min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full flex items-center justify-center"
-          style={{
-            border: `1px solid ${token.colorBorderSecondary}`,
-            backgroundColor: token.colorBgContainer,
-          }}
+          className="group relative rounded min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full flex items-center justify-center border border-border"
         >
           <img
             src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB2aWV3Qm94PSIwIDAgMSAxIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9InRyYW5zcGFyZW50Ii8+PC9zdmc+"
@@ -234,51 +209,29 @@ export function FileCard({
             style={{ aspectRatio: '1' }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
-            {uploadProgress.status === 'error' && onRetry ? (
-              <Tooltip title="Retry upload">
-                <Button
-                  type="text"
-                  icon={<ReloadOutlined />}
-                  onClick={() => onRetry()}
-                  aria-label={`Retry upload ${uploadProgress.filename}`}
-                />
-              </Tooltip>
-            ) : (
-              uploadProgress.status !== 'error' && <Spin />
-            )}
+            <Spin label="Uploading" />
           </div>
           {onRemove && (
-            <Tooltip
-              title={
-                uploadProgress.status === 'error' ? 'Dismiss' : 'Cancel upload'
-              }
-            >
+            <Tooltip content="Cancel upload">
               <Button
-                danger
-                size="small"
-                icon={<CloseOutlined />}
+                variant="ghost"
+                size="sm"
+                icon={<X />}
                 onClick={() => onRemove()}
                 className="!absolute top-1 right-1"
-                aria-label={
-                  uploadProgress.status === 'error'
-                    ? `Dismiss ${uploadProgress.filename}`
-                    : 'Cancel upload'
-                }
+                aria-label="Cancel upload"
+                data-testid="file-card-cancel-btn"
               />
             </Tooltip>
           )}
           <Text
-            className="absolute top-1 left-1 rounded px-1 !text-[9px]"
-            style={{ backgroundColor: token.colorBgContainer }}
+            className="absolute top-1 left-1 rounded px-1 !text-[9px] bg-card"
             strong
           >
             {uploadProgress.filename.split('.').pop()?.toUpperCase() || 'FILE'}
           </Text>
           {uploadProgress.status === 'error' && (
-            <Text
-              className="absolute top-1 right-1 rounded px-1 !text-[11px]"
-              style={{ backgroundColor: token.colorError, color: token.colorWhite }}
-            >
+            <Text className="absolute top-1 right-1 rounded px-1 !text-[9px] text-white bg-destructive">
               ERROR
             </Text>
           )}
@@ -305,15 +258,8 @@ export function FileCard({
   if (variant === 'row') {
     return (
       <div
-        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2"
-        style={{
-          border: `1px solid ${token.colorBorderSecondary}`,
-          backgroundColor: token.colorBgContainer,
-        }}
-        role="button"
-        tabIndex={0}
+        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 border border-border transition-opacity hover:opacity-80"
         onClick={handleCardClick}
-        onKeyDown={handleCardKeyDown}
         data-testid="file-card"
         data-file-id={file.id}
         data-filename={file.filename}
@@ -329,21 +275,20 @@ export function FileCard({
           >
             <Checkbox
               checked={selected}
-              onChange={e => onSelectChange?.(e.target.checked)}
+              onChange={checked => onSelectChange?.(checked)}
               aria-label={`Select ${file.filename}`}
+              data-testid="file-card-select-checkbox"
             />
           </div>
         )}
 
         {/* Left: icon box */}
         <div
-          className="flex-shrink-0 flex items-center justify-center rounded-lg overflow-hidden"
+          className="flex-shrink-0 flex items-center justify-center rounded-lg overflow-hidden bg-muted text-muted-foreground"
           style={{
             width: 40,
             height: 40,
-            backgroundColor: token.colorFillTertiary,
             fontSize: 20,
-            color: token.colorTextSecondary,
           }}
         >
           {isImage && thumbnailUrl ? (
@@ -364,7 +309,7 @@ export function FileCard({
         </div>
 
         {/* Trailing: caller-provided actions OR default Download button.
-            actions slot wins — knowledge panels pass a Popconfirm-wrapped
+            actions slot wins — knowledge panels pass a Confirm-wrapped
             delete here; chat callers pass nothing and get Download. */}
         {actions !== undefined ? (
           <div onClick={e => e.stopPropagation()} className="flex-shrink-0">
@@ -372,15 +317,16 @@ export function FileCard({
           </div>
         ) : (
           canDownload && (
-            <Tooltip title="Download">
+            <Tooltip content="Download">
               <Button
-                type="text"
-                icon={<DownloadOutlined style={{ fontSize: 20 }} />}
+                variant="ghost"
+                icon={<Download style={{ fontSize: 20 }} />}
                 aria-label={`Download ${file.filename}`}
+                data-testid="file-card-download-btn"
                 onClick={e => {
                   e.stopPropagation()
                   Stores.File.downloadFile(file)
-                    .catch(() => message.error('Failed to download file'))
+                    .catch(() => kitMessage.error('Failed to download file'))
                 }}
               />
             </Tooltip>
@@ -405,12 +351,10 @@ export function FileCard({
       data-filename={file.filename}
     >
       <div
-        className={`group relative cursor-pointer rounded-2xl w-full h-full flex items-center justify-center focus-visible:outline focus-visible:outline-2 ${
+        className={`group relative cursor-pointer rounded-2xl w-full h-full flex items-center justify-center ${
           stretch ? '' : 'min-h-20 min-w-20 max-h-28 max-w-28'
-        }`}
+        } border border-border`}
         style={{
-          border: `1px solid ${token.colorBorderSecondary}`,
-          backgroundColor: token.colorBgContainer,
           ...(isImage && thumbnailUrl
             ? {
                 backgroundImage: `url(${thumbnailUrl})`,
@@ -420,10 +364,7 @@ export function FileCard({
               }
             : {}),
         }}
-        role="button"
-        tabIndex={0}
         onClick={handleCardClick}
-        onKeyDown={handleCardKeyDown}
       >
         {/* Square aspect ratio enforcer */}
         <img
@@ -436,27 +377,27 @@ export function FileCard({
         {/* Centered file type icon (for non-images) */}
         {!isImage && (
           <div
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ fontSize: 28, color: token.colorTextTertiary }}
+            className="absolute inset-0 flex items-center justify-center text-muted-foreground"
+            style={{ fontSize: 28 }}
           >
             {getFileIcon(file)}
           </div>
         )}
 
-        {/* Delete/Remove button — Popconfirm-wrapped so the
+        {/* Delete/Remove button — Confirm-wrapped so the
             destructive action requires explicit confirmation.
             The row variant routes its delete through the `actions`
-            slot (caller already wraps in Popconfirm); the square
+            slot (caller already wraps in Confirm); the square
             variant has its delete inline, so the confirm lives
             here.
 
             stopPropagation is on the OUTER wrapper, not the Button.
             If we put stopPropagation on the Button itself, it
             cancels the click event before it bubbles up to
-            Tooltip's wrapper span — which is where Popconfirm
+            Tooltip's wrapper span — which is where Confirm
             attaches its trigger handler — so the popover never
             opens. Hoisting it to a wrapper that lives outside
-            Popconfirm's trigger subtree means Popconfirm's
+            Confirm's trigger subtree means Confirm's
             handler runs first (popover opens), then our handler
             stops the click from reaching the card's onClick. */}
         {(canDelete || canRemove) && onRemove && (
@@ -465,31 +406,32 @@ export function FileCard({
             style={{ display: canRemove ? 'block' : 'none' }}
             onClick={e => e.stopPropagation()}
           >
-            <Popconfirm
+            <Confirm
               title="Remove this file?"
               description={canDelete ? 'This deletes the file permanently.' : undefined}
               okText="Remove"
               okButtonProps={{ danger: true }}
               cancelText="Cancel"
               onConfirm={() => onRemove()}
+              data-testid="file-card-remove-confirm"
             >
-              <Tooltip title="Remove">
+              <Tooltip content="Remove">
                 <Button
-                  danger
-                  size="small"
-                  icon={<DeleteOutlined />}
+                  variant="destructive"
+                  size="sm"
+                  icon={<Trash2 />}
                   aria-label="Remove file"
                   className="bg-transparent"
+                  data-testid="file-card-remove-btn"
                 />
               </Tooltip>
-            </Popconfirm>
+            </Confirm>
           </div>
         )}
 
         {/* File size badge */}
         <Text
-          className="absolute bottom-1 right-1 rounded px-1 !text-[9px]"
-          style={{ backgroundColor: token.colorBgContainer }}
+          className="absolute bottom-1 right-1 rounded px-1 !text-[9px] bg-card"
         >
           {formatFileSize(file.file_size)}
         </Text>

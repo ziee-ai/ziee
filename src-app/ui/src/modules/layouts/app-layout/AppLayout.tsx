@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { LeftSidebar } from '@/modules/layouts/app-layout/components/LeftSidebar'
 import { SidebarToggleButton } from '@/modules/layouts/app-layout/components/SidebarToggleButton'
-import { theme } from 'antd'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import tinycolor from 'tinycolor2'
 import 'overlayscrollbars/overlayscrollbars.css'
@@ -25,7 +24,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const appBanners = [...(slots.get('appBanners') || [])].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
-  const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
 
   const sidebarRef = useRef<HTMLDivElement>(null)
@@ -212,8 +210,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     //set root document background color based on theme
     const root = document.documentElement
-    root.style.backgroundColor = token.colorBgContainer
-  }, [token.colorBgContainer])
+    root.style.backgroundColor = 'hsl(var(--card))'
+  }, [])
 
   // Visual viewport listener for mobile keyboard adjustments
   //
@@ -223,8 +221,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // animating in/out, so:
   //   * the unconditional scrollTop reset yanked the user to the top
   //     mid-conversation every time they tapped an input;
-  //   * the body height write competed with `.ant-app { height: 100dvh }`
-  //     in index.css, causing layout thrash.
+  //   * the body height write competed with the global app-root
+  //     `height: 100dvh` rule in index.css, causing layout thrash.
   //
   // Fix (audit 02 B-4): only write body height when the viewport has
   // actually shrunk by more than ~100px from window.innerHeight (a
@@ -265,43 +263,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const previousBodyOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
-    // Remember what was focused before the overlay opened so we can restore
-    // it on close (standard dialog focus management).
-    const previouslyFocused = document.activeElement as HTMLElement | null
-    const sidebar = document.getElementById('app-sidebar')
-
-    const focusable = (): HTMLElement[] => {
-      if (!sidebar) return []
-      return Array.from(
-        sidebar.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter(el => el.offsetParent !== null)
-    }
-
-    // Move focus into the dialog on open.
-    focusable()[0]?.focus()
-
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         Stores.AppLayout.setSidebarCollapsed(true)
-        return
-      }
-      if (e.key !== 'Tab') return
-      // Trap Tab focus inside the sidebar dialog.
-      const items = focusable()
-      if (items.length === 0) return
-      const first = items[0]
-      const last = items[items.length - 1]
-      const active = document.activeElement as HTMLElement | null
-      if (e.shiftKey) {
-        if (active === first || !sidebar?.contains(active)) {
-          e.preventDefault()
-          last.focus()
-        }
-      } else if (active === last || !sidebar?.contains(active)) {
-        e.preventDefault()
-        first.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -309,8 +273,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return () => {
       document.body.style.overflow = previousBodyOverflow
       document.removeEventListener('keydown', onKeyDown)
-      // Restore focus to the trigger that opened the overlay.
-      previouslyFocused?.focus?.()
     }
   }, [windowMinSize.xs, isSidebarCollapsed])
 
@@ -327,20 +289,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div
-      className="h-full w-screen flex overflow-hidden"
-      style={{
-        backgroundColor: token.colorBgContainer,
-      }}
-    >
-      {/* Keyboard skip link — first focusable element; jumps past the
-          sidebar nav straight to the main content landmark. */}
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-3 focus:py-1 focus:rounded focus:bg-white focus:shadow"
-      >
-        Skip to content
-      </a>
+    <div className="h-full w-screen flex overflow-hidden bg-card">
       {/* Mask for Left Sidebar (mobile-overlay mode).
         *
         * ALWAYS mounted (no `{xs && ...}` gate) — otherwise crossing
@@ -371,8 +320,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           ? { 'data-sidebar-mask-active': '' }
           : {})}
         className={'fixed h-full w-full z-3'}
+        // Runtime-computed: derives from the `--card` theme token via tinycolor with a
+        // state-driven alpha (0.7 when the mobile overlay is open, else 0) — not a static hue.
+        data-allow-custom-color
         style={{
-          backgroundColor: tinycolor(token.colorBgContainer)
+          backgroundColor: tinycolor('hsl(var(--card))')
             .setAlpha(windowMinSize.xs && !isSidebarCollapsed ? 0.7 : 0)
             .toRgbString(),
           pointerEvents:
@@ -394,6 +346,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         aria-hidden={
           windowMinSize.xs ? isSidebarCollapsed : undefined
         }
+        // Neutral, state-gated drop shadow (rgba black, not a brand hue) that is part of the
+        // combined inline transition below; value is computed per collapse/viewport state.
+        data-allow-custom-color
         // STABLE style shape: same property set in every state, only
         // the VALUES change. The previous version spread an entire
         // alternate style object when `xs` flipped — which swapped
@@ -424,7 +379,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             : 'translateX(0)',
           backdropFilter: windowMinSize.xs ? 'blur(8px)' : undefined,
           borderRight: windowMinSize.xs
-            ? `1px solid ${token.colorBorderSecondary}`
+            ? `1px solid hsl(var(--border))`
             : undefined,
           borderRadius: windowMinSize.xs ? 12 : undefined,
           // Box-shadow extends ~16px past the wrapper edges. When the
@@ -470,16 +425,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       />
 
       {/* Main Content Area */}
-      <div
-        role="main"
-        className="flex-1 flex flex-col relative overflow-hidden"
-        style={{
-          // Pure white content surface — `colorBgLayout` would pick
-          // up the sidebar's off-white, washing the chat / settings
-          // panes into the wrong tier of the surface hierarchy.
-          backgroundColor: token.colorBgContainer,
-        }}
-      >
+      <main className="flex-1 flex flex-col relative overflow-hidden bg-card">
         {/* App-wide banners (e.g. the admin "update available" notice).
             Contributed via the `appBanners` slot, so bundles that don't load a
             contributor (e.g. desktop drops server-update) render nothing. */}
@@ -488,15 +434,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         ))}
         {/* Content */}
         <div className="flex-1 overflow-hidden relative">
-          <div
+          <section
             ref={mainContentRef}
-            id="main-content"
-            role="main"
-            tabIndex={-1}
             className="w-full h-full overflow-hidden relative"
           >
             {children}
-          </div>
+          </section>
         </div>
         {!isSidebarCollapsed && (
           <div
@@ -509,7 +452,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             onMouseDown={handleMouseDown}
           />
         )}
-      </div>
+      </main>
     </div>
   )
 }

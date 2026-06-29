@@ -1,8 +1,8 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Divider, Menu, theme } from 'antd'
-import type { MenuProps } from 'antd'
 import type { CSSProperties } from 'react'
 import { useMemo } from 'react'
+import { Menu, Separator } from '@/components/ui'
+import type { MenuItem } from '@/components/ui'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { SidebarHeaderSpacer } from '@/modules/layouts/app-layout/components/SidebarHeaderSpacer'
 import { Stores } from '@/core/stores'
@@ -13,8 +13,6 @@ import type {
   SidebarToolItem,
   SidebarActionItem,
 } from '@/modules/layouts/app-layout/types'
-
-type MenuItem = NonNullable<MenuProps['items']>[number]
 
 /**
  * Pick the most-specific item whose `path` is a prefix of the current
@@ -54,7 +52,6 @@ interface LeftSidebarProps {
 export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {}) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
   const { slots } = Stores.ModuleSystem
   const { isSidebarCollapsed } = Stores.AppLayout
@@ -96,27 +93,25 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
   // On desktop, collapsed means icon-only mode (not fully hidden)
   const isIconOnly = isSidebarCollapsed && !windowMinSize.xs
 
-  // Build antd Menu item lists per group. Action / tool / nav are
-  // separate Menus because the widget slots (`sidebarContent`,
-  // `sidebarBottom`, `sidebarFooter`) sit BETWEEN them as their own
-  // flow elements. Within each Menu, antd handles hover/active/focus
-  // tokens, keyboard nav, and the icon-only tooltip on its own.
+  // Build kit Menu item lists per group. In icon-only mode, labels are
+  // omitted so only the icon is rendered (kit Menu has no inlineCollapsed
+  // equivalent; tooltips on hover are not available in icon-only mode).
   const primaryItems: MenuItem[] = sortedPrimaryActions.map(a => ({
     key: a.id,
     icon: a.icon,
-    label: a.label,
+    label: isIconOnly ? null : a.label,
   }))
 
   const navigationItems: MenuItem[] = sortedNavigation.map(n => ({
     key: n.id,
     icon: n.icon,
-    label: n.label,
+    label: isIconOnly ? null : n.label,
   }))
 
   const toolsItems: MenuItem[] = sortedTools.map(t => ({
     key: t.id,
     icon: t.icon,
-    label: t.label,
+    label: isIconOnly ? null : t.label,
   }))
 
   const navSelectedKey = selectedKeyForGroup(location.pathname, sortedNavigation)
@@ -130,32 +125,6 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
       .filter((a): a is SidebarActionItem & { to: string } => Boolean(a.to))
       .map(a => ({ id: a.id, path: a.to })),
   )
-
-  // Shared Menu props — transparent background to inherit the sidebar
-  // surface, no right border (the sidebar container owns its own
-  // border). Items keep antd's default margin-from-panel +
-  // rounded-pill selection look, but the CONTENT inside each item is
-  // tight: 28px row, 8px horizontal padding (vs antd's default ~16px).
-  const menuClass =
-    '!bg-transparent !border-none ' +
-    '[&_.ant-menu-item]:!h-7 [&_.ant-menu-item]:!leading-[28px] ' +
-    // Force BOTH width and margin together so antd's own
-    // `width: calc(100% - 8px)` and small default margin can't
-    // re-assert — without the width override, an `mx-*` on the item
-    // pushes the left in but the right keeps overflowing to the
-    // box edge. Width: 100% minus the 16px combined margin (8px
-    // each side) puts the right edge exactly where we want.
-    '[&_.ant-menu-item]:!mx-2 ' +
-    '[&_.ant-menu-item]:!w-[calc(100%-1rem)] ' +
-    '[&_.ant-menu-item]:!pl-2 [&_.ant-menu-item]:!pr-2 ' +
-    '[&_.ant-menu-item]:!py-0 ' +
-    '[&_.ant-menu-item]:!rounded-md ' +
-    '[&_.ant-menu-title-content]:!py-0 ' +
-    '[&_.ant-menu-item-group-title]:!px-3 [&_.ant-menu-item-group-title]:!pt-0 ' +
-    '[&_.ant-menu-item-group-title]:!pb-0.5 ' +
-    '[&_.ant-menu-item-group-title]:!text-xs ' +
-    '[&_.ant-menu-item-group-title]:!font-semibold ' +
-    '[&_.ant-menu-item-group-title]:!tracking-wide'
 
   const handleNavMenuClick = (key: string) => {
     const item = sortedNavigation.find(n => n.id === key)
@@ -177,18 +146,12 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
   return (
     <div
       className={
-        'h-full flex flex-col overflow-hidden' +
+        'h-full flex flex-col overflow-hidden bg-muted/40' +
+        (windowMinSize.xs ? '' : ' border-r border-border') +
         (rootClassName ? ' ' + rootClassName : '')
       }
       style={{
         width: '100%',
-        borderRight: windowMinSize.xs
-          ? 'none'
-          : '1px solid ' + token.colorBorderSecondary,
-        // Sidebar uses the layout surface (off-white) so it reads as
-        // a fractionally recessed panel against the main content
-        // pane (`colorBgContainer`, pure white).
-        backgroundColor: token.colorBgLayout,
         // Wrapper overrides win — applied last.
         ...rootStyle,
       }}
@@ -198,24 +161,25 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
       {/* Primary Actions — no section header, like the original. */}
       {primaryItems.length > 0 && (
         <Menu
-          mode="inline"
-          inlineCollapsed={isIconOnly}
-          className={menuClass}
-          selectedKeys={primarySelectedKey ? [primarySelectedKey] : []}
+          mode="vertical"
+          aria-label="Primary actions"
+          data-testid="layout-sidebar-primary-actions-menu"
+          selectedKey={primarySelectedKey}
           items={primaryItems}
-          onClick={({ key }) => handlePrimaryMenuClick(String(key))}
+          onSelect={handlePrimaryMenuClick}
+          className="px-1"
         />
       )}
 
       {/* Navigation — section header rendered as a Menu item group so
-          antd handles the collapsed-mode hide + token-based typography. */}
+          kit Menu handles the group title + token-based typography. */}
       {navigationItems.length > 0 && (
         <div className="mt-2">
           <Menu
-            mode="inline"
-            inlineCollapsed={isIconOnly}
-            className={menuClass}
-            selectedKeys={navSelectedKey ? [navSelectedKey] : []}
+            mode="vertical"
+            aria-label="Primary navigation"
+            data-testid="layout-sidebar-nav-menu"
+            selectedKey={navSelectedKey}
             items={[
               {
                 type: 'group',
@@ -223,7 +187,8 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
                 children: navigationItems,
               },
             ]}
-            onClick={({ key }) => handleNavMenuClick(String(key))}
+            onSelect={handleNavMenuClick}
+            className="px-1"
           />
         </div>
       )}
@@ -248,10 +213,10 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
       {toolsItems.length > 0 && (
         <div className="mt-2">
           <Menu
-            mode="inline"
-            inlineCollapsed={isIconOnly}
-            className={menuClass}
-            selectedKeys={toolsSelectedKey ? [toolsSelectedKey] : []}
+            mode="vertical"
+            aria-label="Tools navigation"
+            data-testid="layout-sidebar-tools-menu"
+            selectedKey={toolsSelectedKey}
             items={[
               {
                 type: 'group',
@@ -259,7 +224,8 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
                 children: toolsItems,
               },
             ]}
-            onClick={({ key }) => handleToolsMenuClick(String(key))}
+            onSelect={handleToolsMenuClick}
+            className="px-1"
           />
 
           {/* Bottom Widgets (hidden in icon-only mode) */}
@@ -280,7 +246,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
       {/* Footer Slot */}
       {footerWidgets.length > 0 && (
         <>
-          <Divider className="!m-0" />
+          <Separator className="my-0" />
           <div className="py-2">
             {footerWidgets
               .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))

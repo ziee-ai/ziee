@@ -1,20 +1,30 @@
-import { App, Button, Flex, Form, Input, Switch } from 'antd'
+import { Button, Flex, Form, FormField, useForm, zodResolver, Input, Switch, message } from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type UpdateUserRequest } from '@/api-client/types'
 import { useEffect } from 'react'
 
+const editUserSchema = z.object({
+  username: z.string().min(1, 'Please enter username'),
+  display_name: z.string().optional(),
+  is_active: z.boolean(),
+})
+type EditUserValues = z.infer<typeof editUserSchema>
+
 export function EditUserDrawer() {
-  const { message } = App.useApp()
   const { isOpen, editingUser } = Stores.EditUserDrawer
-  const [editForm] = Form.useForm()
+  const editForm = useForm<EditUserValues>({
+    resolver: zodResolver(editUserSchema),
+    defaultValues: { username: '', display_name: '', is_active: true },
+  })
   const canEdit = usePermission(Permissions.UsersEdit)
 
   // Update form when editingUser changes
   useEffect(() => {
     if (editingUser) {
-      editForm.setFieldsValue({
+      editForm.reset({
         username: editingUser.username,
         display_name: editingUser.display_name ?? '',
         is_active: editingUser.is_active,
@@ -22,7 +32,7 @@ export function EditUserDrawer() {
     }
   }, [editingUser, editForm])
 
-  const handleEditUser = async (values: any) => {
+  const handleEditUser = async (values: EditUserValues) => {
     if (!editingUser) return
 
     try {
@@ -35,7 +45,7 @@ export function EditUserDrawer() {
       //     managed via group assignment only.
       const updateData: UpdateUserRequest = {
         username: values.username,
-        display_name: values.display_name || null,
+        display_name: values.display_name || undefined,
         is_active: values.is_active,
       }
 
@@ -43,7 +53,7 @@ export function EditUserDrawer() {
 
       message.success('User updated successfully')
       Stores.EditUserDrawer.closeEditUserDrawer()
-      editForm.resetFields()
+      editForm.reset()
     } catch (error) {
       console.error('Failed to update user:', error)
       // Error is handled by the store
@@ -56,7 +66,7 @@ export function EditUserDrawer() {
       open={isOpen}
       onClose={() => {
         Stores.EditUserDrawer.closeEditUserDrawer()
-        editForm.resetFields()
+        editForm.reset()
       }}
       footer={null}
       size={600}
@@ -66,22 +76,19 @@ export function EditUserDrawer() {
         name="edit-user-form"
         form={editForm}
         layout="vertical"
-        onFinish={handleEditUser}
+        onSubmit={handleEditUser}
         disabled={!canEdit}
+        data-testid="user-edit-form"
       >
-        <Form.Item
-          name="username"
-          label="Username"
-          rules={[{ required: true, message: 'Please enter username' }]}
-        >
-          <Input placeholder="Enter username" />
-        </Form.Item>
-        <Form.Item name="display_name" label="Display Name">
-          <Input placeholder="Enter display name (optional)" />
-        </Form.Item>
-        <Form.Item name="is_active" label="Active" valuePropName="checked">
-          <Switch aria-label="Active" />
-        </Form.Item>
+        <FormField name="username" label="Username" required>
+          <Input placeholder="Enter username" data-testid="user-edit-username-input" />
+        </FormField>
+        <FormField name="display_name" label="Display Name">
+          <Input placeholder="Enter display name (optional)" data-testid="user-edit-display-name-input" />
+        </FormField>
+        <FormField name="is_active" label="Active" valuePropName="checked">
+          <Switch data-testid="user-edit-active-switch" />
+        </FormField>
         {/*
          * Email + Permissions removed from this form per security work:
          * - Email: changing without confirmation enables OAuth takeover
@@ -91,23 +98,23 @@ export function EditUserDrawer() {
          *   themselves wildcard '*' (03-user F-01). Use group
          *   assignment (POST /api/groups/{id}/users) instead.
          */}
-        <Form.Item className="mb-0">
-          <Flex className="justify-end gap-2">
-            <Button
-              onClick={() => {
-                Stores.EditUserDrawer.closeEditUserDrawer()
-                editForm.resetFields()
-              }}
-            >
-              {canEdit ? 'Cancel' : 'Close'}
+        <Flex className="justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              Stores.EditUserDrawer.closeEditUserDrawer()
+              editForm.reset()
+            }}
+            data-testid="user-edit-cancel-button"
+          >
+            {canEdit ? 'Cancel' : 'Close'}
+          </Button>
+          {canEdit && (
+            <Button type="submit" data-testid="user-edit-submit-button">
+              Save
             </Button>
-            {canEdit && (
-              <Button type="primary" htmlType="submit">
-                Save
-              </Button>
-            )}
-          </Flex>
-        </Form.Item>
+          )}
+        </Flex>
       </Form>
     </Drawer>
   )

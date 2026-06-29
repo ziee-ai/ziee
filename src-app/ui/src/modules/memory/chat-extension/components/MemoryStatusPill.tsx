@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { App, Tooltip, Tag, Dropdown } from 'antd'
-import { BulbOutlined, BulbFilled, EyeInvisibleOutlined } from '@ant-design/icons'
+import { Tooltip, Dropdown } from '@/components/ui'
+import { message } from '@/components/ui'
+import { EyeOff, Lightbulb } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 
@@ -18,7 +19,6 @@ type Mode = 'inherit' | 'on' | 'off'
  * the Conversation type (chat no longer knows memory's vocabulary).
  */
 export function MemoryStatusPill() {
-  const { message } = App.useApp()
   // CRITICAL: read every Stores.X.field at the TOP, before any early
   // return. Each proxy access fires a useEffect; reading conditionally
   // after a guard triggers "Rendered more hooks than during the
@@ -79,13 +79,13 @@ export function MemoryStatusPill() {
     {
       key: 'inherit',
       label: 'Inherit (follow account setting)',
-      icon: <BulbOutlined />,
+      icon: <Lightbulb />,
     },
-    { key: 'on', label: 'Always retrieve memories', icon: <BulbFilled /> },
+    { key: 'on', label: 'Always retrieve memories', icon: <Lightbulb /> },
     {
       key: 'off',
       label: "Don't use memories here",
-      icon: <EyeInvisibleOutlined />,
+      icon: <EyeOff />,
     },
   ]
 
@@ -94,37 +94,22 @@ export function MemoryStatusPill() {
     on: 'Memory: on',
     off: 'Memory: off',
   }
-  const colorByMode: Record<Mode, string> = {
-    inherit: 'default',
-    on: 'green',
-    off: 'red',
-  }
 
   return (
-    <Tooltip title="Per-conversation memory retrieval override">
+    <Tooltip content="Per-conversation memory retrieval override">
       <Dropdown
-        menu={{
-          items,
-          selectable: true,
-          selectedKeys: [mode],
-          onClick: ({ key }) => setRemote(key as Mode),
-        }}
-        // Click trigger (not the default hover) so the focusable Tag opens the
-        // menu via keyboard (Enter/Space/ArrowDown) — hover-only is not
-        // keyboard accessible. Mirrors SummarizationStatusPill.
-        trigger={['click']}
+        data-testid="memory-status-pill-dropdown"
+        items={items}
+        onSelect={(key) => setRemote(key as Mode)}
         disabled={loading}
       >
-        <Tag
-          role="button"
-          tabIndex={0}
-          color={colorByMode[mode]}
-          icon={mode === 'off' ? <EyeInvisibleOutlined /> : <BulbOutlined />}
-          aria-label={`Memory mode: ${labelByMode[mode]}`}
-          style={{ cursor: 'pointer', margin: 0 }}
+        <span
+          className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium"
+          style={{ cursor: 'pointer' }}
         >
+          {mode === 'off' ? <EyeOff /> : <Lightbulb />}
           {labelByMode[mode]}
-        </Tag>
+        </span>
       </Dropdown>
     </Tooltip>
   )

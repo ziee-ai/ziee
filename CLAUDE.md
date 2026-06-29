@@ -1420,14 +1420,30 @@ When porting from reference project:
 
 ## Quick Reference
 
-### Generate OpenAPI
+### Generate OpenAPI + TypeScript types
+
+The canonical regen is `just openapi-regen` (server spec → `ui/`, desktop spec →
+`desktop/ui/`). Each binary now emits **both** `openapi/openapi.json` **and**
+`src/api-client/types.ts` in one pass — the `types.ts` codegen is a Rust port of
+the former `ui/openapi/generate-endpoints.ts`, living in
+`server/src/openapi/emit_ts.rs`. There is **no** Node/tsx codegen step anymore
+(the `generate-openapi` npm scripts + both `generate-endpoints.ts` are gone).
 
 ```bash
+# Single binary (server UI spec + types):
 cd src-app/server
-CONFIG_FILE=config/dev.yaml cargo run -- --generate-openapi
+CONFIG_FILE=config/dev.yaml cargo run -- --generate-openapi ui/openapi
+# → writes ui/openapi/openapi.json AND ui/src/api-client/types.ts
 ```
 
-Generates: `ui/src/api-client/openapi.json` and `ui/src/api-client/types.ts`
+`emit_ts.rs` is guarded by a byte-for-byte golden parity test
+(`openapi::emit_ts::tests::types_ts_parity`): it regenerates `types.ts` from the
+committed `openapi.json` and asserts it matches the committed `types.ts`, so any
+backend type change that isn't re-generated fails the test. Field/type/enum
+**doc-comments flow through as JSDoc** (schemars already carries them in the
+spec). Parity-sensitive: the generator preserves JSON object insertion order
+(via `indexmap`) and replicates the old JS sort semantics — edit it only with the
+golden test green.
 
 ### Run Tests
 

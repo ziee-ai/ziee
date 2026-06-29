@@ -24,11 +24,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           }}
         >
           <h1 style={{ margin: 0, fontSize: 24 }}>Something went wrong</h1>
-          <p style={{ margin: 0, color: '#666', maxWidth: 480, textAlign: 'center' }}>
+          {/* bootstrap/crash-fallback: self-contained inline colors, must not depend on the token CSS pipeline */}
+          <p data-allow-custom-color style={{ margin: 0, color: '#666', maxWidth: 480, textAlign: 'center' }}>
             The application encountered an unexpected error. You can try
             again, or reload the page if the problem persists.
           </p>
+          {/* bootstrap/crash-fallback: self-contained inline colors, must not depend on the token CSS pipeline */}
           <pre
+            data-allow-custom-color
             style={{
               margin: 0,
               padding: 12,
@@ -43,8 +46,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {error.message}
           </pre>
           <div style={{ display: 'flex', gap: 12 }}>
+            {/* biome-ignore lint: root crash-fallback must be self-contained (inline styles, no kit/theme/CSS dependency) so it still renders when the design system is what failed */}
             <button
               onClick={reset}
+              data-allow-custom-color
               style={{
                 padding: '8px 16px',
                 border: '1px solid #1677ff',
@@ -56,8 +61,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             >
               Try again
             </button>
+            {/* biome-ignore lint: root crash-fallback must be self-contained (inline styles, no kit/theme/CSS dependency) so it still renders when the design system is what failed */}
             <button
               onClick={() => window.location.reload()}
+              data-allow-custom-color
               style={{
                 padding: '8px 16px',
                 border: '1px solid #d9d9d9',

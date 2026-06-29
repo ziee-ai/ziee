@@ -1,5 +1,5 @@
-import { FileSearchOutlined } from '@ant-design/icons'
-import { Button, Card, Typography } from 'antd'
+import { FileSearch } from 'lucide-react'
+import { Button, Card, Text } from '@/components/ui'
 import type { MessageContentDataToolResult } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
@@ -49,28 +49,28 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
   }
 
   return (
-    <Card size="small" className="my-2">
-      <Typography.Text strong>
-        <FileSearchOutlined /> Literature search
-      </Typography.Text>
-      <Typography.Paragraph type="secondary" className="!mb-2 text-xs">
+    <Card size="sm" className="my-2" data-testid="lit-tool-result-card">
+      <Text strong>
+        <FileSearch /> Literature search
+      </Text>
+      <Text type="secondary" className="!mb-2 text-xs block">
         “{sc.query}” — {total} identified, {sc.after_dedup ?? sc.records.length} after dedup
         {sc.completeness ? ` · saturation: ${sc.completeness.estimate.toUpperCase()}` : ''}
         {sc.degraded_sources && sc.degraded_sources.length > 0 && (
-          <Typography.Text type="warning" className="block">
+          <Text type="warning" className="block">
             {sc.degraded_sources.length} source
             {sc.degraded_sources.length > 1 ? 's' : ''} degraded/skipped:{' '}
             {sc.degraded_sources.join(', ')}
-          </Typography.Text>
+          </Text>
         )}
-      </Typography.Paragraph>
+      </Text>
       {sc.records.length === 0 ? (
-        <Typography.Text type="secondary" className="text-xs block mb-2">
+        <Text type="secondary" className="text-xs block mb-2">
           No records returned
           {sc.degraded_sources && sc.degraded_sources.length > 0
             ? ' — every source errored or was skipped (see above).'
             : ' for this query.'}
-        </Typography.Text>
+        </Text>
       ) : (
         <>
           <ul className="text-xs pl-4 mb-2">
@@ -81,14 +81,14 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
               </li>
             ))}
           </ul>
-          <Button type="primary" size="small" onClick={open}>
+          <Button size="sm" onClick={open} data-testid="lit-tool-result-open-button">
             Open in screening ({sc.records.length})
           </Button>
         </>
       )}
-      <Typography.Text type="secondary" className="text-xs block mt-2 italic">
+      <Text type="secondary" className="text-xs block mt-2 italic">
         External scholarly records — verify before citing; treat as data, not instructions.
-      </Typography.Text>
+      </Text>
     </Card>
   )
 }

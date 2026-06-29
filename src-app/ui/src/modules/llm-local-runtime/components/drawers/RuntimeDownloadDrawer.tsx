@@ -1,17 +1,44 @@
 import React from 'react'
-import { App, Button, Form, Input, Select, Space } from 'antd'
+import {
+  Button,
+  Form,
+  FormField,
+  Input,
+  Select,
+  Space,
+  message,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import type { DownloadVersionRequest } from '@/api-client/types'
 
+const schema = z.object({
+  engine: z.string(),
+  version: z.string().min(1, 'Version is required'),
+  platform: z.string().min(1, 'Platform is required'),
+  arch: z.string().min(1, 'Architecture is required'),
+  backend: z.string().min(1, 'Backend is required'),
+})
+
 export function RuntimeDownloadDrawer() {
-  const { message } = App.useApp()
   const { open, engine, closeDrawer } = Stores.RuntimeDownloadDrawer
   const { updateChecks, checking } = Stores.RuntimeUpdate
   // Server-host platform/arch from the GPU-detection store — always available
   // (local probe), unlike the update check which hits github.com and can fail.
   const { gpu } = Stores.RuntimeConfig
-  const [form] = Form.useForm<DownloadVersionRequest>()
+  const form = useForm<DownloadVersionRequest>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      engine: '',
+      version: 'latest',
+      platform: '',
+      arch: '',
+      backend: 'cpu',
+    },
+  })
   const [submitting, setSubmitting] = React.useState(false)
 
   // Backend artifacts depend on the SERVER host (where the engine runs), not
@@ -46,11 +73,11 @@ export function RuntimeDownloadDrawer() {
   // valid backend).
   React.useEffect(() => {
     if (open && engine && (platform || arch)) {
-      form.setFieldsValue({
+      form.reset({
         engine,
         version: 'latest',
-        platform,
-        arch,
+        platform: platform ?? '',
+        arch: arch ?? '',
         backend: recommended ?? backendOptions[0] ?? 'cpu'
       })
     }
@@ -62,7 +89,7 @@ export function RuntimeDownloadDrawer() {
       await Stores.RuntimeVersion.downloadVersion(values)
       message.success('Runtime version download started')
       closeDrawer()
-      form.resetFields()
+      form.reset()
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Download failed')
     } finally {
@@ -72,7 +99,7 @@ export function RuntimeDownloadDrawer() {
 
   const handleClose = () => {
     closeDrawer()
-    form.resetFields()
+    form.reset()
   }
 
   return (
@@ -83,8 +110,8 @@ export function RuntimeDownloadDrawer() {
       size={600}
       footer={
         <Space>
-          <Button onClick={handleClose}>Cancel</Button>
-          <Button type="primary" onClick={() => form.submit()} loading={submitting}>
+          <Button variant="outline" onClick={handleClose} data-testid="llmrt-download-cancel-btn">Cancel</Button>
+          <Button onClick={form.handleSubmit(handleSubmit)} loading={submitting} data-testid="llmrt-download-submit-btn">
             Download
           </Button>
         </Space>
@@ -93,45 +120,52 @@ export function RuntimeDownloadDrawer() {
       <Form
         form={form}
         layout="vertical"
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
+        data-testid="llmrt-download-form"
       >
-        <Form.Item
+        <FormField
           label="Version"
           name="version"
-          rules={[{ required: true, message: 'Version is required' }]}
-          help="Enter 'latest' for the newest version, or a specific version tag (e.g., 'b4359')"
+          required
+          description="Enter 'latest' for the newest version, or a specific version tag (e.g., 'b4359')"
         >
-          <Input placeholder="latest" />
-        </Form.Item>
+          <Input placeholder="latest" data-testid="llmrt-download-version" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           label="Platform"
           name="platform"
-          rules={[{ required: true, message: 'Platform is required' }]}
+          required
         >
-          <Select>
-            <Select.Option value="linux">Linux</Select.Option>
-            <Select.Option value="macos">macOS</Select.Option>
-            <Select.Option value="windows">Windows</Select.Option>
-          </Select>
-        </Form.Item>
+          <Select
+            data-testid="llmrt-download-platform"
+            options={[
+              { value: 'linux', label: 'Linux' },
+              { value: 'macos', label: 'macOS' },
+              { value: 'windows', label: 'Windows' },
+            ]}
+          />
+        </FormField>
 
-        <Form.Item
+        <FormField
           label="Architecture"
           name="arch"
-          rules={[{ required: true, message: 'Architecture is required' }]}
+          required
         >
-          <Select>
-            <Select.Option value="x86_64">x86_64</Select.Option>
-            <Select.Option value="aarch64">aarch64</Select.Option>
-          </Select>
-        </Form.Item>
+          <Select
+            data-testid="llmrt-download-arch"
+            options={[
+              { value: 'x86_64', label: 'x86_64' },
+              { value: 'aarch64', label: 'aarch64' },
+            ]}
+          />
+        </FormField>
 
-        <Form.Item
+        <FormField
           label="Backend"
           name="backend"
-          rules={[{ required: true, message: 'Backend is required' }]}
-          help={
+          required
+          description={
             backendOptions.length > 0
               ? `Backends published for your host (${platform ?? '?'}/${arch ?? '?'}).`
               : isChecking
@@ -140,6 +174,7 @@ export function RuntimeDownloadDrawer() {
           }
         >
           <Select
+            data-testid="llmrt-download-backend"
             loading={isChecking}
             options={(backendOptions.length > 0 ? backendOptions : ['cpu']).map(
               b => ({
@@ -148,11 +183,7 @@ export function RuntimeDownloadDrawer() {
               })
             )}
           />
-        </Form.Item>
-
-        <Form.Item name="engine" hidden>
-          <Input />
-        </Form.Item>
+        </FormField>
       </Form>
     </Drawer>
   )

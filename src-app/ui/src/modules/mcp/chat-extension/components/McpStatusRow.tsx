@@ -1,5 +1,5 @@
-import { Tag } from 'antd'
-import { ToolOutlined } from '@ant-design/icons'
+import { Tag } from '@/components/ui'
+import { Wrench } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
 /**
@@ -30,9 +30,8 @@ export function McpStatusRow() {
         return (
           <Tag
             key={serverId}
-            color="blue"
-            icon={<ToolOutlined />}
-            closable
+            tone="info"
+            icon={<Wrench />}
             onClose={async () => {
               mcpStore.deselectServer(serverId)
               if (currentConversationId) {
@@ -44,7 +43,8 @@ export function McpStatusRow() {
                 await mcpStore.saveUserDefaults(null, enabledServerIds)
               }
             }}
-            style={{ margin: 0 }}
+            closeLabel="Remove"
+            className="m-0"
             data-testid={`mcp-chip-${serverId}`}
           >
             {server.display_name}

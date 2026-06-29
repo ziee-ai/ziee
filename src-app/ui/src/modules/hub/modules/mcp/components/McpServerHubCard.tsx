@@ -1,11 +1,5 @@
-import { App, Card, Tag, Tooltip, Typography, Button, Flex } from 'antd'
-import {
-  DownloadOutlined,
-  GlobalOutlined,
-  GithubOutlined,
-  EyeOutlined,
-  CopyOutlined,
-} from '@ant-design/icons'
+import { Card, Tag, Tooltip, Text, Button, Flex, message } from '@/components/ui'
+import { Download, Globe, GitBranch, Eye, Copy } from 'lucide-react'
 import {
   Permissions,
   type HubMCPServer,
@@ -17,8 +11,6 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 import type { McpServerDrawerPrefill } from '@/modules/mcp/stores/McpServerDrawer.store'
-
-const { Text } = Typography
 
 interface McpServerHubCardProps {
   server: HubMCPServer
@@ -40,7 +32,6 @@ function deriveSlug(name: string): string {
 }
 
 export function McpServerHubCard({ server }: McpServerHubCardProps) {
-  const { message } = App.useApp()
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -161,10 +152,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         'create',
         prefillFromHub(),
       )
-      message.info({
-        content: 'Review settings and configure any required secrets, then save.',
-        duration: 5,
-      })
+      message.info('Review settings and configure any required secrets, then save.')
     } finally {
       setInstalling(false)
     }
@@ -178,10 +166,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         'create-system',
         prefillFromHub(),
       )
-      message.info({
-        content: 'Review settings and configure any required secrets, then save.',
-        duration: 5,
-      })
+      message.info('Review settings and configure any required secrets, then save.')
     } finally {
       setInstallingSystem(false)
     }
@@ -206,7 +191,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 <Flex className="gap-2 items-center">
                   <Text className="font-medium cursor-pointer">{displayTitle}</Text>
                   {server.version && (
-                    <Tag className="text-xs !m-0">v{server.version}</Tag>
+                    <Tag className="text-xs !m-0" data-testid={`hub-mcp-version-tag-${server.name}`}>v{server.version}</Tag>
                   )}
                   {/* Provenance badge: ingested MCP registry entries
                       carry `_meta["io.modelcontextprotocol.registry"]`. */}
@@ -216,24 +201,25 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                       'io.modelcontextprotocol.registry'
                     ]
                   ) && (
-                    <Tooltip title="From the official Model Context Protocol registry">
-                      <Tag color="cyan" className="text-xs !m-0">
+                    <Tooltip content="From the official Model Context Protocol registry">
+                      <Tag tone="info" className="text-xs !m-0" data-testid={`hub-mcp-registry-tag-${server.name}`}>
                         MCP Registry
                       </Tag>
                     </Tooltip>
                   )}
-                  <Tag className="text-xs">{transportLabel}</Tag>
-                  {installing && <Tag color="blue">Installing...</Tag>}
-                  {isAlreadyInstalled && <Tag color="green">Installed</Tag>}
+                  <Tag className="text-xs" data-testid={`hub-mcp-transport-tag-${server.name}`}>{transportLabel}</Tag>
+                  {installing && <Tag tone="info" data-testid={`hub-mcp-installing-tag-${server.name}`}>Installing...</Tag>}
+                  {isAlreadyInstalled && <Tag tone="success" data-testid={`hub-mcp-installed-tag-${server.name}`}>Installed</Tag>}
                   {isAlreadyInstalledAsSystem && (
-                    <Tag color="purple">System installed</Tag>
+                    <Tag tone="info" data-testid={`hub-mcp-system-installed-tag-${server.name}`}>System installed</Tag>
                   )}
                 </Flex>
               </div>
               <div className="flex gap-1 items-center justify-end">
                 {homepageUrl && (
                   <Button
-                    icon={<GlobalOutlined />}
+                    icon={<Globe />}
+                    data-testid={`hub-mcp-homepage-btn-${server.name}`}
                     onClick={e => {
                       e.stopPropagation()
                       window.open(homepageUrl, '_blank')
@@ -242,7 +228,8 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 )}
                 {repoUrl && (
                   <Button
-                    icon={<GithubOutlined />}
+                    icon={<GitBranch />}
+                    data-testid={`hub-mcp-repo-btn-${server.name}`}
                     onClick={e => {
                       e.stopPropagation()
                       window.open(repoUrl, '_blank')
@@ -252,7 +239,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 {multiUserMode &&
                   (isAlreadyInstalled ? (
                     <Button
-                      icon={<EyeOutlined />}
+                      icon={<Eye />}
                       onClick={e => {
                         e.stopPropagation()
                         navigate('/settings/mcp-servers')
@@ -263,8 +250,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     </Button>
                   ) : canInstall ? (
                     <Button
-                      type="primary"
-                      icon={<DownloadOutlined />}
+                      icon={<Download />}
                       onClick={e => {
                         e.stopPropagation()
                         handleInstall()
@@ -278,7 +264,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   ) : null)}
                 {canInstallSystem && (
                   <Button
-                    icon={<CopyOutlined />}
+                    icon={<Copy />}
                     onClick={e => {
                       e.stopPropagation()
                       handleInstallAsSystem()

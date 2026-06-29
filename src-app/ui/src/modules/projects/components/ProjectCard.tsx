@@ -1,15 +1,8 @@
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Flex, Popconfirm, Tooltip, Typography } from 'antd'
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  FolderOutlined,
-} from '@ant-design/icons'
+import { Button, Card, Flex, Confirm, Tooltip, Text, Title } from '@/components/ui'
+import { Copy, Folder, Pencil, Trash2 } from 'lucide-react'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
-
-const { Title, Text } = Typography
 
 interface ProjectCardProps {
   project: Project
@@ -45,8 +38,8 @@ export function ProjectCard({
   // but no Read). Mirror the backend predicate precisely.
   const canDuplicate = canCreate && canRead
 
-  // Stops both button-click bubble + Popconfirm onCancel passthrough.
-  // Popconfirm passes `MouseEvent<HTMLElement> | undefined` to onCancel;
+  // Stops both button-click bubble + Confirm onCancel passthrough.
+  // Confirm passes `MouseEvent<HTMLElement> | undefined` to onCancel;
   // we accept any event-like object with stopPropagation defensively.
   const stop = (e?: { stopPropagation?: () => void }) => {
     e?.stopPropagation?.()
@@ -56,6 +49,7 @@ export function ProjectCard({
 
   return (
     <Card
+      data-testid={`project-card-${project.id}`}
       hoverable
       onClick={handleOpen}
       role="button"
@@ -71,7 +65,7 @@ export function ProjectCard({
       data-test-project-name={project.name}
       title={
         <div className="flex items-center gap-2 min-w-0">
-          <FolderOutlined aria-hidden="true" />
+          <Folder aria-hidden="true" />
           <Title level={5} className="!m-0 truncate">
             {project.name}
           </Title>
@@ -80,13 +74,14 @@ export function ProjectCard({
       extra={
         <Flex gap="small" onClick={stop}>
           {canEdit && (
-            <Tooltip title="Edit">
+            <Tooltip content="Edit">
               <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
+                data-testid={`project-card-edit-button-${project.id}`}
+                variant="ghost"
+                size="sm"
+                icon={<Pencil />}
                 aria-label={`Edit ${project.name}`}
-                onClick={e => {
+                onClick={(e: React.MouseEvent) => {
                   stop(e)
                   onEdit(project)
                 }}
@@ -94,13 +89,14 @@ export function ProjectCard({
             </Tooltip>
           )}
           {canDuplicate && (
-            <Tooltip title="Duplicate">
+            <Tooltip content="Duplicate">
               <Button
-                type="text"
-                size="small"
-                icon={<CopyOutlined />}
+                data-testid={`project-card-duplicate-button-${project.id}`}
+                variant="ghost"
+                size="sm"
+                icon={<Copy />}
                 aria-label={`Duplicate ${project.name}`}
-                onClick={e => {
+                onClick={(e: React.MouseEvent) => {
                   stop(e)
                   onDuplicate(project)
                 }}
@@ -108,27 +104,27 @@ export function ProjectCard({
             </Tooltip>
           )}
           {canDelete && (
-            <Popconfirm
+            <Confirm
+              data-testid={`project-card-delete-confirm-${project.id}`}
               title="Delete project"
               description={`Are you sure you want to delete "${project.name}"? Conversations inside it will be preserved as unfiled.`}
               okText="Delete"
-              okButtonProps={{ danger: true }}
               cancelText="Cancel"
-              onConfirm={e => {
-                e?.stopPropagation()
+              okButtonProps={{ danger: true }}
+              onConfirm={() => {
                 onDelete(project)
               }}
               onCancel={stop}
             >
               <Button
-                type="text"
-                danger
-                size="small"
-                icon={<DeleteOutlined />}
+                data-testid={`project-card-delete-button-${project.id}`}
+                variant="ghost"
+                size="sm"
+                icon={<Trash2 />}
                 aria-label={`Delete ${project.name}`}
                 onClick={stop}
               />
-            </Popconfirm>
+            </Confirm>
           )}
         </Flex>
       }

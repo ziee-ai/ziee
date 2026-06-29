@@ -1,6 +1,7 @@
+import { History, Undo2 } from 'lucide-react'
 import { useState } from 'react'
-import { Select, Button, Tag, theme, App } from 'antd'
-import { HistoryOutlined, RollbackOutlined } from '@ant-design/icons'
+import { Select, Button, Tag } from '@/components/ui'
+import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 
@@ -30,8 +31,6 @@ function relTime(iso: string): string {
  * (append-only — prior versions are never lost).
  */
 export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileVersionBarProps) {
-  const { token } = theme.useToken()
-  const { message } = App.useApp()
   // Read `versionsByFile` REACTIVELY so the bar re-renders when the async
   // version load lands. `getVersions()` reads via getState() + kicks off that
   // load (render-safe) but does NOT subscribe — without touching the reactive
@@ -64,45 +63,40 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
 
   return (
     <div
-      className="flex items-center gap-2 px-3 py-1.5 flex-shrink-0 flex-wrap"
-      style={{
-        borderBottom: `1px solid ${token.colorBorderSecondary}`,
-        background: token.colorFillQuaternary,
-      }}
+      className="flex items-center gap-2 px-3 py-1.5 flex-shrink-0 flex-wrap border-b border-border bg-muted/40"
       data-testid="file-version-bar"
     >
-      <HistoryOutlined style={{ color: token.colorTextSecondary }} />
+      <History className="text-muted-foreground" />
       <Select
-        size="small"
-        aria-label="Select file version"
-        value={current}
-        style={{ minWidth: 220 }}
-        onChange={(v) => onSelectVersion(v === headVersion ? null : v)}
+        size="sm"
+        value={String(current)}
+        className="min-w-[220px]"
+        onChange={(v) => onSelectVersion(v === String(headVersion) ? null : Number(v))}
         options={versions.map((ver) => ({
-          value: ver.version,
+          value: String(ver.version),
           label: `v${ver.version}${ver.version === headVersion ? ' (current)' : ''} · ${relTime(ver.created_at)} · ${ver.created_by}`,
         }))}
         data-testid="file-version-select"
       />
       {isViewingOld ? (
         <>
-          <Tag color="orange">viewing v{current} — not current</Tag>
+          <Tag tone="warning" data-testid="file-version-old-tag">viewing v{current} — not current</Tag>
           <Button
-            size="small"
-            type="primary"
-            icon={<RollbackOutlined />}
+            size="sm"
+            variant="outline"
+            icon={<Undo2 />}
             loading={restoring}
             onClick={handleRestore}
             data-testid="file-version-restore"
           >
             Restore this version
           </Button>
-          <Button size="small" onClick={() => onSelectVersion(null)}>
+          <Button size="sm" variant="outline" onClick={() => onSelectVersion(null)} data-testid="file-version-back-latest">
             Back to latest
           </Button>
         </>
       ) : (
-        <Tag>v{headVersion} · {versions.length} versions</Tag>
+        <Tag data-testid="file-version-current-tag">v{headVersion} · {versions.length} versions</Tag>
       )}
     </div>
   )

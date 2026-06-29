@@ -1,10 +1,6 @@
 import { useEffect } from 'react'
-import { App, Button, Spin, Typography } from 'antd'
-import {
-  FolderAddOutlined,
-  FolderOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { Button, Text, Title } from '@/components/ui'
+import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
@@ -12,19 +8,15 @@ import { ProjectCard } from '@/modules/projects/components/ProjectCard'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 
-const { Title, Text } = Typography
-
 export function ProjectsListPage() {
-  const { message } = App.useApp()
   const { projects: projectsMap, loading, error } = Stores.Projects
   const projects = Array.from(projectsMap.values())
 
   useEffect(() => {
     if (error) {
-      message.error(error)
       Stores.Projects.clearProjectsError()
     }
-  }, [error, message])
+  }, [error])
 
   const handleCreate = () => Stores.ProjectDrawer.openProjectDrawer(null)
   const handleEdit = (project: Project) =>
@@ -32,21 +24,15 @@ export function ProjectsListPage() {
 
   const handleDuplicate = async (project: Project) => {
     try {
-      const copy = await Stores.Projects.duplicateProject(project.id)
-      // `undefined` = a prior duplicate is still in flight; swallow
-      // silently rather than showing a misleading success toast.
-      if (copy) message.success(`Duplicated as "${copy.name}"`)
+      await Stores.Projects.duplicateProject(project.id)
     } catch (_err) {
-      message.error('Failed to duplicate project')
     }
   }
 
   const handleDelete = async (project: Project) => {
     try {
       await Stores.Projects.deleteProject(project.id)
-      message.success('Project deleted')
     } catch (_err) {
-      message.error('Failed to delete project')
     }
   }
 
@@ -54,13 +40,14 @@ export function ProjectsListPage() {
     <div className="h-full flex flex-col overflow-hidden">
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
-          <Typography.Title level={4} className="!m-0 !leading-tight">
+          <Title level={4} className="!m-0 !leading-tight">
             Projects
-          </Typography.Title>
+          </Title>
           <Can permission={Permissions.ProjectsCreate}>
             <Button
-              type="text"
-              icon={<PlusOutlined />}
+              data-testid="project-list-create-button"
+              variant="ghost"
+              icon={<Plus />}
               onClick={handleCreate}
               aria-label="Create project"
             />
@@ -89,14 +76,11 @@ export function ProjectsListPage() {
               </div>
             </div>
           </div>
-        ) : loading ? (
-          <div className="flex justify-center py-12 m-auto">
-            <Spin />
-          </div>
         ) : (
-          <div className="text-center py-12 m-auto">
-            <FolderOutlined className="text-6xl mb-4" />
-              <Title level={3} type="secondary">
+          !loading && (
+            <div className="text-center py-12 m-auto">
+              <Folder className="text-6xl mb-4" />
+              <Title level={3} className="text-muted-foreground">
                 No projects yet
               </Title>
               <Text type="secondary" className="block mb-4">
@@ -105,14 +89,16 @@ export function ProjectsListPage() {
               </Text>
               <Can permission={Permissions.ProjectsCreate}>
                 <Button
-                  type="primary"
-                  icon={<FolderAddOutlined />}
+                  data-testid="project-list-empty-create-button"
+                  variant="default"
+                  icon={<FolderPlus />}
                   onClick={handleCreate}
                 >
                   Create Project
                 </Button>
               </Can>
             </div>
+          )
         )}
       </div>
 

@@ -1,5 +1,5 @@
-import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
-import { App, Button, Form, Input, Select, Switch, Typography } from 'antd'
+import { z } from 'zod'
+import { Button, Form, FormField, Input, PasswordInput, Select, Switch, Text, message, useForm, zodResolver } from '@/components/ui'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
@@ -9,8 +9,6 @@ import {
   type CreateLlmProviderRequest,
   type UpdateLlmProviderRequest,
 } from '@/api-client/types'
-
-const { Text } = Typography
 
 const PROVIDER_TYPES = [
   { label: 'Local', value: 'local' },
@@ -24,9 +22,17 @@ const PROVIDER_TYPES = [
   { label: 'Custom', value: 'custom' },
 ]
 
+const providerSchema = z.object({
+  name: z.string().min(1, 'Please enter a provider name'),
+  provider_type: z.string().min(1, 'Please select a provider type'),
+  api_key: z.string().optional(),
+  base_url: z.string().optional(),
+  enabled: z.boolean().optional(),
+})
+
+type ProviderValues = z.infer<typeof providerSchema>
+
 export function LlmProviderDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
   const { isOpen: open, editingProvider: provider } = Stores.LlmProviderDrawer
@@ -34,10 +40,23 @@ export function LlmProviderDrawer() {
   const canEdit = usePermission(Permissions.LlmProvidersEdit)
   const canSave = provider ? canEdit : canCreate
 
+  const form = useForm<ProviderValues>({
+    resolver: zodResolver(providerSchema),
+    defaultValues: {
+      name: '',
+      provider_type: 'local',
+      api_key: '',
+      base_url: '',
+      enabled: true,
+    },
+  })
+
+  const providerType = form.watch('provider_type')
+
   // Update form when editing provider
   useEffect(() => {
     if (provider && open) {
-      form.setFieldsValue({
+      form.reset({
         name: provider.name,
         provider_type: provider.provider_type,
         api_key: provider.api_key,
@@ -45,19 +64,22 @@ export function LlmProviderDrawer() {
         enabled: provider.enabled,
       })
     } else if (!provider && open) {
-      form.setFieldsValue({
+      form.reset({
+        name: '',
         provider_type: 'local',
+        api_key: '',
+        base_url: '',
         enabled: true,
       })
     }
   }, [provider, open, form])
 
   const handleClose = () => {
-    form.resetFields()
+    form.reset()
     Stores.LlmProviderDrawer.closeLlmProviderDrawer()
   }
 
-  const handleSubmit = async (values: any) => {
+  const handleSubmit = async (values: ProviderValues) => {
     setLoading(true)
 
     try {
@@ -106,81 +128,73 @@ export function LlmProviderDrawer() {
         name="llm-provider-form"
         form={form}
         layout="vertical"
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canSave}
+        data-testid="llm-provider-form"
       >
-        <Form.Item
+        <FormField
           name="name"
           label="Provider Name"
-          rules={[{ required: true, message: 'Please enter a provider name' }]}
+          required
         >
-          <Input placeholder="My Custom Provider" />
-        </Form.Item>
+          <Input placeholder="My Custom Provider" data-testid="llm-provider-name-input" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="provider_type"
           label="Provider Type"
-          rules={[{ required: true, message: 'Please select a provider type' }]}
+          required
         >
           <Select
             options={PROVIDER_TYPES}
             disabled={!!provider}
             placeholder="Select provider type"
+            data-testid="llm-provider-type-select"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item dependencies={['provider_type']} noStyle>
-          {({ getFieldValue }) => {
-            const type = getFieldValue('provider_type')
+        {providerType === 'local' ? (
+          <div className="mb-4">
+            <Text type="secondary">
+              Local providers don't require API keys. Configure your local
+              inference server separately.
+            </Text>
+          </div>
+        ) : (
+          <>
+            <FormField
+              name="api_key"
+              label="API Key"
+              description="Optional — if not set, users can provide their own keys"
+            >
+              <PasswordInput
+                placeholder="Enter your API key"
+                showLabel="Show API key"
+                hideLabel="Hide API key"
+                data-testid="llm-provider-api-key-input"
+              />
+            </FormField>
 
-            if (type === 'local') {
-              return (
-                <div className="mb-4">
-                  <Text type="secondary">
-                    Local providers don't require API keys. Configure your local
-                    inference server separately.
-                  </Text>
-                </div>
-              )
-            }
+            <FormField name="base_url" label="Base URL">
+              <Input placeholder="https://api.provider.com/v1" data-testid="llm-provider-base-url-input" />
+            </FormField>
+          </>
+        )}
 
-            return (
-              <>
-                <Form.Item
-                  name="api_key"
-                  label="API Key"
-                  extra="Optional — if not set, users can provide their own keys"
-                >
-                  <Input.Password
-                    placeholder="Enter your API key"
-                    iconRender={visible =>
-                      visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />
-                    }
-                  />
-                </Form.Item>
-
-                <Form.Item name="base_url" label="Base URL">
-                  <Input placeholder="https://api.provider.com/v1" />
-                </Form.Item>
-              </>
-            )
-          }}
-        </Form.Item>
-
-        <Form.Item
+        <FormField
           name="enabled"
           label="Enable Provider"
           valuePropName="checked"
         >
-          <Switch aria-label="Enable or disable this provider" />
-        </Form.Item>
+          <Switch aria-label="Enable or disable this provider" data-testid="llm-provider-enabled-switch" />
+        </FormField>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button onClick={handleClose} disabled={loading}>
+          <Button variant="outline" onClick={handleClose} disabled={loading} data-testid="llm-provider-cancel-btn">
             {canSave ? 'Cancel' : 'Close'}
           </Button>
           {canSave && (
-            <Button type="primary" htmlType="submit" loading={loading}>
+            <Button type="submit" loading={loading} data-testid="llm-provider-submit-btn">
               {provider ? 'Save' : 'Add'}
             </Button>
           )}

@@ -1,18 +1,15 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Flex, Spin, Switch, Tag, Typography } from 'antd'
+import { Button, Card, Flex, Spinner, Switch, Tag, Text, Title, message } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type McpServer } from '@/api-client/types'
-
-const { Text, Title } = Typography
 
 /**
  * Drawer for assigning/removing system MCP servers to/from a group.
  * Self-contained - owned by MCP module.
  */
 export function GroupSystemMcpServersAssignmentDrawer() {
-  const { message } = App.useApp()
   const { isOpen, selectedGroup } = Stores.GroupSystemMcpServersAssignment
   const { systemServers } = Stores.SystemMcpServer
 
@@ -82,15 +79,16 @@ export function GroupSystemMcpServersAssignmentDrawer() {
       size={600}
       footer={
         <div className="flex justify-end gap-2">
-          <Button onClick={handleClose} disabled={saving}>
+          <Button onClick={handleClose} disabled={saving} data-testid="mcp-group-assign-cancel-btn">
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           {canManage && (
             <Button
-              type="primary"
+              variant="default"
               onClick={handleSave}
               loading={saving}
               disabled={loading}
+              data-testid="mcp-group-assign-save-btn"
             >
               Save
             </Button>
@@ -100,12 +98,12 @@ export function GroupSystemMcpServersAssignmentDrawer() {
     >
       {loading ? (
         <div className="flex justify-center p-8">
-          <Spin />
+          <Spinner label="Loading servers" />
         </div>
       ) : (
-        <Flex vertical gap="large" style={{ width: '100%' }}>
+        <Flex direction="column" className="w-full gap-4">
           <div>
-            <Title level={5} style={{ marginBottom: '8px' }}>
+            <Title level={5} className="mb-2">
               Available Servers
             </Title>
             <Text type="secondary">
@@ -118,13 +116,15 @@ export function GroupSystemMcpServersAssignmentDrawer() {
               <Text type="secondary">No system servers available</Text>
             </div>
           ) : (
-            <Flex vertical gap="middle" style={{ width: '100%' }}>
+            <Flex direction="column" className="w-full gap-4">
               {systemServers.map((server: McpServer) => {
                 const isChecked = assignedIds.includes(server.id)
                 return (
                   <Card
                     key={server.id}
-                    style={{ cursor: canManage ? 'pointer' : 'default' }}
+                    role="listitem"
+                    data-cursor={canManage ? 'pointer' : 'default'}
+                    data-testid={`mcp-group-assign-card-${server.id}`}
                     onClick={() =>
                       canManage && handleToggle(server.id, !isChecked)
                     }
@@ -135,38 +135,45 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                           checked={isChecked}
                           onChange={checked => handleToggle(server.id, checked)}
                           disabled={!canManage}
-                          style={{ marginTop: '2px' }}
+                          className="mt-0.5"
+                          data-testid={`mcp-group-assign-switch-${server.id}`}
                         />
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
                         <div className="flex items-center gap-2">
-                          <Text strong style={{ fontSize: '14px' }}>
+                          <Text strong className="text-sm">
                             {server.display_name}
                           </Text>
                           <Tag
-                            color="purple"
-                            style={{ fontSize: '11px', margin: 0 }}
+                            tone="info"
+                            variant="solid"
+                            className="text-xs m-0"
+                            data-testid={`mcp-group-assign-transport-tag-${server.id}`}
                           >
                             {server.transport_type}
                           </Tag>
                           {server.enabled ? (
                             <Tag
-                              color="green"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              tone="success"
+                              variant="solid"
+                              className="text-xs m-0"
+                              data-testid={`mcp-group-assign-status-tag-${server.id}`}
                             >
                               Enabled
                             </Tag>
                           ) : (
                             <Tag
-                              color="orange"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              tone="warning"
+                              variant="solid"
+                              className="text-xs m-0"
+                              data-testid={`mcp-group-assign-status-tag-${server.id}`}
                             >
                               Disabled
                             </Tag>
                           )}
                         </div>
                         {server.description && (
-                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                          <Text type="secondary" className="text-xs">
                             {server.description}
                           </Text>
                         )}

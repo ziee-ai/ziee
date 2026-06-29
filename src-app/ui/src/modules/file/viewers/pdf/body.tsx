@@ -1,9 +1,7 @@
-import { Alert, Spin, Typography } from 'antd'
-import { FileOutlined } from '@ant-design/icons'
+import { File } from 'lucide-react'
+import { Alert, Spin, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
-
-const { Text } = Typography
 
 export function PdfBody(props: FileViewerSlotProps) {
   // PDF viewer is not inline-capable (its module declares no `inline:`).
@@ -36,7 +34,7 @@ export function PdfBody(props: FileViewerSlotProps) {
   if (file.preview_page_count === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
-        <FileOutlined style={{ fontSize: 48 }} />
+        <File style={{ fontSize: 48 }} />
         <Text type="secondary">Preview not available for this file</Text>
       </div>
     )
@@ -46,13 +44,13 @@ export function PdfBody(props: FileViewerSlotProps) {
     <div className="flex flex-col gap-6 p-4 overflow-auto h-full">
       {truncated && (
         <Alert
-          type="info"
-          showIcon
+          tone="info"
           title={
             `Showing first ${file.preview_page_count} of ${totalPages} pages. ` +
             `Download the file to view all pages.`
           }
           className="flex-shrink-0"
+          data-testid="file-pdf-truncated-alert"
         />
       )}
       {pageUrls.map((url, i) => (
@@ -85,7 +83,7 @@ export function PdfBody(props: FileViewerSlotProps) {
             />
           ) : (
             <div className="w-full flex items-center justify-center py-16">
-              <Spin />
+              <Spin label="Loading" />
             </div>
           )}
         </div>

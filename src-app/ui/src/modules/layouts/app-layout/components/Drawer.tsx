@@ -1,208 +1,171 @@
-import {
-  Button,
-  Drawer as AntDrawer,
-  DrawerProps as AntDrawerProps,
-  theme,
-  Typography,
-} from 'antd'
-import React, { useRef } from 'react'
+import * as React from 'react'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { Button, Title } from '@/components/ui'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
-import tinycolor from 'tinycolor2'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowBack } from 'react-icons/io'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { cn } from '@/lib/utils'
 
-export interface DrawerProps extends AntDrawerProps {
-  children?: React.ReactNode
-  /**
-   * When true, render `children` directly in the drawer body instead
-   * of wrapping them in the `<DivScrollY>` (vertical OverlayScrollbars)
-   * scroll layer. Use this for content that owns its own scrolling
-   * (e.g. file preview, where the body's `<pre>` needs both vertical
-   * AND horizontal scroll with scrollbars anchored to the viewport
-   * edge — the DivScrollY wrapper collapses the inner flex/height
-   * chain and forces both scrollbars to the bottom of the unbounded
-   * content box). Defaults to false; existing drawer callers keep
-   * the wrapped behavior unchanged.
-   */
+type Placement = 'left' | 'right' | 'top' | 'bottom'
+
+// Local app Drawer. Public API preserved from the previous antd-backed version
+// (open/onClose/title/placement/size/footer/mask/extra/styles/classNames/...);
+// internals now run on Radix Dialog (the same primitive the kit Sheet uses), so
+// the ~28 consumers stay unchanged. Custom header (back button), edge ResizeHandle
+// and the DivScrollY body layer are retained.
+export interface DrawerProps {
+  open?: boolean
+  onClose?: () => void
+  title?: React.ReactNode
+  placement?: Placement
+  /** Panel size on the resize axis: a px number, or legacy 'default'(378)/'large'(736). */
+  size?: number | 'default' | 'large'
+  /** Explicit width (overrides `size`); legacy escape hatch. */
+  width?: number | string
+  footer?: React.ReactNode
+  extra?: React.ReactNode
+  /** Backdrop. `false` = no overlay (non-modal); `{ closable:false }` = don't close on backdrop click. */
+  mask?: boolean | { closable?: boolean }
+  /** Close on backdrop click (legacy `maskClosable`). Overrides `mask.closable`. */
+  maskClosable?: boolean
+  /** Show the header close affordance (legacy `closable`). Default true. */
+  closable?: boolean
+  className?: string
+  classNames?: { body?: string; header?: string; footer?: string; wrapper?: string }
+  styles?: {
+    body?: React.CSSProperties
+    header?: React.CSSProperties
+    footer?: React.CSSProperties
+    wrapper?: React.CSSProperties
+  }
+  /** Unmount children when closed (legacy `destroyOnHidden`). Default true (Radix unmounts on close). */
+  destroyOnHidden?: boolean
+  zIndex?: number
+  /** Render children directly (caller owns scrolling) instead of inside the DivScrollY layer. */
   noBodyScrollWrap?: boolean
+  children?: React.ReactNode
 }
 
-export const Drawer: React.FC<DrawerProps> = props => {
-  const { token } = theme.useToken()
+const sizePx = (size: DrawerProps['size']): number =>
+  size === 'default' ? 378 : size === 'large' ? 736 : typeof size === 'number' ? size : 520
+
+const sidePos: Record<Placement, string> = {
+  right: 'inset-y-0 right-0 h-full data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
+  left: 'inset-y-0 left-0 h-full data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
+  top: 'inset-x-0 top-0 w-full data-[state=open]:slide-in-from-top data-[state=closed]:slide-out-to-top',
+  bottom: 'inset-x-0 bottom-0 w-full data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
+}
+
+export const Drawer: React.FC<DrawerProps> = ({
+  open,
+  onClose,
+  title,
+  placement = 'right',
+  size,
+  width,
+  footer,
+  extra,
+  mask = true,
+  maskClosable: maskClosableProp,
+  closable = true,
+  className,
+  classNames,
+  styles,
+  zIndex,
+  noBodyScrollWrap = false,
+  children,
+}) => {
   const windowMinSize = useWindowMinSize()
+  const horizontal = placement === 'left' || placement === 'right'
 
-  const drawerDivRef = useRef<HTMLDivElement>(null)
+  const maskClosable =
+    maskClosableProp ?? (typeof mask === 'object' ? mask.closable !== false : mask !== false)
+  const showOverlay = mask !== false
 
-  const {
-    placement = 'right',
-    size = 520,
-    children,
-    styles: propsStyles,
-    noBodyScrollWrap = false,
-    ...restProps
-  } = props
+  // px size on the resize axis; full-bleed on the smallest breakpoint.
+  const axisPx = width ?? (windowMinSize.xs && horizontal ? '100%' : sizePx(size))
+  const sizeStyle: React.CSSProperties = horizontal ? { width: axisPx } : { height: axisPx }
 
-  // Resolve styles if it's a function
-  const resolvedPropsStyles =
-    typeof propsStyles === 'function' ? propsStyles({ props }) : propsStyles
+  const footerNode = Array.isArray(footer) ? (
+    <div className="flex gap-2">
+      {footer.map((item, i) => (
+        <React.Fragment key={i}>{item}</React.Fragment>
+      ))}
+    </div>
+  ) : (
+    footer
+  )
 
-  // antd 6 `size` accepts number | 'default' | 'large' | string.
-  // On the smallest breakpoint we want the panel to fill the
-  // viewport — antd's `size` doesn't accept '100%', so route through
-  // `width` only in that case (still a supported antd prop, not
-  // deprecated; just less convenient than `size` for the common case).
-  const useSizeProp =
-    typeof size === 'number' || size === 'default' || size === 'large'
-
-  if (Array.isArray(restProps.footer)) {
-    restProps.footer = (
-      <div className="flex gap-2">
-        {restProps.footer.map((item, index) => (
-          <React.Fragment key={index}>{item}</React.Fragment>
-        ))}
-      </div>
-    )
-  }
+  const body = (
+    <div className={cn('flex w-full h-full pr-3', classNames?.body)} style={styles?.body}>
+      {React.Children.map(children, child =>
+        React.isValidElement<{ className?: string }>(child)
+          ? React.cloneElement(child, {
+              ...child.props,
+              className: `w-full ${child.props.className || ''}`.trim(),
+            })
+          : child,
+      )}
+    </div>
+  )
 
   return (
-    <AntDrawer
-      placement={placement}
-      {...(useSizeProp
-        ? { size: size as number | 'default' | 'large' }
-        : { width: windowMinSize.xs ? '100%' : size })}
-      {...restProps}
-      closable={false}
-      classNames={{
-        body: `!pl-3 !pr-0 !pt-0 overflow-x-visible`,
-        wrapper: '!overflow-hidden !bg-transparent',
-        ...(restProps.classNames || {}),
-      }}
-      title={
-        props.title ? (
-          <div
-            className={
-              'flex w-full items-center gap-1 py-2 pt-[10px] px-1 relative'
-            }
-          >
-            <Button
-              type={'text'}
-              onClick={props.onClose}
-              aria-label="Close drawer"
-              style={{
-                width: 30,
-              }}
+    <DialogPrimitive.Root open={open} onOpenChange={o => { if (!o) onClose?.() }}>
+      <DialogPrimitive.Portal>
+        {showOverlay && (
+          <DialogPrimitive.Overlay
+            className="fixed inset-0 z-50 bg-background/75 backdrop-brightness-75 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+          />
+        )}
+        <DialogPrimitive.Content
+          // maskClosable=false → backdrop/outside click doesn't dismiss (Escape still does).
+          onPointerDownOutside={maskClosable ? undefined : e => e.preventDefault()}
+          onInteractOutside={maskClosable ? undefined : e => e.preventDefault()}
+          style={{ ...sizeStyle, zIndex }}
+          className={cn(
+            'fixed z-50 flex flex-col gap-0 bg-background shadow-none transition ease-in-out',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-500 data-[state=closed]:duration-300',
+            sidePos[placement],
+            // floating-card insets matching the LeftSidebar, full-bleed on xs.
+            windowMinSize.xs
+              ? 'border-0 rounded-none max-w-[100vw]'
+              : 'border border-border rounded-lg m-2 ml-3 max-w-[calc(100vw-24px)]',
+            className,
+            classNames?.wrapper,
+          )}
+        >
+          {title != null && (
+            <div
+              className={cn('flex w-full items-center gap-1 relative px-1 py-2 pt-[10px]', classNames?.header)}
+              style={styles?.header}
             >
-              <div className={'text-xl'}>
-                <IoIosArrowBack aria-hidden="true" />
-              </div>
-            </Button>
-            {typeof props.title === 'string' ? (
-              <Typography.Title level={5} className={'!m-0'}>
-                {props.title}
-              </Typography.Title>
-            ) : (
-              props.title
-            )}
-          </div>
-        ) : null
-      }
-      styles={{
-        header: {
-          borderBottom: 'none',
-          padding: 0,
-          backgroundColor: token.colorBgLayout,
-          ...(resolvedPropsStyles?.header || {}),
-        },
-        footer: {
-          borderTop: 'none',
-          padding: '6px 12px 12px 12px',
-          backgroundColor: token.colorBgLayout,
-          ...(resolvedPropsStyles?.footer || {}),
-        },
-        mask: {
-          backdropFilter: 'brightness(0.75)',
-          backgroundColor: tinycolor(token.colorBgLayout)
-            .setAlpha(0.75)
-            .toString(),
-          ...(resolvedPropsStyles?.mask || {}),
-        },
-        wrapper: {
-          border: windowMinSize.xs
-            ? 'none'
-            : `1px solid ${token.colorBorderSecondary}`,
-          borderRadius: windowMinSize.xs ? 0 : 8,
-          maxWidth: `calc(100vw - ${windowMinSize.xs ? 0 : 24}px)`,
-          boxShadow: 'none',
-          // 8px inset on top/right/bottom matches the LeftSidebar
-          // box's inset from the window frame, so the drawer
-          // visually belongs to the same "floating card" tier as
-          // the sidebar. Left margin (between drawer and the
-          // underlying content) keeps the larger 12px gap. Full-
-          // bleed on `xs` regardless.
-          marginTop: windowMinSize.xs ? 0 : 8,
-          marginRight: windowMinSize.xs ? 0 : 8,
-          marginBottom: windowMinSize.xs ? 0 : 8,
-          marginLeft: windowMinSize.xs ? 0 : 12,
-          ...(resolvedPropsStyles?.wrapper || {}),
-        },
-        body: {
-          backgroundColor: token.colorBgLayout,
-          ...(resolvedPropsStyles?.body || {}),
-        },
-      }}
-      drawerRender={node => {
-        return (
-          <div
-            ref={drawerDivRef}
-            className={'w-full h-full'}
-            onTouchStart={e => e.stopPropagation()}
-            onTouchMove={e => e.stopPropagation()}
-            onTouchEnd={e => e.stopPropagation()}
-            onScroll={e => e.stopPropagation()}
-            onWheel={e => e.stopPropagation()}
-          >
-            <div className={'w-full h-full'}>{node}</div>
-            <div data-testid="drawer-resize-handle">
-              <ResizeHandle placement={'left'} parentLevel={[1]} />
+              {closable && (
+                <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]" data-testid="layout-drawer-close-button">
+                  <span className="text-xl"><IoIosArrowBack aria-hidden="true" /></span>
+                </Button>
+              )}
+              {typeof title === 'string' ? <Title level={5} className="!m-0">{title}</Title> : title}
+              {extra != null && <div className="ml-auto">{extra}</div>}
             </div>
+          )}
+
+          <div className="flex-1 min-h-0 pl-3 pr-0 pt-0 overflow-x-visible">
+            {noBodyScrollWrap ? body : <DivScrollY className="flex w-full h-full">{body}</DivScrollY>}
           </div>
-        )
-      }}
-    >
-      {noBodyScrollWrap ? (
-        // Direct render — caller manages its own scroll. The flex
-        // wrapper still adds `w-full h-full pr-3` so layout matches
-        // the wrapped path (consumers can rely on a known parent
-        // box). The `pr-3` matches the body padding the wrapped
-        // path applies to compensate for the body's `!pr-0` class.
-        <div className={'flex w-full h-full pr-3'}>
-          {React.Children.map(children, child => {
-            if (React.isValidElement<{ className?: string }>(child)) {
-              return React.cloneElement(child, {
-                ...child.props,
-                className: `w-full ${child.props.className || ''}`.trim(),
-              })
-            }
-            return child
-          })}
-        </div>
-      ) : (
-        <DivScrollY className={'flex w-full h-full'}>
-          <div className={'flex w-full h-full pr-3'}>
-            {React.Children.map(children, child => {
-              if (React.isValidElement<{ className?: string }>(child)) {
-                return React.cloneElement(child, {
-                  ...child.props,
-                  className:
-                    `w-full ${child.props.className || ''}`.trim(),
-                })
-              }
-              return child
-            })}
-          </div>
-        </DivScrollY>
-      )}
-    </AntDrawer>
+
+          {footerNode != null && (
+            <div className={cn('px-3 pb-3 pt-1.5', classNames?.footer)} style={styles?.footer}>
+              {footerNode}
+            </div>
+          )}
+
+          {/* hidden a11y title when caller passes none (Radix requires a labelled dialog) */}
+          {title == null && <DialogPrimitive.Title className="sr-only">Drawer</DialogPrimitive.Title>}
+
+          <ResizeHandle placement="left" parentLevel={[1]} />
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }

@@ -1,12 +1,10 @@
 import { useEffect } from 'react'
-import { Button, Card, Flex, Space, Tag, Typography, Spin } from 'antd'
-import { ApiOutlined, EditOutlined } from '@ant-design/icons'
+import { Button, Card, Flex, Space, Tag, Text, Spin } from '@/components/ui'
+import { Plug, Pencil } from 'lucide-react'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Text } = Typography
 
 /**
  * Widget that displays System MCP Servers assigned to a group.
@@ -37,26 +35,27 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   }
 
   return (
-    <Card data-widget="system-mcp-servers" data-group-id={group.id}>
-      <Flex vertical gap="small" style={{ width: '100%' }}>
+    <Card data-widget="system-mcp-servers" data-group-id={group.id} data-testid={`mcp-group-widget-card-${group.id}`}>
+      <Flex vertical gap="small" className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
           <Space size="small">
-            <ApiOutlined className="text-blue-500" aria-hidden="true" />
+            <Plug className="text-primary" aria-hidden="true" />
             <Text strong>System MCP Servers</Text>
             {loading ? (
-              <Spin size="small" />
+              <Spin size="sm" label="Loading" />
             ) : (
               <Text type="secondary">({servers.length})</Text>
             )}
           </Space>
           {canManage && (
             <Button
-              size="small"
-              type="link"
-              icon={<EditOutlined aria-hidden="true" />}
+              size="sm"
+              variant="link"
+              icon={<Pencil aria-hidden="true" />}
               onClick={handleEdit}
               aria-label={`Edit System MCP Servers for ${group.name}`}
+              data-testid={`mcp-group-widget-edit-btn-${group.id}`}
             >
               Edit
             </Button>
@@ -65,15 +64,15 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
 
         {/* Content */}
         {error ? (
-          <Text type="danger" style={{ fontSize: '12px' }}>
+          <Text type="danger" className="text-xs">
             {error}
           </Text>
         ) : loading ? (
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text type="secondary" className="text-xs">
             Loading servers...
           </Text>
         ) : servers.length === 0 ? (
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text type="secondary" className="text-xs">
             No servers assigned
           </Text>
         ) : (
@@ -81,8 +80,9 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
             {servers.map(server => (
               <Tag
                 key={server.id}
-                color={server.enabled ? 'blue' : 'default'}
-                style={{ fontSize: '11px' }}
+                tone={server.enabled ? 'info' : undefined}
+                variant="outline"
+                data-testid={`mcp-group-widget-server-tag-${server.id}`}
               >
                 {server.display_name}
               </Tag>

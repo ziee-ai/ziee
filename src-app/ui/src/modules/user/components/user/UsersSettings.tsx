@@ -1,28 +1,21 @@
+import { Trash2, Pencil, Lock, Plus, Users, User as UserIcon } from 'lucide-react'
 import {
-  DeleteOutlined,
-  EditOutlined,
-  LockOutlined,
-  PlusOutlined,
-  TeamOutlined,
-  UserOutlined,
-} from '@ant-design/icons'
-import {
-  App,
   Badge,
   Button,
   Card,
+  Switch,
   Descriptions,
-  Divider,
   Empty,
   Flex,
-  Pagination,
-  Popconfirm,
-  Switch,
   Tooltip,
-  Typography,
-} from 'antd'
+  message,
+  Separator,
+  Text,
+  Confirm,
+  Pagination,
+} from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type User } from '@/api-client/types'
@@ -35,11 +28,7 @@ import { ResetPasswordDrawer } from '@/modules/user/components/user/ResetPasswor
 import { UserGroupsDrawer } from '@/modules/user/components/user/UserGroupsDrawer.tsx'
 import { AssignGroupDrawer } from '@/modules/user/components/user/AssignGroupDrawer.tsx'
 
-const { Text } = Typography
-
 export function UsersSettings() {
-  const { message } = App.useApp()
-
   // Stores
   const {
     users,
@@ -51,6 +40,11 @@ export function UsersSettings() {
   } = Stores.Users
   const { error: groupsError } = Stores.UserGroups
   const { user: currentUser } = Stores.Auth
+  // Which user's activate/deactivate confirmation is open (shared by the status
+  // Switch + the Activate/Deactivate Button — both open the same Confirm).
+  const [activeConfirmUserId, setActiveConfirmUserId] = useState<string | null>(
+    null,
+  )
 
   const canEdit = usePermission(Permissions.UsersEdit)
   const canResetPassword = usePermission(Permissions.UsersResetPassword)
@@ -68,7 +62,7 @@ export function UsersSettings() {
       message.error(groupsError)
       Stores.UserGroups.clearError()
     }
-  }, [usersError, groupsError, message])
+  }, [usersError, groupsError])
 
   const handleToggleActive = async (userId: string) => {
     try {
@@ -103,15 +97,29 @@ export function UsersSettings() {
     // Active/inactive switch
     if (canToggleStatus && !isSelf && !isRootAdmin) {
       actions.push(
-        <Popconfirm
-          key="active-confirm"
-          title={`${user.is_active ? 'Deactivate' : 'Activate'} this user?`}
-          onConfirm={() => handleToggleActive(user.id)}
-          okText={user.is_active ? 'Deactivate' : 'Activate'}
-          cancelText="Cancel"
-        >
-          <Switch className={'mr-2!'} checked={user.is_active} />
-        </Popconfirm>,
+        <div key="active-confirm" className="inline-flex items-center">
+          <Switch
+            className={'mr-2!'}
+            checked={user.is_active}
+            onChange={() => setActiveConfirmUserId(user.id)}
+            data-testid={`user-active-switch-${user.id}`}
+          />
+          <Confirm
+            open={activeConfirmUserId === user.id}
+            onOpenChange={open =>
+              setActiveConfirmUserId(open ? user.id : null)
+            }
+            title={`${user.is_active ? 'Deactivate' : 'Activate'} this user?`}
+            onConfirm={() => handleToggleActive(user.id)}
+            okText="OK"
+            cancelText="Cancel"
+            data-testid={`user-toggle-active-confirm-${user.id}`}
+          >
+            <Button variant="ghost" size="sm" data-testid={`user-toggle-active-button-${user.id}`}>
+              {user.is_active ? 'Deactivate' : 'Activate'}
+            </Button>
+          </Confirm>
+        </div>,
       )
     }
 
@@ -119,9 +127,10 @@ export function UsersSettings() {
       actions.push(
         <Button
           key="edit"
-          type="text"
-          icon={<EditOutlined />}
+          variant="ghost"
+          icon={<Pencil />}
           onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
+          data-testid={`user-edit-button-${user.id}`}
         >
           Edit
         </Button>,
@@ -132,11 +141,12 @@ export function UsersSettings() {
       actions.push(
         <Button
           key="password"
-          type="text"
-          icon={<LockOutlined />}
+          variant="ghost"
+          icon={<Lock />}
           onClick={() =>
             Stores.ResetPasswordDrawer.openResetPasswordDrawer(user)
           }
+          data-testid={`user-reset-password-button-${user.id}`}
         >
           Reset Password
         </Button>,
@@ -147,9 +157,10 @@ export function UsersSettings() {
       actions.push(
         <Button
           key="groups"
-          type="text"
-          icon={<TeamOutlined />}
+          variant="ghost"
+          icon={<Users />}
           onClick={() => Stores.UserGroupsDrawer.openUserGroupsDrawer(user)}
+          data-testid={`user-groups-button-${user.id}`}
         >
           Groups
         </Button>,
@@ -158,22 +169,24 @@ export function UsersSettings() {
 
     if (canDelete && !isSelf && !isRootAdmin) {
       actions.push(
-        <Popconfirm
-          key="delete"
-          title="Are you sure you want to delete this user?"
-          onConfirm={() => handleDelete(user.id)}
-          okText="Delete"
-          cancelText="Cancel"
-        >
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined aria-hidden="true" />}
-            aria-label={`Delete ${user.username}`}
+        <div key="delete" className="inline-flex items-center">
+          <Confirm
+            title="Are you sure you want to delete this user?"
+            onConfirm={() => handleDelete(user.id)}
+            okText="OK"
+            cancelText="Cancel"
+            data-testid={`user-delete-confirm-${user.id}`}
           >
-            Delete
-          </Button>
-        </Popconfirm>,
+            <Button
+              variant="destructive"
+              icon={<Trash2 aria-hidden="true" />}
+              aria-label={`Delete ${user.username}`}
+              data-testid={`user-delete-button-${user.id}`}
+            >
+              Delete
+            </Button>
+          </Confirm>
+        </div>,
       )
     }
 
@@ -202,26 +215,28 @@ export function UsersSettings() {
 
           <Card
             title="Users"
+            data-testid="user-list-card"
             extra={
               <Can permission={Permissions.UsersCreate}>
-                <Tooltip title="Create user">
+                <Tooltip content="Create user">
                   <Button
-                    type="text"
-                    icon={<PlusOutlined aria-hidden="true" />}
+                    variant="ghost"
+                    icon={<Plus aria-hidden="true" />}
                     onClick={() =>
                       Stores.CreateUserDrawer.openCreateUserDrawer()
                     }
                     aria-label="Create user"
+                    data-testid="user-create-open-button"
                   />
                 </Tooltip>
               </Can>
             }
           >
             {loadingUsers ? (
-              <Loading />
+              <Loading label="Loading users" />
             ) : users.length === 0 ? (
               <div>
-                <Empty description="No users yet" />
+                <Empty description="No users yet" data-testid="user-list-empty" />
               </div>
             ) : (
               <div>
@@ -233,14 +248,11 @@ export function UsersSettings() {
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <div className={'flex-1 min-w-48'}>
                             <Flex className="gap-2 items-center">
-                              <UserOutlined />
+                              <UserIcon />
                               <Text className="font-medium">
                                 {user.username}
                               </Text>
-                              <Badge
-                                status={user.is_active ? 'success' : 'error'}
-                                text={user.is_active ? 'Active' : 'Inactive'}
-                              />
+                              <Badge tone={user.is_active ? 'success' : 'error'} data-testid={`user-status-badge-${user.id}`}>{user.is_active ? 'Active' : 'Inactive'}</Badge>
                             </Flex>
                           </div>
                           <div
@@ -251,31 +263,18 @@ export function UsersSettings() {
                         </div>
 
                         <Descriptions
-                          size="small"
-                          column={{ xs: 1, sm: 2, md: 3 }}
-                          colon={false}
-                          styles={{
-                            label: { fontSize: '12px', color: '#8c8c8c' },
-                            content: { fontSize: '12px' },
-                          }}
-                        >
-                          <Descriptions.Item label="Email">
-                            {user.email}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Last Login">
-                            {user.last_login_at
-                              ? new Date(
-                                  user.last_login_at,
-                                ).toLocaleDateString()
-                              : 'Never'}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Created">
-                            {new Date(user.created_at).toLocaleDateString()}
-                          </Descriptions.Item>
-                        </Descriptions>
+                          size="sm"
+                          column={3}
+                          data-testid={`user-descriptions-${user.id}`}
+                          items={[
+                            { key: 'email', label: 'Email', children: user.email },
+                            { key: 'last_login', label: 'Last Login', children: user.last_login_at ? new Date(user.last_login_at).toLocaleDateString() : 'Never' },
+                            { key: 'created', label: 'Created', children: new Date(user.created_at).toLocaleDateString() },
+                          ]}
+                        />
                       </div>
                     </div>
-                    {index < users.length - 1 && <Divider className="my-0" />}
+                    {index < users.length - 1 && <Separator className="my-0" />}
                   </div>
                 ))}
               </div>
@@ -283,20 +282,24 @@ export function UsersSettings() {
 
             {users.length > 0 && (
               <>
-                <Divider className="mb-4" />
+                <Separator className="mb-4" />
                 <div className="flex justify-end">
                   <Pagination
+              data-testid="user-list-pagination"
+              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
                     current={storePage}
                     total={totalUsers}
                     pageSize={storePageSize}
                     showSizeChanger
+              pageSizeLabel="Page size"
+              onPageSizeChange={(size: number) => handlePageChange(1, size)}
                     showQuickJumper
+              jumpLabel="Go to page"
                     showTotal={(total, range) =>
                       `${range[0]}-${range[1]} of ${total} users`
                     }
                     onChange={handlePageChange}
-                    onShowSizeChange={handlePageChange}
-                    pageSizeOptions={['5', '10', '20', '50']}
+                    pageSizeOptions={[5, 10, 20, 50]}
                   />
                 </div>
               </>

@@ -1,12 +1,10 @@
-import { SearchOutlined } from '@ant-design/icons'
-import { Input, Select, Typography } from 'antd'
+import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { Text, MultiSelect, Input } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 import { SkillHubCard } from './SkillHubCard'
-
-const { Text } = Typography
 
 export function SkillsHubTab() {
   // Subscribe to the shared catalog so the list re-renders on refresh.
@@ -59,24 +57,25 @@ export function SkillsHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-skills-search-input"
             placeholder="Search skills..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search skills"
           />
-          <Select
-            mode="multiple"
+          <MultiSelect
+            data-testid="hub-skills-tags-multiselect"
             placeholder="Filter by tags"
             value={selectedTags}
             onChange={setSelectedTags}
             className="flex-1"
-            allowClear
-            maxTagCount="responsive"
+            searchPlaceholder="Search tags..."
+            emptyText="No tags found"
+            removeLabel={(label) => `Remove tag: ${label}`}
             options={allTags.map(t => ({ value: t, label: t }))}
-            popupMatchSelectWidth={false}
             aria-label="Filter skills by tags"
           />
         </div>

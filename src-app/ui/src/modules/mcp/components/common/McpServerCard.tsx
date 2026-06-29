@@ -1,11 +1,7 @@
 import { useState } from 'react'
-import { Alert, App, Button, Card, Popconfirm, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
-import {
-  EditOutlined,
-  ToolOutlined,
-  DeleteOutlined,
-  ApiOutlined,
-} from '@ant-design/icons'
+import { Alert, Button, Card, Confirm, Tag, Text, Tooltip, Switch, Flex } from '@/components/ui'
+import { Pencil, Wrench, Trash2, Plug } from 'lucide-react'
+import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import {
@@ -13,10 +9,6 @@ import {
   type McpServer,
   type TestMcpConnectionRequest,
 } from '@/api-client/types'
-import {
-  showConnectionTestResult,
-  showConnectionTestError,
-} from '@/modules/mcp/components/common/connectionTestToast'
 
 // System and user MCP servers gate on different permission namespaces.
 // `server.is_system` selects which set applies at render time. `test` maps to
@@ -32,8 +24,6 @@ const USER_PERMS = {
   test: Permissions.McpServersCreate,
 } as const
 
-const { Text } = Typography
-
 interface McpServerCardProps {
   server: McpServer
   isEditable?: boolean
@@ -43,9 +33,7 @@ interface McpServerCardProps {
 export function McpServerCard({
   server,
   isEditable = true,
-  bordered = true,
 }: McpServerCardProps) {
-  const { message } = App.useApp()
   const [enableLoading, setEnableLoading] = useState(false)
   const [testing, setTesting] = useState(false)
 
@@ -98,7 +86,11 @@ export function McpServerCard({
       const result = server.is_system
         ? await Stores.SystemMcpServer.testSystemServerConnection(payload)
         : await Stores.McpServer.testMcpServerConnection(payload)
-      showConnectionTestResult(message, result)
+      if (result.success) {
+        message.success(result.message || 'Connection successful')
+      } else {
+        message.error(result.message || 'Connection failed')
+      }
       // Backend recorded the probe outcome into the row's
       // `last_health_check_*` columns. Refresh the parent list so
       // this card's `server` prop re-renders with the updated
@@ -114,7 +106,7 @@ export function McpServerCard({
         console.warn('Failed to refresh after Test Connection:', e)
       }
     } catch (error) {
-      showConnectionTestError(message, error)
+      message.error(error instanceof Error ? error.message : 'Connection test failed')
     } finally {
       setTesting(false)
     }
@@ -143,10 +135,6 @@ export function McpServerCard({
 
   return (
     <Card
-      classNames={{
-        body: '!p-3',
-      }}
-      variant={bordered ? 'outlined' : 'borderless'}
       data-testid={`mcp-server-card-${server.id}`}
     >
       <div className="flex items-start gap-3 flex-wrap">
@@ -160,29 +148,30 @@ export function McpServerCard({
           <div className="mb-3 flex items-center gap-2 flex-wrap">
             <div className="flex-1 min-w-48">
               <Flex className="gap-2 items-center">
-                <ToolOutlined aria-hidden="true" className="text-base" />
+                <Wrench aria-hidden="true" className="text-base" />
                 <Text className="font-semibold text-base">{server.display_name}</Text>
                 {!isEditable && server.is_system && (
-                  <Tag color="blue">System</Tag>
+                  <Tag tone="info" data-testid="mcp-server-system-tag">System</Tag>
                 )}
                 <Tag
-                  color={
+                  data-testid="mcp-server-transport-tag"
+                  tone={
                     server.transport_type === 'stdio'
-                      ? 'blue'
+                      ? 'info'
                       : server.transport_type === 'http'
-                        ? 'green'
-                        : 'purple'
+                        ? 'success'
+                        : 'info'
                   }
                 >
                   {server.transport_type.toUpperCase()}
                 </Tag>
                 {server.supports_sampling && (
                   <Tooltip title={`Sampling enabled · ${server.usage_mode === 'always' ? 'Always mode' : 'Auto mode'}`}>
-                    <Tag color="cyan" data-testid="mcp-sampling-badge">Sampling</Tag>
+                    <Tag tone="info" data-testid="mcp-sampling-badge">Sampling</Tag>
                   </Tooltip>
                 )}
                 {server.usage_mode === 'always' && (
-                  <Tag color="orange" data-testid="mcp-always-badge">Always</Tag>
+                  <Tag tone="warning" data-testid="mcp-always-badge">Always</Tag>
                 )}
                 {/* Health status from the last probe — surfaces
                     boot-time auto-disable reasons + Test Connection
@@ -210,7 +199,7 @@ export function McpServerCard({
                           </span>
                         }
                       >
-                        <Tag color="error" data-testid="mcp-health-unhealthy">
+                        <Tag tone="error" data-testid="mcp-health-unhealthy">
                           Unhealthy
                         </Tag>
                       </Tooltip>
@@ -225,7 +214,7 @@ export function McpServerCard({
                             : ''
                         }`}
                       >
-                        <Tag color="success" data-testid="mcp-health-healthy">
+                        <Tag tone="success" data-testid="mcp-health-healthy">
                           Healthy
                         </Tag>
                       </Tooltip>
@@ -251,13 +240,14 @@ export function McpServerCard({
                         onChange={handleToggleEnable}
                         loading={enableLoading}
                         aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
+                        data-testid="mcp-server-enable-switch"
                       />
                     </Tooltip>
                   )}
                   {canTest && (
                     <Tooltip title="Test the connection to this server">
                       <Button
-                        icon={<ApiOutlined />}
+                        icon={<Plug />}
                         loading={testing}
                         onClick={e => {
                           e.stopPropagation()
@@ -272,7 +262,7 @@ export function McpServerCard({
                   )}
                   {canEdit && (
                     <Button
-                      icon={<EditOutlined />}
+                      icon={<Pencil />}
                       onClick={e => {
                         e.stopPropagation()
                         handleEdit()
@@ -283,39 +273,32 @@ export function McpServerCard({
                     </Button>
                   )}
                   {canDelete && !server.is_built_in && (
-                    <Popconfirm
+                    <Confirm
                       title="Delete Server"
                       description={`Are you sure you want to delete "${server.display_name}"? This action cannot be undone.`}
                       okText="Delete"
                       cancelText="Cancel"
                       okButtonProps={{ danger: true }}
-                      disabled={server.enabled}
                       onConfirm={handleDelete}
+                      data-testid="mcp-server-delete-confirm"
                     >
-                      {/* A disabled Button never fires onClick, so the
-                          previous click-time warning was unreachable. Surface
-                          WHY the action is blocked via a hover Tooltip instead
-                          (antd wraps disabled children so the tooltip still
-                          triggers). */}
-                      <Tooltip
-                        title={
-                          server.enabled
-                            ? 'Disable the server before deleting it'
-                            : ''
-                        }
+                      <Button
+                        icon={<Trash2 />}
+                        variant="destructive"
+                        onClick={e => {
+                          e.stopPropagation()
+                          if (server.enabled) {
+                            message.warning(
+                              'Please disable the server before deleting it',
+                            )
+                          }
+                        }}
+                        aria-label={`Delete ${server.display_name}`}
+                        data-testid="mcp-server-delete-btn"
                       >
-                        <Button
-                          icon={<DeleteOutlined />}
-                          danger
-                          disabled={server.enabled}
-                          onClick={e => e.stopPropagation()}
-                          aria-label={`Delete ${server.display_name}`}
-                          data-testid="mcp-server-delete-btn"
-                        >
-                          Delete
-                        </Button>
-                      </Tooltip>
-                    </Popconfirm>
+                        Delete
+                      </Button>
+                    </Confirm>
                   )}
                 </>
               )}
@@ -329,10 +312,10 @@ export function McpServerCard({
               tooltip with sufficient detail. */}
           {server.last_health_check_status === 'unhealthy' && (
             <Alert
-              type="error"
-              showIcon
+              tone="error"
               className="!mb-2"
-              message={
+              data-testid="mcp-server-health-alert"
+              title={
                 server.last_health_check_at
                   ? `Connection test failed at ${new Date(server.last_health_check_at).toLocaleString()}`
                   : 'Connection test failed'
@@ -361,11 +344,10 @@ export function McpServerCard({
                 </>
               )}
               {server.command && (
-                <Card size="small" className={'!mt-2'}>
+                <Card size="sm" className={'!mt-2'} data-testid="mcp-server-command-card">
                   <pre className="text-xs overflow-auto m-0">
                     {server.command}
-                    {server.args &&
-                      Array.isArray(server.args) &&
+                    {Array.isArray(server.args) &&
                       server.args.length > 0 && (
                         <span> {server.args.join(' ')}</span>
                       )}

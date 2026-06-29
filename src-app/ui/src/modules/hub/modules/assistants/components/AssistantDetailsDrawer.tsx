@@ -1,10 +1,8 @@
-import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Button, Flex, Tag, Typography, Card } from 'antd'
-import { CopyOutlined, RobotOutlined } from '@ant-design/icons'
+import { Copy, Bot } from 'lucide-react'
+import { Sheet } from '@/components/ui'
+import { Button, Flex, Tag, Text, Title, Card } from '@/components/ui'
 import { Permissions, type HubAssistant } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-
-const { Title, Text } = Typography
 
 interface AssistantDetailsDrawerProps {
   assistant: HubAssistant | null
@@ -48,8 +46,8 @@ export function AssistantDetailsDrawer({
       <Flex justify="end" gap="small">
         {!isAlreadyCreated && canCreate && onUseAssistant && (
           <Button
-            type="primary"
-            icon={<RobotOutlined />}
+            variant="default"
+            icon={<Bot />}
             loading={isCreating}
             disabled={isCreating || isCreatingTemplate}
             onClick={onUseAssistant}
@@ -60,7 +58,7 @@ export function AssistantDetailsDrawer({
         )}
         {canCreate && canCreateTemplate && onUseAsTemplate && (
           <Button
-            icon={<CopyOutlined />}
+            icon={<Copy />}
             loading={isCreatingTemplate}
             disabled={
               isCreating || isCreatingTemplate || isAlreadyTemplate
@@ -75,13 +73,14 @@ export function AssistantDetailsDrawer({
     ) : undefined
 
   return (
-    <Drawer
+    <Sheet
+      data-testid="hub-assistant-detail-sheet"
       title={assistant.display_name}
       open={open}
-      onClose={onClose}
+      onOpenChange={(v) => { if (!v) onClose() }}
       footer={footer}
     >
-      <Flex vertical className="gap-4">
+      <Flex direction="column" className="gap-4">
         {/* Basic Info */}
         <div>
           <Title level={3} className="!m-0 !mb-2">
@@ -100,7 +99,7 @@ export function AssistantDetailsDrawer({
         {/* Instructions */}
         <div>
           <Title level={5}>Instructions</Title>
-          <Card size="small" className="bg-gray-50">
+          <Card size="sm" className="bg-muted" data-testid="hub-assistant-detail-instructions-card">
             <Text className="text-sm whitespace-pre-wrap">
               {assistant.instructions}
             </Text>
@@ -119,7 +118,8 @@ export function AssistantDetailsDrawer({
                 return (
                   <Tag
                     key={`${dep.kind}-${dep.name}`}
-                    color={dep.kind === 'model' ? 'cyan' : 'purple'}
+                    data-testid={`hub-assistant-detail-dep-tag-${dep.kind}-${dep.name}`}
+                    tone={dep.kind === 'model' ? 'success' : 'info'}
                   >
                     {leaf} {dep.versionRange}
                   </Tag>
@@ -132,9 +132,9 @@ export function AssistantDetailsDrawer({
         {/* Assistant Details */}
         <div>
           <Title level={5}>Details</Title>
-          <Flex vertical className="gap-2">
+          <Flex direction="column" className="gap-2">
             {assistant.author && (
-              <Flex justify="space-between">
+              <Flex justify="between">
                 <Text type="secondary">Author:</Text>
                 <Text>{assistant.author}</Text>
               </Flex>
@@ -148,7 +148,7 @@ export function AssistantDetailsDrawer({
             <Title level={5}>Tags</Title>
             <Flex wrap className="gap-1">
               {assistant.tags.map(tag => (
-                <Tag key={tag} color="default">
+                <Tag key={tag} data-testid={`hub-assistant-detail-tag-${tag}`}>
                   {tag}
                 </Tag>
               ))}
@@ -157,11 +157,11 @@ export function AssistantDetailsDrawer({
         )}
 
         {/* Parameters */}
-        {assistant.parameters &&
-          Object.keys(assistant.parameters).length > 0 && (
+        {!!assistant.parameters &&
+          Object.keys(assistant.parameters as object).length > 0 && (
             <div>
               <Title level={5}>Parameters</Title>
-              <Card size="small">
+              <Card size="sm" data-testid="hub-assistant-detail-parameters-card">
                 <pre className="text-xs overflow-auto m-0">
                   {JSON.stringify(assistant.parameters, null, 2)}
                 </pre>
@@ -169,6 +169,6 @@ export function AssistantDetailsDrawer({
             </div>
           )}
       </Flex>
-    </Drawer>
+    </Sheet>
   )
 }

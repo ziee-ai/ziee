@@ -9,7 +9,6 @@ import type {
   SSEStepManifestItem,
 } from '@/api-client/types'
 import {
-  type RunProgressHandlers,
   type RunProgressSubscription,
   subscribeRunProgress,
 } from '@/modules/workflow/sse/runProgressClient'
@@ -134,166 +133,6 @@ function blankView(runId: string): RunView {
   }
 }
 
-function createRunProgressHandlers(
-  runId: string,
-  set: (fn: (state: any) => void) => void,
-  get: () => WorkflowRunState,
-): RunProgressHandlers {
-  return {
-    connected: () => {
-      set(draft => {
-        const v = draft.runs[runId]
-        if (v) v.connected = true
-      })
-    },
-    snapshot: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        v.status = d.status
-        v.totalTokens = d.total_tokens
-        v.currentStep = d.current_step ?? undefined
-        v.pendingElicitation = d.pending_elicitation_json ?? undefined
-        seedManifest(v, d.step_manifest)
-        if (d.step_progress_json && d.current_step) {
-          const s = ensureStep(v, d.current_step)
-          s.tracks = d.step_progress_json as Record<string, ProgressTrack>
-        }
-        const outputs = (d.step_outputs_json ?? {}) as Record<string, StepOutputMeta>
-        for (const [stepId, meta] of Object.entries(outputs)) {
-          const s = ensureStep(v, stepId)
-          s.outputMeta = meta
-          s.hasOutput = true
-          if (!s.outputPreview && meta?.preview) {
-            s.outputPreview = meta.preview
-          }
-          if (s.status === 'pending') s.status = 'completed'
-        }
-        const artifacts = (d.step_artifacts_json ?? {}) as Record<string, StepArtifactMeta[]>
-        for (const [stepId, list] of Object.entries(artifacts)) {
-          if (!Array.isArray(list) || list.length === 0) continue
-          const s = ensureStep(v, stepId)
-          s.artifacts = list
-        }
-        draft.runs[runId] = v
-      })
-    },
-    runStarted: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        v.totalSteps = d.total_steps
-        v.status = 'running'
-        seedManifest(v, d.step_manifest)
-        draft.runs[runId] = v
-      })
-    },
-    stepStarted: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        const s = ensureStep(v, d.step_id)
-        s.status = 'running'
-        s.stepKind = d.step_kind
-        s.stepIndex = d.step_index
-        s.message = d.message ?? undefined
-        if (d.description != null) s.description = d.description
-        v.totalSteps = d.total_steps
-        v.currentStep = d.step_id
-        draft.runs[runId] = v
-      })
-    },
-    stepItemProgress: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        const s = ensureStep(v, d.step_id)
-        s.itemProgress = d.progress
-        draft.runs[runId] = v
-      })
-    },
-    stepProgress: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        const s = ensureStep(v, d.step_id)
-        if (!s.tracks) s.tracks = {}
-        for (const t of d.tracks) {
-          const id = t.id ?? ''
-          if (t.done) delete s.tracks[id]
-          else s.tracks[id] = t
-        }
-        draft.runs[runId] = v
-      })
-    },
-    stepCompleted: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        const s = ensureStep(v, d.step_id)
-        s.status = 'completed'
-        s.outputPreview = d.output_preview
-        s.tokensUsed = d.tokens_used
-        s.msElapsed = d.ms_elapsed
-        s.hasOutput = true
-        v.totalTokens += d.tokens_used
-        draft.runs[runId] = v
-      })
-    },
-    stepFailed: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        const s = ensureStep(v, d.step_id)
-        s.status = 'failed'
-        s.error = d.error
-        s.tokensUsed = d.tokens_used
-        draft.runs[runId] = v
-      })
-    },
-    elicitationRequired: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        v.pendingElicitation = d
-        draft.runs[runId] = v
-      })
-    },
-    elicitationResolved: () => {
-      set(draft => {
-        const v = draft.runs[runId]
-        if (v) v.pendingElicitation = undefined
-      })
-    },
-    runCompleted: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        v.status = 'completed'
-        v.totalTokens = d.total_tokens
-        draft.runs[runId] = v
-      })
-      get().unsubscribe(runId)
-    },
-    runCancelled: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        v.status = 'cancelled'
-        v.totalTokens = d.total_tokens
-        draft.runs[runId] = v
-      })
-      get().unsubscribe(runId)
-    },
-    runFailed: d => {
-      set(draft => {
-        const v = draft.runs[runId] ?? blankView(runId)
-        v.status = 'failed'
-        v.error = d.error
-        v.totalTokens = d.total_tokens
-        draft.runs[runId] = v
-      })
-      get().unsubscribe(runId)
-    },
-    disconnected: () => {
-      set(draft => {
-        const v = draft.runs[runId]
-        if (v) v.connected = false
-      })
-    },
-  }
-}
-
 export const useWorkflowRunStore = create<WorkflowRunState>()(
   subscribeWithSelector(
     immer(
@@ -307,10 +146,187 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
           set(draft => {
             if (!draft.runs[runId]) draft.runs[runId] = blankView(runId)
           })
-          subscriptions[runId] = subscribeRunProgress(
-            runId,
-            createRunProgressHandlers(runId, set, get),
-          )
+          subscriptions[runId] = subscribeRunProgress(runId, {
+            connected: () => {
+              set(draft => {
+                const v = draft.runs[runId]
+                if (v) v.connected = true
+              })
+            },
+            snapshot: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                v.status = d.status
+                v.totalTokens = d.total_tokens
+                v.currentStep = d.current_step ?? undefined
+                v.pendingElicitation =
+                  (d.pending_elicitation_json as
+                    | SSEElicitationRequiredData
+                    | undefined) ?? undefined
+                // P1: seed the full pipeline (pending steps incl.) up front.
+                seedManifest(v, d.step_manifest)
+                // P2: rehydrate the running step's in-flight tracks after a
+                // refresh/reconnect (they belong to `current_step`).
+                if (d.step_progress_json && d.current_step) {
+                  const s = ensureStep(v, d.current_step)
+                  s.tracks = d.step_progress_json as Record<string, ProgressTrack>
+                }
+                // Hydrate per-step output + artifact metadata so a
+                // freshly-mounted view (or a reconnect) renders the
+                // "Show full output" expander + artifact blocks without
+                // a separate GET /workflow-runs/{id} call. The blobs are
+                // metadata only (path/size/preview/mime); content is
+                // fetched lazily via readOutput / readArtifact.
+                const outputs = (d.step_outputs_json ?? {}) as Record<
+                  string,
+                  StepOutputMeta
+                >
+                for (const [stepId, meta] of Object.entries(outputs)) {
+                  const s = ensureStep(v, stepId)
+                  s.outputMeta = meta
+                  s.hasOutput = true
+                  if (!s.outputPreview && meta?.preview) {
+                    s.outputPreview = meta.preview
+                  }
+                  if (s.status === 'pending') s.status = 'completed'
+                }
+                const artifacts = (d.step_artifacts_json ?? {}) as Record<
+                  string,
+                  StepArtifactMeta[]
+                >
+                for (const [stepId, list] of Object.entries(artifacts)) {
+                  if (!Array.isArray(list) || list.length === 0) continue
+                  const s = ensureStep(v, stepId)
+                  s.artifacts = list
+                }
+                draft.runs[runId] = v
+              })
+            },
+            runStarted: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                v.totalSteps = d.total_steps
+                v.status = 'running'
+                // P1: live first-paint of the full pipeline.
+                seedManifest(v, d.step_manifest)
+                draft.runs[runId] = v
+              })
+            },
+            stepStarted: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                const s = ensureStep(v, d.step_id)
+                s.status = 'running'
+                s.stepKind = d.step_kind
+                s.stepIndex = d.step_index
+                s.message = d.message ?? undefined
+                // P1: upgrade the label to the full-context render (keep the
+                // inputs-rendered manifest value if this step omits one).
+                if (d.description != null) s.description = d.description
+                v.totalSteps = d.total_steps
+                v.currentStep = d.step_id
+                draft.runs[runId] = v
+              })
+            },
+            stepItemProgress: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                const s = ensureStep(v, d.step_id)
+                s.itemProgress = d.progress
+                draft.runs[runId] = v
+              })
+            },
+            stepProgress: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                const s = ensureStep(v, d.step_id)
+                if (!s.tracks) s.tracks = {}
+                for (const t of d.tracks) {
+                  const id = t.id ?? ''
+                  // `done` tracks were delivered once + evicted backend-side;
+                  // drop them here too so live + refresh stay consistent.
+                  if (t.done) delete s.tracks[id]
+                  else s.tracks[id] = t
+                }
+                draft.runs[runId] = v
+              })
+            },
+            stepCompleted: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                const s = ensureStep(v, d.step_id)
+                s.status = 'completed'
+                s.outputPreview = d.output_preview
+                s.tokensUsed = d.tokens_used
+                s.msElapsed = d.ms_elapsed
+                // A completed step has a full output file on disk; the
+                // SSE frame only carries a 500-char preview. Flag so the
+                // "Show full output" expander mounts (it fetches the
+                // full bytes via readOutput). Artifact metadata arrives
+                // on the next snapshot (reconnect / mount).
+                s.hasOutput = true
+                v.totalTokens += d.tokens_used
+                draft.runs[runId] = v
+              })
+            },
+            stepFailed: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                const s = ensureStep(v, d.step_id)
+                s.status = 'failed'
+                s.error = d.error
+                s.tokensUsed = d.tokens_used
+                draft.runs[runId] = v
+              })
+            },
+            elicitationRequired: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                v.pendingElicitation = d
+                draft.runs[runId] = v
+              })
+            },
+            elicitationResolved: () => {
+              set(draft => {
+                const v = draft.runs[runId]
+                if (v) v.pendingElicitation = undefined
+              })
+            },
+            runCompleted: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                v.status = 'completed'
+                v.totalTokens = d.total_tokens
+                draft.runs[runId] = v
+              })
+              get().unsubscribe(runId)
+            },
+            runCancelled: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                v.status = 'cancelled'
+                v.totalTokens = d.total_tokens
+                draft.runs[runId] = v
+              })
+              get().unsubscribe(runId)
+            },
+            runFailed: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                v.status = 'failed'
+                v.error = d.error
+                v.totalTokens = d.total_tokens
+                draft.runs[runId] = v
+              })
+              get().unsubscribe(runId)
+            },
+            disconnected: () => {
+              set(draft => {
+                const v = draft.runs[runId]
+                if (v) v.connected = false
+              })
+            },
+          })
         },
 
         unsubscribe: (runId: string) => {

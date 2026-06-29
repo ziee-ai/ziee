@@ -27,8 +27,6 @@
  */
 
 import { useRef, useLayoutEffect, useCallback } from 'react'
-import { theme } from 'antd'
-import tinycolor from 'tinycolor2'
 import { Stores } from '@/core/stores'
 import { isTauriView, isMacOS, isLinux } from '@ziee/desktop/core/platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -43,7 +41,7 @@ const INTERACTIVE_SEL =
   // wrapping `.ant-segmented`) explicitly. The HubPage tabs sit inside
   // HeaderBarContainer — without this exemption, mousedown initiates a
   // window drag and the tab-change click never fires.
-  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger, .ant-segmented, .ant-segmented-item'
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"]'
 
 interface HeaderBarContainerProps {
   children?: React.ReactNode
@@ -56,14 +54,14 @@ export const HeaderBarContainer = ({
   className = '',
   style = {},
 }: HeaderBarContainerProps) => {
-  const { token } = theme.useToken()
   const { isSidebarCollapsed, isFullscreen } = Stores.AppLayout
 
   // Soft-fade overlay color matched to the content surface, faded
   // through alpha so the gradient doesn't pass through a faint
   // gray midpoint on light themes (which is what the CSS
-  // `transparent` keyword would produce).
-  const fadeOut = tinycolor(token.colorBgContainer).setAlpha(0).toRgbString()
+  // `transparent` keyword would produce). Relative-color syntax keeps
+  // the `--card` hue at alpha 0 (was tinycolor over antd's token).
+  const fadeOut = 'rgb(from var(--card) r g b / 0)'
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -180,8 +178,10 @@ export const HeaderBarContainer = ({
           content surface color, bottom edge is transparent. When
           content scrolls up beneath the (transparent) header, it
           dissolves into the bg color before being clipped. */}
+      {/* token-derived gradient (var(--card) → transparent card); theme-aware, not a hardcoded hue, but no single token class expresses a gradient */}
       <div
         aria-hidden="true"
+        data-allow-custom-color
         style={{
           position: 'absolute',
           left: 0,
@@ -189,7 +189,7 @@ export const HeaderBarContainer = ({
           top: '100%',
           height: 16,
           pointerEvents: 'none',
-          background: `linear-gradient(to bottom, ${token.colorBgContainer}, ${fadeOut})`,
+          background: `linear-gradient(to bottom, var(--card), ${fadeOut})`,
         }}
       />
     </div>

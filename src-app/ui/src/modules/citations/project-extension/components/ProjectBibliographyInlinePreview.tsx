@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Typography } from 'antd'
+import { Text } from '@/components/ui'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 /** Compact view-only summary of a project's reference list (the knowledge card).
  *  Refetches on `sync:bibliography_entry` so the count stays current after an

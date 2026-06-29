@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { UserOutlined } from '@ant-design/icons'
+import { User } from 'lucide-react'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -37,7 +37,7 @@ export default createModule({
     settingsUserPages: [
       {
         id: 'profile',
-        icon: <UserOutlined />,
+        icon: <User />,
         label: 'Profile',
         path: 'profile',
         // Above General (10) — the profile is the most personal page.

@@ -1,5 +1,5 @@
-import { Button, Card, Empty, Skeleton, Space, Tag, Typography } from 'antd'
-import { EditOutlined, ToolOutlined } from '@ant-design/icons'
+import { Button, Card, Empty, Skeleton, Space, Tag, Text } from '@/components/ui'
+import { Pencil, Wrench } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import {
@@ -8,8 +8,6 @@ import {
   type DisabledServer,
 } from '@/api-client/types'
 import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
-
-const { Text } = Typography
 
 /**
  * Project MCP defaults editor. Reads settings from the dedicated
@@ -56,7 +54,7 @@ export function ProjectMcpSettingsPanel() {
 
   const renderServerRule = (
     rule: AutoApprovedServer | DisabledServer,
-    color: 'blue' | 'orange',
+    tone: 'info' | 'warning',
   ) => {
     // Convention (see McpConfigModal.tsx:121): an empty `tools` array
     // means the rule applies to the whole server; a non-empty list
@@ -68,11 +66,11 @@ export function ProjectMcpSettingsPanel() {
           {serverName(rule.server_id)}
         </Text>
         {allTools ? (
-          <Tag color={color}>All tools</Tag>
+          <Tag tone={tone} data-testid={`mcp-project-rule-${tone}-${rule.server_id}`}>All tools</Tag>
         ) : (
           <Space size={[4, 4]} wrap>
             {rule.tools.map(t => (
-              <Tag key={t} color={color}>
+              <Tag key={t} tone={tone} data-testid={`mcp-project-rule-${tone}-${rule.server_id}-${t}`}>
                 {t}
               </Tag>
             ))}
@@ -107,7 +105,7 @@ export function ProjectMcpSettingsPanel() {
     <Card
       title={
         <span>
-          <ToolOutlined className="mr-2" />
+          <Wrench className="mr-2" />
           MCP Defaults
         </span>
       }
@@ -117,10 +115,11 @@ export function ProjectMcpSettingsPanel() {
       extra={
         canEdit && (
           <Button
-            type="text"
-            icon={<EditOutlined />}
+            variant="ghost"
+            icon={<Pencil />}
             onClick={handleConfigure}
             aria-label="Edit MCP defaults"
+            data-testid="mcp-project-edit-btn"
           >
             Edit
           </Button>
@@ -128,6 +127,7 @@ export function ProjectMcpSettingsPanel() {
       }
       className="mb-4"
       data-test-section="mcp-defaults"
+      data-testid="mcp-project-defaults-card"
     >
       <Text type="secondary" className="block mb-4">
         Default MCP approval mode and per-server settings for every NEW
@@ -136,7 +136,7 @@ export function ProjectMcpSettingsPanel() {
       </Text>
 
       {loading && !settings ? (
-        <Skeleton active paragraph={{ rows: 3 }} />
+        <Skeleton />
       ) : (
         <div className="flex flex-col gap-4">
           {/* Approval mode — always shown. */}
@@ -145,7 +145,7 @@ export function ProjectMcpSettingsPanel() {
             data-test-mcp-approval-mode={approvalMode}
           >
             <Text strong>Approval mode:</Text>
-            <Tag>{approvalLabel}</Tag>
+            <Tag data-testid="mcp-project-approval-tag">{approvalLabel}</Tag>
           </div>
 
           {/* Auto-approved + disabled rule lists. Each section is
@@ -155,7 +155,7 @@ export function ProjectMcpSettingsPanel() {
             <div className="flex flex-col gap-2">
               <Text strong>Auto-approved</Text>
               <div className="flex flex-col gap-3 pl-2">
-                {autoApproved.map(r => renderServerRule(r, 'blue'))}
+                {autoApproved.map(r => renderServerRule(r, 'info'))}
               </div>
             </div>
           )}
@@ -164,14 +164,14 @@ export function ProjectMcpSettingsPanel() {
             <div className="flex flex-col gap-2">
               <Text strong>Disabled</Text>
               <div className="flex flex-col gap-3 pl-2">
-                {disabled.map(r => renderServerRule(r, 'orange'))}
+                {disabled.map(r => renderServerRule(r, 'warning'))}
               </div>
             </div>
           )}
 
           {noRules && (
             <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              data-testid="mcp-project-empty"
               description={
                 <Text type="secondary" className="!text-xs">
                   No per-server rules configured.

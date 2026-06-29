@@ -1,5 +1,5 @@
-import { ImportOutlined } from '@ant-design/icons'
-import { Button, Card, Empty, Flex, Space, Typography } from 'antd'
+import { Import } from 'lucide-react'
+import { Button, Card, Empty, Flex, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
@@ -9,8 +9,6 @@ import { ImportSkillDialog } from '@/modules/skill/components/ImportSkillDialog'
 import { SkillDetailDrawer } from '@/modules/skill/components/SkillDetailDrawer'
 import { SkillScopeBadge } from '@/modules/skill/components/SkillScopeBadge'
 import { AdminSkillGroupAssignment } from './AdminSkillGroupAssignment'
-
-const { Text } = Typography
 
 /**
  * `/settings/admin/skills` — lists system-scope skills with per-skill
@@ -31,7 +29,8 @@ export function AdminSkillsPage() {
         <Flex justify="end">
           <Can permission={Permissions.SkillsManageSystem}>
             <Button
-              icon={<ImportOutlined />}
+              icon={<Import />}
+              data-testid="skill-admin-import-button"
               onClick={() => setImportOpen(true)}
             >
               Import
@@ -45,9 +44,9 @@ export function AdminSkillsPage() {
           {systemSkills.map(skill => (
             <Card
               key={skill.id}
-              classNames={{ body: '!p-0' }}
               className="overflow-hidden"
               data-skill-id={skill.id}
+              data-testid={`skill-admin-card-${skill.id}`}
             >
               <div
                 className="p-3 cursor-pointer focus-visible:outline focus-visible:outline-2"
@@ -61,17 +60,17 @@ export function AdminSkillsPage() {
                   }
                 }}
               >
-                <Space vertical size={2}>
-                  <Space size={8}>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
                     <Text strong>{skill.display_name || skill.name}</Text>
                     <SkillScopeBadge scope={skill.scope} isDev={skill.is_dev} />
-                  </Space>
+                  </div>
                   {skill.description && (
                     <Text type="secondary" className="text-xs">
                       {skill.description}
                     </Text>
                   )}
-                </Space>
+                </div>
               </div>
               {multiUserMode && (
                 <AdminSkillGroupAssignment skillId={skill.id} />
@@ -81,7 +80,7 @@ export function AdminSkillsPage() {
         </div>
 
         {!loading && systemSkills.length === 0 && (
-          <Empty description="No system skills installed" className="!mt-12" />
+          <Empty description="No system skills installed" className="!mt-12" data-testid="skill-admin-empty" />
         )}
 
         <SkillDetailDrawer />

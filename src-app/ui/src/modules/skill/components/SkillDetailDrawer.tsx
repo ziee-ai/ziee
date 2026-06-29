@@ -1,14 +1,15 @@
-import { DeleteOutlined } from '@ant-design/icons'
+import { Trash2 } from 'lucide-react'
 import {
-  App,
   Button,
   Checkbox,
   Descriptions,
-  Drawer,
-  Popconfirm,
+  Sheet,
+  Confirm,
   Space,
-  Typography,
-} from 'antd'
+  Text,
+  Title,
+  message,
+} from '@/components/ui'
 import { useEffect, useMemo, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { ApiClient } from '@/api-client'
@@ -18,8 +19,6 @@ import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { SkillScopeBadge } from './SkillScopeBadge'
-
-const { Text, Title } = Typography
 
 /** Build a readable markdown summary from the skill's persisted
  *  metadata. This renders the parsed FRONTMATTER only (`description`,
@@ -42,7 +41,6 @@ function buildSkillMarkdown(skill: Skill): string {
 }
 
 export function SkillDetailDrawer() {
-  const { message } = App.useApp()
   const { isOpen, skill, conversationId } = Stores.SkillDrawer
   // No dedicated `skills::manage` permission is generated; a user can
   // manage their OWN user-scope skills (any installer can), while
@@ -113,11 +111,14 @@ export function SkillDetailDrawer() {
 
   if (!skill) {
     return (
-      <Drawer
+      <Sheet
         open={isOpen}
-        onClose={() => Stores.SkillDrawer.close()}
-        closable={{ closeIcon: true }}
-        size="large"
+        data-testid="skill-detail-sheet"
+        onOpenChange={open => {
+          if (!open) Stores.SkillDrawer.close()
+        }}
+        title="Skill details"
+        aria-label="Skill details"
       />
     )
   }
@@ -160,11 +161,13 @@ export function SkillDetailDrawer() {
   }
 
   return (
-    <Drawer
+    <Sheet
       open={isOpen}
-      onClose={() => Stores.SkillDrawer.close()}
-      closable={{ closeIcon: true }}
-      size="large"
+      data-testid="skill-detail-sheet-loaded"
+      onOpenChange={open => {
+        if (!open) Stores.SkillDrawer.close()
+      }}
+      aria-label="Skill details"
       title={
         <Space>
           <Title level={5} className="!m-0">
@@ -173,45 +176,51 @@ export function SkillDetailDrawer() {
           <SkillScopeBadge scope={skill.scope} isDev={skill.is_dev} />
         </Space>
       }
-      extra={
+      footer={
         editable ? (
-          <Popconfirm
+          <Confirm
+            data-testid="skill-delete-confirm"
             title="Delete this skill?"
             description="This removes the skill and its extracted files."
             onConfirm={handleDelete}
             okText="Delete"
+            cancelText="Cancel"
             okButtonProps={{ danger: true }}
           >
-            <Button danger size="small" icon={<DeleteOutlined />}>
+            <Button variant="destructive" size="sm" data-testid="skill-delete-button" icon={<Trash2 />}>
               Delete
             </Button>
-          </Popconfirm>
+          </Confirm>
         ) : null
       }
     >
       <div className="flex flex-col gap-4">
-        <Descriptions size="small" column={1} bordered>
-          <Descriptions.Item label="Name">{skill.name}</Descriptions.Item>
-          {skill.version && (
-            <Descriptions.Item label="Version">
-              {skill.version}
-            </Descriptions.Item>
-          )}
-          <Descriptions.Item label="Files">
-            {skill.file_count}
-          </Descriptions.Item>
-          <Descriptions.Item label="Size">
-            {(skill.bundle_size_bytes / 1024).toFixed(1)} KiB
-          </Descriptions.Item>
-        </Descriptions>
+        <Descriptions
+          size="sm"
+          column={1}
+          bordered
+          data-testid="skill-detail-descriptions"
+          items={[
+            { key: 'name', label: 'Name', children: skill.name },
+            ...(skill.version
+              ? [{ key: 'version', label: 'Version', children: skill.version }]
+              : []),
+            { key: 'files', label: 'Files', children: skill.file_count },
+            {
+              key: 'size',
+              label: 'Size',
+              children: `${(skill.bundle_size_bytes / 1024).toFixed(1)} KiB`,
+            },
+          ]}
+        />
 
         {conversationId && (
           <Checkbox
             checked={hidden}
-            onChange={e => void handleToggleHidden(e.target.checked)}
-          >
-            Hide in this conversation
-          </Checkbox>
+            data-testid="skill-detail-hide-checkbox"
+            onChange={(next: boolean) => void handleToggleHidden(next)}
+            label="Hide in this conversation"
+          />
         )}
 
         <div className="overflow-auto">
@@ -230,7 +239,7 @@ export function SkillDetailDrawer() {
         )}
         {bodyError && !bodyLoading && (
           <Text type="secondary" className="text-xs">
-            Couldn’t load skill content.
+            Couldn't load skill content.
           </Text>
         )}
         {body && (
@@ -250,6 +259,6 @@ export function SkillDetailDrawer() {
           </Text>
         </div>
       </div>
-    </Drawer>
+    </Sheet>
   )
 }

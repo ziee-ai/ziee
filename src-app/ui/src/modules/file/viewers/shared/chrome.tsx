@@ -1,12 +1,8 @@
-import { App, Button, Space } from 'antd'
-import {
-  CodeOutlined,
-  CopyOutlined,
-  DownloadOutlined,
-  EyeOutlined,
-} from '@ant-design/icons'
+import { Code, Copy, Download, Eye } from 'lucide-react'
+import { Button, Space } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
+import { message } from '@/components/ui'
 
 /**
  * Shared chrome building blocks for file viewer headers. Viewers compose
@@ -33,22 +29,26 @@ export function RawToggle({ file }: { file: FileEntity }) {
   if (file.text_page_count === 0) return null
   const mode = Stores.File.fileViewModes.get(file.id) ?? 'compiled'
   return (
-    <Space.Compact>
+    <Space direction="horizontal">
       <Button
-        icon={<EyeOutlined />}
-        type={mode === 'compiled' ? 'primary' : 'default'}
-        title="Rendered view"
+        icon={<Eye />}
+        variant={mode === 'compiled' ? 'default' : 'outline'}
         aria-label="Rendered view"
         onClick={() => Stores.File.setFileViewMode(file.id, 'compiled')}
-      />
+        data-testid="file-viewer-rendered-btn"
+      >
+        Rendered view
+      </Button>
       <Button
-        icon={<CodeOutlined />}
-        type={mode === 'raw' ? 'primary' : 'default'}
-        title="Raw view"
+        icon={<Code />}
+        variant={mode === 'raw' ? 'default' : 'outline'}
         aria-label="Raw view"
         onClick={() => Stores.File.setFileViewMode(file.id, 'raw')}
-      />
-    </Space.Compact>
+        data-testid="file-viewer-raw-btn"
+      >
+        Raw view
+      </Button>
+    </Space>
   )
 }
 
@@ -58,7 +58,6 @@ export function RawToggle({ file }: { file: FileEntity }) {
 // Useful for any text-based viewer.
 
 export function CopyButton({ file }: { file: FileEntity }) {
-  const { message } = App.useApp()
   const handleCopy = async () => {
     // `Stores.File.__state` is the raw zustand getState — bypasses
     // the reactive proxy, safe to use inside event handlers. The
@@ -88,7 +87,7 @@ export function CopyButton({ file }: { file: FileEntity }) {
     }
   }
   return (
-    <Button icon={<CopyOutlined />} onClick={handleCopy}>
+    <Button icon={<Copy />} onClick={handleCopy} data-testid="file-viewer-copy-btn">
       Copy
     </Button>
   )
@@ -99,15 +98,15 @@ export function CopyButton({ file }: { file: FileEntity }) {
 // it just streams the original bytes from the server.
 
 export function DownloadButton({ file }: { file: FileEntity }) {
-  const { message } = App.useApp()
   return (
     <Button
-      icon={<DownloadOutlined />}
+      icon={<Download />}
       onClick={() => {
         Stores.File.downloadFile(file).catch(() =>
           message.error('Failed to download file'),
         )
       }}
+      data-testid="file-viewer-download-btn"
     >
       Download
     </Button>

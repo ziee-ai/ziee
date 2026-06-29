@@ -1,4 +1,4 @@
-import { Spin } from 'antd'
+import { Spin } from '@/components/ui'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent } from '../shared/hooks'
 import { useResourceLinkContent } from '../../hooks/useResourceLinkContent'
@@ -19,7 +19,7 @@ export function TextBody(props: FileViewerSlotProps) {
     )
   }
   if (content === null) {
-    return <div className="flex items-center justify-center h-full"><Spin /></div>
+    return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>
   }
   return <RawCodeView text={content} filename={file?.filename} />
 }

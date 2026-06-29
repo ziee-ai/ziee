@@ -1,7 +1,5 @@
-import { Descriptions, Drawer, Space, Tag, Typography } from 'antd'
+import { Descriptions, Sheet, Space, Tag, Paragraph, Title } from '@/components/ui'
 import type { IndexItem } from '@/api-client/types'
-
-const { Paragraph, Title } = Typography
 
 interface WorkflowDetailsDrawerProps {
   item: IndexItem
@@ -20,40 +18,42 @@ export function WorkflowDetailsDrawer({
   onClose,
 }: WorkflowDetailsDrawerProps) {
   return (
-    <Drawer
+    <Sheet
+      data-testid="hub-workflow-detail-sheet"
       open={open}
-      onClose={onClose}
-      closable={{ closeIcon: true }}
-      size="large"
+      onOpenChange={(v) => { if (!v) onClose() }}
+      side="right"
+      className="!max-w-[720px]"
       title={
         <Space>
           <Title level={5} className="!m-0">
             {item.title ?? item.name}
           </Title>
-          {item.verified && <Tag color="green">Verified</Tag>}
+          {item.verified && <Tag tone="success" data-testid="hub-workflow-detail-verified-tag">Verified</Tag>}
         </Space>
       }
     >
       <div className="flex flex-col gap-4">
         {item.summary && <Paragraph>{item.summary}</Paragraph>}
-        <Descriptions size="small" column={1} bordered>
-          <Descriptions.Item label="Name">{item.name}</Descriptions.Item>
-          {item.version && (
-            <Descriptions.Item label="Version">
-              {item.version}
-            </Descriptions.Item>
-          )}
-          {item.tags && item.tags.length > 0 && (
-            <Descriptions.Item label="Tags">
-              <Space wrap size={4}>
-                {item.tags.map(t => (
-                  <Tag key={t}>{t}</Tag>
-                ))}
-              </Space>
-            </Descriptions.Item>
-          )}
-        </Descriptions>
+        <Descriptions size="sm" column={1} bordered
+          data-testid="hub-workflow-detail-descriptions"
+          items={[
+            { key: 'name', label: 'Name', children: item.name },
+            ...(item.version ? [{ key: 'version', label: 'Version', children: item.version }] : []),
+            ...(item.tags && item.tags.length > 0 ? [{
+              key: 'tags',
+              label: 'Tags',
+              children: (
+                <Space wrap size={4}>
+                  {item.tags.map(t => (
+                    <Tag key={t} data-testid={`hub-workflow-detail-tag-${t}`}>{t}</Tag>
+                  ))}
+                </Space>
+              )
+            }] : [])
+          ]}
+        />
       </div>
-    </Drawer>
+    </Sheet>
   )
 }

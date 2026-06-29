@@ -1,4 +1,4 @@
-import { TeamOutlined, UserOutlined } from '@ant-design/icons'
+import { User as UserIcon, Users as UsersIcon } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -91,7 +91,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'users',
-        icon: <UserOutlined />,
+        icon: <UserIcon />,
         label: 'Users',
         path: 'users',
         order: 10,
@@ -99,7 +99,7 @@ export default createModule({
       },
       {
         id: 'user-groups',
-        icon: <TeamOutlined />,
+        icon: <UsersIcon />,
         label: 'User Groups',
         path: 'user-groups',
         order: 11,

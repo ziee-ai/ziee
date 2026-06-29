@@ -1,6 +1,18 @@
-import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
-import { App, Button, Card, Divider, Flex, Form, Input, Typography } from 'antd'
-import { useEffect, useState } from 'react'
+import {
+  Button,
+  Card,
+  Flex,
+  Form,
+  FormField,
+  Input,
+  PasswordInput,
+  Separator,
+  Text,
+  Title,
+  message,
+  useForm,
+} from '@/components/ui'
+import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -13,15 +25,17 @@ import { AddRemoteLlmModelDrawer } from '@/modules/llm-provider/components/llm-m
 import { EditLlmModelDrawer } from '@/modules/llm-provider/components/llm-models/EditLlmModelDrawer'
 import type { ProxySettings } from '@/api-client/types'
 
-const { Title, Text } = Typography
+interface RemoteProviderFormValues {
+  api_key?: string
+  base_url?: string
+}
 
 export function RemoteProviderSettings() {
-  const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
 
-  const [form] = Form.useForm()
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [pendingSettings, setPendingSettings] = useState<any>(null)
+  const form = useForm<RemoteProviderFormValues>({
+    defaultValues: { api_key: '', base_url: '' },
+  })
 
   // Store data
   const { error } = Stores.LlmProvider
@@ -32,16 +46,20 @@ export function RemoteProviderSettings() {
     p => p.id === providerId,
   )
 
+  const isDirty = form.formState.isDirty
 
-  const handleFormChange = (changedValues: any) => {
+  const handleSaveSettings = async (values: RemoteProviderFormValues) => {
     if (!currentProvider) return
 
-    setHasUnsavedChanges(true)
-    setPendingSettings((prev: any) => ({ ...prev, ...changedValues }))
-  }
+    // Only send fields the user actually changed. The api_key field is
+    // write-only (server never returns it); sending an empty/unchanged value
+    // must not clobber the stored key.
+    const dirty = form.formState.dirtyFields
+    const pendingSettings: RemoteProviderFormValues = {}
+    if (dirty.api_key) pendingSettings.api_key = values.api_key
+    if (dirty.base_url) pendingSettings.base_url = values.base_url
 
-  const handleSaveSettings = async () => {
-    if (!currentProvider || !pendingSettings) return
+    if (Object.keys(pendingSettings).length === 0) return
 
     try {
       await Stores.LlmProvider.updateLlmProvider(
@@ -49,8 +67,8 @@ export function RemoteProviderSettings() {
         pendingSettings,
       )
 
-      setHasUnsavedChanges(false)
-      setPendingSettings(null)
+      // Reset dirty state to the just-saved values.
+      form.reset(values)
       message.success('Settings saved')
     } catch (error) {
       console.error('Failed to save settings:', error)
@@ -78,7 +96,7 @@ export function RemoteProviderSettings() {
       message.error(error)
       Stores.LlmProvider.clearLlmProviderStoreError()
     }
-  }, [error, message])
+  }, [error])
 
   // Initialise / re-initialise the form ONLY when the user navigates to
   // a different provider (the id changes). Previously this depended on
@@ -89,12 +107,10 @@ export function RemoteProviderSettings() {
   // explicit `providerId` from useParams instead.
   useEffect(() => {
     if (!currentProvider) return
-    form.setFieldsValue({
-      api_key: currentProvider.api_key,
-      base_url: currentProvider.base_url,
+    form.reset({
+      api_key: currentProvider.api_key ?? '',
+      base_url: currentProvider.base_url ?? '',
     })
-    setHasUnsavedChanges(false)
-    setPendingSettings(null)
     // Intentionally exclude `currentProvider` from deps — re-init is
     // keyed on provider-id, not on any store mutation that produces a
     // new object reference. Reading `currentProvider` here is safe
@@ -116,13 +132,10 @@ export function RemoteProviderSettings() {
         name="remote-provider-settings-form"
         form={form}
         layout="vertical"
-        initialValues={{
-          api_key: currentProvider.api_key,
-          base_url: currentProvider.base_url,
-        }}
-        onValuesChange={handleFormChange}
+        onSubmit={handleSaveSettings}
+        data-testid="llm-remote-settings-form"
       >
-        <Card title={'API Configuration'}>
+        <Card title={'API Configuration'} data-testid="llm-remote-api-config-card">
           <Flex className={'flex-col gap-3'}>
             <div>
               <Title level={5}>API Key</Title>
@@ -131,10 +144,11 @@ export function RemoteProviderSettings() {
                 Visit your API Keys page to retrieve the API key you'll use in
                 your requests.
               </Text>
-              <Form.Item
+              <FormField
                 name="api_key"
-                style={{ marginBottom: 0, marginTop: 16 }}
-                help={
+                aria-label="API key"
+                className="mt-4"
+                description={
                   /* The server no longer returns the API key in GET
                    * responses (06-llm-provider F-01 closure — secret
                    * was exposed to every user with read access).
@@ -144,15 +158,15 @@ export function RemoteProviderSettings() {
                   'Leave empty to keep the current key. Type a new value to replace it.'
                 }
               >
-                <Input.Password
+                <PasswordInput
                   placeholder={
                     'Insert API key (leave empty to keep current value)'
                   }
-                  iconRender={visible =>
-                    visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />
-                  }
+                  showLabel="Show API key"
+                  hideLabel="Hide API key"
+                  data-testid="llm-remote-api-key-input"
                 />
-              </Form.Item>
+              </FormField>
             </div>
 
             <div>
@@ -165,24 +179,17 @@ export function RemoteProviderSettings() {
                 endpoint to use. See the {currentProvider.name} documentation{' '}
                 for more information.
               </Text>
-              <Form.Item
-                name="base_url"
-                style={{ marginBottom: 0, marginTop: 16 }}
-              >
-                <Input placeholder={'Base URL'} />
-              </Form.Item>
+              <FormField name="base_url" aria-label="Base URL" className="mt-4">
+                <Input placeholder={'Base URL'} data-testid="llm-remote-base-url-input" />
+              </FormField>
             </div>
           </Flex>
 
           {canEditProvider && (
             <>
-              <Divider className="!my-3" />
+              <Separator className="!my-3" />
               <Flex justify="end">
-                <Button
-                  type="primary"
-                  onClick={handleSaveSettings}
-                  disabled={!hasUnsavedChanges}
-                >
+                <Button type="submit" disabled={!isDirty} data-testid="llm-remote-save-btn">
                   Save
                 </Button>
               </Flex>

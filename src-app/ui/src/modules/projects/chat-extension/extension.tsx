@@ -1,13 +1,7 @@
+import { X, FolderOpen, CircleMinus, CirclePlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { App, Button, Popconfirm, Spin, Tag, Tooltip } from 'antd'
-import type { MenuProps } from 'antd'
-import { getAppApi } from '@/lib/antdAppHolder'
-import {
-  CloseOutlined,
-  FolderOpenOutlined,
-  MinusCircleOutlined,
-  PlusCircleOutlined,
-} from '@ant-design/icons'
+import { Button, Confirm, Spin, Tag, Tooltip, message, dialog } from '@/components/ui'
+import type { DropdownItem } from '@/components/ui'
 import type { Conversation } from '@/api-client/types'
 import { useNavigate } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
@@ -160,7 +154,8 @@ function ProjectChipForConversationHeader() {
   return (
     <div className="px-4 pt-2">
       <Tag
-        color="blue"
+        data-testid="project-header-chip-tag"
+        tone="info"
         className="cursor-pointer"
         onClick={() => navigate(`/projects/${project.id}`)}
       >
@@ -212,7 +207,7 @@ const projectExtension: ChatExtension = createExtension({
         '[project extension] attach failed; conversation stays unfiled.',
         err,
       )
-      getAppApi().message.error('Failed to file this conversation into the project — saved as unfiled.')
+      message.error('Failed to file this conversation into the project — saved as unfiled.')
       setCached(conversation.id, null)
       return
     }
@@ -274,19 +269,16 @@ function ProjectTagWithRemove({
   project: Project
   navigate: (path: string) => void
 }) {
-  const { message: msg } = App.useApp()
   const [removeOpen, setRemoveOpen] = useState(false)
-  const [removing, setRemoving] = useState(false)
+  const [, setRemoving] = useState(false)
 
   const handleRemove = async () => {
     setRemoving(true)
     try {
       await Stores.Projects.detachConversation(project.id, conversationId)
-      msg.success('Removed from project')
-      // Trailing component's event subscriber flips us to 'unfiled'
-      // when project.conversation_detached fires.
+      message.success('Removed from project')
     } catch (err) {
-      msg.error(
+      message.error(
         err instanceof Error ? err.message : 'Failed to remove from project',
       )
     } finally {
@@ -295,47 +287,23 @@ function ProjectTagWithRemove({
     }
   }
 
-  // Visibility wrapper: hover-only by default; pin visible while
-  // the popconfirm is open so moving the mouse to the bubble
-  // (which renders in a body-level portal) doesn't hide the anchor.
-  // The wrapper div is what `group-hover` targets — antd Tag's own
-  // styles don't always combine cleanly with utility opacity, but a
-  // plain wrapper is rock-solid.
   return (
     <div
       className={`inline-flex items-center transition-opacity ${
         removeOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
       }`}
     >
-      <Popconfirm
+      <Confirm
+        data-testid="project-trailing-remove-confirm"
         title="Remove from project?"
         description="The conversation becomes unfiled. It is NOT deleted."
-        open={removeOpen}
         onConfirm={handleRemove}
         onCancel={() => setRemoveOpen(false)}
         okText="Remove"
         cancelText="Cancel"
-        okButtonProps={{ loading: removing }}
-        placement="topRight"
       >
-        <Tag
-          color="processing"
-          icon={<FolderOpenOutlined />}
-          closable
-          closeIcon={
-            <Tooltip title="Remove from project">
-              <CloseOutlined />
-            </Tooltip>
-          }
-          onClose={(e: React.MouseEvent<HTMLElement>) => {
-            // preventDefault: stop the tag from auto-hiding itself.
-            // stopPropagation: don't fall through to the tag's onClick
-            // (which would navigate to the project).
-            e.preventDefault()
-            e.stopPropagation()
-            setRemoveOpen(true)
-          }}
-          className="cursor-pointer !mr-0"
+        <span
+          className="inline-flex items-center cursor-pointer"
           role="button"
           tabIndex={0}
           aria-label={`Open project ${project.name || ''}`}
@@ -350,9 +318,30 @@ function ProjectTagWithRemove({
             }
           }}
         >
-          {project.name ? `In project: ${project.name}` : 'In project'}
-        </Tag>
-      </Popconfirm>
+          <Tag
+            data-testid="project-trailing-membership-tag"
+            tone="info"
+            icon={<FolderOpen />}
+            className="!mr-0"
+          >
+            {project.name ? `In project: ${project.name}` : 'In project'}
+          </Tag>
+          <Tooltip title="Remove from project">
+            <Button
+              data-testid="project-trailing-remove-button"
+              variant="ghost"
+              size="icon"
+              aria-label="Remove from project"
+              className="ml-1 size-5 rounded-full text-muted-foreground hover:text-foreground"
+              icon={<X className="h-3 w-3" />}
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                setRemoveOpen(true)
+              }}
+            />
+          </Tooltip>
+        </span>
+      </Confirm>
     </div>
   )
 }
@@ -442,7 +431,7 @@ function ProjectMembershipTrailing({
   }, [conversationId])
 
   if (state.kind === 'loading') {
-    return <Spin size="small" />
+    return <Spin size="sm" label="Loading" />
   }
 
   if (state.kind === 'in_project') {
@@ -467,9 +456,10 @@ function ProjectMembershipTrailing({
       >
         <Tooltip title="Add to project">
           <Button
-            type="text"
-            size="small"
-            icon={<PlusCircleOutlined />}
+            data-testid="project-trailing-add-button"
+            variant="ghost"
+            size="sm"
+            icon={<CirclePlus />}
             aria-label="Add to project"
             onClick={(e: React.MouseEvent) => {
               e.stopPropagation()
@@ -503,15 +493,11 @@ function ProjectMembershipTrailing({
  * the card trailing — no second round-trip.
  */
 function useProjectMenuContribution(conversation: Conversation): {
-  items: MenuProps['items']
+  items: DropdownItem[]
   overlays: React.ReactNode
   keepMenuOpen: boolean
 } {
   const navigate = useNavigate()
-  // `modal` from App.useApp() — NOT the static `Modal.confirm`. The
-  // static API renders outside the ConfigProvider tree and ignores
-  // the active theme tokens, so it shows a light modal on dark mode.
-  const { message: msg, modal } = App.useApp()
   const [project, setProject] = useState<Project | null>(() => {
     const cached = getCached(conversation.id)
     return cached && cached.name ? cached : null
@@ -577,32 +563,29 @@ function useProjectMenuContribution(conversation: Conversation): {
   // normally on menu-item click.
   const confirmRemove = () => {
     if (!project) return
-    modal.confirm({
+    void dialog.confirm({
       title: 'Remove from project?',
-      content: 'The conversation becomes unfiled. It is NOT deleted.',
+      description: 'The conversation becomes unfiled. It is NOT deleted.',
       okText: 'Remove',
       cancelText: 'Cancel',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await Stores.Projects.detachConversation(project.id, conversation.id)
-          msg.success('Removed from project')
-        } catch (err) {
-          msg.error(
-            err instanceof Error
-              ? err.message
-              : 'Failed to remove from project',
-          )
-        }
-      },
+    }).then(async (ok) => {
+      if (!ok) return
+      try {
+        await Stores.Projects.detachConversation(project.id, conversation.id)
+        message.success('Removed from project')
+      } catch (err) {
+        message.error(
+          err instanceof Error ? err.message : 'Failed to remove from project',
+        )
+      }
     })
   }
 
-  const items: MenuProps['items'] = project
+  const items: DropdownItem[] = project
     ? [
         {
           key: 'project-open',
-          icon: <FolderOpenOutlined />,
+          icon: <FolderOpen />,
           label: project.name
             ? `Open: ${project.name}`
             : 'Open project',
@@ -610,7 +593,7 @@ function useProjectMenuContribution(conversation: Conversation): {
         },
         {
           key: 'project-remove',
-          icon: <MinusCircleOutlined />,
+          icon: <CircleMinus />,
           label: 'Remove from project',
           onClick: confirmRemove,
         },
@@ -619,7 +602,7 @@ function useProjectMenuContribution(conversation: Conversation): {
       ? [
           {
             key: 'project-add',
-            icon: <PlusCircleOutlined />,
+            icon: <CirclePlus />,
             label: 'Add to project',
             onClick: () => setAddOpen(true),
           },
@@ -627,11 +610,13 @@ function useProjectMenuContribution(conversation: Conversation): {
       : []
 
   const overlays = (
-    <AddToProjectModal
-      open={addOpen}
-      conversationId={conversation.id}
-      onClose={() => setAddOpen(false)}
-    />
+    <>
+      <AddToProjectModal
+        open={addOpen}
+        conversationId={conversation.id}
+        onClose={() => setAddOpen(false)}
+      />
+    </>
   )
 
   // Both the add-modal and the remove-confirm are screen-covering

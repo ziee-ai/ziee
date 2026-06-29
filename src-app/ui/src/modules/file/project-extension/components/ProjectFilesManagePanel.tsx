@@ -7,25 +7,21 @@
 // via the `ProjectExtensionSlot view="managePanel"` slot — the projects
 // module never imports this file directly.
 
+import { Trash2, Upload as UploadIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  App,
   Button,
+  Confirm,
+  dialog,
   Empty,
-  Popconfirm,
+  message,
   Spin,
   Tag,
+  Text,
   Tooltip,
-  Typography,
   Upload,
-  theme,
-} from 'antd'
-import type { UploadProps } from 'antd'
-import {
-  DeleteOutlined,
-  UploadOutlined,
-} from '@ant-design/icons'
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -49,14 +45,6 @@ function formatFileSize(bytes: number): string {
 }
 
 export function ProjectFilesManagePanel() {
-  // `modal` from App.useApp() — NOT the static `Modal.confirm` from
-  // antd. Static Modal calls render OUTSIDE the ConfigProvider's
-  // context tree, so they ignore the active theme token. In dark
-  // mode that surfaces as a white modal on a dark page. App.useApp()'s
-  // modal instance is wired through the running context and inherits
-  // the dark/light tokens correctly.
-  const { message, modal } = App.useApp()
-  const { token } = theme.useToken()
   const project = Stores.ProjectDetail.project
   const {
     files,
@@ -88,26 +76,26 @@ export function ProjectFilesManagePanel() {
     }
   }
 
-  const handleBatchDelete = () => {
+  const handleBatchDelete = async () => {
     if (!projectId || selectedFileIds.size === 0) return
     const n = selectedFileIds.size
-    modal.confirm({
+    const confirmed = await dialog.confirm({
       title: `Delete ${n} file${n === 1 ? '' : 's'}?`,
-      content: 'This permanently removes the files from your library.',
+      description: 'This permanently removes the files from your library.',
       okText: 'Delete',
-      okButtonProps: { danger: true },
       cancelText: 'Cancel',
-      onOk: async () => {
-        try {
-          await Stores.ProjectFiles.batchDelete(projectId)
-          message.success(`Deleted ${n} file${n === 1 ? '' : 's'}`)
-        } catch (err) {
-          message.error(
-            err instanceof Error ? err.message : 'Batch delete failed',
-          )
-        }
-      },
+      danger: true,
     })
+    if (confirmed) {
+      try {
+        await Stores.ProjectFiles.batchDelete(projectId)
+        message.success(`Deleted ${n} file${n === 1 ? '' : 's'}`)
+      } catch (err) {
+        message.error(
+          err instanceof Error ? err.message : 'Batch delete failed',
+        )
+      }
+    }
   }
 
   // Pre-flight + dispatch — stable ref so the DOM listener attached in
@@ -136,12 +124,12 @@ export function ProjectFilesManagePanel() {
   const dispatchRef = useRef(dispatchFiles)
   dispatchRef.current = dispatchFiles
 
-  // Drag handlers — attach to the antd Drawer's body so the overlay
-  // covers the full drawer surface.
+  // Drag handlers — attach to the Drawer's panel (the Radix dialog
+  // surface) so the overlay covers the full drawer.
   useEffect(() => {
     if (!canUpload) return
     const body = rootRef.current?.closest(
-      '.ant-drawer-body',
+      '[role="dialog"]',
     ) as HTMLElement | null
     if (!body) return
     setDrawerBody(body)
@@ -192,20 +180,13 @@ export function ProjectFilesManagePanel() {
     }
   }, [canUpload])
 
-  const handleBeforeUpload: UploadProps['beforeUpload'] = (file, fileList) => {
-    const isLastFile = fileList[fileList.length - 1] === file
-    if (isLastFile) {
-      dispatchFiles(fileList as unknown as File[])
-    }
-    return false
-  }
-
   if (!project) return null
 
   const counterChip = (
     <Tag
-      color={atCap ? 'error' : nearCap ? 'warning' : 'default'}
+      tone={atCap ? 'error' : nearCap ? 'warning' : undefined}
       aria-label={`Project file count: ${count} of ${PROJECT_FILE_CAP}`}
+      data-testid="file-project-count-tag"
     >
       {count} / {PROJECT_FILE_CAP} files
     </Tag>
@@ -214,17 +195,18 @@ export function ProjectFilesManagePanel() {
   const uploadButton = canUpload ? (
     <Upload
       multiple
-      showUploadList={false}
-      beforeUpload={handleBeforeUpload}
+      onFiles={(files) => dispatchFiles(files)}
       accept="*/*"
       disabled={atCap}
+      label="Upload files"
+      data-testid="file-project-upload-area"
     >
       <Tooltip title={atCap ? `At ${PROJECT_FILE_CAP}-file cap` : 'Upload files'}>
         <Button
-          type="primary"
-          icon={<UploadOutlined />}
+          icon={<UploadIcon />}
           disabled={atCap}
           aria-label="Upload files to project"
+          data-testid="file-project-upload-btn"
         >
           Upload
         </Button>
@@ -235,7 +217,7 @@ export function ProjectFilesManagePanel() {
   const header = (
     <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
       <div className="flex items-center gap-2">
-        <Typography.Text strong>Knowledge files</Typography.Text>
+        <Text strong>Knowledge files</Text>
         {counterChip}
       </div>
       {uploadButton}
@@ -244,24 +226,21 @@ export function ProjectFilesManagePanel() {
 
   const selectionBar = selectedFileIds.size > 0 && (
     <div
-      className="flex items-center justify-between gap-2 mb-3 px-3 py-2 rounded"
-      style={{
-        backgroundColor: token.colorInfoBg,
-        border: `1px solid ${token.colorInfoBorder}`,
-      }}
+      className="flex items-center justify-between gap-2 mb-3 px-3 py-2 rounded bg-primary/10 border border-primary/30"
     >
-      <Typography.Text>
+      <Text>
         {selectedFileIds.size} selected
-      </Typography.Text>
+      </Text>
       <div className="flex items-center gap-2">
-        <Button size="small" onClick={() => Stores.ProjectFiles.deselectAll()}>
+        <Button size="sm" variant="outline" onClick={() => Stores.ProjectFiles.deselectAll()} data-testid="file-project-clear-selection-btn">
           Clear
         </Button>
         <Button
-          size="small"
-          danger
-          icon={<DeleteOutlined />}
+          size="sm"
+          variant="destructive"
+          icon={<Trash2 />}
           onClick={handleBatchDelete}
+          data-testid="file-project-delete-selected-btn"
         >
           Delete selected
         </Button>
@@ -290,18 +269,18 @@ export function ProjectFilesManagePanel() {
   const emptyOrList =
     !filesLoading && files.length === 0 ? (
       <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
         description="No knowledge files yet"
+        data-testid="file-project-empty"
       >
-        <Typography.Text type="secondary" className="block">
+        <Text type="secondary" className="block">
           {canUpload
             ? 'Drag files anywhere on this drawer, or use the Upload button above.'
             : 'Attach files from your library to share their contents with every conversation in this project.'}
-        </Typography.Text>
+        </Text>
       </Empty>
     ) : filesLoading ? (
       <div className="flex justify-center py-6">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     ) : (
       <div className="flex flex-col gap-2">
@@ -323,23 +302,24 @@ export function ProjectFilesManagePanel() {
               }
               actions={
                 canEdit ? (
-                  <Popconfirm
+                  <Confirm
                     title="Delete this file?"
                     description="This permanently removes the file from your library."
                     okText="Delete"
-                    okButtonProps={{ danger: true }}
                     cancelText="Cancel"
+                    okButtonProps={{ danger: true }}
                     onConfirm={() => handleDelete(file.id, file.filename)}
+                    data-testid={`file-project-delete-confirm-${file.id}`}
                   >
                     <Tooltip title="Delete">
                       <Button
-                        type="text"
-                        danger
-                        icon={<DeleteOutlined />}
+                        variant="ghost"
+                        icon={<Trash2 />}
                         aria-label={`Delete ${file.filename}`}
+                        data-testid={`file-project-delete-btn-${file.id}`}
                       />
                     </Tooltip>
-                  </Popconfirm>
+                  </Confirm>
                 ) : undefined
               }
             />
@@ -353,19 +333,15 @@ export function ProjectFilesManagePanel() {
       {/* Sticky header — keeps title/counter/upload/selection visible
           while the file list scrolls. */}
       <div
-        className="sticky z-10 -mx-1 px-1"
-        style={{
-          top: -1,
-          paddingTop: 1,
-          backgroundColor: token.colorBgLayout,
-        }}
+        className="sticky z-10 -mx-1 px-1 bg-background"
+        style={{ top: -1, paddingTop: 1 }}
       >
         {header}
         {atCap && (
-          <Typography.Text type="danger" className="block mb-2 text-sm">
+          <Text type="danger" className="block mb-2 text-sm">
             You've reached the {PROJECT_FILE_CAP}-file cap. Remove a file to
             attach a new one.
-          </Typography.Text>
+          </Text>
         )}
         {selectionBar}
         {uploadingPreview}
@@ -377,19 +353,10 @@ export function ProjectFilesManagePanel() {
       {isDragging && drawerBody &&
         createPortal(
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-2"
-            style={{
-              zIndex: 10,
-              backgroundColor: token.colorPrimaryBg,
-              border: `2px dashed ${token.colorPrimary}`,
-              borderRadius: 8,
-              color: token.colorPrimary,
-              fontWeight: 500,
-              fontSize: 16,
-              pointerEvents: 'none',
-            }}
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary bg-primary/10 text-primary font-medium text-base pointer-events-none"
+            style={{ zIndex: 10 }}
           >
-            <UploadOutlined style={{ fontSize: 36 }} />
+            <UploadIcon size={36} />
             <span>Drop files to attach to this project</span>
           </div>,
           drawerBody,

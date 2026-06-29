@@ -70,7 +70,7 @@ sandbox-test:
 
 # Run everything before pushing changes that touch the sandbox.
 # Skips bwrap tests if no rootfs is mounted (prints a hint).
-check: check-schema-sync check-sandbox-unit
+check: check-schema-sync openapi-check check-sandbox-unit
     @echo "✓ pre-push checks passed (cheap layer)"
     @echo
     @echo "Run \`just check-sandbox\` next if you've mounted a rootfs"
@@ -80,6 +80,12 @@ check: check-schema-sync check-sandbox-unit
 # `SANDBOX_ROOTFS_SCHEMA_VERSION` in mod.rs drift apart. A mismatch
 # breaks every operator's boot probe — cheap to check, expensive to
 # debug after the fact.
+# Verify the committed types.ts files are in sync with the Rust generator
+# (server/src/openapi/emit_ts.rs). No Node/tsx needed — pure cargo test. Catches
+# a backend type change that wasn't followed by `just openapi-regen`.
+openapi-check:
+    cd src-app/server && cargo test --lib openapi::emit_ts::
+
 check-schema-sync:
     @bash -c 'set -eu; \
         toml=$(grep -E "^current_schema" src-app/sandbox-rootfs/compat.toml | grep -oE "[0-9]+"); \
@@ -460,9 +466,10 @@ test-hub: ensure-build-db
 
 # OpenAPI two-step regen: the SERVER binary emits the core UI spec, and the
 # DESKTOP binary emits the desktop UI spec (server routes + the desktop-only
-# routes — remote_access / magic_link / tunnel_auth / host_mount). Each
-# workspace then runs its generate-openapi script (which rewrites
-# `src/api-client/types.ts` from openapi.json). The whole set is the single
+# routes — remote_access / magic_link / tunnel_auth / host_mount). Each binary
+# now ALSO emits its `src/api-client/types.ts` directly (Rust port of the former
+# `generate-endpoints.ts`; see `server/src/openapi/emit_ts.rs`), so there is no
+# longer a separate Node/tsx codegen step. The whole set is the single
 # source-of-truth flow for API types.
 #
 # NOTE: do NOT `cp` the server spec onto the desktop one — that drops every
@@ -472,8 +479,6 @@ openapi-regen: check-hub
         cargo run --bin ziee -- --generate-openapi ui/openapi
     @cd src-app && DATABASE_URL="{{HUB_DB_URL}}" CONFIG_FILE=server/config/openapi-gen.yaml \
         cargo run -p ziee-desktop -- --generate-openapi desktop/ui/openapi
-    @cd src-app/ui && npm run generate-openapi
-    @cd src-app/desktop/ui && npm run generate-openapi
 
 # The "all green" hub compile gate — check + tsc + openapi-regen, but
 # NOT test-hub (slow, needs creds, separate recipe).

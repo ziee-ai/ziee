@@ -1,5 +1,5 @@
+import { Image } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { PictureOutlined } from '@ant-design/icons'
 import { ImageBody } from './body'
 import { ImageHeader } from './header'
 
@@ -13,7 +13,7 @@ export const viewers: FileViewerModule[] = [
       body: ImageBody,
       headerActions: ImageHeader,
       label: 'Image',
-      icon: <PictureOutlined />,
+      icon: <Image />,
       // Images are the headline inline-render use case (plots, heatmaps).
       // `image/*` wildcard covers png/jpeg/webp/gif/svg+xml — anything the
       // browser can <img>.

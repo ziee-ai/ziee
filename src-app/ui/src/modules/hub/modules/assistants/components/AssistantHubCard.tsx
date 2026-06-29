@@ -1,10 +1,5 @@
-import { App, Card, Tag, Typography, Button, Flex } from 'antd'
-import {
-  InfoCircleOutlined,
-  RobotOutlined,
-  EyeOutlined,
-  CopyOutlined,
-} from '@ant-design/icons'
+import { Info, Bot, Eye, Copy } from 'lucide-react'
+import { Card, Tag, Button, Flex, Text, message } from '@/components/ui'
 import { Permissions, type HubAssistant } from '@/api-client/types'
 import { useState } from 'react'
 import { AssistantDetailsDrawer } from '@/modules/hub/modules/assistants/components/AssistantDetailsDrawer'
@@ -12,14 +7,11 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 
-const { Text } = Typography
-
 interface AssistantHubCardProps {
   assistant: HubAssistant
 }
 
 export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
-  const { message } = App.useApp()
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -98,12 +90,11 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
         enabled: true,
       })
 
-      message.success({
-        content: `Template "${assistant.display_name}" installed. \
+      message.success(
+        `Template "${assistant.display_name}" installed. \
 Mark it as default in /settings/assistant-templates to auto-clone it \
 for new users.`,
-        duration: 6,
-      })
+      )
 
       // Navigate to the templates admin page so the admin can see it.
       navigate('/settings/assistant-templates')
@@ -132,7 +123,7 @@ for new users.`,
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
                 <Flex className="gap-2 items-center">
-                  <RobotOutlined />
+                  <Bot />
                   <Text className="font-medium cursor-pointer">
                     {assistant.display_name}
                   </Text>
@@ -141,44 +132,46 @@ for new users.`,
                       compares this against the installed entity's
                       `hub_version` per-row, not per-catalog. */}
                   {assistant.version && (
-                    <Tag className="text-xs !m-0">v{assistant.version}</Tag>
+                    <Tag className="text-xs !m-0" data-testid={`hub-assistant-version-tag-${assistant.name}`}>v{assistant.version}</Tag>
                   )}
                   {assistant.category && (
-                    <Tag color="geekblue" className="text-xs">
+                    <Tag tone="info" className="text-xs" data-testid={`hub-assistant-category-tag-${assistant.name}`}>
                       {assistant.category}
                     </Tag>
                   )}
-                  {isAlreadyCreated && <Tag color="green">Created</Tag>}
+                  {isAlreadyCreated && <Tag tone="success" data-testid={`hub-assistant-created-tag-${assistant.name}`}>Created</Tag>}
                   {isAlreadyTemplate && (
-                    <Tag color="purple">Template installed</Tag>
+                    <Tag tone="info" data-testid={`hub-assistant-template-tag-${assistant.name}`}>Template installed</Tag>
                   )}
                 </Flex>
               </div>
               <div className="flex gap-1 items-center justify-end">
                 <Button
-                  icon={<InfoCircleOutlined />}
+                  icon={<Info />}
                   onClick={e => {
                     e.stopPropagation()
                     setShowDetails(true)
                   }}
+                  data-testid={`hub-assistant-details-btn-${assistant.name}`}
                 >
                   Details
                 </Button>
                 {isAlreadyCreated && (
                   <Button
-                    icon={<EyeOutlined />}
+                    icon={<Eye />}
                     onClick={e => {
                       e.stopPropagation()
                       navigate('/settings/assistants')
                     }}
+                    data-testid={`hub-assistant-view-btn-${assistant.name}`}
                   >
                     View Assistant
                   </Button>
                 )}
                 {!isAlreadyCreated && canCreate && (
                   <Button
-                    type="primary"
-                    icon={<RobotOutlined />}
+                    variant="outline"
+                    icon={<Bot />}
                     onClick={e => {
                       e.stopPropagation()
                       handleUseAssistant()
@@ -197,7 +190,7 @@ for new users.`,
                     whether the per-user "Created" badge is set
                     (a personal install doesn't preclude also
                     installing as a template). Default-styled +
-                    distinct `CopyOutlined` icon so it's visually
+                    distinct `Copy` icon so it's visually
                     separable from the primary "Use Assistant"
                     action. Disabled when a template already
                     exists for this hub_id — the backend rejects
@@ -205,7 +198,7 @@ for new users.`,
                     the admin clear feedback without a round-trip. */}
                 {multiUserMode && canCreate && canCreateTemplate && (
                   <Button
-                    icon={<CopyOutlined />}
+                    icon={<Copy />}
                     onClick={e => {
                       e.stopPropagation()
                       handleUseAsTemplate()
@@ -237,11 +230,10 @@ for new users.`,
                   </Text>
                   <Flex
                     wrap
-                    className="gap-1"
-                    style={{ display: 'inline-flex' }}
+                    className="gap-1 inline-flex"
                   >
                     {assistant.tags.map(tag => (
-                      <Tag key={tag} color="default" className="text-xs">
+                      <Tag key={tag} className="text-xs" data-testid={`hub-assistant-card-tag-${assistant.name}-${tag}`}>
                         {tag}
                       </Tag>
                     ))}
@@ -274,15 +266,15 @@ for new users.`,
                     </Text>
                     <Flex
                       wrap
-                      className="gap-1"
-                      style={{ display: 'inline-flex' }}
+                      className="gap-1 inline-flex"
                     >
                       {assistant.dependencies.map(dep => {
                         const leaf = dep.name.split('/').slice(-1)[0]
                         return (
                           <Tag
                             key={`${dep.kind}-${dep.name}`}
-                            color={dep.kind === 'model' ? 'cyan' : 'purple'}
+                            data-testid={`hub-assistant-card-dep-tag-${assistant.name}-${dep.kind}-${dep.name}`}
+                            tone={dep.kind === 'model' ? 'success' : 'info'}
                             className="text-xs"
                           >
                             {leaf} {dep.versionRange}

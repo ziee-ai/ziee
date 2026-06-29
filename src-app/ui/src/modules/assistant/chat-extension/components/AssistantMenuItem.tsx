@@ -1,5 +1,5 @@
-import { Popover, theme } from 'antd'
-import { RobotOutlined, RightOutlined } from '@ant-design/icons'
+import { Popover } from '@/components/ui'
+import { Bot, ChevronRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
@@ -9,8 +9,7 @@ import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
  * Opens a submenu to the right showing available assistants.
  */
 export function AssistantMenuItem() {
-  const { token } = theme.useToken()
-  const { availableAssistants, selectedAssistantId, selectAssistant, loading } =
+  const { availableAssistants, selectedAssistantId, selectAssistant } =
     Stores.AssistantPicker
   const { close } = usePlusDropdown()
 
@@ -30,18 +29,11 @@ export function AssistantMenuItem() {
           label="No assistant"
           active={false}
           onClick={() => handleSelect(null)}
-          token={token}
           dividerAfter
         />
       )}
       {availableAssistants.length === 0 && (
-        <div
-          style={{
-            padding: '6px 12px',
-            fontSize: 13,
-            color: token.colorTextSecondary,
-          }}
-        >
+        <div className="px-3 py-1.5 text-sm text-muted-foreground">
           No assistants available
         </div>
       )}
@@ -51,7 +43,6 @@ export function AssistantMenuItem() {
           label={assistant.name}
           active={assistant.id === selectedAssistantId}
           onClick={() => handleSelect(assistant.id)}
-          token={token}
         />
       ))}
     </div>
@@ -60,31 +51,25 @@ export function AssistantMenuItem() {
   return (
     <Popover
       content={popoverContent}
-      placement="rightTop"
-      trigger={['hover', 'click']}
-      arrow={false}
+      side="right"
+      align="start"
     >
       <div
-        className="flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer"
-        style={{ color: token.colorTextBase, minWidth: 200 }}
+        className="flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px]"
         onMouseEnter={e => {
-          e.currentTarget.style.backgroundColor = token.colorFillSecondary
+          e.currentTarget.className = 'flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px] bg-muted'
         }}
         onMouseLeave={e => {
-          e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.className = 'flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px]'
         }}
       >
         <div className="flex items-center gap-2">
-          <RobotOutlined style={{ fontSize: 16 }} />
+          <Bot style={{ fontSize: 16 }} />
           <span style={{ fontSize: 14 }}>
-            {loading && availableAssistants.length === 0
-              ? 'Loading assistants…'
-              : selectedAssistant
-                ? selectedAssistant.name
-                : 'Select assistant'}
+            {selectedAssistant ? selectedAssistant.name : 'Select assistant'}
           </span>
         </div>
-        <RightOutlined style={{ fontSize: 10, opacity: 0.45 }} />
+        <ChevronRight style={{ fontSize: 10, opacity: 0.45 }} />
       </div>
     </Popover>
   )
@@ -94,60 +79,30 @@ function AssistantOption({
   label,
   active,
   onClick,
-  token,
   dividerAfter,
 }: {
   label: string
   active: boolean
   onClick: () => void
-  token: ReturnType<typeof theme.useToken>['token']
   dividerAfter?: boolean
 }) {
   return (
     <>
       <div
-        role="button"
-        tabIndex={0}
-        aria-pressed={active}
         onClick={onClick}
-        aria-current={active || undefined}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onClick()
-          }
-        }}
-        className="cursor-pointer px-3 py-1.5 rounded-md focus-visible:outline focus-visible:outline-2"
-        style={{
-          fontSize: 14,
-          backgroundColor: active ? token.colorPrimaryBg : 'transparent',
-          color: active ? token.colorPrimary : token.colorTextBase,
-        }}
+        className={`cursor-pointer px-3 py-1.5 rounded-md text-sm ${active ? 'bg-accent text-primary' : 'text-foreground'}`}
         onMouseEnter={e => {
           if (!active)
-            e.currentTarget.style.backgroundColor = token.colorFillSecondary
+            e.currentTarget.className = 'cursor-pointer px-3 py-1.5 rounded-md text-sm text-foreground bg-muted'
         }}
         onMouseLeave={e => {
-          if (!active) e.currentTarget.style.backgroundColor = 'transparent'
-        }}
-        onFocus={e => {
-          if (!active)
-            e.currentTarget.style.backgroundColor = token.colorFillSecondary
-        }}
-        onBlur={e => {
-          if (!active) e.currentTarget.style.backgroundColor = 'transparent'
+          if (!active) e.currentTarget.className = 'cursor-pointer px-3 py-1.5 rounded-md text-sm text-foreground'
         }}
       >
         {label}
       </div>
       {dividerAfter && (
-        <div
-          style={{
-            height: 1,
-            backgroundColor: token.colorBorderSecondary,
-            margin: '4px 0',
-          }}
-        />
+        <div className="h-px bg-border my-1" />
       )}
     </>
   )

@@ -1,5 +1,5 @@
-import { Tag } from 'antd'
-import { RobotOutlined } from '@ant-design/icons'
+import { Tag } from '@/components/ui'
+import { Bot } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
 /**
@@ -7,7 +7,7 @@ import { Stores } from '@/core/stores'
  * Shows the selected assistant as a purple tag in the status row
  */
 export function AssistantStatusChip() {
-  const { selectedAssistantId, availableAssistants, clearAssistant } =
+  const { selectedAssistantId, availableAssistants, selectAssistant } =
     Stores.AssistantPicker
 
   if (!selectedAssistantId) return null
@@ -19,11 +19,12 @@ export function AssistantStatusChip() {
 
   return (
     <Tag
-      color="purple"
-      icon={<RobotOutlined />}
-      closable
-      onClose={() => clearAssistant()}
-      style={{ margin: 0 }}
+      data-testid="assistant-status-chip"
+      tone="info"
+      icon={<Bot />}
+      onClose={() => selectAssistant(null as any)}
+      closeLabel="Remove"
+      className="m-0"
     >
       {assistant.name}
     </Tag>

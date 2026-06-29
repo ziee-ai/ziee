@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, theme } from 'antd'
+import { Alert } from '@/components/ui'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import {
   codeToHtml,
@@ -97,7 +97,6 @@ export function RawCodeView({
    *  body renders as plain text. */
   filename?: string
 }) {
-  const { token } = theme.useToken()
   const { isDarkMode } = useTheme()
 
   const { source, truncated, lang } = useMemo(() => {
@@ -155,9 +154,9 @@ export function RawCodeView({
       {truncated && (
         <Alert
           title={`Showing first ${MAX_LINES.toLocaleString()} lines. Download the file to view all data.`}
-          type="warning"
-          showIcon
+          tone="warning"
           className="m-2 flex-shrink-0"
+          data-testid="file-rawcode-truncated-alert"
         />
       )}
       {/* OverlayScrollbars for consistent themed scrollbar styling
@@ -168,10 +167,6 @@ export function RawCodeView({
           initial shiki async render. */}
       <OverlayScrollbarsComponent
         className="flex-1 min-h-0 w-full raw-code-view"
-        style={{
-          ['--shiki-bg' as string]: token.colorBgContainer,
-          ['--shiki-gutter' as string]: token.colorTextQuaternary,
-        }}
         options={{
           scrollbars: { autoHide: 'scroll' },
           overflow: { x: 'scroll', y: 'scroll' },
@@ -198,7 +193,7 @@ export function RawCodeView({
           tab-size: 4;
           min-width: 100%;
           width: max-content;
-          /* Collapse the literal \n characters shiki inserts between
+          /* Collapse the literal \\n characters shiki inserts between
              line spans — each .line is already display: grid, which
              starts its own visual row. Without this, the inter-line
              newlines render as visible line breaks ON TOP of the

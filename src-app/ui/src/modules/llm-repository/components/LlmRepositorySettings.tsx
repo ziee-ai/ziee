@@ -1,33 +1,26 @@
-import {
-  CloudDownloadOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { CloudDownload, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Alert,
-  App,
   Button,
   Card,
-  Divider,
   Empty,
   Flex,
   Pagination,
-  Popconfirm,
   Switch,
   Tooltip,
-  Typography,
-} from 'antd'
+} from '@/components/ui'
+import {
+  Text,
+  message,
+  Separator,
+  Confirm,
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type LlmRepository } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 
-const { Text } = Typography
-
 export function LlmRepositorySettings() {
-  const { message } = App.useApp()
-
   // Stores
   const {
     repositories,
@@ -133,7 +126,7 @@ export function LlmRepositorySettings() {
       // surface the reason in a longer-lived toast.
       console.error('Failed to toggle repository:', error)
       const reason = error?.message || 'Failed to toggle repository'
-      message.error({ content: reason, duration: 8 })
+      message.error(reason)
     }
   }
 
@@ -145,6 +138,7 @@ export function LlmRepositorySettings() {
       actions.push(
         <Switch
           key="enable"
+          data-testid={`llmrepo-toggle-${repository.id}`}
           className="!mr-2"
           checked={repository.enabled}
           onChange={checked => handleToggleRepository(repository.id, checked)}
@@ -160,8 +154,9 @@ export function LlmRepositorySettings() {
       actions.push(
         <Button
           key="test"
-          type="text"
-          icon={<CloudDownloadOutlined />}
+          data-testid={`llmrepo-test-btn-${repository.id}`}
+          variant="outline"
+          icon={<CloudDownload />}
           loading={testing}
           onClick={() => testRepositoryConnection(repository)}
         >
@@ -174,8 +169,9 @@ export function LlmRepositorySettings() {
       actions.push(
         <Button
           key="edit"
-          type="text"
-          icon={<EditOutlined />}
+          data-testid={`llmrepo-edit-btn-${repository.id}`}
+          variant="outline"
+          icon={<Pencil />}
           onClick={() => handleEditRepository(repository)}
         >
           Edit
@@ -185,18 +181,19 @@ export function LlmRepositorySettings() {
 
     if (canDelete && !repository.built_in) {
       actions.push(
-        <Popconfirm
+        <Confirm
           key="delete"
+          data-testid={`llmrepo-delete-confirm-${repository.id}`}
           title="Are you sure?"
           onConfirm={() => handleDeleteRepository(repository.id)}
           okText="Delete"
           cancelText="Cancel"
           okButtonProps={{ danger: true }}
         >
-          <Button type="text" danger icon={<DeleteOutlined />}>
+          <Button data-testid={`llmrepo-delete-btn-${repository.id}`} variant="destructive" icon={<Trash2 />}>
             Delete
           </Button>
-        </Popconfirm>,
+        </Confirm>,
       )
     }
 
@@ -211,14 +208,18 @@ export function LlmRepositorySettings() {
       {/* Model Repositories */}
       <Card
         title="Model Repositories"
+        data-testid="llmrepo-card"
         extra={
           <Can permission={Permissions.LlmRepositoriesCreate}>
             <Tooltip title="Add repository">
               <Button
-                type={'text'}
-                icon={<PlusOutlined />}
+                data-testid="llmrepo-add-btn"
+                variant="outline"
+                size="icon"
+                icon={<Plus />}
                 onClick={handleAddRepository}
                 aria-label="Add repository"
+                tooltip="Add repository"
               />
             </Tooltip>
           </Can>
@@ -228,10 +229,8 @@ export function LlmRepositorySettings() {
           <div>
             {repositories.length === 0 ? (
               <Empty
+                data-testid="llmrepo-empty"
                 description="No repositories yet"
-                image={
-                  <CloudDownloadOutlined className="text-4xl opacity-50" />
-                }
               >
                 <Text type="secondary">Add a repository to get started</Text>
               </Empty>
@@ -294,10 +293,12 @@ export function LlmRepositorySettings() {
                         {repository.last_health_check_status ===
                           'unhealthy' && (
                           <Alert
-                            type="error"
-                            showIcon
+                            data-testid={`llmrepo-health-alert-${repository.id}`}
+                            tone="error"
                             className="!mt-2"
-                            message={
+                            closeLabel="Close"
+                            onClose={() => {}}
+                            title={
                               repository.last_health_check_at
                                 ? `Connection test failed at ${new Date(
                                     repository.last_health_check_at,
@@ -313,7 +314,7 @@ export function LlmRepositorySettings() {
                       </div>
                     </div>
                     {index < repositories.length - 1 && (
-                      <Divider className="my-4" />
+                      <Separator className="my-4" />
                     )}
                   </div>
                 ))}
@@ -323,20 +324,24 @@ export function LlmRepositorySettings() {
 
           {totalRepositories > 0 && (
             <>
-              <Divider className="!my-3" />
+              <Separator className="!my-3" />
               <Flex justify="end">
                 <Pagination
+              data-testid="llmrepo-pagination"
+              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
                   current={storePage}
                   total={totalRepositories}
                   pageSize={storePageSize}
                   showSizeChanger
+              pageSizeLabel="Page size"
+              onPageSizeChange={(size: number) => handlePageChange(1, size)}
                   showQuickJumper
-                  showTotal={(total, range) =>
+              jumpLabel="Go to page"
+                  showTotal={(total: number, range: [number, number]) =>
                     `${range[0]}-${range[1]} of ${total} repositories`
                   }
                   onChange={handlePageChange}
-                  onShowSizeChange={handlePageChange}
-                  pageSizeOptions={['5', '10', '20', '50']}
+                  pageSizeOptions={[5, 10, 20, 50]}
                 />
               </Flex>
             </>

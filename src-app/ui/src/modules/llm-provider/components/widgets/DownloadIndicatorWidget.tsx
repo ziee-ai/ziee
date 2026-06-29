@@ -1,10 +1,5 @@
-import { useState } from 'react'
-import { App, Badge, Button, Flex, Popover, Tooltip, Typography } from 'antd'
-import {
-  CloseOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons'
+import { X, Download, RotateCw } from 'lucide-react'
+import { Badge, Button, Flex, Popover, Tooltip, message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { useHubModelDownloadGate } from '@/modules/hub/modules/llm-models/hooks/useHubModelDownloadGate'
@@ -13,8 +8,6 @@ import type {
   DownloadFromRepositoryRequest,
   FileFormat,
 } from '@/api-client/types'
-
-const { Text } = Typography
 
 /**
  * Rebuild a `DownloadFromRepositoryRequest` from a failed
@@ -72,14 +65,12 @@ function buildRetryRequest(
 }
 
 export function DownloadIndicatorWidget() {
-  const { message } = App.useApp()
   const { downloads } = Stores.LlmModelDownload
   // Same gating used by the hub model card. Sharing this means the
   // Retry button surfaces the same Repository Disabled / Auth Required
   // / Cannot Connect modals the user would see clicking Retry from the
   // hub page — failure-recovery UX stays consistent across surfaces.
   const { runGates } = useHubModelDownloadGate()
-  const [popoverOpen, setPopoverOpen] = useState(false)
 
   // Filter for active downloads
   const activeDownloads = downloads.filter(
@@ -99,7 +90,7 @@ export function DownloadIndicatorWidget() {
   // confusing during a successful concurrent download. Color flips to
   // red as a "needs attention" signal when failures are present.
   const badgeCount = activeDownloads.length
-  const badgeColor = failedDownloads.length > 0 ? 'red' : 'blue'
+  const badgeTone = failedDownloads.length > 0 ? 'error' : 'info'
 
   const handleRetry = async (d: DownloadInstance) => {
     // ── Preferred path: matching hub model + full gate flow ─────────
@@ -165,13 +156,9 @@ export function DownloadIndicatorWidget() {
           `Retrying download: ${d.request_data.display_name ?? hubModel.display_name}`,
         )
       } catch (error) {
-        message.error({
-          content:
-            error instanceof Error
-              ? `Retry failed: ${error.message}`
-              : 'Retry failed',
-          duration: 8,
-        })
+        message.error(
+          error instanceof Error ? `Retry failed: ${error.message}` : 'Retry failed',
+        )
       }
       return
     }
@@ -193,13 +180,9 @@ export function DownloadIndicatorWidget() {
       }
       message.success(`Retrying download: ${req.display_name}`)
     } catch (error) {
-      message.error({
-        content:
-          error instanceof Error
-            ? `Retry failed: ${error.message}`
-            : 'Retry failed',
-        duration: 8,
-      })
+      message.error(
+        error instanceof Error ? `Retry failed: ${error.message}` : 'Retry failed',
+      )
     }
   }
 
@@ -217,9 +200,9 @@ export function DownloadIndicatorWidget() {
     <div style={{ width: 320, maxHeight: 440, overflowY: 'auto' }}>
       {activeDownloads.length > 0 && (
         <>
-          <Text strong style={{ display: 'block', marginBottom: 12 }}>
+          <strong className="block mb-3">
             Active Downloads ({activeDownloads.length})
-          </Text>
+          </strong>
           {activeDownloads.map(download => (
             <DownloadItem
               key={download.id}
@@ -231,36 +214,33 @@ export function DownloadIndicatorWidget() {
       )}
       {failedDownloads.length > 0 && (
         <>
-          <Text
-            strong
-            type="danger"
-            style={{
-              display: 'block',
-              marginBottom: 12,
-              marginTop: activeDownloads.length > 0 ? 16 : 0,
-            }}
+          <strong
+            className={`block mb-3 text-destructive${activeDownloads.length > 0 ? ' mt-4' : ''}`}
           >
             Failed Downloads ({failedDownloads.length})
-          </Text>
+          </strong>
           {failedDownloads.map(download => (
             <div key={download.id} className="mb-2">
               <DownloadItem download={download} mode="minimal" />
-              <Flex justify="end" gap="small" className="mt-1">
+              <Flex justify="end" gap="sm" className="mt-1">
                 <Tooltip title="Dismiss this failed download">
                   <Button
-                    size="small"
-                    icon={<CloseOutlined />}
+                    size="sm"
+                    variant="outline"
+                    icon={<X />}
                     onClick={() => handleClear(download)}
+                    data-testid={`llm-download-clear-btn-${download.id}`}
                   >
                     Clear
                   </Button>
                 </Tooltip>
                 <Tooltip title="Start a new download with the same settings">
                   <Button
-                    size="small"
-                    type="primary"
-                    icon={<ReloadOutlined />}
+                    size="sm"
+                    variant="default"
+                    icon={<RotateCw />}
                     onClick={() => handleRetry(download)}
+                    data-testid={`llm-download-retry-btn-${download.id}`}
                   >
                     Retry
                   </Button>
@@ -278,9 +258,8 @@ export function DownloadIndicatorWidget() {
       content={popoverContent}
       title="Downloads"
       trigger="click"
-      placement="rightBottom"
-      open={popoverOpen}
-      onOpenChange={setPopoverOpen}
+      side="right"
+      align="end"
     >
       <div
         style={{
@@ -291,8 +270,14 @@ export function DownloadIndicatorWidget() {
           justifyContent: 'center',
         }}
       >
-        <Badge count={badgeCount} color={badgeColor} offset={[10, 0]}>
-          <DownloadOutlined style={{ fontSize: 20 }} />
+        <Badge
+          count={badgeCount}
+          tone={badgeTone}
+          offset={[10, 0]}
+          aria-label={`${badgeCount} active download${badgeCount !== 1 ? 's' : ''}`}
+          data-testid="llm-download-indicator-badge"
+        >
+          <Download style={{ fontSize: 20 }} aria-label="Downloads" />
         </Badge>
       </div>
     </Popover>

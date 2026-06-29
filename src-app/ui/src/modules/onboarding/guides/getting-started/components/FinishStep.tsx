@@ -1,10 +1,8 @@
 import { useEffect } from 'react'
-import { Typography } from 'antd'
-import { CheckCircleOutlined, RocketOutlined } from '@ant-design/icons'
+import { CircleCheck, Rocket } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
-
-const { Title, Paragraph, Text } = Typography
+import { Title, Paragraph, Text } from '@/components/ui'
 
 export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) {
   // Read the REACTIVE field (not `.__state`) in render so the count re-renders
@@ -29,7 +27,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
   return (
     <div className="max-w-lg">
       <div className="flex items-center gap-3 mb-4">
-        <RocketOutlined className="text-4xl text-green-500" />
+        <Rocket className="text-4xl text-primary" />
         <Title level={3} className="!mb-0">
           You&apos;re all set!
         </Title>
@@ -39,7 +37,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
 
       <div className="space-y-2 mb-6">
         <div className="flex items-center gap-2">
-          <CheckCircleOutlined className="text-green-500" />
+          <CircleCheck className="text-success" />
           <Text>
             {apiKeysCount > 0
               ? `${apiKeysCount} API key${apiKeysCount > 1 ? 's' : ''} saved`
@@ -47,7 +45,7 @@ export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) 
           </Text>
         </div>
         <div className="flex items-center gap-2">
-          <CheckCircleOutlined className="text-green-500" />
+          <CircleCheck className="text-success" />
           <Text>
             {mcpCount > 0
               ? `${mcpCount} MCP server${mcpCount > 1 ? 's' : ''} selected for installation`

@@ -40,7 +40,7 @@
  * onboarding loop it can't escape.
  */
 
-import { Layout, Spin, Typography } from 'antd'
+import { Layout, Spin, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { isTauriView } from '@ziee/desktop/core/platform'
 import { PhoneAuthPage } from '@ziee/desktop/modules/tunnel-auth/PhoneAuthPage'
@@ -74,14 +74,12 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
         ? bootstrapMessage ?? 'Backend failed to start. Try restarting Ziee.'
         : bootstrapMessage ?? 'Starting up…'
     return (
-      <Layout className="min-h-screen">
-        <Content className="flex flex-col items-center justify-center gap-4">
-          <Spin size="large" />
-          <Typography.Text
-            type={bootstrapStatus === 'failed' ? 'danger' : 'secondary'}
-          >
+      <Layout className="min-h-screen" data-testid="desktop-auth-bootstrap-layout">
+        <Content className="flex flex-col items-center justify-center gap-4" data-testid="desktop-auth-bootstrap-content">
+          <Spin size="lg" label="Loading" />
+          <Text type={bootstrapStatus === 'failed' ? 'danger' : 'secondary'}>
             {caption}
-          </Typography.Text>
+          </Text>
         </Content>
       </Layout>
     )

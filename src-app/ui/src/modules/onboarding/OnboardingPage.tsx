@@ -8,22 +8,19 @@ import {
 } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Typography,
-  Steps,
   Button,
   Alert,
   Spin,
-  theme,
-} from 'antd'
-import { CheckCircleOutlined, BookOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+  Text,
+  Title,
+  Progress,
+} from '@/components/ui'
+import { CircleCheck, Book, ArrowLeft } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { OnboardingSlot } from './types/OnboardingSlot'
 import type { OnboardingStepProps } from './types/onboarding'
 
-const { Title, Text } = Typography
-
 export default function OnboardingPage() {
-  const { token } = theme.useToken()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -131,26 +128,18 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{ backgroundColor: token.colorBgLayout }}
-    >
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Left pane: guide list */}
-      <div
-        className="w-64 flex-shrink-0 border-r overflow-y-auto p-4 flex flex-col gap-2"
-        style={{
-          borderColor: token.colorBorderSecondary,
-          backgroundColor: token.colorBgContainer,
-        }}
-      >
+      <div className="w-64 flex-shrink-0 border-r overflow-y-auto p-4 flex flex-col gap-2 border-border bg-card">
         <div className="flex items-center gap-2 mb-2">
-          <BookOutlined className="text-lg" />
+          <Book className="text-lg" />
           <Text strong>Onboarding</Text>
         </div>
         <Button
-          type="text"
-          size="small"
-          icon={<ArrowLeftOutlined />}
+          data-testid="onboarding-page-back-to-chat-button"
+          variant="ghost"
+          size="sm"
+          icon={<ArrowLeft />}
           onClick={() => navigate('/chat')}
           className="!px-0 mb-3"
         >
@@ -162,11 +151,7 @@ export default function OnboardingPage() {
           return (
             <div
               key={g.id}
-              className="p-3 rounded-lg cursor-pointer transition-colors"
-              style={{
-                backgroundColor: isActive ? token.colorPrimaryBg : undefined,
-                border: `1px solid ${isActive ? token.colorPrimary : token.colorBorderSecondary}`,
-              }}
+              className={`p-3 rounded-lg cursor-pointer transition-colors ${isActive ? 'bg-accent border border-primary' : 'border border-border'}`}
               onClick={() => handleSelectGuide(g)}
             >
               <div className="flex items-center justify-between">
@@ -174,7 +159,7 @@ export default function OnboardingPage() {
                   {g.title}
                 </Text>
                 {isCompleted && (
-                  <CheckCircleOutlined className="text-green-500" />
+                  <CircleCheck className="text-success" />
                 )}
               </div>
               <Text type="secondary" className="text-xs block mt-1">
@@ -188,20 +173,16 @@ export default function OnboardingPage() {
       {/* Right pane: step viewer */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header with steps */}
-        <div
-          className="p-6 border-b"
-          style={{
-            borderColor: token.colorBorderSecondary,
-            backgroundColor: token.colorBgContainer,
-          }}
-        >
+        <div className="p-6 border-b border-border bg-card">
           <Title level={4} className="!mb-3">
             {guide.title}
           </Title>
-          <Steps
-            current={currentStepIndex}
-            items={guide.steps.map(s => ({ title: s.title }))}
-            size="small"
+          <Progress
+            data-testid="onboarding-page-step-progress"
+            value={Math.round(((currentStepIndex + 1) / guide.steps.length) * 100)}
+            showInfo={false}
+            size="sm"
+            aria-label={`Step ${currentStepIndex + 1} of ${guide.steps.length}`}
           />
         </div>
 
@@ -209,36 +190,33 @@ export default function OnboardingPage() {
         <div className="flex-1 overflow-y-auto p-6">
           {nextError && (
             <Alert
-              type="error"
+              data-testid="onboarding-page-next-error-alert"
+              tone="error"
               title={nextError}
-              showIcon
-              closable={{ onClose: () => Stores.Onboarding.setNextError(null) }}
+              onClose={() => Stores.Onboarding.setNextError(null)}
+              closeLabel="Close"
               className="mb-4"
             />
           )}
           {StepComponent && (
-            <Suspense fallback={<Spin className="flex justify-center mt-8" />}>
+            <Suspense fallback={<Spin className="flex justify-center mt-8" label="Loading step" />}>
               <StepComponent {...stepProps} />
             </Suspense>
           )}
         </div>
 
         {/* Footer navigation */}
-        <div
-          className="p-4 border-t flex justify-between items-center"
-          style={{
-            borderColor: token.colorBorderSecondary,
-            backgroundColor: token.colorBgContainer,
-          }}
-        >
+        <div className="p-4 border-t flex justify-between items-center border-border bg-card">
           <Button
+            data-testid="onboarding-page-back-button"
             disabled={currentStepIndex === 0}
             onClick={() => setManualStep(currentStepIndex - 1)}
           >
             Back
           </Button>
           <Button
-            type="primary"
+            data-testid="onboarding-page-next-button"
+            variant="default"
             disabled={!nextEnabled}
             loading={nextLoading}
             onClick={handleGlobalNext}

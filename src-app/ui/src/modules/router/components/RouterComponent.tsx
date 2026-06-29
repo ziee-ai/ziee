@@ -5,9 +5,8 @@ import {
   Route,
   Navigate,
   Outlet,
-  Link,
 } from 'react-router-dom'
-import { Button, Result } from 'antd'
+import { Result } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
@@ -30,18 +29,12 @@ function RoutePermissionGate({
   const allowed = usePermission(permission)
   if (!allowed) {
     return (
-      <div role="alert">
-        <Result
-          status="403"
-          title="Not authorized"
-          subTitle="You don't have permission to view this page."
-          extra={
-            <Link to="/">
-              <Button type="primary">Back to home</Button>
-            </Link>
-          }
-        />
-      </div>
+      <Result
+        data-testid="router-route-forbidden-result"
+        status="403"
+        title="Not authorized"
+        subtitle="You don't have permission to view this page."
+      />
     )
   }
   return <>{children}</>

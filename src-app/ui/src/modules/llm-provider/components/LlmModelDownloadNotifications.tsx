@@ -1,5 +1,5 @@
-import { App } from 'antd'
-import { useEffect, useRef } from 'react'
+import { message } from '@/components/ui'
+import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 
 /**
@@ -20,10 +20,7 @@ export function LlmModelDownloadNotifications() {
   // App.useApp() is the only way to get `message` outside a component
   // context. Mounting this at the module level means we share the
   // top-level `<App>` provider that ConfigProvider sets up.
-  const { message } = App.useApp()
-
-  const messageRef = useRef(message)
-  messageRef.current = message
+  // const { message } = App.useApp()
 
   useEffect(() => {
     const GROUP = 'LlmModelDownloadNotifications'
@@ -34,12 +31,9 @@ export function LlmModelDownloadNotifications() {
         const { modelDisplayName } = event.data
         // 5s duration on success — matches the visual weight of a
         // "happy path" toast elsewhere in the app.
-        messageRef.current.success({
-          content: `Downloaded ${modelDisplayName}`,
-          duration: 5,
-        })
+        message.success(`Downloaded ${modelDisplayName}`)
       },
-      GROUP,
+      GROUP
     )
 
     Stores.EventBus.on(
@@ -49,20 +43,19 @@ export function LlmModelDownloadNotifications() {
         // 8s on failure — matches the duration used by the
         // enable-toggle-probe-failed toast in MCP / LLM-repo drawers,
         // giving the user time to read the reason before it dismisses.
-        messageRef.current.error({
-          content: errorMessage
+        message.error(
+          errorMessage
             ? `Download failed: ${modelDisplayName} — ${errorMessage}`
-            : `Download failed: ${modelDisplayName}`,
-          duration: 8,
-        })
+            : `Download failed: ${modelDisplayName}`
+        )
       },
-      GROUP,
+      GROUP
     )
 
     return () => {
       Stores.EventBus.removeGroupListeners(GROUP)
     }
-  }, [])
+  }, [message])
 
   return null
 }

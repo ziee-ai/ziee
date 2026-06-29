@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { App, Button, Space, Tooltip } from 'antd'
-import { EditOutlined, ReloadOutlined, CopyOutlined } from '@ant-design/icons'
+import { Button, Space, Tooltip, message } from '@/components/ui'
+import { Copy as CopyIcon, Pencil, RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
 
@@ -14,7 +14,6 @@ import { useMessageContext } from '@/modules/chat/core/MessageContext'
  */
 export function MessageActions() {
   const msg = useMessageContext()
-  const { message } = App.useApp()
   const [isRegenerating, setIsRegenerating] = useState(false)
 
   const { isStreaming, sending } = Stores.Chat
@@ -83,21 +82,22 @@ export function MessageActions() {
       size={2}
       className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity"
     >
-      <Tooltip title="Copy">
+      <Tooltip content="Copy">
         <Button
-          type="text"
-          size="small"
-          icon={<CopyOutlined />}
+          data-testid="chat-message-copy-btn"
+          variant="ghost"
+          size="sm"
+          icon={<CopyIcon />}
           onClick={handleCopy}
         />
       </Tooltip>
 
       {isUser && (
-        <Tooltip title="Edit message">
+        <Tooltip content="Edit message">
           <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
+            variant="ghost"
+            size="sm"
+            icon={<Pencil />}
             disabled={isBusy}
             onClick={handleEdit}
             data-testid="edit-message-button"
@@ -106,11 +106,11 @@ export function MessageActions() {
       )}
 
       {isAssistant && (
-        <Tooltip title="Regenerate response">
+        <Tooltip content="Regenerate response">
           <Button
-            type="text"
-            size="small"
-            icon={<ReloadOutlined />}
+            variant="ghost"
+            size="sm"
+            icon={<RotateCw />}
             loading={isRegenerating}
             disabled={isBusy && !isRegenerating}
             onClick={handleRegenerate}

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Spin, Switch, message } from 'antd'
+import { Alert, Button, Card, Flex, Form, FormField, InputNumber, Separator, Switch, message, useForm, zodResolver } from '@/components/ui'
+import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -7,10 +8,12 @@ import { Permissions } from '@/api-client/types'
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
 
-interface FormValues {
-  enabled: boolean
-  default_top_k: number
-}
+const schema = z.object({
+  enabled: z.boolean(),
+  default_top_k: z.number().int().min(1).max(50),
+})
+
+type FormValues = z.infer<typeof schema>
 
 /**
  * Master Document-RAG card: deployment-wide enable + the shared `default_top_k`
@@ -20,14 +23,14 @@ interface FormValues {
 export function EnableSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving, error } = Stores.FileRagAdmin
-  const [form] = Form.useForm<FormValues>()
+  const { settings, saving } = Stores.FileRagAdmin
+  const form = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   useEffect(() => {
     // Don't clobber the admin's unsaved edits when a refetch (e.g. a sync
     // reconnect) reloads settings mid-edit.
-    if (settings && !form.isFieldsTouched()) {
-      form.setFieldsValue({
+    if (settings && !form.formState.isDirty) {
+      form.reset({
         enabled: settings.enabled,
         default_top_k: settings.default_top_k,
       })
@@ -36,33 +39,16 @@ export function EnableSection() {
 
   if (!canRead) {
     return (
-      <Card title="Document search">
+      <Card data-testid="filerag-enable-card" title="Document search">
         <Alert
-          type="warning"
-          showIcon
+          data-testid="filerag-enable-noperm-alert"
+          tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
       </Card>
     )
   }
-  if (!settings) {
-    return (
-      <Card title="Document search">
-        {error ? (
-          <Alert
-            type="error"
-            showIcon
-            title="Failed to load Document RAG admin settings"
-            description={error}
-          />
-        ) : (
-          <div className="flex justify-center py-16">
-            <Spin />
-          </div>
-        )}
-      </Card>
-    )
-  }
+  if (!settings) return null
 
   const handleSubmit = async (values: FormValues) => {
     try {
@@ -79,49 +65,37 @@ export function EnableSection() {
   }
 
   return (
-    <Card title="Document search">
-      {error && (
-        <Alert
-          type="error"
-          showIcon
-          closable={{ closeIcon: true }}
-          className="!mb-4"
-          message={error}
-        />
-      )}
+    <Card data-testid="filerag-enable-card" title="Document search">
       <Form
+        data-testid="filerag-enable-form"
         name="file-rag-admin-master-form"
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canManage}
       >
-        <Form.Item
+        <FormField
           name="enabled"
           label="Enable Document RAG deployment-wide"
-          extra="On by default. When off, files are not indexed and the semantic_search tool returns a disabled note. Full-text search works immediately; semantic search additionally needs an embedding model (below)."
+          description="On by default. When off, files are not indexed and the semantic_search tool returns a disabled note. Full-text search works immediately; semantic search additionally needs an embedding model (below)."
           valuePropName="checked"
         >
-          <Switch aria-label="Enable Document RAG deployment-wide" />
-        </Form.Item>
+          <Switch data-testid="filerag-enable-switch" aria-label="Enable Document RAG deployment-wide" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="default_top_k"
           label="Default top-K"
-          extra="How many passages semantic_search returns when the caller doesn't specify. The model can request fewer per call; a single call returns at most 50."
+          description="How many passages semantic_search returns when the caller doesn't specify. The model can request fewer per call; a single call returns at most 50."
         >
-          <InputNumber min={1} max={50} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber data-testid="filerag-enable-top-k" min={1} max={50} className="w-40" />
+        </FormField>
 
         {canManage && (
           <>
-            <Divider className="!my-3" />
+            <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="primary" htmlType="submit" loading={saving}>
+              <Button data-testid="filerag-enable-save" type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>

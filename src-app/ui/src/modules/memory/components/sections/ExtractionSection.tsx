@@ -3,12 +3,16 @@ import {
   Alert,
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Form,
-  Select,
+  FormField,
+  useForm,
+  zodResolver,
+  Combobox,
   message,
-} from 'antd'
+} from '@/components/ui'
+import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -17,9 +21,10 @@ import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
 
-interface FormValues {
-  default_extraction_model_id?: string | null
-}
+const schema = z.object({
+  default_extraction_model_id: z.string().nullable().optional(),
+})
+type FormValues = z.infer<typeof schema>
 
 /**
  * Memory extraction admin card: which LLM the silent extraction pipeline
@@ -31,11 +36,14 @@ export function ExtractionSection() {
   const canManage = usePermission(MANAGE_PERM)
   const { settings, availableModels, saving, loadingModels, error } =
     Stores.MemoryAdmin
-  const [form] = Form.useForm<FormValues>()
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { default_extraction_model_id: null },
+  })
 
   useEffect(() => {
     if (settings) {
-      form.setFieldsValue({
+      form.reset({
         default_extraction_model_id: settings.default_extraction_model_id,
       })
     }
@@ -43,11 +51,11 @@ export function ExtractionSection() {
 
   if (!canRead) {
     return (
-      <Card title="Extraction">
+      <Card title="Extraction" data-testid="memory-extraction-card">
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="You don't have permission to view memory admin settings."
+          data-testid="memory-extraction-no-perm-alert"
         />
       </Card>
     )
@@ -77,45 +85,43 @@ export function ExtractionSection() {
   }
 
   return (
-    <Card title="Extraction">
+    <Card title="Extraction" data-testid="memory-extraction-card">
       <Form
         name="memory-admin-extraction-form"
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canManage}
+        data-testid="memory-extraction-form"
       >
-        <Form.Item
+        <FormField
           name="default_extraction_model_id"
           label="Default extraction model"
-          extra="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
+          description="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
         >
-          <Select
+          <Combobox
+            data-testid="memory-extraction-model-combobox"
             placeholder={
               !loadingModels && availableModels.length === 0
                 ? 'No chat-capable models — add one on the LLM Providers page'
                 : 'Select an extraction model (optional)'
             }
+            searchPlaceholder="Search models"
+            emptyText="No models"
             loading={loadingModels}
             options={availableModels.map((m) => ({
               value: m.id,
               label: m.display_name || m.name,
             }))}
-            showSearch={{ optionFilterProp: 'label' }}
-            allowClear
-            style={{ maxWidth: 480 }}
+            className="max-w-[480px]"
           />
-        </Form.Item>
+        </FormField>
 
         {canManage && (
           <>
-            <Divider className="!my-3" />
+            <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="primary" htmlType="submit" loading={saving}>
+              <Button type="submit" loading={saving} data-testid="memory-extraction-save-btn">
                 Save
               </Button>
             </Flex>

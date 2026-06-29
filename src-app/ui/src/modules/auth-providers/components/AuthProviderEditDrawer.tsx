@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
+import { z } from 'zod'
 import {
   Alert,
-  App,
   Button,
   Flex,
   Form,
+  FormField,
+  useForm,
+  zodResolver,
   Input,
-  Select,
+  PasswordInput,
   Spin,
   Switch,
-  Typography,
-} from 'antd'
+  Text,
+  Title,
+  Paragraph,
+  message,
+} from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {
   Permissions,
@@ -21,8 +27,6 @@ import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
 import { usePermission } from '@/core/permissions/usePermission'
 import type { ProviderTemplate } from '../types'
-
-const { Title, Paragraph } = Typography
 
 /**
  * Drawer mode: either create-from-template (no `existing` row, has
@@ -43,6 +47,67 @@ interface FormShape {
 
 const SECRET_FIELDS = ['client_secret'] as const
 
+// Zod schema for form validation. Config fields vary by provider type
+// so they are all optional here; required-field enforcement is visual
+// (required prop on FormField) and enforced by the backend on save.
+// The MS-tenant cross-field rule is encoded in superRefine.
+const formSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Provider name required')
+    .regex(
+      /^[a-z0-9-]+$/,
+      'Lowercase letters, digits, and hyphens only (appears in URLs)',
+    ),
+  enabled: z.boolean(),
+  config: z
+    .object({
+      client_id: z.string().optional(),
+      client_secret: z.string().optional(),
+      issuer_url: z.string().optional(),
+      scopes: z.union([z.string(), z.array(z.string())]).optional(),
+      allowed_tenant_ids: z.union([z.string(), z.array(z.string())]).optional(),
+      display_name: z.string().optional(),
+      authorization_url: z.string().optional(),
+      token_url: z.string().optional(),
+      userinfo_url: z.string().optional(),
+      team_id: z.string().optional(),
+      services_id: z.string().optional(),
+      key_id: z.string().optional(),
+      private_key_path: z
+        .string()
+        .optional()
+        .refine(
+          (v) => !v || /^\/.+/.test(v),
+          'Use an absolute filesystem path (must start with `/`)',
+        ),
+    })
+    .catchall(z.any())
+    .superRefine((config, ctx) => {
+      const issuer = (config.issuer_url as string | undefined) ?? ''
+      // Microsoft's `common` / templated-issuer flow refuses
+      // to operate without an allowlist (backend enforces;
+      // surface earlier in the UI).
+      const needsAllowlist =
+        /\/(common|organizations|consumers)(\/|$)/.test(issuer) ||
+        issuer.includes('{tenantid}')
+      const tenantIds = config.allowed_tenant_ids
+      if (
+        needsAllowlist &&
+        (typeof tenantIds === 'string'
+          ? tenantIds.trim() === ''
+          : !Array.isArray(tenantIds) || tenantIds.length === 0)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'At least one tenant ID is required for the Microsoft `common` endpoint',
+          path: ['allowed_tenant_ids'],
+        })
+      }
+    }),
+})
+
 /**
  * Per-provider-type field renderer. OIDC + OAuth2 are similar
  * (client_id/secret + endpoint URLs); Apple is entirely different
@@ -58,8 +123,10 @@ export function AuthProviderEditDrawer({
   existing,
   onClose,
 }: EditDrawerProps) {
-  const { message, modal } = App.useApp()
-  const [form] = Form.useForm<FormShape>()
+  const form = useForm<FormShape>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { name: '', enabled: false, config: {} },
+  })
   const { saving, error } = Stores.AuthProvidersAdmin
   const canManage = usePermission(Permissions.AuthProvidersManage)
   const [testing, setTesting] = useState(false)
@@ -87,7 +154,7 @@ export function AuthProviderEditDrawer({
       // AddProviderMenu.existingNames); this branch only fires for
       // generic templates where `key` doesn't collide.
       const defaultName = templateDefaultName(template)
-      form.setFieldsValue({
+      form.reset({
         name: defaultName,
         // Safer default: rows are created disabled. Admin verifies
         // with Test config + toggles on when ready.
@@ -95,7 +162,7 @@ export function AuthProviderEditDrawer({
         config: template.defaultConfig,
       })
     } else if (existing) {
-      form.setFieldsValue({
+      form.reset({
         name: existing.name,
         enabled: existing.enabled,
         config: existing.config ?? {},
@@ -107,7 +174,9 @@ export function AuthProviderEditDrawer({
     setTesting(true)
     setTestResult(null)
     try {
-      const values = await form.validateFields()
+      const valid = await form.trigger()
+      if (!valid) return
+      const values = form.getValues() as FormShape
       const normalized = normalizeConfig(values.config, providerType)
       const res = await Stores.AuthProvidersAdmin.testConfig({
         name: values.name.trim(),
@@ -116,8 +185,6 @@ export function AuthProviderEditDrawer({
         config: normalized,
       })
       setTestResult(res)
-    } catch {
-      // form validation failed; AntD surfaces inline
     } finally {
       setTesting(false)
     }
@@ -136,7 +203,7 @@ export function AuthProviderEditDrawer({
     if (togglingEnable) return
 
     if (!next) {
-      form.setFieldValue('enabled', false)
+      form.setValue('enabled', false)
       return
     }
 
@@ -144,7 +211,12 @@ export function AuthProviderEditDrawer({
       // CREATE mode: stateless probe.
       setTogglingEnable(true)
       try {
-        const values = await form.validateFields()
+        const valid = await form.trigger()
+        if (!valid) {
+          form.setValue('enabled', false)
+          return
+        }
+        const values = form.getValues() as FormShape
         const normalized = normalizeConfig(values.config, providerType)
         const res = await Stores.AuthProvidersAdmin.testConfig({
           name: values.name.trim(),
@@ -153,22 +225,16 @@ export function AuthProviderEditDrawer({
           config: normalized,
         })
         if (!res.ok) {
-          form.setFieldValue('enabled', false)
+          form.setValue('enabled', false)
           // Clear any stale success Alert from a prior "Test config"
           // run so the operator sees the fresh failure, not a stale
           // green success.
           setTestResult(res)
-          message.error({
-            content: `Cannot enable: ${res.message}`,
-            duration: 8,
-          })
+          message.error(`Cannot enable: ${res.message}`, { duration: 8000 })
           return
         }
-        form.setFieldValue('enabled', true)
+        form.setValue('enabled', true)
         setTestResult(res)
-      } catch {
-        // Form validation failed; AntD has surfaced inline. Snap back.
-        form.setFieldValue('enabled', false)
       } finally {
         setTogglingEnable(false)
       }
@@ -180,9 +246,14 @@ export function AuthProviderEditDrawer({
     if (!existing) return
     setTogglingEnable(true)
     try {
-      const values = await form.validateFields()
+      const valid = await form.trigger()
+      if (!valid) {
+        form.setValue('enabled', false)
+        return
+      }
+      const values = form.getValues() as FormShape
       const normalized = normalizeConfig(values.config, providerType)
-      form.setFieldValue('enabled', true)
+      form.setValue('enabled', true)
       try {
         await Stores.AuthProvidersAdmin.updateProvider(existing.id, {
           name: values.name.trim(),
@@ -195,29 +266,22 @@ export function AuthProviderEditDrawer({
         // which triggers a list reload + the canonical row state
         // (enabled=false). Snap the local form value back so the
         // Switch reflects reality.
-        form.setFieldValue('enabled', false)
+        form.setValue('enabled', false)
         const reason =
           typeof e?.message === 'string'
             ? e.message
             : 'Connection probe failed; provider remains disabled.'
-        message.error({
-          content: `Failed to enable: ${reason}`,
-          duration: 8,
-        })
+        message.error(`Failed to enable: ${reason}`, { duration: 8000 })
       }
-    } catch {
-      // validateFields rejected — AntD surfaced inline; just snap back.
-      form.setFieldValue('enabled', false)
     } finally {
       setTogglingEnable(false)
     }
   }
 
-  const onSubmit = async () => {
+  const onValidSubmit = async (values: FormShape) => {
+    // Normalize: scopes can be entered as comma-separated string.
+    const normalized = normalizeConfig(values.config, providerType)
     try {
-      const values = await form.validateFields()
-      // Normalize: scopes can be entered as comma-separated string.
-      const normalized = normalizeConfig(values.config, providerType)
       if (template) {
         const provider = await Stores.AuthProvidersAdmin.createProvider({
           name: values.name.trim(),
@@ -229,10 +293,10 @@ export function AuthProviderEditDrawer({
         // auto_disabled event already; we just tell the admin if the
         // row landed disabled vs enabled.
         if (values.enabled && !provider.enabled) {
-          message.error({
-            content: `Created ${values.name.trim()} but disabled — connection probe failed. Fix the config and re-enable.`,
-            duration: 8,
-          })
+          message.error(
+            `Created ${values.name.trim()} but disabled — connection probe failed. Fix the config and re-enable.`,
+            { duration: 8000 },
+          )
         } else {
           message.success(`Created ${values.name.trim()}`)
         }
@@ -251,31 +315,14 @@ export function AuthProviderEditDrawer({
       // snap-back; surface the reason here for the admin to read.
       const reason = e?.message
       if (typeof reason === 'string' && reason.length > 0) {
-        message.error({ content: reason, duration: 8 })
+        message.error(reason, { duration: 8000 })
         // Snap the drawer's form value back to disabled so the visual
         // state matches the canonical row state.
-        form.setFieldValue('enabled', false)
+        form.setValue('enabled', false)
       }
-      // Otherwise: validateFields rejected; AntD has surfaced inline.
     }
   }
-
-  // Unsaved-changes guard: if any form field has been touched, confirm
-  // before closing so the user doesn't lose their work.
-  const handleClose = () => {
-    if (form.isFieldsTouched()) {
-      modal.confirm({
-        title: 'Discard unsaved changes?',
-        content: 'You have unsaved changes in the form. Are you sure you want to discard them?',
-        okText: 'Discard changes',
-        okButtonProps: { danger: true },
-        cancelText: 'Keep editing',
-        onOk: onClose,
-      })
-      return
-    }
-    onClose()
-  }
+  const handleSave = form.handleSubmit(onValidSubmit)
 
   const titleText = existing
     ? `Edit ${existing.name}`
@@ -287,7 +334,7 @@ export function AuthProviderEditDrawer({
     <Drawer
       title={titleText}
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
       size={600}
       maskClosable={false}
       destroyOnHidden
@@ -298,15 +345,15 @@ export function AuthProviderEditDrawer({
         // Read-only users get a "Close" button instead of "Cancel"
         // because there's nothing to cancel.
         <Flex className="justify-end gap-2">
-          <Button onClick={handleClose} disabled={saving}>
+          <Button variant="outline" data-testid="authprov-drawer-cancel-button" onClick={onClose} disabled={saving}>
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           <Can permission={Permissions.AuthProvidersManage}>
             {/* Footer button lives OUTSIDE the form (project Drawer
                 convention), so htmlType="submit" wouldn't work
                 here — Enter-to-submit is handled by Form's
-                `onFinish={onSubmit}` instead. */}
-            <Button type="primary" loading={saving} onClick={onSubmit}>
+                `onSubmit={handleSave}` instead. */}
+            <Button data-testid="authprov-drawer-save-button" loading={saving} onClick={handleSave}>
               {existing ? 'Save' : 'Create'}
             </Button>
           </Can>
@@ -321,81 +368,72 @@ export function AuthProviderEditDrawer({
           drawer body. */}
       <div className="flex flex-col w-full">
         {error && (
-          <Alert type="error" title={error} showIcon className="mb-4" />
+          <Alert tone="error" data-testid="authprov-drawer-error-alert" title={error} className="mb-4" />
         )}
         {testing && (
           <div className="text-center py-3 mb-4">
-            <Spin /> <Typography.Text type="secondary">Testing…</Typography.Text>
+            <Spin label="Testing" /> <Text type="secondary">Testing…</Text>
           </div>
         )}
         {testResult && !testing && (
           <Alert
-            type={testResult.ok ? 'success' : 'warning'}
+            data-testid="authprov-drawer-testresult-alert"
+            tone={testResult.ok ? 'success' : 'warning'}
             title={testResult.ok ? 'Configuration OK' : 'Configuration issues'}
             description={testResult.message}
-            showIcon
-            closable={{ onClose: () => setTestResult(null) }}
+            onClose={() => setTestResult(null)}
+            closeLabel="Close"
             className="mb-4"
           />
         )}
-        <Form form={form} layout="vertical" disabled={!canManage} onFinish={onSubmit}>
-        <Form.Item
-          name="name"
-          label="Name (URL slug)"
-          rules={[
-            { required: true, message: 'Provider name required' },
-            {
-              // Lowercase only — names are URL slugs and used in
-              // log lines. Case-insensitive matching would mean
-              // `Google` and `google` look like the same provider
-              // on the wire but distinct rows in the DB.
-              pattern: /^[a-z0-9-]+$/,
-              message:
-                'Lowercase letters, digits, and hyphens only (appears in URLs)',
-            },
-          ]}
-        >
-          <Input
-            placeholder="e.g. google, microsoft-corp, apple"
-            disabled={!!existing}
-          />
-        </Form.Item>
-        <Form.Item
-          name="enabled"
-          label="Enabled"
-          valuePropName="checked"
-          extra={
-            template
-              ? 'Toggling on runs a quick connection probe; if it fails the Switch reverts. Save with this on to create the provider enabled.'
-              : 'Toggling on commits the form and runs a connection probe server-side; the Switch reverts if the probe fails.'
-          }
-        >
-          <Switch loading={togglingEnable} onChange={handleEnabledToggle} />
-        </Form.Item>
+        <Form form={form} data-testid="authprov-drawer-form" layout="vertical" disabled={!canManage} onSubmit={onValidSubmit}>
+          <FormField
+            name="name"
+            label="Name (URL slug)"
+            required
+          >
+            <Input
+              data-testid="authprov-name-input"
+              placeholder="e.g. google, microsoft-corp, apple"
+              disabled={!!existing}
+            />
+          </FormField>
+          <FormField
+            name="enabled"
+            label="Enabled"
+            valuePropName="checked"
+            description={
+              template
+                ? 'Toggling on runs a quick connection probe; if it fails the Switch reverts. Save with this on to create the provider enabled.'
+                : 'Toggling on commits the form and runs a connection probe server-side; the Switch reverts if the probe fails.'
+            }
+          >
+            <Switch data-testid="authprov-enabled-switch" loading={togglingEnable} onChange={handleEnabledToggle} />
+          </FormField>
 
-        <Title level={5} className="mt-2">
-          Configuration
-        </Title>
-        {providerType === 'apple' ? (
-          <AppleFields />
-        ) : providerType === 'oauth2' ? (
-          <OAuth2Fields />
-        ) : (
-          <OidcFields />
-        )}
+          <Title level={5} className="mt-2">
+            Configuration
+          </Title>
+          {providerType === 'apple' ? (
+            <AppleFields />
+          ) : providerType === 'oauth2' ? (
+            <OAuth2Fields />
+          ) : (
+            <OidcFields />
+          )}
 
-        {existing && (
-          <Paragraph type="secondary" className="mt-3 text-xs">
-            Leave <code>client_secret</code> empty to keep the existing value.
-          </Paragraph>
-        )}
-        <Can permission={Permissions.AuthProvidersManage}>
-          <Flex className="mt-4">
-            <Button loading={testing} onClick={onTestConfig}>
-              Test config
-            </Button>
-          </Flex>
-        </Can>
+          {existing && (
+            <Paragraph type="secondary" className="mt-3 text-xs">
+              Leave <code>client_secret</code> empty to keep the existing value.
+            </Paragraph>
+          )}
+          <Can permission={Permissions.AuthProvidersManage}>
+            <Flex className="mt-4">
+              <Button data-testid="authprov-test-config-button" loading={testing} onClick={onTestConfig}>
+                Test config
+              </Button>
+            </Flex>
+          </Can>
         </Form>
       </div>
     </Drawer>
@@ -405,71 +443,45 @@ export function AuthProviderEditDrawer({
 function OidcFields() {
   return (
     <>
-      <Form.Item
-        name={['config', 'client_id']}
+      <FormField
+        name="config.client_id"
         label="Client ID"
-        rules={[{ required: true }]}
+        required
       >
-        <Input />
-      </Form.Item>
-      <Form.Item name={['config', 'client_secret']} label="Client secret">
-        <Input.Password
+        <Input data-testid="authprov-oidc-client-id-input" />
+      </FormField>
+      <FormField name="config.client_secret" label="Client secret">
+        <PasswordInput
+          data-testid="authprov-oidc-client-secret-input"
           placeholder="••••••  (leave empty to keep existing)"
           autoComplete="new-password"
+          showLabel="Show"
+          hideLabel="Hide"
         />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'issuer_url']}
+      </FormField>
+      <FormField
+        name="config.issuer_url"
         label="Issuer URL"
-        rules={[{ required: true, type: 'url' }]}
+        required
       >
-        <Input placeholder="https://accounts.google.com" />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'scopes']}
+        <Input data-testid="authprov-oidc-issuer-url-input" placeholder="https://accounts.google.com" />
+      </FormField>
+      <FormField
+        name="config.scopes"
         label="Scopes"
-        getValueFromEvent={parseScopeInput}
-        normalize={normalizeScopeArray}
       >
-        <Input placeholder="openid email profile" />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'allowed_tenant_ids']}
+        <Input data-testid="authprov-oidc-scopes-input" placeholder="openid email profile" />
+      </FormField>
+      <FormField
+        name="config.allowed_tenant_ids"
         label="Allowed tenant IDs (Microsoft only)"
-        extra="Comma-separated list of tenant IDs (the `tid` claim). REQUIRED when issuer is the Microsoft `common` endpoint."
-        getValueFromEvent={parseScopeInput}
-        normalize={normalizeScopeArray}
-        dependencies={[['config', 'issuer_url']]}
-        rules={[
-          ({ getFieldValue }) => ({
-            validator(_, value) {
-              const issuer = getFieldValue(['config', 'issuer_url']) ?? ''
-              // Microsoft's `common` / templated-issuer flow refuses
-              // to operate without an allowlist (backend enforces;
-              // surface earlier in the UI).
-              const needsAllowlist =
-                /\/(common|organizations|consumers)(\/|$)/.test(issuer) ||
-                issuer.includes('{tenantid}')
-              if (
-                needsAllowlist &&
-                (!Array.isArray(value) || value.length === 0)
-              ) {
-                return Promise.reject(
-                  new Error(
-                    'At least one tenant ID is required for the Microsoft `common` endpoint',
-                  ),
-                )
-              }
-              return Promise.resolve()
-            },
-          }),
-        ]}
+        description="Comma-separated list of tenant IDs (the `tid` claim). REQUIRED when issuer is the Microsoft `common` endpoint."
       >
-        <Input placeholder="comma-separated UUIDs (leave blank for non-MS)" />
-      </Form.Item>
-      <Form.Item name={['config', 'display_name']} label="Button label">
-        <Input placeholder="Sign in with X" />
-      </Form.Item>
+        <Input data-testid="authprov-oidc-tenant-ids-input" placeholder="comma-separated UUIDs (leave blank for non-MS)" />
+      </FormField>
+      <FormField name="config.display_name" label="Button label">
+        <Input data-testid="authprov-oidc-display-name-input" placeholder="Sign in with X" />
+      </FormField>
     </>
   )
 }
@@ -477,51 +489,51 @@ function OidcFields() {
 function OAuth2Fields() {
   return (
     <>
-      <Form.Item
-        name={['config', 'client_id']}
+      <FormField
+        name="config.client_id"
         label="Client ID"
-        rules={[{ required: true }]}
+        required
       >
-        <Input />
-      </Form.Item>
-      <Form.Item name={['config', 'client_secret']} label="Client secret">
-        <Input.Password
+        <Input data-testid="authprov-oauth2-client-id-input" />
+      </FormField>
+      <FormField name="config.client_secret" label="Client secret">
+        <PasswordInput
+          data-testid="authprov-oauth2-client-secret-input"
           placeholder="••••••  (leave empty to keep existing)"
           autoComplete="new-password"
+          showLabel="Show"
+          hideLabel="Hide"
         />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'authorization_url']}
+      </FormField>
+      <FormField
+        name="config.authorization_url"
         label="Authorization URL"
-        rules={[{ required: true, type: 'url' }]}
+        required
       >
-        <Input />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'token_url']}
+        <Input data-testid="authprov-oauth2-authorization-url-input" />
+      </FormField>
+      <FormField
+        name="config.token_url"
         label="Token URL"
-        rules={[{ required: true, type: 'url' }]}
+        required
       >
-        <Input />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'userinfo_url']}
+        <Input data-testid="authprov-oauth2-token-url-input" />
+      </FormField>
+      <FormField
+        name="config.userinfo_url"
         label="UserInfo URL"
-        rules={[{ type: 'url' }]}
       >
-        <Input />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'scopes']}
+        <Input data-testid="authprov-oauth2-userinfo-url-input" />
+      </FormField>
+      <FormField
+        name="config.scopes"
         label="Scopes"
-        getValueFromEvent={parseScopeInput}
-        normalize={normalizeScopeArray}
       >
-        <Input placeholder="email profile" />
-      </Form.Item>
-      <Form.Item name={['config', 'display_name']} label="Button label">
-        <Input placeholder="Sign in with X" />
-      </Form.Item>
+        <Input data-testid="authprov-oauth2-scopes-input" placeholder="email profile" />
+      </FormField>
+      <FormField name="config.display_name" label="Button label">
+        <Input data-testid="authprov-oauth2-display-name-input" placeholder="Sign in with X" />
+      </FormField>
     </>
   )
 }
@@ -529,67 +541,43 @@ function OAuth2Fields() {
 function AppleFields() {
   return (
     <>
-      <Form.Item
-        name={['config', 'team_id']}
+      <FormField
+        name="config.team_id"
         label="Team ID"
-        rules={[{ required: true }]}
+        required
       >
-        <Input placeholder="10-char Apple Developer Team ID" />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'services_id']}
+        <Input data-testid="authprov-apple-team-id-input" placeholder="10-char Apple Developer Team ID" />
+      </FormField>
+      <FormField
+        name="config.services_id"
         label="Services ID"
-        rules={[{ required: true }]}
+        required
       >
-        <Input placeholder="The Apple-issued client identifier (Services ID)" />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'key_id']}
+        <Input data-testid="authprov-apple-services-id-input" placeholder="The Apple-issued client identifier (Services ID)" />
+      </FormField>
+      <FormField
+        name="config.key_id"
         label="Key ID"
-        rules={[{ required: true }]}
+        required
       >
-        <Input placeholder="10-char Key ID for the .p8 file" />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'private_key_path']}
+        <Input data-testid="authprov-apple-key-id-input" placeholder="10-char Key ID for the .p8 file" />
+      </FormField>
+      <FormField
+        name="config.private_key_path"
         label="Private key path on disk"
-        rules={[
-          { required: true },
-          {
-            // Absolute filesystem path (must start with `/`).
-            // Catches obviously-bad input early; the server's
-            // file-read fires a separate error if the path is
-            // wrong but unreachable filesystem doesn't surface
-            // until first login.
-            pattern: /^\/.+/,
-            message: 'Use an absolute filesystem path (must start with `/`)',
-          },
-        ]}
-        extra="Filesystem path to the AuthKey_<KEY_ID>.p8 file. The file itself stays on disk with proper permissions — it is not uploaded through the UI."
+        required
+        description="Filesystem path to the AuthKey_<KEY_ID>.p8 file. The file itself stays on disk with proper permissions — it is not uploaded through the UI."
       >
-        <Input placeholder="/var/lib/ziee/apple/AuthKey_XXXXXXXXXX.p8" />
-      </Form.Item>
-      <Form.Item
-        name={['config', 'scopes']}
+        <Input data-testid="authprov-apple-private-key-path-input" placeholder="/var/lib/ziee/apple/AuthKey_XXXXXXXXXX.p8" />
+      </FormField>
+      <FormField
+        name="config.scopes"
         label="Scopes"
-        getValueFromEvent={parseScopeInput}
-        normalize={normalizeScopeArray}
       >
-        <Select
-          mode="tags"
-          tokenSeparators={[' ', ',']}
-          placeholder="name email"
-        />
-      </Form.Item>
+        <Input data-testid="authprov-apple-scopes-input" placeholder="name email" />
+      </FormField>
     </>
   )
-}
-
-function parseScopeInput(e: any): string[] | string {
-  // AntD Select returns array; Input returns event.target.value.
-  if (Array.isArray(e)) return e
-  if (typeof e === 'string') return e
-  return e?.target?.value ?? ''
 }
 
 function normalizeScopeArray(value: any): string[] {
@@ -628,6 +616,13 @@ function normalizeConfig(
   for (const k of SECRET_FIELDS) {
     if (typeof out[k] === 'string' && out[k].trim() === '') {
       delete out[k]
+    }
+  }
+  // Normalize scopes and allowed_tenant_ids from comma/space-separated
+  // string (as entered in the Input) to string[] for the backend.
+  for (const k of ['scopes', 'allowed_tenant_ids'] as const) {
+    if (out[k] !== undefined) {
+      out[k] = normalizeScopeArray(out[k])
     }
   }
   // Drop empty allowed_tenant_ids array — server treats absent ==

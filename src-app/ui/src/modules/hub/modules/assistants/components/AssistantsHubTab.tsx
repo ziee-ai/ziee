@@ -1,12 +1,10 @@
+import { Search, Eraser } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { Input, Select, Typography, Button } from 'antd'
+import { Combobox, MultiSelect, Text, Button, Input } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
-
-const { Text } = Typography
 
 export function AssistantsHubTab() {
   const { assistants, loading, error } = Stores.HubAssistants // Auto-loads via __init__
@@ -79,7 +77,7 @@ export function AssistantsHubTab() {
       <div className="text-center py-12">
         <Text type="danger">Failed to load assistants: {error}</Text>
         <div className="mt-4">
-          <Button onClick={() => Stores.HubAssistants.loadAssistants()}>
+          <Button onClick={() => Stores.HubAssistants.loadAssistants()} data-testid="hub-assistants-retry-btn">
             Retry
           </Button>
         </div>
@@ -93,42 +91,44 @@ export function AssistantsHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-assistants-search-input"
             placeholder="Search assistants..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search assistants"
           />
 
-          <Select
-            mode="multiple"
+          <MultiSelect
+            data-testid="hub-assistants-tags-multiselect"
             placeholder="Filter by tags"
+            searchPlaceholder="Search tags..."
+            emptyText="No tags found"
             value={selectedTags}
-            onChange={setSelectedTags}
+            onChange={(value: string[]) => setSelectedTags(value)}
+            removeLabel={(label) => `Remove tag filter: ${label}`}
             className="flex-1"
-            allowClear
-            maxTagCount="responsive"
             options={assistantTags.map(tag => ({
-              key: tag,
               value: tag,
               label: tag,
             }))}
-            popupMatchSelectWidth={false}
             aria-label="Filter by tags"
           />
 
-          <Select
+          <Combobox
+            data-testid="hub-assistants-sort-combobox"
             placeholder="Sort by"
+            searchPlaceholder="Sort by..."
+            emptyText="No sort options"
             value={sortBy}
-            onChange={setSortBy}
+            onChange={(value: string) => setSortBy(value)}
             className="flex-1"
             options={[
               { value: 'name', label: 'ID' },
               { value: 'display_name', label: 'Display name' },
             ]}
-            popupMatchSelectWidth={false}
             aria-label="Sort assistants"
           />
         </div>
@@ -145,11 +145,12 @@ export function AssistantsHubTab() {
                 .join(', ')}
             </Text>
             <Button
-              size="small"
-              type="text"
-              icon={<ClearOutlined />}
+              size="sm"
+              variant="ghost"
+              icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
+              data-testid="hub-assistants-clear-filters-btn"
             >
               Clear all
             </Button>

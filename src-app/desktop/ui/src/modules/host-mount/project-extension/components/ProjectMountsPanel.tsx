@@ -7,20 +7,16 @@
 
 import { useEffect, useState } from 'react'
 import {
-  App,
   Button,
   Card,
   Empty,
   List,
   Skeleton,
   Switch,
-  Typography,
-} from 'antd'
-import {
-  DeleteOutlined,
-  FolderAddOutlined,
-  FolderOpenOutlined,
-} from '@ant-design/icons'
+  Text,
+  message,
+} from '@/components/ui'
+import { Trash2, FolderPlus, FolderOpen } from 'lucide-react'
 
 import type { MountEntry } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -34,7 +30,6 @@ function toSandboxPath(hostPath: string): string {
 }
 
 export function ProjectMountsPanel() {
-  const { message } = App.useApp()
   const project = Stores.ProjectDetail.project
   const { mounts, loading, saving } = Stores.ProjectHostMounts
 
@@ -78,84 +73,87 @@ export function ProjectMountsPanel() {
     <Card
       title={
         <span>
-          <FolderOpenOutlined className="mr-2" />
+          <FolderOpen className="mr-2 inline" />
           Mounted folders
         </span>
       }
       extra={
         <Button
-          type="text"
-          icon={<FolderAddOutlined />}
+          variant="ghost"
+          icon={<FolderPlus />}
           onClick={addFolder}
           aria-label="Add folder"
+          data-testid="desktop-hostmount-project-add-btn"
         >
           Add folder
         </Button>
       }
       className="mb-4"
       data-test-section="project-host-mounts"
+      data-testid="desktop-hostmount-project-card"
     >
-      <Typography.Text type="secondary" className="block mb-4">
+      <Text type="secondary" className="block mb-4">
         Folders from this machine are mounted into the code sandbox at{' '}
-        <Typography.Text code>/mnt/&lt;path&gt;</Typography.Text> for every chat in
+        <Text code>/mnt/&lt;path&gt;</Text> for every chat in
         this project — so large data files (BAM/FASTQ/VCF) are read in place, not
         uploaded. Read-only by default.
-      </Typography.Text>
+      </Text>
 
       {loading && draft.length === 0 ? (
-        <Skeleton active paragraph={{ rows: 2 }} />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
       ) : draft.length === 0 ? (
         <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={
-            <Typography.Text type="secondary">No folders mounted</Typography.Text>
-          }
+          description={<Text type="secondary">No folders mounted</Text>}
+          data-testid="desktop-hostmount-project-empty"
         />
       ) : (
         <List
-          size="small"
+          size="sm"
+          data-testid="desktop-hostmount-project-list"
           dataSource={draft}
           rowKey={(m) => m.host_path}
           renderItem={(m, i) => (
-            <List.Item
-              actions={[
-                <span key="ro" className="text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <Text code>{m.host_path}</Text>
+                <Text type="secondary" className="block text-xs">
+                  → {toSandboxPath(m.host_path)}
+                </Text>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs">
                   Read-only{' '}
                   <Switch
-                    size="small"
+                    size="sm"
                     checked={m.read_only}
                     onChange={(c) => setReadOnly(i, c)}
+                    data-testid={`desktop-hostmount-project-readonly-${i}`}
                   />
-                </span>,
+                </span>
                 <Button
-                  key="rm"
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
+                  variant="ghost"
+                  size="icon"
+                  tooltip={`Remove ${m.host_path}`}
+                  icon={<Trash2 />}
                   onClick={() => removeAt(i)}
                   aria-label={`Remove ${m.host_path}`}
-                />,
-              ]}
-            >
-              <List.Item.Meta
-                title={<Typography.Text code>{m.host_path}</Typography.Text>}
-                description={
-                  <Typography.Text type="secondary" className="text-xs">
-                    → {toSandboxPath(m.host_path)}
-                  </Typography.Text>
-                }
-              />
-            </List.Item>
+                  data-testid={`desktop-hostmount-project-remove-${i}`}
+                />
+              </div>
+            </div>
           )}
         />
       )}
 
       <div className="mt-3 flex justify-end">
         <Button
-          type="primary"
           onClick={save}
           loading={saving}
           disabled={!dirty || loading}
+          data-testid="desktop-hostmount-project-save-btn"
         >
           Save
         </Button>

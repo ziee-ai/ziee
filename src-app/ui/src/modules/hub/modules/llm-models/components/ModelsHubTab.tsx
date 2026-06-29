@@ -1,12 +1,10 @@
+import { Eraser, Search } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { Input, Select, Typography, Button } from 'antd'
+import { MultiSelect, Select, Text, Button, Input } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
-
-const { Text } = Typography
 
 export function ModelsHubTab() {
   const { models, loading, error } = Stores.HubModels // Auto-loads via __init__
@@ -84,7 +82,7 @@ export function ModelsHubTab() {
       <div className="text-center py-12">
         <Text type="danger">Failed to load models: {error}</Text>
         <div className="mt-4">
-          <Button onClick={() => Stores.HubModels.loadModels()}>Retry</Button>
+          <Button onClick={() => Stores.HubModels.loadModels()} data-testid="hub-models-retry-btn">Retry</Button>
         </div>
       </div>
     )
@@ -96,42 +94,42 @@ export function ModelsHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-models-search-input"
             placeholder="Search models..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search models"
           />
 
-          <Select
-            mode="multiple"
+          <MultiSelect
+            data-testid="hub-models-tags-multiselect"
             placeholder="Filter by tags"
             value={selectedTags}
-            onChange={setSelectedTags}
+            onChange={(values: string[]) => setSelectedTags(values)}
             className="flex-1"
-            allowClear
-            maxTagCount="responsive"
+            removeLabel={(label) => `Remove ${label}`}
+            emptyText="No tags available"
+            searchPlaceholder="Search tags..."
             options={modelTags.map(tag => ({
-              key: tag,
               value: tag,
               label: tag,
             }))}
-            popupMatchSelectWidth={false}
             aria-label="Filter by tags"
           />
 
           <Select
+            data-testid="hub-models-sort-select"
             placeholder="Sort by"
             value={sortBy}
-            onChange={setSortBy}
+            onChange={(value: string) => setSortBy(value)}
             className="flex-1"
             options={[
               { value: 'name', label: 'ID' },
               { value: 'display_name', label: 'Display name' },
             ]}
-            popupMatchSelectWidth={false}
             aria-label="Sort models"
           />
         </div>
@@ -148,11 +146,12 @@ export function ModelsHubTab() {
                 .join(', ')}
             </Text>
             <Button
-              size="small"
-              type="text"
-              icon={<ClearOutlined />}
+              size="sm"
+              variant="ghost"
+              icon={<Eraser />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"
+              data-testid="hub-models-clear-filters-btn"
             >
               Clear all
             </Button>

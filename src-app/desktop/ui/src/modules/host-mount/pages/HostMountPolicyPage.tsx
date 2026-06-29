@@ -7,13 +7,12 @@
  */
 
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Select, Switch, Typography } from 'antd'
+import { Button, Card, MultiSelect, Switch, Paragraph, Text, message } from '@/components/ui'
 
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
 
 export function HostMountPolicyPage() {
-  const { message } = App.useApp()
   const { policy, loading, saving } = Stores.HostMountPolicy
 
   const [enabled, setEnabled] = useState(true)
@@ -53,49 +52,53 @@ export function HostMountPolicyPage() {
       title="Host Mount Policy"
       subtitle="Control whether folders from this machine can be mounted into the code sandbox, and which paths are allowed."
     >
-      <Card loading={loading && !policy} className="mb-4" data-test-section="host-mount-policy">
+      <Card loading={loading && !policy} className="mb-4" data-test-section="host-mount-policy" data-testid="desktop-hostmount-policy-card">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
-              <Typography.Text strong>Allow host-folder mounting</Typography.Text>
-              <Typography.Paragraph type="secondary" className="!mb-0">
+              <Text strong>Allow host-folder mounting</Text>
+              <Paragraph type="secondary" className="!mb-0">
                 When off, no host folders are mounted into the sandbox on any
                 project or conversation.
-              </Typography.Paragraph>
+              </Paragraph>
             </div>
-            <Switch checked={enabled} onChange={setEnabled} />
+            <Switch checked={enabled} onChange={setEnabled} aria-label="Allow host-folder mounting" data-testid="desktop-hostmount-policy-enabled-switch" />
           </div>
 
           <div className="flex items-center justify-between">
             <div>
-              <Typography.Text strong>Allow read-write mounts</Typography.Text>
-              <Typography.Paragraph type="secondary" className="!mb-0">
+              <Text strong>Allow read-write mounts</Text>
+              <Paragraph type="secondary" className="!mb-0">
                 Off by default — mounts are read-only. Enabling this lets the
                 sandbox modify the real files in mounted folders.
-              </Typography.Paragraph>
+              </Paragraph>
             </div>
-            <Switch checked={allowReadwrite} onChange={setAllowReadwrite} />
+            <Switch checked={allowReadwrite} onChange={setAllowReadwrite} aria-label="Allow read-write mounts" data-testid="desktop-hostmount-policy-readwrite-switch" />
           </div>
 
           <div>
-            <Typography.Text strong>Allowed path prefixes</Typography.Text>
-            <Typography.Paragraph type="secondary" className="!mb-2">
+            <Text strong>Allowed path prefixes</Text>
+            <Paragraph type="secondary" className="!mb-2">
               A folder is only mountable if its path starts with one of these.
               Leave empty to allow any path (typical for a single-user desktop).
-            </Typography.Paragraph>
-            <Select
-              mode="tags"
+            </Paragraph>
+            <MultiSelect
+              options={[]}
+              allowCreate
+              tokenSeparators={[',']}
               value={prefixes}
               onChange={setPrefixes}
               placeholder="/Users/me/data"
-              style={{ width: '100%' }}
-              tokenSeparators={[',']}
+              searchPlaceholder="Type a path prefix"
+              emptyText="No prefixes added"
+              removeLabel={(label) => `Remove ${label}`}
               aria-label="Allowed path prefixes"
+              data-testid="desktop-hostmount-policy-prefixes-select"
             />
           </div>
 
           <div className="flex justify-end">
-            <Button type="primary" onClick={save} loading={saving} disabled={!dirty}>
+            <Button onClick={save} loading={saving} disabled={!dirty} data-testid="desktop-hostmount-policy-save-btn">
               Save
             </Button>
           </div>

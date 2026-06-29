@@ -1,13 +1,11 @@
+import { FileQuestion, TriangleAlert } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { Typography, theme, Empty, Spin } from 'antd'
-import { FileUnknownOutlined, WarningOutlined } from '@ant-design/icons'
+import { Empty, Spin, Text, Title } from '@/components/ui'
 import type { File as FileEntity } from '@/api-client/types'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import { DownloadButton } from '@/modules/file/viewers/shared/chrome'
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
 import { Stores } from '@/core/stores'
-
-const { Title, Text } = Typography
 
 /** Hard cap on previewable file size. Files above this never trigger a
  *  content download — the panel renders a "too large to preview" empty
@@ -58,7 +56,6 @@ export function FilePanelHeaderActions({ file }: { file: FileEntity }) {
  * the matching viewer's `body` and optional `headerActions` slot components.
  */
 export function FilePanel({ file, hideHeader = false, initialVersion }: FilePanelProps) {
-  const { token } = theme.useToken()
   const handler = getViewer(file.filename, file.mime_type ?? undefined)
   const Body = handler?.body
   const tooLarge = file.file_size > PREVIEW_SIZE_LIMIT_BYTES
@@ -87,15 +84,14 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
     : null
 
   return (
-    <div className="flex flex-col h-full w-full" style={{ backgroundColor: token.colorBgLayout }}>
+    <div className="flex flex-col h-full w-full bg-background">
       {/* Title bar — panel-owned. Viewer fills the right-side actions area
           when there's a registered viewer; otherwise we surface Download.
           Hosts that render their own header (FilePreviewDrawer) pass
           hideHeader to skip this and avoid duplication. */}
       {!hideHeader && (
         <div
-          className="flex items-center gap-2 px-3 py-2 flex-shrink-0"
-          style={{ borderBottom: `1px solid ${token.colorBorderSecondary}` }}
+          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b"
         >
           <Title level={5} className="!m-0 flex-1 truncate" title={file.filename}>
             {file.filename}
@@ -118,13 +114,13 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
           preview-size cap (we skip loading entirely) or no viewer
           matches. When viewing a non-head version, render that version's
           text read-only instead (the viewers are head-bound). */}
-      <div className="flex-1 overflow-hidden" style={{ backgroundColor: token.colorBgContainer }}>
+      <div className="flex-1 overflow-hidden bg-card">
         {isViewingOld
           ? (
             oldVersionText === null
               ? (
                 <div className="flex items-center justify-center h-full">
-                  <Spin />
+                  <Spin label="Loading" />
                 </div>
               )
               : (
@@ -143,7 +139,8 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
               data-testid="too-large-to-preview"
             >
               <Empty
-                image={<WarningOutlined style={{ fontSize: 56, color: token.colorWarning }} />}
+                data-testid="file-panel-too-large-empty"
+                icon={<TriangleAlert className="text-5xl text-warning" />}
                 description={
                   <div className="flex flex-col items-center gap-1">
                     <Text strong>File too large to preview</Text>
@@ -167,7 +164,8 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
               data-testid="cannot-preview"
             >
               <Empty
-                image={<FileUnknownOutlined style={{ fontSize: 56, color: token.colorTextQuaternary }} />}
+                data-testid="file-panel-cannot-preview-empty"
+                icon={<FileQuestion className="text-5xl text-muted-foreground" />}
                 description={
                   <div className="flex flex-col items-center gap-1">
                     <Text strong>Cannot preview this file</Text>

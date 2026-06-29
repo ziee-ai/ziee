@@ -8,7 +8,6 @@ import { initSync } from '@/core/sync'
 import { usePrefetchModules } from '@/hooks/usePrefetchModules'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 import { loadModules } from '@/modules/loader'
-import { setupAccessibilityFixes } from '@/utils/accessibilityFixes'
 
 // Load all modules before rendering
 loadModules()
@@ -52,12 +51,6 @@ function ConditionalComponent({
  */
 function App() {
   const { components } = Stores.ModuleSystem
-
-  // Setup global accessibility fixes
-  useEffect(() => {
-    const cleanup = setupAccessibilityFixes()
-    return cleanup
-  }, [])
 
   // Wire the realtime-sync SSE stream to the auth lifecycle (idempotent;
   // starts on login, stops on logout, restarts on user switch).

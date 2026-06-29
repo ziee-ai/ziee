@@ -1,4 +1,4 @@
-import { Spin } from 'antd'
+import { Spin } from '@/components/ui'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { RawCodeView } from '../shared/RawCodeView'
@@ -12,7 +12,7 @@ export function WebBody(props: FileViewerSlotProps) {
   const mode = useFileViewMode(file.id)
 
   if (content === null) {
-    return <div className="flex items-center justify-center h-full"><Spin /></div>
+    return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>
   }
   if (mode === 'raw') {
     return <RawCodeView text={content} />
@@ -31,7 +31,8 @@ export function WebBody(props: FileViewerSlotProps) {
     <iframe
       sandbox=""
       srcDoc={content}
-      style={{ width: '100%', height: '100%', border: 'none', minHeight: 400 }}
+      className="w-full h-full border-none"
+      style={{ minHeight: 400 }}
       title="preview"
     />
   )

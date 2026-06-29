@@ -1,20 +1,16 @@
 import { useState } from 'react'
 import {
-  App,
   Button,
   Checkbox,
   Descriptions,
   Flex,
-  Popconfirm,
+  Confirm,
   Tooltip,
-  Typography,
-} from 'antd'
-import {
-  DeleteOutlined,
-  StarOutlined,
-} from '@ant-design/icons'
+  Text,
+  message,
+} from '@/components/ui'
+import { Trash2, Star } from 'lucide-react'
 
-const { Text } = Typography
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type RuntimeVersionResponse } from '@/api-client/types'
@@ -48,11 +44,6 @@ export function RuntimeVersionCard({ version }: Props) {
   const canDelete = usePermission(Permissions.RuntimeVersionDelete)
 
   const [removeBinary, setRemoveBinary] = useState(false)
-  // Extra acknowledgment gate when deleting the system-default version — a
-  // mis-click here drops the version new sessions fall back to, so require an
-  // explicit confirmation beyond the standard Popconfirm.
-  const [ackDefault, setAckDefault] = useState(false)
-  const { message } = App.useApp()
 
   const handleSetDefault = async () => {
     try {
@@ -79,13 +70,14 @@ export function RuntimeVersionCard({ version }: Props) {
     actions.push(
       <Tooltip
         key="set-default"
-        title="Make this version the default for new sessions"
+        content="Make this version the default for new sessions"
       >
         <Button
-          type="text"
-          icon={<StarOutlined />}
+          variant="ghost"
+          icon={<Star />}
           loading={isSettingDefault}
           onClick={handleSetDefault}
+          data-testid={`llmrt-version-set-default-${version.version}`}
           aria-label={`Set version ${version.version} as default`}
         >
           Set as Default
@@ -95,56 +87,43 @@ export function RuntimeVersionCard({ version }: Props) {
   }
   if (canDelete) {
     actions.push(
-      <Popconfirm
+      <Confirm
         key="delete"
+        data-testid={`llmrt-version-delete-confirm-${version.version}`}
         title="Delete Runtime Version"
         description={
-          <Flex vertical gap="small">
+          <Flex direction="column" gap="small" className="[&_*]:!m-0">
             <Text>
               Are you sure you want to delete version {version.version}?
             </Text>
             {version.is_system_default && (
-              <>
-                <Text type="danger">
-                  Warning: This is the default version. New sessions will fall
-                  back to another version after deletion.
-                </Text>
-                <Checkbox
-                  checked={ackDefault}
-                  onChange={e => setAckDefault(e.target.checked)}
-                >
-                  I understand this is the default version
-                </Checkbox>
-              </>
+              <Text type="danger">
+                Warning: This is the default version.
+              </Text>
             )}
             <Checkbox
               checked={removeBinary}
-              onChange={e => setRemoveBinary(e.target.checked)}
-            >
-              Also remove cached files from disk
-            </Checkbox>
+              onChange={(e: boolean) => setRemoveBinary(e)}
+              label="Also remove cached files from disk"
+              data-testid={`llmrt-version-delete-removebinary-${version.version}`}
+            />
           </Flex>
         }
         onConfirm={handleDelete}
-        onOpenChange={open => {
-          if (!open) setAckDefault(false)
-        }}
         okText="Delete"
-        okButtonProps={{
-          danger: true,
-          disabled: version.is_system_default && !ackDefault,
-        }}
+        cancelText="Cancel"
+        okButtonProps={{ danger: true }}
       >
         <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined />}
+          variant="destructive"
+          icon={<Trash2 />}
           loading={isDeleting}
+          data-testid={`llmrt-version-delete-${version.version}`}
           aria-label={`Delete version ${version.version}`}
         >
           Delete
         </Button>
-      </Popconfirm>
+      </Confirm>
     )
   }
 
@@ -165,27 +144,31 @@ export function RuntimeVersionCard({ version }: Props) {
       </div>
 
       <Descriptions
-        size="small"
-        column={{ xs: 1, sm: 2, md: 4 }}
-        colon={false}
-        styles={{
-          label: { fontSize: '12px', color: '#8c8c8c' },
-          content: { fontSize: '12px' },
-        }}
-      >
-        <Descriptions.Item label="Platform">
-          {version.platform}
-        </Descriptions.Item>
-        <Descriptions.Item label="Architecture">
-          {version.arch}
-        </Descriptions.Item>
-        <Descriptions.Item label="Backend">
-          {version.backend.toUpperCase()}
-        </Descriptions.Item>
-        <Descriptions.Item label="Installed">
-          {new Date(version.created_at).toLocaleString()}
-        </Descriptions.Item>
-      </Descriptions>
+        size="sm"
+        data-testid={`llmrt-version-desc-${version.version}`}
+        items={[
+          {
+            key: 'platform',
+            label: 'Platform',
+            children: version.platform,
+          },
+          {
+            key: 'arch',
+            label: 'Architecture',
+            children: version.arch,
+          },
+          {
+            key: 'backend',
+            label: 'Backend',
+            children: version.backend.toUpperCase(),
+          },
+          {
+            key: 'installed',
+            label: 'Installed',
+            children: new Date(version.created_at).toLocaleString(),
+          },
+        ]}
+      />
     </div>
   )
 }

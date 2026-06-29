@@ -110,7 +110,8 @@
 			"!.env.local",
 			"!.env.development.local",
 			"!.env.test.local",
-			"!.env.production.local"
+			"!.env.production.local",
+			"!**/*.css"
 		]
 	},
 	"javascript": {
@@ -163,7 +164,17 @@
 						"noNamespace": "error",
 						"useArrayLiterals": "error",
 						"useAsConstAssertion": "error",
-						"useBlockStatements": "off"
+						"useBlockStatements": "off",
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"antd": "antd is removed — import UI from '@/components/ui' (the kit).",
+									"@ant-design/icons": "Use lucide-react icons (re-exported via the kit) instead of @ant-design/icons.",
+									"antd/es/form": "antd is removed — use the kit Form/FormField from '@/components/ui'."
+								}
+							}
+						}
 					},
 					"suspicious": {
 						"noExplicitAny": "off",
@@ -174,6 +185,10 @@
 					}
 				}
 			}
+		},
+		{
+			"includes": ["**/*.{ts,tsx,jsx}", "!**/tests/**"],
+			"plugins": ["../../ui/biome-plugins/no-raw-interactive-elements.grit"]
 		}
 	],
 	"assist": {

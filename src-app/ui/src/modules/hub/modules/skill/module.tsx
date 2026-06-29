@@ -1,4 +1,4 @@
-import { ReadOutlined } from '@ant-design/icons'
+import { BookOpen } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { useHubSkillsStore } from '@/modules/hub/modules/skill/stores/hub-skills-store'
@@ -24,7 +24,7 @@ export default createModule({
       {
         id: 'skills',
         label: 'Skills',
-        icon: <ReadOutlined />,
+        icon: <BookOpen />,
         component: SkillsHubTab,
         order: 40,
         permissions: {

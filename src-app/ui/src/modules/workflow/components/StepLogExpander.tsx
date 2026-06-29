@@ -1,8 +1,6 @@
-import { App, Collapse, Spin, Typography } from 'antd'
+import { Button, Accordion, Spin, Paragraph, message } from '@/components/ui'
 import { useState } from 'react'
 import { ApiClient } from '@/api-client'
-
-const { Paragraph } = Typography
 
 interface StepLogExpanderProps {
   runId: string
@@ -24,7 +22,6 @@ export function StepLogExpander({
   kind,
   label,
 }: StepLogExpanderProps) {
-  const { message } = App.useApp()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [content, setContent] = useState<string | null>(null)
@@ -41,10 +38,6 @@ export function StepLogExpander({
       })
       setContent(typeof res === 'string' ? res : JSON.stringify(res, null, 2))
     } catch (e) {
-      // 404 is the EXPECTED "log not exposed / not produced" case — show
-      // the inline "not available" note. Any other failure (network,
-      // 403, 5xx) is a real error → surface it so it isn't masked by the
-      // expected-404 message.
       setError(true)
       const status =
         typeof e === 'object' && e !== null
@@ -61,11 +54,12 @@ export function StepLogExpander({
   }
 
   return (
-    <Collapse
+    <Accordion
+      data-testid={`wf-step-log-accordion-${stepId}-${kind}`}
       ghost
-      size="small"
-      activeKey={open ? [kind] : []}
-      onChange={keys => {
+      collapsible
+      value={open ? kind : ''}
+      onValueChange={(keys: string) => {
         const next = keys.length > 0
         setOpen(next)
         if (next && content === null && !loading) void fetchLog()
@@ -74,12 +68,12 @@ export function StepLogExpander({
         {
           key: kind,
           label: (
-            <span className="text-xs text-[var(--ant-color-link)]">
+            <Button data-testid={`wf-step-log-btn-${stepId}-${kind}`} variant="link" size="sm" className="!px-0">
               {label}
-            </span>
+            </Button>
           ),
           children: loading ? (
-            <Spin size="small" />
+            <Spin size="sm" label="Loading log" />
           ) : error ? (
             <Paragraph type="secondary" className="text-xs">
               Log not available

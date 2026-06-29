@@ -1,10 +1,8 @@
-import { SearchOutlined } from '@ant-design/icons'
-import { Input, Switch, Tree, Typography, theme } from 'antd'
-import type { TreeDataNode, TreeProps } from 'antd'
-import { useMemo, useState, type Key } from 'react'
+import { Search } from 'lucide-react'
+import { Input, Switch, Textarea, Tree, Text } from '@/components/ui'
+import type { TreeProps } from '@/components/ui'
+import { useMemo, useState } from 'react'
 import { Permissions, PermissionDescriptions } from '@/api-client/types'
-
-const { Text } = Typography
 
 // ---------------------------------------------------------------------------
 // Permission catalog — derived once from the generated client metadata.
@@ -66,12 +64,11 @@ export function PermissionsField({
   onChange,
   disabled,
 }: PermissionsFieldProps) {
-  const { token } = theme.useToken()
   const [advanced, setAdvanced] = useState(false)
   const [search, setSearch] = useState('')
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
-  const [expandedKeys, setExpandedKeys] = useState<Key[]>(ALL_GROUP_KEYS)
+  const [expandedKeys, setExpandedKeys] = useState<string[]>(ALL_GROUP_KEYS)
   const [autoExpandParent, setAutoExpandParent] = useState(false)
 
   // Split the value into picker-managed permissions and "extra" entries
@@ -85,7 +82,7 @@ export function PermissionsField({
 
   const searching = search.trim().length > 0
 
-  const treeData = useMemo<TreeDataNode[]>(() => {
+  const treeData = useMemo(() => {
     const q = search.trim().toLowerCase()
     const groups = new Map<string, PermOption[]>()
     for (const opt of PERM_OPTIONS) {
@@ -103,8 +100,6 @@ export function PermissionsField({
     return Array.from(groups.entries()).map(([group, opts]) => ({
       key: `group:${group}`,
       title: prettifyGroup(group),
-      checkable: false,
-      selectable: false,
       children: opts.map(o => ({
         key: o.value,
         title: (
@@ -125,18 +120,14 @@ export function PermissionsField({
   // user's expand/collapse state.
   const shownExpanded = searching ? treeData.map(g => g.key) : expandedKeys
 
-  // Derive the next value from a single toggle (info.node) rather than the
-  // full checkedKeys array — robust when search has filtered some checked
-  // leaves out of the tree (their checks must survive).
-  const handleCheck: TreeProps['onCheck'] = (_checked, info) => {
-    const key = String(info.node.key)
-    const next = new Set(knownChecked)
-    if (info.checked) next.add(key)
-    else next.delete(key)
+  // Derive the next value from the full checked keys provided by the kit Tree.
+  // Filter out parent group keys (not in KNOWN_VALUES) that may appear due to conduction.
+  const handleCheck: NonNullable<TreeProps['onCheck']> = (keys) => {
+    const next = new Set(keys.filter(k => KNOWN_VALUES.has(k)))
     onChange?.([...next, ...extra])
   }
 
-  const handleExpand: TreeProps['onExpand'] = keys => {
+  const handleExpand: NonNullable<TreeProps['onExpand']> = keys => {
     setExpandedKeys(keys)
     setAutoExpandParent(false)
   }
@@ -179,12 +170,13 @@ export function PermissionsField({
         ) : (
           <Input
             className="flex-1"
-            size="small"
+            size="sm"
             allowClear
             disabled={disabled}
-            prefix={<SearchOutlined aria-hidden="true" />}
+            prefix={<Search aria-hidden="true" />}
             placeholder="Search permissions"
             aria-label="Search permissions"
+            data-testid="user-permissions-search-input"
             value={search}
             onChange={e => {
               setSearch(e.target.value)
@@ -197,10 +189,11 @@ export function PermissionsField({
             Advanced JSON
           </Text>
           <Switch
-            size="small"
+            size="sm"
             checked={advanced}
             disabled={disabled}
             aria-label="Advanced JSON"
+            data-testid="user-permissions-advanced-switch"
             onChange={checked => (checked ? enterAdvanced() : setAdvanced(false))}
           />
         </span>
@@ -208,8 +201,9 @@ export function PermissionsField({
 
       {advanced ? (
         <>
-          <Input.TextArea
+          <Textarea
             aria-label="Permissions (JSON Array)"
+            data-testid="user-permissions-json-textarea"
             className="font-mono"
             rows={8}
             disabled={disabled}
@@ -225,21 +219,15 @@ export function PermissionsField({
         </>
       ) : (
         <>
-          <div
-            className="max-h-80 overflow-auto p-1"
-            style={{
-              border: `1px solid ${token.colorBorder}`,
-              borderRadius: token.borderRadius,
-            }}
-          >
+          <div className="max-h-80 overflow-auto p-1 border rounded">
             {treeData.length > 0 ? (
               <Tree
                 checkable
-                selectable={false}
-                disabled={disabled}
+                aria-label="Permissions tree"
+                data-testid="user-permissions-tree"
                 treeData={treeData}
                 checkedKeys={knownChecked}
-                onCheck={handleCheck}
+                onCheck={disabled ? undefined : handleCheck}
                 expandedKeys={shownExpanded}
                 autoExpandParent={searching || autoExpandParent}
                 onExpand={handleExpand}

@@ -19,25 +19,38 @@
  * config and let the branch flip to the no-form path.
  */
 
-import { useEffect, useState } from 'react'
-import { Alert, Button, Card, Form, Input, Result, Spin, theme, Typography } from 'antd'
+import { useEffect } from 'react'
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  FormField,
+  PasswordInput,
+  Result,
+  Spin,
+  Title,
+  Paragraph,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { useTunnelAuthStore } from './TunnelAuth.store'
 
-const { Title, Paragraph } = Typography
+const passwordSchema = z.object({
+  password: z.string().min(1, 'Enter your password'),
+})
+type PasswordFormValues = z.infer<typeof passwordSchema>
 
 /**
- * Wrap the screen in antd's theme-aware Layout background so the
- * Card's `colorBgContainer` sits on a matching `colorBgLayout`.
- * Without this the bare `<div>` falls through to browser-white and
- * the Card visibly "floats" on a wrong-color page.
+ * Wrap the screen in the theme-aware layout background so the
+ * Card sits on a matching page color. Without this the bare `<div>`
+ * falls through to browser-white and the Card visibly "floats" on a
+ * wrong-color page.
  */
 function PageShell({ children }: { children: React.ReactNode }) {
-  const { token } = theme.useToken()
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ backgroundColor: token.colorBgLayout }}
-    >
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       {children}
     </div>
   )
@@ -50,15 +63,19 @@ export function PhoneAuthPage() {
   const submitting = useTunnelAuthStore(s => s.submittingPassword)
   const submitError = useTunnelAuthStore(s => s.passwordError)
 
-  const [password, setPassword] = useState('')
+  const form = useForm<PasswordFormValues>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: { password: '' },
+  })
+  const password = (form.watch('password') ?? '').trim()
 
   useEffect(() => {
     void useTunnelAuthStore.getState().loadAuthConfig()
   }, [])
 
-  const onSubmit = async () => {
+  const onSubmit = async (values: PasswordFormValues) => {
     try {
-      await useTunnelAuthStore.getState().phonePasswordLogin(password.trim())
+      await useTunnelAuthStore.getState().phonePasswordLogin(values.password.trim())
       // AuthGuard re-renders children automatically once
       // isAuthenticated flips — no navigate needed.
     } catch (e) {
@@ -76,9 +93,10 @@ export function PhoneAuthPage() {
     return (
       <PageShell>
         <Result
+          data-testid="desktop-tunnel-phone-config-error-result"
           status="warning"
           title="Couldn't load login options"
-          subTitle={configError}
+          subtitle={configError}
         />
       </PageShell>
     )
@@ -87,7 +105,7 @@ export function PhoneAuthPage() {
   if (loadingConfig || !authConfig) {
     return (
       <PageShell>
-        <Spin size="large" />
+        <Spin size="lg" label="Loading" />
       </PageShell>
     )
   }
@@ -95,7 +113,7 @@ export function PhoneAuthPage() {
   if (!authConfig.password_auth_enabled) {
     return (
       <PageShell>
-        <Card className="max-w-md w-full">
+        <Card data-testid="desktop-tunnel-phone-magic-only-card" className="max-w-md w-full">
           <Title level={4}>Open the desktop app</Title>
           <Paragraph>
             This device can only sign in via a fresh magic-link from the
@@ -109,17 +127,18 @@ export function PhoneAuthPage() {
 
   return (
     <PageShell>
-      <Card className="max-w-md w-full">
+      <Card data-testid="desktop-tunnel-phone-signin-card" className="max-w-md w-full">
         <Title level={4}>Sign in</Title>
         <Paragraph type="secondary">
           Enter the password set on this device's desktop app.
         </Paragraph>
-        <Form layout="vertical" onFinish={onSubmit}>
+        <Form data-testid="desktop-tunnel-phone-password-form" form={form} onSubmit={onSubmit} layout="vertical">
           {/* Hidden username anchor so password managers
               (1Password / Chrome / Safari Keychain) can attach the
               saved credential to this host. No visible field — the
               admin's actual username stays hidden, matching the
               `hide_username` config the backend sets in tunnel mode. */}
+          {/* biome-ignore lint: hidden, readOnly password-manager username anchor (autoComplete="username"); not an interactive control and has no kit equivalent */}
           <input
             type="text"
             autoComplete="username"
@@ -127,35 +146,28 @@ export function PhoneAuthPage() {
             readOnly
             hidden
           />
-          <Form.Item
-            label="Password"
-            name="password"
-            rules={[{ required: true, message: 'Enter your password' }]}
-          >
-            <Input.Password
-              value={password}
-              onChange={e => setPassword(e.target.value)}
+          <FormField label="Password" name="password">
+            <PasswordInput
+              data-testid="desktop-tunnel-phone-password-input"
               autoFocus
               autoComplete="current-password"
               aria-label="Password"
+              showLabel="Show password"
+              hideLabel="Hide password"
             />
-          </Form.Item>
+          </FormField>
           {submitError && (
-            <Form.Item>
-              <Alert type="error" title={submitError} showIcon />
-            </Form.Item>
+            <Alert data-testid="desktop-tunnel-phone-submit-error-alert" tone="error" title={submitError} />
           )}
-          <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              block
-              loading={submitting}
-              disabled={!password.trim()}
-            >
-              Sign in
-            </Button>
-          </Form.Item>
+          <Button
+            data-testid="desktop-tunnel-phone-signin-btn"
+            type="submit"
+            block
+            loading={submitting}
+            disabled={!password}
+          >
+            Sign in
+          </Button>
         </Form>
       </Card>
     </PageShell>

@@ -1,5 +1,5 @@
+import { FileCode, FileImage } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { Html5Outlined, FileImageOutlined } from '@ant-design/icons'
 import { WebBody } from './body'
 import { WebHeader } from './header'
 
@@ -14,7 +14,7 @@ export const viewers: FileViewerModule[] = [
       body: WebBody,
       headerActions: WebHeader,
       label: 'HTML',
-      icon: <Html5Outlined />,
+      icon: <FileCode />,
     },
   },
   {
@@ -27,7 +27,7 @@ export const viewers: FileViewerModule[] = [
       body: WebBody,
       headerActions: WebHeader,
       label: 'SVG',
-      icon: <FileImageOutlined />,
+      icon: <FileImage />,
     },
   },
 ]

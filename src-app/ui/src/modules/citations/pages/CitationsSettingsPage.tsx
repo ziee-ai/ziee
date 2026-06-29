@@ -1,18 +1,13 @@
-import { useEffect, useState } from 'react'
-import {
-  DownloadOutlined,
-  ImportOutlined,
-  SafetyCertificateOutlined,
-} from '@ant-design/icons'
-import { App, Button, Card, Dropdown, Empty, Space, Spin, Typography } from 'antd'
+import { useState } from 'react'
+import { Download, Import, ShieldCheck } from 'lucide-react'
+import { Button, Card, Space, Spin, Text, Empty, Dropdown } from '@/components/ui'
+import { message } from '@/components/ui'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
 import { CitationCard } from '../components/CitationCard'
 import { ImportCitationsModal } from '../components/ImportCitationsModal'
-
-const { Text } = Typography
 
 const EXPORT_FORMATS: { key: string; label: string; ext: string; mime: string }[] = [
   { key: 'text', label: 'Formatted (CSL style)', ext: 'txt', mime: 'text/plain' },
@@ -32,17 +27,10 @@ function download(content: string, filename: string, mime: string) {
 }
 
 export function CitationsSettingsPage() {
-  const { message } = App.useApp()
-  const { entries, loading, importing, verifying, error } = Stores.Citations
+  const { entries, loading, importing, verifying } = Stores.Citations
   // Import / Delete require `citations::manage`; Verify-all + Export are `use`.
   const canManage = usePermission(Permissions.CitationsManage)
   const [importOpen, setImportOpen] = useState(false)
-
-  // Surface load-path failures (the store sets `error` on a failed fetch but
-  // nothing rendered it, so the list silently showed empty).
-  useEffect(() => {
-    if (error) message.error(error)
-  }, [error, message])
 
   const handleVerifyAll = async () => {
     try {
@@ -72,42 +60,43 @@ export function CitationsSettingsPage() {
       title="Citations"
       subtitle="Your verified bibliography library. Import references, verify they resolve to real records, and export in a citation style."
     >
-      <Card>
-        <Space style={{ marginBottom: 12 }} wrap>
+      <Card data-testid="cite-settings-card">
+        <Space className="mb-3" wrap>
           {canManage && (
             <Button
-              type="primary"
-              icon={<ImportOutlined />}
+              variant="outline"
+              icon={<Import />}
               loading={importing}
               onClick={() => setImportOpen(true)}
+              data-testid="cite-settings-import-button"
             >
               Import
             </Button>
           )}
           <Button
-            icon={<SafetyCertificateOutlined />}
+            icon={<ShieldCheck />}
             loading={verifying}
             disabled={entries.length === 0 || !canManage}
             onClick={handleVerifyAll}
+            data-testid="cite-settings-verify-all-button"
           >
             Verify all
           </Button>
           <Dropdown
             disabled={entries.length === 0}
-            menu={{
-              items: EXPORT_FORMATS.map(f => ({ key: f.key, label: f.label })),
-              onClick: ({ key }) => void handleExport(key),
-            }}
+            items={EXPORT_FORMATS.map(f => ({ key: f.key, label: f.label }))}
+            onSelect={(key) => void handleExport(key)}
+            data-testid="cite-settings-export-dropdown"
           >
-            <Button icon={<DownloadOutlined />}>Export</Button>
+            <Button icon={<Download />} data-testid="cite-settings-export-button">Export</Button>
           </Dropdown>
           <Text type="secondary">{entries.length} reference(s)</Text>
         </Space>
 
         {loading ? (
-          <Spin />
+          <Spin label="Loading" />
         ) : entries.length === 0 ? (
-          <Empty description="No citations yet — import some or run a literature search." />
+          <Empty data-testid="cite-settings-empty" />
         ) : (
           <div>
             {entries.map(e => (

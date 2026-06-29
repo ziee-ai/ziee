@@ -1,4 +1,4 @@
-import { App, Button, Card, Flex, Form } from 'antd'
+import { Button, Card, Flex, Form, useForm, message } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/modules/llm-provider/stores'
@@ -10,15 +10,24 @@ import {
   BASIC_MODEL_FIELDS,
   MODEL_PARAMETERS,
 } from '@/modules/llm-provider/constants/llmModelParameters'
+import type { ModelCapabilities, ModelParameters, UpdateLlmModelRequest } from '@/api-client/types'
 
 /**
  * Edit drawer for both local and remote LLM models
  * For local models, additional engine/device settings would be shown (currently stubbed)
  */
 export function EditLlmModelDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
+  const form = useForm<Record<string, unknown>>({
+    defaultValues: {
+      name: '',
+      display_name: '',
+      description: '',
+      capabilities: {},
+      parameters: {},
+      engine_settings: {},
+    },
+  })
 
   const { open, modelId } = Stores.EditLlmModelDrawer
   const currentModel = modelId
@@ -35,7 +44,7 @@ export function EditLlmModelDrawer() {
 
   useEffect(() => {
     if (currentModel && open) {
-      form.setFieldsValue({
+      form.reset({
         name: currentModel.name,
         display_name: currentModel.display_name,
         description: currentModel.description,
@@ -44,25 +53,25 @@ export function EditLlmModelDrawer() {
         engine_settings: currentModel.engine_settings || {},
       })
     }
-  }, [currentModel, open, form])
+  }, [currentModel, open])
 
-  const handleSubmit = async () => {
+  const onValid = async (values: Record<string, unknown>) => {
     if (!currentModel || !currentProvider) return
 
     try {
       setLoading(true)
-      const values = await form.validateFields()
-
       // Update via the store (which calls the API + reconciles
       // local provider state).
       await Stores.LlmProvider.updateLlmModel(currentModel.id, {
-        name: values.name,
-        display_name: values.display_name,
-        description: values.description,
-        capabilities: values.capabilities,
-        parameters: values.parameters,
+        name: values.name as string,
+        display_name: values.display_name as string,
+        description: values.description as string,
+        capabilities: values.capabilities as ModelCapabilities,
+        parameters: values.parameters as ModelParameters,
         // Engine settings only apply to local models.
-        ...(isLocalModel ? { engine_settings: values.engine_settings } : {}),
+        ...(isLocalModel
+          ? { engine_settings: values.engine_settings as UpdateLlmModelRequest['engine_settings'] }
+          : {}),
       })
 
       Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
@@ -76,7 +85,7 @@ export function EditLlmModelDrawer() {
   }
 
   const handleCancel = () => {
-    form.resetFields()
+    form.reset()
     Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
   }
 
@@ -86,14 +95,14 @@ export function EditLlmModelDrawer() {
       open={open}
       onClose={handleCancel}
       footer={[
-        <Button key="cancel" onClick={handleCancel}>
+        <Button key="cancel" variant="outline" onClick={handleCancel} data-testid="llm-edit-model-cancel-btn">
           Cancel
         </Button>,
         <Button
           key="submit"
-          type="primary"
           loading={loading}
-          onClick={handleSubmit}
+          onClick={() => form.handleSubmit(onValid)()}
+          data-testid="llm-edit-model-save-btn"
         >
           Save
         </Button>,
@@ -101,7 +110,7 @@ export function EditLlmModelDrawer() {
       size={600}
       mask={{ closable: false }}
     >
-      <Form name="edit-llm-model-form" form={form} layout="vertical">
+      <Form name="edit-llm-model-form" form={form} onSubmit={onValid} layout="vertical" data-testid="llm-edit-model-form">
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />
 
         <Flex className={`flex-col gap-3`}>
@@ -116,7 +125,7 @@ export function EditLlmModelDrawer() {
             <LlmModelMistralRsSettingsSection />
           )}
 
-          <Card title="Parameters">
+          <Card title="Parameters" data-testid="llm-edit-model-parameters-card">
             <LlmModelParametersSection parameters={MODEL_PARAMETERS} />
           </Card>
         </Flex>

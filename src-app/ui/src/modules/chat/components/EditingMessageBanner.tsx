@@ -1,8 +1,7 @@
-import { Button, theme, Tooltip, Typography } from 'antd'
-import { EditOutlined, CloseOutlined } from '@ant-design/icons'
+import { Button, Tooltip } from '@/components/ui'
+import { Text } from '@/components/ui'
+import { Pencil, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 /**
  * Shows a banner above the Chat Input when the user is in edit mode.
@@ -14,30 +13,25 @@ const { Text } = Typography
  */
 export function EditingMessageBanner() {
   const editingMessage = Stores.Chat.editingMessage
-  const { token } = theme.useToken()
 
   if (!editingMessage) return null
 
   return (
     <div
-      className="flex items-center justify-between px-3 py-1.5"
-      style={{
-        borderBottom: `1px solid ${token.colorBorderSecondary}`,
-        backgroundColor: token.colorFillQuaternary,
-        borderRadius: `${token.borderRadiusLG}px ${token.borderRadiusLG}px 0 0`,
-      }}
+      className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/40 rounded-lg rounded-b-none"
     >
       <div className="flex items-center gap-1.5">
-        <EditOutlined style={{ fontSize: 12, color: token.colorTextSecondary }} />
+        <Pencil className="text-xs text-muted-foreground" />
         <Text type="secondary" className="text-xs">
           Editing message
         </Text>
       </div>
-      <Tooltip title="Cancel edit">
+      <Tooltip content="Cancel edit">
         <Button
-          type="text"
-          size="small"
-          icon={<CloseOutlined />}
+          data-testid="chat-editing-cancel-btn"
+          variant="ghost"
+          size="sm"
+          icon={<X />}
           onClick={() => Stores.Chat.__state.cancelEdit()}
           aria-label="Cancel edit"
         />

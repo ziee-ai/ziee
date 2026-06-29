@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { AppstoreOutlined } from '@ant-design/icons'
+import { LayoutGrid } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
@@ -29,7 +29,7 @@ export default createModule({
       {
         id: 'installed',
         label: 'Installed',
-        icon: <AppstoreOutlined />,
+        icon: <LayoutGrid />,
         component: InstalledHubTab,
         order: 40, // after Models (10), Assistants (20), MCP Servers (30)
         // Same loose gate as the parent Hub page — if the user can

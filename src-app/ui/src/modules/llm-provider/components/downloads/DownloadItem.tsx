@@ -1,16 +1,9 @@
-import { Button, Card, Flex, Space, Tag, Tooltip, Typography } from 'antd'
-import {
-  CloseOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  EyeOutlined,
-} from '@ant-design/icons'
+import { X, CircleCheck, CircleAlert, Eye } from 'lucide-react'
+import { Button, Card, Flex, Space, Tag, Tooltip, Text } from '@/components/ui'
 import { useNavigate } from 'react-router-dom'
 import { DownloadProgress } from '@/modules/llm-provider/components/downloads/DownloadProgress'
 import { formatBytes, formatSpeed, formatETA } from '@/utils/downloadUtils'
 import type { DownloadInstance } from '@/api-client/types'
-
-const { Text, Link } = Typography
 
 interface DownloadItemProps {
   download: DownloadInstance
@@ -44,21 +37,21 @@ export function DownloadItem({
     switch (download.status) {
       case 'downloading':
       case 'pending':
-        return <Tag color="blue">Downloading...</Tag>
+        return <Tag tone="info" data-testid="llm-download-status-tag">Downloading...</Tag>
       case 'completed':
         return (
-          <Tag color="green" icon={<CheckCircleOutlined />}>
+          <Tag tone="success" icon={<CircleCheck />} data-testid="llm-download-status-tag">
             Downloaded
           </Tag>
         )
       case 'failed':
         return (
-          <Tag color="red" icon={<ExclamationCircleOutlined />}>
+          <Tag tone="error" icon={<CircleAlert />} data-testid="llm-download-status-tag">
             Failed
           </Tag>
         )
       case 'cancelled':
-        return <Tag color="default">Cancelled</Tag>
+        return <Tag data-testid="llm-download-status-tag">Cancelled</Tag>
       default:
         return null
     }
@@ -94,14 +87,10 @@ export function DownloadItem({
   // FULL MODE (for LocalProviderSettings)
   if (mode === 'full') {
     return (
-      <Card size="small">
-        <Flex vertical gap="small" style={{ width: '100%' }}>
+      <Card size="sm" data-testid="llm-download-item-card">
+        <Flex vertical gap="small" className="w-full">
           <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
+            className="flex justify-between items-center"
           >
             <Space>
               <Text strong>{download.request_data.display_name}</Text>
@@ -110,31 +99,33 @@ export function DownloadItem({
             <Space>
               {onViewDetails && (
                 <Button
-                  type="link"
-                  size="small"
-                  icon={<EyeOutlined />}
+                  variant="link"
+                  size="sm"
+                  icon={<Eye />}
                   onClick={onViewDetails}
+                  data-testid="llm-download-view-details-btn"
                 >
                   View Details
                 </Button>
               )}
               {isActive && onCancel && (
                 <Button
-                  type="link"
-                  size="small"
-                  danger
-                  icon={<CloseOutlined />}
+                  variant="ghost"
+                  size="sm"
+                  icon={<X />}
                   onClick={onCancel}
+                  data-testid="llm-download-cancel-btn"
                 >
                   Cancel
                 </Button>
               )}
               {isTerminal && onClose && (
                 <Button
-                  type="link"
-                  size="small"
-                  icon={<CloseOutlined />}
+                  variant="link"
+                  size="sm"
+                  icon={<X />}
                   onClick={onClose}
+                  data-testid="llm-download-close-btn"
                 >
                   Close
                 </Button>
@@ -167,23 +158,21 @@ export function DownloadItem({
     return (
       <div>
         <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 4,
-          }}
+          className="flex justify-between items-center mb-1"
         >
-          <Link onClick={handleNavigateToProvider}>
+          <span
+            className="cursor-pointer text-primary underline underline-offset-2"
+            onClick={handleNavigateToProvider}
+          >
             {download.request_data.display_name}
-          </Link>
+          </span>
           {isActive && onCancel && (
             <Button
-              type="link"
-              size="small"
-              danger
-              icon={<CloseOutlined />}
+              variant="ghost"
+              size="sm"
+              icon={<X />}
               onClick={onCancel}
+              data-testid="llm-download-compact-cancel-btn"
             >
               Cancel
             </Button>
@@ -207,22 +196,18 @@ export function DownloadItem({
       fullName.length > 30 ? fullName.substring(0, 30) + '...' : fullName
 
     return (
-      <Tooltip title={renderProgressInfo()}>
+      <Tooltip content={renderProgressInfo()}>
         <div
-          style={{ marginBottom: 8, cursor: 'pointer' }}
+          className="mb-2 cursor-pointer"
           onClick={handleNavigateToProvider}
         >
           <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: 2,
-            }}
+            className="flex justify-between mb-0.5"
           >
-            <Text ellipsis style={{ fontSize: 12 }}>
+            <Text ellipsis className="text-xs">
               {displayName}
             </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
+            <Text type="secondary" className="text-xs">
               {Math.round(
                 ((download.progress_data?.current || 0) /
                   (download.progress_data?.total || 1)) *

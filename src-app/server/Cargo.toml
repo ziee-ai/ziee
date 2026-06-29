@@ -18,6 +18,10 @@ regex = "1"
 # `src-app/Cargo.toml::[workspace.dependencies]`.
 serde.workspace = true
 serde_json.workspace = true
+# Order-preserving map for the OpenAPI→types.ts generator (emit_ts.rs). The TS
+# generator relies on JSON object insertion order; plain serde_json::Value would
+# alphabetize (BTreeMap), so we deserialize the spec into an IndexMap-backed value.
+indexmap = { version = "2", features = ["serde"] }
 toml.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true

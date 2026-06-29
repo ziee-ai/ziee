@@ -1,14 +1,12 @@
 import { useEffect } from 'react'
 import {
-  App,
   Button,
-  Flex,
   Input,
   Pagination,
   Select,
-  Typography,
-} from 'antd'
-import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
+  Text,
+} from '@/components/ui'
+import { Plus, Search, Eraser } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -16,11 +14,9 @@ import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-
-const { Text } = Typography
+import { message } from '@/components/ui'
 
 export function McpServersSettings() {
-  const { message } = App.useApp()
   const {
     servers,
     loading,
@@ -95,6 +91,7 @@ export function McpServersSettings() {
           <Text type="danger">Failed to load MCP servers: {error}</Text>
           <div className="mt-4">
             <Button
+              data-testid="mcp-settings-retry-btn"
               onClick={() => {
                 Stores.McpServer.loadMcpServers().catch((err: Error) => {
                   console.error('Failed to load MCP servers:', err)
@@ -120,20 +117,21 @@ export function McpServersSettings() {
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Search servers..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search MCP servers"
+            data-testid="mcp-settings-search-input"
           />
           <Select
             placeholder="Filter by status"
             value={statusFilter}
             onChange={setStatusFilter}
-            style={{ minWidth: 150 }}
-            allowClear
+            className="min-w-[150px]"
             aria-label="Filter servers by status"
+            data-testid="mcp-settings-status-select"
             options={[
               { label: 'All Servers', value: 'all' },
               { label: 'Enabled', value: 'enabled' },
@@ -148,9 +146,10 @@ export function McpServersSettings() {
                 the right empty-state copy below instead. */}
             {policyAllowsAdd && (
               <Button
-                type="primary"
-                icon={<PlusOutlined />}
+                variant="default"
+                icon={<Plus />}
                 onClick={handleAddServer}
+                data-testid="mcp-settings-add-btn"
               >
                 Add Server
               </Button>
@@ -159,7 +158,7 @@ export function McpServersSettings() {
         </div>
 
         {(searchTerm || statusFilter !== 'all') && (
-          <Flex align="center" gap={8}>
+          <div className="flex items-center gap-2">
             <Text type="secondary" className="text-xs">
               Filters active:{' '}
               {[
@@ -170,14 +169,15 @@ export function McpServersSettings() {
                 .join(', ')}
             </Text>
             <Button
-              size="small"
-              type="text"
-              icon={<ClearOutlined />}
+              size="sm"
+              variant="ghost"
+              icon={<Eraser />}
               onClick={clearAllFilters}
+              data-testid="mcp-settings-clear-filters-btn"
             >
               Clear all
             </Button>
-          </Flex>
+          </div>
         )}
 
         {/* Servers List */}
@@ -204,21 +204,25 @@ export function McpServersSettings() {
         )}
 
         {totalServers > 0 && (
-          <Flex justify="end">
+          <div className="flex justify-end">
             <Pagination
+              data-testid="mcp-settings-pagination"
+              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
               current={storePage}
               total={totalServers}
               pageSize={storePageSize}
               showSizeChanger
+              pageSizeLabel="Page size"
+              onPageSizeChange={(size: number) => handlePageChange(1, size)}
               showQuickJumper
+              jumpLabel="Go to page"
               showTotal={(total, range) =>
                 `${range[0]}-${range[1]} of ${total} servers`
               }
               onChange={handlePageChange}
-              onShowSizeChange={handlePageChange}
-              pageSizeOptions={['5', '10', '20', '50']}
+              pageSizeOptions={[5, 10, 20, 50]}
             />
-          </Flex>
+          </div>
         )}
       </div>
 

@@ -1,18 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Tooltip, Typography } from 'antd'
-import {
-  MessageOutlined,
-  PlusOutlined,
-  SearchOutlined,
-} from '@ant-design/icons'
+import { Button, Tooltip, Text, Title } from '@/components/ui'
+import { MessageSquare, Plus, Search as SearchIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { ConversationList } from '@/modules/chat/components/ConversationList'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
-
-const { Title, Text } = Typography
 
 /**
  * ChatHistoryPage
@@ -23,7 +17,7 @@ const { Title, Text } = Typography
  *     page header on the right.
  *   - Narrow page (≤sm): a single search ICON button sits in the header.
  *     Clicking it toggles a body-rendered search box above the list.
- *     The header button switches to `type="primary"` while the body
+ *     The header button switches to `variant="default"` while the body
  *     search is open so the user knows the affordance is active.
  *
  * The search box itself lives in `ConversationList`; this page just
@@ -78,31 +72,32 @@ export default function ChatHistoryPage() {
       {/* Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between gap-3 w-full">
-          <Typography.Title
+          <Title
             level={4}
             className="!m-0 !leading-tight truncate"
           >
             Chats
-          </Typography.Title>
+          </Title>
 
           {/* Wide layout: inline search input portal target. */}
           {!isNarrow && (
             <div
               ref={headerSearchRef}
-              style={{ flex: '0 1 320px', minWidth: 200 }}
+              className="flex-[0_1_320px] min-w-[200px]"
             />
           )}
 
           {/* Narrow layout: search ICON button that toggles a body
-            * search box. Becomes `primary` when the body search is
+            * search box. Becomes `variant="default"` when the body search is
             * open so the active state is visible. */}
           {isNarrow && (
             <Tooltip
-              title={searchOpenInNarrow ? 'Hide search' : 'Search'}
+              content={searchOpenInNarrow ? 'Hide search' : 'Search'}
             >
               <Button
-                type={searchOpenInNarrow ? 'primary' : 'text'}
-                icon={<SearchOutlined />}
+                data-testid="chat-history-search-toggle-btn"
+                variant={searchOpenInNarrow ? 'default' : 'ghost'}
+                icon={<SearchIcon />}
                 onClick={() => setSearchOpenInNarrow(v => !v)}
                 aria-label={
                   searchOpenInNarrow ? 'Hide search' : 'Open search'
@@ -137,16 +132,17 @@ export default function ChatHistoryPage() {
         {/* Empty State */}
         {!loading && conversations.length === 0 && (
           <div className="text-center py-12 m-auto">
-            <MessageOutlined className="text-6xl mb-4" />
-            <Title level={3} type="secondary">
+            <MessageSquare className="text-6xl mb-4" />
+            <Title level={3}>
               No chat history yet
             </Title>
             <Text type="secondary" className="block mb-4">
               Start your first conversation to see your chat history here
             </Text>
             <Button
-              type="primary"
-              icon={<PlusOutlined />}
+              data-testid="chat-history-new-chat-btn"
+              variant="default"
+              icon={<Plus />}
               onClick={() => navigate('/chat')}
             >
               Start New Chat

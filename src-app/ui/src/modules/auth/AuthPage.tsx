@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { Layout, Typography } from 'antd'
+import { Layout, Title } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { LoginForm } from '@/modules/auth/LoginForm'
 import { RegisterForm } from '@/modules/auth/RegisterForm'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 
 const { Content } = Layout
-const { Title } = Typography
 
 type AuthMode = 'login' | 'register'
 
@@ -26,8 +25,8 @@ export const AuthPage: React.FC = () => {
 
   return (
     <BlankLayoutComponent>
-      <Layout className="min-h-screen">
-        <Content className="flex items-center justify-center p-4">
+      <Layout data-testid="auth-page-layout" className="min-h-screen">
+        <Content data-testid="auth-page-content" className="flex items-center justify-center p-4">
           <div className="w-full max-w-md">
             <div className="text-center mb-8">
               <Title level={2}>

@@ -1,4 +1,4 @@
-import { App, Flex, Typography } from 'antd'
+import { Flex, Text, message } from '@/components/ui'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
@@ -10,10 +10,8 @@ import { AddLocalLlmModelUploadDrawer } from '@/modules/llm-provider/components/
 import { AddLocalLlmModelDownloadDrawer } from '@/modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer'
 import { EditLlmModelDrawer } from '@/modules/llm-provider/components/llm-models/EditLlmModelDrawer'
 
-const { Text } = Typography
-
 export function LocalProviderSettings() {
-  const { message } = App.useApp()
+  console.log('[LocalProviderSettings] Component rendering')
   const { providerId } = useParams<{ providerId?: string }>()
 
   // Store data
@@ -30,7 +28,7 @@ export function LocalProviderSettings() {
       message.error(error)
       Stores.LlmProvider.clearLlmProviderStoreError()
     }
-  }, [error, message])
+  }, [error])
 
   // Return early if no provider or not local
   if (!currentProvider || currentProvider.provider_type !== 'local') {

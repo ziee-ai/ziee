@@ -1,4 +1,4 @@
-import { Button, Tooltip } from 'antd'
+import { Tooltip, Button } from '@/components/ui'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import { Stores } from '@/core/stores'
 
@@ -24,11 +24,12 @@ export function SidebarToggleButton() {
     >
       <Tooltip
         title={isSidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
-        placement="right"
+        side="right"
       >
         <Button
-          type="text"
-          onClick={() => Stores.AppLayout.toggleSidebar()}
+          variant="ghost"
+          data-testid="layout-sidebar-toggle-button"
+          onClick={Stores.AppLayout.toggleSidebar}
           className="flex items-center justify-center"
           style={{
             width: dimension,

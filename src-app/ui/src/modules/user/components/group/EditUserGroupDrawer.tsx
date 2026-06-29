@@ -1,4 +1,5 @@
-import { App, Button, Form, Input, Switch } from 'antd'
+import { z } from 'zod'
+import { Button, Form, FormField, Input, Switch, Textarea, message, useForm, zodResolver } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
@@ -6,20 +7,38 @@ import { usePermission } from '@/core/permissions'
 import { Permissions, type UpdateGroupRequest } from '@/api-client/types'
 import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
 
-const { TextArea } = Input
+const editUserGroupSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Please enter a group name')
+    .min(2, 'Group name must be at least 2 characters'),
+  description: z.string().optional(),
+  permissions: z.array(z.string()).optional(),
+  is_active: z.boolean().optional(),
+})
+
+type EditUserGroupValues = z.infer<typeof editUserGroupSchema>
 
 export function EditUserGroupDrawer() {
-  const { message } = App.useApp()
-  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
   const { isOpen: open, editingGroup: group } = Stores.EditUserGroupDrawer
   const canEdit = usePermission(Permissions.GroupsEdit)
 
+  const form = useForm<EditUserGroupValues>({
+    resolver: zodResolver(editUserGroupSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      permissions: [],
+      is_active: true,
+    },
+  })
+
   // Load group data when it changes
   useEffect(() => {
     if (group && open) {
-      form.setFieldsValue({
+      form.reset({
         name: group.name,
         description: group.description,
         permissions: group.permissions ?? [],
@@ -29,11 +48,11 @@ export function EditUserGroupDrawer() {
   }, [group, open, form])
 
   const handleClose = () => {
-    form.resetFields()
+    form.reset()
     Stores.EditUserGroupDrawer.closeUserGroupDrawer()
   }
 
-  const handleSubmit = async (values: any) => {
+  const handleSubmit = async (values: EditUserGroupValues) => {
     if (!group) return
 
     try {
@@ -70,43 +89,40 @@ export function EditUserGroupDrawer() {
         name="edit-user-group-form"
         form={form}
         layout="vertical"
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canEdit}
+        data-testid="user-edit-group-form"
       >
-        <Form.Item
+        <FormField
           name="name"
           label="Group Name"
-          rules={[
-            { required: true, message: 'Please enter a group name' },
-            { min: 2, message: 'Group name must be at least 2 characters' },
-          ]}
         >
-          <Input placeholder="Enter group name" />
-        </Form.Item>
+          <Input placeholder="Enter group name" data-testid="user-edit-group-name-input" />
+        </FormField>
 
-        <Form.Item name="description" label="Description">
-          <TextArea
+        <FormField name="description" label="Description">
+          <Textarea
             placeholder="Enter group description (optional)"
             rows={3}
-            showCount
             maxLength={500}
+            data-testid="user-edit-group-description-textarea"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item name="permissions" label="Permissions">
+        <FormField name="permissions" label="Permissions">
           <PermissionsField disabled={!canEdit} />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item name="is_active" label="Active" valuePropName="checked">
-          <Switch aria-label="Set group as active or inactive" />
-        </Form.Item>
+        <FormField name="is_active" label="Active" valuePropName="checked">
+          <Switch aria-label="Set group as active or inactive" data-testid="user-edit-group-active-switch" />
+        </FormField>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button onClick={handleClose} disabled={loading}>
+          <Button variant="outline" onClick={handleClose} disabled={loading} data-testid="user-edit-group-cancel-button">
             {canEdit ? 'Cancel' : 'Close'}
           </Button>
           {canEdit && (
-            <Button type="primary" htmlType="submit" loading={loading}>
+            <Button type="submit" loading={loading} data-testid="user-edit-group-save-button">
               Save
             </Button>
           )}

@@ -1,16 +1,34 @@
-import { App, Button, Flex, Form, Input } from 'antd'
+import { z } from 'zod'
+import { Button, Flex, Form, FormField, useForm, zodResolver, PasswordInput, message } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 
-export function ResetPasswordDrawer() {
-  const { message } = App.useApp()
-  const { isOpen, user } = Stores.ResetPasswordDrawer
-  const [passwordForm] = Form.useForm()
-  const canReset = usePermission(Permissions.UsersResetPassword)
+const resetPasswordSchema = z
+  .object({
+    new_password: z
+      .string()
+      .min(1, 'Please enter new password')
+      .min(6, 'Password must be at least 6 characters'),
+    confirm_password: z.string().min(1, 'Please confirm password'),
+  })
+  .refine((d) => d.confirm_password === d.new_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  })
 
-  const handleResetPassword = async (values: any) => {
+type ResetPasswordValues = z.infer<typeof resetPasswordSchema>
+
+export function ResetPasswordDrawer() {
+  const { isOpen, user } = Stores.ResetPasswordDrawer
+  const canReset = usePermission(Permissions.UsersResetPassword)
+  const form = useForm<ResetPasswordValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: { new_password: '', confirm_password: '' },
+  })
+
+  const handleResetPassword = async (values: ResetPasswordValues) => {
     if (!user) return
 
     try {
@@ -18,7 +36,7 @@ export function ResetPasswordDrawer() {
 
       message.success('Password reset successfully')
       Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
-      passwordForm.resetFields()
+      form.reset()
     } catch (error) {
       console.error('Failed to reset password:', error)
       // Error is handled by the store
@@ -32,62 +50,49 @@ export function ResetPasswordDrawer() {
       open={isOpen}
       onClose={() => {
         Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
-        passwordForm.resetFields()
+        form.reset()
       }}
       footer={null}
       mask={{ closable: false }}
     >
       <Form
-        form={passwordForm}
+        form={form}
         layout="vertical"
-        onFinish={handleResetPassword}
+        onSubmit={handleResetPassword}
         disabled={!canReset}
+        data-testid="user-reset-password-form"
       >
-        <Form.Item
+        <FormField
           name="new_password"
           label="New Password"
-          rules={[
-            { required: true, message: 'Please enter new password' },
-            { min: 6, message: 'Password must be at least 6 characters' },
-          ]}
         >
-          <Input.Password placeholder="Enter new password" />
-        </Form.Item>
-        <Form.Item
+          <PasswordInput placeholder="Enter new password" showLabel="Show password" hideLabel="Hide password" data-testid="user-reset-new-password-input" />
+        </FormField>
+        <FormField
           name="confirm_password"
           label="Confirm Password"
-          dependencies={['new_password']}
-          rules={[
-            { required: true, message: 'Please confirm password' },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue('new_password') === value) {
-                  return Promise.resolve()
-                }
-                return Promise.reject('Passwords do not match')
-              },
-            }),
-          ]}
         >
-          <Input.Password placeholder="Confirm new password" />
-        </Form.Item>
-        <Form.Item className="mb-0">
+          <PasswordInput placeholder="Confirm new password" showLabel="Show password" hideLabel="Hide password" data-testid="user-reset-confirm-password-input" />
+        </FormField>
+        <div className="mb-0">
           <Flex className="justify-end gap-2">
             <Button
+              variant="outline"
               onClick={() => {
                 Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
-                passwordForm.resetFields()
+                form.reset()
               }}
+              data-testid="user-reset-password-cancel-button"
             >
               {canReset ? 'Cancel' : 'Close'}
             </Button>
             {canReset && (
-              <Button type="primary" htmlType="submit">
+              <Button type="submit" data-testid="user-reset-password-submit-button">
                 Reset
               </Button>
             )}
           </Flex>
-        </Form.Item>
+        </div>
       </Form>
     </Drawer>
   )

@@ -1,9 +1,22 @@
 import { useEffect } from 'react'
-import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Switch, message } from 'antd'
+import {
+  Alert,
+  Button,
+  Card,
+  Flex,
+  Form,
+  FormField,
+  InputNumber,
+  Separator,
+  Switch,
+  message,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -15,22 +28,36 @@ interface FormValues {
   fts_min_rank: number
 }
 
+const schema = z.object({
+  fts_enabled: z.boolean(),
+  fts_rrf_k: z.number(),
+  fts_candidate_multiplier: z.number(),
+  fts_min_rank: z.number(),
+})
+
 /**
  * Full-text (lexical) arm tuning. Works with no embedding model — this is the
  * day-one search experience. When semantic search is also on, the two arms are
  * fused with Reciprocal Rank Fusion (`fts_rrf_k`, `fts_candidate_multiplier`).
  */
 export function FullTextSection() {
-  const canReadPerm = usePermission(READ_PERM)
+  const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const canRead = canReadPerm || canManage
-  const { settings, saving, error } = Stores.FileRagAdmin
-  const [form] = Form.useForm<FormValues>()
+  const { settings, saving } = Stores.FileRagAdmin
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      fts_enabled: false,
+      fts_rrf_k: 60,
+      fts_candidate_multiplier: 5,
+      fts_min_rank: 0,
+    },
+  })
 
   useEffect(() => {
     // Don't clobber the admin's unsaved edits on a mid-edit refetch.
-    if (settings && !form.isFieldsTouched()) {
-      form.setFieldsValue({
+    if (settings && !form.formState.isDirty) {
+      form.reset({
         fts_enabled: settings.fts_enabled,
         fts_rrf_k: settings.fts_rrf_k,
         fts_candidate_multiplier: settings.fts_candidate_multiplier,
@@ -41,23 +68,16 @@ export function FullTextSection() {
 
   if (!canRead) {
     return (
-      <Card title="Full-text search">
+      <Card data-testid="filerag-fts-card" title="Full-text search">
         <Alert
-          type="warning"
-          showIcon
+          data-testid="filerag-fts-noperm-alert"
+          tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
       </Card>
     )
   }
-  if (!settings)
-    return (
-      <SettingsSectionStatus
-        title="Full-text search"
-        error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
-      />
-    )
+  if (!settings) return null
 
   const handleSubmit = async (values: FormValues) => {
     try {
@@ -76,65 +96,53 @@ export function FullTextSection() {
   }
 
   return (
-    <Card title="Full-text search">
-      {error && (
-        <Alert
-          type="error"
-          showIcon
-          closable={{ closeIcon: true }}
-          className="!mb-4"
-          message={error}
-        />
-      )}
+    <Card data-testid="filerag-fts-card" title="Full-text search">
       <Form
+        data-testid="filerag-fts-form"
         name="file-rag-admin-fts-form"
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canManage}
       >
-        <Form.Item
+        <FormField
           name="fts_enabled"
           label="Enable full-text search"
-          extra="The lexical arm. When off (and no embedder is set), semantic_search returns nothing."
+          description="The lexical arm. When off (and no embedder is set), semantic_search returns nothing."
           valuePropName="checked"
         >
-          <Switch aria-label="Enable full-text search" />
-        </Form.Item>
+          <Switch data-testid="filerag-fts-switch" aria-label="Enable full-text search" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="fts_rrf_k"
           label="RRF k"
-          extra="Reciprocal Rank Fusion constant for blending the vector + full-text arms. Higher = more egalitarian. Default 60 (the RRF paper)."
+          description="Reciprocal Rank Fusion constant for blending the vector + full-text arms. Higher = more egalitarian. Default 60 (the RRF paper)."
         >
-          <InputNumber min={1} max={1000} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber data-testid="filerag-fts-rrf-k" min={1} max={1000} className="w-40" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="fts_candidate_multiplier"
           label="Candidate multiplier"
-          extra="Hybrid pulls top-K × this many candidates from each arm before fusion. Higher = more recall, more DB load."
+          description="Hybrid pulls top-K × this many candidates from each arm before fusion. Higher = more recall, more DB load."
         >
-          <InputNumber min={1} max={20} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber data-testid="filerag-fts-candidate-mult" min={1} max={20} className="w-40" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="fts_min_rank"
           label="Minimum rank"
-          extra="ts_rank_cd cutoff. 0.0 = no filter (default). Raise to drop weak lexical matches."
+          description="ts_rank_cd cutoff. 0.0 = no filter (default). Raise to drop weak lexical matches."
         >
-          <InputNumber min={0} max={1} step={0.05} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber data-testid="filerag-fts-min-rank" min={0} max={1} step={0.05} className="w-40" />
+        </FormField>
 
         {canManage && (
           <>
-            <Divider className="!my-3" />
+            <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="primary" htmlType="submit" loading={saving}>
+              <Button data-testid="filerag-fts-save" type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>

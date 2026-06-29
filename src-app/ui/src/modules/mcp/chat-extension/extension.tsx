@@ -1,10 +1,6 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Progress, Typography } from 'antd'
-import {
-  ToolOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-} from '@ant-design/icons'
+import { Alert, Button, Card, Progress, Text } from '@/components/ui'
+import { Wrench, CircleCheck, CircleX } from 'lucide-react'
 import {
   createExtension,
   type ChatExtension,
@@ -18,8 +14,6 @@ import { McpMenuItem } from '@/modules/mcp/chat-extension/components/McpMenuItem
 import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusRow'
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
-
-const { Text } = Typography
 
 /**
  * MCP Tool Call UI Component
@@ -36,11 +30,11 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
   const getStatusIcon = () => {
     switch (toolCall.status) {
       case 'started':
-        return <ToolOutlined spin className="text-blue-500" />
+        return <Wrench className="text-primary animate-spin" />
       case 'completed':
-        return <CheckCircleOutlined className="text-green-500" />
+        return <CircleCheck className="text-success" />
       case 'error':
-        return <CloseCircleOutlined className="text-red-500" />
+        return <CircleX className="text-destructive" />
     }
   }
 
@@ -57,9 +51,9 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
 
   return (
     <Card
-      size="small"
-      className="mb-2"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.02)' }}
+      size="sm"
+      className="mb-2 bg-black/2"
+      data-testid={`mcp-toolcall-card-${toolCall.tool_use_id}`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -73,9 +67,10 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           </Text>
         </div>
         <Button
-          size="small"
-          type="text"
+          size="sm"
+          variant="ghost"
           onClick={() => setIsExpanded(!isExpanded)}
+          data-testid={`mcp-toolcall-details-btn-${toolCall.tool_use_id}`}
         >
           {isExpanded ? 'Hide' : 'Show'} details
         </Button>
@@ -89,9 +84,10 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
             </Text>
           )}
           <Progress
-            size="small"
-            status="active"
-            percent={
+            size="sm"
+            aria-label="Tool call progress"
+            data-testid={`mcp-toolcall-progress-${toolCall.tool_use_id}`}
+            value={
               toolCall.progress.total && toolCall.progress.total > 0
                 ? Math.min(
                     100,
@@ -99,7 +95,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
                       (toolCall.progress.progress / toolCall.progress.total) * 100,
                     ),
                   )
-                : undefined
+                : 0
             }
           />
         </div>
@@ -127,10 +123,10 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
 
           {toolCall.error && (
             <Alert
-              type="error"
+              tone="error"
               title="Error"
               description={toolCall.error}
-              showIcon
+              data-testid={`mcp-toolcall-error-alert-${toolCall.tool_use_id}`}
             />
           )}
         </div>
@@ -178,15 +174,15 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
 
   // Historical view for tool calls loaded from DB (store is empty after reload)
   return (
-    <Card size="small" className="mb-2" style={{ backgroundColor: 'rgba(0, 0, 0, 0.02)' }}>
+    <Card size="sm" className="mb-2 bg-black/2" data-testid={`mcp-tooluse-card-${toolUseData.id}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {toolResultData?.is_error ? (
-            <CloseCircleOutlined className="text-red-500" />
+            <CircleX className="text-destructive" />
           ) : toolResultData ? (
-            <CheckCircleOutlined className="text-green-500" />
+            <CircleCheck className="text-success" />
           ) : (
-            <ToolOutlined className="text-blue-500" />
+            <Wrench className="text-primary" />
           )}
           <Text strong>{toolUseData.name || 'Tool Call'}</Text>
           <Text type="secondary" className="text-xs">({serverName})</Text>
@@ -197,14 +193,14 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
           )}
         </div>
         {hasDetails && (
-          <Button size="small" type="text" onClick={() => setIsExpanded(!isExpanded)}>
+          <Button size="sm" variant="ghost" onClick={() => setIsExpanded(!isExpanded)} data-testid={`mcp-tooluse-details-btn-${toolUseData.id}`}>
             {isExpanded ? 'Hide' : 'Show'} details
           </Button>
         )}
       </div>
       {isExpanded && (
         <div className="mt-2 text-xs">
-          {toolUseData.input && (
+          {!!toolUseData.input && (
             <div className="mb-2">
               <Text strong>Input:</Text>
               <pre className="p-2 rounded mt-1 overflow-auto max-h-40">
@@ -216,7 +212,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
             <div className="mb-2">
               <Text strong>Result:</Text>
               {toolResultData.is_error ? (
-                <Alert type="error" title="Error" description={toolResultData.content} showIcon className="mt-1" />
+                <Alert tone="error" title="Error" description={toolResultData.content} className="mt-1" data-testid={`mcp-tooluse-error-alert-${toolUseData.id}`} />
               ) : (
                 <pre className="p-2 rounded mt-1 overflow-auto max-h-40">{toolResultData.content}</pre>
               )}

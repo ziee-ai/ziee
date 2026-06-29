@@ -1,14 +1,9 @@
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  MinusCircleOutlined,
-} from '@ant-design/icons'
-import { Alert, List, Modal, Space, Spin, Tag, Typography } from 'antd'
+import { CircleCheck, CircleMinus, CircleX } from 'lucide-react'
+import { Alert, List, Space, Spin, Tag, Text } from '@/components/ui'
+import { Dialog } from '@/components/ui'
 import { useEffect, useState } from 'react'
 import type { TestRunResponse, Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 interface WorkflowTestsPanelProps {
   workflow: Workflow
@@ -54,44 +49,46 @@ export function WorkflowTestsPanel({
   }, [open, workflow.id])
 
   return (
-    <Modal
+    <Dialog
+      data-testid="wf-tests-dialog"
       open={open}
       title="Workflow tests"
-      closable={{ closeIcon: true }}
-      onCancel={onClose}
+      onOpenChange={(v) => { if (!v) onClose() }}
       footer={null}
-      width={640}
+      className="!max-w-[640px]"
     >
-      {loading && <Spin />}
-      {error && <Alert type="error" title={error} showIcon />}
+      {loading && <Spin label="Loading" />}
+      {error && <Alert data-testid="wf-tests-error-alert" tone="error" title={error} />}
       {result && (
         <div className="flex flex-col gap-3">
           <Space>
-            <Tag color="green">{result.passed} passed</Tag>
-            {result.failed > 0 && <Tag color="red">{result.failed} failed</Tag>}
+            <Tag data-testid="wf-tests-passed-tag" tone="success">{result.passed} passed</Tag>
+            {result.failed > 0 && <Tag data-testid="wf-tests-failed-tag" tone="error">{result.failed} failed</Tag>}
             {result.skipped > 0 && (
-              <Tag color="default">{result.skipped} skipped</Tag>
+              <Tag data-testid="wf-tests-skipped-tag">{result.skipped} skipped</Tag>
             )}
           </Space>
           <List
-            size="small"
+            data-testid="wf-tests-list"
+            size="sm"
+            rowKey="name"
             dataSource={result.results}
-            renderItem={r => (
-              <List.Item>
-                <List.Item.Meta
-                  avatar={
-                    r.skipped ? (
-                      <MinusCircleOutlined style={{ color: '#999' }} />
+            renderItem={(r) => (
+              <div className="list-item">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1">
+                    {r.skipped ? (
+                      <CircleMinus className="text-muted-foreground text-lg" />
                     ) : r.passed ? (
-                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                      <CircleCheck className="text-success text-lg" />
                     ) : (
-                      <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-                    )
-                  }
-                  title={r.name}
-                  description={
-                    r.failure ? (
-                      <div className="flex flex-col">
+                      <CircleX className="text-destructive text-lg" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <Text strong className="text-sm">{r.name}</Text>
+                    {r.failure ? (
+                      <div className="flex flex-col mt-1">
                         <Text type="danger" className="text-xs">
                           {r.failure.output_name}: {r.failure.assertion}
                         </Text>
@@ -104,14 +101,14 @@ export function WorkflowTestsPanel({
                       <Text type="secondary" className="text-xs">
                         {r.duration_ms} ms
                       </Text>
-                    )
-                  }
-                />
-              </List.Item>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           />
         </div>
       )}
-    </Modal>
+    </Dialog>
   )
 }

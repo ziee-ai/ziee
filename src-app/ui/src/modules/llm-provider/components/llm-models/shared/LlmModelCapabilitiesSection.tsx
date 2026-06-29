@@ -1,4 +1,4 @@
-import { Card, Flex, Form, Switch, Alert } from 'antd'
+import { Card, Flex, FormField, Switch, Alert, useWatch } from '@/components/ui'
 
 export function LlmModelCapabilitiesSection() {
   // Memory-plan §8 polish (gap #12): when text_embedding is ticked,
@@ -6,17 +6,17 @@ export function LlmModelCapabilitiesSection() {
   // audio, tools, code interpreter) and image_generator don't apply
   // — gray them out and surface a hint instead of letting an admin
   // tick contradictory flags.
-  const isEmbedding = Form.useWatch(['capabilities', 'text_embedding'])
+  const isEmbedding = useWatch({ name: 'capabilities.text_embedding' })
   const grayed = Boolean(isEmbedding)
 
   return (
-    <Card title="Capabilities">
+    <Card title="Capabilities" data-testid="llm-capabilities-card">
       <Flex vertical className="gap-2 w-full">
         {grayed && (
           <Alert
-            type="info"
-            showIcon
+            tone="info"
             className="!mb-1"
+            data-testid="llm-capabilities-embedder-alert"
             title="This model is flagged as an embedder; chat capabilities are hidden because they don't apply."
           />
         )}
@@ -62,18 +62,19 @@ function CapabilityRow({
       <span>
         {label}
         {help && (
-          <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>
+          <span className="text-muted-foreground" style={{ fontSize: 12, marginLeft: 8 }}>
             {help}
           </span>
         )}
       </span>
-      <Form.Item
-        name={['capabilities', name]}
+      <FormField
+        name={`capabilities.${name}`}
+        aria-label={label}
         valuePropName="checked"
-        style={{ marginBottom: 0 }}
+        className="mb-0"
       >
-        <Switch />
-      </Form.Item>
+        <Switch data-testid={`llm-capability-switch-${name}`} />
+      </FormField>
     </div>
   )
 }

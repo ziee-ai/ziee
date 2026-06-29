@@ -1,5 +1,5 @@
+import { Server } from 'lucide-react'
 import { createModule } from '@/core'
-import { CloudServerOutlined } from '@ant-design/icons'
 import { Permissions } from '@/api-client/types'
 import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { useModelDetailsDrawerStore } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer.store'
@@ -32,7 +32,7 @@ export default createModule({
       {
         id: 'models',
         label: 'Models',
-        icon: <CloudServerOutlined />,
+        icon: <Server />,
         component: ModelsHubTab,
         order: 10,
         permissions: {

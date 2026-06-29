@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { Alert, theme } from 'antd'
+import { Alert } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { MessageList } from '@/modules/chat/components/MessageList'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
@@ -12,7 +12,6 @@ import { Stores } from '@/core'
 
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
-  const { token } = theme.useToken()
 
   const { conversation, messages, loading, error } = Stores.Chat
 
@@ -102,10 +101,10 @@ export default function ConversationPage() {
     return (
       <main className="flex flex-col items-center justify-center h-full p-8">
         <Alert
-          type="error"
+          data-testid="chat-conversation-not-found-alert"
+          tone="error"
           title="Conversation not found"
           description="This conversation may have been deleted or you don't have access to it."
-          showIcon
         />
       </main>
     )
@@ -133,7 +132,7 @@ export default function ConversationPage() {
       {/* Error banner */}
       {error && (
         <div className="w-full max-w-4xl mx-auto px-4 pt-4">
-          <Alert type="error" title={error} closable={{ onClose: Stores.Chat.clearError }} />
+          <Alert data-testid="chat-conversation-error-alert" tone="error" title={error} onClose={Stores.Chat.clearError} closeLabel="Close" />
         </div>
       )}
 
@@ -147,7 +146,7 @@ export default function ConversationPage() {
               <div ref={messagesEndRef} />
             </div>
           </div>
-          <div className="w-full max-w-4xl mx-auto p-4" style={{ borderTop: `1px solid ${token.colorBorderSecondary}` }}>
+          <div className="w-full max-w-4xl mx-auto p-4 border-t border-border">
             <ChatInput />
           </div>
         </div>

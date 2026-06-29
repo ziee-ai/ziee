@@ -1,11 +1,9 @@
 import { useEffect } from 'react'
-import { Button, Collapse, Empty, Flex, Space, Spin, Tag, Typography } from 'antd'
-import { EditOutlined } from '@ant-design/icons'
+import { Pencil } from 'lucide-react'
+import { Button, Accordion, Empty, Flex, Space, Spin, Tag, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Text } = Typography
 
 interface McpServerGroupsAssignmentCardProps {
   serverId: string
@@ -44,53 +42,61 @@ export function McpServerGroupsAssignmentCard({
       data-server-id={serverId}
       data-card-type="user-groups-assignment"
     >
-      <Collapse
+      <Accordion
         ghost
-        size="small"
-        defaultActiveKey={[]}
+        collapsible
+        data-testid={`mcp-groups-accordion-${serverId}`}
         items={[
           {
             key: 'groups',
             label: <Text className="font-medium text-sm">User Groups</Text>,
-            extra: canManage ? (
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined aria-hidden="true" />}
-                onClick={e => {
-                  e.stopPropagation()
-                  handleManageGroups()
-                }}
-                aria-label="Manage user groups"
-              >
-                Assign
-              </Button>
-            ) : null,
-            children: loading ? (
-              <Spin size="small" />
-            ) : assignedGroups.length === 0 ? (
-              <Empty
-                description="No groups assigned"
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                className="!my-2"
-              />
-            ) : (
-              <Flex vertical gap="small" style={{ width: '100%' }}>
-                <Text type="secondary" className="text-xs">
-                  User groups that have access to this MCP server
-                </Text>
-                <Space wrap size="small">
-                  {assignedGroups.map(group => (
-                    <Tag
-                      key={group.id}
-                      color="blue"
-                      style={{ fontSize: '13px', padding: '4px 8px' }}
+            children: (
+              <>
+                {canManage && (
+                  <div className="mb-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<Pencil aria-hidden="true" />}
+                      onClick={e => {
+                        e.stopPropagation()
+                        handleManageGroups()
+                      }}
+                      aria-label="Manage user groups"
+                      data-testid={`mcp-groups-assign-btn-${serverId}`}
                     >
-                      {group.name}
-                    </Tag>
-                  ))}
-                </Space>
-              </Flex>
+                      Assign
+                    </Button>
+                  </div>
+                )}
+                {loading ? (
+                  <Spin size="sm" label="Loading" />
+                ) : assignedGroups.length === 0 ? (
+                  <Empty
+                    description="No groups assigned"
+                    className="!my-2"
+                    data-testid={`mcp-groups-empty-${serverId}`}
+                  />
+                ) : (
+                  <Flex vertical gap="small" className="w-full">
+                    <Text type="secondary" className="text-xs">
+                      User groups that have access to this MCP server
+                    </Text>
+                    <Space wrap size="small">
+                      {assignedGroups.map(group => (
+                        <Tag
+                          key={group.id}
+                          tone="info"
+                          className="text-[13px] px-2 py-1"
+                          data-testid={`mcp-group-tag-${group.id}`}
+                        >
+                          {group.name}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </Flex>
+                )}
+              </>
             ),
           },
         ]}

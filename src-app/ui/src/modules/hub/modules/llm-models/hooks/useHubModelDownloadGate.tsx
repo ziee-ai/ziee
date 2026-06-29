@@ -31,12 +31,10 @@
  * loading state, since the probe takes up to the HTTP timeout (~10s).
  */
 
-import { App, Button, Flex, Typography } from 'antd'
+import { Text, dialog, message } from '@/components/ui'
 import { useState } from 'react'
 import { Stores } from '@/core/stores'
 import type { HubModel, LlmRepository } from '@/api-client/types'
-
-const { Text } = Typography
 
 /**
  * Module-scope guard so a Retry click in the sidebar widget can't
@@ -48,7 +46,7 @@ const { Text } = Typography
  *
  * NOT React state — the value doesn't need to participate in
  * rendering; it's a transient lock that flips on modal open and
- * off in `afterClose`.
+ * off on close.
  */
 let gateModalOpen = false
 
@@ -59,44 +57,21 @@ export interface GateRunResult {
 }
 
 export function useHubModelDownloadGate() {
-  const { modal, message } = App.useApp()
   const [probing, setProbing] = useState(false)
 
   const showRepoGateModal = (
     title: string,
     body: React.ReactNode,
-    repository: LlmRepository,
+    _repository: LlmRepository,
   ) => {
     if (gateModalOpen) return
     gateModalOpen = true
-    const m = modal.info({
-      icon: null,
-      footer: null,
+    dialog.info({
       title,
-      closable: true,
-      afterClose: () => {
-        gateModalOpen = false
-      },
-      content: (
-        <div className="flex flex-col gap-2">
-          {body}
-          <Flex className={'gap-2 w-full justify-end'}>
-            <Button onClick={() => m.destroy()}>Cancel</Button>
-            <Button
-              type="primary"
-              onClick={() => {
-                m.destroy()
-                // The LlmRepositoryDrawer is mounted at the app shell
-                // so the drawer can open from anywhere without
-                // navigating to /settings/llm-repositories first.
-                Stores.LlmRepositoryDrawer.openDrawer(repository)
-              }}
-            >
-              Open Repository Settings
-            </Button>
-          </Flex>
-        </div>
-      ),
+      description: body,
+      okText: 'OK',
+    }).then(() => {
+      gateModalOpen = false
     })
   }
 
@@ -152,26 +127,18 @@ export function useHubModelDownloadGate() {
   const showRepoNotConfiguredModal = (_model: HubModel, registryUrl: string) => {
     if (gateModalOpen) return
     gateModalOpen = true
-    const m = modal.info({
-      icon: null,
-      footer: null,
+    dialog.info({
       title: 'Repository Not Configured',
-      closable: true,
-      afterClose: () => {
-        gateModalOpen = false
-      },
-      content: (
-        <div className="flex flex-col gap-2">
-          <Text>
-            No installed repository matches the source URL{' '}
-            <Text code>{registryUrl}</Text>. Add it in Settings → LLM
-            Repositories before downloading.
-          </Text>
-          <Flex className={'gap-2 w-full justify-end'}>
-            <Button onClick={() => m.destroy()}>OK</Button>
-          </Flex>
-        </div>
+      description: (
+        <Text>
+          No installed repository matches the source URL{' '}
+          <Text code>{registryUrl}</Text>. Add it in Settings → LLM
+          Repositories before downloading.
+        </Text>
       ),
+      okText: 'OK',
+    }).then(() => {
+      gateModalOpen = false
     })
   }
 

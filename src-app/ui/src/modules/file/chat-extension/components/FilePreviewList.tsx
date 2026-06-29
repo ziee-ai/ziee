@@ -1,4 +1,4 @@
-import { Alert, Divider } from 'antd'
+import { Separator, Alert } from '@/components/ui'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@/core/stores'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
@@ -43,7 +43,7 @@ export function FilePreviewList() {
 
   return (
     <>
-      <Divider style={{ margin: 0 }} />
+      <Separator className="m-0" />
       <div style={{ padding: '8px' }}>
         <div
           className="flex gap-2 w-full overflow-x-auto"
@@ -92,12 +92,12 @@ export function FilePreviewList() {
         </div>
 
         {advisories.length > 0 && (
-          <div className="flex flex-col gap-1" style={{ marginTop: 8 }}>
+          <div className="flex flex-col gap-1 mt-2">
             {advisories.map(({ f, meta }) => (
               <Alert
                 key={f.id}
-                type="warning"
-                showIcon
+                data-testid={`file-preview-advisory-${f.id}`}
+                tone="warning"
                 title={
                   <span>
                     <strong>{f.filename}</strong>: {meta.suggestion}

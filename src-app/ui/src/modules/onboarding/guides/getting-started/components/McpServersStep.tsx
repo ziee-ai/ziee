@@ -1,24 +1,24 @@
 import { useEffect } from 'react'
 import {
-  Typography,
+  Title,
+  Paragraph,
+  Text,
   Checkbox,
   Spin,
   Alert,
-  Divider,
+  Separator,
   Tag,
   Switch,
-} from 'antd'
-import { ToolOutlined } from '@ant-design/icons'
+} from '@/components/ui'
+import { Wrench } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 
-const { Title, Paragraph, Text } = Typography
-
 export default function McpServersStep({ registerBeforeNext }: OnboardingStepProps) {
   const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
-  const { systemServers, hubServers, installedNames, loadingServers, serversError, disabledSystemIds } = Stores.McpServersStep
+  const { systemServers, hubServers, installedNames, loadingServers, serversError } = Stores.McpServersStep
 
   // The step renders for every authenticated user, but the controls are
   // admin-only. Non-admins see just the intro paragraph and continue.
@@ -28,20 +28,16 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
 
   useEffect(() => {
     Stores.Onboarding.setReady(true)
+    registerBeforeNext(null)
     if (canSeeAdminControls) {
-      // Wire up the before-next handler so hub-server installations AND
-      // system-server toggles are persisted when the user clicks Next/Start Chatting.
-      registerBeforeNext(() => Stores.McpServersStep.applyMcpServerChanges())
       Stores.McpServersStep.loadMcpServers()
-    } else {
-      registerBeforeNext(null)
     }
   }, [canSeeAdminControls])
 
   if (loadingServers) {
     return (
       <div className="flex justify-center mt-8">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -49,20 +45,20 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
   return (
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
-        <ToolOutlined className="text-3xl text-purple-500" />
+        <Wrench className="text-3xl text-primary" />
         <Title level={3} className="!mb-0">
           MCP Servers
         </Title>
       </div>
 
-      <Paragraph type="secondary">
+      <Paragraph tone="secondary">
         {canSeeAdminControls
           ? 'MCP servers extend your AI assistant with tools and data access. Toggle the ones you want to use, or install new ones from the Hub.'
           : 'MCP servers extend your AI assistant with tools and data access. Your administrator has already configured the servers available to you.'}
       </Paragraph>
 
       {serversError && canSeeAdminControls && (
-        <Alert type="error" title={serversError} showIcon className="mb-4" />
+        <Alert data-testid="onboarding-mcp-error-alert" tone="error" title={serversError} className="mb-4" />
       )}
 
       {canManageSystemMcp && systemServers.length > 0 && (
@@ -77,15 +73,16 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                 className="flex items-start gap-3 border rounded-lg p-3"
               >
                 <Switch
-                  size="small"
-                  checked={!disabledSystemIds.has(server.id)}
+                  data-testid={`onboarding-mcp-system-server-switch-${server.id}`}
+                  size="sm"
+                  defaultChecked
                   onChange={checked => Stores.McpServersStep.toggleSystemServer(server.id, checked)}
                   className="mt-1"
                 />
                 <div>
                   <Text strong>{server.display_name || server.name}</Text>
                   {server.description && (
-                    <Text type="secondary" className="block text-sm">
+                    <Text tone="secondary" className="block text-sm">
                       {server.description}
                     </Text>
                   )}
@@ -93,7 +90,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
               </div>
             ))}
           </div>
-          <Divider />
+          <Separator />
         </>
       )}
 
@@ -118,22 +115,27 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                   className={`flex items-start gap-3 border rounded-lg p-3 ${
                     alreadyInstalled
                       ? 'opacity-50 cursor-not-allowed'
-                      : 'cursor-pointer hover:bg-gray-50'
+                      : 'cursor-pointer hover:bg-accent'
                   }`}
                   onClick={alreadyInstalled ? undefined : () => Stores.McpServersStep.toggleMcpServer(server.name)}
                 >
-                  <Checkbox
-                    checked={isSelected}
-                    disabled={alreadyInstalled}
-                    className="mt-1"
-                  />
+                  {/* stop bubbling so the checkbox's own toggle doesn't double-fire the row onClick */}
+                  <span onClick={e => e.stopPropagation()}>
+                    <Checkbox
+                      data-testid={`onboarding-mcp-hub-server-checkbox-${server.name}`}
+                      checked={isSelected}
+                      disabled={alreadyInstalled}
+                      onChange={() => Stores.McpServersStep.toggleMcpServer(server.name)}
+                      className="mt-1"
+                    />
+                  </span>
                   <div>
                     <div className="flex items-center gap-2">
                       <Text strong>{leaf}</Text>
-                      {alreadyInstalled && <Tag>Already installed</Tag>}
+                      {alreadyInstalled && <Tag data-testid={`onboarding-mcp-hub-server-installed-tag-${server.name}`}>Already installed</Tag>}
                     </div>
                     {server.description && (
-                      <Text type="secondary" className="block text-sm">
+                      <Text tone="secondary" className="block text-sm">
                         {server.description}
                       </Text>
                     )}

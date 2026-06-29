@@ -10,12 +10,10 @@
 // arrow and filename. FilePanel runs with `hideHeader` to avoid
 // duplicating the filename inside the body.
 
-import { Typography } from 'antd'
+import { Title } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { FilePanel, FilePanelHeaderActions } from '@/modules/file/components/FilePanel'
-
-const { Title } = Typography
 
 export function FilePreviewDrawer() {
   const isOpen = Stores.FilePreviewDrawer.isOpen
@@ -26,7 +24,7 @@ export function FilePreviewDrawer() {
     // "first column fills + can shrink to zero; second column at
     // intrinsic width". Flex with `flex-1 min-w-0` works in
     // isolation but is brittle when the chain of parent wrappers
-    // doesn't all set min-width: 0 (antd's `.ant-drawer-title` and
+    // doesn't all set min-width: 0 (the Drawer's title row and
     // the custom Drawer's `flex w-full` outer div together don't
     // propagate the shrink constraint reliably — the filename's
     // intrinsic width was pushing the actions past the drawer edge).

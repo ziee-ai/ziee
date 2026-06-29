@@ -1,5 +1,4 @@
 import { type ReactNode } from 'react'
-import { theme } from 'antd'
 
 /**
  * Subtle hover background for list rows inside the engine-version
@@ -14,13 +13,11 @@ import { theme } from 'antd'
  * both lists feel identical under the cursor.
  */
 export function HoverRow({ children }: { children: ReactNode }) {
-  const { token } = theme.useToken()
   return (
     <div
-      className="rounded -mx-2 px-2 -my-1 py-1"
-      style={{ transition: `background-color ${token.motionDurationMid}` }}
+      className="rounded -mx-2 px-2 -my-1 py-1 duration-200"
       onMouseEnter={e => {
-        e.currentTarget.style.backgroundColor = token.colorFillTertiary
+        e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'
       }}
       onMouseLeave={e => {
         e.currentTarget.style.backgroundColor = 'transparent'

@@ -1,25 +1,23 @@
+import { Download, RotateCw } from 'lucide-react'
 import { useEffect } from 'react'
 import {
-  App,
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Progress,
   Space,
   Spin,
   Tag,
-  Typography,
-} from 'antd'
-import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
+  Text,
+  message,
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { DownloadSnapshot, GpuDetectionResponse } from '@/api-client/types'
 import type { RuntimeAvailableVersion, RuntimeEngine } from '../types'
 import { HoverRow, formatBytes } from './_engineVersionsShared'
-
-const { Text } = Typography
 
 const BACKEND_LABEL: Record<string, string> = {
   cpu: 'CPU',
@@ -52,7 +50,6 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
   const { gpu, loadingGpu } = Stores.RuntimeConfig
   const { updateChecks, checking } = Stores.RuntimeUpdate
   const { activeByKey } = Stores.RuntimeDownloadProgress
-  const { message } = App.useApp()
 
   const updateCheck = updateChecks.get(engine)
   const isChecking = checking.get(engine) || false
@@ -135,12 +132,14 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
   return (
     <Card
       title="Available versions"
+      data-testid="llmrt-available-versions-card"
       extra={
         <Can permission={Permissions.RuntimeVersionRead}>
           <Button
-            icon={<ReloadOutlined />}
+            icon={<RotateCw />}
             loading={isChecking}
             onClick={handleCheckForUpdates}
+            data-testid="llmrt-check-updates-btn"
             aria-label={`Check for updates for ${engine}`}
           >
             Check for updates
@@ -148,14 +147,14 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
         </Can>
       }
     >
-      <Flex vertical gap="middle">
+      <Flex vertical className="gap-4">
         <PlatformRow gpu={gpu} loadingGpu={loadingGpu} />
         <BackendsRow gpu={gpu} loadingGpu={loadingGpu} />
 
-        <Divider className="!my-2" />
+        <Separator className="!my-2" />
 
         {isChecking && !updateCheck ? (
-          <Spin />
+          <Spin label="Checking for updates" />
         ) : !updateCheck ? (
           <Text type="secondary">
             Could not reach the upstream release feed.
@@ -198,7 +197,7 @@ function PlatformRow({
     return (
       <div>
         <Text type="secondary">Platform: </Text>
-        <Spin size="small" />
+        <Spin size="sm" label="Loading platform" />
       </div>
     )
   }
@@ -224,7 +223,7 @@ function BackendsRow({
     return (
       <Flex align="center" gap="small" wrap>
         <Text type="secondary">Available backends:</Text>
-        <Spin size="small" />
+        <Spin size="sm" label="Loading backends" />
       </Flex>
     )
   }
@@ -232,12 +231,13 @@ function BackendsRow({
   return (
     <Flex align="center" gap="small" wrap>
       <Text type="secondary">Available backends:</Text>
-      <Space size={[8, 8]} wrap>
+      <Space size="small" wrap>
         {gpu.available.map(b => (
           <Tag
             key={b}
-            variant="filled"
-            color={b === gpu.recommended ? 'green' : 'default'}
+            variant="solid"
+            tone={b === gpu.recommended ? 'success' : undefined}
+            data-testid={`llmrt-backend-tag-${b}`}
           >
             {BACKEND_LABEL[b] ?? b}
           </Tag>
@@ -268,7 +268,7 @@ function AvailableVersionRow({
   return (
     <HoverRow>
       <Flex vertical gap="small">
-        <Flex justify="space-between" align="center" gap="small" wrap>
+        <Flex justify="between" align="center" gap="small" wrap>
           <Space wrap>
             <Text strong>{v.version}</Text>
             {v.size_bytes != null && !v.installed && (
@@ -276,16 +276,17 @@ function AvailableVersionRow({
                 {formatBytes(v.size_bytes)}
               </Text>
             )}
-            {isLatest && <Tag color="blue" variant="filled">latest</Tag>}
-            {v.installed && <Tag color="green" variant="filled">installed</Tag>}
-            {v.prerelease && <Tag variant="filled">prerelease</Tag>}
+            {isLatest && <Tag tone="info" variant="solid" data-testid={`llmrt-version-latest-tag-${v.version}`}>latest</Tag>}
+            {v.installed && <Tag tone="success" variant="solid" data-testid={`llmrt-version-installed-tag-${v.version}`}>installed</Tag>}
+            {v.prerelease && <Tag variant="solid" data-testid={`llmrt-version-prerelease-tag-${v.version}`}>prerelease</Tag>}
           </Space>
           <Can permission={Permissions.RuntimeVersionCreate}>
             <Button
-              icon={<DownloadOutlined />}
+              icon={<Download />}
               loading={inProgress}
               disabled={v.installed || inProgress}
               onClick={onDownload}
+              data-testid={`llmrt-version-install-${v.version}`}
               aria-label={`Install ${v.version}`}
             >
               {v.installed
@@ -298,7 +299,7 @@ function AvailableVersionRow({
         </Flex>
         {progress && <DownloadProgressLine progress={progress} />}
         {failed && progress?.error && (
-          <Text type="danger">{progress.error}</Text>
+          <Text type="secondary">{progress.error}</Text>
         )}
       </Flex>
     </HoverRow>
@@ -321,20 +322,22 @@ function DownloadProgressLine({ progress }: { progress: DownloadSnapshot }) {
       ? Math.round((recv / total) * 100)
       : undefined
   return (
-    <Flex vertical gap={4}>
+    <Flex vertical className="gap-1">
       <Progress
-        percent={pct ?? 0}
-        status={
+        value={pct ?? 0}
+        data-testid={`llmrt-download-progress-${progress.key}`}
+        tone={
           progress.status === 'failed'
-            ? 'exception'
+            ? 'error'
             : progress.status === 'completed'
             ? 'success'
-            : 'active'
+            : 'primary'
         }
         // Indeterminate-looking when total_bytes is unknown: keep
         // the bar at 0% and rely on the byte counter for feedback.
         showInfo={pct != null}
-        size="small"
+        size="sm"
+        aria-label={`Download progress: ${pct ?? 0}%`}
       />
       <Text type="secondary" className="text-xs">
         {formatBytes(recv)}

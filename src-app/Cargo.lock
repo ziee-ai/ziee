@@ -12513,6 +12513,7 @@ dependencies = [
  "image",
  "imageproc",
  "include_dir",
+ "indexmap 2.14.0",
  "jsonschema",
  "jsonwebtoken",
  "lazy_static",

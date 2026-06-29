@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Alert, Input, Card, Button, Typography, Empty, Flex, Popconfirm, App } from 'antd'
+import { Card, Button, Text, Empty, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { SearchOutlined, DeleteOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
-
-const { Text } = Typography
 
 interface ConversationListProps {
   /**
@@ -23,10 +21,8 @@ interface ConversationListProps {
  * Displays a searchable, paginated list of conversations with bulk operations
  */
 export function ConversationList({ getSearchBoxContainer }: ConversationListProps) {
-  const { message } = App.useApp()
   const [, forceRender] = useState({})
   const [localSearchQuery, setLocalSearchQuery] = useState('')
-  const [errorDismissed, setErrorDismissed] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
 
   const {
@@ -50,12 +46,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     }
   }, [getSearchBoxContainer])
 
-  // Reset dismiss state when a new error arrives
+  // Show errors
   useEffect(() => {
     if (error) {
-      setErrorDismissed(false)
+      message.error(error)
     }
-  }, [error])
+  }, [error, message])
 
   // Debounce search query
   useEffect(() => {
@@ -112,10 +108,10 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // Search box component
   const searchBox = (
     <Input
+      data-testid="chat-conversation-search-input"
       placeholder="Search conversations..."
       allowClear
-      size="middle"
-      prefix={<SearchOutlined />}
+      prefix={<SearchIcon />}
       onChange={e => setLocalSearchQuery(e.target.value)}
       className="self-center w-full"
       value={localSearchQuery}
@@ -140,13 +136,9 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
         {/* Bulk actions bar */}
         {selectedIds.size > 0 && (
           <div className="max-w-4xl w-full self-center px-3 pt-3">
-            <Card
-              classNames={{
-                body: '!p-3',
-              }}
-            >
+            <Card data-testid="chat-bulk-actions-card" className="[&_[data-part='body']]:!p-3">
               <Flex
-                justify="space-between"
+                justify="between"
                 align="center"
                 className="flex-wrap gap-2"
               >
@@ -155,28 +147,32 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                 </Text>
                 <Flex className="gap-2">
                   <Button
-                    icon={<CloseCircleOutlined />}
+                    data-testid="chat-bulk-deselect-btn"
+                    icon={<CircleX />}
                     onClick={() => Stores.ChatHistory.__state.deselectAll()}
                   >
                     Deselect All
                   </Button>
-                  <Button onClick={() => Stores.ChatHistory.__state.selectAll()}>
+                  <Button
+                    data-testid="chat-bulk-select-all-btn"
+                    onClick={() => Stores.ChatHistory.__state.selectAll()}
+                  >
                     Select All
                   </Button>
                   {canDelete && (
-                    <Popconfirm
+                    <Confirm
+                      data-testid="chat-bulk-delete-confirm"
                       title="Delete selected conversations"
                       description={`Are you sure you want to delete ${selectedIds.size} conversation${selectedIds.size > 1 ? 's' : ''}?`}
                       onConfirm={handleDeleteSelected}
-                      okText="Delete"
+                      okText="OK"
                       cancelText="Cancel"
-                      okType="danger"
-                      okButtonProps={{ loading: deleting }}
+                      okButtonProps={{ danger: true, disabled: deleting }}
                     >
-                      <Button danger icon={<DeleteOutlined />} loading={deleting}>
+                      <Button data-testid="chat-bulk-delete-btn" variant="destructive" icon={<Trash2 />} loading={deleting}>
                         Delete Selected
                       </Button>
-                    </Popconfirm>
+                    </Confirm>
                   )}
                 </Flex>
               </Flex>
@@ -184,25 +180,13 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
           </div>
         )}
 
-        {/* Inline error display */}
-        {error && !errorDismissed && (
-          <div className="px-3">
-            <Alert
-              message={error}
-              type="error"
-              showIcon
-              closable={{ closeIcon: true, onClose: () => setErrorDismissed(true) }}
-            />
-          </div>
-        )}
-
         {/* Conversation list */}
         <DivScrollY className="flex-1 w-full flex-col !py-3 overflow-x-visible">
           <div className="gap-2 max-w-4xl w-full self-center overflow-x-visible">
             {visibleConversations.length === 0 && !loading ? (
-              <Card className="!mx-3">
+              <Card data-testid="chat-history-empty-card" className="!mx-3">
                 <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  data-testid="chat-history-empty"
                   description={
                     searchQuery
                       ? 'No conversations found matching your search'
@@ -238,17 +222,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
 
                     {/* Pagination info */}
                     {visibleConversations.length > 0 && (
-                      <Card
-                        className="text-center !mx-3"
-                        classNames={{
-                          body: '!p-2 gap-2 flex justify-center items-center flex-wrap',
-                        }}
-                      >
-                        <Text type="secondary" aria-live="polite" role="status">
+                      <Card data-testid="chat-history-pagination-card" className="text-center !mx-3 [&_[data-part='body']]:!p-2">
+                        <Text type="secondary">
                           Showing {visibleConversations.length} of {total} conversations
                         </Text>
                         {hasMore && !searchQuery && (
-                          <Button onClick={handleLoadMore} loading={loadingMore}>
+                          <Button data-testid="chat-history-load-more-btn" onClick={handleLoadMore} loading={loadingMore}>
                             Load More
                           </Button>
                         )}

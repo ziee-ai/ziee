@@ -1,15 +1,8 @@
-import { Alert, Button, Divider, Spin, Typography } from 'antd'
-import {
-  AppleFilled,
-  GoogleOutlined,
-  LoginOutlined,
-  WindowsFilled,
-} from '@ant-design/icons'
+import { Alert, Button, Separator, Spin, Text } from '@/components/ui'
+import { Apple as AppleIcon, Globe, LogIn, Monitor } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { PublicProvider } from '@/api-client/types'
 import { SESSION_RETURN_TO_KEY } from './constants'
-
-const { Text } = Typography
 
 /**
  * Per-provider icon. AntD icons stand in for the official Google /
@@ -21,12 +14,12 @@ const { Text } = Typography
 function iconFor(p: PublicProvider) {
   const t = p.provider_type.toLowerCase()
   const n = p.name.toLowerCase()
-  if (t === 'apple' || n.includes('apple')) return <AppleFilled />
-  if (n.includes('google')) return <GoogleOutlined />
+  if (t === 'apple' || n.includes('apple')) return <AppleIcon />
+  if (n.includes('google')) return <Globe />
   if (n.includes('microsoft') || n.includes('entra') || n.includes('azure')) {
-    return <WindowsFilled />
+    return <Monitor />
   }
-  return <LoginOutlined />
+  return <LogIn />
 }
 
 /**
@@ -50,7 +43,7 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
   if (isLoading || !hasLoaded) {
     return (
       <div className="text-center py-2">
-        <Spin size="small" />
+        <Spin size="sm" label="Loading sign-in options" />
       </div>
     )
   }
@@ -58,10 +51,10 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
   if (error) {
     return (
       <Alert
-        type="warning"
+        data-testid="auth-providers-error"
+        tone="warning"
         title="Unable to load sign-in options"
         description={error}
-        showIcon
         className="my-2"
       />
     )
@@ -83,17 +76,18 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
 
   return (
     <div className="space-y-3">
-      <Divider plain>
+      <Separator>
         <Text type="secondary" className="text-xs">
           or continue with
         </Text>
-      </Divider>
+      </Separator>
       <div className="space-y-2">
         {providers.map(p => (
           <Button
             key={p.name}
+            data-testid={`auth-provider-btn-${p.name}`}
             block
-            size="large"
+            size="lg"
             icon={iconFor(p)}
             onClick={() => onClick(p.name)}
           >

@@ -1,4 +1,4 @@
-import { Spin } from 'antd'
+import { Spin } from '@/components/ui'
 import { Streamdown } from 'streamdown'
 import { Component, createElement, type ComponentProps, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
@@ -122,7 +122,7 @@ export function MarkdownBody(props: FileViewerSlotProps) {
     )
   }
   if (content === null) {
-    return <div className="flex items-center justify-center h-full"><Spin /></div>
+    return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>
   }
   if (file && mode === 'raw') {
     return <RawCodeView text={content} filename={file.filename} />

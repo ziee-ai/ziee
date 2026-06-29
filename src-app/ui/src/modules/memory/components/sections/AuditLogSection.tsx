@@ -1,26 +1,11 @@
-import {
-  Button,
-  Card,
-  Empty,
-  Form,
-  InputNumber,
-  Spin,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { Card, Empty, InputNumber, Space, Spin } from '@/components/ui'
+import { Table, Tag, Text, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { MemoryAuditEntry } from '@/api-client/types'
 
-const { Text, Paragraph } = Typography
-
 const READ_PERM = Permissions.MemoryRead
-
-interface FormValues {
-  limit: number
-}
 
 /**
  * Append-only audit log of memory operations on the viewing user's
@@ -29,106 +14,108 @@ interface FormValues {
 export function AuditLogSection() {
   const canRead = usePermission(READ_PERM)
   const { entries, loading, limit } = Stores.MemoryAudit
-  const [form] = Form.useForm<FormValues>()
 
   if (!canRead) return null
 
-  const handleSubmit = (values: FormValues) => {
-    Stores.MemoryAudit.setLimit(values.limit)
-  }
-
   return (
-    <Card title="Audit log">
+    <Card title="Audit log" data-testid="memory-audit-card">
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Append-only record of every memory operation on your account.
         Use this to audit what the auto-extractor captured, what the
         assistant&rsquo;s tools added, and what you deleted (and when).
       </Paragraph>
 
-      <Form
-        form={form}
-        layout="inline"
-        initialValues={{ limit }}
-        onFinish={handleSubmit}
-        className="mb-4"
-      >
-        <Form.Item name="limit" label="Show last">
-          <InputNumber min={1} max={500} />
-        </Form.Item>
-        <Form.Item>
-          <Button type="primary" htmlType="submit">
-            Apply
-          </Button>
-        </Form.Item>
-      </Form>
+      <Space className="mb-4" align="center">
+        <Text>Show last</Text>
+        <InputNumber
+          data-testid="memory-audit-limit-input"
+          min={1}
+          max={500}
+          value={limit}
+          onChange={v =>
+            Stores.MemoryAudit.setLimit(typeof v === 'number' ? v : 100)
+          }
+        />
+        <Text>entries</Text>
+      </Space>
 
       {loading ? (
         <div className="flex justify-center py-6">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       ) : entries.length === 0 ? (
-        <Empty description="No audit entries yet" />
+        <Empty description="No audit entries yet" data-testid="memory-audit-empty" />
       ) : (
         <Table<MemoryAuditEntry>
+          data-testid="memory-audit-table"
           dataSource={entries}
           rowKey="id"
-          size="middle"
-          pagination={{ pageSize: 25 }}
           columns={[
             {
+              key: 'created_at',
               title: 'When',
               dataIndex: 'created_at',
               width: 180,
-              render: (v: string) => (
-                <Text type="secondary">{new Date(v).toLocaleString()}</Text>
+              render: (record: MemoryAuditEntry) => (
+                <Text type="secondary">{new Date(record.created_at).toLocaleString()}</Text>
               ),
             },
             {
+              key: 'op',
               title: 'Op',
               dataIndex: 'op',
               width: 130,
-              render: (v: string) => {
-                const color =
+              render: (record: MemoryAuditEntry) => {
+                const v = record.op
+                const tone =
                   v === 'ADD'
-                    ? 'green'
+                    ? 'success'
                     : v === 'UPDATE'
-                      ? 'blue'
+                      ? 'info'
                       : v === 'DELETE'
-                        ? 'red'
-                        : 'volcano'
-                return <Tag color={color}>{v}</Tag>
+                        ? 'error'
+                        : 'warning'
+                return <Tag data-testid={`memory-audit-status-${v}`} tone={tone}>{v}</Tag>
               },
             },
             {
+              key: 'source',
               title: 'Source',
               dataIndex: 'source',
               width: 120,
-              render: (v: string) => (
-                <Tag
-                  color={
-                    v === 'manual'
-                      ? 'blue'
-                      : v === 'extraction'
-                        ? 'green'
-                        : 'purple'
-                  }
-                >
-                  {v === 'mcp_tool' ? 'tool' : v}
-                </Tag>
-              ),
+              render: (record: MemoryAuditEntry) => {
+                const v = record.source
+                const tone =
+                  v === 'manual'
+                    ? 'info'
+                    : v === 'extraction'
+                      ? 'success'
+                      : 'info'
+                return (
+                  <Tag data-testid={`memory-audit-source-${v}`} tone={tone}>
+                    {v === 'mcp_tool' ? 'tool' : v}
+                  </Tag>
+                )
+              },
             },
             {
+              key: 'actor_kind',
               title: 'Actor',
               dataIndex: 'actor_kind',
               width: 100,
-              render: (v: string) => <Tag>{v}</Tag>,
+              render: (record: MemoryAuditEntry) => {
+                return <Tag data-testid={`memory-audit-actor-${record.actor_kind}`}>{record.actor_kind}</Tag>
+              },
             },
             {
+              key: 'content_snapshot',
               title: 'Snapshot',
               dataIndex: 'content_snapshot',
-              ellipsis: true,
-              render: (v: string | null) =>
-                v ? <Text>{v}</Text> : <Text type="secondary">—</Text>,
+              width: 200,
+              render: (record: MemoryAuditEntry) => {
+                const v = record.content_snapshot
+                return v ? <Text>{v}</Text> : <Text type="secondary">—</Text>
+              },
             },
           ]}
         />

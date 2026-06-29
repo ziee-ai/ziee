@@ -16,17 +16,16 @@ import {
   Descriptions,
   Progress,
   Space,
-  Typography,
-} from 'antd'
+  Text,
+  Paragraph,
+} from '@/components/ui'
 import {
-  DownloadOutlined,
-  ReloadOutlined,
-  RocketOutlined,
-} from '@ant-design/icons'
+  Download,
+  RotateCw,
+  Rocket,
+} from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@ziee/ui-core/modules/settings/components/SettingsPageContainer'
-
-const { Text, Paragraph } = Typography
 
 export function AboutPage() {
   const {
@@ -45,44 +44,57 @@ export function AboutPage() {
 
   return (
     <SettingsPageContainer title="About" subtitle="Application version and updates">
-      <Card>
-        <Descriptions column={1} size="small" colon>
-          <Descriptions.Item label="Application">Ziee</Descriptions.Item>
-          <Descriptions.Item label="Version">
-            <Text code>{currentVersion ?? '—'}</Text>
-          </Descriptions.Item>
-        </Descriptions>
+      <Card data-testid="desktop-updater-about-card">
+        <Descriptions
+          data-testid="desktop-updater-about-descriptions"
+          column={1}
+          size="sm"
+          items={[
+            { key: 'application', label: 'Application', children: 'Ziee' },
+            {
+              key: 'version',
+              label: 'Version',
+              children: <Text code>{currentVersion ?? '—'}</Text>,
+            },
+          ]}
+        />
 
         {error && (
           <Alert
-            type="error"
-            showIcon
-            style={{ marginTop: 16 }}
-            message="Update error"
+            data-testid="desktop-updater-about-error-alert"
+            tone="error"
+            className="mt-4"
+            title="Update error"
             description={error}
           />
         )}
 
         {available && version && (
           <Alert
-            type="info"
-            showIcon
-            style={{ marginTop: 16 }}
-            message={`Version ${version} is available`}
-            description={notes ? <Paragraph style={{ marginBottom: 0 }}>{notes}</Paragraph> : undefined}
+            data-testid="desktop-updater-about-available-alert"
+            tone="info"
+            className="mt-4"
+            title={`Version ${version} is available`}
+            description={notes ? <Paragraph className="mb-0">{notes}</Paragraph> : undefined}
           />
         )}
 
         {downloading && (
-          <div style={{ marginTop: 16 }}>
+          <div className="mt-4">
             <Text type="secondary">Downloading update…</Text>
-            <Progress percent={Math.round(progress ?? 0)} status="active" />
+            <Progress
+              data-testid="desktop-updater-about-progress"
+              value={Math.round(progress ?? 0)}
+              tone="primary"
+              aria-label="Update download progress"
+            />
           </div>
         )}
 
-        <Space style={{ marginTop: 16 }} wrap>
+        <Space className="mt-4" wrap>
           <Button
-            icon={<ReloadOutlined />}
+            data-testid="desktop-updater-about-check-btn"
+            icon={<RotateCw />}
             loading={checking}
             disabled={downloading}
             onClick={() => Stores.Updater.check()}
@@ -92,8 +104,8 @@ export function AboutPage() {
 
           {available && !readyToInstall && (
             <Button
-              type="primary"
-              icon={<DownloadOutlined />}
+              data-testid="desktop-updater-about-download-btn"
+              icon={<Download />}
               loading={downloading}
               onClick={() => Stores.Updater.download()}
             >
@@ -103,8 +115,8 @@ export function AboutPage() {
 
           {readyToInstall && (
             <Button
-              type="primary"
-              icon={<RocketOutlined />}
+              data-testid="desktop-updater-about-install-btn"
+              icon={<Rocket />}
               onClick={() => Stores.Updater.install()}
             >
               Install &amp; restart
@@ -113,7 +125,7 @@ export function AboutPage() {
         </Space>
 
         {upToDate && currentVersion && (
-          <Paragraph type="secondary" style={{ marginTop: 16, marginBottom: 0 }}>
+          <Paragraph type="secondary" className="mt-4 mb-0">
             You're on the latest version.
           </Paragraph>
         )}

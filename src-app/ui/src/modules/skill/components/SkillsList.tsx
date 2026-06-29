@@ -1,6 +1,6 @@
-import { ImportOutlined, ReadOutlined } from '@ant-design/icons'
-import { Button, Card, Empty, Flex, Space, Typography } from 'antd'
+import { BookOpen, Import as ImportIcon } from 'lucide-react'
 import { useState } from 'react'
+import { Button, Card, Empty, Flex, Space, Text } from '@/components/ui'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
@@ -8,8 +8,6 @@ import { SettingsPageContainer } from '@/modules/settings/components/SettingsPag
 import { ImportSkillDialog } from './ImportSkillDialog'
 import { SkillDetailDrawer } from './SkillDetailDrawer'
 import { SkillScopeBadge } from './SkillScopeBadge'
-
-const { Text } = Typography
 
 /**
  * `/skills` page — lists the user's own + accessible system skills,
@@ -31,7 +29,8 @@ export function SkillsList() {
         <Flex justify="end">
           <Can permission={Permissions.SkillsInstall}>
             <Button
-              icon={<ImportOutlined />}
+              icon={<ImportIcon />}
+              data-testid="skill-list-import-button"
               onClick={() => setImportOpen(true)}
             >
               Import
@@ -46,22 +45,16 @@ export function SkillsList() {
             <Card
               key={skill.id}
               hoverable
-              size="small"
-              role="button"
-              tabIndex={0}
+              size="sm"
               onClick={() => Stores.SkillDrawer.open(skill)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  Stores.SkillDrawer.open(skill)
-                }
-              }}
               data-skill-id={skill.id}
+              data-testid={`skill-list-card-${skill.id}`}
+              className="cursor-pointer"
             >
-              <Flex justify="space-between" align="flex-start" gap={12}>
-                <Space vertical size={2} className="min-w-0">
+              <Flex justify="between" align="start" className="gap-3">
+                <Space direction="vertical" className="min-w-0" size="small">
                   <Space size={8}>
-                    <ReadOutlined />
+                    <BookOpen />
                     <Text strong>{skill.display_name || skill.name}</Text>
                     <SkillScopeBadge scope={skill.scope} isDev={skill.is_dev} />
                   </Space>
@@ -80,6 +73,7 @@ export function SkillsList() {
           <Empty
             description="No skills installed yet — browse the Hub to install one"
             className="!mt-12"
+            data-testid="skill-list-empty"
           />
         )}
 

@@ -1,11 +1,9 @@
-import { Alert, Button, Card, Form, Typography, message } from 'antd'
-import { DatabaseOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Paragraph } from '@/components/ui'
+import { message } from '@/components/ui'
+import { Database } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
-
-const { Paragraph } = Typography
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -18,27 +16,20 @@ const MANAGE_PERM = Permissions.FileRagAdminManage
 export function MaintenanceSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, triggeringBackfill, error } = Stores.FileRagAdmin
+  const { settings, triggeringBackfill } = Stores.FileRagAdmin
 
   if (!canRead) {
     return (
-      <Card title="Maintenance">
+      <Card data-testid="filerag-maintenance-card" title="Maintenance">
         <Alert
-          type="warning"
-          showIcon
+          data-testid="filerag-maintenance-noperm-alert"
+          tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
       </Card>
     )
   }
-  if (!settings)
-    return (
-      <SettingsSectionStatus
-        title="Maintenance"
-        error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
-      />
-    )
+  if (!settings) return null
 
   const handleBackfill = async () => {
     try {
@@ -52,35 +43,27 @@ export function MaintenanceSection() {
   }
 
   return (
-    <Card title="Maintenance">
-      {error && (
-        <Alert
-          type="error"
-          showIcon
-          closable={{ closeIcon: true }}
-          className="!mb-4"
-          message={error}
-        />
-      )}
+    <Card data-testid="filerag-maintenance-card" title="Maintenance">
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Backfill indexes files that have extracted text but no chunks yet —
         anything uploaded before Document RAG was enabled, or that failed to
         index. It's bounded and idempotent (safe to run repeatedly) and also
         runs on every server boot.
       </Paragraph>
-      <Form layout="horizontal" disabled={!canManage}>
-        <Form.Item label="Backfill existing files" colon={false}>
+      <div className="flex flex-col gap-2 opacity-[inherit]" aria-disabled={!canManage}>
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium w-40">Backfill existing files</span>
           <Button
-            data-testid="backfill-button"
-            icon={<DatabaseOutlined />}
+            data-testid="filerag-maintenance-backfill"
+            icon={<Database />}
             loading={triggeringBackfill}
             disabled={!settings.enabled || !canManage}
             onClick={handleBackfill}
           >
             Run backfill
           </Button>
-        </Form.Item>
-      </Form>
+        </div>
+      </div>
     </Card>
   )
 }

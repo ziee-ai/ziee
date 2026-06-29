@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
-  Typography,
+  Text,
+  Title,
+  Paragraph,
   Switch,
   Select,
   Alert,
@@ -9,20 +11,12 @@ import {
   Button,
   Space,
   Flex,
-} from 'antd'
-import {
-  BulbOutlined,
-  InfoCircleOutlined,
-  ArrowLeftOutlined,
-  ReloadOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+} from '@/components/ui'
+import { Lightbulb, Info, ArrowLeft, RotateCw, Plus } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Title, Paragraph, Text } = Typography
 
 /**
  * MemorySetupStep — Plan §8 two-screen flow.
@@ -78,7 +72,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
     return (
       <div className="max-w-lg">
         <div className="flex items-center gap-3 mb-4">
-          <BulbOutlined className="text-3xl text-amber-500" />
+          <Lightbulb className="text-3xl text-primary" />
           <Title level={3} className="!mb-0">
             Persistent Memory
           </Title>
@@ -96,7 +90,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
   if (loading) {
     return (
       <div className="flex justify-center mt-8">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -121,7 +115,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
   return (
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
-        <BulbOutlined className="text-3xl text-amber-500" />
+        <Lightbulb className="text-3xl text-primary" />
         <Title level={3} className="!mb-0">
           Persistent Memory
         </Title>
@@ -135,7 +129,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
       </Paragraph>
 
       {error && (
-        <Alert type="error" title={error} showIcon className="mb-4" />
+        <Alert data-testid="onboarding-memory-enable-error-alert" tone="error" title={error} className="mb-4" />
       )}
 
       <div className="border rounded-lg p-4 mb-4">
@@ -150,6 +144,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
             </div>
           </div>
           <Switch
+            data-testid="onboarding-memory-enable-switch"
             checked={enableMemory}
             aria-label="Enable memory"
             onChange={(checked) => Stores.MemorySetupStep.setEnableMemory(checked)}
@@ -186,12 +181,13 @@ function PickModelScreen({
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
         <Button
-          icon={<ArrowLeftOutlined />}
-          size="small"
+          data-testid="onboarding-memory-pick-back-button"
+          icon={<ArrowLeft />}
+          size="sm"
           onClick={onBack}
           aria-label="Back"
         />
-        <BulbOutlined className="text-3xl text-amber-500" />
+        <Lightbulb className="text-3xl text-primary" />
         <Title level={3} className="!mb-0">
           Pick an embedding model
         </Title>
@@ -205,21 +201,21 @@ function PickModelScreen({
       </Paragraph>
 
       {error && (
-        <Alert type="error" title={error} showIcon className="mb-4" />
+        <Alert data-testid="onboarding-memory-pick-error-alert" tone="error" title={error} className="mb-4" />
       )}
 
       <div className="mb-2 flex items-center gap-2">
         <Text strong>Embedding model</Text>
         {noModelsAvailable && (
-          <Tag color="orange">No embedding-capable models</Tag>
+          <Tag data-testid="onboarding-memory-pick-no-models-tag" tone="warning">No embedding-capable models</Tag>
         )}
       </div>
 
       {noModelsAvailable ? (
         <Alert
-          type="info"
-          showIcon
-          icon={<InfoCircleOutlined />}
+          data-testid="onboarding-memory-no-models-alert"
+          tone="info"
+          icon={<Info />}
           title="No embedding-capable models found."
           description={
             <Flex vertical className="w-full gap-2">
@@ -234,8 +230,9 @@ function PickModelScreen({
               </Text>
               <Space>
                 <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
+                  data-testid="onboarding-memory-add-model-button"
+                  variant="default"
+                  icon={<Plus />}
                   onClick={() => {
                     // Open the LLM Providers page in a NEW tab so the
                     // wizard state is preserved. The admin adds the
@@ -246,7 +243,8 @@ function PickModelScreen({
                   Add embedding model
                 </Button>
                 <Button
-                  icon={<ReloadOutlined />}
+                  data-testid="onboarding-memory-refresh-button"
+                  icon={<RotateCw />}
                   loading={refreshing}
                   onClick={async () => {
                     setRefreshing(true)
@@ -266,6 +264,7 @@ function PickModelScreen({
         />
       ) : (
         <Select
+          data-testid="onboarding-memory-model-select"
           className="w-full mb-4"
           placeholder="Select an embedding model"
           value={embeddingModelId ?? undefined}
@@ -274,7 +273,6 @@ function PickModelScreen({
             value: m.id,
             label: m.display_name || m.name,
           }))}
-          showSearch={{ optionFilterProp: 'label' }}
         />
       )}
 

@@ -1,5 +1,16 @@
 import { useEffect } from 'react'
-import { App, Button, Form, Input, Switch } from 'antd'
+import {
+  Button,
+  Form,
+  FormField,
+  Input,
+  Switch,
+  Textarea,
+  useForm,
+  zodResolver,
+  message,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/modules/assistant/stores'
 import { usePermission } from '@/core/permissions'
@@ -16,20 +27,36 @@ const USER_PERMS = {
   edit: Permissions.AssistantsEdit,
 } as const
 
-const { TextArea } = Input
-
 // JSON validator for parameters field
-const validateJSON = (_: any, value: string) => {
+const isValidJSON = (value?: string) => {
   if (!value || !value.trim()) {
-    return Promise.resolve()
+    return true
   }
   try {
     JSON.parse(value)
-    return Promise.resolve()
+    return true
   } catch (_error) {
-    return Promise.reject(new Error('Please enter valid JSON'))
+    return false
   }
 }
+
+const schema = z.object({
+  name: z
+    .string()
+    .min(1, 'Please enter a name')
+    .max(255, 'Name must be less than 255 characters'),
+  description: z
+    .string()
+    .max(1000, 'Description must be less than 1000 characters')
+    .optional(),
+  instructions: z.string().optional(),
+  parameters: z
+    .string()
+    .optional()
+    .refine(isValidJSON, 'Please enter valid JSON'),
+  is_default: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+})
 
 interface FormValues {
   name: string
@@ -41,8 +68,17 @@ interface FormValues {
 }
 
 export function AssistantFormDrawer() {
-  const { message, modal } = App.useApp()
-  const [form] = Form.useForm<FormValues>()
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: '',
+      description: '',
+      instructions: '',
+      parameters: '',
+      enabled: true,
+      is_default: false,
+    },
+  })
 
   // Use drawer store
   const { open, loading, editingAssistant, isTemplate, isCloning } =
@@ -62,7 +98,7 @@ export function AssistantFormDrawer() {
           ? JSON.stringify(editingAssistant.parameters, null, 2)
           : ''
 
-        form.setFieldsValue({
+        form.reset({
           name: editingAssistant.name,
           description: editingAssistant.description,
           instructions: editingAssistant.instructions,
@@ -72,7 +108,11 @@ export function AssistantFormDrawer() {
         })
       } else {
         // Creating new assistant with default values
-        form.setFieldsValue({
+        form.reset({
+          name: '',
+          description: '',
+          instructions: '',
+          parameters: '',
           enabled: true,
           is_default: false,
         })
@@ -80,37 +120,19 @@ export function AssistantFormDrawer() {
     }
   }, [open, editingAssistant, form])
 
-  const doClose = () => {
-    form.resetFields()
+  const handleClose = () => {
+    form.reset()
     Stores.AssistantDrawer.closeAssistantDrawer()
   }
 
-  const handleClose = () => {
-    // Guard against losing edits: prompt before discarding when the user has
-    // touched any field. A pristine form (just opened / freshly reset) closes
-    // immediately. Covers both the footer Cancel button and the drawer's X.
-    if (form.isFieldsTouched()) {
-      modal.confirm({
-        title: 'Discard unsaved changes?',
-        content: 'You have unsaved changes. Closing now will discard them.',
-        okText: 'Discard',
-        okButtonProps: { danger: true },
-        cancelText: 'Keep editing',
-        onOk: doClose,
-      })
-      return
-    }
-    doClose()
-  }
-
   const handleParametersBlur = () => {
-    const value = form.getFieldValue('parameters')
+    const value = form.getValues('parameters')
     if (!value || !value.trim()) return
 
     try {
       const parsed = JSON.parse(value)
       const prettified = JSON.stringify(parsed, null, 2)
-      form.setFieldValue('parameters', prettified)
+      form.setValue('parameters', prettified)
     } catch (_error) {
       // Invalid JSON, leave as is - validation will show error
     }
@@ -193,95 +215,81 @@ export function AssistantFormDrawer() {
       footer={null}
     >
       <Form
+        data-testid="assistant-form"
         name="assistant-form"
         form={form}
         layout="vertical"
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canSave}
       >
-        <Form.Item
-          name="name"
-          label="Name"
-          rules={[
-            { required: true, message: 'Please enter a name' },
-            { max: 255, message: 'Name must be less than 255 characters' },
-          ]}
-        >
+        <FormField name="name" label="Name">
           <Input
+            data-testid="assistant-form-name"
             placeholder="Enter assistant name"
             aria-label="Assistant name"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
-          name="description"
-          label="Description"
-          rules={[
-            {
-              max: 1000,
-              message: 'Description must be less than 1000 characters',
-            },
-          ]}
-        >
-          <TextArea
+        <FormField name="description" label="Description">
+          <Textarea
+            data-testid="assistant-form-description"
             placeholder="Enter a brief description"
             rows={2}
             aria-label="Assistant description"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item name="instructions" label="Instructions">
-          <TextArea
+        <FormField name="instructions" label="Instructions">
+          <Textarea
+            data-testid="assistant-form-instructions"
             placeholder="Enter system instructions for the assistant"
             rows={6}
-            maxLength={65536}
-            showCount
             aria-label="Assistant instructions"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="parameters"
           label="Parameters"
-          extra="Model parameters in JSON format (e.g., temperature, max_tokens, top_p)"
-          rules={[{ validator: validateJSON }]}
+          description="Model parameters in JSON format (e.g., temperature, max_tokens, top_p)"
         >
-          <TextArea
+          <Textarea
+            data-testid="assistant-form-parameters"
             placeholder='{"temperature": 0.7, "max_tokens": 2048, "top_p": 0.9}'
             rows={6}
             aria-label="Model parameters in JSON format"
             onBlur={handleParametersBlur}
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="enabled"
           label="Enabled"
           valuePropName="checked"
-          extra="Whether this assistant is enabled"
+          description="Whether this assistant is enabled"
         >
-          <Switch />
-        </Form.Item>
+          <Switch data-testid="assistant-form-enabled" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="is_default"
           label="Set as Default"
           valuePropName="checked"
-          extra={
+          description={
             isTemplate
               ? 'Set as the default template assistant for all users'
               : 'Set as your default assistant'
           }
         >
-          <Switch />
-        </Form.Item>
+          <Switch data-testid="assistant-form-default" />
+        </FormField>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button onClick={handleClose} disabled={loading}>
+          <Button data-testid="assistant-form-cancel" variant="outline" onClick={handleClose} disabled={loading}>
             {canSave ? 'Cancel' : 'Close'}
           </Button>
           {canSave && (
-            <Button type="primary" htmlType="submit" loading={loading}>
+            <Button data-testid="assistant-form-submit" type="submit" loading={loading}>
               {editingAssistant ? 'Save' : 'Create'}
             </Button>
           )}

@@ -1,9 +1,7 @@
-import { Button, Space, Typography } from 'antd'
-import { LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { Button, Space, Text } from '@/components/ui'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
-
-const { Text } = Typography
 
 /**
  * Core component rendered via MessageContext in ChatMessage.
@@ -41,10 +39,10 @@ export function BranchNavigator() {
   return (
     <Space size={2} data-testid="branch-navigator">
       <Button
-        type="text"
-        size="small"
-        aria-label="Previous branch"
-        icon={<LeftOutlined />}
+        data-testid="chat-branch-prev-btn"
+        variant="ghost"
+        size="sm"
+        icon={<ChevronLeft />}
         disabled={displayIndex === 0}
         onClick={() => goTo(displayIndex - 1)}
       />
@@ -52,10 +50,10 @@ export function BranchNavigator() {
         {displayIndex + 1} / {total}
       </Text>
       <Button
-        type="text"
-        size="small"
-        aria-label="Next branch"
-        icon={<RightOutlined />}
+        data-testid="chat-branch-next-btn"
+        variant="ghost"
+        size="sm"
+        icon={<ChevronRight />}
         disabled={displayIndex === total - 1}
         onClick={() => goTo(displayIndex + 1)}
       />

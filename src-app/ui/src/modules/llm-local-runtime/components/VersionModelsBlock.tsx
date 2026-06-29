@@ -1,24 +1,17 @@
 import { useEffect, useState } from 'react'
 import {
-  Badge,
+  Accordion,
   Button,
-  Collapse,
   Descriptions,
   Empty,
   Flex,
   Select,
   Space,
   Tag,
+  Text,
   Tooltip,
-  Typography,
-} from 'antd'
-import {
-  DownOutlined,
-  PlayCircleOutlined,
-  PoweroffOutlined,
-  ReloadOutlined,
-  UpOutlined,
-} from '@ant-design/icons'
+} from '@/components/ui'
+import { ChevronDown, CirclePlay, Power, RotateCw, ChevronUp } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { RuntimeEngine } from '../types'
 import { LiveLogsPanel } from './LiveLogsPanel'
@@ -69,19 +62,15 @@ export function VersionModelsBlock({
 }) {
   const groups = groupByProvider(models)
   const label = (
-    <Typography.Text type="secondary" className="text-xs">
+    <Text type="secondary" className="text-xs">
       Models using this version ({models.length})
-    </Typography.Text>
+    </Text>
   )
   return (
-    <Collapse
+    <Accordion
       ghost
-      size="small"
-      // Default open: an operator scrolling the Installed versions
-      // card usually wants to see which models pin each version
-      // (especially when deciding whether to delete a version). They
-      // can always collapse to tidy up.
-      defaultActiveKey="models"
+      defaultValue="models"
+      data-testid={`llmrt-version-models-${versionId}`}
       items={[
         {
           key: 'models',
@@ -90,15 +79,15 @@ export function VersionModelsBlock({
             models.length === 0 ? (
               <Empty
                 description="No models use this version — safe to delete"
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                data-testid={`llmrt-version-models-empty-${versionId}`}
               />
             ) : (
-              <Flex vertical gap="small">
+              <Flex direction="column" gap="small">
                 {groups.map(group => (
-                  <Flex vertical gap="small" key={group.providerId}>
-                    <Typography.Text type="secondary" className="text-xs">
+                  <Flex direction="column" gap="small" key={group.providerId}>
+                    <Text type="secondary" className="text-xs">
                       {group.providerName}
-                    </Typography.Text>
+                    </Text>
                     {group.models.map(m => (
                       <ModelRow
                         key={m.id}
@@ -148,12 +137,12 @@ function ModelRow({
   }, [expanded, model.running, model.id])
 
   return (
-    <Flex vertical gap="small" className="py-1">
-      <Flex align="center" justify="space-between" gap="small">
+    <Flex direction="column" gap="small" className="py-1">
+      <Flex align="center" justify="between" gap="small">
         <Space>
-          <Badge status={model.running ? 'processing' : 'default'} />
+          <span className={`inline-block size-2 rounded-full ${model.running ? 'bg-primary' : 'bg-muted-foreground/40'}`} aria-hidden />
           <span>{model.display_name}</span>
-          {!model.pinned && <Tag color="default">inherited</Tag>}
+          {!model.pinned && <Tag tone="default" data-testid={`llmrt-model-inherited-tag-${model.id}`}>inherited</Tag>}
         </Space>
         <Space>
           {canManage && (
@@ -167,6 +156,7 @@ function ModelRow({
               >
                 <Select
                   className="min-w-[180px]"
+                  data-testid={`llmrt-model-version-select-${model.id}`}
                   value={versionId}
                   options={versionOptions}
                   loading={busy}
@@ -186,7 +176,8 @@ function ModelRow({
               {model.running ? (
                 <>
                   <Button
-                    icon={<ReloadOutlined />}
+                    icon={<RotateCw />}
+                    data-testid={`llmrt-model-restart-${model.id}`}
                     loading={busy}
                     onClick={() =>
                       Stores.RuntimeModelUsage.restartModel(engine, model.id).catch(
@@ -197,8 +188,9 @@ function ModelRow({
                     Restart
                   </Button>
                   <Button
-                    danger
-                    icon={<PoweroffOutlined />}
+                    variant="destructive"
+                    icon={<Power />}
+                    data-testid={`llmrt-model-stop-${model.id}`}
                     loading={busy}
                     onClick={() =>
                       Stores.RuntimeModelUsage.stopModel(engine, model.id).catch(
@@ -211,7 +203,8 @@ function ModelRow({
                 </>
               ) : (
                 <Button
-                  icon={<PlayCircleOutlined />}
+                  icon={<CirclePlay />}
+                  data-testid={`llmrt-model-start-${model.id}`}
                   loading={busy}
                   onClick={() =>
                     Stores.RuntimeModelUsage.startModel(engine, model.id).catch(
@@ -226,8 +219,9 @@ function ModelRow({
           )}
           {model.running && canViewLogs && (
             <Button
-              type="text"
-              icon={expanded ? <UpOutlined /> : <DownOutlined />}
+              variant="ghost"
+              data-testid={`llmrt-model-logs-${model.id}`}
+              icon={expanded ? <ChevronUp /> : <ChevronDown />}
               onClick={() => setExpanded(e => !e)}
               aria-label={
                 expanded
@@ -243,26 +237,35 @@ function ModelRow({
       </Flex>
 
       {expanded && model.running && (
-        <Flex vertical gap="small" className="pl-6">
+        <Flex direction="column" gap="small" className="pl-6">
           {instance && (
-            <Descriptions size="small" column={2}>
-              <Descriptions.Item label="Status">{instance.status}</Descriptions.Item>
-              <Descriptions.Item label="Port">{instance.local_port}</Descriptions.Item>
-              <Descriptions.Item label="Base URL">{instance.base_url}</Descriptions.Item>
-              <Descriptions.Item label="Started">
-                {instance.started_at
-                  ? new Date(instance.started_at).toLocaleString()
-                  : '—'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Last health check">
-                {instance.last_health_check
-                  ? new Date(instance.last_health_check).toLocaleString()
-                  : '—'}
-              </Descriptions.Item>
-              {instance.error_message && (
-                <Descriptions.Item label="Error">{instance.error_message}</Descriptions.Item>
-              )}
-            </Descriptions>
+            <Descriptions
+              size="sm"
+              column={2}
+              data-testid={`llmrt-model-instance-desc-${model.id}`}
+              items={[
+                { key: 'status', label: 'Status', children: instance.status },
+                { key: 'port', label: 'Port', children: instance.local_port },
+                { key: 'baseUrl', label: 'Base URL', children: instance.base_url },
+                {
+                  key: 'started',
+                  label: 'Started',
+                  children: instance.started_at
+                    ? new Date(instance.started_at).toLocaleString()
+                    : '—',
+                },
+                {
+                  key: 'health',
+                  label: 'Last health check',
+                  children: instance.last_health_check
+                    ? new Date(instance.last_health_check).toLocaleString()
+                    : '—',
+                },
+                ...(instance.error_message
+                  ? [{ key: 'error', label: 'Error', children: instance.error_message }]
+                  : []),
+              ]}
+            />
           )}
           <LiveLogsPanel modelId={model.id} />
         </Flex>

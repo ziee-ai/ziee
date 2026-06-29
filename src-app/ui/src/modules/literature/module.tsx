@@ -1,4 +1,4 @@
-import { FileSearchOutlined } from '@ant-design/icons'
+import { FileSearch } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -47,7 +47,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'literature',
-        icon: <FileSearchOutlined />,
+        icon: <FileSearch />,
         label: 'Literature Search',
         path: 'literature',
         // 29: unused, adjacent to the connected-tools cluster (code-sandbox 26,

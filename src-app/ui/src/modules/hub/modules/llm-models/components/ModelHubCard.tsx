@@ -1,28 +1,16 @@
+import { LayoutGrid, Download, CircleAlert, Eye, FileText, Key, Lock, MessageSquare, Image, RotateCw, Search, Wrench } from 'lucide-react'
 import {
-  App,
   Card,
   Progress,
   Tag,
-  Typography,
+  Text,
   Button,
   Flex,
   Select,
   Tooltip,
-} from 'antd'
-import {
-  AppstoreOutlined,
-  DownloadOutlined,
-  ExclamationCircleOutlined,
-  EyeOutlined,
-  FileTextOutlined,
-  KeyOutlined,
-  LockOutlined,
-  MessageOutlined,
-  PictureOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-  ToolOutlined,
-} from '@ant-design/icons'
+  message,
+  dialog,
+} from '@/components/ui'
 import { formatSpeed, formatTime } from '@/utils/downloadUtils'
 import {
   Permissions,
@@ -38,14 +26,11 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { useHubModelDownloadGate } from '@/modules/hub/modules/llm-models/hooks/useHubModelDownloadGate'
 
-const { Text } = Typography
-
 interface ModelHubCardProps {
   model: HubModel
 }
 
 export function ModelHubCard({ model }: ModelHubCardProps) {
-  const { message, modal } = App.useApp()
   const [showDetails, setShowDetails] = useState(false)
   const canDownload = usePermission(Permissions.HubModelsCreate)
 
@@ -170,69 +155,49 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
     if (!skipQuantModal && sourceQuants.length > 1) {
       selectedQuantization = defaultQuant ?? sourceQuants[0]
 
-      await new Promise<void>(resolve => {
-        let m = modal.info({
-          icon: null,
-          footer: null,
-          title: 'Select Quantization',
-          closable: false,
-          onCancel: () => {
-            selectedQuantization = undefined
-            resolve()
-          },
-          content: (
-            <div className="flex flex-col gap-2">
-              <Text>
-                Multiple quantization options available. Please select one:
-              </Text>
-              <Select
-                options={sourceQuants.map(option => ({
-                  label: (
-                    <div className="flex flex-col">
-                      <Text strong>{option.name.toUpperCase()}</Text>
-                      <Text type="secondary" className="text-xs">
-                        {option.mainFile} · {option.sizeGb} GB
-                      </Text>
-                    </div>
-                  ),
-                  value: option.name,
-                }))}
-                defaultValue={selectedQuantization?.name}
-                onChange={value => {
-                  selectedQuantization = sourceQuants.find(
-                    opt => opt.name === value,
-                  )
-                }}
-                placeholder="Select quantization"
-                optionRender={option => option.label}
-                labelRender={props => (
-                  <Text strong>{props.value?.toString().toUpperCase()}</Text>
-                )}
-              />
-              <Flex className={'gap-2 w-full justify-end'}>
-                <Button
-                  onClick={() => {
-                    selectedQuantization = undefined
-                    m.destroy()
-                    resolve()
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="primary"
-                  onClick={() => {
-                    resolve()
-                    m.destroy()
-                  }}
-                >
-                  Continue
-                </Button>
-              </Flex>
-            </div>
-          ),
-        })
+      const ok = await dialog.confirm({
+        title: 'Select Quantization',
+        okText: 'Continue',
+        cancelText: 'Cancel',
+        description: (
+          <div className="flex flex-col gap-2">
+            <Text>
+              Multiple quantization options available. Please select one:
+            </Text>
+            <Select
+              data-testid="hub-model-quant-select"
+              options={sourceQuants.map(option => ({
+                label: (
+                  <div className="flex flex-col">
+                    <Text strong>{option.name.toUpperCase()}</Text>
+                    <Text type="secondary" className="text-xs">
+                      {option.mainFile} · {option.sizeGb} GB
+                    </Text>
+                  </div>
+                ),
+                value: option.name,
+              }))}
+              defaultValue={selectedQuantization?.name}
+              onChange={value => {
+                selectedQuantization = sourceQuants.find(
+                  opt => opt.name === value,
+                )
+              }}
+              placeholder="Select quantization"
+              optionRender={option => option.label}
+              labelRender={option => (
+                <Text strong>
+                  {String(option?.value ?? '').toUpperCase()}
+                </Text>
+              )}
+            />
+          </div>
+        ),
       })
+
+      if (!ok) {
+        selectedQuantization = undefined
+      }
 
       if (!selectedQuantization) {
         return
@@ -240,57 +205,35 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
     }
 
     if (!skipProviderModal && localProviders.length > 1) {
-      await new Promise<void>(resolve => {
-        let m = modal.info({
-          icon: null,
-          footer: null,
-          title: 'Select Local Provider',
-          closable: false,
-          onCancel: () => {
-            provider = undefined
-            resolve()
-          },
-          content: (
-            <div className="flex flex-col gap-2">
-              <Text>
-                Multiple local providers found. Please select one to download
-                the model:
-              </Text>
-              <Select
-                options={localProviders.map(p => ({
-                  label: p.name,
-                  value: p.id,
-                }))}
-                defaultValue={localProviders[0].id}
-                onChange={value => {
-                  provider = localProviders.find(p => p.id === value)!
-                }}
-                placeholder="Select a provider"
-              />
-              <Flex className={'gap-2 w-full justify-end'}>
-                <Button
-                  onClick={() => {
-                    provider = undefined
-                    m.destroy()
-                    resolve()
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="primary"
-                  onClick={() => {
-                    resolve()
-                    m.destroy()
-                  }}
-                >
-                  Continue
-                </Button>
-              </Flex>
-            </div>
-          ),
-        })
+      const ok = await dialog.confirm({
+        title: 'Select Local Provider',
+        okText: 'Continue',
+        cancelText: 'Cancel',
+        description: (
+          <div className="flex flex-col gap-2">
+            <Text>
+              Multiple local providers found. Please select one to download
+              the model:
+            </Text>
+            <Select
+              data-testid="hub-model-provider-select"
+              options={localProviders.map(p => ({
+                label: p.name,
+                value: p.id,
+              }))}
+              defaultValue={localProviders[0].id}
+              onChange={value => {
+                provider = localProviders.find(p => p.id === value)!
+              }}
+              placeholder="Select a provider"
+            />
+          </div>
+        ),
       })
+
+      if (!ok) {
+        provider = undefined
+      }
     }
 
     if (!provider) {
@@ -338,25 +281,25 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
                 <Flex className="gap-2 items-center">
-                  <AppstoreOutlined />
+                  <LayoutGrid />
                   <Text className="font-medium cursor-pointer">
                     {model.display_name}
                   </Text>
                   {/* v2 per-entry version — see AssistantHubCard. */}
                   {model.version && (
-                    <Tag className="text-xs !m-0">v{model.version}</Tag>
+                    <Tag className="text-xs !m-0" data-testid={`hub-model-version-tag-${model.name}`}>v{model.version}</Tag>
                   )}
                   {/* Top status tag — minimal, no percent (the
                       full-width bar at the bottom carries that).
                       Precedence: active > downloaded > failed. */}
                   {isModelBeingDownloaded ? (
-                    <Tag color="blue" icon={<DownloadOutlined />}>
+                    <Tag tone="info" icon={<Download />} data-testid={`hub-model-status-tag-${model.name}`}>
                       Downloading
                     </Tag>
                   ) : isModelDownloaded ? (
-                    <Tag color="geekblue-inverse">Downloaded</Tag>
+                    <Tag tone="info" variant="solid" data-testid={`hub-model-status-tag-${model.name}`}>Downloaded</Tag>
                   ) : failedDownload ? (
-                    <Tag color="error" icon={<ExclamationCircleOutlined />}>
+                    <Tag tone="error" icon={<CircleAlert />} data-testid={`hub-model-status-tag-${model.name}`}>
                       Download Failed
                     </Tag>
                   ) : null}
@@ -369,12 +312,13 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       }
                     >
                       <Tag
-                        color={model.source_auth_configured ? 'orange' : 'volcano'}
+                        data-testid={`hub-model-auth-tag-${model.name}`}
+                        tone={model.source_auth_configured ? 'warning' : 'error'}
                         icon={
                           model.source_auth_configured ? (
-                            <LockOutlined />
+                            <Lock />
                           ) : (
-                            <KeyOutlined />
+                            <Key />
                           )
                         }
                       >
@@ -394,7 +338,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     (the seed always sets one). */}
                 {model.repository?.url || primarySource ? (
                   <Button
-                    icon={<FileTextOutlined />}
+                    variant="outline"
+                    icon={<FileText />}
+                    data-testid={`hub-model-readme-btn-${model.name}`}
                     onClick={e => {
                       e.stopPropagation()
                       const fallback =
@@ -413,8 +359,8 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                 ) : null}
                 {canDownload && !failedDownload && (
                   <Button
-                    type="primary"
-                    icon={<DownloadOutlined />}
+                    icon={<Download />}
+                    data-testid={`hub-model-download-btn-${model.name}`}
                     onClick={e => {
                       e.stopPropagation()
                       handleDownload()
@@ -448,61 +394,63 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   <Text type="secondary" className="text-xs mr-2">
                     Capabilities:
                   </Text>
-                  <Flex
-                    wrap
-                    className="gap-1"
-                    style={{ display: 'inline-flex' }}
-                  >
+                  <Flex wrap inline className="gap-1">
                     {model.capabilities.vision && (
                       <Tag
-                        color="purple"
-                        icon={<EyeOutlined />}
+                        tone="info"
+                        icon={<Eye />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-vision-tag-${model.name}`}
                       >
                         Vision
                       </Tag>
                     )}
                     {model.capabilities.tools && (
                       <Tag
-                        color="blue"
-                        icon={<ToolOutlined />}
+                        tone="info"
+                        icon={<Wrench />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-tools-tag-${model.name}`}
                       >
                         Tools
                       </Tag>
                     )}
                     {model.capabilities.code_interpreter && (
                       <Tag
-                        color="orange"
-                        icon={<AppstoreOutlined />}
+                        tone="warning"
+                        icon={<LayoutGrid />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-code-tag-${model.name}`}
                       >
                         Code
                       </Tag>
                     )}
                     {model.capabilities.chat && (
                       <Tag
-                        color="green"
-                        icon={<MessageOutlined />}
+                        tone="success"
+                        icon={<MessageSquare />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-chat-tag-${model.name}`}
                       >
                         Chat
                       </Tag>
                     )}
                     {model.capabilities.text_embedding && (
                       <Tag
-                        color="cyan"
-                        icon={<SearchOutlined />}
+                        tone="info"
+                        icon={<Search />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-embedding-tag-${model.name}`}
                       >
                         Embedding
                       </Tag>
                     )}
                     {model.capabilities.image_generator && (
                       <Tag
-                        color="magenta"
-                        icon={<PictureOutlined />}
+                        tone="error"
+                        icon={<Image />}
                         className="text-xs"
+                        data-testid={`hub-model-cap-image-tag-${model.name}`}
                       >
                         Image Gen
                       </Tag>
@@ -517,13 +465,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   <Text type="secondary" className="text-xs mr-2">
                     Tags:
                   </Text>
-                  <Flex
-                    wrap
-                    className="gap-1"
-                    style={{ display: 'inline-flex' }}
-                  >
+                  <Flex wrap inline className="gap-1">
                     {model.tags.map(tag => (
-                      <Tag key={tag} color="default" className="text-xs">
+                      <Tag key={tag} className="text-xs" data-testid={`hub-model-card-tag-${model.name}-${tag}`}>
                         {tag}
                       </Tag>
                     ))}
@@ -578,11 +522,10 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
          * Spans the full width of the card body (the wrapping
          * `<div>`s above each have padding; the Card's own
          * `body` padding bounds this). Shows EITHER:
-         *   - an animated `status="active"` bar while a download
-         *     is in flight, with `47% · 5.2 MB/s · ETA 2m 15s`
-         *     style info on the right
-         *   - a red `status="exception"` bar on failure, with the
-         *     clipped error reason inline + a Retry button below
+         *   - an animated bar while a download is in flight, with
+         *     `47% · 5.2 MB/s · ETA 2m 15s` style info on the right
+         *   - a red error bar on failure, with the clipped error
+         *     reason inline + a Retry button below
          *
          * Hidden when no download is active or failed (precedence
          * rules above + isModelDownloaded for the success case).
@@ -597,7 +540,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
             }}
           >
             <Progress
-              percent={
+              data-testid={`hub-model-progress-${model.name}`}
+              aria-label="Download progress"
+              value={
                 activeDownload.progress_data?.total
                   ? Math.round(
                       (activeDownload.progress_data.current /
@@ -606,8 +551,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     )
                   : 0
               }
-              status="active"
-              format={(percent?: number) => {
+              tone="primary"
+              showInfo
+              format={(percent: number) => {
                 const speed = activeDownload.progress_data?.speed_bps
                 const eta = activeDownload.progress_data?.eta_seconds
                 const parts: string[] = [`${percent ?? 0}%`]
@@ -647,7 +593,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               title={failedDownload.error_message ?? 'Download failed'}
             >
               <Progress
-                percent={
+                data-testid={`hub-model-failed-progress-${model.name}`}
+                aria-label="Download progress"
+                value={
                   failedDownload.progress_data?.total
                     ? Math.round(
                         ((failedDownload.progress_data.current ?? 0) /
@@ -656,8 +604,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       )
                     : 0
                 }
-                status="exception"
-                format={(percent?: number) => {
+                tone="error"
+                showInfo
+                format={(percent: number) => {
                   const reason = failedDownload.error_message ?? 'failed'
                   // Clip the inline reason at ~50 chars; the full
                   // text lives in the wrapping Tooltip's title.
@@ -674,8 +623,10 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
             {canDownload && (
               <div className="flex justify-end mt-1">
                 <Button
-                  size="small"
-                  icon={<ReloadOutlined />}
+                  variant="outline"
+                  size="sm"
+                  icon={<RotateCw />}
+                  data-testid={`hub-model-retry-btn-${model.name}`}
                   onClick={e => {
                     e.stopPropagation()
                     // Reuse the existing gates-and-probe pre-flight

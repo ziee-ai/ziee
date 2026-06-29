@@ -1,29 +1,27 @@
-import { useEffect } from 'react'
-import { Input, Form } from 'antd'
+import { useEffect, useRef } from 'react'
+import { Textarea } from '@/components/ui'
 import { Stores } from '@/core/stores'
-
-const { TextArea } = Input
 
 /**
  * TextInput Component
  * Self-contained text input for chat messages
  *
  * Features:
- * - Creates its own Form instance (no parent dependency)
+ * - Uses an uncontrolled ref for imperative get/set/clear access
  * - Registers getter/clearer functions with TextStore for external access
  * - Handles keyboard shortcuts (Enter to send, Shift+Enter for new line)
- * - Form stays local (not frozen by immer), functions provide external access
+ * - Ref stays local (not frozen by immer), functions provide external access
  */
 export function TextInput() {
-  const [form] = Form.useForm()
+  const ref = useRef<HTMLTextAreaElement>(null)
   const { sending } = Stores.Chat
   const {setGetMessage, setSetMessage, setClearMessage} = Stores.Chat.TextStore
 
   // Register getter/setter/clearer functions with TextStore on mount
   useEffect(() => {
-    setGetMessage(() => form.getFieldValue('message') || '')
-    setSetMessage((text: string) => form.setFieldValue('message', text))
-    setClearMessage(() => form.setFieldValue('message', ''))
+    setGetMessage(() => ref.current?.value ?? '')
+    setSetMessage((text: string) => { if (ref.current) ref.current.value = text })
+    setClearMessage(() => { if (ref.current) ref.current.value = '' })
   }, [setGetMessage, setSetMessage, setClearMessage])
 
   const handleKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -38,19 +36,16 @@ export function TextInput() {
 
   return (
     <div className="w-full">
-      <Form name="chat-text-input" form={form} initialValues={{ message: '' }}>
-        <Form.Item name="message" className="mb-0" noStyle>
-          <TextArea
-            aria-label="Message"
-            onKeyDown={handleKeyDown}
-            placeholder="Type your message..."
-            autoSize={{ minRows: 2, maxRows: 8 }}
-            disabled={sending}
-            className="resize-none !border-none focus:!border-none focus:!outline-none focus:!shadow-none !pt-1"
-            style={{ backgroundColor: 'transparent', fontSize: 16 }}
-          />
-        </Form.Item>
-      </Form>
+      <Textarea
+        data-testid="chat-message-textarea"
+        ref={ref}
+        onKeyDown={handleKeyDown}
+        placeholder="Type your message..."
+        autoSize={{ minRows: 2, maxRows: 8 }}
+        disabled={sending}
+        defaultValue=""
+        className="resize-none !border-none focus:!border-none focus:!outline-none focus:!shadow-none !pt-1 bg-transparent text-base"
+      />
     </div>
   )
 }

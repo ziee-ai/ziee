@@ -1,4 +1,4 @@
-import { ApiOutlined } from '@ant-design/icons'
+import { Plug } from 'lucide-react'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -36,7 +36,7 @@ export default createModule({
     settingsUserPages: [
       {
         id: 'user-llm-providers',
-        icon: <ApiOutlined />,
+        icon: <Plug />,
         label: 'LLM Providers',
         path: 'user-llm-providers',
         order: 15,

@@ -1,10 +1,8 @@
+import { Database, Pencil } from 'lucide-react'
 import { useEffect } from 'react'
-import { Button, Card, Flex, Space, Tag, Typography, Spin } from 'antd'
-import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
+import { Button, Card, Flex, Space, Tag, Text, Spin } from '@/components/ui'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 /**
  * Widget that displays LLM Providers assigned to a group.
@@ -32,25 +30,26 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   }
 
   return (
-    <Card data-widget="llm-providers" data-group-id={group.id}>
-      <Flex vertical gap="small" style={{ width: '100%' }}>
+    <Card data-widget="llm-providers" data-group-id={group.id} data-testid={`llm-provider-group-widget-card-${group.id}`}>
+      <Flex vertical gap="small" className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
           <Space size="small">
-            <DatabaseOutlined className="text-blue-500" aria-hidden="true" />
+            <Database className="text-primary" aria-hidden="true" />
             <Text strong>LLM Providers</Text>
             {loading ? (
-              <Spin size="small" />
+              <Spin size="sm" label="Loading" />
             ) : (
               <Text type="secondary">({providers.length})</Text>
             )}
           </Space>
           <Button
-            size="small"
-            type="link"
-            icon={<EditOutlined aria-hidden="true" />}
+            size="sm"
+            variant="link"
+            icon={<Pencil aria-hidden="true" />}
             onClick={handleEdit}
             aria-label={`Edit LLM Providers for ${group.name}`}
+            data-testid={`llm-provider-group-widget-edit-btn-${group.id}`}
           >
             Edit
           </Button>
@@ -58,15 +57,15 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
 
         {/* Content */}
         {error ? (
-          <Text type="danger" style={{ fontSize: '12px' }}>
+          <Text type="danger" className="text-xs">
             {error}
           </Text>
         ) : loading ? (
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text type="secondary" className="text-xs">
             Loading providers...
           </Text>
         ) : providers.length === 0 ? (
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text type="secondary" className="text-xs">
             No providers assigned
           </Text>
         ) : (
@@ -74,8 +73,9 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
             {providers.map(provider => (
               <Tag
                 key={provider.id}
-                color={provider.enabled ? 'blue' : 'default'}
-                style={{ fontSize: '11px' }}
+                tone={provider.enabled ? 'info' : undefined}
+                className="text-xs"
+                data-testid={`llm-provider-group-widget-tag-${provider.id}`}
               >
                 {provider.name}
                 {provider.built_in && ' (Built-in)'}

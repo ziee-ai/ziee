@@ -1,4 +1,4 @@
-import { CloudServerOutlined } from '@ant-design/icons'
+import { Server } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -89,7 +89,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'llm-runtime',
-        icon: <CloudServerOutlined />,
+        icon: <Server />,
         label: 'Local Runtimes',
         // SettingsPage prepends /settings/ to the slot key, so this MUST be
         // a relative segment. The previous absolute path produced

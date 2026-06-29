@@ -1,0 +1,19 @@
+language js
+
+// App code must use the kit (a11y name + data-testid enforced there) instead of
+// raw interactive DOM elements. Scoped to app code via biome.json overrides
+// (kit/ and shadcn/ are excluded — they legitimately render the raw elements).
+or {
+  `<button $props>$children</button>` as $node,
+  `<button $props />` as $node,
+  `<input $props>$children</input>` as $node,
+  `<input $props />` as $node,
+  `<select $props>$children</select>` as $node,
+  `<textarea $props>$children</textarea>` as $node,
+  `<textarea $props />` as $node
+} where {
+  register_diagnostic(
+    span = $node,
+    message = "Use the kit equivalent (Button/Input/Select/Textarea) from '@/components/ui' instead of a raw interactive element — the kit enforces accessible names + data-testid."
+  )
+}

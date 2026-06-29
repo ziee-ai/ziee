@@ -1,4 +1,4 @@
-import { Card } from 'antd'
+import { Card } from '@/components/ui'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -43,25 +43,25 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
   }
 
   return (
-    <Card
-      title="Downloading Models"
-      classNames={{ body: 'flex flex-col gap-3' }}
-    >
-      {providerDownloads.map(download => (
-        <div key={download.id}>
-          <DownloadItem
-            download={download}
-            mode="full"
-            onCancel={
-              canCancel ? () => handleCancelDownload(download.id) : undefined
-            }
-            onClose={
-              canDelete ? () => handleCloseDownload(download.id) : undefined
-            }
-            onViewDetails={() => handleViewDetails(download.id)}
-          />
-        </div>
-      ))}
+    <Card title="Downloading Models" data-testid="llm-downloads-section-card">
+      {/* flex gap on the body wrapper (kit Card className lands on the root, not the body). */}
+      <div className="flex flex-col gap-3">
+        {providerDownloads.map(download => (
+          <div key={download.id}>
+            <DownloadItem
+              download={download}
+              mode="full"
+              onCancel={
+                canCancel ? () => handleCancelDownload(download.id) : undefined
+              }
+              onClose={
+                canDelete ? () => handleCloseDownload(download.id) : undefined
+              }
+              onViewDetails={() => handleViewDetails(download.id)}
+            />
+          </div>
+        ))}
+      </div>
     </Card>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { App, Button, Dropdown, theme } from 'antd'
-import { SendOutlined, PlusOutlined } from '@ant-design/icons'
+import { Button, Popover, message } from '@/components/ui'
+import { Plus, Send as SendIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
@@ -21,8 +22,6 @@ export function ChatInput({
   className = '',
   style,
 }: ChatInputProps) {
-  const { message } = App.useApp()
-  const { token } = theme.useToken()
   const [focused, setFocused] = useState(false)
   const [plusOpen, setPlusOpen] = useState(false)
 
@@ -55,19 +54,16 @@ export function ChatInput({
       <div
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        style={{
-          border: `1px solid ${focused ? token.colorPrimary : token.colorBorderSecondary}`,
-          borderRadius: token.borderRadiusLG,
-          backgroundColor: token.colorBgContainer,
-          transition: 'border-color 0.2s, box-shadow 0.2s',
-          boxShadow: focused ? `0 0 0 2px ${token.colorPrimaryBg}` : undefined,
-        }}
+        className={cn(
+          'rounded-lg bg-card border transition-colors',
+          focused ? 'border-primary ring-2 ring-accent' : 'border-border',
+        )}
       >
         {/* Edit mode indicator — shown when user is editing an existing message */}
         <EditingMessageBanner />
 
         {/* Input area */}
-        <div style={{ padding: '10px 12px 4px' }}>
+        <div className="px-3 pt-2.5 pb-1">
           {/* Extension slot: input area prefix (file previews, etc.) */}
           <ExtensionSlot name="input_area_prefix" />
 
@@ -79,42 +75,28 @@ export function ChatInput({
         </div>
 
         {/* Toolbar */}
-        <div
-          style={{
-            padding: '4px 8px 8px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
+        <div className="flex justify-between items-center px-2 pt-1 pb-2">
           {/* Left: + dropdown + other toolbar actions */}
           <div className="flex items-center gap-1">
-            <Dropdown
+            <Popover
               open={plusOpen}
               onOpenChange={setPlusOpen}
-              trigger={['click']}
-              popupRender={() => (
+              align="start"
+              side="top"
+              content={
                 <PlusDropdownContext.Provider value={{ close: () => setPlusOpen(false) }}>
-                  <div
-                    style={{
-                      backgroundColor: token.colorBgContainer,
-                      borderRadius: token.borderRadiusLG,
-                      boxShadow: token.boxShadowSecondary,
-                      padding: 4,
-                    }}
-                  >
-                    <ExtensionSlot name="toolbar_plus_items" className="flex flex-col" />
-                  </div>
+                  <ExtensionSlot name="toolbar_plus_items" className="flex flex-col" />
                 </PlusDropdownContext.Provider>
-              )}
+              }
             >
               <Button
-                icon={<PlusOutlined style={{ fontSize: 16 }} />}
-                type="text"
-                size="large"
+                data-testid="chat-input-add-btn"
+                icon={<Plus className="size-4" />}
+                variant="ghost"
+                size="lg"
                 aria-label="Add attachment"
               />
-            </Dropdown>
+            </Popover>
             <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1" />
           </div>
 
@@ -122,9 +104,9 @@ export function ChatInput({
           <div className="flex items-center gap-2">
             <ExtensionSlot name="toolbar_model" />
             <Button
-              type="primary"
-              size="large"
-              icon={<SendOutlined rotate={270} />}
+              data-testid="chat-input-send-btn"
+              size="lg"
+              icon={<SendIcon className="rotate-[270deg]" />}
               onClick={handleSend}
               disabled={sending || isStreaming || disabled || isBlockedByExtension}
               loading={sending || isStreaming || isBlockedByExtension}

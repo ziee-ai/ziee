@@ -51,7 +51,7 @@ interface LazyComponentRendererProps {
 
   /**
    * Custom fallback to show while lazy loading
-   * @default <Loading size="small" />
+   * @default <Loading size="sm" />
    */
   fallback?: ReactNode
 }
@@ -81,7 +81,7 @@ interface LazyComponentRendererProps {
 export function LazyComponentRenderer({
   component,
   props = {},
-  fallback = <Loading size="small" />,
+  fallback = <Loading size="sm" />,
 }: LazyComponentRendererProps) {
   // Check if it's a lazy function by checking if it's a function with 0 params
   // AND doesn't have React component characteristics (like a name or prototype properties)

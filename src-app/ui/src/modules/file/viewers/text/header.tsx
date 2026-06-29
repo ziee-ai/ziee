@@ -1,4 +1,4 @@
-import { Space } from 'antd'
+import { Space } from '@/components/ui'
 import { CopyButton, DownloadButton } from '../shared/chrome'
 import type { FileViewerSlotProps } from '../../types/viewer'
 

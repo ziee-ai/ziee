@@ -1,5 +1,5 @@
+import { FileSpreadsheet } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { FileExcelOutlined } from '@ant-design/icons'
 import { CsvBody, TsvBody, XlsxBody } from './body'
 import { DelimitedHeader, XlsxHeader } from './header'
 
@@ -13,7 +13,7 @@ export const viewers: FileViewerModule[] = [
       body: CsvBody,
       headerActions: DelimitedHeader,
       label: 'CSV',
-      icon: <FileExcelOutlined />,
+      icon: <FileSpreadsheet />,
       // Text-based delimited format; renders inline as a DelimitedTable.
       inline: true,
       // The DelimitedTable measures its container to size the virtual grid;
@@ -30,7 +30,7 @@ export const viewers: FileViewerModule[] = [
       body: TsvBody,
       headerActions: DelimitedHeader,
       label: 'TSV',
-      icon: <FileExcelOutlined />,
+      icon: <FileSpreadsheet />,
       inline: true,
       inlineFill: true,
     },
@@ -47,7 +47,7 @@ export const viewers: FileViewerModule[] = [
       body: XlsxBody,
       headerActions: XlsxHeader,
       label: 'Spreadsheet',
-      icon: <FileExcelOutlined />,
+      icon: <FileSpreadsheet />,
       // No `inline` — XLSX needs binary parsing + the xlsx library
       // (heavy dynamic import) + FileStore.fileBinaryContents. The
       // inline-context path doesn't have any of that. Defer.

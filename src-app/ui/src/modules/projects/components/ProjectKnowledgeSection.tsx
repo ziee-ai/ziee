@@ -1,35 +1,14 @@
-// Generic knowledge-section shell for the project detail page.
-//
-// Owns the dual-surface UX (inline preview on the page + full
-// management UI in a side drawer) without knowing about any specific
-// knowledge kind. The content is supplied by `<ProjectExtensionSlot>`,
-// which fans out to every registered knowledge-kind extension (file,
-// future URL/notes/etc.).
-//
-// Per the project↔file inversion: this file replaces the old
-// `ProjectFilesManageDrawer.tsx` shell. The projects module no longer
-// imports anything from `@/modules/file/`.
-
 import { useState } from 'react'
-import { Button, Spin, Typography } from 'antd'
+import { Button, Text } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@/core/stores'
 import {
   DrawerOpenerProvider,
   ProjectExtensionSlot,
 } from '@/modules/projects/core/extensions'
 
-const { Text } = Typography
-
 export function ProjectKnowledgeSection() {
   const [open, setOpen] = useState(false)
   const openDrawer = () => setOpen(true)
-  const loading = Stores.ProjectDetail.loading
-  const project = Stores.ProjectDetail.project
-
-  // Don't render anything when no project is loaded and nothing is loading
-  // (defense-in-depth — the parent page typically gates on this already).
-  if (!project && !loading) return null
 
   return (
     <DrawerOpenerProvider open={openDrawer}>
@@ -39,7 +18,8 @@ export function ProjectKnowledgeSection() {
       <div className="flex items-center mb-2">
         <Text strong>Project knowledge</Text>
         <Button
-          size="small"
+          data-testid="project-knowledge-manage-button"
+          size="sm"
           onClick={openDrawer}
           aria-label="Manage knowledge files"
           className="!ml-auto"
@@ -50,20 +30,12 @@ export function ProjectKnowledgeSection() {
 
       {/* Inline preview surface — stacks all kinds' inlinePreview
           components top-to-bottom (file today; URLs/notes/etc. in
-          the future). Shows a loading spinner while the project is
-          being fetched (child inline-preview components return null
-          when the project data is not yet ready). */}
+          the future). */}
       <div className="flex flex-col gap-4">
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Spin />
-          </div>
-        ) : (
-          <ProjectExtensionSlot
-            name="knowledge_kinds"
-            view="inlinePreview"
-          />
-        )}
+        <ProjectExtensionSlot
+          name="knowledge_kinds"
+          view="inlinePreview"
+        />
       </div>
 
       {/* Management drawer — stacks all kinds' managePanel components

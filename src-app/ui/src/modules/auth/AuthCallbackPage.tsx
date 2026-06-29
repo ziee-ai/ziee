@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Alert, Card, Layout, Typography } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { Alert, Card, Layout, Title } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 import { SESSION_RETURN_TO_KEY } from './constants'
 
 const { Content } = Layout
-const { Title } = Typography
 
 /**
  * True when `target` is a safe same-origin path. Strict: must start
@@ -151,17 +150,17 @@ export const AuthCallbackPage: React.FC = () => {
 
   return (
     <BlankLayoutComponent>
-      <Layout className="min-h-screen">
-        <Content className="flex items-center justify-center p-4">
-          <Card className="w-full max-w-md text-center">
+      <Layout data-testid="auth-callback-layout" className="min-h-screen">
+        <Content data-testid="auth-callback-content" className="flex items-center justify-center p-4">
+          <Card data-testid="auth-callback-card" className="w-full max-w-md text-center">
             {error ? (
               <>
                 <Title level={4}>Sign-in failed</Title>
-                <Alert type="error" title={error} showIcon className="my-3" />
-                <Link to="/auth">Return to login</Link>
+                <Alert data-testid="auth-callback-error" tone="error" title={error} className="my-3" />
+                <a href="/auth">Return to login</a>
               </>
             ) : (
-              <Loading tip="Completing sign-in…" />
+              <Loading description="Completing sign-in…" label="Completing sign-in" />
             )}
           </Card>
         </Content>

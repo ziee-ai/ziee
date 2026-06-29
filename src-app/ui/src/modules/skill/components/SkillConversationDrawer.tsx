@@ -1,4 +1,4 @@
-import { Modal } from 'antd'
+import { Dialog } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { ConversationSkillsPanel } from './ConversationSkillsPanel'
 import { SkillDetailDrawer } from './SkillDetailDrawer'
@@ -21,16 +21,18 @@ export function SkillConversationDrawer({
 
   return (
     <>
-      <Modal
+      <Dialog
         open={open}
-        onCancel={() => Stores.SkillConversationDrawer.closeDrawer()}
-        closable={{ closeIcon: true }}
+        data-testid="skill-conversation-dialog"
+        onOpenChange={(v) => {
+          if (!v) Stores.SkillConversationDrawer.closeDrawer()
+        }}
         title="Skills in this conversation"
         footer={null}
-        width={520}
+        className="!max-w-[520px]"
       >
         <ConversationSkillsPanel conversationId={conversationId} />
-      </Modal>
+      </Dialog>
       <SkillDetailDrawer />
     </>
   )

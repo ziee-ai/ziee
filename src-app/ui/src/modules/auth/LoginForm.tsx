@@ -1,22 +1,40 @@
-import { Alert, Button, Card, Form, Input, Modal, Typography } from 'antd'
-import { LockOutlined, UserOutlined } from '@ant-design/icons'
+import { z } from 'zod'
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  FormField,
+  Input,
+  PasswordInput,
+  Text,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { Lock, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { LoginRequest } from '@/api-client/types'
 import { ProviderButtons } from './ProviderButtons'
 
-const { Text } = Typography
-
 interface LoginFormProps {
   onSwitchToRegister?: () => void
 }
 
+const loginSchema = z.object({
+  username: z.string().min(1, 'Please input your username or email!'),
+  password: z.string().min(1, 'Please input your password!'),
+})
+
 export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
-  const [form] = Form.useForm()
+  const form = useForm<LoginRequest>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { username: '', password: '' },
+  })
   const { isLoading, error } = Stores.Auth
   const navigate = useNavigate()
 
-  const onFinish = async (values: LoginRequest) => {
+  const onSubmit = async (values: LoginRequest) => {
     try {
       Stores.Auth.clearAuthenticationError()
       await Stores.Auth.authenticateUser(values)
@@ -29,87 +47,49 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card data-testid="auth-login-card" className="w-full max-w-md mx-auto">
       {error && (
-        <div className="py-4" role="alert" aria-live="assertive">
+        <div className="py-4">
           <Alert
+            data-testid="auth-login-error"
             title={error}
-            type="error"
-            showIcon
-            closable={{ closeIcon: true, onClose: Stores.Auth.clearAuthenticationError }}
+            tone="error"
+            onClose={Stores.Auth.clearAuthenticationError}
+            closeLabel="Close"
           />
         </div>
       )}
 
-      <Form
-        form={form}
-        name="login"
-        onFinish={onFinish}
-        layout="vertical"
-        size="large"
-        autoComplete="off"
-      >
-        <Form.Item
-          label="Username or Email"
-          name="username"
-          rules={[
-            { required: true, message: 'Please input your username or email!' },
-          ]}
-        >
+      <Form data-testid="auth-login-form" form={form} name="login" onSubmit={onSubmit} layout="vertical" size="lg">
+        <FormField label="Username or Email" name="username">
           <Input
-            prefix={<UserOutlined />}
+            data-testid="auth-login-username"
+            prefix={<User />}
             placeholder="Enter your username or email"
             autoComplete="username"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
-          label="Password"
-          name="password"
-          rules={[{ required: true, message: 'Please input your password!' }]}
-        >
-          <Input.Password
-            prefix={<LockOutlined />}
+        <FormField label="Password" name="password">
+          <PasswordInput
+            data-testid="auth-login-password"
+            prefix={<Lock />}
             placeholder="Enter your password"
             autoComplete="current-password"
+            showLabel="Show password"
+            hideLabel="Hide password"
           />
-        </Form.Item>
+        </FormField>
 
-        <div className="text-right -mt-2 mb-2">
-          <Button
-            type="link"
-            className="p-0"
-            onClick={() =>
-              Modal.info({
-                title: 'Forgot your password?',
-                content:
-                  'Password recovery is handled by your administrator. ' +
-                  'Contact them to have your password reset — once reset, ' +
-                  'you can sign in and change it from Profile settings.',
-                okText: 'Got it',
-              })
-            }
-          >
-            Forgot password?
-          </Button>
-        </div>
-
-        <Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={isLoading}
-            className="w-full"
-          >
-            Sign In
-          </Button>
-        </Form.Item>
+        <Button data-testid="auth-login-submit" type="submit" loading={isLoading} className="w-full">
+          Sign In
+        </Button>
 
         {onSwitchToRegister && (
           <div className="text-center">
             <Text type="secondary">
               Don't have an account?{' '}
-              <Button type="link" onClick={onSwitchToRegister} className="p-0">
+              <Button data-testid="auth-login-switch-to-register" variant="link" onClick={onSwitchToRegister} className="p-0">
                 Sign Up
               </Button>
             </Text>

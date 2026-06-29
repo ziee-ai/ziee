@@ -1,21 +1,16 @@
+import { Trash2, Pencil, Plus, Upload } from 'lucide-react'
 import {
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-  UploadOutlined,
-} from '@ant-design/icons'
-import {
-  App,
   Button,
   Card,
-  Divider,
+  Separator,
   Dropdown,
   Empty,
   Flex,
   Switch,
   Tooltip,
-  Typography,
-} from 'antd'
+  Text,
+} from '@/components/ui'
+import { message } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useParams } from 'react-router-dom'
 import { useState } from 'react'
@@ -24,10 +19,7 @@ import { ApiClient } from '@/api-client'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type LlmModel } from '@/api-client/types'
 
-const { Text } = Typography
-
 export function LlmModelsSection() {
-  const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
   // Per-model in-flight flag for the local-runtime start/stop button.
   const [llmModelOperations, setLlmModelOperations] = useState<
@@ -175,6 +167,7 @@ export function LlmModelsSection() {
           checked={llmModel.enabled !== false}
           onChange={checked => handleToggleLlmModel(llmModel.id, checked)}
           aria-label={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
+          data-testid={`llm-model-enable-switch-${llmModel.id}`}
         />,
       )
     }
@@ -203,10 +196,11 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="edit"
-          type="text"
-          icon={<EditOutlined aria-hidden="true" />}
+          variant="ghost"
+          icon={<Pencil aria-hidden="true" />}
           onClick={() => handleEditLlmModel(llmModel.id)}
           aria-label={`Edit ${llmModel.display_name} model`}
+          data-testid={`llm-model-edit-btn-${llmModel.id}`}
         >
           {'Edit'}
         </Button>,
@@ -217,10 +211,11 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="delete"
-          type="text"
-          icon={<DeleteOutlined aria-hidden="true" />}
+          variant="ghost"
+          icon={<Trash2 aria-hidden="true" />}
           onClick={() => handleDeleteLlmModel(llmModel.id)}
           aria-label={`Delete ${llmModel.display_name} model`}
+          data-testid={`llm-model-delete-btn-${llmModel.id}`}
         >
           {'Delete'}
         </Button>,
@@ -237,35 +232,34 @@ export function LlmModelsSection() {
     if (currentProvider.provider_type === 'local') {
       return (
         <Dropdown
-          menu={{
-            items: [
-              {
-                key: 'upload',
-                label: 'Upload from Files',
-                icon: <UploadOutlined />,
-                onClick: () =>
-                  Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
-                    currentProvider.id,
-                  ),
-              },
-              {
-                key: 'download',
-                label: 'Download from Repository',
-                icon: <PlusOutlined />,
-                onClick: () =>
-                  Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
-                    currentProvider.id,
-                  ),
-              },
-            ],
-          }}
-          trigger={['click']}
+          data-testid="llm-models-add-dropdown"
+          items={[
+            {
+              key: 'upload',
+              label: 'Upload from Files',
+              icon: <Upload />,
+              onClick: () =>
+                Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
+                  currentProvider.id,
+                ),
+            },
+            {
+              key: 'download',
+              label: 'Download from Repository',
+              icon: <Plus />,
+              onClick: () =>
+                Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
+                  currentProvider.id,
+                ),
+            },
+          ]}
         >
-          <Tooltip title="Add model">
+          <Tooltip content="Add model">
             <Button
-              type="text"
-              icon={<PlusOutlined aria-hidden="true" />}
+              variant="ghost"
+              icon={<Plus aria-hidden="true" />}
               aria-label="Add model"
+              data-testid="llm-models-add-local-btn"
             />
           </Tooltip>
         </Dropdown>
@@ -273,12 +267,13 @@ export function LlmModelsSection() {
     }
 
     return (
-      <Tooltip title="Add model">
+      <Tooltip content="Add model">
         <Button
-          type="text"
-          icon={<PlusOutlined aria-hidden="true" />}
+          variant="ghost"
+          icon={<Plus aria-hidden="true" />}
           onClick={handleAddLlmModel}
           aria-label="Add model"
+          data-testid="llm-models-add-remote-btn"
         />
       </Tooltip>
     )
@@ -290,12 +285,12 @@ export function LlmModelsSection() {
   }
 
   return (
-    <Card title="Models" extra={getAddButton()}>
+    <Card title="Models" extra={getAddButton()} data-testid="llm-models-section-card">
       {loading ? (
         <Loading />
       ) : llmModels.length === 0 ? (
         <div>
-          <Empty description="No models yet" />
+          <Empty description="No models yet" data-testid="llm-models-empty" />
         </div>
       ) : (
         <div>
@@ -381,7 +376,7 @@ export function LlmModelsSection() {
                   </div>
                 </div>
               </div>
-              {index < llmModels.length - 1 && <Divider className="my-0" />}
+              {index < llmModels.length - 1 && <Separator className="my-0" />}
             </div>
           ))}
         </div>

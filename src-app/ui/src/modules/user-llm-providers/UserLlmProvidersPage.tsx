@@ -1,34 +1,31 @@
 import { useState, useEffect } from 'react'
 import {
-  App,
-  Typography,
-  Form,
-  Input,
   Button,
   Space,
   Spin,
   Alert,
   Tag,
   Flex,
-  Menu,
   Dropdown,
   Empty,
-} from 'antd'
-import { CheckCircleOutlined } from '@ant-design/icons'
+  Title,
+  Text,
+  Form,
+  FormField,
+  useForm,
+  PasswordInput,
+  Menu,
+} from '@/components/ui'
+import { CircleCheck } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
 import { Stores } from '@/core/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
-const { Title, Text } = Typography
-
-// Displayed in the input when a key is already saved — long enough to look like a real key
 const KEY_DISPLAY_PLACEHOLDER = '••••••••••••••••••••••••'
 
 export default function UserLlmProvidersPage() {
-  const { message } = App.useApp()
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [keyValue, setKeyValue] = useState('')
   const [savingFor, setSavingFor] = useState<string | null>(null)
 
   const providers = Stores.UserLlmProviders.providers
@@ -37,6 +34,11 @@ export default function UserLlmProvidersPage() {
   const error = Stores.UserLlmProviders.error
   const saving = Stores.UserLlmProviders.saving
   const windowMinSize = useWindowMinSize()
+
+  const form = useForm<{ apiKey: string }>({ defaultValues: { apiKey: '' } })
+  // Shadow the old state variable so downstream logic is unchanged
+  const keyValue = form.watch('apiKey') ?? ''
+  const setKeyValue = (v: string) => form.setValue('apiKey', v)
 
   // Set initial selected provider once providers load
   useEffect(() => {
@@ -62,9 +64,6 @@ export default function UserLlmProvidersPage() {
     setSavingFor(selectedId)
     try {
       await Stores.UserLlmProviders.saveKey(selectedId, key)
-      message.success('API key saved')
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Failed to save API key')
     } finally {
       setSavingFor(null)
     }
@@ -72,12 +71,7 @@ export default function UserLlmProvidersPage() {
 
   const handleDelete = async () => {
     if (!selectedId) return
-    try {
-      await Stores.UserLlmProviders.deleteKey(selectedId)
-      message.success('API key removed')
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Failed to remove API key')
-    }
+    await Stores.UserLlmProviders.deleteKey(selectedId)
   }
 
   const menuItems = providers.map(provider => {
@@ -88,7 +82,7 @@ export default function UserLlmProvidersPage() {
         <Flex className="flex-row gap-2 items-center h-full">
           <IconComponent className="text-lg" />
           <div className="flex-1 flex items-center h-full overflow-x-hidden">
-            <Typography.Text ellipsis>{provider.name}</Typography.Text>
+            <Text ellipsis>{provider.name}</Text>
           </div>
         </Flex>
       ),
@@ -97,34 +91,33 @@ export default function UserLlmProvidersPage() {
 
   const ProviderMenu = () => (
     <Menu
-      className={`
-        w-full h-full !m-0
-        [&_.ant-menu]:!px-0
-        [&_.ant-menu-item]:!h-8
-        [&_.ant-menu-item]:!leading-[32px]
-        !bg-transparent !border-none`}
-      selectedKeys={selectedId ? [selectedId] : []}
+      data-testid="ullm-provider-menu"
+      className="w-full h-full"
+      selectedKey={selectedId ?? undefined}
       items={menuItems}
-      onClick={({ key }) => setSelectedId(key)}
+      onSelect={(key) => setSelectedId(key)}
+      mode="vertical"
+      aria-label="Providers"
     />
   )
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-32">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
 
   if (error) {
-    return <Alert type="error" title={error} showIcon className="m-6" />
+    return <Alert tone="error" data-testid="ullm-error-alert" title={error} className="m-6" />
   }
 
   const renderContent = () => {
     if (providers.length === 0) {
       return (
         <Empty
+          data-testid="ullm-no-providers-empty"
           description={
             <span>
               No AI providers are available yet.
@@ -133,7 +126,6 @@ export default function UserLlmProvidersPage() {
               can configure keys here.
             </span>
           }
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )
     }
@@ -141,8 +133,8 @@ export default function UserLlmProvidersPage() {
     if (!currentProvider) {
       return (
         <Empty
+          data-testid="ullm-no-selection-empty"
           description="No provider selected"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )
     }
@@ -151,16 +143,16 @@ export default function UserLlmProvidersPage() {
 
     return (
       <div className="max-w-lg">
-        <Flex align="center" gap={10} className="mb-1">
+        <Flex align="center" gap="small" className="mb-1">
           <IconComponent className="text-2xl" />
           <Title level={4} className="!mb-0">
             {currentProvider.name}
           </Title>
-          <Tag color={hasUserKey ? 'green' : currentProvider.api_key_configured ? 'blue' : 'orange'}>
+          <Tag data-testid="ullm-key-status-tag" tone={hasUserKey ? 'success' : currentProvider.api_key_configured ? 'info' : 'warning'}>
             {hasUserKey ? (
-              <><CheckCircleOutlined /> Your key configured</>
+              <><CircleCheck /> Your key configured</>
             ) : currentProvider.api_key_configured ? (
-              <><CheckCircleOutlined /> Admin key configured</>
+              <><CircleCheck /> Admin key configured</>
             ) : (
               'No admin key'
             )}
@@ -171,20 +163,18 @@ export default function UserLlmProvidersPage() {
           Your personal key takes priority over the system key when making requests.
         </Text>
 
-        <Form layout="vertical">
-          <Form.Item label="Your API Key">
-            <Input.Password
-              value={keyValue}
-              onChange={e => setKeyValue(e.target.value)}
+        <Form form={form} data-testid="ullm-key-form" onSubmit={handleSave} layout="vertical">
+          <FormField name="apiKey" label="Your API Key">
+            <PasswordInput data-testid="ullm-key-password-input" showLabel="Show" hideLabel="Hide"
               onFocus={() => {
                 if (keyValue === KEY_DISPLAY_PLACEHOLDER) setKeyValue('')
               }}
               placeholder={hasUserKey ? 'Enter new key to replace' : 'Enter your API key (e.g. sk-...)'}
             />
-          </Form.Item>
+          </FormField>
           <Space>
             <Button
-              type="primary"
+              data-testid="ullm-save-key-button"
               onClick={handleSave}
               loading={savingFor === currentProvider.id || saving}
               disabled={!keyValue.trim() || keyValue === KEY_DISPLAY_PLACEHOLDER}
@@ -193,7 +183,8 @@ export default function UserLlmProvidersPage() {
             </Button>
             {hasUserKey && (
               <Button
-                danger
+                data-testid="ullm-remove-key-button"
+                variant="destructive"
                 onClick={handleDelete}
                 loading={savingFor === currentProvider.id}
               >
@@ -230,15 +221,12 @@ export default function UserLlmProvidersPage() {
             {windowMinSize.sm && providers.length > 0 && (
               <div className="w-full flex flex-row gap-2 items-center mb-4">
                 <Dropdown
-                  className="w-full"
-                  menu={{
-                    items: menuItems,
-                    onClick: ({ key }) => setSelectedId(key),
-                    selectedKeys: selectedId ? [selectedId] : [],
-                  }}
-                  trigger={['click']}
+                  data-testid="ullm-provider-dropdown"
+                  items={menuItems}
+                  onSelect={(key) => setSelectedId(key)}
+                  align="start"
                 >
-                  <Button className="w-fit" size="large">
+                  <Button className="w-fit" size="lg" data-testid="ullm-provider-dropdown-trigger">
                     {currentProvider ? (
                       <Flex className="gap-2 items-center">
                         {(() => {

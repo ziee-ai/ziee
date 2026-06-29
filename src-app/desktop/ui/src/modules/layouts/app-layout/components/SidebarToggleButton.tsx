@@ -15,7 +15,7 @@
  *   - Full ARIA wiring: aria-label, aria-expanded, aria-controls.
  */
 
-import { Button, Tooltip } from 'antd'
+import { Button, Tooltip } from '@/components/ui'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import { Stores } from '@/core/stores'
 import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
@@ -30,8 +30,6 @@ export function SidebarToggleButton() {
   // doesn't morph the chevron (28px button at every breakpoint,
   // 20px icon that fits inside it cleanly — prior 30px icon
   // overflowed the 24px button and showed an oversized hover bg).
-  const dimension = '28px'
-  const iconFontSize = '20px'
 
   // macOS Tauri traffic lights now start at x=20 (per
   // `backend/mod.rs`'s `traffic_light_position`), cluster width ~52px,
@@ -54,24 +52,19 @@ export function SidebarToggleButton() {
       <TauriDragRegion
         className={'gap-6 fixed z-1 h-[50px] top-0 left-0 w-full'}
       />
-      <div className="flex items-center gap-6 fixed z-10 h-[50px] top-0">
+      <div
+        className="flex items-center gap-6 fixed z-10 h-[50px] top-0"
+        style={{ marginLeft: macTrafficLightOffset }}
+      >
         <Tooltip
           title={isSidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
-          placement="right"
+          side="right"
         >
         <Button
-          type="text"
+          variant="ghost"
+          data-testid="desktop-layout-sidebar-toggle-btn"
           onClick={Stores.AppLayout.toggleSidebar}
-          className="flex items-center justify-center"
-          style={{
-            marginLeft: macTrafficLightOffset,
-            width: dimension,
-            height: dimension,
-            padding: 0,
-            fontSize: iconFontSize,
-            borderRadius: '4px',
-            minWidth: dimension,
-          }}
+          className="flex items-center justify-center size-7 min-w-7 p-0 text-xl rounded"
           aria-label={
             isSidebarCollapsed
               ? 'Open navigation menu'

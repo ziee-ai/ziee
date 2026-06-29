@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { App, Modal, Select, Typography } from 'antd'
+import { Dialog, Button, message, Text, Combobox } from '@/components/ui'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 interface AddToProjectModalProps {
   open: boolean
@@ -22,11 +20,9 @@ export function AddToProjectModal({
   onClose,
   onAttached,
 }: AddToProjectModalProps) {
-  const { message } = App.useApp()
   const { projects, isInitialized, loading } = Stores.Projects
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open && !isInitialized && !loading) {
@@ -39,7 +35,6 @@ export function AddToProjectModal({
     if (!open) {
       setSelectedId(null)
       setSubmitting(false)
-      setError(null)
     }
   }, [open])
 
@@ -61,23 +56,32 @@ export function AddToProjectModal({
       onAttached?.(selectedId)
       onClose()
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'Failed to add to project'
-      setError(msg)
-      message.error(msg)
+      message.error(
+        err instanceof Error ? err.message : 'Failed to add to project',
+      )
       setSubmitting(false)
     }
   }
 
   return (
-    <Modal
+    <Dialog
+      data-testid="project-add-to-project-dialog"
       title="Add to project"
       open={open}
-      onCancel={onClose}
-      onOk={handleOk}
-      okText="Add"
-      okButtonProps={{ disabled: !selectedId, loading: submitting }}
-      destroyOnHidden
+      onOpenChange={(v) => { if (!v) onClose() }}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button data-testid="project-add-to-project-cancel-button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            data-testid="project-add-to-project-confirm-button"
+            onClick={handleOk}
+            disabled={!selectedId}
+            loading={submitting}
+          >
+            Add
+          </Button>
+        </div>
+      }
     >
       <div className="flex flex-col gap-3">
         <Text type="secondary">
@@ -85,27 +89,17 @@ export function AddToProjectModal({
           receiving the project's instructions, knowledge files, and
           MCP defaults on subsequent sends.
         </Text>
-        <Select
+        <Combobox
+          data-testid="project-add-to-project-combobox"
           placeholder="Pick a project…"
-          showSearch={{ optionFilterProp: 'label' }}
-          loading={loading}
+          searchPlaceholder="Search projects…"
           options={options}
           value={selectedId ?? undefined}
-          onChange={v => {
-            setSelectedId(v ?? null)
-            setError(null)
-          }}
-          notFoundContent={
-            loading ? 'Loading…' : 'No projects — create one first.'
-          }
+          onChange={v => setSelectedId(v ?? null)}
+          emptyText={loading ? 'Loading…' : 'No projects — create one first.'}
           className="w-full"
         />
-        {error && (
-          <Text type="danger" className="text-sm">
-            {error}
-          </Text>
-        )}
       </div>
-    </Modal>
+    </Dialog>
   )
 }

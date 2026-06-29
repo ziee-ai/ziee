@@ -1,17 +1,15 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Flex, Spin, Switch, Tag, Typography } from 'antd'
+import { Button, Card, Spin, Switch, Tag, message } from '@/components/ui'
+import { Text, Title } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { emitLlmProviderGroupsChanged } from '@/modules/llm-provider/events'
-
-const { Text, Title } = Typography
 
 /**
  * Drawer for assigning/removing user groups to/from an LLM provider.
  * Self-contained - owned by LLM Provider module.
  */
 export function LlmProviderGroupsAssignmentDrawer() {
-  const { message } = App.useApp()
   const { isOpen, selectedProviderId } = Stores.LlmProviderGroupsAssignment
   const { groups } = Stores.UserGroups
 
@@ -107,17 +105,18 @@ export function LlmProviderGroupsAssignmentDrawer() {
       title={`Assign User Groups - ${currentProvider?.name || ''}`}
       open={isOpen}
       onClose={handleClose}
-      size={600}
+      className="!max-w-[600px]"
       footer={
         <div className="flex justify-end gap-2">
-          <Button onClick={handleClose} disabled={saving}>
+          <Button onClick={handleClose} disabled={saving} data-testid="llm-provider-groups-cancel-btn">
             Cancel
           </Button>
           <Button
-            type="primary"
+            variant="default"
             onClick={handleSave}
             loading={saving}
             disabled={loading}
+            data-testid="llm-provider-groups-save-btn"
           >
             Save
           </Button>
@@ -126,12 +125,12 @@ export function LlmProviderGroupsAssignmentDrawer() {
     >
       {loading ? (
         <div className="flex justify-center p-8">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       ) : (
-        <Flex vertical gap="large" style={{ width: '100%' }}>
-          <div>
-            <Title level={5} style={{ marginBottom: '8px' }}>
+        <div className="flex flex-col gap-5 w-full">
+          <div className="mb-2">
+            <Title level={5} className="mb-2">
               Available Groups
             </Title>
             <Text type="secondary">
@@ -144,50 +143,53 @@ export function LlmProviderGroupsAssignmentDrawer() {
               <Text type="secondary">No groups available</Text>
             </div>
           ) : (
-            <Flex vertical gap="middle" style={{ width: '100%' }}>
+            <div className="flex flex-col gap-3 w-full">
               {groups.map(group => {
                 const isChecked = assignedIds.includes(group.id)
                 return (
-                  <Card key={group.id}>
+                  <Card key={group.id} className="w-full" data-testid={`llm-provider-group-card-${group.id}`}>
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
                           checked={isChecked}
                           onChange={checked => handleToggle(group.id, checked)}
-                          style={{ marginTop: '2px' }}
+                          className="mt-0.5"
+                          data-testid={`llm-provider-group-switch-${group.id}`}
                         />
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
                         <div className="flex items-center gap-2">
-                          <Text strong style={{ fontSize: '14px' }}>
+                          <Text strong className="text-sm">
                             {group.name}
                           </Text>
                           {group.is_system && (
                             <Tag
-                              color="orange"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              tone="warning"
+                              className="text-xs m-0"
+                              data-testid={`llm-provider-group-system-tag-${group.id}`}
                             >
                               System
                             </Tag>
                           )}
                           {group.is_active ? (
                             <Tag
-                              color="green"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              tone="success"
+                              className="text-xs m-0"
+                              data-testid={`llm-provider-group-status-tag-${group.id}`}
                             >
                               Active
                             </Tag>
                           ) : (
                             <Tag
-                              color="default"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              className="text-xs m-0"
+                              data-testid={`llm-provider-group-status-tag-${group.id}`}
                             >
                               Inactive
                             </Tag>
                           )}
                         </div>
                         {group.description && (
-                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                          <Text type="secondary" className="text-xs">
                             {group.description}
                           </Text>
                         )}
@@ -196,9 +198,9 @@ export function LlmProviderGroupsAssignmentDrawer() {
                   </Card>
                 )
               })}
-            </Flex>
+            </div>
           )}
-        </Flex>
+        </div>
       )}
     </Drawer>
   )

@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { App, Button, Card, Divider, Flex, Popconfirm, Result, Spin, Typography } from 'antd'
-import {
-  ArrowLeftOutlined,
-  CloseCircleOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-} from '@ant-design/icons'
+import { Button, Card, Separator, Flex, Confirm, Spin, Text, Title, Paragraph, message } from '@/components/ui'
+import { ArrowLeft, CircleX, Copy, Pencil, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -20,8 +14,6 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 import { ProjectInlineChatInput } from '@/modules/projects/chat-extension/components/ProjectInlineChatInput'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { DivScrollY } from '@/components/common/DivScrollY'
-
-const { Title, Text, Paragraph } = Typography
 
 /**
  * Project detail page — Option A layout.
@@ -53,7 +45,6 @@ const { Title, Text, Paragraph } = Typography
 export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
-  const { message } = App.useApp()
 
   // Read all Stores fields at the top per [[project_stores_proxy_hooks]]
   // — the Stores proxy `get` trap calls useEffect + useStore (2 hooks per
@@ -145,7 +136,7 @@ export function ProjectDetailPage() {
         `Deleted ${succeeded}, ${failed} failed`,
       )
     }
-  }, [selectedIds, message])
+  }, [selectedIds])
 
   const handleBulkRemoveFromProject = useCallback(async () => {
     if (selectedIds.size === 0 || !projectId) return
@@ -172,7 +163,7 @@ export function ProjectDetailPage() {
         `Removed ${succeeded}, ${failed} failed`,
       )
     }
-  }, [selectedIds, projectId, message])
+  }, [selectedIds, projectId])
 
   useEffect(() => {
     if (projectId) {
@@ -185,7 +176,7 @@ export function ProjectDetailPage() {
       message.error(error)
       Stores.ProjectDetail.clearProjectDetailError()
     }
-  }, [error, message])
+  }, [error])
 
   // ChatInput integration. The chat module is project-unaware: it
   // creates an unfiled conversation on first send. The project
@@ -218,34 +209,10 @@ export function ProjectDetailPage() {
     return null
   }
 
-  if (loading) {
+  if (loading || !project) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Spin />
-      </div>
-    )
-  }
-
-  // Load settled but no project (not found / fetch failed). Show a
-  // recoverable error state instead of an infinite spinner.
-  if (!project) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Result
-          status="error"
-          title="Failed to load project"
-          subTitle={error ?? 'The project could not be loaded.'}
-          extra={
-            <Flex gap="small" justify="center">
-              <Button onClick={() => Stores.ProjectDetail.loadProject(projectId)}>
-                Retry
-              </Button>
-              <Button type="primary" onClick={() => navigate('/projects')}>
-                Back to projects
-              </Button>
-            </Flex>
-          }
-        />
+        <Spin label="Loading project" />
       </div>
     )
   }
@@ -272,8 +239,9 @@ export function ProjectDetailPage() {
         <div className="h-full flex items-center justify-between w-full gap-2">
           <div className="flex items-center min-w-0 gap-2">
             <Button
-              type="text"
-              icon={<ArrowLeftOutlined />}
+              data-testid="project-detail-back-button"
+              variant="ghost"
+              icon={<ArrowLeft />}
               onClick={() => navigate('/projects')}
               aria-label="Back to projects"
             />
@@ -287,7 +255,7 @@ export function ProjectDetailPage() {
           </div>
           <div className="flex items-center gap-1">
             <Can permission={Permissions.ProjectsEdit}>
-              <Button type="text" icon={<EditOutlined />} onClick={handleEdit}>
+              <Button data-testid="project-detail-edit-button" variant="ghost" icon={<Pencil />} onClick={handleEdit}>
                 Edit
               </Button>
             </Can>
@@ -305,8 +273,9 @@ export function ProjectDetailPage() {
               }}
             >
               <Button
-                type="text"
-                icon={<CopyOutlined />}
+                data-testid="project-detail-duplicate-button"
+                variant="ghost"
+                icon={<Copy />}
                 onClick={handleDuplicate}
               >
                 Duplicate
@@ -351,16 +320,18 @@ export function ProjectDetailPage() {
               <Flex align="center" className="gap-2 flex-wrap">
                 <Text strong>{selectedIds.size} selected</Text>
                 <Button
-                  type="text"
-                  size="small"
-                  icon={<CloseCircleOutlined />}
+                  data-testid="project-detail-bulk-clear-button"
+                  variant="ghost"
+                  size="sm"
+                  icon={<CircleX />}
                   onClick={handleDeselectAll}
                 >
                   Clear
                 </Button>
                 <Button
-                  type="text"
-                  size="small"
+                  data-testid="project-detail-bulk-select-all-button"
+                  variant="ghost"
+                  size="sm"
                   onClick={handleSelectAll}
                   disabled={
                     selectedIds.size === visibleConversationIds.size
@@ -368,44 +339,44 @@ export function ProjectDetailPage() {
                 >
                   Select all
                 </Button>
-                <Popconfirm
+                <Confirm
+                  data-testid="project-detail-bulk-remove-confirm"
                   title="Remove from project?"
                   description={`Detach ${selectedIds.size} conversation${selectedIds.size === 1 ? '' : 's'} from this project? They become unfiled (not deleted).`}
                   onConfirm={handleBulkRemoveFromProject}
                   okText="Remove"
                   cancelText="Cancel"
-                  okButtonProps={{ loading: bulkDeleting }}
                 >
-                  <Button type="text" size="small" loading={bulkDeleting}>
+                  <Button data-testid="project-detail-bulk-remove-button" variant="ghost" size="sm" loading={bulkDeleting}>
                     Remove from project
                   </Button>
-                </Popconfirm>
+                </Confirm>
                 {canDeleteConversations && (
-                  <Popconfirm
+                  <Confirm
+                    data-testid="project-detail-bulk-delete-confirm"
                     title="Delete conversations?"
                     description={`Permanently delete ${selectedIds.size} conversation${selectedIds.size === 1 ? '' : 's'} and all messages.`}
                     onConfirm={handleBulkDelete}
                     okText="Delete"
                     cancelText="Cancel"
-                    okType="danger"
-                    okButtonProps={{ loading: bulkDeleting }}
                   >
                     <Button
-                      type="text"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
+                      data-testid="project-detail-bulk-delete-button"
+                      variant="ghost"
+                      size="sm"
+                      icon={<Trash2 />}
                       loading={bulkDeleting}
                     >
                       Delete
                     </Button>
-                  </Popconfirm>
+                  </Confirm>
                 )}
               </Flex>
             ) : null
 
             return (
               <Card
+                data-testid="project-detail-conversations-card"
                 title="Conversations"
                 data-test-section="conversations"
                 extra={!toolbarInCardBody ? bulkToolbar : null}
@@ -429,7 +400,7 @@ export function ProjectDetailPage() {
                 is the attached files. Dividers between the three
                 sub-sections match the peer settings-page convention
                 (multiple related sections inside a single Card,
-                separated by `Divider` rather than fragmenting into
+                separated by `Separator` rather than fragmenting into
                 multiple cards). */}
           {/* The card-level Edit button opens the ProjectFormDrawer
               which edits ALL three subsections (About / Instructions /
@@ -437,13 +408,15 @@ export function ProjectDetailPage() {
               as a card-extra than a per-section button on Instructions
               alone. */}
           <Card
+            data-testid="project-detail-meta-card"
             title="Project details"
             data-test-section="project-meta"
             extra={
               <Can permission={Permissions.ProjectsEdit}>
                 <Button
-                  type="text"
-                  icon={<EditOutlined />}
+                  data-testid="project-detail-meta-edit-button"
+                  variant="ghost"
+                  icon={<Pencil />}
                   onClick={handleEdit}
                   aria-label="Edit project details"
                 >
@@ -452,7 +425,7 @@ export function ProjectDetailPage() {
               </Can>
             }
           >
-            <Flex vertical>
+            <Flex direction="column">
               <section data-test-section="description">
                 <Text strong className="block mb-2">
                   About
@@ -472,7 +445,7 @@ export function ProjectDetailPage() {
                 )}
               </section>
 
-              <Divider className="!my-2" />
+              <Separator className="!my-2" />
 
               <section data-test-section="instructions">
                 <Text strong className="block mb-2">
@@ -492,7 +465,7 @@ export function ProjectDetailPage() {
                 )}
               </section>
 
-              <Divider className="!my-2" />
+              <Separator className="!my-2" />
 
               <section data-test-section="knowledge">
                 <ProjectKnowledgeSection />
@@ -505,7 +478,7 @@ export function ProjectDetailPage() {
                 future per-project rate limits etc.) via the
                 advanced_settings slot. The MCP panel ships its own
                 Configure button + modal. */}
-          <Card title="Advanced" data-test-section="advanced">
+          <Card data-testid="project-detail-advanced-card" title="Advanced" data-test-section="advanced">
             {/* Default assistant + default model — inline auto-save
                 selects (one PATCH per change). These used to live in
                 the ProjectFormDrawer with the content fields, but

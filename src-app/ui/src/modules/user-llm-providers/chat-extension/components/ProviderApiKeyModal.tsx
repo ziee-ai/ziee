@@ -1,5 +1,17 @@
-import { useState } from 'react'
-import { Modal, Form, Input, Typography, Alert } from 'antd'
+import { z } from 'zod'
+import {
+  Dialog,
+  Form,
+  FormField,
+  useForm,
+  zodResolver,
+  PasswordInput,
+  Alert,
+  Button,
+  Paragraph,
+  Text,
+  Link,
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 
 interface ProviderApiKeyModalProps {
@@ -9,6 +21,11 @@ interface ProviderApiKeyModalProps {
   onSuccess: (modelId: string) => void
   onCancel: () => void
 }
+
+const schema = z.object({
+  apiKey: z.string().min(1, 'API key cannot be empty'),
+})
+type FormValues = z.infer<typeof schema>
 
 /**
  * ProviderApiKeyModal
@@ -23,60 +40,67 @@ export function ProviderApiKeyModal({
   onSuccess,
   onCancel,
 }: ProviderApiKeyModalProps) {
-  const [apiKey, setApiKey] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const { saving } = Stores.UserProviderKeys
 
-  const handleOk = async () => {
-    const trimmed = apiKey.trim()
-    if (!trimmed) {
-      setError('API key cannot be empty')
-      return
-    }
-    setError(null)
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { apiKey: '' },
+  })
+
+  const onValidSubmit = async ({ apiKey }: { apiKey: string }) => {
     try {
-      await Stores.UserProviderKeys.saveKey(providerId, trimmed)
+      await Stores.UserProviderKeys.saveKey(providerId, apiKey.trim())
       onSuccess(modelId)
     } catch (err: any) {
-      setError(err.message || 'Failed to save API key')
+      form.setError('root', { message: err.message || 'Failed to save API key' })
     }
   }
+  const handleOk = form.handleSubmit(onValidSubmit)
+
+  const rootError = form.formState.errors.root?.message
 
   return (
-    <Modal
+    <Dialog
       open
+      data-testid="ullm-apikey-dialog"
+      onOpenChange={v => { if (!v) onCancel() }}
       title={`API Key Required — ${providerName}`}
-      onOk={handleOk}
-      onCancel={onCancel}
-      okText="Save & Select Model"
-      cancelText="Cancel"
-      confirmLoading={saving}
-      destroyOnHidden
+      footer={
+        <>
+          <Button variant="outline" data-testid="ullm-apikey-cancel-button" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button data-testid="ullm-apikey-save-button" onClick={handleOk} loading={saving}>
+            Save &amp; Select Model
+          </Button>
+        </>
+      }
     >
-      <Typography.Paragraph type="secondary">
+      <Paragraph type="secondary">
         This provider doesn&apos;t have a system API key configured. Enter your
         own API key to use models from <strong>{providerName}</strong>.
-      </Typography.Paragraph>
-      <Form layout="vertical">
-        <Form.Item label="API Key">
-          <Input.Password
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
+      </Paragraph>
+      <Form form={form} data-testid="ullm-apikey-form" onSubmit={onValidSubmit} layout="vertical">
+        <FormField name="apiKey" label="API Key">
+          <PasswordInput
+            data-testid="ullm-apikey-password-input"
             placeholder="sk-..."
             autoFocus
-            onPressEnter={handleOk}
+            showLabel="Show API key"
+            hideLabel="Hide API key"
+            onKeyDown={e => { if (e.key === 'Enter') handleOk() }}
           />
-        </Form.Item>
-        {error && <Alert type="error" title={error} showIcon />}
+        </FormField>
+        {rootError && <Alert tone="error" data-testid="ullm-apikey-error-alert" title={rootError} />}
       </Form>
-      <Typography.Text type="secondary" className="text-xs">
+      <Text type="secondary" className="text-xs">
         Your key is stored securely and only used for inference. You can manage
         keys in{' '}
-        <Typography.Link href="/settings/user-llm-providers">
+        <Link href="/settings/user-llm-providers">
           Settings → LLM Providers
-        </Typography.Link>
+        </Link>
         .
-      </Typography.Text>
-    </Modal>
+      </Text>
+    </Dialog>
   )
 }

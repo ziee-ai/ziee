@@ -1,31 +1,23 @@
+import { LayoutGrid, Bot, Plug, RotateCw, Trash2 } from 'lucide-react'
 import { useState, useMemo, Fragment } from 'react'
 import {
   Button,
   Card,
-  Divider,
+  Separator,
   Empty,
   Flex,
-  Popconfirm,
+  Confirm,
   Spin,
   Tag,
   Tooltip,
-  Typography,
+  Text,
   message,
-} from 'antd'
-import {
-  AppstoreOutlined,
-  RobotOutlined,
-  ApiOutlined,
-  ReloadOutlined,
-  DeleteOutlined,
-} from '@ant-design/icons'
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import { emitMcpServerDeleted } from '@/modules/mcp/events/emitters'
 import { emitAssistantDeleted } from '@/modules/assistant/events/emitters'
 import type { HubInstalledRow } from '@/api-client/types'
-
-const { Text } = Typography
 
 // Three section cards, data-driven so the row-render loop stays
 // flat. Icons match the per-category icon used elsewhere in the
@@ -40,21 +32,21 @@ const CATEGORY_CARDS: Array<{
   {
     key: 'model',
     title: 'Models',
-    icon: <AppstoreOutlined />,
+    icon: <LayoutGrid />,
     emptyHint:
       'No models installed from the hub yet. Browse the Models tab to install one.',
   },
   {
     key: 'assistant',
     title: 'Assistants',
-    icon: <RobotOutlined />,
+    icon: <Bot />,
     emptyHint:
       'No assistants installed from the hub yet. Browse the Assistants tab to install one.',
   },
   {
     key: 'mcp_server',
     title: 'MCP Servers',
-    icon: <ApiOutlined />,
+    icon: <Plug />,
     emptyHint:
       'No MCP servers installed from the hub yet. Browse the MCP Servers tab to install one.',
   },
@@ -70,7 +62,7 @@ const CATEGORY_CARDS: Array<{
  * Visual structure mirrors the rest of the settings pages
  * (SandboxRootfsVersionsSection, McpServerCard,
  * AuthProvidersListSection) — Card with a simple string title +
- * `extra` for the count, body is a flex column with `<Divider/>`
+ * `extra` for the count, body is a flex column with `<Separator/>`
  * between rows, action buttons right-aligned in the row.
  */
 export function InstalledHubTab() {
@@ -133,16 +125,6 @@ export function InstalledHubTab() {
             replace_existing: true,
           })
         }
-      } else if (row.hub_category === 'skill') {
-        // Only USER-scope skills reach here — system skills disable the
-        // Re-install button (they need group choices; see the button gate).
-        // The backend re-install path replaces the prior install for this hub_id.
-        await Stores.Skill.installFromHub(row.hub_id)
-      } else if (row.hub_category === 'workflow') {
-        await Stores.Workflow.installFromHub(row.hub_id)
-      } else {
-        // Unhandled category — surface an error instead of a false success.
-        throw new Error(`Re-install not supported for ${row.hub_category}`)
       }
       message.success(
         `Re-installed ${row.name || row.hub_id} from v${catalogVersion ?? '?'}`,
@@ -185,21 +167,6 @@ export function InstalledHubTab() {
           model_id: row.entity_id,
           delete_file: true,
         })
-      } else if (row.hub_category === 'skill') {
-        if (row.is_system) {
-          await ApiClient.SkillSystem.delete({ id: row.entity_id })
-        } else {
-          await ApiClient.Skill.delete({ id: row.entity_id })
-        }
-      } else if (row.hub_category === 'workflow') {
-        if (row.is_system) {
-          await ApiClient.Workflow.deleteSystem({ id: row.entity_id })
-        } else {
-          await ApiClient.Workflow.delete({ id: row.entity_id })
-        }
-      } else {
-        // Unhandled category — surface an error instead of a false success.
-        throw new Error(`Remove not supported for ${row.hub_category}`)
       }
       message.success(`Removed ${row.name || row.hub_id}`)
       await Stores.HubInstalled.loadInstalled()
@@ -215,7 +182,7 @@ export function InstalledHubTab() {
   if (loading && items.length === 0) {
     return (
       <div className="flex justify-center items-center py-12">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -224,7 +191,7 @@ export function InstalledHubTab() {
     return (
       <div className="px-3 pt-3">
         <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          data-testid="hub-installed-error-empty"
           description={
             <Text type="secondary">Couldn't load installed list: {error}</Text>
           }
@@ -240,6 +207,7 @@ export function InstalledHubTab() {
         return (
           <Card
             key={card.key}
+            data-testid={`hub-installed-card-${card.key}`}
             title={
               <Flex align="center" gap="small">
                 {card.icon}
@@ -247,14 +215,14 @@ export function InstalledHubTab() {
               </Flex>
             }
             extra={
-              <Tag>
+              <Tag data-testid={`hub-installed-count-tag-${card.key}`}>
                 {rows.length} {rows.length === 1 ? 'install' : 'installs'}
               </Tag>
             }
           >
             {rows.length === 0 ? (
               <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                data-testid={`hub-installed-empty-${card.key}`}
                 description={
                   <Text type="secondary">{card.emptyHint}</Text>
                 }
@@ -282,7 +250,7 @@ export function InstalledHubTab() {
                   })()
                   return (
                     <Fragment key={`${row.entity_type}:${row.entity_id}`}>
-                      {i > 0 && <Divider className="!my-3" />}
+                      {i > 0 && <Separator className="!my-3" />}
                       <div className="flex items-start gap-3 flex-wrap">
                         <div className="flex-1 min-w-48">
                           {/* Title row — name + scope tag + version tag. */}
@@ -291,16 +259,16 @@ export function InstalledHubTab() {
                               {row.name || row.hub_id}
                             </Text>
                             {row.is_system && (
-                              <Tag color="blue">System</Tag>
+                              <Tag tone="info" data-testid={`hub-installed-system-tag-${row.entity_id}`}>System</Tag>
                             )}
                             <Tooltip
-                              title={
+                              content={
                                 isOutdated
                                   ? `Installed v${installed ?? 'pre-tracking'}; catalog is at v${current}`
                                   : `On catalog v${current}`
                               }
                             >
-                              <Tag color={isOutdated ? 'orange' : 'green'}>
+                              <Tag tone={isOutdated ? 'warning' : 'success'} data-testid={`hub-installed-version-tag-${row.entity_id}`}>
                                 {isOutdated
                                   ? `v${installed ?? 'pre-tracking'} → v${current}`
                                   : `v${current}`}
@@ -320,7 +288,7 @@ export function InstalledHubTab() {
                                 {row.hub_id}
                               </Text>
                             )}
-                            <Tooltip title={`Installed ${installedAtFull}`}>
+                            <Tooltip content={`Installed ${installedAtFull}`}>
                               <Text type="secondary" className="text-xs">
                                 installed {installedAtShort}
                               </Text>
@@ -328,23 +296,15 @@ export function InstalledHubTab() {
                           </Flex>
                         </div>
                         <div className="flex gap-2 items-center justify-end">
-                          {row.hub_category === 'model' ||
-                          ((row.hub_category === 'skill' ||
-                            row.hub_category === 'workflow') &&
-                            row.is_system) ? (
-                            <Tooltip
-                              title={
-                                row.hub_category === 'model'
-                                  ? 'Models re-install via the Models tab (pick a provider + quantization)'
-                                  : `System ${row.hub_category}s re-install from the ${row.hub_category === 'skill' ? 'Skills' : 'Workflows'} tab (it sets the group assignments)`
-                              }
-                            >
-                              <Button icon={<ReloadOutlined />} disabled>
+                          {row.hub_category === 'model' ? (
+                            <Tooltip content="Models re-install via the Models tab (pick a provider + quantization)">
+                              <Button icon={<RotateCw />} disabled data-testid={`hub-installed-reinstall-disabled-btn-${row.entity_id}`}>
                                 Re-install
                               </Button>
                             </Tooltip>
                           ) : (
-                            <Popconfirm
+                            <Confirm
+                              data-testid={`hub-installed-reinstall-confirm-${row.entity_id}`}
                               title="Re-install from current catalog"
                               description={`Re-install "${row.name || row.hub_id}" at v${current}? The existing copy will be replaced.`}
                               okText="Re-install"
@@ -352,14 +312,16 @@ export function InstalledHubTab() {
                               onConfirm={() => reinstall(row)}
                             >
                               <Button
-                                icon={<ReloadOutlined />}
+                                icon={<RotateCw />}
                                 loading={busyId === row.entity_id}
+                                data-testid={`hub-installed-reinstall-btn-${row.entity_id}`}
                               >
                                 Re-install
                               </Button>
-                            </Popconfirm>
+                            </Confirm>
                           )}
-                          <Popconfirm
+                          <Confirm
+                            data-testid={`hub-installed-remove-confirm-${row.entity_id}`}
                             title="Remove this install?"
                             description={
                               row.hub_category === 'model'
@@ -372,13 +334,14 @@ export function InstalledHubTab() {
                             onConfirm={() => remove(row)}
                           >
                             <Button
-                              danger
-                              icon={<DeleteOutlined />}
+                              variant="destructive"
+                              icon={<Trash2 />}
                               loading={busyId === row.entity_id}
+                              data-testid={`hub-installed-remove-btn-${row.entity_id}`}
                             >
                               Remove
                             </Button>
-                          </Popconfirm>
+                          </Confirm>
                         </div>
                       </div>
                     </Fragment>

@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Divider, Empty, Spin, Typography } from 'antd'
-import {
-  FolderOutlined,
-  FolderOpenOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { Button, Separator, Empty, Spin, Text } from '@/components/ui'
+import { Folder, FolderOpen, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
-
-const { Text } = Typography
 
 /**
  * Sidebar widget showing the user's top N projects. Mount-time fetch
@@ -78,7 +72,7 @@ export function ProjectsNavWidget() {
   if (loading && !isInitialized) {
     return (
       <div className="flex justify-center items-center py-4">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -94,13 +88,13 @@ export function ProjectsNavWidget() {
       {projects.length === 0 ? (
         <div className="px-2 py-3">
           <Empty
-            image={<FolderOutlined className="text-2xl text-gray-400" />}
+            data-testid="project-nav-empty"
+            image={<Folder className="text-2xl text-muted-foreground" />}
             description={
               <Text type="secondary" className="text-xs">
                 No projects yet
               </Text>
             }
-            styles={{ image: { height: 28 } }}
           />
         </div>
       ) : (
@@ -135,7 +129,7 @@ export function ProjectsNavWidget() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <FolderOpenOutlined className="text-sm shrink-0" />
+                    <FolderOpen className="text-sm shrink-0" />
                     <Text
                       className="text-sm truncate block"
                       title={project.name}
@@ -145,9 +139,10 @@ export function ProjectsNavWidget() {
                   </div>
                   {showPlus && (
                     <Button
-                      type="text"
-                      size="small"
-                      icon={<PlusOutlined />}
+                      data-testid={`project-nav-new-chat-button-${project.id}`}
+                      variant="ghost"
+                      size="sm"
+                      icon={<Plus />}
                       aria-label={`New chat in ${project.name}`}
                       onClick={e => {
                         e.stopPropagation()
@@ -166,11 +161,12 @@ export function ProjectsNavWidget() {
         </DivScrollY>
       )}
 
-      <Divider className="!my-1" />
+      <Separator className="!my-1" />
       <div className="px-2 pb-1">
         <Button
-          type="text"
-          icon={<FolderOutlined />}
+          data-testid="project-nav-all-projects-button"
+          variant="ghost"
+          icon={<Folder />}
           block
           onClick={() => navigate('/projects')}
         >

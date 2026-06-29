@@ -1,24 +1,27 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Button,
   Card,
   Form,
-  Input,
-  Layout,
-  Typography,
-} from 'antd'
-import { LockOutlined } from '@ant-design/icons'
+  FormField,
+  PasswordInput,
+  Title,
+  Paragraph,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
+import { Lock } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 
-const { Content } = Layout
-const { Title, Paragraph } = Typography
+const linkAccountSchema = z.object({
+  password: z.string().min(1, 'Please enter your password'),
+})
 
-interface LinkFormValues {
-  password: string
-}
+type LinkFormValues = z.infer<typeof linkAccountSchema>
 
 /**
  * /auth/link-account — First-Broker-Login confirmation page.
@@ -33,7 +36,10 @@ interface LinkFormValues {
 export const LinkAccountPage: React.FC = () => {
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const [form] = Form.useForm<LinkFormValues>()
+  const form = useForm<LinkFormValues>({
+    resolver: zodResolver(linkAccountSchema),
+    defaultValues: { password: '' },
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const linkToken = params.get('link_token') ?? ''
@@ -59,9 +65,9 @@ export const LinkAccountPage: React.FC = () => {
 
   return (
     <BlankLayoutComponent>
-      <Layout className="min-h-screen">
-        <Content className="flex items-center justify-center p-4">
-          <Card className="w-full max-w-md">
+      <div className="min-h-screen">
+        <div className="flex items-center justify-center p-4">
+          <Card data-testid="auth-link-account-card" className="w-full max-w-md">
             <Title level={3}>Link your accounts</Title>
             <Paragraph type="secondary">
               An existing account uses this email. Enter your password to
@@ -69,52 +75,50 @@ export const LinkAccountPage: React.FC = () => {
             </Paragraph>
             {error && (
               <Alert
+                data-testid="auth-link-account-error"
                 title={error}
-                type="error"
-                showIcon
-                closable={{ closeIcon: true, onClose: () => setError(null) }}
+                tone="error"
+                onClose={() => setError(null)}
+                closeLabel="Close"
                 className="mb-4"
               />
             )}
             <Form
+              data-testid="auth-link-account-form"
               form={form}
               layout="vertical"
-              size="large"
-              onFinish={onFinish}
-              autoComplete="off"
+              onSubmit={onFinish}
             >
-              <Form.Item
-                label="Password"
+              <FormField
                 name="password"
-                rules={[
-                  { required: true, message: 'Please enter your password' },
-                ]}
+                label="Password"
               >
-                <Input.Password
-                  prefix={<LockOutlined />}
+                <PasswordInput
+                  data-testid="auth-link-account-password"
+                  prefix={<Lock />}
                   placeholder="Your existing password"
                   autoComplete="current-password"
                   disabled={!linkToken}
+                  showLabel="Show password"
+                  hideLabel="Hide password"
                 />
-              </Form.Item>
-              <Form.Item>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  block
-                  loading={loading}
-                  disabled={!linkToken}
-                >
-                  Link and sign in
-                </Button>
-              </Form.Item>
+              </FormField>
+              <Button
+                data-testid="auth-link-account-submit"
+                block
+                loading={loading}
+                disabled={!linkToken}
+                type="submit"
+              >
+                Link and sign in
+              </Button>
               <div className="text-center">
-                <Link to="/auth">Cancel</Link>
+                <a href="/auth">Cancel</a>
               </div>
             </Form>
           </Card>
-        </Content>
-      </Layout>
+        </div>
+      </div>
     </BlankLayoutComponent>
   )
 }

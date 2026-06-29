@@ -1,12 +1,10 @@
-import { SearchOutlined } from '@ant-design/icons'
-import { Input, Select, Typography } from 'antd'
+import { Search } from 'lucide-react'
+import { Input, MultiSelect, Text } from '@/components/ui'
 import { useMemo, useState } from 'react'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 import { WorkflowHubCard } from './WorkflowHubCard'
-
-const { Text } = Typography
 
 export function WorkflowsHubTab() {
   const catalog = Stores.HubCatalog.catalog
@@ -49,7 +47,7 @@ export function WorkflowsHubTab() {
   }, [items, searchTerm, selectedTags, serverVersion])
 
   if (loading && items.length === 0) {
-    return <Loading tip="Loading workflows..." />
+    return <Loading tip="Loading workflows..." label="Loading workflows" />
   }
 
   return (
@@ -57,25 +55,28 @@ export function WorkflowsHubTab() {
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-testid="hub-workflows-search-input"
             placeholder="Search workflows..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search workflows"
           />
-          <Select
-            mode="multiple"
+          <MultiSelect
+            data-testid="hub-workflows-tags-multiselect"
             placeholder="Filter by tags"
             value={selectedTags}
-            onChange={setSelectedTags}
+            onChange={(values: string[]) => {
+              setSelectedTags(values)
+            }}
             className="flex-1"
-            allowClear
-            maxTagCount="responsive"
             options={allTags.map(t => ({ value: t, label: t }))}
-            popupMatchSelectWidth={false}
             aria-label="Filter workflows by tags"
+            searchPlaceholder="Search tags..."
+            emptyText="No tags found"
+            removeLabel={(label) => `Remove ${label}`}
           />
         </div>
       </div>

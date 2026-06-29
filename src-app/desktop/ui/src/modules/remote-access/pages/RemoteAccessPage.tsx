@@ -19,35 +19,38 @@
 
 import {
   Alert,
-  App,
   Button,
   Card,
-  Divider,
   Empty,
   Form,
+  FormField,
   Input,
+  PasswordInput,
+  Separator,
   Space,
   Switch,
   Tag,
-  theme,
   Tooltip,
-  Typography,
-} from 'antd'
+  Title,
+  Text,
+  Paragraph,
+  message,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
 import {
-  CheckCircleOutlined,
-  CopyOutlined,
-  ReloadOutlined,
-  WarningOutlined,
-} from '@ant-design/icons'
+  CircleCheck,
+  Copy,
+  RotateCw,
+  TriangleAlert,
+} from 'lucide-react'
+import { z } from 'zod'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useMemo, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
-const { Title, Text, Paragraph } = Typography
-
 export function RemoteAccessPage() {
-  const { message } = App.useApp()
   const { status, loading, saving, error, magicLink } = Stores.RemoteAccess
 
   // Local form state (uncontrolled by the store so the user can
@@ -116,22 +119,22 @@ export function RemoteAccessPage() {
     return (
       <SettingsPageContainer title="Remote Access">
         <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          data-testid="desktop-remote-tunneled-empty"
           description={
             <div className="max-w-md mx-auto text-left">
-              <Typography.Title level={5}>
+              <Title level={5}>
                 Open the desktop app
-              </Typography.Title>
-              <Typography.Paragraph type="secondary">
+              </Title>
+              <Paragraph type="secondary">
                 This page configures the tunnel that's serving you right
                 now — token, custom domain, password-auth toggle,
                 start/stop. It can only be edited from the desktop app
                 where the tunnel is hosted.
-              </Typography.Paragraph>
-              <Typography.Paragraph type="secondary" className="!mb-0">
+              </Paragraph>
+              <Paragraph type="secondary" className="mb-0">
                 If you need a new sign-in link, ask the desktop user to
                 generate a fresh magic-link QR.
-              </Typography.Paragraph>
+              </Paragraph>
             </div>
           }
         />
@@ -151,6 +154,7 @@ export function RemoteAccessPage() {
     return (
       <SettingsPageContainer title="Remote Access">
         <Empty
+          data-testid="desktop-remote-load-error-empty"
           description={
             error
               ? `Unable to load remote-access status: ${error}`
@@ -158,8 +162,8 @@ export function RemoteAccessPage() {
           }
         >
           <Button
-            type="primary"
-            icon={<ReloadOutlined />}
+            data-testid="desktop-remote-retry-btn"
+            icon={<RotateCw />}
             loading={loading}
             onClick={() => Stores.RemoteAccess.loadStatus()}
           >
@@ -180,128 +184,137 @@ export function RemoteAccessPage() {
     >
       {error && (
         <Alert
-          type="error"
+          data-testid="desktop-remote-error-alert"
+          tone="error"
           title={error}
-          showIcon
-          closable={{ onClose: () => Stores.RemoteAccess.loadStatus() }}
+          onClose={() => Stores.RemoteAccess.loadStatus()}
+          closeLabel="Close"
         />
       )}
 
       {/* 1. ngrok auth token */}
-      <Card title="ngrok auth token">
-        <Form layout="vertical" className="!mb-0">
-          <Form.Item
-            label="Token"
-            extra="Paste your ngrok account's auth token. We'll keep it encrypted and never show it back to you."
-          >
-            <Space.Compact className="w-full">
-              <Input.Password
-                placeholder={
-                  status.auth_token_set
-                    ? '••••••• (a token is saved)'
-                    : 'Paste your ngrok auth token'
+      <Card data-testid="desktop-remote-token-card" title="ngrok auth token">
+        <div className="flex flex-col gap-1 mb-0">
+          <label className="text-sm font-medium">Token</label>
+          <div className="flex w-full gap-2">
+            <PasswordInput
+              data-testid="desktop-remote-token-input"
+              className="flex-1"
+              showLabel="Show token"
+              hideLabel="Hide token"
+              placeholder={
+                status.auth_token_set
+                  ? '••••••• (a token is saved)'
+                  : 'Paste your ngrok auth token'
+              }
+              value={tokenDraft}
+              onChange={(e) => setTokenDraft(e.target.value)}
+              autoComplete="off"
+            />
+            <Button
+              data-testid="desktop-remote-token-save-btn"
+              disabled={!tokenDraft.trim() || saving}
+              loading={saving}
+              onClick={async () => {
+                try {
+                  await Stores.RemoteAccess.saveAuthToken(tokenDraft.trim())
+                  setTokenDraft('')
+                  message.success('ngrok auth token saved')
+                } catch (e) {
+                  message.error(
+                    e instanceof Error ? e.message : 'Failed to save token',
+                  )
                 }
-                value={tokenDraft}
-                onChange={(e) => setTokenDraft(e.target.value)}
-                autoComplete="off"
-              />
-              <Button
-                type="primary"
-                disabled={!tokenDraft.trim() || saving}
-                loading={saving}
-                onClick={async () => {
-                  try {
-                    await Stores.RemoteAccess.saveAuthToken(tokenDraft.trim())
-                    setTokenDraft('')
-                    message.success('ngrok auth token saved')
-                  } catch (e) {
-                    message.error(
-                      e instanceof Error ? e.message : 'Failed to save token',
-                    )
-                  }
-                }}
-              >
-                Save
-              </Button>
-            </Space.Compact>
-          </Form.Item>
-          {status.auth_token_set && (
-            <Text type="success">
-              <CheckCircleOutlined /> Token saved
-            </Text>
-          )}
-        </Form>
+              }}
+            >
+              Save
+            </Button>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            Paste your ngrok account's auth token. We'll keep it encrypted and never show it back to you.
+          </span>
+        </div>
+        {status.auth_token_set && (
+          <Text type="success">
+            <CircleCheck className="inline size-4 align-text-bottom" /> Token saved
+          </Text>
+        )}
       </Card>
 
       {/* 2. Custom domain (optional) */}
-      <Card title="Custom domain (optional)">
-        <Form layout="vertical" className="!mb-0">
-          <Form.Item
-            label="Domain"
-            extra="If your ngrok plan gives you a reserved subdomain, put it here so your URL stays the same every time. Leave it blank and ngrok will hand out a new URL on each restart."
-          >
-            <Space.Compact className="w-full">
-              <Input
-                placeholder="my-app.ngrok.app (leave blank for auto-assigned)"
-                value={domainDraft}
-                onChange={(e) => setDomainDraft(e.target.value)}
-              />
-              <Button
-                disabled={saving}
-                loading={saving}
-                onClick={async () => {
-                  const next = domainDraft.trim() || null
-                  try {
-                    await Stores.RemoteAccess.saveDomain(next)
-                    message.success('Domain saved')
-                  } catch (e) {
-                    message.error(
-                      e instanceof Error ? e.message : 'Failed to save domain',
-                    )
-                  }
-                }}
-              >
-                Save
-              </Button>
-            </Space.Compact>
-          </Form.Item>
-        </Form>
+      <Card data-testid="desktop-remote-domain-card" title="Custom domain (optional)">
+        <div className="flex flex-col gap-1 mb-0">
+          <label className="text-sm font-medium">Domain</label>
+          <div className="flex w-full gap-2">
+            <Input
+              data-testid="desktop-remote-domain-input"
+              className="flex-1"
+              placeholder="my-app.ngrok.app (leave blank for auto-assigned)"
+              value={domainDraft}
+              onChange={(e) => setDomainDraft(e.target.value)}
+            />
+            <Button
+              data-testid="desktop-remote-domain-save-btn"
+              variant="outline"
+              disabled={saving}
+              loading={saving}
+              onClick={async () => {
+                const next = domainDraft.trim() || null
+                try {
+                  await Stores.RemoteAccess.saveDomain(next)
+                  message.success('Domain saved')
+                } catch (e) {
+                  message.error(
+                    e instanceof Error ? e.message : 'Failed to save domain',
+                  )
+                }
+              }}
+            >
+              Save
+            </Button>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            If your ngrok plan gives you a reserved subdomain, put it here so your URL stays the same every time. Leave it blank and ngrok will hand out a new URL on each restart.
+          </span>
+        </div>
 
         {/* 3. Auto-start (only visible with a fixed domain) */}
         {status.ngrok_domain && (
           <>
-            <Divider className="!my-3" />
-            <Form layout="horizontal" className="!mb-0">
-              <Form.Item
-                label="Auto-start tunnel on app launch"
-                extra="Bring your tunnel up automatically every time you start the app. Only available with a fixed domain — without one, each restart hands you a new URL and breaks any link you've already shared."
-              >
-                <Switch
-                  checked={status.auto_start_tunnel}
-                  loading={saving}
-                  onChange={async (v) => {
-                    try {
-                      await Stores.RemoteAccess.saveAutoStart(v)
-                      message.success(
-                        v ? 'Auto-start enabled' : 'Auto-start disabled',
-                      )
-                    } catch (e) {
-                      message.error(
-                        e instanceof Error
-                          ? e.message
-                          : 'Failed to update auto-start',
-                      )
-                    }
-                  }}
-                />
-              </Form.Item>
-            </Form>
+            <Separator className="my-3" />
+            <div className="flex flex-col gap-1 mb-0">
+              <label className="text-sm font-medium">
+                Auto-start tunnel on app launch
+              </label>
+              <Switch
+                data-testid="desktop-remote-autostart-switch"
+                checked={status.auto_start_tunnel}
+                loading={saving}
+                onChange={async (v) => {
+                  try {
+                    await Stores.RemoteAccess.saveAutoStart(v)
+                    message.success(
+                      v ? 'Auto-start enabled' : 'Auto-start disabled',
+                    )
+                  } catch (e) {
+                    message.error(
+                      e instanceof Error
+                        ? e.message
+                        : 'Failed to update auto-start',
+                    )
+                  }
+                }}
+              />
+              <span className="text-xs text-muted-foreground">
+                Bring your tunnel up automatically every time you start the app. Only available with a fixed domain — without one, each restart hands you a new URL and breaks any link you've already shared.
+              </span>
+            </div>
           </>
         )}
       </Card>
 
       {/* 4. Password authentication (optional, OFF by default) */}
-      <Card title="Password authentication">
+      <Card data-testid="desktop-remote-password-card" title="Password authentication">
         <Paragraph type="secondary">
           By default, anyone you let in signs in by scanning the QR below. Turn
           this on if you'd also like to accept a password — handy when you want
@@ -312,10 +325,11 @@ export function RemoteAccessPage() {
 
       {/* 5. Tunnel */}
       <Card
+        data-testid="desktop-remote-tunnel-card"
         title={
           <Space>
             Tunnel
-            <Tag color={tunnelConnected ? 'success' : 'default'}>
+            <Tag data-testid="desktop-remote-tunnel-state-tag" tone={tunnelConnected ? 'success' : 'default'}>
               {status.tunnel_state}
             </Tag>
           </Space>
@@ -323,8 +337,8 @@ export function RemoteAccessPage() {
       >
         {!tunnelReady && (
           <Alert
-            type="warning"
-            showIcon
+            data-testid="desktop-remote-no-token-alert"
+            tone="warning"
             title="Add your ngrok auth token first"
             description="Save your token above, then come back here to start the tunnel."
           />
@@ -333,8 +347,8 @@ export function RemoteAccessPage() {
           <div className="flex flex-col gap-3">
             {status.auto_start_tunnel && status.last_error && (
               <Alert
-                type="error"
-                showIcon
+                data-testid="desktop-remote-autostart-failed-alert"
+                tone="error"
                 title="Auto-start failed"
                 description={
                   <>
@@ -347,7 +361,7 @@ export function RemoteAccessPage() {
             )}
             <Space>
               <Button
-                type="primary"
+                data-testid="desktop-remote-start-tunnel-btn"
                 loading={saving}
                 onClick={() => Stores.RemoteAccess.startTunnel()}
               >
@@ -355,7 +369,7 @@ export function RemoteAccessPage() {
               </Button>
               {!status.auto_start_tunnel && status.last_error && (
                 <Text type="danger">
-                  <WarningOutlined /> {status.last_error}
+                  <TriangleAlert className="inline size-4 align-text-bottom" /> {status.last_error}
                 </Text>
               )}
             </Space>
@@ -365,14 +379,16 @@ export function RemoteAccessPage() {
           <div className="flex flex-col gap-3">
             <Space wrap>
               <Button
-                danger
+                data-testid="desktop-remote-stop-tunnel-btn"
+                variant="destructive"
                 loading={saving}
                 onClick={() => Stores.RemoteAccess.stopTunnel()}
               >
                 Stop tunnel
               </Button>
               <Button
-                icon={<ReloadOutlined />}
+                data-testid="desktop-remote-new-code-btn"
+                icon={<RotateCw />}
                 loading={saving}
                 onClick={() => Stores.RemoteAccess.rotateMagicLink()}
               >
@@ -382,7 +398,7 @@ export function RemoteAccessPage() {
 
             {magicLink && (
               <div className="flex flex-col sm:flex-row gap-4 items-start">
-                <Card size="small" className="flex-shrink-0">
+                <Card data-testid="desktop-remote-qr-card" size="sm" className="flex-shrink-0">
                   <QRCodeSVG value={magicLink.url} size={200} />
                 </Card>
                 <div className="flex-1 flex flex-col gap-2">
@@ -393,35 +409,39 @@ export function RemoteAccessPage() {
                     {String(secondsLeft % 60).padStart(2, '0')}. A fresh one
                     appears every 4 minutes.
                   </Text>
-                  <Space.Compact className="w-full">
-                    <Input readOnly value={magicLink.url} />
+                  <div className="flex w-full gap-2">
+                    <Input data-testid="desktop-remote-magic-link-input" className="flex-1" readOnly value={magicLink.url} />
                     <Tooltip title="Copy">
                       <Button
-                        icon={<CopyOutlined />}
+                        data-testid="desktop-remote-copy-magic-link-btn"
+                        aria-label="Copy magic link"
+                        icon={<Copy />}
                         onClick={() => onCopy(magicLink.url, 'Magic link')}
                       />
                     </Tooltip>
-                  </Space.Compact>
+                  </div>
                   {status.password_auth_enabled ? (
                     <div className="flex flex-col gap-1">
-                      <Text type="secondary" className="!text-xs">
+                      <Text type="secondary" className="text-xs">
                         Or send this plain URL — whoever opens it will be asked
                         for your password:
                       </Text>
-                      <Space.Compact className="w-full">
-                        <Input readOnly value={status.public_url} />
+                      <div className="flex w-full gap-2">
+                        <Input data-testid="desktop-remote-bare-url-input" className="flex-1" readOnly value={status.public_url} />
                         <Tooltip title="Copy">
                           <Button
-                            icon={<CopyOutlined />}
+                            data-testid="desktop-remote-copy-bare-url-btn"
+                            aria-label="Copy bare URL"
+                            icon={<Copy />}
                             onClick={() =>
                               onCopy(status.public_url!, 'Bare URL')
                             }
                           />
                         </Tooltip>
-                      </Space.Compact>
+                      </div>
                     </div>
                   ) : (
-                    <Text type="secondary" className="!text-xs">
+                    <Text type="secondary" className="text-xs">
                       You haven't turned on password login, so send a fresh
                       magic link from here every time you add a new device.
                     </Text>
@@ -436,6 +456,20 @@ export function RemoteAccessPage() {
   )
 }
 
+const changePasswordSchema = z
+  .object({
+    new_password: z
+      .string()
+      .min(1, 'Required')
+      .min(8, 'At least 8 characters'),
+    confirm: z.string().min(1, 'Required'),
+  })
+  .refine((d) => d.new_password === d.confirm, {
+    message: 'Passwords do not match',
+    path: ['confirm'],
+  })
+type ChangePasswordValues = z.infer<typeof changePasswordSchema>
+
 /**
  * Inline password-auth toggle + (when first enabling) the
  * change-password form. Keeps both concerns in one card so the
@@ -448,13 +482,11 @@ function PasswordAuthSection({
   status: { password_rotated: boolean; password_auth_enabled: boolean }
   saving: boolean
 }) {
-  const { message } = App.useApp()
-  const { token } = theme.useToken()
   const [showChangePassword, setShowChangePassword] = useState(false)
-  const [form] = Form.useForm<{
-    new_password: string
-    confirm: string
-  }>()
+  const form = useForm<ChangePasswordValues>({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: { new_password: '', confirm: '' },
+  })
   const [submitting, setSubmitting] = useState(false)
 
   // When the toggle is flipped ON for the first time (password not
@@ -463,10 +495,7 @@ function PasswordAuthSection({
   // server-side.
   const needsRotationToEnable = !status.password_rotated
 
-  const submitChangePassword = async (v: {
-    new_password: string
-    confirm: string
-  }) => {
+  const submitChangePassword = async (v: ChangePasswordValues) => {
     if (v.new_password !== v.confirm) {
       message.error('Passwords do not match')
       return
@@ -482,7 +511,7 @@ function PasswordAuthSection({
       // Now safe to flip the toggle on.
       await Stores.RemoteAccess.setPasswordAuthEnabled(true)
       setShowChangePassword(false)
-      form.resetFields()
+      form.reset()
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to set password')
     } finally {
@@ -491,12 +520,13 @@ function PasswordAuthSection({
   }
 
   return (
-    <Form layout="vertical" className="!mb-0">
-      <Form.Item
-        label="Enable password authentication"
-        extra="Off by default — only the magic-link QR works for new devices."
-      >
+    <div className="mb-0">
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium">
+          Enable password authentication
+        </label>
         <Switch
+          data-testid="desktop-remote-password-enable-switch"
           checked={status.password_auth_enabled}
           loading={saving}
           onChange={async (v) => {
@@ -518,12 +548,16 @@ function PasswordAuthSection({
             }
           }}
         />
-      </Form.Item>
+        <span className="text-xs text-muted-foreground">
+          Off by default — only the magic-link QR works for new devices.
+        </span>
+      </div>
 
       {status.password_auth_enabled && status.password_rotated && (
         <Button
-          type="link"
-          className="!p-0"
+          data-testid="desktop-remote-change-password-toggle-btn"
+          variant="link"
+          className="p-0"
           onClick={() => setShowChangePassword((v) => !v)}
         >
           {showChangePassword ? 'Hide' : 'Change password'}
@@ -531,18 +565,8 @@ function PasswordAuthSection({
       )}
 
       {showChangePassword && (
-        <div
-          className="mt-3 p-3 rounded"
-          style={{
-            // Use theme tokens instead of Tailwind's `border rounded`
-            // (which renders a hard-coded white/gray border that
-            // clashes with dark themes and ignores antd's
-            // colorBorder/colorFillTertiary scheme).
-            border: `1px solid ${token.colorBorderSecondary}`,
-            backgroundColor: token.colorFillQuaternary,
-          }}
-        >
-          <Title level={5} className="!mt-0">
+        <div className="mt-3 p-3 rounded border border-border bg-muted/40">
+          <Title level={5} className="mt-0">
             {needsRotationToEnable
               ? 'Set a strong admin password'
               : 'Change admin password'}
@@ -556,63 +580,47 @@ function PasswordAuthSection({
               machine.
             </Paragraph>
           )}
-          {/*
-            Inner Form has `onFinish={submitChangePassword}` but the Save
-            button uses `htmlType="button"` (NOT "submit"). The outer
-            <Form> wrapping this whole section has no onFinish; an inner
-            "submit"-button would bubble a native form submission to it
-            and the browser would do a real POST navigation → full page
-            reload. Triggering form.submit() programmatically dispatches
-            antd's onFinish path without the native submit event.
-          */}
-          <Form form={form} layout="vertical" onFinish={submitChangePassword}>
-            <Form.Item
+          <Form data-testid="desktop-remote-change-password-form" form={form} onSubmit={submitChangePassword} layout="vertical">
+            <FormField
               name="new_password"
               label="New password"
-              extra="At least 8 characters. The longer and more random, the better — this is what protects your app once it's reachable from the internet."
-              rules={[{ required: true, message: 'Required' }, { min: 8, message: 'At least 8 characters' }]}
+              description="At least 8 characters. The longer and more random, the better — this is what protects your app once it's reachable from the internet."
             >
-              <Input.Password autoComplete="new-password" />
-            </Form.Item>
-            <Form.Item
-              name="confirm"
-              label="Confirm new password"
-              dependencies={['new_password']}
-              rules={[
-                { required: true, message: 'Required' },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (!value || getFieldValue('new_password') === value) {
-                      return Promise.resolve()
-                    }
-                    return Promise.reject('Passwords do not match')
-                  },
-                }),
-              ]}
-            >
-              <Input.Password autoComplete="new-password" />
-            </Form.Item>
-            <Form.Item className="!mb-0">
-              <Space>
-                <Button
-                  type="primary"
-                  htmlType="button"
-                  loading={submitting}
-                  onClick={() => form.submit()}
-                >
-                  Save password{needsRotationToEnable && ' and enable'}
-                </Button>
-                <Button
-                  htmlType="button"
-                  onClick={() => setShowChangePassword(false)}
-                >
-                  Cancel
-                </Button>
-              </Space>
-            </Form.Item>
+              <PasswordInput
+                data-testid="desktop-remote-new-password-input"
+                autoComplete="new-password"
+                showLabel="Show password"
+                hideLabel="Hide password"
+              />
+            </FormField>
+            <FormField name="confirm" label="Confirm new password">
+              <PasswordInput
+                data-testid="desktop-remote-confirm-password-input"
+                autoComplete="new-password"
+                showLabel="Show password"
+                hideLabel="Hide password"
+              />
+            </FormField>
+            <Space>
+              <Button
+                data-testid="desktop-remote-save-password-btn"
+                type="submit"
+                loading={submitting}
+              >
+                Save password{needsRotationToEnable && ' and enable'}
+              </Button>
+              <Button
+                data-testid="desktop-remote-cancel-password-btn"
+                type="button"
+                variant="outline"
+                onClick={() => setShowChangePassword(false)}
+              >
+                Cancel
+              </Button>
+            </Space>
           </Form>
         </div>
       )}
-    </Form>
+    </div>
   )
 }

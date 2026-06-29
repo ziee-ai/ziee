@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
+import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -20,6 +21,10 @@ export default defineConfig(async () => {
       // Detect duplicate form names
       formNamesPlugin({
         srcDir: 'src',
+      }),
+      // Fail the build on any duplicate data-testid literal (i18n-safe selectors)
+      testidUniquePlugin({
+        srcDirs: [path.resolve(__dirname, './src')],
       }),
       // Remove data-test-* attributes in production builds
       ...(isDev || isTest ? [] : [removeDataTestPlugin()]),

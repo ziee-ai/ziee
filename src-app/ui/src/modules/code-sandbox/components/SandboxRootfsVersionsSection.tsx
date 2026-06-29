@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { Alert, App, Button, Flex, Spin, Tag, Typography } from 'antd'
-import { ReloadOutlined, StarOutlined } from '@ant-design/icons'
+import { Alert, Button, Flex, Spin, Tag, Text } from '@/components/ui'
+import { RotateCw, Star } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { AvailableRootfsCard } from './AvailableRootfsCard'
@@ -15,10 +15,8 @@ import {
   type VersionGroup,
 } from './_rootfsShared'
 
-const { Text } = Typography
-
 export function SandboxRootfsVersionsSection() {
-  const { modal, message } = App.useApp()
+  const { dialog } = require('@/components/ui')
   // Hook-safety: every `Stores.X.field` read is a `useStore` hook under the
   // hood, so ALL needed fields are read at the TOP before any early return.
   // `conversationCount` / `mcpServerWorkspaceCount` are only consumed inside
@@ -99,27 +97,21 @@ export function SandboxRootfsVersionsSection() {
   if (!canRead) {
     return (
       <Alert
-        type="warning"
-        showIcon
+        tone="warning"
         title="Not authorized"
         description="You don't have permission to view rootfs versions."
+        data-testid="sandbox-rootfs-noperm-alert"
       />
     )
-  }
-
-  const doSetPin = async (version: string) => {
-    const ok = await Stores.SandboxRootfsVersions.setPin(version)
-    if (ok) message.success(`Default rootfs set to v${version}`)
-    else message.error(`Failed to set default rootfs to v${version}`)
   }
 
   const handleSetPin = (version: string) => {
     if (isMajorBump(pinnedVersion, version)) {
       const convCount = conversationCount ?? 0
       const mcpCount = mcpServerWorkspaceCount ?? 0
-      modal.confirm({
+      dialog.confirm({
         title: `Set v${version} as default (major version bump)`,
-        content: (
+        description: (
           <div>
             <p>
               The semver major number is changing from v{pinnedVersion} to v
@@ -161,13 +153,11 @@ export function SandboxRootfsVersionsSection() {
           </div>
         ),
         okText: 'Set as default and wipe caches',
-        okButtonProps: { danger: true },
         cancelText: 'Cancel',
-        onOk: () => doSetPin(version),
-        width: 600,
+        onConfirm: () => Stores.SandboxRootfsVersions.setPin(version),
       })
     } else {
-      void doSetPin(version)
+      Stores.SandboxRootfsVersions.setPin(version)
     }
   }
 
@@ -186,31 +176,22 @@ export function SandboxRootfsVersionsSection() {
     }
   }
 
-  const handleDelete = async (group: VersionGroup) => {
+  const handleDelete = (group: VersionGroup) => {
     // Version-level delete: remove every downloaded flavor of this version.
-    const ids = group.flavors
-      .map(f => f.artifact?.id)
-      .filter((id): id is string => !!id)
-    const results = await Promise.all(
-      ids.map(id => Stores.SandboxRootfsVersions.deleteArtifact(id)),
-    )
-    const failed = results.filter(ok => !ok).length
-    if (failed === 0) {
-      message.success(`Deleted rootfs v${group.version}`)
-    } else {
-      message.error(
-        `Failed to delete ${failed} of ${results.length} flavor(s) of v${group.version}`,
-      )
+    for (const f of group.flavors) {
+      if (f.artifact) {
+        void Stores.SandboxRootfsVersions.deleteArtifact(f.artifact.id)
+      }
     }
   }
 
   return (
     <Flex vertical className="gap-3">
-      <Flex align="center" justify="space-between" wrap className="gap-2">
+      <Flex align="center" justify="between" wrap className="gap-2">
         <div>
           <Text strong>Currently default: </Text>
           {pinnedVersion ? (
-            <Tag color="blue" icon={<StarOutlined />} data-testid="default-chip">
+            <Tag tone="info" icon={<Star />} data-testid="default-chip">
               v{pinnedVersion}
             </Tag>
           ) : (
@@ -228,7 +209,7 @@ export function SandboxRootfsVersionsSection() {
           )}
         </div>
         <Button
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           onClick={() => Stores.SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
           data-testid="rootfs-refresh-button"
         >
@@ -238,9 +219,10 @@ export function SandboxRootfsVersionsSection() {
 
       {lastSwap && lastSwap.draining_mounts > 0 && (
         <Alert
-          type="info"
-          showIcon
-          closable
+          tone="info"
+          onClose={() => {}}
+          closeLabel="Close"
+          data-testid="sandbox-rootfs-draining-alert"
           title={
             <span data-testid="draining-indicator">
               {lastSwap.draining_mounts} session
@@ -255,10 +237,10 @@ export function SandboxRootfsVersionsSection() {
         />
       )}
 
-      {error && <Alert type="error" showIcon title={error} />}
+      {error && <Alert tone="error" title={error} data-testid="sandbox-rootfs-error-alert" />}
 
       {loading && groups.length === 0 ? (
-        <Spin aria-label="Loading rootfs versions" />
+        <Spin label="Loading" />
       ) : (
         <>
           <DownloadedRootfsCard

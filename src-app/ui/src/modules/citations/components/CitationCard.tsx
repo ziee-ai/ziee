@@ -1,10 +1,8 @@
-import { DeleteOutlined } from '@ant-design/icons'
-import { App, Button, Card, Popconfirm, Space, Typography } from 'antd'
+import { Trash2 } from 'lucide-react'
+import { Button, Card, Confirm, Space, Text, Paragraph, message } from '@/components/ui'
 import type { BibliographyEntry } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { VerificationBadge } from './VerificationBadge'
-
-const { Text, Paragraph } = Typography
 
 /** Pull a compact author list out of the entry's CSL-JSON. */
 function authorLine(csl: unknown): string {
@@ -34,7 +32,6 @@ export function CitationCard({
   // an ungated Delete; both call sites pass the resolved permission.
   canManage: boolean
 }) {
-  const { message } = App.useApp()
   const handleDelete = async () => {
     try {
       await Stores.Citations.remove(entry.id)
@@ -48,39 +45,40 @@ export function CitationCard({
     .join(' · ')
 
   return (
-    <Card size="small" style={{ marginBottom: 8 }}>
-      <Space direction="vertical" size={2} style={{ width: '100%' }}>
-        <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
+    <Card size="sm" className="mb-2" data-testid={`cite-card-${entry.id}`}>
+      <Space direction="vertical" size={2} className="w-full">
+        <Space align="center" className="justify-between w-full">
           <Space size={8}>
             <VerificationBadge status={entry.verification_status} />
-            <Text
-              code
-              copyable={{ tooltips: ['Copy citation key', 'Copied'] }}
-            >
+            <Text code>
               {entry.citation_key}
             </Text>
           </Space>
           {canManage && (
-            <Popconfirm
+            <Confirm
               title="Delete from library?"
               description="Removes it from the library and every project."
               okButtonProps={{ danger: true }}
               onConfirm={handleDelete}
+              okText="OK"
+              cancelText="Cancel"
+              data-testid={`cite-card-delete-confirm-${entry.id}`}
             >
               <Button
-                size="small"
-                danger
-                type="text"
+                size="sm"
+                variant="destructive"
+                type="button"
                 aria-label={`Delete ${entry.citation_key}`}
-                icon={<DeleteOutlined />}
+                icon={<Trash2 />}
+                data-testid={`cite-card-delete-button-${entry.id}`}
               />
-            </Popconfirm>
+            </Confirm>
           )}
         </Space>
         <Text strong>{entry.title || '(untitled)'}</Text>
         {meta && <Text type="secondary">{meta}</Text>}
         {entry.doi && (
-          <Paragraph style={{ margin: 0 }}>
+          <Paragraph className="m-0">
             <a
               href={`https://doi.org/${entry.doi}`}
               target="_blank"

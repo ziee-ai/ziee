@@ -1,12 +1,14 @@
-import { Button, Dropdown, Flex, Menu, Result, theme, Typography } from 'antd'
+import { Button, Dropdown, Flex, Result, Title, Text } from '@/components/ui'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
 import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
+import { Menu } from '@/components/ui'
+import type { MenuItem } from '@/components/ui/kit/menu'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -26,10 +28,6 @@ export default function SettingsPage() {
   // itself drops below the comfortable two-column width, not at
   // the much tighter `xs` (≤480) which the page rarely hits.
   const useMobileLayout = minSize.sm
-  const { token } = theme.useToken()
-  // Track the mobile section-picker dropdown's open state so the trigger
-  // button can expose `aria-expanded` (the menu-button ARIA contract).
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const { slots } = Stores.ModuleSystem
   const { user, permissions } = Stores.Auth
@@ -55,8 +53,8 @@ export default function SettingsPage() {
     ...(slots.get('settingsAdminPages') || []),
   ].filter(item => !isAllowed(item))
 
-  // Build final menu
-  const menuItems = [
+  // Kit Menu items — group nesting required by kit Menu's MenuItem type.
+  const kitMenuItems: MenuItem[] = [
     ...userSettingsItems.map(item => ({
       key: item.path,
       icon: item.icon,
@@ -66,31 +64,70 @@ export default function SettingsPage() {
       ? [
           { type: 'divider' as const },
           {
-            key: 'admin',
-            icon: <IoMdSettings />,
-            label: 'Admin',
             type: 'group' as const,
+            label: (
+              <span className="flex items-center gap-1">
+                <IoMdSettings />
+                Admin
+              </span>
+            ),
+            children: adminSettingsItems.map(item => ({
+              key: item.path,
+              icon: item.icon,
+              label: item.label,
+            })),
+          },
+        ]
+      : []),
+  ]
+
+  // Kit Dropdown items for the mobile trigger.
+  const dropdownItems = [
+    ...userSettingsItems.map(item => ({
+      key: item.path,
+      icon: item.icon,
+      label: (
+        <Flex className={'gap-2 items-center'}>
+          {item.icon}
+          {item.label}
+        </Flex>
+      ),
+    })),
+    ...(adminSettingsItems.length > 0
+      ? [
+          { type: 'divider' as const },
+          {
+            type: 'label' as const,
+            label: (
+              <div className={'-ml-1'}>
+                <Text strong type={'secondary'} className={'!text-xs'}>
+                  Admin
+                </Text>
+              </div>
+            ),
           },
           ...adminSettingsItems.map(item => ({
             key: item.path,
             icon: item.icon,
-            label: item.label,
+            label: (
+              <Flex className={'gap-2 items-center'}>
+                {item.icon}
+                {item.label}
+              </Flex>
+            ),
           })),
         ]
       : []),
   ]
 
+  // For permission checks on deep-linked URLs we need the flat valid section keys.
+  const validSections = [
+    ...userSettingsItems.map(item => item.path),
+    ...adminSettingsItems.map(item => item.path),
+  ]
+
   // Extract the current settings section from the URL and validate it
   const urlSection = location.pathname.match(/\/settings\/([^/]+)/)?.[1]
-  const validSections = menuItems
-    .filter(
-      item =>
-        'key' in item &&
-        item.key &&
-        (item as any).type !== 'divider' &&
-        (item as any).type !== 'group',
-    )
-    .map(item => (item as any).key)
 
   // Did the user deep-link to a section that exists but their
   // permissions hide? Treat that distinctly from "section doesn't
@@ -100,7 +137,7 @@ export default function SettingsPage() {
     ? forbiddenSettingsItems.find(item => item.path === urlSection)
     : undefined
 
-  const currentSection = validSections.includes(urlSection)
+  const currentSection = validSections.includes(urlSection ?? '')
     ? urlSection
     : validSections[0]
 
@@ -125,30 +162,22 @@ export default function SettingsPage() {
 
   // Get current section display info
   const getCurrentSectionInfo = () => {
-    const currentItem = menuItems.find(
-      item => 'key' in item && item.key === currentSection,
-    )
-    return currentItem || { icon: <IoMdSettings />, label: 'Settings' }
+    const flat = [
+      ...userSettingsItems,
+      ...adminSettingsItems,
+    ]
+    return flat.find(item => item.path === currentSection) || { icon: <IoMdSettings />, label: 'Settings' }
   }
 
   const SettingsMenu = () => (
     <Menu
+      data-testid="settings-nav-menu"
+      className="w-fit h-full p-1"
+      items={kitMenuItems}
+      selectedKey={currentSection ?? validSections[0]}
+      onSelect={handleMenuClick}
+      mode="vertical"
       aria-label="Settings navigation"
-      className={`
-      w-fit
-      h-full
-      !p-1
-      !border-r-0
-      [&_.ant-menu]:!px-2
-      [&_.ant-menu-item]:!h-8
-      [&_.ant-menu-item]:!leading-[32px]
-      `}
-      style={{
-        lineHeight: 1,
-      }}
-      selectedKeys={[currentSection || validSections[0]]}
-      items={menuItems}
-      onClick={({ key }) => handleMenuClick(key)}
     />
   )
 
@@ -160,68 +189,30 @@ export default function SettingsPage() {
       {/* Page Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
-          <Typography.Title level={4} className="!m-0 !leading-tight truncate">
+          <Title level={4} className="!m-0 !leading-tight truncate">
             Settings
-          </Typography.Title>
+          </Title>
           {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
-                styles={{
-                  root: {
-                    border: '1px solid ' + token.colorBorderSecondary,
-                  },
+                data-testid="settings-mobile-dropdown"
+                items={dropdownItems.map((item: any) => {
+                  if ('type' in item && item.type === 'divider') {
+                    return { type: 'divider' as const }
+                  }
+                  if ('type' in item && item.type === 'label') {
+                    return { type: 'label' as const, label: item.label }
+                  }
+                  return {
+                    key: item.key,
+                    label: item.label,
+                  }
+                })}
+                onSelect={(key) => {
+                  handleMenuClick(key)
                 }}
-                classNames={{
-                  root: `
-                  rounded-md
-                  `,
-                }}
-                menu={{
-                  items: menuItems.map((item: any) => {
-                    if ('type' in item && item.type === 'divider') {
-                      return { type: 'divider' }
-                    }
-                    if ('type' in item && item.type === 'group') {
-                      return {
-                        type: 'group',
-                        label: (
-                          <div className={'-ml-1'}>
-                            <Typography.Text
-                              strong
-                              type={'secondary'}
-                              className={'!text-xs'}
-                            >
-                              {item.label}
-                            </Typography.Text>
-                          </div>
-                        ),
-                      }
-                    }
-                    return {
-                      key: item.key,
-                      label: (
-                        <Flex className={'gap-2 items-center'}>
-                          {item.icon}
-                          {item.label}
-                        </Flex>
-                      ),
-                    }
-                  }),
-                  onClick: ({ key }) => {
-                    handleMenuClick(key)
-                  },
-                  selectedKeys: [currentSection || validSections[0]],
-                }}
-                trigger={['click']}
-                onOpenChange={setMobileMenuOpen}
               >
-                <Button
-                  type="text"
-                  className={'mt-[2px]'}
-                  aria-label="Select settings section"
-                  aria-haspopup="menu"
-                  aria-expanded={mobileMenuOpen}
-                >
+                <Button variant="ghost" data-testid="settings-mobile-dropdown-trigger" className={'mt-[2px]'}>
                   {getCurrentSectionInfo().icon} {getCurrentSectionInfo().label}{' '}
                   <IoIosArrowDown />
                 </Button>
@@ -239,11 +230,7 @@ export default function SettingsPage() {
             which fights the soft fade overlay HeaderBarContainer
             paints below itself. */}
         {!useMobileLayout && (
-          <div
-            className="w-fit pt-1"
-            role="navigation"
-            aria-label="Settings sections"
-          >
+          <div className="w-fit pt-1">
             <SettingsMenu />
           </div>
         )}
@@ -252,9 +239,10 @@ export default function SettingsPage() {
         <div className="flex-1 overflow-hidden">
           {forbiddenSection ? (
             <Result
+              data-testid="settings-forbidden-result"
               status="403"
               title="Not authorized"
-              subTitle={`You don't have permission to view "${forbiddenSection.label}".`}
+              subtitle={`You don't have permission to view "${forbiddenSection.label}".`}
             />
           ) : (
             <Outlet />

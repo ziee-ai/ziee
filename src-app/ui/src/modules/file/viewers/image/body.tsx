@@ -1,6 +1,6 @@
+import { FileImage } from 'lucide-react'
 import { useState } from 'react'
-import { Spin } from 'antd'
-import { FileImageOutlined } from '@ant-design/icons'
+import { Spin } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { getSource } from '../shared/source'
@@ -23,7 +23,7 @@ export function ImageBody(props: FileViewerSlotProps) {
           className="flex flex-col items-center justify-center gap-1 p-6 text-sm opacity-60"
           data-testid="inline-file-preview-image-error"
         >
-          <FileImageOutlined style={{ fontSize: 24 }} />
+          <FileImage className="text-2xl" />
           <span>Couldn't load image</span>
         </div>
       )
@@ -54,7 +54,7 @@ export function ImageBody(props: FileViewerSlotProps) {
   if (thumbnailUrl === null) Stores.File.getThumbnailUrl(file.id, file)
 
   if (!thumbnailUrl) {
-    return <div className="flex items-center justify-center py-8"><Spin /></div>
+    return <div className="flex items-center justify-center py-8"><Spin label="Loading" /></div>
   }
   return (
     <div className="flex items-center justify-center h-full p-4">

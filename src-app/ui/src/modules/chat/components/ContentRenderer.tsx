@@ -35,7 +35,7 @@ export const ContentRenderer = memo(function ContentRenderer({
 
     default:
       return (
-        <div className="text-gray-500">
+        <div className="text-muted-foreground">
           Unknown content type: {content.content_type}
         </div>
       )

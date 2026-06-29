@@ -1,23 +1,27 @@
 import { useEffect, useState } from 'react'
+import { z } from 'zod'
 import {
-  Typography,
+  Title,
+  Paragraph,
+  Text,
   Card,
   Input,
+  Textarea,
   Button,
-  Modal,
+  Dialog,
   Form,
-  InputNumber,
-  Popconfirm,
+  FormField,
+  useForm,
+  zodResolver,
+  Confirm,
   message,
   Space,
   Empty,
-  Spin,
-} from 'antd'
-import { DeleteOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
+  InputNumber,
+} from '@/components/ui'
+import { Trash2, Plus, Pencil } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { CoreMemoryBlock } from '@/api-client/types'
-
-const { Title, Paragraph, Text } = Typography
 
 /**
  * Letta-style core-memory block editor for an assistant. Renders below
@@ -45,6 +49,7 @@ export function CoreMemoryBlocksEditor({
 
   return (
     <Card
+      data-testid="memory-core-blocks-card"
       title={
         <Space>
           <Title level={5} className="!mb-0">
@@ -54,10 +59,10 @@ export function CoreMemoryBlocksEditor({
       }
       extra={
         <Button
-          type="primary"
-          size="small"
-          icon={<PlusOutlined />}
+          size="sm"
+          icon={<Plus />}
           onClick={() => setCreating(true)}
+          data-testid="memory-core-add-block-btn"
         >
           Add block
         </Button>
@@ -71,40 +76,35 @@ export function CoreMemoryBlocksEditor({
         get retrieved by similarity.
       </Paragraph>
 
-      {blocks.length === 0 && loading ? (
-        <div className="flex justify-center py-6">
-          <Spin />
-        </div>
-      ) : blocks.length === 0 && !loading ? (
-        <Empty
-          description="No blocks yet"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-        />
+      {blocks.length === 0 && !loading ? (
+        <Empty description="No blocks yet" data-testid="memory-core-blocks-empty" />
       ) : (
         <div className="space-y-2">
           {blocks.map(b => (
-            <Card key={b.id} size="small">
+            <Card key={b.id} size="sm" data-testid={`memory-core-block-card-${b.id}`}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <Text strong>{b.block_label}</Text>
                   <Paragraph
                     type="secondary"
-                    className="!mt-1 !mb-0"
-                    ellipsis={{ rows: 2 }}
+                    className="!mt-1 !mb-0 line-clamp-2"
                   >
                     {b.content}
                   </Paragraph>
                 </div>
                 <Space>
                   <Button
-                    icon={<EditOutlined />}
-                    size="small"
+                    icon={<Pencil />}
+                    size="sm"
                     onClick={() => setEditing(b)}
+                    data-testid={`memory-core-block-edit-btn-${b.id}`}
                   />
-                  <Popconfirm
+                  <Confirm
                     title="Delete this block?"
+                    data-testid={`memory-core-block-delete-confirm-${b.id}`}
                     description={`The "${b.block_label}" block will be removed from this assistant's core memory.`}
                     okText="Delete"
+                    cancelText="Cancel"
                     okButtonProps={{ danger: true }}
                     onConfirm={async () => {
                       try {
@@ -123,12 +123,13 @@ export function CoreMemoryBlocksEditor({
                     }}
                   >
                     <Button
-                      icon={<DeleteOutlined />}
-                      size="small"
-                      danger
+                      icon={<Trash2 />}
+                      size="sm"
+                      variant="destructive"
                       aria-label={`Delete block ${b.block_label}`}
+                      data-testid={`memory-core-block-delete-btn-${b.id}`}
                     />
-                  </Popconfirm>
+                  </Confirm>
                 </Space>
               </div>
             </Card>
@@ -151,6 +152,16 @@ export function CoreMemoryBlocksEditor({
   )
 }
 
+const blockSchema = z.object({
+  block_label: z
+    .string()
+    .min(1, 'Required')
+    .regex(/^[a-z0-9_-]{1,64}$/, '1-64 chars, lowercase letters, digits, _ or -'),
+  content: z.string().min(1, 'Required').max(50_000),
+  char_limit: z.number().min(1).max(50_000),
+})
+type BlockFormValues = z.infer<typeof blockSchema>
+
 function BlockFormModal({
   open,
   assistantId,
@@ -162,27 +173,22 @@ function BlockFormModal({
   existing?: CoreMemoryBlock
   onClose: () => void
 }) {
-  const { loadingByAssistant } = Stores.CoreMemoryBlocks
-  const saving = loadingByAssistant[assistantId] ?? false
-  const [form] = Form.useForm<{
-    block_label: string
-    content: string
-    char_limit: number
-  }>()
+  const form = useForm<BlockFormValues>({
+    resolver: zodResolver(blockSchema),
+    defaultValues: { block_label: '', content: '', char_limit: 2000 },
+  })
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (open) {
-      form.setFieldsValue(
+      form.reset(
         existing ?? { block_label: '', content: '', char_limit: 2000 },
       )
     }
   }, [open, existing])
 
-  const handleSubmit = async (values: {
-    block_label: string
-    content: string
-    char_limit: number
-  }) => {
+  const handleSubmit = async (values: BlockFormValues) => {
+    setSaving(true)
     try {
       await Stores.CoreMemoryBlocks.upsert({
         assistant_id: assistantId,
@@ -194,55 +200,65 @@ function BlockFormModal({
       onClose()
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Save failed')
+    } finally {
+      setSaving(false)
     }
   }
 
   return (
-    <Modal
+    <Dialog
+      data-testid={existing ? 'memory-core-block-edit-dialog' : 'memory-core-block-create-dialog'}
       open={open}
+      onOpenChange={(v) => { if (!v) onClose() }}
       title={
         existing ? `Edit "${existing.block_label}"` : 'Add core memory block'
       }
-      onCancel={onClose}
-      confirmLoading={saving}
-      onOk={() => form.submit()}
-      okText={existing ? 'Save' : 'Add'}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} data-testid="memory-core-block-form-cancel-btn">
+            Cancel
+          </Button>
+          <Button
+            loading={saving}
+            onClick={() => form.handleSubmit(handleSubmit)()}
+            data-testid="memory-core-block-form-submit-btn"
+          >
+            {existing ? 'Save' : 'Add'}
+          </Button>
+        </>
+      }
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
-        <Form.Item
+      <Form form={form} onSubmit={handleSubmit} layout="vertical" data-testid="memory-core-block-form">
+        <FormField
           name="block_label"
           label="Label"
-          rules={[
-            { required: true, message: 'Required' },
-            {
-              pattern: /^[a-z0-9_-]{1,64}$/,
-              message: '1-64 chars, lowercase letters, digits, _ or -',
-            },
-          ]}
+          required
         >
           <Input
             disabled={!!existing /* label is the natural key; can't rename */}
             placeholder="persona"
+            data-testid="memory-core-block-label-input"
           />
-        </Form.Item>
-        <Form.Item
+        </FormField>
+        <FormField
           name="content"
           label="Content"
-          rules={[{ required: true, max: 50_000 }]}
+          required
         >
-          <Input.TextArea
+          <Textarea
             rows={6}
             placeholder="Always-in-context content. The assistant will see this prepended to every system prompt."
+            data-testid="memory-core-block-content-input"
           />
-        </Form.Item>
-        <Form.Item
+        </FormField>
+        <FormField
           name="char_limit"
           label="Soft char limit"
-          extra="Advisory; the LLM may exceed when writing back. Used as a hint in the system prompt."
+          description="Advisory; the LLM may exceed when writing back. Used as a hint in the system prompt."
         >
-          <InputNumber min={1} max={50_000} />
-        </Form.Item>
+          <InputNumber min={1} max={50_000} data-testid="memory-core-block-charlimit-input" />
+        </FormField>
       </Form>
-    </Modal>
+    </Dialog>
   )
 }

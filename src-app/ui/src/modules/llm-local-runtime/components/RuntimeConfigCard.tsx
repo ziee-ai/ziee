@@ -1,17 +1,28 @@
 import { useEffect } from 'react'
+import { z } from 'zod'
 import {
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Form,
+  FormField,
+  useForm,
+  zodResolver,
   InputNumber,
   Spin,
   message,
-} from 'antd'
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+
+const schema = z.object({
+  idle_unload_secs: z.number().min(0).max(86400),
+  auto_start_timeout_secs: z.number().min(1).max(600),
+  drain_timeout_secs: z.number().min(1).max(600),
+})
+type Schema = z.infer<typeof schema>
 
 /**
  * Runtime config card: the singleton llm_runtime_settings row —
@@ -24,11 +35,18 @@ export function RuntimeConfigCard() {
   const { settings, loadingSettings, savingSettings, error } =
     Stores.RuntimeConfig
   const canManage = usePermission(Permissions.RuntimeSettingsManage)
-  const [form] = Form.useForm()
+  const form = useForm<Schema>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      idle_unload_secs: 0,
+      auto_start_timeout_secs: 30,
+      drain_timeout_secs: 30,
+    },
+  })
 
   useEffect(() => {
     if (settings) {
-      form.setFieldsValue({
+      form.reset({
         idle_unload_secs: settings.idle_unload_secs,
         auto_start_timeout_secs: settings.auto_start_timeout_secs,
         drain_timeout_secs: settings.drain_timeout_secs,
@@ -43,9 +61,8 @@ export function RuntimeConfigCard() {
     }
   }, [error])
 
-  const handleSave = async () => {
+  const handleSave = async (values: Schema) => {
     try {
-      const values = await form.validateFields()
       await Stores.RuntimeConfig.saveSettings(values)
       message.success('Runtime settings saved')
     } catch {
@@ -55,60 +72,60 @@ export function RuntimeConfigCard() {
 
   if (loadingSettings && !settings) {
     return (
-      <Card title="Runtime configuration">
-        <Spin />
+      <Card title="Runtime configuration" data-testid="llmrt-runtime-config-card">
+        <Spin label="Loading" />
       </Card>
     )
   }
 
   return (
-    <Card title="Runtime configuration">
+    <Card title="Runtime configuration" data-testid="llmrt-runtime-config-card">
       <Form
         form={form}
-        layout="horizontal"
+        onSubmit={handleSave}
         disabled={!canManage}
+        data-testid="llmrt-runtime-config-form"
         // Two columns: label on the left, input + help text on the
         // right. xs (mobile) collapses to stacked (label on top of
         // input) so neither side gets squeezed below a usable width.
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
+        layout="horizontal"
+        labelWidth="41.67%"
       >
-        <Form.Item
-          label="Idle unload timeout (seconds)"
+        <FormField
           name="idle_unload_secs"
-          help="Engines idle longer than this are automatically unloaded to free memory. 0 disables idle eviction."
-          rules={[{ required: true, type: 'number', min: 0, max: 86400 }]}
+          label="Idle unload timeout (seconds)"
+          description="Engines idle longer than this are automatically unloaded to free memory. 0 disables idle eviction."
+          required
         >
-          <InputNumber min={0} max={86400} className="!w-full" />
-        </Form.Item>
+          <InputNumber min={0} max={86400} className="!w-full" data-testid="llmrt-config-idle-unload" />
+        </FormField>
 
-        <Form.Item
-          label="Auto-start timeout (seconds)"
+        <FormField
           name="auto_start_timeout_secs"
-          help="How long the proxy waits for a freshly-spawned engine to become healthy before giving up."
-          rules={[{ required: true, type: 'number', min: 1, max: 600 }]}
+          label="Auto-start timeout (seconds)"
+          description="How long the proxy waits for a freshly-spawned engine to become healthy before giving up."
+          required
         >
-          <InputNumber min={1} max={600} className="!w-full" />
-        </Form.Item>
+          <InputNumber min={1} max={600} className="!w-full" data-testid="llmrt-config-autostart-timeout" />
+        </FormField>
 
-        <Form.Item
-          label="Drain timeout (seconds)"
+        <FormField
           name="drain_timeout_secs"
-          help="When unloading an idle engine, how long to wait for in-flight requests to finish before forcing the stop."
-          rules={[{ required: true, type: 'number', min: 1, max: 600 }]}
+          label="Drain timeout (seconds)"
+          description="When unloading an idle engine, how long to wait for in-flight requests to finish before forcing the stop."
+          required
         >
-          <InputNumber min={1} max={600} className="!w-full" />
-        </Form.Item>
+          <InputNumber min={1} max={600} className="!w-full" data-testid="llmrt-config-drain-timeout" />
+        </FormField>
 
         {canManage && (
           <>
-            <Divider className="!my-3" />
+            <Separator className="!my-3" />
             <Flex justify="end">
               <Button
-                type="primary"
                 loading={savingSettings}
-                onClick={handleSave}
+                type="submit"
+                data-testid="llmrt-config-save-btn"
               >
                 Save
               </Button>

@@ -1,10 +1,9 @@
-import { useState, useMemo, useEffect } from 'react'
-import { App, Select } from 'antd'
-import { WarningOutlined } from '@ant-design/icons'
+import { useState, useMemo } from 'react'
+import { Select } from '@/components/ui'
+import { TriangleAlert } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { ProviderWithModels } from '@/api-client/types'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
-import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 /**
  * ModelSelector Component
@@ -33,16 +32,8 @@ function providerNeedsApiKey(
 }
 
 export function ModelSelector() {
-  const { message } = App.useApp()
-  const { selectedModelId, providers, error, loading } = Stores.ModelPicker
+  const { selectedModelId, providers } = Stores.ModelPicker
   const { sending } = Stores.Chat
-  const mainContentMinSize = useMainContentMinSize()
-
-  // Surface provider-load failures (the store captured `error` but nothing
-  // rendered it, so the picker silently showed an empty dropdown).
-  useEffect(() => {
-    if (error) message.error(error)
-  }, [error, message])
   const [pendingProviderForKey, setPendingProviderForKey] = useState<{
     providerId: string
     providerName: string
@@ -62,7 +53,7 @@ export function ModelSelector() {
         if (enabledModels.length > 0) {
           const label = providerNeedsApiKey(provider) ? (
             <span className="flex items-center gap-1">
-              <WarningOutlined className="text-yellow-500" />
+              <TriangleAlert className="text-warning" />
               {provider.name}
             </span>
           ) : (
@@ -84,7 +75,8 @@ export function ModelSelector() {
     return modelGroups
   }, [providers])
 
-  const handleChange = (value: string) => {
+  const handleChange = (value: string | undefined) => {
+    if (!value) return
     // Check if selected model belongs to a provider that still needs an API
     // key (local providers never do — they use an internal proxy token).
     for (const provider of providers) {
@@ -111,17 +103,15 @@ export function ModelSelector() {
   return (
     <div data-testid="model-selector">
       <Select
-        value={selectedModelId}
+        data-testid="ullm-model-select"
+        value={selectedModelId ?? undefined}
         onChange={handleChange}
         popupMatchSelectWidth={false}
-        placeholder={loading && providers.length === 0 ? 'Loading…' : 'Select Model'}
+        placeholder="Select Model"
         aria-label="Model"
-        loading={loading && providers.length === 0}
         disabled={sending}
         options={availableModels}
-        style={{ fontSize: 15, maxWidth: mainContentMinSize.xs ? 130 : undefined }}
-        className="[&_.ant-select-selector]:!w-auto [&_.ant-select-selector]:!min-w-0"
-        variant="borderless"
+        className="text-[15px] max-w-[130px] border-0 shadow-none bg-transparent"
       />
       {pendingProviderForKey && (
         <ProviderApiKeyModal

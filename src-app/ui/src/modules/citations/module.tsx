@@ -1,4 +1,4 @@
-import { BookOutlined } from '@ant-design/icons'
+import { Book } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -37,7 +37,7 @@ export default createModule({
     settingsUserPages: [
       {
         id: 'citations',
-        icon: <BookOutlined />,
+        icon: <Book />,
         label: 'Citations',
         path: 'citations',
         order: 35,

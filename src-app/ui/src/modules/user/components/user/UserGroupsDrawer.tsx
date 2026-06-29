@@ -1,14 +1,21 @@
-import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
-import { App, Button, Empty, List, Popconfirm, Tag, Tooltip } from 'antd'
+import { Plus, Users } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { useEffect, useState } from 'react'
+import {
+  message,
+  Tag,
+  Confirm,
+  Button,
+  Empty,
+  List,
+  Tooltip,
+} from '@/components/ui'
 
 export function UserGroupsDrawer() {
-  const { message } = App.useApp()
   const { isOpen, user } = Stores.UserGroupsDrawer
   const { groups } = Stores.UserGroups
   const [userGroupIds, setUserGroupIds] = useState<Set<string>>(new Set())
@@ -100,8 +107,8 @@ export function UserGroupsDrawer() {
         canAssign && (
           <Tooltip title="Assign group">
             <Button
-              type="text"
-              icon={<PlusOutlined aria-hidden="true" />}
+              variant="link"
+              icon={<Plus aria-hidden="true" />}
               onClick={() => {
                 Stores.UserGroupsDrawer.closeUserGroupsDrawer()
                 if (user) {
@@ -110,6 +117,7 @@ export function UserGroupsDrawer() {
               }}
               className={'mr-2'}
               aria-label="Assign group"
+              data-testid="user-groups-drawer-assign-button"
             />
           </Tooltip>
         )
@@ -118,52 +126,53 @@ export function UserGroupsDrawer() {
       {loadingUserGroups ? (
         <Loading tip="Loading group memberships..." />
       ) : groups.length === 0 ? (
-        <Empty description="No groups yet" />
+        <Empty description="No groups yet" data-testid="user-groups-drawer-empty" />
       ) : (
         <List
           dataSource={groups}
+          rowKey="id"
+          data-testid="user-groups-drawer-list"
           renderItem={group => {
             const isMember = userGroupIds.has(group.id)
-            const actions = canAssign
-              ? [
-                  isMember ? (
-                    <Popconfirm
-                      key="remove"
-                      title="Remove user from this group?"
-                      onConfirm={() => handleRemoveFromGroup(group.id)}
-                      okText="Remove"
-                      cancelText="Cancel"
-                    >
-                      <Button type="link" danger size="small">
-                        Remove
-                      </Button>
-                    </Popconfirm>
-                  ) : (
-                    <Button
-                      key="assign"
-                      type="link"
-                      size="small"
-                      onClick={() => handleAssignToGroup(group.id)}
-                    >
-                      Assign
-                    </Button>
-                  ),
-                ]
-              : []
+            const action = canAssign ? (
+              isMember ? (
+                <Confirm
+                  title="Remove user from this group?"
+                  onConfirm={() => handleRemoveFromGroup(group.id)}
+                  okText="OK"
+                  cancelText="Cancel"
+                  data-testid={`user-groups-drawer-remove-confirm-${group.id}`}
+                >
+                  <Button variant="link" size="sm" data-testid={`user-groups-drawer-remove-button-${group.id}`}>
+                    Remove
+                  </Button>
+                </Confirm>
+              ) : (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => handleAssignToGroup(group.id)}
+                  data-testid={`user-groups-drawer-assign-row-button-${group.id}`}
+                >
+                  Assign
+                </Button>
+              )
+            ) : null
             return (
-              <List.Item actions={actions}>
-                <List.Item.Meta
-                  avatar={<TeamOutlined />}
-                  title={
-                    <div className="flex items-center gap-2">
-                      {group.name}
-                      {isMember && <Tag color="green">Member</Tag>}
-                      {group.is_system && <Tag color="orange">System</Tag>}
-                    </div>
-                  }
-                  description={group.description || 'No description'}
-                />
-              </List.Item>
+              <div className="flex items-center gap-3">
+                <Users />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    {group.name}
+                    {isMember && <Tag tone="success" data-testid={`user-groups-drawer-member-tag-${group.id}`}>Member</Tag>}
+                    {group.is_system && <Tag tone="warning" data-testid={`user-groups-drawer-system-tag-${group.id}`}>System</Tag>}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {group.description || 'No description'}
+                  </div>
+                </div>
+                {action && <div>{action}</div>}
+              </div>
             )
           }}
         />

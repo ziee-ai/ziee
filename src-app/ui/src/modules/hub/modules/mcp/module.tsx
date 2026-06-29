@@ -1,6 +1,6 @@
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
-import { ApiOutlined } from '@ant-design/icons'
+import { Plug } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
@@ -36,7 +36,7 @@ export default createModule({
       {
         id: 'mcp-servers',
         label: 'MCP Servers',
-        icon: <ApiOutlined />,
+        icon: <Plug />,
         component: McpServersHubTab,
         order: 30,
         permissions: {

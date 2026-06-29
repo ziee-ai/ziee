@@ -1,20 +1,16 @@
 import {
   Alert,
-  App,
   Button,
   Card,
   Checkbox,
-  Flex,
   InputNumber,
   Select,
-  Typography,
-} from 'antd'
+} from '@/components/ui'
+import { Title, Paragraph, Text, message } from '@/components/ui'
 import { useEffect, useMemo, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Title, Paragraph, Text } = Typography
 
 /**
  * Admin card mounted on top of the System MCP Servers page.
@@ -40,7 +36,6 @@ const { Title, Paragraph, Text } = Typography
  * was confusing).
  */
 export function McpUserPolicyCard() {
-  const { message } = App.useApp()
   const { multiUserMode } = Stores.AppMode
 
   // Read the policy state property (not function accessors) so this
@@ -109,7 +104,7 @@ export function McpUserPolicyCard() {
 
   return (
     <Card data-testid="mcp-user-policy-card">
-      <Flex vertical gap={12}>
+      <div className="flex flex-col gap-3">
         <div>
           <Title level={5} className="!m-0">
             User MCP policy
@@ -123,23 +118,34 @@ export function McpUserPolicyCard() {
 
         <div>
           <Text strong>Allowed transports for users</Text>
-          <div className="mt-1">
-            <Checkbox.Group
-              value={transports}
-              onChange={vals => setTransports(vals as string[])}
-              disabled={!canEdit}
-              options={[
-                { label: 'HTTP', value: 'http' },
-                { label: 'Standard I/O (sandboxed)', value: 'stdio' },
-              ]}
-            />
+          <div className="mt-1 flex flex-col gap-2">
+            {[
+              { label: 'HTTP', value: 'http' },
+              { label: 'Standard I/O (sandboxed)', value: 'stdio' },
+            ].map(opt => (
+              <label key={opt.value} className="flex items-center gap-2">
+                <Checkbox
+                  data-testid={`mcp-policy-transport-${opt.value}`}
+                  checked={transports.includes(opt.value)}
+                  onCheckedChange={checked => {
+                    if (checked) {
+                      setTransports([...transports, opt.value])
+                    } else {
+                      setTransports(transports.filter(t => t !== opt.value))
+                    }
+                  }}
+                  disabled={!canEdit}
+                />
+                <span>{opt.label}</span>
+              </label>
+            ))}
           </div>
           {noTransports && (
             <Alert
-              type="warning"
-              showIcon
+              tone="warning"
               className="mt-2"
-              message="Users cannot add any MCP server. The MCP tab in the Hub is hidden."
+              data-testid="mcp-policy-no-transports-alert"
+              title="Users cannot add any MCP server. The MCP tab in the Hub is hidden."
             />
           )}
         </div>
@@ -153,7 +159,8 @@ export function McpUserPolicyCard() {
               force-applies this on create.
             </Paragraph>
             <Select
-              style={{ width: '100%' }}
+              className="w-full"
+              data-testid="mcp-policy-flavor-select"
               value={flavor ?? undefined}
               onChange={v => setFlavor(v)}
               options={flavorOptions}
@@ -170,7 +177,7 @@ export function McpUserPolicyCard() {
             “Calls” tab) before a background job prunes it. Set to 0 to keep
             it forever.
           </Paragraph>
-          <Flex align="center" gap={8}>
+          <div className="flex items-center gap-2">
             <InputNumber
               min={0}
               max={3650}
@@ -180,17 +187,17 @@ export function McpUserPolicyCard() {
               data-testid="mcp-tool-call-retention-days"
             />
             <Text type="secondary">days</Text>
-          </Flex>
+          </div>
         </div>
 
-        <Flex justify="end">
+        <div className="flex justify-end">
           <Can permission={Permissions.McpUserPolicyEdit}>
-            <Button type="primary" loading={saving} onClick={handleSave}>
+            <Button loading={saving} onClick={handleSave} data-testid="mcp-policy-save-btn">
               Save policy
             </Button>
           </Can>
-        </Flex>
-      </Flex>
+        </div>
+      </div>
     </Card>
   )
 }

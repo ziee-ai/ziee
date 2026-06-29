@@ -1,21 +1,15 @@
+import { Calculator, CirclePlay, FlaskConical, Trash2 } from 'lucide-react'
 import {
-  CalculatorOutlined,
-  DeleteOutlined,
-  ExperimentOutlined,
-  PlayCircleOutlined,
-} from '@ant-design/icons'
-import {
-  App,
   Button,
   Descriptions,
-  Drawer,
+  Dialog,
   Empty,
-  Popconfirm,
   Space,
-  Steps,
   Tag,
-  Typography,
-} from 'antd'
+  Text,
+  Title,
+  message,
+} from '@/components/ui'
 import { useEffect, useMemo, useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
@@ -28,15 +22,12 @@ import { WorkflowScopeBadge } from './WorkflowScopeBadge'
 import { WorkflowTestsPanel } from './WorkflowTestsPanel'
 import { parseWorkflowIr } from './workflowIr'
 
-const { Text, Title } = Typography
-
 /**
  * Workflow detail: read-only step list (from the compiled IR when
  * present, else metadata) + Run / Dry-run / Test actions. Once a run is
  * kicked off, the live progress view renders inline.
  */
 export function WorkflowDetailDrawer() {
-  const { message } = App.useApp()
   const { isOpen, workflow } = Stores.WorkflowDrawer
   const canExecute = usePermission(Permissions.WorkflowsExecute)
   const canManage = usePermission(Permissions.WorkflowsInstall)
@@ -62,11 +53,12 @@ export function WorkflowDetailDrawer() {
 
   if (!workflow) {
     return (
-      <Drawer
+      <Dialog
+        data-testid="wf-detail-dialog-empty"
         open={isOpen}
-        onClose={() => Stores.WorkflowDrawer.close()}
-        closable={{ closeIcon: true }}
-        size="large"
+        onOpenChange={(open) => { if (!open) Stores.WorkflowDrawer.close() }}
+        className="!max-w-[480px]"
+        title=""
       />
     )
   }
@@ -87,15 +79,19 @@ export function WorkflowDetailDrawer() {
     }
   }
 
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+
   return (
-    <Drawer
+    <Dialog
+      data-testid="wf-detail-dialog"
       open={isOpen}
-      onClose={() => {
-        setActiveRunId(null)
-        Stores.WorkflowDrawer.close()
+      onOpenChange={(open) => {
+        if (!open) {
+          setActiveRunId(null)
+          Stores.WorkflowDrawer.close()
+        }
       }}
-      closable={{ closeIcon: true }}
-      size="large"
+      className="!max-w-[480px]"
       title={
         <Space>
           <Title level={5} className="!m-0">
@@ -104,56 +100,72 @@ export function WorkflowDetailDrawer() {
           <WorkflowScopeBadge scope={workflow.scope} isDev={workflow.is_dev} />
         </Space>
       }
-      extra={
+      footer={
         editable ? (
-          <Popconfirm
-            title="Delete this workflow?"
-            description="This removes the workflow and its extracted files."
-            onConfirm={handleDelete}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button danger size="small" icon={<DeleteOutlined />}>
+          <>
+            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="destructive" size="sm" icon={<Trash2 />}>
               Delete
             </Button>
-          </Popconfirm>
+            <Dialog
+              data-testid="wf-detail-delete-dialog"
+              open={deleteDialogOpen}
+              onOpenChange={(open) => {
+                if (!open) setDeleteDialogOpen(false)
+              }}
+              title="Delete this workflow?"
+              description="This removes the workflow and its extracted files."
+              footer={
+                <div className="flex justify-end gap-2">
+                  <Button data-testid="wf-detail-delete-cancel-btn" onClick={() => setDeleteDialogOpen(false)} variant="outline">
+                    Cancel
+                  </Button>
+                  <Button data-testid="wf-detail-delete-confirm-btn" onClick={handleDelete} variant="destructive">
+                    Delete
+                  </Button>
+                </div>
+              }
+            >
+              <Text>This action cannot be undone.</Text>
+            </Dialog>
+          </>
         ) : null
       }
     >
       <div className="flex flex-col gap-4">
         {workflow.description && <Text>{workflow.description}</Text>}
 
-        <Descriptions size="small" column={1} bordered>
-          <Descriptions.Item label="Name">{workflow.name}</Descriptions.Item>
-          {workflow.version && (
-            <Descriptions.Item label="Version">
-              {workflow.version}
-            </Descriptions.Item>
-          )}
-          <Descriptions.Item label="Files">
-            {workflow.file_count}
-          </Descriptions.Item>
-        </Descriptions>
+        <Descriptions data-testid="wf-detail-descriptions" size="sm" column={1} bordered
+          items={[
+            { key: 'name', label: 'Name', children: workflow.name },
+            ...(workflow.version ? [{ key: 'version', label: 'Version', children: workflow.version }] : []),
+            { key: 'files', label: 'Files', children: workflow.file_count },
+          ]}
+        />
 
         <Space wrap>
           {canExecute && (
             <Button
-              type="primary"
-              icon={<PlayCircleOutlined />}
+              data-testid="wf-detail-run-btn"
+              variant="default"
+              icon={<CirclePlay />}
               onClick={() => setRunDialogOpen(true)}
             >
               Run
             </Button>
           )}
           <Button
-            icon={<CalculatorOutlined />}
+            data-testid="wf-detail-dry-run-btn"
+            variant="outline"
+            icon={<Calculator />}
             onClick={() => setDryRunOpen(true)}
           >
             Dry-run preview
           </Button>
           {workflow.is_dev && (
             <Button
-              icon={<ExperimentOutlined />}
+              data-testid="wf-detail-run-tests-btn"
+              variant="outline"
+              icon={<FlaskConical />}
               onClick={() => setTestsOpen(true)}
             >
               Run tests
@@ -175,30 +187,23 @@ export function WorkflowDetailDrawer() {
             Steps
           </Text>
           {steps.length > 0 ? (
-            <Steps
-              orientation="vertical"
-              size="small"
-              items={steps.map(s => ({
-                status: 'wait',
-                title: (
+            <div className="space-y-3">
+              {steps.map((s, i) => (
+                <div key={i} className="flex flex-col gap-1">
                   <Space size={8}>
                     <Text>{s.message || s.id}</Text>
-                    {s.kind && <Tag className="text-xs !m-0">{s.kind}</Tag>}
+                    {s.kind && <Tag data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
                   </Space>
-                ),
-                content:
-                  s.dependsOn && s.dependsOn.length > 0 ? (
+                  {s.dependsOn && s.dependsOn.length > 0 && (
                     <Text type="secondary" className="text-xs">
                       depends on: {s.dependsOn.join(', ')}
                     </Text>
-                  ) : undefined,
-              }))}
-            />
+                  )}
+                </div>
+              ))}
+            </div>
           ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="Step details available after running"
-            />
+            <Empty data-testid="wf-detail-steps-empty" description="Step details available after running" />
           )}
         </div>
 
@@ -229,6 +234,6 @@ export function WorkflowDetailDrawer() {
         open={testsOpen}
         onClose={() => setTestsOpen(false)}
       />
-    </Drawer>
+    </Dialog>
   )
 }

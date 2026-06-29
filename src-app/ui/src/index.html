@@ -4,35 +4,22 @@
     <meta charset="UTF-8"/>
     <link rel="icon" type="image/svg+xml" href="/vite.svg"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"/>
-    <title>Ziee</title>
-    <style>
-        /* Startup splash painted before the JS bundle parses and React
-           mounts. createRoot().render() replaces #root's children, so the
-           splash clears the instant the app is interactive instead of a
-           blank page while modules register + the session bootstraps. */
-        @keyframes ziee-boot-spin { to { transform: rotate(360deg); } }
-        #ziee-boot-splash {
-            position: fixed; inset: 0; display: flex;
-            align-items: center; justify-content: center; background: #ffffff;
-        }
-        #ziee-boot-splash .ziee-boot-spinner {
-            width: 36px; height: 36px; border: 3px solid #e6e6e6;
-            border-top-color: #1677ff; border-radius: 50%;
-            animation: ziee-boot-spin 0.8s linear infinite;
-        }
-        @media (prefers-color-scheme: dark) {
-            #ziee-boot-splash { background: #141414; }
-            #ziee-boot-splash .ziee-boot-spinner { border-color: #303030; border-top-color: #1677ff; }
-        }
-    </style>
+    <title>Ziee Chat - Modular Architecture</title>
+    <!-- Pre-hydration theme: set the `dark` class before first paint to avoid a flash of the
+         wrong theme. Key must match ThemeProvider's storageKey (default 'ziee-theme'). -->
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem('ziee-theme') || 'system'
+          var dark = p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch (e) {}
+      })()
+    </script>
 </head>
 
 <body>
-<div id="root">
-    <div id="ziee-boot-splash" role="status" aria-label="Loading Ziee">
-        <div class="ziee-boot-spinner"></div>
-    </div>
-</div>
+<div id="root"></div>
 <script type="module" src="./main.tsx"></script>
 </body>
 </html>

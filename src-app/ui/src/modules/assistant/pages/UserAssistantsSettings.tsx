@@ -1,42 +1,29 @@
+import { Trash2, Pencil, Plus, Bot } from 'lucide-react'
 import {
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-  RobotOutlined,
-} from '@ant-design/icons'
-import {
-  App,
   Button,
   Card,
   Descriptions,
-  Divider,
+  Separator,
   Empty,
   Flex,
-  Popconfirm,
+  Confirm,
   Tag,
   Tooltip,
-  Typography,
-} from 'antd'
+  Text,
+} from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
 
-const { Text } = Typography
-
 export function UserAssistantsSettings() {
-  const { message } = App.useApp()
-
   // Store state
   const { assistants: assistantsMap, loading, error } = Stores.UserAssistants
 
-  const assistants = useMemo(
-    () => Array.from(assistantsMap.values()),
-    [assistantsMap],
-  )
+  const assistants = Array.from(assistantsMap.values())
 
   const canEdit = usePermission(Permissions.AssistantsEdit)
   const canDelete = usePermission(Permissions.AssistantsDelete)
@@ -44,15 +31,13 @@ export function UserAssistantsSettings() {
   // Show errors
   useEffect(() => {
     if (error) {
-      message.error(error)
       Stores.UserAssistants.clearUserAssistantsStoreError()
     }
-  }, [error, message])
+  }, [error])
 
   const handleDelete = async (assistant: Assistant) => {
     try {
       await Stores.UserAssistants.deleteUserAssistant(assistant.id)
-      message.success('Assistant deleted successfully')
     } catch (error) {
       console.error('Failed to delete assistant:', error)
       // Error is surfaced via the store error effect above
@@ -74,8 +59,9 @@ export function UserAssistantsSettings() {
       actions.push(
         <Button
           key="edit"
-          type="text"
-          icon={<EditOutlined />}
+          data-testid={`user-assistant-${assistant.id}-edit`}
+          variant="ghost"
+          icon={<Pencil />}
           onClick={() => handleEdit(assistant)}
         >
           Edit
@@ -85,18 +71,19 @@ export function UserAssistantsSettings() {
 
     if (canDelete) {
       actions.push(
-        <Popconfirm
+        <Confirm
           key="delete"
+          data-testid={`user-assistant-${assistant.id}-delete-confirm`}
           title="Delete Assistant"
           description="Are you sure you want to delete this assistant?"
           onConfirm={() => handleDelete(assistant)}
           okText="Delete"
           cancelText="Cancel"
         >
-          <Button type="text" danger icon={<DeleteOutlined />}>
+          <Button data-testid={`user-assistant-${assistant.id}-delete`} variant="ghost" icon={<Trash2 />}>
             Delete
           </Button>
-        </Popconfirm>,
+        </Confirm>,
       )
     }
 
@@ -110,13 +97,15 @@ export function UserAssistantsSettings() {
     >
       <div>
         <Card
+          data-testid="user-assistants-card"
           title="My Assistants"
           extra={
             <Can permission={Permissions.AssistantsCreate}>
-              <Tooltip title="Create assistant">
+              <Tooltip content="Create assistant">
                 <Button
-                  type="text"
-                  icon={<PlusOutlined aria-hidden="true" />}
+                  data-testid="user-assistants-create-btn"
+                  variant="ghost"
+                  icon={<Plus aria-hidden="true" />}
                   onClick={handleCreate}
                   aria-label="Create assistant"
                 />
@@ -128,7 +117,7 @@ export function UserAssistantsSettings() {
             <Loading />
           ) : assistants.length === 0 ? (
             <div>
-              <Empty description="No assistants yet — use the New Assistant button above to create one." />
+              <Empty data-testid="user-assistants-empty" description="No assistants yet" />
             </div>
           ) : (
             <div>
@@ -143,13 +132,13 @@ export function UserAssistantsSettings() {
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <div className="flex-1 min-w-48">
                           <Flex className="gap-2 items-center">
-                            <RobotOutlined />
+                            <Bot />
                             <Text className="font-medium">{assistant.name}</Text>
                             {assistant.is_default && (
-                              <Tag color="success">Default</Tag>
+                              <Tag data-testid={`user-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag color="error">Inactive</Tag>
+                              <Tag data-testid={`user-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
                             )}
                           </Flex>
                         </div>
@@ -159,25 +148,25 @@ export function UserAssistantsSettings() {
                       </div>
 
                       <Descriptions
-                        size="small"
-                        column={{ xs: 1, sm: 2, md: 3 }}
-                        colon={false}
-                        styles={{
-                          label: { fontSize: '12px' },
-                          content: { fontSize: '12px' },
-                        }}
-                      >
-                        <Descriptions.Item label="Description">
-                          {assistant.description || 'No description'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Created">
-                          {new Date(assistant.created_at).toLocaleDateString()}
-                        </Descriptions.Item>
-                      </Descriptions>
+                        data-testid={`user-assistant-${assistant.id}-desc`}
+                        size="sm"
+                        items={[
+                          {
+                            key: 'description',
+                            label: 'Description',
+                            children: assistant.description || 'No description',
+                          },
+                          {
+                            key: 'created',
+                            label: 'Created',
+                            children: new Date(assistant.created_at).toLocaleDateString(),
+                          },
+                        ]}
+                      />
                     </div>
                   </div>
                   {index < assistants.length - 1 && (
-                    <Divider className="my-4" />
+                    <Separator className="my-4" />
                   )}
                 </div>
               ))}

@@ -1,21 +1,20 @@
 import { useState, useEffect } from 'react'
 import { useApiKeysStepStore } from './ApiKeysStep.store'
 import {
-  Typography,
-  Form,
-  Input,
   Spin,
   Alert,
+  Button,
   Tag,
   Flex,
-  Menu,
-} from 'antd'
-import { ApiOutlined, CheckCircleOutlined } from '@ant-design/icons'
+  Text,
+  Title,
+  Paragraph,
+  PasswordInput,
+} from '@/components/ui'
+import { Plug, CircleCheck } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
-
-const { Title, Text, Paragraph } = Typography
 
 export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps) {
   const enteredApiKeys = Stores.ApiKeysStep.enteredApiKeys
@@ -47,7 +46,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
   if (loading) {
     return (
       <div className="flex justify-center mt-8">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -56,7 +55,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
     return (
       <div className="max-w-lg">
         <div className="flex items-center gap-3 mb-4">
-          <ApiOutlined className="text-3xl text-blue-500" />
+          <Plug className="text-3xl text-primary" />
           <Title level={3} className="!mb-0">
             AI Providers
           </Title>
@@ -80,7 +79,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
         <Flex className="flex-row gap-2 items-center h-full">
           <IconComponent className="text-lg" />
           <div className="flex-1 flex items-center h-full overflow-x-hidden">
-            <Typography.Text ellipsis>{provider.name}</Typography.Text>
+            <Text ellipsis>{provider.name}</Text>
           </div>
         </Flex>
       ),
@@ -90,7 +89,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 mb-3">
-        <ApiOutlined className="text-2xl text-blue-500" />
+        <Plug className="text-2xl text-primary" />
         <Title level={4} className="!mb-0">
           AI Providers
         </Title>
@@ -103,36 +102,43 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
       </Paragraph>
 
       {error && (
-        <Alert type="error" title={error} showIcon className="mb-3" />
+        <Alert data-testid="onboarding-apikeys-error-alert" tone="error" title={error} className="mb-3" />
       )}
 
       {/* Two-column layout */}
       <div className="flex flex-1 mb-4">
         {/* Left sidebar */}
         <div className="w-40 flex-shrink-0 pt-1">
-          <Menu
-            className={`
-              w-full h-full !m-0
-              [&_.ant-menu]:!px-0
-              [&_.ant-menu-item]:!h-8
-              [&_.ant-menu-item]:!leading-[32px]
-              !bg-transparent !border-none`}
-            selectedKeys={[currentProvider.id]}
-            items={menuItems}
-            onClick={({ key }) => setSelectedId(key)}
-          />
+          <div className="w-full h-full">
+            {menuItems.map(item => (
+              <Button
+                key={item.key}
+                variant="ghost"
+                block
+                data-testid={`onboarding-apikeys-nav-${item.key}`}
+                onClick={() => setSelectedId(item.key)}
+                className={`justify-start px-2 h-8 ${
+                  currentProvider.id === item.key
+                    ? 'bg-accent text-accent-foreground'
+                    : 'hover:bg-muted text-foreground'
+                }`}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
         </div>
 
         {/* Right content */}
         <div className="flex-1 px-4">
-          <Flex align="center" gap={8} className="mb-1">
+          <Flex align="center" gap="small" className="mb-1">
             {(() => {
               const IconComponent = PROVIDER_ICONS[currentProvider.provider_type] || PROVIDER_ICONS.custom
               return <IconComponent className="text-xl" />
             })()}
             <Text strong className="text-base">{currentProvider.name}</Text>
             {(currentProvider.api_key_configured || hasUserKey) && (
-              <Tag icon={<CheckCircleOutlined />} color="success">
+              <Tag data-testid="onboarding-apikeys-key-status-tag" icon={<CircleCheck />} tone="success">
                 {hasUserKey ? 'Your key configured' : 'Admin key configured'}
               </Tag>
             )}
@@ -144,9 +150,13 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
               : 'No system key is set. Enter your own to use this provider.'}
           </Text>
 
-          <Form layout="vertical" className="max-w-sm">
-            <Form.Item label="Your API Key" className="!mb-2">
-              <Input.Password
+          <div className="max-w-sm">
+            <div className="mb-2">
+              <label className="block text-sm font-medium mb-1">Your API Key</label>
+              <PasswordInput
+                data-testid="onboarding-apikeys-password-input"
+                showLabel="Show API key"
+                hideLabel="Hide API key"
                 value={enteredApiKeys[currentProvider.id] || ''}
                 onChange={e =>
                   Stores.ApiKeysStep.setApiKey(currentProvider.id, e.target.value)
@@ -159,8 +169,8 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
                       : 'sk-...'
                 }
               />
-            </Form.Item>
-          </Form>
+            </div>
+          </div>
         </div>
       </div>
     </div>

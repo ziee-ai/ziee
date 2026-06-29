@@ -1,31 +1,24 @@
 import { useState } from 'react'
 import {
   Alert,
-  App,
   Button,
   Card,
-  Divider,
+  Confirm,
   Empty,
   Flex,
-  Popconfirm,
+  Separator,
   Spin,
   Switch,
-  Typography,
-} from 'antd'
-import {
-  DeleteOutlined,
-  EditOutlined,
-  ExperimentOutlined,
-  LockOutlined,
-} from '@ant-design/icons'
+  Text,
+  message,
+} from '@/components/ui'
+import { Trash2, Pencil, FlaskConical, Lock } from 'lucide-react'
 import { Permissions, type AuthProviderResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
 import { AddProviderMenu } from './AddProviderMenu'
 import { AuthProviderEditDrawer } from './AuthProviderEditDrawer'
 import type { ProviderTemplate } from '../types'
-
-const { Text } = Typography
 
 type DrawerState =
   | { mode: 'closed' }
@@ -47,7 +40,6 @@ function relativeTime(iso: string | null | undefined): string {
 }
 
 export function AuthProvidersListSection() {
-  const { message } = App.useApp()
   const { providers, loading, error, testingIds } = Stores.AuthProvidersAdmin
   const [drawer, setDrawer] = useState<DrawerState>({ mode: 'closed' })
   const [pendingToggleId, setPendingToggleId] = useState<string | null>(null)
@@ -63,7 +55,7 @@ export function AuthProvidersListSection() {
       // reason. The store emits `auth_provider.auto_disabled` so the
       // Switch snaps back; the toast here just surfaces the reason.
       const reason = e?.message ?? 'Failed to update provider'
-      message.error({ content: reason, duration: 8 })
+      message.error(reason)
     } finally {
       setPendingToggleId(null)
     }
@@ -109,6 +101,7 @@ export function AuthProvidersListSection() {
   const renderRowActions = (row: AuthProviderResponse) => (
     <Can permission={Permissions.AuthProvidersManage}>
       <Switch
+        data-testid={`authprov-toggle-switch-${row.id}`}
         className="!mr-2"
         checked={row.enabled}
         loading={pendingToggleId === row.id}
@@ -116,8 +109,9 @@ export function AuthProvidersListSection() {
         aria-label={`Toggle ${row.name}`}
       />
       <Button
-        type="text"
-        icon={<ExperimentOutlined />}
+        data-testid={`authprov-test-button-${row.id}`}
+        variant="ghost"
+        icon={<FlaskConical />}
         aria-label={`Test ${row.name}`}
         loading={testingIds.has(row.id)}
         onClick={() => onTest(row)}
@@ -125,14 +119,16 @@ export function AuthProvidersListSection() {
         Test
       </Button>
       <Button
-        type="text"
-        icon={<EditOutlined />}
+        data-testid={`authprov-edit-button-${row.id}`}
+        variant="ghost"
+        icon={<Pencil />}
         aria-label={`Edit ${row.name}`}
         onClick={() => setDrawer({ mode: 'edit', existing: row })}
       >
         Edit
       </Button>
-      <Popconfirm
+      <Confirm
+        data-testid={`authprov-delete-confirm-${row.id}`}
         title={`Delete ${row.name}?`}
         description="Linked users lose this sign-in method; their accounts remain."
         okText="Delete"
@@ -141,20 +137,21 @@ export function AuthProvidersListSection() {
         onConfirm={() => onDelete(row)}
       >
         <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined />}
+          data-testid={`authprov-delete-button-${row.id}`}
+          variant="ghost"
+          icon={<Trash2 />}
           aria-label={`Delete ${row.name}`}
         >
           Delete
         </Button>
-      </Popconfirm>
+      </Confirm>
     </Can>
   )
 
   return (
     <>
       <Card
+        data-testid="authprov-list-card"
         title="Configured providers"
         extra={
           <Can permission={Permissions.AuthProvidersManage}>
@@ -167,22 +164,24 @@ export function AuthProvidersListSection() {
       >
         {error && (
           <Alert
-            type="error"
+            tone="error"
+            data-testid="authprov-list-error-alert"
             title={error}
-            showIcon
-            closable
+            onClose={() => {}}
+            closeLabel="Close"
             className="mb-3"
           />
         )}
 
         {loading && providers.length === 0 ? (
           <div className="flex justify-center py-6">
-            <Spin />
+            <Spin label="Loading" />
           </div>
         ) : providers.length === 0 ? (
           <Empty
+            data-testid="authprov-empty"
             description="No providers yet"
-            image={<LockOutlined className="text-4xl opacity-50" />}
+            image={<Lock className="text-4xl opacity-50" />}
           >
             <Text type="secondary">
               Use the + button to add Google, Microsoft, Apple, or a custom
@@ -221,8 +220,8 @@ export function AuthProvidersListSection() {
 
                       {row.last_test_ok === false && (
                         <Alert
-                          type="error"
-                          showIcon
+                          tone="error"
+                          data-testid={`authprov-test-failed-alert-${row.id}`}
                           className="!mt-2"
                           title={
                             row.last_test_at
@@ -239,7 +238,7 @@ export function AuthProvidersListSection() {
                     </div>
                   </div>
                   {index < providers.length - 1 && (
-                    <Divider className="my-4" />
+                    <Separator className="my-4" />
                   )}
                 </div>
               ))}

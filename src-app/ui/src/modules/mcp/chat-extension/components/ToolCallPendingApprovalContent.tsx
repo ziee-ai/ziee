@@ -1,14 +1,8 @@
 import { useState } from 'react'
-import { Alert, Button, Space, Typography } from 'antd'
-import {
-  ClockCircleOutlined,
-  CheckOutlined,
-  CloseOutlined,
-} from '@ant-design/icons'
+import { Alert, Button, Space, Text } from '@/components/ui'
+import { Clock, Check, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
-
-const { Text } = Typography
 
 interface ToolCallPendingApprovalContentProps {
   toolCall: McpToolCall
@@ -148,8 +142,9 @@ export function ToolCallPendingApprovalContent({
   return (
     <div className="my-2" data-testid={`tool-approval-${toolCall.tool_use_id}`}>
       <Alert
-        type="warning"
-        icon={<ClockCircleOutlined />}
+        tone="warning"
+        data-testid="mcp-tool-approval-alert"
+        icon={<Clock />}
         title={
           <div>
             <Text strong>Tool Approval Required: {toolCall.tool_name}</Text>
@@ -178,30 +173,29 @@ export function ToolCallPendingApprovalContent({
             <div className="mt-3">
               <Space>
                 <Button
-                  type="primary"
-                  icon={<CheckOutlined />}
+                  icon={<Check />}
                   onClick={handleApproveOnce}
                   loading={isSubmitting}
-                  size="small"
+                  size="sm"
                   data-testid="tool-approval-approve-once"
                 >
                   Approve once
                 </Button>
                 <Button
-                  icon={<CheckOutlined />}
+                  icon={<Check />}
                   onClick={handleApproveForConversation}
                   loading={isSubmitting}
-                  size="small"
+                  size="sm"
                   data-testid="tool-approval-approve-conv"
                 >
                   Approve for this conversation
                 </Button>
                 <Button
-                  danger
-                  icon={<CloseOutlined />}
+                  variant="destructive"
+                  icon={<X />}
                   onClick={handleDeny}
                   loading={isSubmitting}
-                  size="small"
+                  size="sm"
                   data-testid="tool-approval-deny"
                 >
                   Deny
@@ -210,7 +204,6 @@ export function ToolCallPendingApprovalContent({
             </div>
           </div>
         }
-        showIcon
       />
     </div>
   )

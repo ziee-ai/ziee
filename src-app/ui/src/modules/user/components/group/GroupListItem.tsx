@@ -1,26 +1,20 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  TeamOutlined,
-  UserOutlined,
-} from '@ant-design/icons'
+import { Trash2, Pencil, Users, User } from 'lucide-react'
 import {
   Badge,
   Button,
   Card,
+  Confirm,
   Descriptions,
   Flex,
-  Popconfirm,
   Tag,
-  Typography,
-} from 'antd'
+  Text,
+  type DescriptionsItem,
+} from '@/components/ui'
 import { Permissions, type Group } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
 import type { GroupWidget } from '@/modules/user/types/GroupWidget'
-
-const { Text } = Typography
 
 interface GroupListItemProps {
   group: Group
@@ -56,10 +50,11 @@ export function GroupListItem({
       actions.push(
         <Button
           key="members"
-          type="text"
-          icon={<UserOutlined aria-hidden="true" />}
+          variant="ghost"
+          icon={<User aria-hidden="true" />}
           onClick={() => onViewMembers(group)}
           aria-label={`View members of ${group.name}`}
+          data-testid={`user-group-members-button-${group.id}`}
         >
           Members
         </Button>,
@@ -70,10 +65,11 @@ export function GroupListItem({
       actions.push(
         <Button
           key="edit"
-          type="text"
-          icon={<EditOutlined aria-hidden="true" />}
+          variant="ghost"
+          icon={<Pencil aria-hidden="true" />}
           onClick={() => onEdit(group)}
           aria-label={`Edit ${group.name}`}
+          data-testid={`user-group-edit-button-${group.id}`}
         >
           Edit
         </Button>,
@@ -84,43 +80,65 @@ export function GroupListItem({
     // refuses to delete system groups and the UI shouldn't pretend.
     if (canDelete && !group.is_system) {
       actions.push(
-        <Popconfirm
+        <Confirm
           key="delete"
           title="Are you sure you want to delete this group?"
           onConfirm={() => onDelete(group.id)}
           okText="Delete"
           cancelText="Cancel"
+          data-testid={`user-group-delete-confirm-${group.id}`}
         >
           <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined aria-hidden="true" />}
+            variant="destructive"
+            icon={<Trash2 aria-hidden="true" />}
             aria-label={`Delete ${group.name}`}
+            data-testid={`user-group-delete-button-${group.id}`}
           >
             Delete
           </Button>
-        </Popconfirm>,
+        </Confirm>,
       )
     }
 
     return actions.filter(Boolean)
   }
 
+  const descriptionItems: DescriptionsItem[] = [
+    {
+      key: 'description',
+      label: 'Description',
+      children: group.description || 'No description',
+      span: 2,
+    },
+    {
+      key: 'permissions',
+      label: 'Permissions',
+      children: (
+        <Text className="font-mono text-xs">
+          {Object.keys(group.permissions || {}).length} permissions
+        </Text>
+      ),
+    },
+    {
+      key: 'created',
+      label: 'Created',
+      children: new Date(group.created_at).toLocaleDateString(),
+    },
+  ]
+
   return (
-    <Card>
+    <Card data-testid={`user-group-card-${group.id}`}>
       <div className="flex items-start gap-3 flex-wrap">
         {/* Group Info */}
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <div className={'flex-1 min-w-48'}>
               <Flex className="gap-2 items-center">
-                <TeamOutlined aria-hidden="true" />
+                <Users aria-hidden="true" />
                 <Text className="font-medium">{group.name}</Text>
-                {group.is_system && <Tag color="orange">System</Tag>}
-                <Badge
-                  status={group.is_active ? 'success' : 'default'}
-                  text={group.is_active ? 'Active' : 'Inactive'}
-                />
+                {group.is_system && <Tag tone="warning" data-testid={`user-group-system-tag-${group.id}`}>System</Tag>}
+                <Badge color={group.is_active ? 'green' : 'red'} data-testid={`user-group-active-badge-${group.id}`} />
+                <Text>{group.is_active ? 'Active' : 'Inactive'}</Text>
               </Flex>
             </div>
             <div className={'flex gap-1 items-center justify-end'}>
@@ -136,26 +154,12 @@ export function GroupListItem({
             stack naturally.
           */}
           <Descriptions
-            size="small"
-            column={{ xs: 1, sm: 2 }}
-            colon={false}
-            styles={{
-              label: { fontSize: '12px' },
-              content: { fontSize: '12px' },
-            }}
-          >
-            <Descriptions.Item label="Description" span={{ xs: 1, sm: 2 }}>
-              {group.description || 'No description'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Permissions">
-              <Text code>
-                {Object.keys(group.permissions || {}).length} permissions
-              </Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Created">
-              {new Date(group.created_at).toLocaleDateString()}
-            </Descriptions.Item>
-          </Descriptions>
+            size="sm"
+            column={2}
+            className="text-[12px]"
+            items={descriptionItems}
+            data-testid={`user-group-descriptions-${group.id}`}
+          />
         </div>
       </div>
 
