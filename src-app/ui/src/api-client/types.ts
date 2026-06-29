@@ -334,6 +334,17 @@ export type ChatStreamSseEvent = {
 }
 
 /**
+ * Get LLM providers accessible to the authenticated user
+ *
+ *  Returns all enabled LLM providers assigned to the user's active groups,
+ *  with their enabled and active models included.
+ */
+export interface ChatUserProvidersQuery {
+  limit?: number
+  offset?: number
+}
+
+/**
  * The flexible per-item input the LLM (or UI/REST) sends. **At least one of**
  *  `id` / `title` / `csl` / `raw` must be present; the model is NEVER required
  *  to supply a DOI (the field it hallucinates most) — the server resolves +
@@ -2359,9 +2370,23 @@ export interface ListToolsResponse {
   tools: Tool[]
 }
 
+/**
+ * Optional pagination for the versions list. Defaults bound an
+ *  un-paginated caller to the most recent `DEFAULT_PAGE_SIZE` versions
+ *  (newest first) instead of returning an unbounded set.
+ */
 export interface ListVersionsQuery {
+  limit?: number
+  offset?: number
+}
+
+export interface ListVersionsQuery2 {
   /** Filter by engine (optional) */
   engine?: string
+  /** Page number (1-indexed, default 1) */
+  page?: number
+  /** Items per page (default 50, max 500) */
+  per_page?: number
 }
 
 /** Deployment-wide lit_search settings (singleton row, id=TRUE). */
@@ -4763,6 +4788,16 @@ export interface SkillGroupsRequest {
 }
 
 /**
+ * Optional pagination for the skill listings. Defaults bound an
+ *  un-paginated caller to the first `DEFAULT_PAGE_SIZE` skills instead of
+ *  returning an unbounded set.
+ */
+export interface SkillListQuery {
+  limit?: number
+  offset?: number
+}
+
+/**
  * `GET /api/skills` response shape — user-owned + accessible system
  *  skills, each tagged with its `scope`.
  */
@@ -4870,7 +4905,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5588,6 +5623,15 @@ export interface UserMemorySettings {
   user_id: string
 }
 
+/**
+ * Optional offset pagination for the user provider list. Defaults bound an
+ *  un-paginated caller to the first `DEFAULT_PAGE_SIZE` providers.
+ */
+export interface UserProvidersQuery {
+  limit?: number
+  offset?: number
+}
+
 export interface ValidateErrorEntry {
   code: string
   /**
@@ -5755,6 +5799,16 @@ export interface WorkflowGroupsRequest {
   group_ids: string[]
 }
 
+/**
+ * Optional pagination for the workflow listing. Defaults bound an
+ *  un-paginated caller to the first `DEFAULT_PAGE_SIZE` workflows instead of
+ *  returning an unbounded set.
+ */
+export interface WorkflowListQuery {
+  limit?: number
+  offset?: number
+}
+
 export interface WorkflowListResponse {
   workflows: Workflow[]
 }
@@ -5897,6 +5951,7 @@ export enum Permissions {
   HubAssistantsRefresh = 'hub::assistants::refresh',
   HubAssistantsVersionRead = 'hub::assistants::read_version',
   HubCatalogManage = 'hub::catalog::manage',
+  HubCatalogRead = 'hub::catalog::read',
   HubMcpServersCreate = 'hub::mcp_servers::create',
   HubMCPServersRead = 'hub::mcp_servers::read',
   HubMCPServersRefresh = 'hub::mcp_servers::refresh',
@@ -6023,6 +6078,7 @@ export const PermissionDescriptions: Record<string, string> = {
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
   HubAssistantsVersionRead: 'View hub assistants version information',
   HubCatalogManage: 'Refresh + activate hub catalog versions',
+  HubCatalogRead: 'View hub catalog versions + pending updates',
   HubMcpServersCreate: 'Create MCP servers from hub',
   HubMCPServersRead: 'View hub MCP servers',
   HubMCPServersRefresh: 'Refresh hub MCP servers from GitHub',
@@ -6478,7 +6534,7 @@ export type ApiEndpointParameters = {
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
-  'Chat.getUserLlmProviders': void
+  'Chat.getUserLlmProviders': { limit?: number; offset?: number }
   'ChatStream.setSubscription': SetSubscriptionRequest
   'ChatStream.subscribe': void
   'Citations.attachToProject': { project_id: string } & AttachCitationsRequest
@@ -6524,7 +6580,7 @@ export type ApiEndpointParameters = {
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
-  'File.listVersions': { file_id: string }
+  'File.listVersions': { file_id: string; limit?: number; offset?: number }
   'File.previewVersion': { file_id: string; version: string; page?: number }
   'File.restore': { file_id: string } & RestoreVersionRequest
   'File.textVersion': { file_id: string; version: string; page?: number }
@@ -6533,7 +6589,7 @@ export type ApiEndpointParameters = {
   'FileRagAdmin.get': void
   'FileRagAdmin.reembed': void
   'FileRagAdmin.update': UpdateFileRagAdminSettingsRequest
-  'Group.getProviders': { group_id: string }
+  'Group.getProviders': { group_id: string } & PaginationQuery
   'Group.getSystemServers': { group_id: string }
   'Group.updateProviders': { group_id: string } & UpdateGroupProvidersRequest
   'Group.updateSystemServers': { group_id: string } & UpdateGroupSystemServersRequest
@@ -6591,7 +6647,7 @@ export type ApiEndpointParameters = {
   'LlmProvider.discoverModels': { provider_id: string }
   'LlmProvider.get': { provider_id: string }
   'LlmProvider.getGroups': { provider_id: string }
-  'LlmProvider.getUserLlmProviders': void
+  'LlmProvider.getUserLlmProviders': { limit?: number; offset?: number }
   'LlmProvider.list': PaginationQuery
   'LlmProvider.listUserApiKeys': void
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
@@ -6702,19 +6758,19 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.download': DownloadVersionRequest
   'RuntimeVersion.get': { version_id: string }
   'RuntimeVersion.getDownload': { key: string }
-  'RuntimeVersion.list': { engine?: string }
+  'RuntimeVersion.list': { engine?: string; page?: number; per_page?: number }
   'RuntimeVersion.listDownloads': void
   'RuntimeVersion.setDefault': { version_id: string }
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
-  'RuntimeVersion.usage': { engine?: string }
+  'RuntimeVersion.usage': { engine?: string; page?: number; per_page?: number }
   'ServerUpdate.getStatus': void
   'Skill.delete': { id: string }
   'Skill.get': { id: string }
   'Skill.getBody': { id: string }
   'Skill.hideInConversation': { id: string } & HideSkillInConversationRequest
   'Skill.import': { name?: string; scope?: string } & FormData
-  'Skill.list': void
+  'Skill.list': { limit?: number; offset?: number }
   'Skill.listAvailable': { conversation_id: string }
   'Skill.unhideInConversation': { id: string; conversation_id: string }
   'Skill.update': { id: string } & UpdateSkill
@@ -6722,7 +6778,7 @@ export type ApiEndpointParameters = {
   'SkillSystem.delete': { id: string }
   'SkillSystem.get': { id: string }
   'SkillSystem.getGroups': { id: string }
-  'SkillSystem.list': void
+  'SkillSystem.list': { limit?: number; offset?: number }
   'SkillSystem.removeFromGroup': { id: string; group_id: string }
   'SkillSystem.setGroups': { id: string } & SkillGroupsRequest
   'SkillSystem.update': { id: string } & UpdateSkill
@@ -6760,7 +6816,7 @@ export type ApiEndpointParameters = {
   'Workflow.getSystem': { id: string }
   'Workflow.import': { name?: string; scope?: string } & FormData
   'Workflow.importSystem': { name?: string; scope?: string } & FormData
-  'Workflow.list': void
+  'Workflow.list': { limit?: number; offset?: number }
   'Workflow.listRuns': { id: string }
   'Workflow.listSystem': void
   'Workflow.readArtifact': { run_id: string; step_id: string; filename: string }
