@@ -74,7 +74,7 @@ export async function loginAsAdmin(
   try {
     // Wait for either the setup form to appear OR a redirect to happen
     await Promise.race([
-      page.waitForSelector('#setup-form_username', { timeout: 5000 }),
+      page.waitForSelector('[data-testid="app-setup-username-input"]', { timeout: 5000 }),
       page.waitForURL(/\/auth/, { timeout: 5000 }),
       page.waitForURL(/\/$/, { timeout: 5000 }), // Sometimes redirects to home
     ])
@@ -93,15 +93,15 @@ export async function loginAsAdmin(
     // request during the FIRST page load of a fresh worker; reload once
     // if the setup form doesn't render within 8s before giving up.
     try {
-      await page.waitForSelector('#setup-form_username', { timeout: 8000 })
+      await page.waitForSelector('[data-testid="app-setup-username-input"]', { timeout: 8000 })
     } catch {
       await page.reload({ waitUntil: 'networkidle' })
-      await page.waitForSelector('#setup-form_username', { timeout: 30000 })
+      await page.waitForSelector('[data-testid="app-setup-username-input"]', { timeout: 30000 })
     }
-    await page.fill('#setup-form_username', username)
-    await page.fill('#setup-form_email', email)
-    await page.fill('#setup-form_password', password)
-    await page.fill('#setup-form_confirm_password', password)
+    await page.fill('[data-testid="app-setup-username-input"]', username)
+    await page.fill('[data-testid="app-setup-email-input"]', email)
+    await page.fill('[data-testid="app-setup-password-input"]', password)
+    await page.fill('[data-testid="app-setup-confirm-password-input"]', password)
     await page.click('button[type="submit"]')
 
     // Wait for the persisted token. authenticateUser's catch block
@@ -128,14 +128,14 @@ export async function loginAsAdmin(
     // pattern as the setup branch.
     await page.goto(`${baseURL}/auth`)
     try {
-      await page.waitForSelector('#login_username', { timeout: 8000 })
+      await page.waitForSelector('[data-testid="auth-login-username"]', { timeout: 8000 })
     } catch {
       await page.reload({ waitUntil: 'networkidle' })
-      await page.waitForSelector('#login_username', { timeout: 30000 })
+      await page.waitForSelector('[data-testid="auth-login-username"]', { timeout: 30000 })
     }
-    await page.fill('#login_username', username)
-    await page.fill('#login_password', password)
-    await page.click('button:has-text("Sign In")')
+    await page.fill('[data-testid="auth-login-username"]', username)
+    await page.fill('[data-testid="auth-login-password"]', password)
+    await page.click('[data-testid="auth-login-submit"]')
 
     // Navigation may redirect to /onboarding; the token wait below is the real signal.
 
@@ -171,7 +171,7 @@ export async function loginAsAdmin(
   // Onboarding is API-marked complete above and admins are never redirected by
   // OnboardingRedirect, so a single fresh goto won't bounce. NOT `networkidle`:
   // the realtime-sync SSE stream keeps the network busy so it never settles.
-  const appShell = page.getByRole('menuitem', { name: /New Chat/ })
+  const appShell = page.getByRole('button', { name: /New Chat/ })
   await page.goto(`${baseURL}/`)
   await page.waitForLoadState('load')
   await appShell.waitFor({ state: 'visible', timeout: 45000 })
