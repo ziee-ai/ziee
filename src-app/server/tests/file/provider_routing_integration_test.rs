@@ -79,13 +79,21 @@ async fn text_attachment_is_inlined_verbatim_binary_becomes_placeholder() {
     )
     .await;
 
-    // (2) An unsupported binary — its raw bytes must NOT be inlined.
+    // (2) An unsupported binary — its raw bytes must NOT be inlined. The content
+    // must be GENUINELY binary: an octet-stream whose bytes `looks_like_text`
+    // (pure ASCII source/config) is legitimately text-extracted on upload and
+    // inlined verbatim (the source-code-as-octet-stream fallback). A leading NUL
+    // + high bytes keep `looks_like_text` false → text_page_count 0 → the routing
+    // decision falls to the unsupported-binary placeholder branch.
     const SECRET_BYTES: &str = "RAW_BINARY_BYTES_SHOULD_NOT_LEAK_d91c";
+    let mut bin_content = vec![0x00u8, 0xFF, 0xFE];
+    bin_content.extend_from_slice(SECRET_BYTES.as_bytes());
+    bin_content.extend_from_slice(&[0x00, 0xFD]);
     let bin_id = upload(
         &server,
         &user.token,
         "blob.bin",
-        SECRET_BYTES.as_bytes().to_vec(),
+        bin_content,
         "application/octet-stream",
     )
     .await;
@@ -114,7 +122,18 @@ async fn text_attachment_is_inlined_verbatim_binary_becomes_placeholder() {
     );
 
     let reqs = stub.requests();
-    let last = reqs.last().expect("stub recorded the provider request");
+    // The chat send also triggers a tool-less title-generation call ("Generate a
+    // concise, descriptive title …") which records its OWN request and is NOT the
+    // turn that carries the attachments. Select the MAIN chat request (the one
+    // echoing the user's prompt, never the title generator) — asserting on
+    // `reqs.last()` would inspect the title-gen request and miss the inlined file.
+    let last = reqs
+        .iter()
+        .find(|r| {
+            r.all_text.contains("Analyze the attached files")
+                && !r.all_text.contains("Generate a concise, descriptive title")
+        })
+        .expect("stub recorded the main chat request");
 
     // Text file: verbatim content routed inline → marker present.
     assert!(
