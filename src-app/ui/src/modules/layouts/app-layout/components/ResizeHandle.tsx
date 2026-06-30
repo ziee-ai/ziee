@@ -8,6 +8,7 @@ export const ResizeHandle = ({
   onEnd,
   scale,
   className,
+  testid,
   minWidth = 300,
   minHeight = 200,
   maxWidth = Infinity,
@@ -20,6 +21,14 @@ export const ResizeHandle = ({
   onEnd?: () => void
   scale?: number
   className?: string
+  /**
+   * Applied to the actual interactive (absolutely-positioned, full-edge) handle
+   * element — NOT a wrapper. A wrapper around this component collapses to a
+   * zero-size box (the handle is `position: absolute`), so a test targeting the
+   * wrapper would grab geometry that doesn't match the real grab strip. Pass
+   * the testid here so it lands on the element a user actually drags.
+   */
+  testid?: string
   minWidth?: number
   minHeight?: number
   maxWidth?: number
@@ -80,7 +89,7 @@ export const ResizeHandle = ({
   const isHorizontal = placement === 'left' || placement === 'right'
 
   return (
-    <div className={classNames.join(' ')} ref={ref} style={style}>
+    <div className={classNames.join(' ')} ref={ref} style={style} data-testid={testid}>
       <div
         className={'w-full h-full relative group'}
         role="separator"

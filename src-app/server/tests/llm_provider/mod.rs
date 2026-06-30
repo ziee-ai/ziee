@@ -268,6 +268,44 @@ async fn test_get_provider_not_found() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+/// A remote provider created `enabled: true` WITHOUT an api_key must NOT be
+/// rejected, and must stay ENABLED: the multi-tenant onboarding flow provisions
+/// exactly this so each user supplies their own key (resolved per-user at
+/// request time). A prior 400 broke that flow.
+#[tokio::test]
+async fn test_create_enabled_remote_without_key_is_allowed() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
+
+    // Keyless + enabled remote → created AND stays enabled (no 400, no disable).
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "Keyless OpenAI",
+            "provider_type": "openai",
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "keyless enabled remote provider must be created, not rejected"
+    );
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["enabled"], true,
+        "keyless enabled remote provider must stay enabled (per-user keys)"
+    );
+}
+
 #[tokio::test]
 async fn test_create_provider_minimal() {
     let server = crate::common::TestServer::start().await;

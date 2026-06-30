@@ -3,7 +3,8 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { createStoreProxy } from '@/core/stores'
 import { ApiClient } from '@/api-client'
-import type { McpServer, HubMCPServer } from '@/api-client/types'
+import { type McpServer, type HubMCPServer, Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 
 interface McpServersStepStore {
   selectedMcpServerIds: string[]
@@ -56,12 +57,25 @@ export const useMcpServersStepStore = create<McpServersStepStore>()(
           state.serversError = null
         })
         try {
-          const [mcpResponse, hubResponse] = await Promise.all([
+          // An admin (McpServersAdminEdit) manages ALL system servers on this
+          // step, not just the ones already assigned to their groups. The
+          // user-scoped accessible list only returns assigned servers, so a
+          // freshly-created/unassigned system server would never appear. Source
+          // the system servers from the admin list when the user can manage;
+          // non-admins fall back to the accessible list (their assigned ones).
+          const canManage = hasPermissionNow(Permissions.McpServersAdminEdit)
+          const [mcpResponse, hubResponse, systemResponse] = await Promise.all([
             ApiClient.McpServer.listAccessible({ page: 1, per_page: 50 }, undefined),
             ApiClient.Hub.getMCPServers({}, undefined),
+            canManage
+              ? ApiClient.McpServerSystem.list({ page: 1, per_page: 50 }, undefined)
+              : Promise.resolve(null),
           ])
           set(state => {
-            const systemServers = mcpResponse.servers.filter(s => s.is_system)
+            const systemServers =
+              canManage && systemResponse
+                ? systemResponse.servers
+                : mcpResponse.servers.filter(s => s.is_system)
             state.systemServers = systemServers
             state.installedNames = new Set(mcpResponse.servers.map(s => s.name))
             state.hubServers = hubResponse
@@ -120,17 +134,28 @@ export const useMcpServersStepStore = create<McpServersStepStore>()(
           })
         }
 
-        // 2. Persist system-server toggles (only the ones that changed)
+        // 2. Persist system-server toggles (only the ones that changed).
+        //    Use the admin system-server endpoint when the user can manage —
+        //    matching where the rows were sourced (the admin list) and the
+        //    global enable/disable semantics of a system server.
+        const canManage = hasPermissionNow(Permissions.McpServersAdminEdit)
         for (const server of systemServers) {
           const wantsDisabled = disabledSystemIds.has(server.id)
           const wasDisabled = originalDisabledSystemIds.has(server.id)
           if (wantsDisabled === wasDisabled) continue
 
           try {
-            await ApiClient.McpServer.update(
-              { id: server.id, enabled: !wantsDisabled },
-              undefined,
-            )
+            if (canManage) {
+              await ApiClient.McpServerSystem.update(
+                { id: server.id, enabled: !wantsDisabled },
+                undefined,
+              )
+            } else {
+              await ApiClient.McpServer.update(
+                { id: server.id, enabled: !wantsDisabled },
+                undefined,
+              )
+            }
           } catch (err: any) {
             errors.push(`Toggle "${server.display_name || server.name}": ${err.message || 'Unknown error'}`)
           }

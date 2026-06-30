@@ -116,10 +116,12 @@ test.describe('Onboarding wizard', () => {
     await expect(byTestId(page, 'onboarding-step-welcome')).toBeHidden()
   })
 
-  test('a user who already completed onboarding is NOT redirected to the wizard', async ({ page, testInfra }) => {
-    // Negative case (bypass): once the guide is complete, AuthGuard must land
-    // the user in the app and NOT trap them at /onboarding — even on a direct
-    // navigation to /onboarding. Guards the OnboardingRedirect early-return.
+  test('a completed user is not auto-redirected into onboarding, but may re-view it', async ({ page, testInfra }) => {
+    // Once the guide is complete, AuthGuard must land the user in the app and
+    // NOT auto-trap them at /onboarding. But re-viewing IS allowed: a DIRECT
+    // navigation to /onboarding is honored ("don't fight the user" —
+    // OnboardingRedirect early-returns on the /onboarding path), so a completed
+    // user can revisit the guide. Guards both halves of that behavior.
     const { baseURL, apiURL } = testInfra
     const { username } = await freshUser(apiURL, 'bypass')
 
@@ -132,11 +134,15 @@ test.describe('Onboarding wizard', () => {
       timeout: 15000,
     })
 
-    // Direct navigation to /onboarding must redirect AWAY (completed guide is
-    // not re-entered), not strand the user on the wizard.
+    // Direct navigation to /onboarding is allowed (re-viewing a completed guide
+    // is permitted) — the user STAYS on the onboarding surface, not redirected
+    // away.
     await page.goto(`${baseURL}/onboarding`)
     await page.waitForLoadState('load')
-    await expect(page).not.toHaveURL(/\/onboarding/)
+    await expect(page).toHaveURL(/\/onboarding/)
+    await expect(byTestId(page, 'onboarding-page-back-to-chat-button')).toBeVisible({
+      timeout: 15000,
+    })
   })
 
   test('the AI Providers step omits local providers from the key list', async ({ page, testInfra }) => {
@@ -229,11 +235,23 @@ test.describe('Onboarding wizard', () => {
     await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
     await expect(byTestId(page, 'onboarding-step-api-keys')).toContainText(remoteName, { timeout: 15000 })
 
-    // Enter a key, advance → the step's onNext saves it (saveUserApiKey) and the
-    // store surfaces an "API key saved" success toast.
+    // Enter a key, advance → the step's beforeNext saves it (saveUserApiKey) and
+    // THEN advances off the AI-Providers step. The save is reflected on the
+    // Finish step summary (the api-keys step has unmounted, so its in-step
+    // status tag is gone by the time Next completes).
     await byTestId(page, 'onboarding-apikeys-password-input').fill('sk-onboarding-user-key-123')
     await byTestId(page, 'onboarding-page-next-button').click()
-    await expect(byTestId(page, 'onboarding-apikeys-key-status-tag')).toBeVisible({ timeout: 15000 })
+
+    // AI Providers → MCP → Memory → Finish. The save raises an "API key saved"
+    // success toast that renders over the bottom-right Next CTA and stays
+    // expanded when hovered by a click-retry, intercepting pointer events.
+    // Activate Next via the keyboard (focus+Enter doesn't pointer-hit-test).
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').press('Enter')
+    await expect(byTestId(page, 'onboarding-step-memory-setup')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').press('Enter')
+    await expect(byTestId(page, 'onboarding-step-finish')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'onboarding-finish-apikeys-summary')).toContainText(/API key.*saved/i)
   })
 
   // Negative coverage for OnboardingRedirect's `if (user.is_admin === true)

@@ -115,17 +115,11 @@ pub fn validate_create_request(request: &CreateLlmProviderRequest) -> Result<(),
             ));
         }
 
-    // If enabling the provider, ensure required fields are present
-    if request.enabled.unwrap_or(false) {
-        // For remote providers (not local), API key is usually required
-        if request.provider_type != "local" && request.provider_type != "custom"
-            && (request.api_key.is_none() || request.api_key.as_ref().unwrap().trim().is_empty()) {
-                return Err(AppError::bad_request(
-                    "VALIDATION_ERROR",
-                    "API key is required for enabled remote providers",
-                ));
-            }
-    }
+    // NOTE: an enabled remote provider with no API key is intentionally allowed.
+    // The multi-tenant onboarding flow provisions a keyless-but-enabled provider
+    // so each user supplies their OWN key on the AI-Providers step; keys are
+    // resolved per-user at request time (`resolve_api_key_for_user`). A spurious
+    // 400 here used to break that flow, so do not reject it.
 
     Ok(())
 }
