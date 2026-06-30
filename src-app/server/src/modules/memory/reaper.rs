@@ -264,8 +264,8 @@ mod tests {
                 .map(|d| format!("NOW() - INTERVAL '{d} days'"))
                 .unwrap_or_else(|| "NULL".to_string());
             let q = format!(
-                "INSERT INTO user_memories (user_id, content, updated_at, created_at, deleted_at) \
-                 VALUES ($1, $2, NOW() - INTERVAL '{updated_age_days} days', NOW(), {deleted}) \
+                "INSERT INTO user_memories (user_id, content, source, updated_at, created_at, deleted_at) \
+                 VALUES ($1, $2, 'manual', NOW() - INTERVAL '{updated_age_days} days', NOW(), {deleted}) \
                  RETURNING id"
             );
             sqlx::query_scalar(&q)

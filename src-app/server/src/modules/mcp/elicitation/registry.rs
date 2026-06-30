@@ -179,8 +179,10 @@ mod tests {
         let other = Uuid::new_v4();
         let (tx, _rx) = oneshot::channel();
         register(eid, tx, None);
-        // Unbound → None (handler fail-closes to 403).
-        assert_eq!(owner_matches(eid, owner), None);
+        // Registered but unbound → fail-closed Some(false) (handler → 403), NOT
+        // None. None is reserved for an entry that doesn't exist (→ 404). See the
+        // owner_matches doc + owner_binding_is_fail_closed_until_bound.
+        assert_eq!(owner_matches(eid, owner), Some(false));
         bind_owner(eid, owner);
         assert_eq!(owner_matches(eid, owner), Some(true));
         assert_eq!(owner_matches(eid, other), Some(false));
