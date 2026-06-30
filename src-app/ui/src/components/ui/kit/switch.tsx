@@ -41,7 +41,7 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
     onCheckedChange?.(v)
     onChange?.(v)
   }
-  if (s.loading) return <Skeleton className={cn('h-5 w-9 rounded-full', className)} />
+  if (s.loading) return <Skeleton className={cn('h-[1.15rem] w-8 rounded-full', className)} />
   const baseEl = (
     <Base
       ref={ref}
@@ -58,7 +58,8 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
       aria-invalid={invalid || undefined}
       aria-busy={loading || undefined}
       data-testid={testid}
-      className={cn(size === 'sm' && 'h-4 w-7 [&>span]:size-3 [&>span]:data-[state=checked]:translate-x-3', className)}
+      size={size}
+      className={className}
     />
   )
   // own loading → spinner overlay on the track (not a skeleton).

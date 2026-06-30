@@ -29,7 +29,8 @@ interface SegmentedBase {
 // Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
 export type SegmentedProps = SegmentedBase & ValueBinding<string>
 
-const itemH = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-10' : 'h-8')
+// Match the shadcn control scale: default = h-9 (stock), sm = h-8, lg = h-10.
+const itemH = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9')
 
 export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(function Segmented(
   { options, value, defaultValue, onValueChange, onChange, onBlur, disabled, size, name, id, invalid, className,

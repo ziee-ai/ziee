@@ -69,8 +69,9 @@ export type SelectProps = SelectBase &
 const isGroup = (o: SelectOption | SelectOptionGroup): o is SelectOptionGroup =>
   Array.isArray((o as SelectOptionGroup).options)
 
+// Match the shadcn control scale: default = h-9 (stock), sm = h-8, lg = h-10.
 const triggerH = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-9' : 'h-8'
+  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
 
 function flatOptions(options: (SelectOption | SelectOptionGroup)[]): SelectOption[] {
   return options.flatMap((o) => (isGroup(o) ? o.options : [o]))

@@ -21,8 +21,9 @@ export type InputProps = Omit<React.ComponentProps<'input'>, 'size' | 'prefix' |
   'data-testid': string
 } & KitStyleProps
 
+// Match the shadcn control scale: default = h-9 (stock), sm = h-8, lg = h-10.
 const heightFor = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-9' : 'h-8'
+  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ size: ownSize, loading, prefix, suffix, invalid, disabled, readOnly, allowClear, style, allowStyle, className, ...props }, ref) => {
