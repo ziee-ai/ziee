@@ -57,27 +57,9 @@ async fn test_wait_for_server_timeout() {
     assert!(!result, "Should timeout when server is not running");
 }
 
-// Full integration test that starts the actual server
-// This test is expensive and should be run selectively
-#[tokio::test]
-#[ignore = "Requires full server startup - run with --ignored"]
-async fn test_full_server_lifecycle() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let config = common::TestConfig::new(temp_dir.path().to_path_buf());
-
-    // In a real test, we would:
-    // 1. Start the server with the generated config
-    // 2. Wait for it to be ready
-    // 3. Test various endpoints
-    // 4. Shut down gracefully
-
-    // For now, verify the setup is correct
-    assert!(config.server_port > 0);
-
-    // This would be the actual server startup test
-    // let server_ready = wait_for_server_ready(
-    //     config.server_port,
-    //     Duration::from_secs(60),
-    // ).await;
-    // assert!(server_ready, "Server should start within timeout");
-}
+// The full server-lifecycle test (spawn the real binary → migrate → bind
+// → serve → shutdown) lives in the integration_tests binary as
+// `backend_lifecycle::desktop_backend_full_lifecycle`, because it needs the
+// shared `TestServer` harness (which provisions an isolated DB on the build
+// Postgres and waits for readiness). The stub that used to sit here was
+// `#[ignore]`'d and asserted nothing real.
