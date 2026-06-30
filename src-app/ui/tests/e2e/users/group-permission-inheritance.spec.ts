@@ -65,7 +65,7 @@ test.describe('Users — group permission inheritance', () => {
     // Inherited perm: the Hardware settings nav item is now visible…
     await page.goto(`${baseURL}/settings/profile`)
     await expect(
-      byTestId(page, 'settings-nav-menu-item-/settings/hardware'),
+      byTestId(page, 'settings-nav-menu-item-hardware'),
     ).toBeVisible({ timeout: 30000 })
 
     // …and reachable (the route admits the inherited permission).
