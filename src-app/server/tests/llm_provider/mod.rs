@@ -269,10 +269,11 @@ async fn test_get_provider_not_found() {
 }
 
 /// A remote provider created `enabled: true` WITHOUT an api_key must NOT be
-/// rejected (onboarding does exactly this so a key can be pasted later) — it is
-/// created `enabled: false` instead. With a key it stays enabled.
+/// rejected, and must stay ENABLED: the multi-tenant onboarding flow provisions
+/// exactly this so each user supplies their own key (resolved per-user at
+/// request time). A prior 400 broke that flow.
 #[tokio::test]
-async fn test_create_enabled_remote_without_key_is_disabled_not_rejected() {
+async fn test_create_enabled_remote_without_key_is_allowed() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -281,7 +282,7 @@ async fn test_create_enabled_remote_without_key_is_disabled_not_rejected() {
     )
     .await;
 
-    // Keyless + enabled remote → created, but coerced to disabled (no 400).
+    // Keyless + enabled remote → created AND stays enabled (no 400, no disable).
     let resp = reqwest::Client::new()
         .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
@@ -300,28 +301,8 @@ async fn test_create_enabled_remote_without_key_is_disabled_not_rejected() {
     );
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(
-        body["enabled"], false,
-        "keyless remote provider must be coerced to disabled"
-    );
-
-    // Same shape WITH a key → stays enabled.
-    let resp = reqwest::Client::new()
-        .post(server.api_url("/llm-providers"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "name": "Keyed OpenAI",
-            "provider_type": "openai",
-            "enabled": true,
-            "api_key": "sk-test123",
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED);
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(
         body["enabled"], true,
-        "an admin-supplied key must keep the provider enabled"
+        "keyless enabled remote provider must stay enabled (per-user keys)"
     );
 }
 

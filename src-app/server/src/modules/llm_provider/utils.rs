@@ -115,28 +115,13 @@ pub fn validate_create_request(request: &CreateLlmProviderRequest) -> Result<(),
             ));
         }
 
-    // NOTE: an enabled remote provider with no API key is NOT a hard error.
-    // Onboarding deliberately creates a keyless remote provider so the admin
-    // (or user) can paste their own key later. The create handler coerces such
-    // a provider to `enabled=false` (see `remote_provider_needs_key` +
-    // `create_provider`) instead of rejecting it — if the admin supplied the
-    // key it stays enabled; if not, it is created disabled.
+    // NOTE: an enabled remote provider with no API key is intentionally allowed.
+    // The multi-tenant onboarding flow provisions a keyless-but-enabled provider
+    // so each user supplies their OWN key on the AI-Providers step; keys are
+    // resolved per-user at request time (`resolve_api_key_for_user`). A spurious
+    // 400 here used to break that flow, so do not reject it.
 
     Ok(())
-}
-
-/// True when a request describes a *remote* provider (not `local`/`custom`)
-/// that is being enabled without an API key. Such a provider must be created
-/// disabled — it cannot serve traffic until a key is supplied.
-pub fn remote_provider_needs_key(
-    provider_type: &str,
-    enabled: bool,
-    api_key: Option<&String>,
-) -> bool {
-    enabled
-        && provider_type != "local"
-        && provider_type != "custom"
-        && api_key.map(|k| k.trim().is_empty()).unwrap_or(true)
 }
 
 /// Validate update request

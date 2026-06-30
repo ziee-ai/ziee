@@ -136,17 +136,13 @@ pub async fn create_provider(
         request.enabled.get_or_insert(true);
     }
 
-    // A remote provider enabled without an API key cannot serve traffic, but
-    // it is not an error (onboarding creates exactly this so a key can be
-    // pasted later). Coerce it to disabled rather than rejecting the create —
-    // if the admin DID supply a key it stays enabled.
-    if utils::remote_provider_needs_key(
-        &request.provider_type,
-        request.enabled.unwrap_or(false),
-        request.api_key.as_ref(),
-    ) {
-        request.enabled = Some(false);
-    }
+    // A remote provider may be enabled WITHOUT an admin-supplied API key: the
+    // multi-tenant onboarding flow provisions exactly this so each user pastes
+    // their OWN key on the AI-Providers step (per-user keys are resolved at
+    // request time via `resolve_api_key_for_user`). Such a provider simply does
+    // not serve a user until that user has a key — it is neither an error (was
+    // a spurious 400) nor something to force-disable (that hid it from the
+    // onboarding step, breaking per-user key entry).
 
     // Create provider
     let provider = Repos.llm_provider.create(request).await.map_err(|e| {
