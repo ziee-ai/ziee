@@ -629,7 +629,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               <div className="flex justify-end mt-1">
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="default"
                   icon={<RotateCw />}
                   data-testid={`hub-model-retry-btn-${model.name}`}
                   onClick={e => {

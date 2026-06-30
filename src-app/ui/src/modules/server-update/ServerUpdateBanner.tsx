@@ -43,7 +43,7 @@ function ServerUpdateBannerInner() {
           <Button
             data-testid="serverupd-banner-howto-btn"
             variant="link"
-            size="sm"
+            size="default"
             className="!p-0 !h-auto"
             onClick={() => navigate('/settings/about')}
           >

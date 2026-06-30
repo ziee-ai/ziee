@@ -70,7 +70,7 @@ export function MemorySection() {
           title="Failed to load memory settings"
           description={error}
         >
-          <Button data-testid="memory-section-retry-btn" size="sm" onClick={() => Stores.MemoryAdmin.load()}>
+          <Button data-testid="memory-section-retry-btn" size="default" onClick={() => Stores.MemoryAdmin.load()}>
             Retry
           </Button>
         </Alert>

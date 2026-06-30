@@ -50,7 +50,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
           </Space>
           {canManage && (
             <Button
-              size="sm"
+              size="default"
               variant="link"
               icon={<Pencil aria-hidden="true" />}
               onClick={handleEdit}

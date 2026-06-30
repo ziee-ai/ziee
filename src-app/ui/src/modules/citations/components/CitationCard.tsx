@@ -71,7 +71,7 @@ export function CitationCard({
               data-testid={`cite-card-delete-confirm-${entry.id}`}
             >
               <Button
-                size="sm"
+                size="default"
                 variant="destructive"
                 type="button"
                 aria-label={`Delete ${entry.citation_key}`}

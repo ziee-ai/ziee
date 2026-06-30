@@ -226,7 +226,7 @@ export function WebSearchGlobalSection() {
                     <Button
                       data-testid={`websearch-chain-${key}-up`}
                       variant="ghost"
-                      size="sm"
+                      size="default"
                       aria-label={`Move ${nameOf(key)} up`}
                       icon={<ArrowUp />}
                       disabled={i === 0 || savingChain}
@@ -237,7 +237,7 @@ export function WebSearchGlobalSection() {
                     <Button
                       data-testid={`websearch-chain-${key}-down`}
                       variant="ghost"
-                      size="sm"
+                      size="default"
                       aria-label={`Move ${nameOf(key)} down`}
                       icon={<ArrowDown />}
                       disabled={i === chain.length - 1 || savingChain}
@@ -248,7 +248,7 @@ export function WebSearchGlobalSection() {
                     <Button
                       data-testid={`websearch-chain-${key}-remove`}
                       variant="destructive"
-                      size="sm"
+                      size="default"
                       aria-label={`Remove ${nameOf(key)} from chain`}
                       icon={<Trash2 />}
                       disabled={savingChain}

@@ -100,7 +100,7 @@ export function DownloadItem({
               {onViewDetails && (
                 <Button
                   variant="link"
-                  size="sm"
+                  size="default"
                   icon={<Eye />}
                   onClick={onViewDetails}
                   data-testid="llm-download-view-details-btn"
@@ -111,7 +111,7 @@ export function DownloadItem({
               {isActive && onCancel && (
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="default"
                   icon={<X />}
                   onClick={onCancel}
                   data-testid="llm-download-cancel-btn"
@@ -122,7 +122,7 @@ export function DownloadItem({
               {isTerminal && onClose && (
                 <Button
                   variant="link"
-                  size="sm"
+                  size="default"
                   icon={<X />}
                   onClick={onClose}
                   data-testid="llm-download-close-btn"
@@ -169,7 +169,7 @@ export function DownloadItem({
           {isActive && onCancel && (
             <Button
               variant="ghost"
-              size="sm"
+              size="default"
               icon={<X />}
               onClick={onCancel}
               data-testid="llm-download-compact-cancel-btn"

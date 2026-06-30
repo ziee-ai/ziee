@@ -179,7 +179,7 @@ export function LlmModelsSection() {
         <Button
           key="start-stop"
           data-testid={`llm-model-start-stop-${llmModel.id}`}
-          size="sm"
+          size="default"
           variant={llmModel.is_active ? 'outline' : 'default'}
           loading={busy}
           disabled={busy}

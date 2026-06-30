@@ -138,7 +138,7 @@ export function WorkflowRunProgressView({
           <Button
             data-testid="wf-progress-cancel-btn"
             variant="destructive"
-            size="sm"
+            size="default"
             icon={<Ban />}
             loading={cancelling}
             onClick={() => void Stores.WorkflowRun.cancel(runId)}
@@ -151,7 +151,7 @@ export function WorkflowRunProgressView({
         {!terminal && (
           <Button
             data-testid="wf-progress-remove-timeout-btn"
-            size="sm"
+            size="default"
             loading={removingTimeout}
             disabled={removingTimeout}
             onClick={async () => {

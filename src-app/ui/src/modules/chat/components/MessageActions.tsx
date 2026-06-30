@@ -86,7 +86,7 @@ export function MessageActions() {
         <Button
           data-testid="chat-message-copy-btn"
           variant="ghost"
-          size="sm"
+          size="default"
           icon={<CopyIcon />}
           onClick={handleCopy}
         />
@@ -96,7 +96,7 @@ export function MessageActions() {
         <Tooltip content="Edit message">
           <Button
             variant="ghost"
-            size="sm"
+            size="default"
             icon={<Pencil />}
             disabled={isBusy}
             onClick={handleEdit}
@@ -109,7 +109,7 @@ export function MessageActions() {
         <Tooltip content="Regenerate response">
           <Button
             variant="ghost"
-            size="sm"
+            size="default"
             icon={<RotateCw />}
             loading={isRegenerating}
             disabled={isBusy && !isRegenerating}

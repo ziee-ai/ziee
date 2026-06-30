@@ -130,7 +130,7 @@ export function WorkflowRunsList({
                 <Button
                   data-testid={`wf-run-delete-btn-${run.id}`}
                   variant="destructive"
-                  size="sm"
+                  size="default"
                   icon={<Trash2 />}
                   loading={!!deleting[run.id]}
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}

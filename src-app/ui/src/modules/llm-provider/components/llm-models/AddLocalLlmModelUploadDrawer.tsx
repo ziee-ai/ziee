@@ -462,7 +462,7 @@ export function AddLocalLlmModelUploadDrawer() {
               extra={
                 <Button
                   variant="link"
-                  size="sm"
+                  size="default"
                   onClick={handleCancelUpload}
                   className="text-destructive"
                   data-testid="llm-upload-cancel-btn"

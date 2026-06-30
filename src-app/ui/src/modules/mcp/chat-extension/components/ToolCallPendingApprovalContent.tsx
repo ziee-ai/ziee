@@ -176,7 +176,7 @@ export function ToolCallPendingApprovalContent({
                   icon={<Check />}
                   onClick={handleApproveOnce}
                   loading={isSubmitting}
-                  size="sm"
+                  size="default"
                   data-testid="tool-approval-approve-once"
                 >
                   Approve once
@@ -185,7 +185,7 @@ export function ToolCallPendingApprovalContent({
                   icon={<Check />}
                   onClick={handleApproveForConversation}
                   loading={isSubmitting}
-                  size="sm"
+                  size="default"
                   data-testid="tool-approval-approve-conv"
                 >
                   Approve for this conversation
@@ -195,7 +195,7 @@ export function ToolCallPendingApprovalContent({
                   icon={<X />}
                   onClick={handleDeny}
                   loading={isSubmitting}
-                  size="sm"
+                  size="default"
                   data-testid="tool-approval-deny"
                 >
                   Deny

@@ -56,7 +56,7 @@ export function McpServerGroupsAssignmentCard({
                   <div className="mb-2">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="default"
                       icon={<Pencil aria-hidden="true" />}
                       onClick={e => {
                         e.stopPropagation()

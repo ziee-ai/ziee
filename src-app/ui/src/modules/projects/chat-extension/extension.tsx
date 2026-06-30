@@ -458,7 +458,7 @@ function ProjectMembershipTrailing({
           <Button
             data-testid="project-trailing-add-button"
             variant="ghost"
-            size="sm"
+            size="default"
             icon={<CirclePlus />}
             aria-label="Add to project"
             onClick={(e: React.MouseEvent) => {

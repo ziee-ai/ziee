@@ -232,11 +232,11 @@ export function ProjectFilesManagePanel() {
         {selectedFileIds.size} selected
       </Text>
       <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => Stores.ProjectFiles.deselectAll()} data-testid="file-project-clear-selection-btn">
+        <Button size="default" variant="outline" onClick={() => Stores.ProjectFiles.deselectAll()} data-testid="file-project-clear-selection-btn">
           Clear
         </Button>
         <Button
-          size="sm"
+          size="default"
           variant="destructive"
           icon={<Trash2 />}
           onClick={handleBatchDelete}

@@ -128,7 +128,7 @@ export function SystemMcpServersPage() {
                 .join(', ')}
             </Text>
             <Button
-              size="sm"
+              size="default"
               variant="ghost"
               icon={<Eraser />}
               onClick={clearAllFilters}

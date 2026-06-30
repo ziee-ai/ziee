@@ -488,7 +488,7 @@ export function WorkflowElicitForm({
           <Button
             data-testid="wf-elicit-submit-btn"
             type="button"
-            size="sm"
+            size="default"
             loading={submitting}
             onClick={() => {
               void handleClickSubmit()

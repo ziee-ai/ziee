@@ -33,10 +33,10 @@ export type ButtonProps =
   // icon-only has no text → force a name: a string tooltip, or an explicit aria-label.
   | (ButtonCommon & { size: 'icon'; tooltip: string })
   | (ButtonCommon & { size: 'icon'; 'aria-label': string; tooltip?: React.ReactNode })
-  | (ButtonCommon & { size?: 'sm' | 'default' | 'lg' })
+  | (ButtonCommon & { size?: 'default' | 'lg' })
 
 const skeletonH = (size?: BaseButtonProps['size']) =>
-  size === 'sm' ? 'h-7' : size === 'lg' ? 'h-9' : 'h-8'
+  size === 'lg' ? 'h-9' : 'h-8'
 
 export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
   ({ loading, disabled, href, target, size: ownSize, type = 'button', tooltip, icon, block, children, className: classNameProp, onClick, ...props }, ref) => {

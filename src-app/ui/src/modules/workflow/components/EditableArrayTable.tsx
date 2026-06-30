@@ -269,7 +269,7 @@ export function EditableArrayTable({
                   <>
                     <Button
                       data-testid="wf-array-bulk-set-on-btn"
-                      size="sm"
+                      size="default"
                       disabled={disabled || selectedKeys.length === 0}
                       onClick={() => bulkSet(true)}
                     >
@@ -277,7 +277,7 @@ export function EditableArrayTable({
                     </Button>
                     <Button
                       data-testid="wf-array-bulk-set-off-btn"
-                      size="sm"
+                      size="default"
                       disabled={disabled || selectedKeys.length === 0}
                       onClick={() => bulkSet(false)}
                     >
@@ -287,7 +287,7 @@ export function EditableArrayTable({
                 )}
                 <Button
                   data-testid="wf-array-bulk-delete-btn"
-                  size="sm"
+                  size="default"
                   disabled={disabled || selectedKeys.length === 0}
                   onClick={bulkDelete}
                 >
@@ -387,7 +387,7 @@ export function EditableArrayTable({
                             <td className="px-1 py-1 align-top">
                               <Button
                                 data-testid={`wf-array-expand-btn-${field.id}`}
-                                size="sm"
+                                size="default"
                                 type="button"
                                 onClick={() => toggleExpand(field.id)}
                                 aria-label={
@@ -407,7 +407,7 @@ export function EditableArrayTable({
                           <td className="px-1 py-1 align-top">
                             <Button
                               data-testid={`wf-array-remove-btn-${field.id}`}
-                              size="sm"
+                              size="default"
                               type="button"
                               disabled={disabled || !canRemoveBelowMin}
                               aria-label="Remove row"
@@ -452,7 +452,7 @@ export function EditableArrayTable({
             <Button
               data-testid="wf-array-add-row-btn"
               type="button"
-              size="sm"
+              size="default"
               disabled={disabled || atMax}
               onClick={() => append(newRow(cols) as any)}
               className="w-full border-dashed"

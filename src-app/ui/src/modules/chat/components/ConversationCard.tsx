@@ -174,7 +174,7 @@ export function ConversationCard({
                   : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100'
               }`}
               variant="ghost"
-              size="sm"
+              size="default"
               icon={<Trash2 />}
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()

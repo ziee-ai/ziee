@@ -226,7 +226,7 @@ export function MyMemoriesSection() {
                           <Tooltip title="Edit memory">
                             <Button
                               variant="ghost"
-                              size="sm"
+                              size="default"
                               icon={<Pencil />}
                               onClick={() => setEditing(row)}
                               aria-label="Edit memory"
@@ -255,7 +255,7 @@ export function MyMemoriesSection() {
                             <Tooltip title="Delete memory">
                               <Button
                                 variant="destructive"
-                                size="sm"
+                                size="default"
                                 icon={<Trash2 />}
                                 aria-label={`Delete memory ${row.id}`}
                                 data-testid={`memory-row-delete-btn-${row.id}`}

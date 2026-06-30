@@ -44,7 +44,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
             )}
           </Space>
           <Button
-            size="sm"
+            size="default"
             variant="link"
             icon={<Pencil aria-hidden="true" />}
             onClick={handleEdit}

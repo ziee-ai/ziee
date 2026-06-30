@@ -142,7 +142,7 @@ function TablePanelScene() {
       data-testid="g-scene-table-card"
       title="Invoices"
       extra={
-        <Button data-testid="g-scene-table-new" size="sm">
+        <Button data-testid="g-scene-table-new" size="default">
           New invoice
         </Button>
       }
@@ -197,7 +197,7 @@ function SidebarScene() {
       <main className="flex flex-1 flex-col gap-3 p-4">
         <Flex justify="between" align="center">
           <Title level={3}>Chat</Title>
-          <Button data-testid="g-scene-sidebar-new" size="sm">
+          <Button data-testid="g-scene-sidebar-new" size="default">
             New
           </Button>
         </Flex>

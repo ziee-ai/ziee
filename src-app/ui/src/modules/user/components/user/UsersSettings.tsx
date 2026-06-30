@@ -115,7 +115,7 @@ export function UsersSettings() {
             cancelText="Cancel"
             data-testid={`user-toggle-active-confirm-${user.id}`}
           >
-            <Button variant="ghost" size="sm" data-testid={`user-toggle-active-button-${user.id}`}>
+            <Button variant="ghost" size="default" data-testid={`user-toggle-active-button-${user.id}`}>
               {user.is_active ? 'Deactivate' : 'Activate'}
             </Button>
           </Confirm>

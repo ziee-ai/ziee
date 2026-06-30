@@ -164,13 +164,13 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           label={selected.size > 0 ? `${selected.size} selected` : 'Select all'}
           data-testid="lit-screening-select-all-checkbox"
         />
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
+        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
           Include
         </Button>
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
+        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
           Exclude
         </Button>
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
+        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
           Unscreen
         </Button>
         <Dropdown
@@ -182,7 +182,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           onSelect={(key: string) => doExport(key as 'ris' | 'bibtex' | 'csv')}
           data-testid="lit-screening-export-dropdown"
         >
-          <Button icon={<Download />} size="sm" disabled={records.length === 0} data-testid="lit-screening-export-button">
+          <Button icon={<Download />} size="default" disabled={records.length === 0} data-testid="lit-screening-export-button">
             Export {counts.include > 0 ? 'included' : 'all'}
           </Button>
         </Dropdown>

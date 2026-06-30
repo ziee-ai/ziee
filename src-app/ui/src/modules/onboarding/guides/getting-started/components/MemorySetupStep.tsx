@@ -183,7 +183,7 @@ function PickModelScreen({
         <Button
           data-testid="onboarding-memory-pick-back-button"
           icon={<ArrowLeft />}
-          size="sm"
+          size="default"
           onClick={onBack}
           aria-label="Back"
         />

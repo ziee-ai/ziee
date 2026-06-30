@@ -141,7 +141,7 @@ export function ProjectsNavWidget() {
                     <Button
                       data-testid={`project-nav-new-chat-button-${project.id}`}
                       variant="ghost"
-                      size="sm"
+                      size="default"
                       icon={<Plus />}
                       aria-label={`New chat in ${project.name}`}
                       onClick={e => {
