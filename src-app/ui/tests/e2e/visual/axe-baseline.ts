@@ -27,6 +27,12 @@ export interface AxeBaselineEntry {
 
 export const AXE_BASELINE: AxeBaselineEntry[] = [
   {
+    rule: 'aria-required-children',
+    section: 'gallery-section-tabs',
+    targetIncludes: 'g-tabs-editable',
+    note: "Editable/closable Tabs: each tab is wrapped in a div that also holds a close <button>, so role=tablist has non-tab focusable descendants. Closable tabs are a hard ARIA pattern — the APG 'deletable tabs' example keeps the close control inside the tab and manages it via keyboard (Delete key), not a sibling button. Real fix in kit/tabs.tsx requires adopting that pattern; non-editable Tabs are correct (no baseline). The add button was already moved out of the tablist.",
+  },
+  {
     rule: 'scrollable-region-focusable',
     section: 'gallery-section-scroll-area',
     targetIncludes: 'overlayscrollbars-contents',

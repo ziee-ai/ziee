@@ -433,6 +433,42 @@ const tabsStory: GalleryStory = {
         </div>
       ),
     },
+    {
+      key: 'editable',
+      label: 'Editable (add/close cards)',
+      render: () => (
+        <div className="w-96">
+          <Tabs
+            data-testid="g-tabs-editable"
+            defaultValue="a"
+            editable
+            addLabel="Add tab"
+            onEdit={() => undefined}
+            items={[
+              { key: 'a', label: 'Tab A', children: <p>A</p> },
+              { key: 'b', label: 'Tab B', children: <p>B</p> },
+            ]}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'sizes',
+      label: 'Small',
+      render: () => (
+        <div className="w-96">
+          <Tabs
+            data-testid="g-tabs-sm"
+            size="sm"
+            defaultValue="x"
+            items={[
+              { key: 'x', label: 'One', children: <p>One</p> },
+              { key: 'y', label: 'Two', children: <p>Two</p> },
+            ]}
+          />
+        </div>
+      ),
+    },
   ],
 }
 

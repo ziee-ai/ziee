@@ -31,79 +31,69 @@ const opts = [
   { value: 'c', label: 'Option C' },
 ]
 
+const btnVariants = [
+  'default',
+  'secondary',
+  'outline',
+  'ghost',
+  'destructive',
+  'link',
+] as const
+
 const buttonStory: GalleryStory = {
   id: 'button',
   title: 'Button',
-  note: 'variant × size × state; icon, icon-only (tooltip), block, link',
+  note: 'full variant × size matrix + per-variant states; icon-only, block',
   cases: [
-    {
-      key: 'variants',
-      label: 'Variants',
+    // Full variant × size cross-product (the audit flagged the old story only
+    // showed variants-at-default-size and sizes-at-default-variant).
+    ...btnVariants.map(v => ({
+      key: `variant-${v}`,
+      label: v,
       render: () => (
-        <>
-          <Button data-testid="g-btn-default">Default</Button>
-          <Button data-testid="g-btn-secondary" variant="secondary">
-            Secondary
-          </Button>
-          <Button data-testid="g-btn-outline" variant="outline">
-            Outline
-          </Button>
-          <Button data-testid="g-btn-ghost" variant="ghost">
-            Ghost
-          </Button>
-          <Button data-testid="g-btn-destructive" variant="destructive">
-            Destructive
-          </Button>
-          <Button data-testid="g-btn-link" variant="link">
-            Link
-          </Button>
-        </>
-      ),
-    },
-    {
-      key: 'sizes',
-      label: 'Sizes',
-      render: () => (
-        <>
+        <div className="flex flex-wrap items-center gap-2">
           {sizes.map(s => (
-            <Button key={s} data-testid={`g-btn-size-${s}`} size={s}>
+            <Button
+              key={s}
+              data-testid={`g-btn-${v}-${s}`}
+              variant={v}
+              size={s}
+            >
               {s}
             </Button>
           ))}
+          <Button
+            data-testid={`g-btn-${v}-disabled`}
+            variant={v}
+            disabled
+          >
+            disabled
+          </Button>
+          <Button data-testid={`g-btn-${v}-loading`} variant={v} loading>
+            loading
+          </Button>
+        </div>
+      ),
+    })),
+    {
+      key: 'icon',
+      label: 'Icon / icon-only / block',
+      render: () => (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button data-testid="g-btn-icon" icon={<Search />}>
+            With icon
+          </Button>
           <Button
             data-testid="g-btn-icononly"
             size="icon"
             tooltip="Search"
             icon={<Search />}
           />
-        </>
-      ),
-    },
-    {
-      key: 'states',
-      label: 'States',
-      render: () => (
-        <>
-          <Button data-testid="g-btn-icon" icon={<Search />}>
-            With icon
-          </Button>
-          <Button data-testid="g-btn-loading" loading>
-            Loading
-          </Button>
-          <Button data-testid="g-btn-disabled" disabled>
-            Disabled
-          </Button>
-        </>
-      ),
-    },
-    {
-      key: 'block',
-      label: 'Block',
-      render: () => (
-        <div className="w-64">
-          <Button data-testid="g-btn-block" block>
-            Block button
-          </Button>
+          <div className="w-48">
+            <Button data-testid="g-btn-block" block>
+              Block
+            </Button>
+          </div>
         </div>
       ),
     },

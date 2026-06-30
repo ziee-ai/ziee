@@ -131,6 +131,7 @@ const treeStory: GalleryStory = {
             data-testid="g-tree"
             aria-label="File tree"
             defaultExpandedKeys={['src']}
+            defaultSelectedKey="app"
             treeData={[
               {
                 key: 'src',
@@ -141,6 +142,31 @@ const treeStory: GalleryStory = {
                 ],
               },
               { key: 'readme', title: 'README.md', isLeaf: true },
+            ]}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'checkable',
+      label: 'Checkable',
+      render: () => (
+        <div className="w-64">
+          <Tree
+            data-testid="g-tree-checkable"
+            aria-label="Checkable tree"
+            checkable
+            defaultExpandedKeys={['docs']}
+            defaultCheckedKeys={['intro']}
+            treeData={[
+              {
+                key: 'docs',
+                title: 'docs',
+                children: [
+                  { key: 'intro', title: 'intro.md', isLeaf: true },
+                  { key: 'guide', title: 'guide.md', isLeaf: true },
+                ],
+              },
             ]}
           />
         </div>

@@ -76,6 +76,15 @@ bug-finding patterns from visual-testing prior art (Chromatic / EightShapes):
 - **RTL pass**: `?dir=rtl` flips the whole gallery; Layer A runs the invariants
   under RTL (mirroring/alignment/logical-property bugs).
 - **Breakpoints**: mobile/tablet/desktop (already in the matrix).
+- **Overlay OPEN states** (`overlays.spec.ts`): opens Dialog/Sheet/Confirm/
+  Dropdown/Select/Popover and snapshots + layout-checks the actual portal content
+  (per-section shots never captured these).
+- **Interactive states** (`states.spec.ts`): drives real `.hover()`/`.focus()`
+  on key controls, asserts the focus ring doesn't overflow, and snapshots them.
+- **Full Button matrix** (variant × size + per-variant disabled/loading),
+  **Tabs editable** (add/close cards), **Tree checkable**, and the 8 components
+  the audit found missing (Space, Layout, ScrollArea, Image, Upload, Attachment,
+  SidebarTrigger, FormList).
 
 ## Kit defects the system caught — now FIXED + enforced
 
@@ -96,6 +105,13 @@ re-running until green:
    value now contain long unbroken content (`min-w-0` + `overflow-wrap`/`truncate`).
    (The "`Select` clips without ellipsis" report was a CHECKER false-negative —
    `line-clamp` wasn't recognized as an ellipsis affordance; fixed in `layout.ts`.)
+
+Expanding coverage (overlays, missing components, hover/focus, Button matrix)
+caught **more** real kit defects — fixed: Upload `nested-interactive` (file input
+nested in the role=button dropzone → now a sibling), Tabs editable add-button
+inside `role=tablist`. Two remain **baselined** (documented, element-keyed) as
+harder fixes: editable/closable Tabs `aria-required-children` (needs the ARIA-APG
+deletable-tabs pattern) and ScrollArea's third-party scroll-viewport `tabindex`.
 
 The baselines remain as the documented mechanism for any FUTURE finding — keyed
 as narrowly as possible (axe by `rule × section [× target]`, layout by
