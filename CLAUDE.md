@@ -114,6 +114,29 @@ The `build.rs` script automatically manages the build database for SQLx compile-
    - The build database is ephemeral - it gets wiped on every clean build
    - Changes to migration files require `cargo clean` to take effect
 
+#### Per-worktree isolation (concurrent worktree builds + tests)
+
+Multiple git worktrees share ONE pgvector cluster (`:54321`), so a naive
+build.rs that wipes a single shared schema lets two worktrees clobber each
+other. To make builds + test suites run **concurrently across worktrees** with
+zero cross-contamination, the build/test databases are namespaced by a stable
+per-worktree key (FNV-1a of the worktree root path; the server + desktop crates
+of one worktree share ONE key). Single source: `server/build_helper/worktree_db.rs`.
+
+- `server/build.rs` provisions + migrates `ziee_build_<key>` on the cluster and
+  points sqlx verification at it (via `cargo:rustc-env`) instead of wiping the
+  shared `postgres` db. `desktop/tauri/build.rs` points the desktop crate's
+  macros at the same `ziee_build_<key>` (ziee-desktop depends on `ziee`, whose
+  build.rs migrates both crates' schema first).
+- The integration harness (`server/tests/common/harness_inner.rs`) namespaces
+  the template db `ziee_test_template[_desktop]_<key>`; per-test dbs already use
+  unique UUIDs. E2E already isolates its runtime (per-runId docker container,
+  bind-verified ports via a shared lock dir).
+- **Gate:** auto-isolation is ON when `DATABASE_URL` is unset / the committed
+  sentinel / any URL on `127.0.0.1:54321`. A genuine external override (a
+  different host:port, as CI/production sets) is honored unchanged. Opt out with
+  `ZIEE_BUILD_DB_PERWORKTREE=0`.
+
 ---
 
 ## Memory System (LLM Memory)
