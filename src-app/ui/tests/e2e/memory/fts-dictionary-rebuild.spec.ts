@@ -41,6 +41,9 @@ test.describe('Memory admin — FTS dictionary rebuild', () => {
 
     // Change the Dictionary Select from the default ('simple') to 'english'.
     // Kit Select emits options as `${selectTestid}-opt-${value}`.
+    // FTS card sits near the bottom of a long admin page; scroll the trigger
+    // into view first so the opened option list isn't pushed outside the viewport.
+    await byTestId(page, 'memory-fts-dictionary-select').scrollIntoViewIfNeeded()
     await byTestId(page, 'memory-fts-dictionary-select').click()
     await byTestId(page, 'memory-fts-dictionary-select-opt-english').click()
 

@@ -95,9 +95,8 @@ test.describe('Memory — admin semantic search re-embed', () => {
       timeout: 10000,
     })
     await byTestId(page, 'memory-semantic-reembed-confirm-btn').click()
-    await expect(page.locator('[data-sonner-toast]')).toContainText(
-      'Re-embed job dispatched in background',
-      { timeout: 10000 },
-    )
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: 'Re-embed job dispatched in background' }),
+    ).toBeVisible({ timeout: 10000 })
   })
 })

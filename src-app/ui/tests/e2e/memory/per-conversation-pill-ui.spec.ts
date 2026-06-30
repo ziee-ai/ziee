@@ -21,6 +21,15 @@ test.describe('Memory — composer pill UI', () => {
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
 
+    // Enable memory deployment-wide so the pill is allowed to render
+    // (MemoryStatusPill returns null when adminSettings.enabled === false,
+    // and memory defaults OFF). Mirrors tests/e2e/memory/status-pill.spec.ts.
+    const enable = await page.request.put(`${apiURL}/api/memory/admin-settings`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { enabled: true },
+    })
+    expect(enable.ok()).toBe(true)
+
     const convRes = await fetch(`${apiURL}/api/conversations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

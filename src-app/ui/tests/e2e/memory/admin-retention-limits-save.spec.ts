@@ -37,10 +37,9 @@ test.describe('Memory — admin retention limits', () => {
     await setNumber(quota, 250)
 
     await byTestId(page, 'memory-retention-save-btn').click()
-    await expect(page.locator('[data-sonner-toast]')).toContainText(
-      'Retention & limits saved.',
-      { timeout: 10000 },
-    )
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: 'Retention & limits saved.' }),
+    ).toBeVisible({ timeout: 10000 })
 
     // Reload → persisted values come back.
     await page.goto(`${baseURL}/settings/memory-admin`)
