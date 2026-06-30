@@ -69,7 +69,7 @@ test.describe('Sync reconnect self-gating', () => {
 
     // The app is still usable and NO store fired a forbidden refetch.
     await expect(
-      byTestId(page, 'chat-history-new-chat-btn'),
+      byTestId(page, 'chat-message-textarea'),
     ).toBeVisible()
     expect(
       forbidden,
