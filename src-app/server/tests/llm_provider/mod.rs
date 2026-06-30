@@ -268,6 +268,63 @@ async fn test_get_provider_not_found() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+/// A remote provider created `enabled: true` WITHOUT an api_key must NOT be
+/// rejected (onboarding does exactly this so a key can be pasted later) — it is
+/// created `enabled: false` instead. With a key it stays enabled.
+#[tokio::test]
+async fn test_create_enabled_remote_without_key_is_disabled_not_rejected() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
+
+    // Keyless + enabled remote → created, but coerced to disabled (no 400).
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "Keyless OpenAI",
+            "provider_type": "openai",
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "keyless enabled remote provider must be created, not rejected"
+    );
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["enabled"], false,
+        "keyless remote provider must be coerced to disabled"
+    );
+
+    // Same shape WITH a key → stays enabled.
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "Keyed OpenAI",
+            "provider_type": "openai",
+            "enabled": true,
+            "api_key": "sk-test123",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["enabled"], true,
+        "an admin-supplied key must keep the provider enabled"
+    );
+}
+
 #[tokio::test]
 async fn test_create_provider_minimal() {
     let server = crate::common::TestServer::start().await;

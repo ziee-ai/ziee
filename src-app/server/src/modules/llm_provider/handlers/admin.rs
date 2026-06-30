@@ -136,6 +136,18 @@ pub async fn create_provider(
         request.enabled.get_or_insert(true);
     }
 
+    // A remote provider enabled without an API key cannot serve traffic, but
+    // it is not an error (onboarding creates exactly this so a key can be
+    // pasted later). Coerce it to disabled rather than rejecting the create —
+    // if the admin DID supply a key it stays enabled.
+    if utils::remote_provider_needs_key(
+        &request.provider_type,
+        request.enabled.unwrap_or(false),
+        request.api_key.as_ref(),
+    ) {
+        request.enabled = Some(false);
+    }
+
     // Create provider
     let provider = Repos.llm_provider.create(request).await.map_err(|e| {
         tracing::error!("Failed to create provider: {}", e);

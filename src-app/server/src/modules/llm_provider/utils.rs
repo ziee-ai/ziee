@@ -115,19 +115,28 @@ pub fn validate_create_request(request: &CreateLlmProviderRequest) -> Result<(),
             ));
         }
 
-    // If enabling the provider, ensure required fields are present
-    if request.enabled.unwrap_or(false) {
-        // For remote providers (not local), API key is usually required
-        if request.provider_type != "local" && request.provider_type != "custom"
-            && (request.api_key.is_none() || request.api_key.as_ref().unwrap().trim().is_empty()) {
-                return Err(AppError::bad_request(
-                    "VALIDATION_ERROR",
-                    "API key is required for enabled remote providers",
-                ));
-            }
-    }
+    // NOTE: an enabled remote provider with no API key is NOT a hard error.
+    // Onboarding deliberately creates a keyless remote provider so the admin
+    // (or user) can paste their own key later. The create handler coerces such
+    // a provider to `enabled=false` (see `remote_provider_needs_key` +
+    // `create_provider`) instead of rejecting it — if the admin supplied the
+    // key it stays enabled; if not, it is created disabled.
 
     Ok(())
+}
+
+/// True when a request describes a *remote* provider (not `local`/`custom`)
+/// that is being enabled without an API key. Such a provider must be created
+/// disabled — it cannot serve traffic until a key is supplied.
+pub fn remote_provider_needs_key(
+    provider_type: &str,
+    enabled: bool,
+    api_key: Option<&String>,
+) -> bool {
+    enabled
+        && provider_type != "local"
+        && provider_type != "custom"
+        && api_key.map(|k| k.trim().is_empty()).unwrap_or(true)
 }
 
 /// Validate update request
