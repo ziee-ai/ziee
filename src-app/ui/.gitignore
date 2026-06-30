@@ -29,3 +29,10 @@ test-results/
 .test-workers.json
 .test-configs/
 dist-e2e/
+
+# Visual testing (Layer B baselines are machine/font-specific — bless per
+# environment with `--update-snapshots`, never commit a local machine's PNGs;
+# Layer C cache/report are generated artifacts).
+tests/e2e/visual/**/*-snapshots/
+.visual-judge-cache.json
+visual-judge-report.json

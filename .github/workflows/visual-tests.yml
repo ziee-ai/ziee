@@ -1,0 +1,60 @@
+name: visual tests
+
+# Deterministic, backend-free UI visual testing on PRs that touch the frontend.
+#
+# Runs LAYER A only (layout invariants + axe a11y, incl. the open-overlay and
+# hover/focus layout assertions) against the dev-only component gallery served by
+# a plain Vite dev server — NO Postgres, NO cargo, NO backend. These need no
+# blessed baseline, so they gate every PR.
+#
+# LAYER B (pixel screenshots) is NOT run here: its baselines are
+# environment-specific and must be blessed in a pinned container
+# (VISUAL_SNAPSHOTS=1 + `npm run test:visual:update`). See
+# src-app/ui/src/dev/gallery/README.md.
+
+on:
+  pull_request:
+    paths:
+      - 'src-app/ui/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/visual-tests.yml'
+  workflow_dispatch:
+
+# Cancel superseded runs on the same PR.
+concurrency:
+  group: visual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  layer-a:
+    name: Layer A — layout invariants + a11y
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Workspaces hoist to the repo root.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: src-app/ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Layer A (deterministic, backend-free; Layer B skipped)
+        working-directory: src-app/ui
+        run: npx playwright test -c playwright.visual.config.ts
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-report
+          path: src-app/ui/playwright-report/
+          retention-days: 7

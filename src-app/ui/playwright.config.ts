@@ -15,6 +15,12 @@ if (!process.env.TEST_RUN_ID) {
 export default defineConfig({
   testDir: './tests/e2e',
 
+  // The visual-testing layers (gallery layout + screenshot specs) run against a
+  // backend-free Vite server via their OWN config (playwright.visual.config.ts),
+  // NOT the full per-test stack this config spins up. Exclude them here so the
+  // standard suite never tries to run them without the gallery webServer.
+  testIgnore: '**/visual/**',
+
   // Organize test artifacts by test run ID
   outputDir,
 

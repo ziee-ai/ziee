@@ -1,0 +1,87 @@
+name: visual snapshots (Layer B)
+
+# Layer B = pixel-regression screenshots. Pixels depend on the OS/font renderer,
+# so baselines MUST be blessed in a fixed environment — the official Playwright
+# container, which pins the exact browser + font stack. This workflow runs there
+# so the baselines are deterministic and reusable.
+#
+# Manual only (the matrix is ~2,600 screenshots). Two modes via the `mode` input:
+#   - bless  : (re)generate baselines and upload them as an artifact for a
+#              maintainer to download + commit (baselines are git-ignored by
+#              default — see src-app/ui/.gitignore / the gallery README).
+#   - compare: pixel-diff against the committed baselines (only meaningful once a
+#              maintainer has committed a container-blessed set).
+#
+# Layer A (deterministic, baseline-free) runs on every PR via visual-tests.yml;
+# this is the heavier, opt-in pixel layer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'bless = regenerate + upload baselines; compare = diff vs committed'
+        type: choice
+        options: [bless, compare]
+        default: bless
+      accents:
+        description: 'Optional VISUAL_ACCENTS subset (comma-separated), e.g. blue,teal'
+        type: string
+        default: ''
+
+jobs:
+  layer-b:
+    name: Layer B — pixel snapshots (pinned container)
+    runs-on: ubuntu-latest
+    # Must match the installed @playwright/test version (package.json).
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    timeout-minutes: 45
+    env:
+      VISUAL_SNAPSHOTS: '1'
+      VISUAL_ACCENTS: ${{ inputs.accents }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The container bakes only ONE Playwright browser build. If the lockfile
+      # has drifted off 1.60.0 (e.g. a future `npm update` under the ^ range),
+      # the baked browsers won't match → fail loudly instead of silently.
+      - name: Assert Playwright version matches the container image
+        working-directory: src-app/ui
+        run: |
+          V=$(npx playwright --version | awk '{print $2}')
+          echo "Playwright: $V (container image: v1.60.0-jammy)"
+          test "$V" = "1.60.0" || { echo "::error::Playwright $V != container 1.60.0 — bump the container image tag in this workflow (and the @playwright/test pin)."; exit 1; }
+
+      - name: Bless baselines
+        if: inputs.mode == 'bless'
+        working-directory: src-app/ui
+        run: npx playwright test -c playwright.visual.config.ts --update-snapshots
+
+      - name: Upload blessed baselines artifact
+        if: inputs.mode == 'bless'
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines-${{ github.sha }}
+          path: src-app/ui/tests/e2e/visual/**/*-snapshots/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Compare against committed baselines
+        if: inputs.mode == 'compare'
+        working-directory: src-app/ui
+        run: npx playwright test -c playwright.visual.config.ts
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-snapshots-report
+          path: src-app/ui/playwright-report/
+          retention-days: 7

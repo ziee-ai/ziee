@@ -28,7 +28,14 @@ function walk(dir, acc = []) {
     const full = path.join(dir, e)
     const st = fs.statSync(full)
     if (st.isDirectory()) {
-      if (!['node_modules', 'dist', 'build', '.git', 'tests'].includes(e)) walk(full, acc)
+      // Skip the dev-only component gallery (its testids are gallery-internal and
+      // must not expand the app's typed production registry). Path-anchored to
+      // `src/dev` specifically so an unrelated future dir named `dev` isn't
+      // silently dropped.
+      const isGalleryDev =
+        e === 'dev' && /[\\/]src$/.test(dir)
+      if (!['node_modules', 'dist', 'build', '.git', 'tests'].includes(e) && !isGalleryDev)
+        walk(full, acc)
     } else if (/\.(tsx|jsx|ts)$/.test(e)) acc.push(full)
   }
   return acc

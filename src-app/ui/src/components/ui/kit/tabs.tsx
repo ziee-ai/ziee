@@ -74,6 +74,10 @@ export function Tabs({
       className={cn('w-full', className)}
       data-testid={testid}
     >
+      {/* The add button lives OUTSIDE TabsList: role=tablist requires its
+          children to be role=tab (aria-required-children), and a plain add button
+          inside it violates that. */}
+      <div className="flex items-center">
       <TabsList>
         {items.map((t) => {
           const showClose = (t.closable ?? editable) && !s.disabled && !t.disabled
@@ -106,18 +110,19 @@ export function Tabs({
             </div>
           )
         })}
-        {editable && !hideAdd && (
-          <button
-            type="button"
-            aria-label={addLabel ?? 'Add tab'}
-            disabled={s.disabled}
-            onClick={add}
-            className="ml-1 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          >
-            <Plus className="size-4" aria-hidden />
-          </button>
-        )}
       </TabsList>
+      {editable && !hideAdd && (
+        <button
+          type="button"
+          aria-label={addLabel ?? 'Add tab'}
+          disabled={s.disabled}
+          onClick={add}
+          className="ml-1 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        >
+          <Plus className="size-4" aria-hidden />
+        </button>
+      )}
+      </div>
       {items.map((t) => (
         <TabsContent key={t.key} value={t.key} data-testid={testid ? `${testid}-panel-${t.key}` : undefined}>
           {t.children}
