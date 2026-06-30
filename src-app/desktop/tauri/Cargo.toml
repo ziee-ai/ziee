@@ -54,6 +54,10 @@ aide.workspace = true
 # `TunnelDriver` trait so the integration tests substitute a mock
 # (no real ngrok needed for Tier 1-7).
 ngrok = { workspace = true }
+# Needed only to install the process-level rustls CryptoProvider before
+# ngrok's Session::connect builds its TLS config (see tunnel.rs). The
+# graph links both aws-lc-rs and ring, so rustls 0.23 can't auto-pick.
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }

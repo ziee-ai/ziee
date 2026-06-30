@@ -135,7 +135,8 @@ macro_rules! declare_desktop_repositories {
             /// All repositories are lazily initialized and cached.
             ///
             /// # Example
-            /// ```
+            /// ```ignore
+            /// // From async app code, after the desktop factory is initialized:
             /// let setting = DesktopRepos.settings.get("theme").await?;
             /// let pool = DesktopRepos.pool(); // Direct pool access
             /// ```

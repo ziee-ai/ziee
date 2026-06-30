@@ -57,12 +57,17 @@ export function MyMemoriesSection() {
   const canRead = usePermission(READ_PERM)
   const canWrite = usePermission(WRITE_PERM)
   const {
-    memories,
+    // Default the store-derived list: on a route where the Memories
+    // store hasn't initialized yet, the Stores proxy yields `undefined`
+    // for its fields, and an unguarded `memories.length`/`.map` below
+    // would throw during render and white-screen the whole page (it took
+    // down the desktop combined Memory page). Default to an empty list.
+    memories = [],
     loading,
     searchQuery,
     kindFilter,
     sourceFilter,
-    total: totalMemories,
+    total: totalMemories = 0,
     currentPage: storePage,
     pageSize: storePageSize,
   } = Stores.Memories

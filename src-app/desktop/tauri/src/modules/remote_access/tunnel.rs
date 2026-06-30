@@ -284,6 +284,20 @@ impl NgrokDriver {
         use ngrok::prelude::*;
         use std::str::FromStr;
 
+        // ngrok's `Session::connect` builds a rustls `ClientConfig`
+        // internally. rustls 0.23 panics ("Could not automatically
+        // determine the process-level CryptoProvider") when more than one
+        // provider is linked — which is exactly our case: `aws-lc-rs` (via
+        // reqwest's rustls-tls) AND `ring` (via ldap3's tls-rustls-ring)
+        // are both in the graph, so rustls can't auto-pick. Install one
+        // explicitly, process-wide, before any rustls config is built.
+        // Idempotent: `install_default` returns Err once a provider is
+        // already set, which we ignore; the `Once` keeps it race-free.
+        static CRYPTO_PROVIDER_INIT: std::sync::Once = std::sync::Once::new();
+        CRYPTO_PROVIDER_INIT.call_once(|| {
+            let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        });
+
         let sess = ngrok::Session::builder()
             .authtoken(auth_token)
             .connect()
