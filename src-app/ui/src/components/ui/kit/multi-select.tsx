@@ -307,7 +307,7 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
           <ChevronsUpDown className="ml-auto size-4 shrink-0 opacity-50" aria-hidden />
         </div>
       } />
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent className="w-(--anchor-width) p-0" align="start">
         {virtual ? (
           <VirtualMultiList
             options={options} selectedSet={selectedSet} onToggle={toggle}

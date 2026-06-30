@@ -200,7 +200,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
             : <ChevronsUpDown className="size-4 shrink-0 opacity-50" aria-hidden />}
         </button>
       } />
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent className="w-(--anchor-width) p-0" align="start">
         {virtual ? (
           <VirtualList options={options} current={current} onChoose={choose} searchPlaceholder={searchPlaceholder} emptyText={emptyText} listboxId={listboxId} optionTestid={optionTestid} />
         ) : (

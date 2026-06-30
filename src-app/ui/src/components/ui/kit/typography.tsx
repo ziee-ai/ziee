@@ -42,7 +42,7 @@ function CopyButton({ copyable }: { copyable: Copyable }) {
           timer.current = setTimeout(() => setDone(false), 1500)
         })
       }}
-      className="ml-1 inline-flex align-middle opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="ml-1 inline-flex align-middle opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {done ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
     </button>
