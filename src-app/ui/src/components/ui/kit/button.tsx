@@ -1,11 +1,16 @@
 import * as React from 'react'
 import { Loader2 } from 'lucide-react'
-import { Button as ButtonBase, type ButtonProps as BaseButtonProps } from '../shadcn/button'
+import { Button as ButtonBase } from '../shadcn/button'
 import { Skeleton } from '../shadcn/skeleton'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../shadcn/tooltip'
 import { useSurface } from './surface'
 import { cn } from '@/lib/utils'
 import { safeHref } from './safe-href'
+
+// v4 shadcn no longer exports a `ButtonProps` type (Button is a plain function
+// component). Derive the base prop type from the component so it tracks the
+// vendored primitive (variant/size/asChild + native button attrs).
+type BaseButtonProps = React.ComponentProps<typeof ButtonBase>
 
 type ButtonCommon = Omit<BaseButtonProps, 'size'> & {
   loading?: boolean

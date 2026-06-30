@@ -2,7 +2,14 @@ import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { Tooltip as TT, TooltipTrigger, TooltipContent, TooltipProvider } from '../shadcn/tooltip'
 
-export interface TooltipProps {
+/** Extends `HTMLAttributes` (NOT a `[key: string]: unknown` index signature):
+ *  any DOM prop/event a parent `asChild` slot injects (onClick/ref/… from a
+ *  DropdownMenuTrigger, PopoverTrigger, …) is accepted and forwarded onto the
+ *  child via Slot, so <Tooltip> composes directly inside a trigger. A string
+ *  index signature here would collapse `keyof` to `string` and make
+ *  `forwardRef`'s mapped props type widen EVERY named prop to `unknown`. */
+export interface TooltipProps
+  extends Omit<React.HTMLAttributes<HTMLElement>, 'title' | 'content'> {
   /** Tooltip body. `title` is an accepted alias (legacy uses `title`). */
   content?: React.ReactNode
   title?: React.ReactNode
@@ -10,12 +17,6 @@ export interface TooltipProps {
   delay?: number
   className?: string
   children: React.ReactElement
-  /** Any other props (and the ref) are forwarded onto the child element. This
-   *  lets <Tooltip> sit directly inside an `asChild` slot (DropdownMenuTrigger,
-   *  PopoverTrigger, …): the parent injects onClick/ref onto <Tooltip>, which a
-   *  plain function component would silently drop — breaking the trigger. Slot
-   *  merges them onto the child instead. */
-  [key: string]: unknown
 }
 
 export const Tooltip = React.forwardRef<HTMLElement, TooltipProps>(function Tooltip(

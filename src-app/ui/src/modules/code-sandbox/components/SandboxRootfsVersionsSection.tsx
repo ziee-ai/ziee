@@ -110,11 +110,11 @@ export function SandboxRootfsVersionsSection() {
     else message.error(`Failed to set default rootfs to v${version}`)
   }
 
-  const handleSetPin = (version: string) => {
+  const handleSetPin = async (version: string) => {
     if (isMajorBump(pinnedVersion, version)) {
       const convCount = conversationCount ?? 0
       const mcpCount = mcpServerWorkspaceCount ?? 0
-      dialog.confirm({
+      const confirmed = await dialog.confirm({
         title: `Set v${version} as default (major version bump)`,
         description: (
           <div>
@@ -160,8 +160,8 @@ export function SandboxRootfsVersionsSection() {
         okText: 'Set as default and wipe caches',
         cancelText: 'Cancel',
         testid: 'sandbox-major-bump-confirm',
-        onConfirm: () => doSetPin(version),
       })
+      if (confirmed) void doSetPin(version)
     } else {
       void doSetPin(version)
     }
