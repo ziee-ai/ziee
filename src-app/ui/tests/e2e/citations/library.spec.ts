@@ -228,7 +228,7 @@ test.describe('Citations library', () => {
 
     // The catch path surfaces an error toast (sonner error toast).
     await expect(
-      page.locator('[data-sonner-toast][data-type="error"]'),
+      page.locator('[data-sonner-toast][data-type="error"]').first(),
     ).toBeVisible({ timeout: 5000 })
   })
 

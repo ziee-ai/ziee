@@ -20,10 +20,10 @@ const SUCCESS_TOAST = 'Summarization settings saved.'
 
 /** Sonner toast lanes (i18n-safe: scoped by data-type, asserted on data text). */
 function successToast(page: import('@playwright/test').Page) {
-  return page.locator('[data-sonner-toast][data-type="success"]')
+  return page.locator('[data-sonner-toast][data-type="success"]').first()
 }
 function errorToast(page: import('@playwright/test').Page) {
-  return page.locator('[data-sonner-toast][data-type="error"]')
+  return page.locator('[data-sonner-toast][data-type="error"]').first()
 }
 
 /** The summarization settings card scope. */

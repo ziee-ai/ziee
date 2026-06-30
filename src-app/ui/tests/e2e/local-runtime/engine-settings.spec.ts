@@ -45,7 +45,7 @@ test.describe('Local Runtime — model engine settings form', () => {
     const ctxInput = byTestId(drawer, 'llm-llamacpp-ctx-size')
     await ctxInput.fill('8192')
     await ctxInput.blur()
-    await byTestId(drawer, 'llm-edit-model-save-btn').click()
+    await byTestId(page, 'llm-edit-model-save-btn').click()
     await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({ timeout: 15000 })
 
     // Persistence (robust API check): the stored ModelEngineSettings carries
@@ -113,7 +113,7 @@ test.describe('Local Runtime — model engine settings form', () => {
     await batch.fill('1024')
     await batch.blur()
 
-    await byTestId(drawer, 'llm-edit-model-save-btn').click()
+    await byTestId(page, 'llm-edit-model-save-btn').click()
     await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({ timeout: 15000 })
 
     // BOTH fields must persist (not just the last-edited one).
@@ -146,7 +146,7 @@ test.describe('Local Runtime — model engine settings form', () => {
     await gpu.fill('24')
     await gpu.blur()
 
-    await byTestId(drawer, 'llm-edit-model-save-btn').click()
+    await byTestId(page, 'llm-edit-model-save-btn').click()
     await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({ timeout: 15000 })
 
     const res = await page.request.get(
