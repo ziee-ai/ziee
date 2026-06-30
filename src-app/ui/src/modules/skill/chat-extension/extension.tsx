@@ -2,7 +2,7 @@ import {
   type ChatExtension,
   createExtension,
 } from '@/modules/chat/core/extensions'
-import { SkillMenuItem } from './SkillMenuItem'
+import { SkillMenuItem, SkillConversationDrawerHost } from './SkillMenuItem'
 
 /**
  * Skill chat bridge. Auto-discovered by chat's extension glob over
@@ -19,6 +19,9 @@ const skillExtension: ChatExtension = createExtension({
   priority: 55,
   slots: {
     toolbar_plus_items: { component: SkillMenuItem, order: 25 },
+    // The Dialog host lives in an always-mounted composer slot (NOT the "+"
+    // dropdown item) so it survives the dropdown closing on click.
+    input_area_suffix: { component: SkillConversationDrawerHost, order: 25 },
   },
 })
 

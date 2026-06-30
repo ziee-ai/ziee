@@ -29,6 +29,7 @@ export function ConversationSkillsPanel({
   const loading = Stores.ConversationSkills.loading[conversationId]
   const error = Stores.ConversationSkills.error
 
+
   useEffect(() => {
     Stores.ConversationSkills.loadAvailable(conversationId)
   }, [conversationId])
@@ -83,6 +84,7 @@ export function ConversationSkillsPanel({
   }
 
   return (
+    <div className="max-h-[60vh] overflow-y-auto">
     <List
       size="sm"
       data-testid="skill-conversation-list"
@@ -122,5 +124,6 @@ export function ConversationSkillsPanel({
         )
       }}
     />
+    </div>
   )
 }
