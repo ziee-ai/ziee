@@ -64,17 +64,32 @@ controls only) · no silent text truncation. Plus `@axe-core/playwright` for
 WCAG 2A/2AA. Tunable via `LayoutSaneOptions` (grid, radii, per-check toggles).
 The helper is reusable on real (backend-ful) pages too.
 
-## axe baseline — documented pre-existing kit findings
+## Extra coverage to catch more bugs
 
-The system already surfaced real, pre-existing kit a11y defects. They're
-recorded in `tests/e2e/visual/axe-baseline.ts` (the Layer-A axe pass fails only
-on violations BEYOND that baseline, so regressions are caught without this branch
-having to fix the kit):
+Beyond the per-component variant grid, the gallery includes the highest-yield
+bug-finding patterns from visual-testing prior art (Chromatic / EightShapes):
 
-1. **Status/tone color contrast** — kit `Tag`/`Alert`/`Text` status tones use
-   hardcoded Tailwind palette hues instead of dark-aware AA tokens; several fail
-   WCAG AA in dark mode. Fix centrally in the kit tone token map, then delete the
-   baseline entries.
-2. **`Menu` list markup** — `<ul>` contains `<button>`s directly, not `<li>`.
+- **Content-stress sections** (`stress.story.tsx`, `stress-*`): every torture
+  input — long UNBROKEN tokens, i18n-expanded compounds, long prose, empty +
+  loading states, zero-data tables, huge numbers — inside deliberately narrow
+  containers, so overflow/truncation/wrap/clipping failures surface.
+- **RTL pass**: `?dir=rtl` flips the whole gallery; Layer A runs the invariants
+  under RTL (mirroring/alignment/logical-property bugs).
+- **Breakpoints**: mobile/tablet/desktop (already in the matrix).
 
-Remove a baseline entry when its kit issue is fixed — the gate then enforces it.
+## Documented pre-existing kit findings (the system already caught these)
+
+Real defects surfaced by the layers, recorded in `axe-baseline.ts` /
+`layout-baseline.ts` so the gate fails only on NEW issues (this branch builds the
+harness; fixing the kit is separate). Delete an entry when its kit issue is fixed
+— the gate then enforces it.
+
+1. **Status/tone color contrast** (`color-contrast`) — kit `Tag`/`Alert`/`Text`
+   status tones use hardcoded palette hues, not dark-aware AA tokens; fail WCAG AA
+   in dark mode.
+2. **`Menu` list markup** (`list`) — `<ul>` directly contains `<button>`s, not `<li>`.
+3. **Long-content containment** (`childOverflow`/`textTruncation` on `stress-*`) —
+   `Tag`, `Select` trigger, `Card` title, `Menu`, `Descriptions` don't contain
+   long unbroken content (missing `break-word`/`min-w-0`/ellipsis) → overflow.
+4. **`Table` scroll region not keyboard-focusable** (`scrollable-region-focusable`)
+   — the overflow-auto viewport needs `tabindex=0`.

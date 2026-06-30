@@ -40,17 +40,18 @@ export const VIEWPORTS = [
   { name: 'desktop', width: 1280, height: 900 },
 ] as const
 
-export function galleryUrl(theme: string, accent: string): string {
-  return `${STANDALONE_PATH}?theme=${theme}&accent=${accent}`
+export function galleryUrl(theme: string, accent: string, dir = 'ltr'): string {
+  return `${STANDALONE_PATH}?theme=${theme}&accent=${accent}&dir=${dir}`
 }
 
-/** Navigate to the gallery under a theme/accent and wait for it to settle. */
+/** Navigate to the gallery under a theme/accent/dir and wait for it to settle. */
 export async function openGallery(
   page: Page,
   theme: string,
   accent: string,
+  dir: 'ltr' | 'rtl' = 'ltr',
 ): Promise<void> {
-  await page.goto(galleryUrl(theme, accent))
+  await page.goto(galleryUrl(theme, accent, dir))
   await page.getByTestId('gallery-root').waitFor({ state: 'visible' })
   // Let the ThemeProvider apply the resolved theme/accent + fonts settle.
   await page.waitForFunction(

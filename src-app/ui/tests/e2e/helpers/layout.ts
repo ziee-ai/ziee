@@ -33,6 +33,9 @@ export interface LayoutSaneOptions {
   checks?: Partial<Record<LayoutCheck, boolean>>
   /** Extra CSS selectors to exclude (e.g. known-irregular third-party widgets). */
   ignoreSelectors?: string[]
+  /** Return the violations instead of asserting (lets the caller filter against
+   *  a documented layout baseline before failing). Default false → asserts. */
+  collect?: boolean
 }
 
 export type LayoutCheck =
@@ -98,6 +101,10 @@ interface ElementProbe {
   /** Parent's computed overflow-x — a clipping parent (hidden/auto/scroll/clip)
    *  intentionally manages child overflow (progress fills, masked content). */
   parentOverflowX: string
+  /** Has a CSS transform (translate/scale) — its layout box and visual box
+   *  differ by design (switch thumbs, translated progress fills), so it's
+   *  exempt from box-overflow checks. */
+  transformed: boolean
 }
 
 /**
@@ -217,6 +224,13 @@ async function probe(
           hasTextChild,
           insideControl,
           parentOverflowX,
+          // Tailwind v4 emits `translate-x-*` via the `translate` CSS property
+          // (not `transform`), so check both (+ scale) to catch translated
+          // decorative elements like the switch thumb.
+          transformed:
+            cs.transform !== 'none' ||
+            cs.translate !== 'none' ||
+            cs.scale !== 'none',
         })
       }
       return out
@@ -243,7 +257,7 @@ function onScale(value: number, grid: number, tol: number): boolean {
 export async function assertLayoutSane(
   scope: Locator,
   options: LayoutSaneOptions = {},
-): Promise<void> {
+): Promise<LayoutViolation[]> {
   const opts = { ...DEFAULTS, ...options }
   const checks = options.checks ?? {}
   const enabled = (c: LayoutCheck) => checks[c] !== false
@@ -286,7 +300,13 @@ export async function assertLayoutSane(
     // A `display:contents` parent (e.g. <fieldset class="contents">) has no
     // layout box — its rect is 0×0, so overflow against it is meaningless.
     const parentHasBox = !!p.parentRect && p.parentRect.w > 0
-    if (enabled('childOverflow') && p.parentRect && parentHasBox && !positioned) {
+    if (
+      enabled('childOverflow') &&
+      p.parentRect &&
+      parentHasBox &&
+      !positioned &&
+      !p.transformed
+    ) {
       const parentClips =
         p.parentOverflowX === 'auto' ||
         p.parentOverflowX === 'scroll' ||
@@ -410,6 +430,10 @@ export async function assertLayoutSane(
     violations.push(...detectSiblingOverlap(probes, tol))
   }
 
+  // Collect mode: hand the violations back so the caller can filter against a
+  // documented layout baseline before deciding to fail.
+  if (options.collect) return violations
+
   if (violations.length) {
     const grouped = violations
       .map(v => `  • [${v.check}] ${v.message}`)
@@ -419,6 +443,7 @@ export async function assertLayoutSane(
       `Layout violations in ${scopeSelector}:\n${grouped}`,
     ).toBe(0)
   }
+  return violations
 }
 
 /**

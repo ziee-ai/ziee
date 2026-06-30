@@ -9,10 +9,28 @@
  * Vite server (playwright.visual.config.ts).
  */
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test } from '@playwright/test'
+import { type Page, expect, test } from '@playwright/test'
 import { assertLayoutSane } from '../helpers/layout'
 import { isBaselined } from './axe-baseline'
+import { isLayoutBaselined } from './layout-baseline'
 import { ALL_ACCENTS, VIEWPORTS, openGallery, sectionTestIds } from './_gallery'
+
+// Per-section layout assertion that subtracts documented, pre-existing kit
+// findings (layout-baseline.ts) — so the gate catches NEW layout breakage while
+// the known backlog (e.g. Tag not wrapping long tokens) doesn't keep it red.
+async function assertSectionLayout(page: Page, id: string): Promise<void> {
+  const violations = await assertLayoutSane(page.getByTestId(id), {
+    checks: { horizontalScroll: false },
+    collect: true,
+  })
+  const fresh = violations.filter(v => !isLayoutBaselined(id, v.check))
+  expect(
+    fresh.length,
+    `NEW layout violations in ${id} (beyond baseline):\n${fresh
+      .map(v => `  • [${v.check}] ${v.message}`)
+      .join('\n')}`,
+  ).toBe(0)
+}
 
 // Drift guard: the spec inlines the accent list (ALL_ACCENTS in _gallery.ts) to
 // stay decoupled from the app module graph. Assert it still equals the app's
@@ -50,14 +68,36 @@ for (const vp of VIEWPORTS) {
     // Per-section invariants — a violation localizes to one component.
     for (const id of ids) {
       await test.step(id, async () => {
-        await assertLayoutSane(page.getByTestId(id), {
-          // The root already covers page-level horizontal scroll.
-          checks: { horizontalScroll: false },
-        })
+        await assertSectionLayout(page, id)
       })
     }
   })
 }
+
+// RTL pass — direction mirroring is a cheap, high-yield bug source (alignment
+// flips, icon/affix mis-placement, logical-property gaps that overflow). Run the
+// deterministic invariants under dir=rtl at desktop width.
+test('layout invariants — RTL (desktop)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await openGallery(page, 'light', 'blue', 'rtl')
+  const ids = await sectionTestIds(page)
+  expect(ids.length).toBeGreaterThan(20)
+  await assertLayoutSane(page.getByTestId('gallery-root'), {
+    checks: {
+      childOverflow: false,
+      siblingOverlap: false,
+      spacingScale: false,
+      buttonWidth: false,
+      touchTarget: false,
+      textTruncation: false,
+    },
+  })
+  for (const id of ids) {
+    await test.step(id, async () => {
+      await assertSectionLayout(page, id)
+    })
+  }
+})
 
 for (const theme of ['light', 'dark'] as const) {
   test(`a11y (axe) — ${theme} theme`, async ({ page }) => {

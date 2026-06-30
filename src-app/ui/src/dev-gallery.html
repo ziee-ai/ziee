@@ -10,10 +10,11 @@
     <script>
       (function () {
         try {
-          var t = new URLSearchParams(location.search).get('theme')
-          var dark = t === 'dark'
+          var q = new URLSearchParams(location.search)
+          var dark = q.get('theme') === 'dark'
           document.documentElement.classList.toggle('dark', dark)
           document.documentElement.classList.toggle('light', !dark)
+          document.documentElement.dir = q.get('dir') === 'rtl' ? 'rtl' : 'ltr'
         } catch (e) {}
       })()
     </script>

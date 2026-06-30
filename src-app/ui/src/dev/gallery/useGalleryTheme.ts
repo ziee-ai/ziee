@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import type { AccentPreset } from '@/components/ThemeProvider/accentPresets'
 import {
+  type GalleryDir,
   type GalleryParams,
   type GalleryTheme,
   parseGalleryParams,
@@ -21,6 +22,9 @@ import {
 function applyToStore(p: GalleryParams) {
   Stores.ConfigClient.setThemePreference(themeToPreference(p.theme))
   Stores.ConfigClient.setAccentPreset(p.accent)
+  // Direction isn't a ConfigClient concern — apply it straight to the document
+  // root (what the kit + Tailwind logical properties read).
+  document.documentElement.dir = p.dir
 }
 
 export function useGalleryTheme() {
@@ -31,7 +35,7 @@ export function useGalleryTheme() {
   // Apply on mount + whenever the URL params change.
   useEffect(() => {
     applyToStore(params)
-  }, [params.theme, params.accent])
+  }, [params.theme, params.accent, params.dir])
 
   // Keep in sync with back/forward navigation.
   useEffect(() => {
@@ -56,12 +60,21 @@ export function useGalleryTheme() {
     })
   }, [])
 
-  return { params, setTheme, setAccent }
+  const setDir = useCallback((dir: GalleryDir) => {
+    setParams(prev => {
+      const next = { ...prev, dir }
+      writeUrl(next)
+      return next
+    })
+  }, [])
+
+  return { params, setTheme, setAccent, setDir }
 }
 
 function writeUrl(p: GalleryParams) {
   const url = new URL(window.location.href)
   url.searchParams.set('theme', p.theme)
   url.searchParams.set('accent', p.accent)
+  url.searchParams.set('dir', p.dir)
   window.history.replaceState(null, '', url.toString())
 }

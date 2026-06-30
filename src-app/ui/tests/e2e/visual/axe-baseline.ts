@@ -37,12 +37,20 @@ export const AXE_BASELINE: AxeBaselineEntry[] = [
       'gallery-section-text',
       'gallery-section-table',
       'gallery-section-scene-table',
+      // stress sections exercise the same tone components with extreme content:
+      'gallery-section-stress-tag',
+      'gallery-section-stress-alert',
     ] as const
   ).map(section => ({
     rule: 'color-contrast',
     section,
     note: 'Pre-existing kit status/tone palette-hue contrast defect (see ROOT CAUSE note in axe-baseline.ts). Fix in the kit tone token map.',
   })),
+  {
+    rule: 'scrollable-region-focusable',
+    section: 'gallery-section-stress-table',
+    note: "Kit Table's horizontal-scroll container (overflow-auto) isn't keyboard-focusable — axe wants tabindex=0 so keyboard users can scroll it. Only manifests when cell content overflows (stress-table long case). Fix in components/ui/kit/table.tsx (add tabindex=0 + an aria-label/role on the scroll viewport).",
+  },
   {
     rule: 'list',
     section: 'gallery-section-menu',

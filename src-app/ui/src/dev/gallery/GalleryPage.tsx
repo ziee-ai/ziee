@@ -9,7 +9,7 @@
  */
 import { Flex, Select, Text, Title } from '@/components/ui'
 import { ACCENT_PRESETS } from '@/components/ThemeProvider/accentPresets'
-import { GALLERY_ALL_ACCENTS, GALLERY_THEMES } from './matrix'
+import { GALLERY_ALL_ACCENTS, GALLERY_DIRS, GALLERY_THEMES } from './matrix'
 import { StorySection } from './story'
 import { ALL_STORIES } from './stories'
 import { useGalleryTheme } from './useGalleryTheme'
@@ -17,7 +17,7 @@ import { useGalleryTheme } from './useGalleryTheme'
 const ctl = (name: string) => `gallery-control-${name}`
 
 function ControlBar() {
-  const { params, setTheme, setAccent } = useGalleryTheme()
+  const { params, setTheme, setAccent, setDir } = useGalleryTheme()
   return (
     <div
       data-testid="gallery-controls"
@@ -53,6 +53,18 @@ function ControlBar() {
           }))}
         />
       </Flex>
+      <Flex direction="column" gap="xs">
+        <Text tone="muted" className="text-xs uppercase tracking-wide">
+          Direction
+        </Text>
+        <Select
+          data-testid={ctl('dir')}
+          aria-label="Direction"
+          value={params.dir}
+          onChange={v => setDir(v as (typeof GALLERY_DIRS)[number])}
+          options={GALLERY_DIRS.map(d => ({ value: d, label: d.toUpperCase() }))}
+        />
+      </Flex>
     </div>
   )
 }
@@ -61,7 +73,10 @@ export function GalleryPage() {
   return (
     <div
       data-testid="gallery-root"
-      className="min-h-full w-full bg-background text-foreground"
+      // overflow-x-hidden: the canvas chrome must not itself scroll horizontally
+      // (a stress component overflowing its OWN box is still captured per-section
+      // by Layer A's childOverflow + the Layer B section screenshot).
+      className="min-h-full w-full overflow-x-hidden bg-background text-foreground"
     >
       <ControlBar />
       <div className="flex flex-col gap-6 p-6">

@@ -40,21 +40,28 @@ export const GALLERY_PATH = '/dev/gallery'
 /** Standalone (backend-free) Vite entry served in dev. */
 export const GALLERY_STANDALONE_PATH = '/dev-gallery.html'
 
+export type GalleryDir = 'ltr' | 'rtl'
+export const GALLERY_DIRS: GalleryDir[] = ['ltr', 'rtl']
+
 export interface GalleryParams {
   theme: GalleryTheme
   accent: AccentPreset
+  /** Text direction — RTL surfaces mirroring/alignment/overflow bugs cheaply. */
+  dir: GalleryDir
 }
 
-/** Parse `?theme=&accent=` into a validated {theme, accent} (with defaults). */
+/** Parse `?theme=&accent=&dir=` into validated params (with defaults). */
 export function parseGalleryParams(search: string): GalleryParams {
   const q = new URLSearchParams(search)
   const theme = q.get('theme')
   const accent = q.get('accent')
+  const dir = q.get('dir')
   return {
     theme: theme === 'dark' ? 'dark' : 'light',
     accent: (GALLERY_ALL_ACCENTS as string[]).includes(accent ?? '')
       ? (accent as AccentPreset)
       : 'blue',
+    dir: dir === 'rtl' ? 'rtl' : 'ltr',
   }
 }
 
