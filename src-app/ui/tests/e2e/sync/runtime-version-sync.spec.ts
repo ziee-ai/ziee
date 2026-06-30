@@ -85,8 +85,12 @@ test.describe('Realtime sync — runtime_version (admin engine versions)', () =>
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
 
-    const defaultVersion = '0.0.sync-test'
-    const otherVersion = '0.0.sync-test'
+    // Two DISTINCT versions — the unique constraint is
+    // (engine, version, platform, arch, backend), so seeding the same string
+    // twice would 23505. Unique per-run suffix also survives a retry.
+    const stamp = Date.now().toString(36)
+    const defaultVersion = `0.0.sync-test-default-${stamp}`
+    const otherVersion = `0.0.sync-test-other-${stamp}`
     await seedRuntimeVersion(sql, defaultVersion, true)
     const otherId = await seedRuntimeVersion(sql, otherVersion, false)
 

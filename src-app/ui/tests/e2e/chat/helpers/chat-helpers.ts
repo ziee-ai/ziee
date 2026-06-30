@@ -23,9 +23,9 @@ export async function waitForNewChatPageLoad(page: Page) {
   await page.waitForSelector('textarea[placeholder*="Type your message"]', {
     timeout: 10000,
   })
-  // Wait for the model selector specifically (page now has multiple Ant Selects
-  // — model, mobile sidebar dropdown, etc. — so a bare .ant-select would race).
-  await page.waitForSelector('[data-testid="model-selector"] .ant-select', { timeout: 10000 })
+  // Wait for the model selector trigger (Radix/shadcn Select — the kit
+  // ModelSelector renders a combobox trigger with data-testid="ullm-model-select").
+  await page.waitForSelector('[data-testid="ullm-model-select"]', { timeout: 10000 })
 
   // Wait for models to load with retry logic
   // The store's loadProviders() is async and not awaited, so we need to poll
@@ -34,39 +34,39 @@ export async function waitForNewChatPageLoad(page: Page) {
 
   for (let i = 0; i < maxRetries; i++) {
     // If the app has already auto-selected a model (it does when the user has
-    // exactly one accessible model), models are loaded — return early. The
-    // selected value renders an `.ant-select-content-value` overlay that
-    // intercepts pointer events on the combobox below, so the polling click
-    // would otherwise be blocked and time out.
-    const selectedModel = await page
-      .locator('[data-testid="model-selector"] .ant-select-content-value')
-      .first()
-      .textContent({ timeout: 500 })
-      .catch(() => null)
-    if (selectedModel && selectedModel.trim().length > 0) {
+    // exactly one accessible model), the Radix trigger shows the model name
+    // (not the "Select Model" / "Loading…" placeholder) — models are loaded.
+    const triggerText = (
+      await page
+        .locator('[data-testid="ullm-model-select"]')
+        .textContent({ timeout: 500 })
+        .catch(() => null)
+    )?.trim()
+    if (
+      triggerText &&
+      triggerText !== 'Select Model' &&
+      triggerText !== 'Loading…'
+    ) {
       return
     }
 
     // Open dropdown
-    await page
-    .locator('[data-testid="model-selector"]')
-    .getByRole('combobox', { name: 'Model' })
-    .click()
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
+    await page.locator('[data-testid="ullm-model-select"]').click()
+    await page.waitForSelector('[role="listbox"]', { state: 'visible', timeout: 5000 })
 
-    // Check if models are loaded (not showing "No data")
-    const hasNoData = await page.locator('.ant-select-dropdown:has-text("No data")').count()
+    // Check if models are loaded (≥1 option rendered)
+    const optionCount = await page.locator('[role="option"]').count()
 
-    if (hasNoData === 0) {
+    if (optionCount > 0) {
       // Models loaded! Close dropdown and return
       await page.keyboard.press('Escape')
-      await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 })
+      await page.waitForSelector('[role="listbox"]', { state: 'hidden', timeout: 5000 })
       return
     }
 
     // Models not loaded yet, close dropdown and retry
     await page.keyboard.press('Escape')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 })
+    await page.waitForSelector('[role="listbox"]', { state: 'hidden', timeout: 5000 })
 
     if (i < maxRetries - 1) {
       await page.waitForTimeout(retryDelay)
@@ -97,27 +97,19 @@ export async function waitForChatPageLoad(page: Page) {
 // =====================================================
 
 export async function getVisibleModelsInDropdown(page: Page): Promise<string[]> {
-  // Click the combobox directly (aria-label="Model" on the antd Select).
-  // The previous `.ant-select` selector wrapped the antd container div,
-  // which isn't always the active click-target in antd v6 — sometimes
-  // the click landed on a child that didn't trigger the dropdown,
-  // leading to a 5s timeout on `.ant-select-dropdown`. The combobox
-  // role IS the trigger element by spec.
-  await page
-    .locator('[data-testid="model-selector"]')
-    .getByRole('combobox', { name: 'Model' })
-    .click()
+  // Open the Radix/shadcn Select dropdown by clicking its trigger.
+  await page.locator('[data-testid="ullm-model-select"]').click()
 
-  await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
+  await page.waitForSelector('[role="listbox"]', { state: 'visible', timeout: 5000 })
 
   // Get all option labels (model display names)
-  const options = await page.locator('.ant-select-item-option-content').allTextContents()
+  const options = await page.getByRole('option').allTextContents()
 
-  // Close dropdown by clicking outside
-  await page.click('body', { position: { x: 0, y: 0 } })
-  await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 })
+  // Close dropdown
+  await page.keyboard.press('Escape')
+  await page.waitForSelector('[role="listbox"]', { state: 'hidden', timeout: 5000 })
 
-  return options
+  return options.map((o) => o.trim())
 }
 
 export async function selectModelInDropdown(
@@ -129,35 +121,31 @@ export async function selectModelInDropdown(
   // chat views the element is absent. `textContent()` without a
   // short timeout would block for the full default (10s), so we
   // catch + fall through to the open-dropdown flow.
-  const currentSelection = await page
-    .locator('.ant-select-content-value')
-    .first()
-    .textContent({ timeout: 1000 })
-    .catch(() => null)
+  const currentSelection = (
+    await page
+      .locator('[data-testid="ullm-model-select"]')
+      .textContent({ timeout: 1000 })
+      .catch(() => null)
+  )?.trim()
 
   if (currentSelection === modelName) {
     // Model already selected, nothing to do
     return
   }
 
-  // Model not selected, open dropdown and select it
-  await page
-    .locator('[data-testid="model-selector"]')
-    .getByRole('combobox', { name: 'Model' })
-    .click()
+  // Model not selected, open the Radix/shadcn dropdown and select it
+  await page.locator('[data-testid="ullm-model-select"]').click()
 
   // Wait for dropdown to appear
-  await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
+  await page.waitForSelector('[role="listbox"]', { state: 'visible', timeout: 5000 })
 
-  // Click the option with the model name. Use the semantic role-based locator
-  // — AntD renders dropdown items with role="option" and the matching aria-label.
+  // Click the option with the model name (Radix renders options with role="option").
   await page.getByRole('option', { name: modelName, exact: false }).first().click()
 
-  // Best-effort dismiss in case AntD didn't auto-close after the option click
-  // (some versions of AntD keep the dropdown open until an outside click).
-  await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 }).catch(async () => {
+  // Radix auto-closes on select; best-effort dismiss otherwise.
+  await page.waitForSelector('[role="listbox"]', { state: 'hidden', timeout: 5000 }).catch(async () => {
     await page.keyboard.press('Escape')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 })
+    await page.waitForSelector('[role="listbox"]', { state: 'hidden', timeout: 5000 })
   })
 }
 
@@ -178,21 +166,17 @@ export async function assertModelNotVisibleInDropdown(
 }
 
 export async function assertDropdownEmpty(page: Page): Promise<void> {
-  // Click the model selector to open dropdown
-  await page
-    .locator('[data-testid="model-selector"]')
-    .getByRole('combobox', { name: 'Model' })
-    .click()
+  // Open the Radix/shadcn model selector dropdown
+  await page.locator('[data-testid="ullm-model-select"]').click()
 
-  // Wait for dropdown to appear
-  await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
-
-  // Check for empty state or no options
-  const optionCount = await page.locator('.ant-select-item-option').count()
+  // Give the portal a beat to render, then assert no options exist.
+  // Radix renders an empty listbox (or none) when there are zero items.
+  await page.waitForTimeout(500)
+  const optionCount = await page.getByRole('option').count()
   expect(optionCount).toBe(0)
 
   // Close dropdown
-  await page.click('body', { position: { x: 0, y: 0 } })
+  await page.keyboard.press('Escape')
 }
 
 // =====================================================
@@ -325,6 +309,6 @@ export async function assertChatPageAccessibility(page: Page): Promise<void> {
   expect(ariaLabel || placeholder).toBeTruthy()
 
   // Check model selector has proper label
-  const select = page.locator('.ant-select')
+  const select = page.locator('[data-testid="ullm-model-select"]')
   await expect(select).toBeVisible()
 }

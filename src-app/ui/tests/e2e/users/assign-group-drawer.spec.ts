@@ -47,12 +47,9 @@ test.describe('Assign-to-Group drawer', () => {
     await byTestId(page, 'user-groups-drawer-assign-button').click()
     await byTestId(page, 'user-assign-group-form').waitFor({ state: 'visible' })
 
-    // Pick the group from the Select, then submit.
-    await byTestId(page, 'user-assign-group-select').click()
-    await page
-      .locator('[data-testid^="user-assign-group-select-opt-"]')
-      .filter({ hasText: groupName })
-      .click()
+    // Pick the group via its checkbox, then submit.
+    await byTestId(page, 'user-assign-group-checkboxes').waitFor({ state: 'visible' })
+    await page.getByRole('checkbox', { name: groupName }).click()
     await byTestId(page, 'user-assign-group-submit-button').click()
 
     await expect(
@@ -82,9 +79,9 @@ test.describe('Assign-to-Group drawer', () => {
     await byTestId(page, 'user-groups-drawer-assign-button').click()
     await byTestId(page, 'user-assign-group-form').waitFor({ state: 'visible' })
 
-    // Submit with nothing selected → the group_id validator rejects.
+    // Submit with nothing selected → the group_ids validator rejects.
     await byTestId(page, 'user-assign-group-submit-button').click()
-    await expect(byTestId(page, 'field-error-group_id')).toBeVisible({
+    await expect(byTestId(page, 'field-error-group_ids')).toBeVisible({
       timeout: 10000,
     })
   })

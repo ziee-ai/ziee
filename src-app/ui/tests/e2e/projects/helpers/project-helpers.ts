@@ -110,7 +110,9 @@ export async function clickCardAction(
     Duplicate: 'project-card-duplicate-button-',
     Delete: 'project-card-delete-button-',
   }[action]
-  await card.locator(`[data-testid^="${prefix}"]`).click()
+  // These action buttons are hover-revealed (opacity transition), so the
+  // default stability gate can time out mid-animation — force the click.
+  await card.locator(`[data-testid^="${prefix}"]`).click({ force: true })
 }
 
 /**

@@ -253,12 +253,16 @@ test.describe('Realtime sync — conversation born from chat input (cross-window
 
       // A navigates to the freshly created conversation.
       await page.waitForURL(/\/chat\/[a-f0-9-]+/, { timeout: 30_000 })
+      const convId = page.url().match(/\/chat\/([a-f0-9-]+)/)?.[1]
+      expect(convId).toBeTruthy()
 
-      // Device B's sidebar lists the new conversation live (notify→refetch),
-      // matched by the auto-derived title (first user message text).
-      await expect(pageB.getByTestId(/^chat-recent-conversations-menu-item-/).filter({ hasText: marker })).toBeVisible({
-        timeout: 30_000,
-      })
+      // Device B's sidebar lists the new conversation live (notify→refetch).
+      // Match by the conversation id, not the title: the title is auto-derived
+      // by the LLM (e.g. "Acknowledging …") and won't contain the literal
+      // marker, so a title-text match would be LLM-fidelity-dependent.
+      await expect(
+        pageB.getByTestId(`chat-recent-conversations-menu-item-${convId}`),
+      ).toBeVisible({ timeout: 30_000 })
     } finally {
       await ctxB.close()
     }

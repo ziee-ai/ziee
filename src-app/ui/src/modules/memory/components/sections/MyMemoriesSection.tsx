@@ -156,6 +156,8 @@ export function MyMemoriesSection() {
           placeholder="Source"
           value={sourceFilter ?? undefined}
           onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
+          allowClear
+          clearLabel="Clear source filter"
           className="flex-[0_1_160px] min-w-[120px]"
           data-testid="memory-source-filter"
           options={[

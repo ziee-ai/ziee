@@ -51,7 +51,8 @@ async function addMemoryViaUI(page: Page, content: string) {
   const dialog = page.getByTestId('memory-create-form')
   await expect(dialog).toBeVisible()
   await byTestId(dialog, 'memory-create-content-input').fill(content)
-  await byTestId(dialog, 'memory-create-submit-btn').click()
+  // Submit button lives in the Drawer header (extra), outside memory-create-form.
+  await byTestId(page, 'memory-create-submit-btn').click()
   // Success closes the create dialog.
   await expect(byTestId(page, 'memory-create-form')).toHaveCount(0, { timeout: 5_000 })
 }

@@ -52,7 +52,10 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
   return (
     <>
       {items.map((it, i) => {
-        if ('type' in it && it.type === 'divider') return <li key={`d${i}`} role="separator" className="my-1 h-px bg-border" />
+        // Decorative divider. Keep it a plain <li> (listitem) with aria-hidden
+        // rather than role="separator": a separator role strips the listitem
+        // role, which trips axe's "list" rule (<ul> must only contain <li>).
+        if ('type' in it && it.type === 'divider') return <li key={`d${i}`} aria-hidden="true" className="my-1 h-px bg-border" />
         if ('type' in it && it.type === 'group') {
           return (
             <li key={`g${i}`} data-testid={groupTestid?.(i)}>

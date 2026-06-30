@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, clearAuthState } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — public vs protected route separation (RouterComponent.tsx groups
@@ -24,9 +25,11 @@ test.describe('Routing — public vs protected', () => {
 
     await page.goto(`${baseURL}/settings/profile`)
 
-    // The protected route guard redirects to the public auth page.
-    await page.waitForURL(/\/auth/, { timeout: 15000 })
-    await expect(page.getByLabel('Username')).toBeVisible({ timeout: 15000 })
+    // Fail closed: the AuthGuard renders the login wall INLINE (preserving the
+    // deep-link URL rather than redirecting to /auth), and the protected
+    // content must NOT render.
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'profile-display-name-input')).toHaveCount(0)
   })
 
   test('the public /auth route renders without authentication', async ({
@@ -39,6 +42,6 @@ test.describe('Routing — public vs protected', () => {
 
     await page.goto(`${baseURL}/auth`)
     await expect(page).toHaveURL(/\/auth/)
-    await expect(page.getByLabel('Username')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 15000 })
   })
 })
