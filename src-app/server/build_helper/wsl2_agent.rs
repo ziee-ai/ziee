@@ -33,6 +33,19 @@ pub fn setup(
     fs::create_dir_all(&bundle_dir)?;
     let agent_dest = bundle_dir.join("ziee-sandbox-agent");
 
+    // Guarantee the `include_bytes!` target ALWAYS exists, on every target,
+    // before any fallible step below. `wsl2_agent_embedded` unconditionally
+    // `include_bytes!`s this path on Windows; if the cross-compile fails (no
+    // Docker on the Windows host PATH — it lives inside WSL — no network,
+    // etc.) and we returned `Err` without a file here, the crate would fail
+    // to COMPILE ("couldn't read ... ziee-sandbox-agent: os error 2") rather
+    // than fail soft. A successful Windows cross-compile overwrites this
+    // 0-byte placeholder with the real ELF; otherwise it stands and the
+    // runtime `is_supported()` gate returns false (sibling-of-exe fallback).
+    if !agent_dest.exists() {
+        fs::write(&agent_dest, b"")?;
+    }
+
     if !target.contains("windows") {
         println!(
             "wsl2-agent: skipping (target = {target}, not *-windows-*)"
