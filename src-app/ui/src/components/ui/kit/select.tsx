@@ -70,7 +70,7 @@ const isGroup = (o: SelectOption | SelectOptionGroup): o is SelectOptionGroup =>
   Array.isArray((o as SelectOptionGroup).options)
 
 const triggerH = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
+  size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-9' : 'h-8'
 
 function flatOptions(options: (SelectOption | SelectOptionGroup)[]): SelectOption[] {
   return options.flatMap((o) => (isGroup(o) ? o.options : [o]))

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, Button, Flex, Spin, Tag, Text, message } from '@/components/ui'
+import { Alert, Button, dialog, Flex, Spin, Tag, Text, message } from '@/components/ui'
 import { RotateCw, Star } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -16,7 +16,6 @@ import {
 } from './_rootfsShared'
 
 export function SandboxRootfsVersionsSection() {
-  const { dialog } = require('@/components/ui')
   // Hook-safety: every `Stores.X.field` read is a `useStore` hook under the
   // hood, so ALL needed fields are read at the TOP before any early return.
   // `conversationCount` / `mcpServerWorkspaceCount` are only consumed inside

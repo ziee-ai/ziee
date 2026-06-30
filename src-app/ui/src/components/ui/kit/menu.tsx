@@ -97,7 +97,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
               onClick={() => onSelect?.(item.key)}
               className={cn(
                 'flex w-full min-w-0 items-center gap-2 rounded-md text-sm',
-                collapsed ? 'justify-center px-2 py-2' : 'px-3 py-2',
+                collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
                 selected ? 'bg-accent font-medium' : 'hover:bg-accent/60',
               )}

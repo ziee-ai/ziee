@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@config "../tailwind.config.js";
 
 @custom-variant dark (&:is(.dark *));
 @source "../node_modules/streamdown/dist/*.js";
@@ -36,7 +38,7 @@
   --border: 214.3 31.8% 91.4%;
   --input: 214.3 31.8% 91.4%;
   --ring: 220 47% 43%;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(240 5.3% 26.1%);
   --sidebar-primary: hsl(220 47% 43%);
@@ -81,6 +83,10 @@ html.dark {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    /* Tailwind v4 changed the default border color from gray-200 to
+     * currentColor, so bare `border` (e.g. shadcn Card) renders BLACK.
+     * Restore the themed default; explicit `border-*` utilities still win. */
+    border-color: hsl(var(--border));
   }
 
   body {

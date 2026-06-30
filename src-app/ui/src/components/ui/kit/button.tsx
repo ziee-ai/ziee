@@ -31,7 +31,7 @@ export type ButtonProps =
   | (ButtonCommon & { size?: 'sm' | 'default' | 'lg' })
 
 const skeletonH = (size?: BaseButtonProps['size']) =>
-  size === 'sm' ? 'h-8' : size === 'lg' ? 'h-10' : 'h-9'
+  size === 'sm' ? 'h-7' : size === 'lg' ? 'h-9' : 'h-8'
 
 export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
   ({ loading, disabled, href, target, size: ownSize, type = 'button', tooltip, icon, block, children, className: classNameProp, onClick, ...props }, ref) => {

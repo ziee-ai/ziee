@@ -22,7 +22,7 @@ export type InputProps = Omit<React.ComponentProps<'input'>, 'size' | 'prefix' |
 } & KitStyleProps
 
 const heightFor = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
+  size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-9' : 'h-8'
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ size: ownSize, loading, prefix, suffix, invalid, disabled, readOnly, allowClear, style, allowStyle, className, ...props }, ref) => {
