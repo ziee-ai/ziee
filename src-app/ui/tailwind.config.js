@@ -59,10 +59,10 @@ export default {
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "var(--accordion-panel-height)" },
         },
         "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
+          from: { height: "var(--accordion-panel-height)" },
           to: { height: "0" },
         },
       },
