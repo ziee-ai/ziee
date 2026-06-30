@@ -10,29 +10,33 @@ export type TagTone = 'default' | 'primary' | 'success' | 'warning' | 'error' | 
  *  outline = transparent bg + colored border (legacy `outlined`/`borderless`). */
 export type TagVariant = 'soft' | 'solid' | 'outline'
 
+// Tones use the dark-aware SEMANTIC status tokens (--success/--warning/--info +
+// --destructive for error), NOT raw Tailwind palette hues — so text contrast
+// meets WCAG AA in BOTH themes (the tokens are AA-tuned as text on the page bg
+// in index.css). The /10 fill stays faint enough that the token text reads on it.
 const tones: Record<TagTone, string> = {
   default: 'bg-muted text-foreground/80 border-transparent',
   primary: 'bg-primary/10 text-primary border-primary/20',
-  success: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
-  warning: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
-  error: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20',
-  info: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
+  success: 'bg-success/10 text-success border-success/25',
+  warning: 'bg-warning/10 text-warning border-warning/25',
+  error: 'bg-destructive/10 text-destructive border-destructive/25',
+  info: 'bg-info/10 text-info border-info/25',
 }
 const solidTones: Record<TagTone, string> = {
   default: 'bg-foreground/80 text-background border-transparent',
   primary: 'bg-primary text-primary-foreground border-transparent',
-  success: 'bg-green-700 text-white border-transparent',
-  warning: 'bg-amber-500 text-amber-950 border-transparent',
-  error: 'bg-red-700 text-white border-transparent',
-  info: 'bg-blue-600 text-white border-transparent',
+  success: 'bg-success text-success-foreground border-transparent',
+  warning: 'bg-warning text-warning-foreground border-transparent',
+  error: 'bg-destructive text-destructive-foreground border-transparent',
+  info: 'bg-info text-info-foreground border-transparent',
 }
 const outlineTones: Record<TagTone, string> = {
   default: 'bg-transparent text-foreground/80 border-border',
   primary: 'bg-transparent text-primary border-primary/40',
-  success: 'bg-transparent text-green-700 dark:text-green-400 border-green-500/40',
-  warning: 'bg-transparent text-amber-700 dark:text-amber-400 border-amber-500/40',
-  error: 'bg-transparent text-red-700 dark:text-red-400 border-red-500/40',
-  info: 'bg-transparent text-blue-700 dark:text-blue-400 border-blue-500/40',
+  success: 'bg-transparent text-success border-success/45',
+  warning: 'bg-transparent text-warning border-warning/45',
+  error: 'bg-transparent text-destructive border-destructive/45',
+  info: 'bg-transparent text-info border-info/45',
 }
 const variantTones: Record<TagVariant, Record<TagTone, string>> = {
   soft: tones, solid: solidTones, outline: outlineTones,
@@ -68,6 +72,9 @@ const TagInner = React.forwardRef<HTMLSpanElement, TagProps>(function Tag(
       ref={ref}
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium',
+        // Contain long unbroken content: cap at the parent width, allow shrink,
+        // and break anywhere so a long token wraps instead of overflowing.
+        'max-w-full min-w-0 [overflow-wrap:anywhere]',
         variantTones[variant][tone],
         className,
       )}

@@ -52,7 +52,15 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
   return (
     <>
       {items.map((it, i) => {
-        if ('type' in it && it.type === 'divider') return <li key={`d${i}`} role="separator" className="my-1 h-px bg-border" />
+        // The <li> must keep its implicit listitem role (a role="separator" on the
+        // li makes the parent <ul> contain a non-listitem child → axe `list`
+        // violation). Put the separator on an inner element instead.
+        if ('type' in it && it.type === 'divider')
+          return (
+            <li key={`d${i}`} className="my-1">
+              <div role="separator" className="h-px bg-border" />
+            </li>
+          )
         if ('type' in it && it.type === 'group') {
           return (
             <li key={`g${i}`} data-testid={groupTestid?.(i)}>
@@ -88,14 +96,15 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
               title={collapsed ? name : undefined}
               onClick={() => onSelect?.(item.key)}
               className={cn(
-                'flex w-full items-center gap-2 rounded-md text-sm',
+                'flex w-full min-w-0 items-center gap-2 rounded-md text-sm',
                 collapsed ? 'justify-center px-2 py-2' : 'px-3 py-2',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
                 selected ? 'bg-accent font-medium' : 'hover:bg-accent/60',
               )}
             >
-              {item.icon != null && <span aria-hidden className="[&_svg]:size-4">{item.icon}</span>}
-              {!collapsed && item.label}
+              {item.icon != null && <span aria-hidden className="shrink-0 [&_svg]:size-4">{item.icon}</span>}
+              {/* truncate long labels instead of overflowing the rail. */}
+              {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
             </button>
           </li>
         )

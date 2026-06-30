@@ -10,8 +10,9 @@ const textTone = {
   destructive: 'text-destructive',
   // legacy `type` aliases:
   secondary: 'text-muted-foreground',
-  success: 'text-green-600 dark:text-green-400',
-  warning: 'text-amber-600 dark:text-amber-400',
+  // Dark-aware AA status tokens, not raw palette hues (which failed AA in dark).
+  success: 'text-success',
+  warning: 'text-warning',
   danger: 'text-destructive',
 } as const
 

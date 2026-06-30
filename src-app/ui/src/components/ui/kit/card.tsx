@@ -35,7 +35,11 @@ export function Card({ title, extra, footer, loading, size = 'default', hoverabl
     >
       {(title != null || extra != null) && (
         <CardHeader className={cn('flex flex-row items-center justify-between gap-2', pad)}>
-          {title != null ? <CardTitle>{title}</CardTitle> : <span />}
+          {title != null ? (
+            <CardTitle className="min-w-0 [overflow-wrap:anywhere]">{title}</CardTitle>
+          ) : (
+            <span />
+          )}
           {extra}
         </CardHeader>
       )}
