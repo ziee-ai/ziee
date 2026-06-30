@@ -85,7 +85,9 @@ test.describe('Memory — My memories CRUD lifecycle', () => {
     const editResp = page.waitForResponse(
       (r) =>
         /\/api\/memories\/[0-9a-f-]+$/.test(r.url()) &&
-        r.request().method() === 'PUT' &&
+        // The memory-row edit endpoint is PATCH /api/memories/{id}
+        // (Memory.update), not PUT — the app sends PATCH correctly.
+        r.request().method() === 'PATCH' &&
         r.ok(),
     )
     await byTestId(page, 'memory-edit-submit-btn').click()

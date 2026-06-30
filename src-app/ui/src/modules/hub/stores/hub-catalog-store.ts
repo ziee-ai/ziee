@@ -101,11 +101,11 @@ export const useHubCatalogStore = create<HubCatalogState>()(
           // a no-op (which would leave the UI on the old catalog).
           if (get().loading && !force) return
           // GET /hub/index requires hub::models::read. The hub shell
-          // reads this store for ANY hub user, so a hub-but-not-models
-          // user (e.g. MCP-only) would 403. Short-circuit; the catalog
-          // stays null and consumers degrade.
-          if (!hasPermissionNow(Permissions.HubModelsRead)) {
-            set({ error: 'You do not have permission to view hub models.' })
+          // reads this store for ANY hub user, so a hub-but-not-catalog
+          // user (e.g. models-only) would 403. GET /hub/index requires
+          // hub::catalog::read (NOT hub::models::read) — gate on the real
+          // endpoint perm. Short-circuit; the catalog stays null and degrades.
+          if (!hasPermissionNow(Permissions.HubCatalogRead)) {
             return
           }
           set({ loading: true, error: null })
@@ -125,9 +125,9 @@ export const useHubCatalogStore = create<HubCatalogState>()(
         },
 
         loadVersion: async () => {
-          // GET /hub/version is also gated on hub::models::read (same as
-          // /hub/index above) — skip for non-models-readers to avoid a 403.
-          if (!hasPermissionNow(Permissions.HubModelsRead)) return
+          // GET /hub/version requires hub::catalog::read (same as /hub/index).
+          // Skip for non-catalog-readers to avoid a 403 (no-403 rule).
+          if (!hasPermissionNow(Permissions.HubCatalogRead)) return
           try {
             const v = await ApiClient.Hub.getCatalogVersion()
             set({

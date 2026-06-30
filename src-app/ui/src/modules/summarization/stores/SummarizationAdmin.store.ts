@@ -84,6 +84,17 @@ const loadAdminSettings = async (
 const loadChatModels = async (
   set: (fn: (s: SummarizationAdminStore) => void) => void,
 ) => {
+  // The model picker lists `/api/llm-models` (requires LlmModelsRead). A user
+  // who only holds summarization::settings::read can VIEW the page but must not
+  // trigger that fetch — it would 403 (no-403 self-gating rule). Skip quietly;
+  // the picker is only actionable for managers, who do hold the perm.
+  if (!hasPermissionNow(Permissions.LlmModelsRead)) {
+    set(s => {
+      s.availableModels = []
+      s.loadingModels = false
+    })
+    return
+  }
   set(s => {
     s.loadingModels = true
   })
