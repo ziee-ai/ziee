@@ -164,9 +164,15 @@ export const Drawer: React.FC<DrawerProps> = ({
           {/* hidden a11y title when caller passes none (Radix requires a labelled dialog) */}
           {title == null && <DialogPrimitive.Title className="sr-only">Drawer</DialogPrimitive.Title>}
 
-          <div data-testid="drawer-resize-handle">
-            <ResizeHandle placement="left" parentLevel={[1]} />
-          </div>
+          {/* testid goes ON the handle (not a wrapper): the handle is
+              position:absolute, so a wrapper collapses to a 0-height box and a
+              drag targeting it would miss the real grab strip. With no wrapper,
+              the handle's parent is the Content element → parentLevel 0. */}
+          <ResizeHandle
+            placement="left"
+            parentLevel={[0]}
+            testid="drawer-resize-handle"
+          />
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
