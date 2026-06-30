@@ -13,6 +13,24 @@ use std::process::{Child, Command};
 use std::time::Duration;
 use uuid::Uuid;
 
+// Per-worktree DB isolation helper, shared verbatim with build.rs so the
+// suffix derivation is identical on both sides.
+#[path = "../../build_helper/worktree_db.rs"]
+mod worktree_db;
+
+/// Stable per-worktree suffix for this test binary's template DB, derived
+/// from the worktree root (same value for the server + desktop crates of one
+/// worktree). Empty when DATABASE_URL is a deliberate override or auto-isolate
+/// is opted out — preserving the historical single-worktree template names.
+fn worktree_suffix() -> String {
+    let explicit = env::var("DATABASE_URL").ok();
+    if worktree_db::should_auto_isolate(&explicit) {
+        format!("_{}", worktree_db::worktree_key(env!("CARGO_MANIFEST_DIR")))
+    } else {
+        String::new()
+    }
+}
+
 /// Get database URL from environment or use default
 fn database_url() -> String {
     env::var("DATABASE_URL")
@@ -177,12 +195,16 @@ fn is_desktop() -> bool {
 /// binaries use DISTINCT names so they never clobber each other's template
 /// even when run against the same Postgres (the desktop template carries the
 /// extra 5 desktop migrations on top of the server's 118).
-fn test_template_db() -> &'static str {
-    if is_desktop() {
+fn test_template_db() -> String {
+    let base = if is_desktop() {
         "ziee_test_template_desktop"
     } else {
         "ziee_test_template"
-    }
+    };
+    // Suffix with the per-worktree key so concurrent suites in different
+    // worktrees (sharing the same :54321 cluster) never DROP/CREATE the same
+    // template database out from under each other.
+    format!("{base}{}", worktree_suffix())
 }
 
 /// Ordered migration directories to apply when building the template.
@@ -240,7 +262,7 @@ async fn ensure_test_template(admin_url: &str) {
             // "user_group_llm_providers" does not exist`). The runtime
             // Migrator lets the desktop build apply server-then-desktop.
             let mut tmpl = url::Url::parse(admin_url).expect("admin url");
-            tmpl.set_path(template_db);
+            tmpl.set_path(&template_db);
             let tmpl_pool = PgPoolOptions::new()
                 .max_connections(1)
                 .connect(tmpl.as_str())
