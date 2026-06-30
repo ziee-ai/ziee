@@ -162,7 +162,8 @@ export async function loginAsAdmin(
   const token = await readAuthToken(page)
   await completeOnboarding(baseURL, token)
   // Land on the authenticated app shell, signalled by the sidebar "New Chat"
-  // menuitem (antd Menu sidebar; present on every authenticated route).
+  // button (kit sidebar; present on every authenticated route). On a mobile
+  // viewport the sidebar is collapsed behind the toggle, so accept either.
   // Navigate ONCE and wait generously — do NOT re-navigate on a short timeout:
   // each goto('/') throws away the in-progress cold-load and fires a fresh
   // ~25-request burst, and the heavy admin pages (many stores) take ~15-25s
@@ -253,10 +254,10 @@ export async function login(
 
   // ─── unreachable code below kept for reference; original UI-form login ───
   await page.goto(`${baseURL}/auth`)
-  await page.waitForSelector('#login_username', { timeout: 30000 })
-  await page.fill('#login_username', username)
-  await page.fill('#login_password', password)
-  await page.click('button:has-text("Sign In")')
+  await page.waitForSelector('[data-testid="auth-login-username"]', { timeout: 30000 })
+  await page.fill('[data-testid="auth-login-username"]', username)
+  await page.fill('[data-testid="auth-login-password"]', password)
+  await page.click('[data-testid="auth-login-submit"]')
 
   // Wait for navigation to home
   await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
