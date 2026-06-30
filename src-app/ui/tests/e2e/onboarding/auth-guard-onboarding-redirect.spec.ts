@@ -67,10 +67,12 @@ async function visitWithToken(
 async function assertNotRedirected(
   page: import('@playwright/test').Page,
 ): Promise<void> {
-  // The effect runs once auth + onboarding state settle; wait for the network
-  // to go quiet so any redirect would already have fired.
-  await page.waitForLoadState('networkidle')
-  await page.waitForTimeout(1500)
+  // The effect runs once auth + onboarding state settle. Don't wait for
+  // 'networkidle' — the realtime sync SSE stream (/api/sync/subscribe) keeps a
+  // request open indefinitely, so networkidle never fires and the test times
+  // out. A fixed settle window is enough for any redirect to have fired.
+  await page.waitForLoadState('load')
+  await page.waitForTimeout(3000)
   await expect(page).not.toHaveURL(/\/onboarding/)
 }
 
