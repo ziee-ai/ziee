@@ -23,7 +23,7 @@ async function assertSectionLayout(page: Page, id: string): Promise<void> {
     checks: { horizontalScroll: false },
     collect: true,
   })
-  const fresh = violations.filter(v => !isLayoutBaselined(id, v.check))
+  const fresh = violations.filter(v => !isLayoutBaselined(id, v.check, v.testid))
   expect(
     fresh.length,
     `NEW layout violations in ${id} (beyond baseline):\n${fresh
@@ -127,7 +127,7 @@ for (const theme of ['light', 'dark'] as const) {
               ?.getAttribute('data-testid') ?? null,
           )
           .catch(() => null)
-        if (isBaselined(v.id, section)) continue
+        if (isBaselined(v.id, section, selector)) continue
         newFindings.push(
           `  • ${v.id} (${v.impact}) in ${section ?? '?'}: ${selector}`,
         )

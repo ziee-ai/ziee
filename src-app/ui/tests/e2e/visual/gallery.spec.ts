@@ -19,9 +19,9 @@ import {
   sectionTestIds,
 } from './_gallery'
 
-// Snapshot matrix. Accent only meaningfully repaints accent-bearing components,
-// but sweeping a few proves components hold under any primary hue. Keep the cell
-// count bounded: viewports × themes × accents = 3 × 2 × 3 = 18 combos.
+// Snapshot matrix = viewports × themes × accents = 3 × 2 × 8 = 48 cells (all
+// user-selectable accents; subset via VISUAL_ACCENTS for fast local runs). Each
+// cell snapshots every gallery-section-* individually.
 for (const vp of VIEWPORTS) {
   for (const theme of THEMES) {
     for (const accent of MATRIX_ACCENTS) {

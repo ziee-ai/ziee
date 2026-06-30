@@ -310,7 +310,7 @@ const statStress: GalleryStory = {
       key: 'huge',
       label: 'Huge number / empty list',
       render: () => (
-        <div className="flex gap-6 items-start">
+        <div className="flex flex-wrap gap-6 items-start">
           <Statistic
             data-testid="g-stress-stat"
             title="Total"

@@ -32,7 +32,9 @@ export default defineConfig({
   // registers only the ConfigClient store and renders the gallery under the real
   // ThemeProvider.
   webServer: {
-    command: 'npm run dev',
+    // Pass the port through to Vite (vite.config.ts pins strictPort), so the
+    // GALLERY_PORT override actually works instead of hanging on :1420.
+    command: `npm run dev -- --port ${PORT} --strictPort`,
     url: `${BASE_URL}/dev-gallery.html`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
@@ -52,7 +54,13 @@ export default defineConfig({
     toHaveScreenshot: {
       animations: 'disabled',
       caret: 'hide',
-      maxDiffPixelRatio: 0.02,
+      // Text-dense sections (many tiny glyph edges) accumulate more font-AA jitter
+      // per total pixel than large sections, so a tight ratio flakes red on the
+      // SAME machine (observed ~0.03 on the tag section). 0.05 gives headroom.
+      // Playwright ANDs the thresholds, so we do NOT add a maxDiffPixels floor
+      // (it would make the gate stricter). True cross-machine stability still
+      // requires blessing baselines in a pinned container (documented in README).
+      maxDiffPixelRatio: 0.05,
       scale: 'css',
     },
   },

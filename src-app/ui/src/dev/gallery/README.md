@@ -77,19 +77,26 @@ bug-finding patterns from visual-testing prior art (Chromatic / EightShapes):
   under RTL (mirroring/alignment/logical-property bugs).
 - **Breakpoints**: mobile/tablet/desktop (already in the matrix).
 
-## Documented pre-existing kit findings (the system already caught these)
+## Kit defects the system caught — now FIXED + enforced
 
-Real defects surfaced by the layers, recorded in `axe-baseline.ts` /
-`layout-baseline.ts` so the gate fails only on NEW issues (this branch builds the
-harness; fixing the kit is separate). Delete an entry when its kit issue is fixed
-— the gate then enforces it.
+The layers surfaced real pre-existing kit defects; all were FIXED in the kit and
+the gate now enforces them with **empty baselines** (`axe-baseline.ts` /
+`layout-baseline.ts`). Each fix was verified by removing its baseline and
+re-running until green:
 
-1. **Status/tone color contrast** (`color-contrast`) — kit `Tag`/`Alert`/`Text`
-   status tones use hardcoded palette hues, not dark-aware AA tokens; fail WCAG AA
-   in dark mode.
-2. **`Menu` list markup** (`list`) — `<ul>` directly contains `<button>`s, not `<li>`.
-3. **Long-content containment** (`childOverflow`/`textTruncation` on `stress-*`) —
-   `Tag`, `Select` trigger, `Card` title, `Menu`, `Descriptions` don't contain
-   long unbroken content (missing `break-word`/`min-w-0`/ellipsis) → overflow.
-4. **`Table` scroll region not keyboard-focusable** (`scrollable-region-focusable`)
-   — the overflow-auto viewport needs `tabindex=0`.
+1. **Status/tone color contrast** — `Tag`/`Alert`/`Text` status tones used raw
+   palette hues → failed WCAG AA in dark mode. Remapped to the dark-aware
+   semantic tokens (`text-success`/`-warning`/`-info` + `destructive`). Verified:
+   axe green in both themes with no baseline.
+2. **`Menu` list markup** — a `<li role="separator">` made the `<ul>` contain a
+   non-listitem child. Moved the separator to an inner element.
+3. **`Table` scroll region not keyboard-focusable** — added `tabIndex=0` to the
+   overflow-auto viewport (shadcn table).
+4. **Long-content containment** — `Tag`/`Card` title/`Menu` item/`Descriptions`
+   value now contain long unbroken content (`min-w-0` + `overflow-wrap`/`truncate`).
+   (The "`Select` clips without ellipsis" report was a CHECKER false-negative —
+   `line-clamp` wasn't recognized as an ellipsis affordance; fixed in `layout.ts`.)
+
+The baselines remain as the documented mechanism for any FUTURE finding — keyed
+as narrowly as possible (axe by `rule × section [× target]`, layout by
+`section × check × testid`) so a baseline can't mask a new violation elsewhere.

@@ -53,10 +53,17 @@ export async function openGallery(
 ): Promise<void> {
   await page.goto(galleryUrl(theme, accent, dir))
   await page.getByTestId('gallery-root').waitFor({ state: 'visible' })
-  // Let the ThemeProvider apply the resolved theme/accent + fonts settle.
+  // The theme CLASS is pre-painted by the inline script, but the ACCENT
+  // (--primary) is applied later in ThemeProvider's effect. Wait on a positive
+  // accent signal — --primary present + the dir applied — so a screenshot can't
+  // capture a pre-accent frame.
   await page.waitForFunction(
-    t => document.documentElement.classList.contains(t),
-    theme,
+    t => {
+      const root = document.documentElement
+      const primary = getComputedStyle(root).getPropertyValue('--primary').trim()
+      return root.classList.contains(t.theme) && root.dir === t.dir && primary.length > 0
+    },
+    { theme, dir },
   )
   await page.evaluate(() => document.fonts?.ready)
 }

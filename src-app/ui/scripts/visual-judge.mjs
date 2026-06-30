@@ -156,7 +156,7 @@ function selectImages(args, cache) {
     const hash = sha256(fs.readFileSync(f))
     const cached = cache[hash]
     if (args.onlyChanged && cached) continue // B-gated: skip unchanged (cached) images
-    selected.push({ file, hash, cached })
+    selected.push({ file: f, hash, cached })
   }
   return selected.slice(0, args.maxImages)
 }

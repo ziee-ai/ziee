@@ -55,7 +55,14 @@ const DEFAULTS = {
   // The --radius ramp in index.css plus pill/circle (9999) and common half-steps.
   radii: [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 9999],
   minTouchTarget: 24,
+  // Geometric tolerance for OVERFLOW / ALIGNMENT / TOUCH comparisons (sub-pixel
+  // layout jitter). NOT used for on-scale snapping.
   tolerance: 1.5,
+  // On-scale tolerance for spacing/radius snapping. MUST be < grid/2 or the
+  // check is mathematically dead (every value lands within tol of a grid
+  // multiple). 0.5 catches a genuine off-grid 7px/13px while absorbing rem
+  // rounding.
+  scaleTolerance: 0.5,
 } as const
 
 export interface LayoutViolation {
@@ -88,6 +95,7 @@ interface ElementProbe {
     overflowX: string
     whiteSpace: string
     textOverflow: string
+    lineClamp: string
   }
   scrollWidth: number
   clientWidth: number
@@ -101,6 +109,8 @@ interface ElementProbe {
   /** Parent's computed overflow-x — a clipping parent (hidden/auto/scroll/clip)
    *  intentionally manages child overflow (progress fills, masked content). */
   parentOverflowX: string
+  /** Parent's computed overflow-y (for vertical overflow detection). */
+  parentOverflowY: string
   /** Has a CSS transform (translate/scale) — its layout box and visual box
    *  differ by design (switch thumbs, translated progress fills), so it's
    *  exempt from box-overflow checks. */
@@ -143,13 +153,24 @@ async function probe(
         if (cs.display === 'none' || cs.visibility === 'hidden') continue
         const r = el.getBoundingClientRect()
         if (r.width === 0 && r.height === 0) continue
+        // Skip visually-hidden / hairline elements: sr-only form mirrors (a 1px
+        // native <select>/<input> kept for form binding), clipped a11y text, and
+        // 1px separators. They carry UA-default spacing that isn't a design
+        // target and aren't visible, so layout invariants don't apply.
+        const clipped =
+          cs.clip === 'rect(0px, 0px, 0px, 0px)' ||
+          cs.clipPath === 'inset(50%)' ||
+          cs.clipPath === 'inset(100%)'
+        if (r.width <= 1 || r.height <= 1 || clipped) continue
         const parent = el.parentElement
         const pr = parent ? parent.getBoundingClientRect() : null
         const index = indexOf.get(el)!
         const parentIndex =
           parent && indexOf.has(parent) ? indexOf.get(parent)! : -1
         const parentChildCount = parent ? parent.childElementCount : 0
-        const parentOverflowX = parent ? getComputedStyle(parent).overflowX : 'visible'
+        const parentCS = parent ? getComputedStyle(parent) : null
+        const parentOverflowX = parentCS ? parentCS.overflowX : 'visible'
+        const parentOverflowY = parentCS ? parentCS.overflowY : 'visible'
         const tag = el.tagName.toLowerCase()
         const role = el.getAttribute('role')
         const isButton =
@@ -216,6 +237,9 @@ async function probe(
             overflowX: cs.overflowX,
             whiteSpace: cs.whiteSpace,
             textOverflow: cs.textOverflow,
+            // `-webkit-line-clamp` (Tailwind `line-clamp-N` / `truncate` variants)
+            // is a valid ellipsis affordance the bare text-overflow check misses.
+            lineClamp: cs.webkitLineClamp || cs.getPropertyValue('-webkit-line-clamp') || 'none',
           },
           scrollWidth: el.scrollWidth,
           clientWidth: el.clientWidth,
@@ -224,6 +248,7 @@ async function probe(
           hasTextChild,
           insideControl,
           parentOverflowX,
+          parentOverflowY,
           // Tailwind v4 emits `translate-x-*` via the `translate` CSS property
           // (not `transform`), so check both (+ scale) to catch translated
           // decorative elements like the switch thumb.
@@ -307,12 +332,14 @@ export async function assertLayoutSane(
       !positioned &&
       !p.transformed
     ) {
-      const parentClips =
-        p.parentOverflowX === 'auto' ||
-        p.parentOverflowX === 'scroll' ||
-        p.parentOverflowX === 'hidden' ||
-        p.parentOverflowX === 'clip'
-      if (!parentClips) {
+      // Only auto/scroll parents are a clean exemption (they're meant to scroll).
+      // hidden/clip parents still CLIP overflowing content — a real bug — so they
+      // are NOT exempted here.
+      const xScrolls =
+        p.parentOverflowX === 'auto' || p.parentOverflowX === 'scroll'
+      const yScrolls =
+        p.parentOverflowY === 'auto' || p.parentOverflowY === 'scroll'
+      if (!xScrolls) {
         const overRight = p.rect.x + p.rect.w - (p.parentRect.x + p.parentRect.w)
         const overLeft = p.parentRect.x - p.rect.x
         if (overRight > tol || overLeft > tol) {
@@ -323,15 +350,28 @@ export async function assertLayoutSane(
           })
         }
       }
+      // Vertical overflow (the docstring promised it; was missing).
+      if (!yScrolls && p.parentRect.h > 0) {
+        const overBottom =
+          p.rect.y + p.rect.h - (p.parentRect.y + p.parentRect.h)
+        const overTop = p.parentRect.y - p.rect.y
+        if (overBottom > tol || overTop > tol) {
+          violations.push({
+            check: 'childOverflow',
+            testid: nearestTestid(p),
+            message: `${p.tag}${p.testid ? `#${p.testid}` : ''} overflows its parent vertically (${Math.max(overBottom, overTop).toFixed(1)}px)`,
+          })
+        }
+      }
     }
 
-    // 2. Spacing on-scale.
+    // 2. Spacing on-scale. Uses the tight scale tolerance, NOT the geometric one.
     if (enabled('spacingScale')) {
       const offScale = [
         ...p.styles.paddings,
         ...p.styles.margins.map(Math.abs),
         ...p.styles.gap,
-      ].filter(v => !onScale(v, opts.grid, tol))
+      ].filter(v => !onScale(v, opts.grid, opts.scaleTolerance))
       if (offScale.length) {
         violations.push({
           check: 'spacingScale',
@@ -341,8 +381,9 @@ export async function assertLayoutSane(
       }
       const offRadius = p.styles.radius.filter(
         // A pill/full radius (`rounded-full` → calc(infinity*1px), a huge px
-        // value) is always valid; only flag mid-range off-ramp values.
-        v => v < 100 && !opts.radii.some(r => Math.abs(r - v) <= tol),
+        // value ≥ 9000) is always valid; only flag mid-range off-ramp values,
+        // and snap with the TIGHT scale tolerance so off-ramp radii actually fire.
+        v => v < 9000 && !opts.radii.some(r => Math.abs(r - v) <= opts.scaleTolerance),
       )
       if (offRadius.length) {
         violations.push({
@@ -412,10 +453,18 @@ export async function assertLayoutSane(
     // 5. Unintended text truncation: content overflows with no ellipsis set.
     if (enabled('textTruncation') && p.hasTextChild) {
       const clipped = p.scrollWidth - p.clientWidth > tol
+      // An ellipsis only actually renders when the text is nowrap (single line);
+      // text-overflow:ellipsis on wrapping text never shows the ellipsis.
       const hasEllipsis =
-        p.styles.textOverflow === 'ellipsis' &&
-        (p.styles.whiteSpace === 'nowrap' || p.styles.overflowX !== 'visible')
-      if (clipped && !hasEllipsis && p.styles.overflowX === 'hidden') {
+        (p.styles.textOverflow === 'ellipsis' &&
+          p.styles.whiteSpace === 'nowrap') ||
+        // line-clamp-N / Tailwind truncate variants ellipsize via -webkit-line-clamp.
+        (p.styles.lineClamp !== 'none' && p.styles.lineClamp !== '')
+      // Both `hidden` and `clip` hard-cut content; `clip` (Tailwind overflow-clip)
+      // was previously missed.
+      const clips =
+        p.styles.overflowX === 'hidden' || p.styles.overflowX === 'clip'
+      if (clipped && !hasEllipsis && clips) {
         violations.push({
           check: 'textTruncation',
           testid: nearestTestid(p),
