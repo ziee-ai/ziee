@@ -78,7 +78,7 @@ test.describe('Citations library — delete via the card', () => {
           new RegExp(`/api/citations/${entryId}$`).test(r.url()),
         { timeout: 15000 },
       )
-      await byTestId(page, `cite-card-delete-confirm-${entryId}`).click()
+      await byTestId(page, `cite-card-delete-confirm-${entryId}-confirm`).click()
 
       const resp = await deleteResp
       expect(resp.status(), 'DELETE /api/citations/{id} succeeded').toBeLessThan(300)

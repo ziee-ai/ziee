@@ -268,7 +268,7 @@ test.describe('Citations library', () => {
     // The per-card delete is gated on citations::manage (admin holds it via *).
     await byTestId(page, `cite-card-delete-button-${target.id}`).click()
     // Confirm the Popconfirm via its dedicated confirm control.
-    await byTestId(page, `cite-card-delete-confirm-${target.id}`).click()
+    await byTestId(page, `cite-card-delete-confirm-${target.id}-confirm`).click()
 
     await expect(byTestId(page, `cite-card-${target.id}`)).toHaveCount(0)
   })

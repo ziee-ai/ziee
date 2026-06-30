@@ -126,20 +126,24 @@ pub async fn import_skill(
     origin: SyncOrigin,
     multipart: Multipart,
 ) -> ApiResult<Json<Skill>> {
-    let bytes = read_bundle_field(multipart).await?;
+    // The browser client can only send `scope`/`name` as multipart BODY fields
+    // (the generated API client appends query params for GET only), so read
+    // them from the body and fall back to the query for non-UI callers.
+    let fields = read_import_multipart(multipart).await?;
+    let bytes = fields.bundle;
+    let scope_in = fields.scope.or_else(|| q.scope.clone());
+    let name_in = fields.name.or_else(|| q.name.clone());
 
     // Scope (`system` requires skills::manage_system) — reuse the
     // workflow helper (it's module-agnostic).
     let scope = crate::modules::workflow::handlers::dev::resolve_import_scope(
         &auth.user,
         &auth.groups,
-        q.scope.as_deref(),
+        scope_in.as_deref(),
         "skills",
     )?;
 
-    let slug = q
-        .name
-        .clone()
+    let slug = name_in
         .map(|s| sanitize_slug(&s))
         .unwrap_or_else(|| "imported-skill".to_string());
     // H6: namespace the dev slug per user so user A's `local.dev/foo`
@@ -276,35 +280,63 @@ pub fn import_skill_docs(op: TransformOperation) -> TransformOperation {
 // Helpers
 // ============================================================
 
-async fn read_bundle_field(mut multipart: Multipart) -> Result<Vec<u8>, AppError> {
+/// The fields a skill-import multipart upload may carry. `bundle` is required;
+/// `scope`/`name` are optional body fields (the browser client can't send them
+/// as query params — see `import_skill`).
+struct ImportMultipart {
+    bundle: Vec<u8>,
+    scope: Option<String>,
+    name: Option<String>,
+}
+
+async fn read_import_multipart(mut multipart: Multipart) -> Result<ImportMultipart, AppError> {
+    let mut bundle: Option<Vec<u8>> = None;
+    let mut scope: Option<String> = None;
+    let mut name: Option<String> = None;
     while let Ok(Some(mut field)) = multipart.next_field().await {
         let field_name = field.name().unwrap_or("").to_string();
-        if field_name == "bundle" {
-            // L10: stream chunk-by-chunk with a hard cap rather than
-            // `field.bytes()` (which buffers the whole upload into RAM with no
-            // limit). A bundle decompresses to at most 10 MiB, so the
-            // compressed upload can't legitimately exceed that — abort past
-            // the cap to bound memory on this authenticated endpoint.
-            let cap = crate::modules::hub::bundle::MAX_BUNDLE_COMPRESSED_BYTES as usize;
-            let mut data: Vec<u8> = Vec::new();
-            while let Some(chunk) = field.chunk().await.map_err(|e| {
-                AppError::bad_request("IMPORT_READ_FAILED", format!("read bundle field: {e}"))
-            })? {
-                if data.len().saturating_add(chunk.len()) > cap {
-                    return Err(AppError::unprocessable_entity(
-                        "IMPORT_BUNDLE_TOO_LARGE",
-                        format!("uploaded bundle exceeds the {cap}-byte cap"),
-                    ));
+        match field_name.as_str() {
+            "bundle" => {
+                // L10: stream chunk-by-chunk with a hard cap rather than
+                // `field.bytes()` (which buffers the whole upload into RAM with
+                // no limit). A bundle decompresses to at most 10 MiB, so the
+                // compressed upload can't legitimately exceed that — abort past
+                // the cap to bound memory on this authenticated endpoint.
+                let cap = crate::modules::hub::bundle::MAX_BUNDLE_COMPRESSED_BYTES as usize;
+                let mut data: Vec<u8> = Vec::new();
+                while let Some(chunk) = field.chunk().await.map_err(|e| {
+                    AppError::bad_request("IMPORT_READ_FAILED", format!("read bundle field: {e}"))
+                })? {
+                    if data.len().saturating_add(chunk.len()) > cap {
+                        return Err(AppError::unprocessable_entity(
+                            "IMPORT_BUNDLE_TOO_LARGE",
+                            format!("uploaded bundle exceeds the {cap}-byte cap"),
+                        ));
+                    }
+                    data.extend_from_slice(&chunk);
                 }
-                data.extend_from_slice(&chunk);
+                bundle = Some(data);
             }
-            return Ok(data);
+            "scope" => {
+                scope = field.text().await.ok().filter(|s| !s.is_empty());
+            }
+            "name" => {
+                name = field.text().await.ok().filter(|s| !s.is_empty());
+            }
+            _ => {}
         }
     }
-    Err(AppError::bad_request(
-        "IMPORT_NO_BUNDLE",
-        "multipart upload missing a `bundle` form field carrying the tar.gz",
-    ))
+    let bundle = bundle.ok_or_else(|| {
+        AppError::bad_request(
+            "IMPORT_NO_BUNDLE",
+            "multipart upload missing a `bundle` form field carrying the tar.gz",
+        )
+    })?;
+    Ok(ImportMultipart {
+        bundle,
+        scope,
+        name,
+    })
 }
 
 fn sanitize_slug(raw: &str) -> String {

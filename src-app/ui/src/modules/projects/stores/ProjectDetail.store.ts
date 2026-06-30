@@ -123,6 +123,23 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
               },
               GROUP,
             )
+
+            // Detaching a conversation from THIS project must drop it from the
+            // detail-page list immediately. The detach action only emits the
+            // event (no list mutation), so without this the card lingered until
+            // a manual reload.
+            eventBus.on(
+              'project.conversation_detached',
+              async event => {
+                if (event.data.projectId !== get().project?.id) return
+                set(state => {
+                  state.conversations = state.conversations.filter(
+                    c => c.id !== event.data.conversationId,
+                  )
+                })
+              },
+              GROUP,
+            )
           },
         },
 
