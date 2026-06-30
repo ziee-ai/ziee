@@ -1,13 +1,15 @@
 //! Tier-2 integration tests for the desktop-only MCP auto-assign path.
 //!
 //! Two covered paths:
-//!   1. **Boot backfill** (`backfill_system_mcp_assignments`) — every
-//!      existing system MCP server lands in every group's
+//!   1. **Boot backfill** (`backfill_system_mcp_assignments`) — the
+//!      *visible* system MCP servers land in every group's
 //!      `user_group_mcp_servers` row when the desktop server boots.
-//!      Verified by checking that the built-in `memory_mcp` server is
-//!      assigned to every group that existed AT BOOT TIME (the
-//!      backfill is a snapshot — groups created after boot don't
-//!      retroactively pick up the existing servers).
+//!      Built-ins configured elsewhere (memory / files / elicitation /
+//!      …) are deliberately EXCLUDED from that list and instead reach
+//!      tool-capable chats via the chat-extension auto-attach path
+//!      (`auto_attach_builtin_ids`), NOT via group assignment — so the
+//!      test verifies the memory built-in registers at boot yet is
+//!      never group-assigned.
 //!   2. **Per-event handler** (`Desktop::AutoAssignMcpServer`) — a
 //!      newly POSTed system MCP server gets auto-assigned to every
 //!      group that exists at the moment of creation.
@@ -78,6 +80,15 @@ async fn find_memory_mcp_id(pool: &PgPool) -> Uuid {
     .expect("built-in memory MCP server must be registered at desktop boot")
 }
 
+/// Whether the given MCP server row is flagged as a built-in.
+async fn is_builtin(pool: &PgPool, server_id: Uuid) -> bool {
+    sqlx::query_scalar::<_, bool>("SELECT is_built_in FROM mcp_servers WHERE id = $1")
+        .bind(server_id)
+        .fetch_one(pool)
+        .await
+        .expect("SELECT is_built_in")
+}
+
 /// Poll `assigned_group_ids` until every expected group_id appears,
 /// or `timeout` elapses. Returns the final assignment set so the
 /// caller can produce a clear error message on timeout.
@@ -102,34 +113,41 @@ async fn poll_for_assignments(
 }
 
 #[tokio::test]
-async fn backfill_assigns_builtin_memory_mcp_to_every_boot_time_group() {
+async fn builtin_memory_mcp_is_registered_but_not_group_assigned() {
+    // Memory is ON by default (memory_admin_settings.enabled defaults
+    // TRUE), so the built-in memory MCP server registers at boot. But
+    // built-ins (memory / files / elicitation / web_search / lit_search /
+    // tool_result / citations) deliberately reach tool-capable chats via
+    // the chat-extension AUTO-ATTACH path
+    // (mcp::chat_extension::auto_attach_builtin_ids + approval-bypass via
+    // is_builtin_server_id), NOT via group assignment. They are excluded
+    // from list_system_mcp_servers ("hide the built-ins configured
+    // elsewhere"), so the desktop boot backfill — which assigns the
+    // *visible* system servers to every group — must NOT assign memory.
     let server = crate::common::TestServer::start_desktop().await;
-
-    // Snapshot the groups that existed at boot — the backfill ran
-    // before any test setup, so its writes target THIS set. Groups
-    // created later by test_helpers don't retroactively pick up the
-    // memory MCP assignment (the contract is "snapshot at boot",
-    // not "continuous propagation").
     let pool = test_pool(&server.database_url).await;
+
     let boot_groups = all_group_ids(&pool).await;
     assert!(
         !boot_groups.is_empty(),
         "expected ≥1 group seeded by migrations at boot"
     );
 
+    // The memory built-in registered at boot (memory-on-by-default).
     let memory_id = find_memory_mcp_id(&pool).await;
-    let assigned = assigned_group_ids(&pool, memory_id).await;
+    assert!(
+        is_builtin(&pool, memory_id).await,
+        "memory MCP server {memory_id} should be flagged is_built_in"
+    );
 
-    for group_id in &boot_groups {
-        assert!(
-            assigned.contains(group_id),
-            "backfill should have assigned built-in memory MCP {} to \
-             boot-time group {}; assigned={:?}",
-            memory_id,
-            group_id,
-            assigned
-        );
-    }
+    // ...and is NOT group-assigned: auto-attach is its delivery path.
+    let assigned = assigned_group_ids(&pool, memory_id).await;
+    assert!(
+        assigned.is_empty(),
+        "built-in memory MCP {memory_id} must NOT be group-assigned \
+         (built-ins auto-attach to tool-capable chats via \
+         auto_attach_builtin_ids, not via group assignment); assigned={assigned:?}",
+    );
 
     pool.close().await;
 }

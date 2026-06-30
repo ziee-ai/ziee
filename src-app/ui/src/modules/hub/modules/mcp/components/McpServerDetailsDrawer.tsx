@@ -34,7 +34,7 @@ export function McpServerDetailsDrawer({
     const slash = server.name.indexOf('/')
     return slash >= 0 ? server.name.slice(slash + 1) : server.name
   })()
-  const indexItem = Stores.HubCatalog.catalog?.items.find(
+  const indexItem = Stores.HubCatalog.catalog?.items?.find(
     it => it.category === 'mcp-server' && it.name === server.name,
   )
   const displayTitle = indexItem?.title ?? leaf
