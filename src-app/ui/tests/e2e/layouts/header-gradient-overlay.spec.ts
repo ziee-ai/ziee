@@ -16,9 +16,13 @@ test.describe('App layout — header fade gradient overlay', () => {
   }) => {
     await loginAsAdmin(page, testInfra.baseURL)
 
-    // The app shell (with the header bar) is mounted; the fade overlay is an
-    // aria-hidden div carrying a linear-gradient background positioned at the
-    // header's bottom edge (top: 100%).
+    // Navigate to a page that mounts HeaderBarContainer. The `/` landing is the
+    // new-chat composer (centered, intentionally headerless); the fade overlay
+    // lives on header-bearing pages (settings/chat-history/conversation/…).
+    await page.goto(`${testInfra.baseURL}/settings/profile`)
+
+    // The fade overlay is an aria-hidden div carrying a linear-gradient
+    // background positioned at the header's bottom edge (top: 100%).
     const overlay = page.getByTestId('layout-header-fade-overlay').first()
     await expect(overlay).toBeAttached({ timeout: 30000 })
     await expect
