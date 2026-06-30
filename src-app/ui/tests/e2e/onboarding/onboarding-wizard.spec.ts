@@ -235,11 +235,23 @@ test.describe('Onboarding wizard', () => {
     await expect(byTestId(page, 'onboarding-step-api-keys')).toBeVisible()
     await expect(byTestId(page, 'onboarding-step-api-keys')).toContainText(remoteName, { timeout: 15000 })
 
-    // Enter a key, advance → the step's onNext saves it (saveUserApiKey) and the
-    // store surfaces an "API key saved" success toast.
+    // Enter a key, advance → the step's beforeNext saves it (saveUserApiKey) and
+    // THEN advances off the AI-Providers step. The save is reflected on the
+    // Finish step summary (the api-keys step has unmounted, so its in-step
+    // status tag is gone by the time Next completes).
     await byTestId(page, 'onboarding-apikeys-password-input').fill('sk-onboarding-user-key-123')
     await byTestId(page, 'onboarding-page-next-button').click()
-    await expect(byTestId(page, 'onboarding-apikeys-key-status-tag')).toBeVisible({ timeout: 15000 })
+
+    // AI Providers → MCP → Memory → Finish. The save raises an "API key saved"
+    // success toast that renders over the bottom-right Next CTA and stays
+    // expanded when hovered by a click-retry, intercepting pointer events.
+    // Activate Next via the keyboard (focus+Enter doesn't pointer-hit-test).
+    await expect(byTestId(page, 'onboarding-step-mcp-servers')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').press('Enter')
+    await expect(byTestId(page, 'onboarding-step-memory-setup')).toBeVisible()
+    await byTestId(page, 'onboarding-page-next-button').press('Enter')
+    await expect(byTestId(page, 'onboarding-step-finish')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'onboarding-finish-apikeys-summary')).toContainText(/API key.*saved/i)
   })
 
   // Negative coverage for OnboardingRedirect's `if (user.is_admin === true)
