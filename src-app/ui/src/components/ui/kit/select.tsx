@@ -168,7 +168,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           aria-required={ariaRequired}
           data-testid={testid}
           size={s.size === 'sm' ? 'sm' : 'default'}
-          className={cn('w-full', className, showClear && 'pr-12')}
+          className={cn('w-full', className, showClear && 'pr-14')}
         >
           <SelectValue placeholder={placeholder}>{customDisplay}</SelectValue>
           {loading && <Loader2 className="ml-2 size-4 shrink-0 animate-spin opacity-70" aria-hidden />}

@@ -13,7 +13,7 @@ export function BlankLayout({ children }: BlankLayoutProps) {
     // set root document background color based on theme, restore on teardown
     const root = document.documentElement
     const prev = root.style.backgroundColor
-    root.style.backgroundColor = 'hsl(var(--background))'
+    root.style.backgroundColor = 'var(--background)'
     return () => {
       root.style.backgroundColor = prev
     }

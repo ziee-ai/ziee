@@ -1,157 +1,176 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@config "./tailwind.config.js";
 
 @custom-variant dark (&:is(.dark *));
 
-/* Tell Tailwind v4 to scan core UI source files for utility classes */
+/* Tell Tailwind v4 to scan the shared core UI source (resolved via @/* ->
+ * ../../ui/src). Without this the reused kit primitives generate no utilities. */
 @source "../../../ui/src";
 
-/* shadcn/ui design tokens — the values the tailwind.config.js hsl(var(--*))
- * refs resolve against. MIRRORED VERBATIM from src-app/ui/src/index.css so the
- * shared kit (resolved via @/* -> ../../ui/src) renders themed on desktop too;
- * without these the v4 primitives' bg-input/border/ring utilities resolve to
- * undefined vars and render black/unstyled. Keep in sync with the web blocks.
- * Light in :root, dark under html.dark (set by ThemeProvider via the dark class). */
-:root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
-  /* Brand accent (default = neutral blue). ThemeProvider overrides --primary/--ring per the
-   * user's chosen accent preset; these defaults drive first paint before JS runs. */
-  --primary: 220 47% 43%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  /* Semantic status tokens (AA as text on the page background). info = teal, kept distinct
-   * from the (blue) accent so "informational" never reads as the brand color. */
-  --success: 142 64% 30%;
-  --success-foreground: 0 0% 100%;
-  --warning: 32 80% 34%;
-  --warning-foreground: 0 0% 100%;
-  --info: 199 80% 34%;
-  --info-foreground: 0 0% 100%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 220 47% 43%;
-  --radius: 0.625rem;
-  --sidebar: hsl(0 0% 98%);
-  --sidebar-foreground: hsl(240 5.3% 26.1%);
-  --sidebar-primary: hsl(220 47% 43%);
-  --sidebar-primary-foreground: hsl(0 0% 98%);
-  --sidebar-accent: hsl(240 4.8% 95.9%);
-  --sidebar-accent-foreground: hsl(240 5.9% 10%);
-  --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: hsl(220 47% 43%);
-}
-html.dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 216 56% 64%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  /* status tokens — brighter fills for legibility as text on the dark background. */
-  --success: 142 60% 55%;
-  --success-foreground: 142 40% 9%;
-  --warning: 38 90% 60%;
-  --warning-foreground: 38 60% 10%;
-  --info: 199 75% 60%;
-  --info-foreground: 199 60% 9%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 216 56% 64%;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Semantic status tokens (distinct meanings — not part of nova-base, kept). */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Custom base styles in Tailwind's base layer */
+/* Stock shadcn new-york-v4 oklch palette — MIRRORED VERBATIM from
+ * src-app/ui/src/index.css so the shared kit (resolved via @/* -> ../../ui/src)
+ * renders themed on desktop too. Keep in sync with the web blocks. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: hsl(220 47% 43%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: hsl(220 47% 43%);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: hsl(220 47% 43%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: hsl(220 47% 43%);
+
+  --success: hsl(142 64% 30%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(32 80% 34%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(199 80% 34%);
+  --info-foreground: hsl(0 0% 100%);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: hsl(216 56% 64%);
+  --primary-foreground: hsl(222 47% 11%);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: hsl(216 56% 64%);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: hsl(216 56% 64%);
+  --sidebar-primary-foreground: hsl(222 47% 11%);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: hsl(216 56% 64%);
+
+  --success: hsl(142 60% 55%);
+  --success-foreground: hsl(142 40% 9%);
+  --warning: hsl(38 90% 60%);
+  --warning-foreground: hsl(38 60% 10%);
+  --info: hsl(199 75% 60%);
+  --info-foreground: hsl(199 60% 9%);
+}
+
 @layer base {
   * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    /* Tailwind v4 changed the default border color from gray-200 to
-     * currentColor, so bare `border` (e.g. shadcn Card) renders BLACK.
-     * Restore the themed default; explicit `border-*` utilities still win. */
-    border-color: hsl(var(--border));
+    @apply border-border outline-ring/50;
   }
-
   body {
-    /* macOS-native stack — see src/themes/override.ts for rationale.
-     * Keep in sync with TokenOverrides.fontFamily there: antd
-     * components flow through the token, raw HTML inherits from
-     * body. Tauri on macOS is WKWebView so `-apple-system` resolves
-     * to live SF Pro with dynamic optical sizing. */
-    font-family:
-      -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro",
-      system-ui, sans-serif;
-    /* 14px base — matches the web `ui/src/index.css` body rule and the
-     * antd fontSize token. (Was 16px, which diverged from the web base
-     * and rendered the whole desktop UI one step too large.) */
-    font-size: 14px;
-    /* Leave -webkit-font-smoothing at default (subpixel). Forcing
-     * `antialiased` in 2025+ makes SF Pro look anemic. */
-    /* Theme-follow the foreground/background tokens so RAW HTML (headings,
-     * labels, body text not wrapped in a shadcn component) inherits the
-     * themed color. Without this, text defaults to #000 and stays black in
-     * dark mode — failing WCAG color-contrast on the auth/setup pages. */
-    color: hsl(var(--foreground));
-    background-color: hsl(var(--background));
+    @apply bg-background text-foreground;
   }
-
-  #root {
-    height: 100%;
-  }
-}
-
-/* Custom component styles */
-@layer components {
   #root {
     height: 100dvh;
     width: 100dvw;
   }
 }
 
-/* Linux frame styles live in linux-titlebar.tsx (JS-injected `<style>`),
- * not here. Tailwind v4's `@import "tailwindcss"` pipeline interacts
- * weirdly with appended unlayered rules — they were getting silently
- * stripped from the compiled output. Injecting at runtime sidesteps
- * the compiler entirely. */
+/* Linux frame styles live in linux-titlebar.tsx (JS-injected `<style>`), not
+ * here — Tailwind v4's pipeline silently strips appended unlayered rules. */
 
-/* OverlayScrollbars (DivScrollY) dark-mode handle override.
- * Library default `.os-theme-dark` paints a near-black handle that
- * disappears against ant-design's dark surface tokens. Re-bind the
- * handle vars to white when `html.dark` (set by ThemeProvider).
- * Duplicates the same rule in src-app/ui/src/index.css — the desktop
- * UI imports its OWN index.css from src-app/desktop/ui/src and never
- * pulls in the web UI's stylesheet. */
+/* OverlayScrollbars (DivScrollY) dark-mode handle override. The library default
+ * `.os-theme-dark` paints a near-black handle that disappears against the dark
+ * surface; re-bind the handle vars to white when `html.dark`. */
 html.dark .os-theme-dark {
   --os-handle-bg: rgba(255, 255, 255, 0.22);
   --os-handle-bg-hover: rgba(255, 255, 255, 0.35);
   --os-handle-bg-active: rgba(255, 255, 255, 0.48);
 }
 
-/* Hover-expand handle so it's easier to grab, with smooth width/height
- * transition (the library only transitions opacity / bg-color). */
 .os-scrollbar-handle {
   transition:
     opacity 0.15s,
@@ -163,27 +182,4 @@ html.dark .os-theme-dark {
 .os-theme-dark.os-scrollbar:hover,
 .os-theme-light.os-scrollbar:hover {
   --os-size: 12px;
-}
-
-.dark {
-  --sidebar: hsl(240 5.9% 10%);
-  --sidebar-foreground: hsl(240 4.8% 95.9%);
-  /* Default dark accent (ThemeProvider overrides per preset); matches html.dark --primary. */
-  --sidebar-primary: hsl(216 56% 64%);
-  --sidebar-primary-foreground: hsl(222.2 47.4% 11.2%);
-  --sidebar-accent: hsl(240 3.7% 15.9%);
-  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(216 56% 64%);
-}
-
-@theme inline {
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }

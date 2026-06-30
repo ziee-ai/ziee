@@ -14,10 +14,10 @@ export const HeaderBarContainer = ({
   const { isSidebarCollapsed } = Stores.AppLayout
 
   // Theme-aware soft-fade: top stop = the `--card` token, bottom stop = that SAME
-  // color at alpha 0 (via `hsl(var(--card) / 0)`), so it fades through the surface
-  // hue rather than through transparent black (no gray midpoint), and follows the
-  // active theme / dark mode instead of a hardcoded white.
-  const fadeGradient = `linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card) / 0))`
+  // color at alpha 0 (color-mix in oklab toward transparent), so it fades through
+  // the surface hue rather than through transparent black (no gray midpoint), and
+  // follows the active theme / dark mode instead of a hardcoded white.
+  const fadeGradient = `linear-gradient(to bottom, var(--card), color-mix(in oklab, var(--card) 0%, transparent))`
 
   return (
     <div
