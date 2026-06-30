@@ -202,7 +202,35 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   root: ${JSON.stringify(srcRoot)},
   cacheDir: ${JSON.stringify(resolve(uiRoot, 'node_modules/.vite-e2e-build'))},
-  resolve: { alias: { '@': path.resolve(${JSON.stringify(uiRoot)}, './src') } },
+  resolve: {
+    alias: { '@': path.resolve(${JSON.stringify(uiRoot)}, './src') },
+    // Force a SINGLE copy of each shared singleton into the bundle. Without
+    // this, a prebundled dep can pull a second copy of react/immer/zustand/…
+    // whose internal state (React dispatcher, Immer drafts) diverges from the
+    // app's copy → the app boot-crashes into AppErrorBoundary at the root
+    // ("Cannot read properties of null (reading 'useEffect')", "[Immer]
+    // minified error nr: 0", …) and EVERY spec fails. Mirrors the proven
+    // dedupe list in src-app/desktop/ui/vite.config.ts.
+    dedupe: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      'zustand',
+      'antd',
+      '@ant-design/icons',
+      'i18next',
+      'react-i18next',
+      'react-icons',
+      'react-use',
+      'dayjs',
+      'immer',
+      'tinycolor2',
+      'overlayscrollbars',
+      'overlayscrollbars-react',
+      'streamdown',
+      'mermaid',
+    ],
+  },
   optimizeDeps: { include: ['streamdown', 'streamdown/dist/*.js'] },
   build: { outDir: ${JSON.stringify(distDir)}, emptyOutDir: true },
 })
