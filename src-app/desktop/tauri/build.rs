@@ -1,4 +1,28 @@
+// Shared per-worktree build-DB derivation (same source the server crate's
+// build.rs + the integration harness use).
+#[path = "../../server/build_helper/worktree_db.rs"]
+mod worktree_db;
+
 fn main() {
+    // Point this crate's sqlx::query! compile-time verification at the SAME
+    // per-worktree build database the server crate's build.rs provisions +
+    // migrates (ziee-desktop depends on `ziee`, so the server's build.rs —
+    // which applies BOTH server and desktop migrations — runs first). Without
+    // this, the desktop crate's macros would validate against the now-stale
+    // shared `postgres` db that the server build.rs no longer touches when
+    // auto-isolating. Mirrors server/build.rs; honors an explicit override.
+    println!("cargo:rerun-if-env-changed=DATABASE_URL");
+    println!("cargo:rerun-if-env-changed=ZIEE_BUILD_DB_PERWORKTREE");
+    let explicit = std::env::var("DATABASE_URL").ok();
+    if worktree_db::should_auto_isolate(&explicit) {
+        let base = explicit
+            .unwrap_or_else(|| worktree_db::DEFAULT_BUILD_DB_URL.to_string());
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+        let db_name = format!("ziee_build_{}", worktree_db::worktree_key(&manifest_dir));
+        let url = worktree_db::with_database(&base, &db_name);
+        println!("cargo:rustc-env=DATABASE_URL={url}");
+    }
+
     // Release-only sanity: rust_embed silently produces an empty
     // asset table when its target folder is missing or empty, which
     // ships a binary that serves "Not Found" on every non-API URL.

@@ -19,6 +19,8 @@ mod sandbox_runtime;
 mod wsl2_agent;
 #[path = "build_helper/pgvector.rs"]
 mod pgvector_build;
+#[path = "build_helper/worktree_db.rs"]
+mod worktree_db;
 // hub_seed runs LAST inside setup_external_binaries and PANICS on
 // failure (unlike the helpers above, which warn-and-continue). See
 // the divider comment in setup_external_binaries() for the rationale.
@@ -58,10 +60,67 @@ async fn main() {
     // DATABASE_URL just to run cargo build. The string never reaches
     // the produced binary; it's used only during the build to verify
     // SQLx queries compile.
-    let database_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgresql://postgres:password@127.0.0.1:54321/postgres".to_string());
-
     println!("cargo:rerun-if-env-changed=DATABASE_URL");
+    println!("cargo:rerun-if-env-changed=ZIEE_BUILD_DB_PERWORKTREE");
+
+    let explicit = env::var("DATABASE_URL").ok();
+
+    // Per-worktree build-DB isolation: when DATABASE_URL is the committed
+    // docker-compose default (the sentinel — see build_helper/worktree_db.rs),
+    // give THIS worktree its own database on the same :54321 cluster so a
+    // concurrent build in another worktree can't wipe our schema mid-build.
+    // A genuine operator/CI override (any other DATABASE_URL) is honored
+    // unchanged. Opt out with ZIEE_BUILD_DB_PERWORKTREE=0.
+    let database_url = if worktree_db::should_auto_isolate(&explicit) {
+        let base = explicit
+            .clone()
+            .unwrap_or_else(|| worktree_db::DEFAULT_BUILD_DB_URL.to_string());
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+        let db_name = format!("ziee_build_{}", worktree_db::worktree_key(&manifest_dir));
+        // Ensure the per-worktree database exists (connect to the cluster's
+        // maintenance `postgres` db, CREATE if missing — idempotent + race
+        // tolerant: a concurrent creator just makes our CREATE a no-op error
+        // we swallow). Then point the build at it.
+        let admin_url = worktree_db::with_database(&base, "postgres");
+        match sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&admin_url)
+            .await
+        {
+            Ok(admin) => {
+                let exists: Option<(i32,)> = sqlx::query_as(
+                    "SELECT 1 FROM pg_database WHERE datname = $1",
+                )
+                .bind(&db_name)
+                .fetch_optional(&admin)
+                .await
+                .ok()
+                .flatten();
+                if exists.is_none() {
+                    // CREATE DATABASE can't run in a tx; ignore the
+                    // duplicate_database error if another worktree's build
+                    // raced us to it.
+                    let _ = sqlx::query(&format!("CREATE DATABASE {db_name}"))
+                        .execute(&admin)
+                        .await;
+                }
+                admin.close().await;
+                println!(
+                    "build.rs: per-worktree build DB → {} (set ZIEE_BUILD_DB_PERWORKTREE=0 to disable)",
+                    db_name
+                );
+                worktree_db::with_database(&base, &db_name)
+            }
+            Err(e) => {
+                // Couldn't reach the cluster to provision — fall back to the
+                // base URL and let the connect-below surface the real error.
+                eprintln!("build.rs: per-worktree DB provisioning skipped: {e}");
+                base
+            }
+        }
+    } else {
+        explicit.unwrap_or_else(|| worktree_db::DEFAULT_BUILD_DB_URL.to_string())
+    };
 
     // Connect to the database
     let pool = match sqlx::postgres::PgPoolOptions::new()
