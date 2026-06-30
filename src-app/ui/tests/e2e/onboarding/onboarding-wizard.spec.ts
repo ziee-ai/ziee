@@ -116,10 +116,12 @@ test.describe('Onboarding wizard', () => {
     await expect(byTestId(page, 'onboarding-step-welcome')).toBeHidden()
   })
 
-  test('a user who already completed onboarding is NOT redirected to the wizard', async ({ page, testInfra }) => {
-    // Negative case (bypass): once the guide is complete, AuthGuard must land
-    // the user in the app and NOT trap them at /onboarding — even on a direct
-    // navigation to /onboarding. Guards the OnboardingRedirect early-return.
+  test('a completed user is not auto-redirected into onboarding, but may re-view it', async ({ page, testInfra }) => {
+    // Once the guide is complete, AuthGuard must land the user in the app and
+    // NOT auto-trap them at /onboarding. But re-viewing IS allowed: a DIRECT
+    // navigation to /onboarding is honored ("don't fight the user" —
+    // OnboardingRedirect early-returns on the /onboarding path), so a completed
+    // user can revisit the guide. Guards both halves of that behavior.
     const { baseURL, apiURL } = testInfra
     const { username } = await freshUser(apiURL, 'bypass')
 
@@ -132,11 +134,15 @@ test.describe('Onboarding wizard', () => {
       timeout: 15000,
     })
 
-    // Direct navigation to /onboarding must redirect AWAY (completed guide is
-    // not re-entered), not strand the user on the wizard.
+    // Direct navigation to /onboarding is allowed (re-viewing a completed guide
+    // is permitted) — the user STAYS on the onboarding surface, not redirected
+    // away.
     await page.goto(`${baseURL}/onboarding`)
     await page.waitForLoadState('load')
-    await expect(page).not.toHaveURL(/\/onboarding/)
+    await expect(page).toHaveURL(/\/onboarding/)
+    await expect(byTestId(page, 'onboarding-page-back-to-chat-button')).toBeVisible({
+      timeout: 15000,
+    })
   })
 
   test('the AI Providers step omits local providers from the key list', async ({ page, testInfra }) => {
