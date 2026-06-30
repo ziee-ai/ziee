@@ -2,6 +2,27 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, readdir
 import { resolve } from 'path'
 import { tmpdir } from 'os'
 import { execSync } from 'child_process'
+import { createServer } from 'net'
+
+/**
+ * True when `port` can actually be bound on 0.0.0.0 right now.
+ *
+ * The lock file alone is NOT sufficient: a sibling worktree's postgres
+ * docker container can keep holding the port (0.0.0.0:port) AFTER the
+ * process that launched it exits — at which point its lock is reaped as
+ * "orphaned PID" and the port looks free to the lock allocator, but
+ * `docker compose up` then fails with "port is already allocated". Mirror
+ * the backend harness's portpicker bind-verify: try a real bind. Bind on
+ * 0.0.0.0 (not 127.0.0.1) so a docker 0.0.0.0 publish is detected.
+ */
+function isPortBindable(port: number): Promise<boolean> {
+  return new Promise((res) => {
+    const srv = createServer()
+    srv.once('error', () => res(false))
+    srv.once('listening', () => srv.close(() => res(true)))
+    srv.listen(port, '0.0.0.0')
+  })
+}
 
 // Lock dir is env-overridable so concurrent git worktrees can isolate
 // their E2E runs from each other. Without this, every worktree shares
@@ -427,10 +448,28 @@ export async function allocatePostgresPort(runId: string): Promise<number> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const port = BASE_PORT + attempt
 
-    if (acquirePostgresPortLock(port, runId)) {
+    if (!acquirePostgresPortLock(port, runId)) {
+      continue
+    }
+
+    // Lock acquired — but ALSO verify the port is free at the OS level. A
+    // sibling worktree's leftover docker container can still hold the port
+    // even though its lock was reaped (its launching PID is gone), so a
+    // lock-free port is not necessarily bind-free. Without this check the
+    // allocator hands out an already-bound port and globalSetup's
+    // `docker compose up` dies with "port is already allocated", failing
+    // the ENTIRE run.
+    if (await isPortBindable(port)) {
       console.log(`🔒 Locked PostgreSQL port ${port} for test run ${runId}`)
       return port
     }
+
+    // Bound by something else (almost always a sibling's orphaned
+    // container) — release our just-taken lock and try the next port.
+    console.log(
+      `⚠️  PostgreSQL port ${port} is lock-free but already bound at the OS level; skipping`,
+    )
+    releasePostgresPortLock(port)
   }
 
   throw new Error(
