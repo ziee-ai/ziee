@@ -50,10 +50,19 @@ node scripts/visual-judge.mjs --dry-run            # wiring check
 ### Layer B baselines are environment-specific
 
 Snapshot PNGs depend on the OS/font rendering of the machine that blessed them,
-so they are **git-ignored** (`tests/e2e/visual/**/*-snapshots/`). Bless once on
-your CI runner image (or a pinned container) with `test:visual:update`; commit
-those if your CI image is stable, or re-bless in CI. Never commit a dev laptop's
-PNGs — they'll false-fail everywhere else.
+so they are **git-ignored** (`tests/e2e/visual/**/*-snapshots/`). Bless them in a
+**pinned container** so the pixels are deterministic — the
+`.github/workflows/visual-snapshots.yml` workflow does exactly this in the
+official Playwright image (`mode: bless` → uploads the baselines as an artifact;
+download + commit them, then `mode: compare` gates against that set). Never commit
+a dev laptop's PNGs — they'll false-fail everywhere else.
+
+### CI
+
+- **`visual-tests.yml`** — runs **Layer A** (deterministic, backend-free) on every
+  PR touching `src-app/ui`. No baseline needed; this is the always-on gate.
+- **`visual-snapshots.yml`** — runs **Layer B** in a pinned Playwright container,
+  manual (`workflow_dispatch`), bless-or-compare. Heavy (~2,600 shots), opt-in.
 
 ## Layer A — what it enforces (`assertLayoutSane`)
 
