@@ -26,7 +26,7 @@ export default defineConfig({
   workers: process.env.PLAYWRIGHT_WORKERS
     ? Number(process.env.PLAYWRIGHT_WORKERS)
     : undefined,
-  reporter: [['list']],
+  reporter: [['list'], ['html', { open: 'never' }]],
 
   // Bring up the gallery's Vite server. No backend needed — the standalone entry
   // registers only the ConfigClient store and renders the gallery under the real

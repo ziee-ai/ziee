@@ -13,11 +13,19 @@
 import { expect, test } from '@playwright/test'
 import {
   MATRIX_ACCENTS,
+  SNAPSHOTS_ENABLED,
   THEMES,
   VIEWPORTS,
   openGallery,
   sectionTestIds,
 } from './_gallery'
+
+// Layer B is pixel-regression: it needs blessed baselines (gitignored,
+// environment-specific). Skip the whole matrix unless explicitly enabled.
+test.skip(
+  !SNAPSHOTS_ENABLED,
+  'Layer B needs blessed baselines — run with VISUAL_SNAPSHOTS=1 (ideally in a pinned container).',
+)
 
 // Snapshot matrix = viewports × themes × accents = 3 × 2 × 8 = 48 cells (all
 // user-selectable accents; subset via VISUAL_ACCENTS for fast local runs). Each

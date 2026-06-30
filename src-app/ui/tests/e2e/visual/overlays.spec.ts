@@ -14,7 +14,7 @@
  */
 import { expect, test } from '@playwright/test'
 import { assertLayoutSane } from '../helpers/layout'
-import { openGallery } from './_gallery'
+import { SNAPSHOTS_ENABLED, openGallery } from './_gallery'
 
 type OpenKind = 'click' | 'hover'
 
@@ -70,13 +70,17 @@ for (const theme of ['light', 'dark'] as const) {
           await assertLayoutSane(content, { checks: { horizontalScroll: false } })
         }
 
-        // Layer B — snapshot the open overlay.
-        if (content) {
-          await expect(content).toHaveScreenshot(`overlay-${o.name}-${theme}.png`)
-        } else {
-          await expect(page).toHaveScreenshot(`overlay-${o.name}-${theme}.png`, {
-            fullPage: false,
-          })
+        // Layer B — snapshot the open overlay (opt-in; needs blessed baselines).
+        if (SNAPSHOTS_ENABLED) {
+          if (content) {
+            await expect(content).toHaveScreenshot(
+              `overlay-${o.name}-${theme}.png`,
+            )
+          } else {
+            await expect(page).toHaveScreenshot(`overlay-${o.name}-${theme}.png`, {
+              fullPage: false,
+            })
+          }
         }
 
         // Close so the next overlay opens clean.

@@ -9,7 +9,7 @@
  */
 import { expect, test } from '@playwright/test'
 import { assertLayoutSane } from '../helpers/layout'
-import { openGallery } from './_gallery'
+import { SNAPSHOTS_ENABLED, openGallery } from './_gallery'
 
 interface StateCase {
   testid: string
@@ -47,7 +47,9 @@ test('interactive states — hover + focus (light)', async ({ page }) => {
         await assertLayoutSane(el, {
           checks: { horizontalScroll: false, touchTarget: false },
         })
-        await expect(el).toHaveScreenshot(`state-${t.testid}-${state}.png`)
+        if (SNAPSHOTS_ENABLED) {
+          await expect(el).toHaveScreenshot(`state-${t.testid}-${state}.png`)
+        }
         // Reset hover/focus before the next target.
         await page.mouse.move(0, 0)
         await el.blur().catch(() => undefined)

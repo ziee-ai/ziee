@@ -9,6 +9,15 @@ import type { Page } from '@playwright/test'
 
 export const STANDALONE_PATH = '/dev-gallery.html'
 
+/**
+ * Layer B (pixel screenshots) needs blessed, environment-specific baselines, so
+ * it's OPT-IN: set VISUAL_SNAPSHOTS=1 (e.g. when blessing in a pinned container)
+ * to run the toHaveScreenshot assertions. CI runs the deterministic Layer-A
+ * layout + axe checks (incl. the open-overlay and hover/focus layout assertions)
+ * with no baseline, and skips the pixel comparisons.
+ */
+export const SNAPSHOTS_ENABLED = !!process.env.VISUAL_SNAPSHOTS
+
 export const THEMES = ['light', 'dark'] as const
 export type Theme = (typeof THEMES)[number]
 
