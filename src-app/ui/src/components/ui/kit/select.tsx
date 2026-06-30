@@ -101,8 +101,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
     () =>
       options.map((o, i) =>
         isGroup(o) ? (
-          <SelectGroup key={o.options[0]?.value ?? `g${i}`} className="p-0">
-            {/* p-0 cancels base-nova's group inset (the popup now owns p-1). */}
+          <SelectGroup key={o.options[0]?.value ?? `g${i}`}>
             {o.label != null && <SelectLabel>{o.label}</SelectLabel>}
             {o.options.map((opt) => (
               <SelectItem
@@ -187,12 +186,12 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           </button>
         )}
       </div>
-      {/* p-1: base-nova puts the list inset on SelectGroup only, so flat
-          (ungrouped) items would sit flush against the popup edge — restore it
-          on the popup. match=false → let the popup grow past the trigger width
-          (Base UI defaults the popup to the trigger's `--anchor-width`). */}
-      <SelectContent className={cn('p-1', !popupMatchSelectWidth && 'w-auto min-w-(--anchor-width)')}>
-        {items}
+      {/* base-nova carries the list inset (p-1) on SelectGroup, not the popup —
+          so wrap ungrouped items in a group too rather than overriding padding
+          on either side. match=false → let the popup grow past the trigger
+          width (Base UI defaults the popup to the trigger's `--anchor-width`). */}
+      <SelectContent className={!popupMatchSelectWidth ? 'w-auto min-w-(--anchor-width)' : undefined}>
+        {options.some(isGroup) ? items : <SelectGroup>{items}</SelectGroup>}
       </SelectContent>
     </SelectRoot>
   )

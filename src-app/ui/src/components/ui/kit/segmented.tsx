@@ -68,7 +68,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
           value={o.value}
           disabled={o.disabled}
           data-testid={`${testid}-opt-${o.value}`}
-          className={cn('data-[state=on]:bg-background data-[state=on]:shadow-sm')}
+          className={cn('data-pressed:bg-background data-pressed:shadow-sm')}
         >
           {o.label}
         </ToggleGroupItem>
