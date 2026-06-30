@@ -57,7 +57,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
         // violation). Put the separator on an inner element instead.
         if ('type' in it && it.type === 'divider')
           return (
-            <li key={`d${i}`} className="my-1">
+            <li key={`d${i}`}>
               <div role="separator" className="h-px bg-border" />
             </li>
           )
@@ -65,7 +65,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
           return (
             <li key={`g${i}`} data-testid={groupTestid?.(i)}>
               {/* group caption is decorative chrome — hidden in the collapsed rail. */}
-              {!collapsed && <div className="px-3 py-1 text-xs font-medium text-muted-foreground">{it.label}</div>}
+              {!collapsed && <div className="text-xs font-medium text-muted-foreground">{it.label}</div>}
               <ul className="contents">
                 <Items items={it.children} selectedSet={selectedSet} onSelect={onSelect} locked={locked} collapsed={collapsed} itemTestid={itemTestid} groupTestid={groupTestid} />
               </ul>
@@ -75,7 +75,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
         // Non-interactive caption row (legacy antd `{ type: 'group' }` standalone label).
         if ('type' in it && it.type === 'label') {
           return collapsed ? null : (
-            <li key={`l${i}`} className="px-3 py-1 text-xs font-medium text-muted-foreground">
+            <li key={`l${i}`} className="text-xs font-medium text-muted-foreground">
               {it.label}
             </li>
           )
@@ -96,10 +96,9 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
               title={collapsed ? name : undefined}
               onClick={() => onSelect?.(item.key)}
               className={cn(
-                'flex w-full min-w-0 items-center gap-2 rounded-md text-sm',
-                collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
-                'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50',
-                selected ? 'bg-accent font-medium' : 'hover:bg-accent/60',
+                'flex w-full min-w-0 items-center gap-2',
+                collapsed ? 'justify-center' : '',
+                'focus-visible:outline-none disabled:opacity-50'
               )}
             >
               {item.icon != null && <span aria-hidden className="shrink-0 [&_svg]:size-4">{item.icon}</span>}

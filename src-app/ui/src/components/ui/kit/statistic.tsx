@@ -25,11 +25,11 @@ export function Statistic({ title, value, precision, prefix, suffix, groupSepara
   }
   return (
     <div className={cn('flex flex-col gap-1', className)} style={style} data-testid={testid}>
-      <span className="text-sm text-muted-foreground">{title}</span>
-      <span className={cn('flex items-baseline gap-1 text-2xl font-semibold tabular-nums', valueClassName)}>
-        {prefix != null && <span className="text-base">{prefix}</span>}
+      <span className="text-muted-foreground">{title}</span>
+      <span className={cn('flex items-baseline gap-1 font-semibold tabular-nums', valueClassName)}>
+        {prefix != null && <span>{prefix}</span>}
         {display}
-        {suffix != null && <span className="text-base text-muted-foreground">{suffix}</span>}
+        {suffix != null && <span className="text-muted-foreground">{suffix}</span>}
       </span>
     </div>
   )

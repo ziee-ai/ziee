@@ -136,7 +136,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
   }, [options])
 
   if (s.loading) {
-    return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
+    return <Skeleton className={cn('h-9 w-full', className)} />
   }
 
   // Custom selected display: a per-option selectedLabel or a labelRender means the trigger
@@ -170,7 +170,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           className={cn('w-full', className, showClear && 'pr-12')}
         >
           <SelectValue placeholder={placeholder}>{customDisplay}</SelectValue>
-          {loading && <Loader2 className="ml-2 size-4 shrink-0 animate-spin opacity-70" aria-hidden />}
+          {loading && <Loader2 className="ml-2 size-4 shrink-0 animate-spin" aria-hidden />}
         </SelectTrigger>
         {showClear && (
           <button
@@ -180,7 +180,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
             onClick={clear}
             // pointer-down stop so clearing via mouse doesn't also open the Radix dropdown.
             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation() }}
-            className="absolute right-7 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-sm opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="absolute right-7 top-1/2 -translate-y-1/2"
           >
             <X className="size-3.5" aria-hidden />
           </button>

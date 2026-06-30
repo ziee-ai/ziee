@@ -55,9 +55,8 @@ export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function U
       onDragLeave={() => setDrag(false)}
       onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files) }}
       className={cn(
-        'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed p-6 text-center text-sm transition-colors',
-        'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-        drag && 'border-primary bg-primary/5',
+        'flex cursor-pointer flex-col items-center justify-center gap-2 p-6 text-center text-sm',
+        drag && 'bg-primary/5',
         locked && 'cursor-not-allowed opacity-50',
         className,
       )}

@@ -60,7 +60,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
       aria-describedby={ariaDescribedby}
       aria-invalid={invalid || undefined}
       data-testid={testid}
-      className={cn('inline-flex rounded-md bg-muted p-0.5', className)}
+      className={cn('inline-flex', className)}
     >
       {options.map((o) => (
         <ToggleGroupItem
@@ -68,7 +68,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
           value={o.value}
           disabled={o.disabled}
           data-testid={`${testid}-opt-${o.value}`}
-          className={cn('data-pressed:bg-background data-pressed:shadow-sm')}
+          className={cn()}
         >
           {o.label}
         </ToggleGroupItem>

@@ -73,10 +73,10 @@ function PreviewViewer({ src, alt, labels }: { src: string; alt: string; labels:
         />
       </div>
       <div className="flex items-center justify-center gap-1">
-        <button type="button" aria-label={labels.zoomOut} onClick={() => setScale((s) => clamp(s * 0.8, 0.5, 8))} className="rounded-md p-2 hover:bg-accent"><ZoomOut className="size-4" aria-hidden /></button>
-        <button type="button" aria-label={labels.zoomIn} onClick={() => setScale((s) => clamp(s * 1.25, 0.5, 8))} className="rounded-md p-2 hover:bg-accent"><ZoomIn className="size-4" aria-hidden /></button>
-        <button type="button" aria-label={labels.rotate} onClick={() => setRot((r) => r + 90)} className="rounded-md p-2 hover:bg-accent"><RotateCw className="size-4" aria-hidden /></button>
-        <button type="button" aria-label={labels.reset} onClick={reset} className="rounded-md p-2 hover:bg-accent"><RefreshCw className="size-4" aria-hidden /></button>
+        <button type="button" aria-label={labels.zoomOut} onClick={() => setScale((s) => clamp(s * 0.8, 0.5, 8))}><ZoomOut className="size-4" aria-hidden /></button>
+        <button type="button" aria-label={labels.zoomIn} onClick={() => setScale((s) => clamp(s * 1.25, 0.5, 8))}><ZoomIn className="size-4" aria-hidden /></button>
+        <button type="button" aria-label={labels.rotate} onClick={() => setRot((r) => r + 90)}><RotateCw className="size-4" aria-hidden /></button>
+        <button type="button" aria-label={labels.reset} onClick={reset}><RefreshCw className="size-4" aria-hidden /></button>
       </div>
     </div>
   )
@@ -91,7 +91,7 @@ export function Image({ src, alt, width, height, fallback, className, style, ...
   const previewOpen = (rest as { previewOpen?: boolean }).previewOpen
   const onPreviewOpenChange = (rest as { onPreviewOpenChange?: (o: boolean) => void }).onPreviewOpenChange
   if (safe == null || failed) {
-    return <span className={cn('inline-flex items-center justify-center bg-muted text-muted-foreground', className)} style={{ width, height, ...style }} role="img" aria-label={alt}>{fallback}</span>
+    return <span className={cn('inline-flex items-center justify-center', className)} style={{ width, height, ...style }} role="img" aria-label={alt}>{fallback}</span>
   }
   const img = (
     <img

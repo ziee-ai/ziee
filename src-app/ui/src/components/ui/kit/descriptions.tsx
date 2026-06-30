@@ -32,7 +32,7 @@ export function Descriptions({ items, title, column = 1, bordered, size = 'defau
       >
         {items.map((it) => (
           <React.Fragment key={it.key}>
-            <dt className={cn(pad, 'font-medium text-muted-foreground', bordered && 'border-b bg-muted/40')}>{it.label}</dt>
+            <dt className={cn(pad, 'font-medium', bordered && 'border-b')}>{it.label}</dt>
             <dd
               className={cn(pad, 'min-w-0 [overflow-wrap:anywhere]', bordered && 'border-b')}
               style={it.span && it.span > 1 ? { gridColumn: `span ${it.span * 2 - 1}` } : undefined}
