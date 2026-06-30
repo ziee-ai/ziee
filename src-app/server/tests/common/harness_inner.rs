@@ -147,7 +147,14 @@ pub fn make_isolated_data_dir() -> tempfile::TempDir {
         .tempdir()
         .expect("create per-test data_dir TempDir");
     // Symlink the read-only / content-addressed caches so they stay shared.
-    for sub in ["bin", "llm-engines", "lit-cache"] {
+    // `lib` is load-bearing for the macOS sandbox: the embedded sandbox-runtime
+    // bundle extracts its launcher to `bin/` and its dylibs (libkrun, …) to
+    // `lib/`, and the launcher's rpath is `@executable_path/../lib`. If `bin`
+    // is symlinked to the shared cache but `lib` isn't, the launcher (shared
+    // bin) and its dylibs (per-test lib) live in different trees and dyld can't
+    // find libkrun → the VM never boots. Keeping `lib` shared alongside `bin`
+    // co-locates them, exactly as in a production single-app_data layout.
+    for sub in ["bin", "lib", "llm-engines", "lit-cache"] {
         let target = shared.join(sub);
         fs::create_dir_all(&target).ok();
         #[cfg(unix)]
