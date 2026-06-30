@@ -38,6 +38,8 @@ const OVERLAYS: OverlayCase[] = [
   { name: 'dropdown', trigger: 'g-dropdown-open', content: 'g-dropdown' },
   // Select opens a Radix listbox (no content testid) — wait on role, shoot full page.
   { name: 'select', trigger: 'g-sel-filled', waitRole: 'listbox' },
+  { name: 'combobox', trigger: 'g-cmb-default', waitRole: 'dialog' },
+  { name: 'multiselect', trigger: 'g-ms-empty', waitRole: 'dialog' },
   { name: 'popover', trigger: 'g-popover-open', waitRole: 'dialog' },
 ]
 

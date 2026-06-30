@@ -1,6 +1,7 @@
 /**
  * Stories for data-display + collection components.
  */
+import { Home, Search, Settings } from 'lucide-react'
 import { useState } from 'react'
 import {
   Descriptions,
@@ -198,6 +199,42 @@ const menuStory: GalleryStory = {
         </div>
       ),
     },
+    {
+      key: 'horizontal',
+      label: 'Horizontal',
+      render: () => (
+        <Menu
+          data-testid="g-menu-h"
+          aria-label="Top navigation"
+          mode="horizontal"
+          selectedKey="overview"
+          items={[
+            { key: 'overview', label: 'Overview' },
+            { key: 'activity', label: 'Activity' },
+            { key: 'reports', label: 'Reports' },
+          ]}
+        />
+      ),
+    },
+    {
+      key: 'collapsed',
+      label: 'Collapsed (icon rail)',
+      render: () => (
+        <div className="w-14 rounded-md border border-border">
+          <Menu
+            data-testid="g-menu-collapsed"
+            aria-label="Collapsed navigation"
+            collapsed
+            selectedKey="home"
+            items={[
+              { key: 'home', label: 'Home', icon: <Home /> },
+              { key: 'search', label: 'Search', icon: <Search /> },
+              { key: 'settings', label: 'Settings', icon: <Settings /> },
+            ]}
+          />
+        </div>
+      ),
+    },
   ],
 }
 
@@ -217,6 +254,7 @@ function PaginationDemo() {
     />
   )
 }
+
 
 const paginationStory: GalleryStory = {
   id: 'pagination',

@@ -172,13 +172,24 @@ const avatarStory: GalleryStory = {
   cases: [
     {
       key: 'sizes',
-      label: 'Sizes / fallback',
+      label: 'Sizes / image / fallback',
       render: () => (
         <div className="flex gap-3 items-center">
           <Avatar size="sm" fallback="S" />
           <Avatar fallback="M" />
           <Avatar size="lg" fallback="L" />
           <Avatar fallback={<CheckCircle2 />} />
+          <Avatar
+            src={
+              'data:image/svg+xml,' +
+              encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="%2330a46c"/></svg>',
+              )
+            }
+            alt="Avatar image"
+          />
+          {/* broken src → fallback letter */}
+          <Avatar src="data:image/png;base64,broken" alt="Broken" fallback="B" />
         </div>
       ),
     },

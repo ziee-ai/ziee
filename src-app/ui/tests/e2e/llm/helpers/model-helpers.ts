@@ -43,8 +43,9 @@ export async function selectAddModelOption(page: Page, option: 'upload' | 'downl
 }
 
 export async function uploadModelFolder(page: Page, folderPath: string) {
-  // The kit Upload puts its testid on the dropzone div; the real <input
-  // type="file"> is a child (no webkitdirectory — it's a multiple input).
+  // The kit Upload puts its testid on a display:contents wrapper; the real <input
+  // type="file"> is a descendant (a sibling of the role=button dropzone, for a11y
+  // — not nested inside it). No webkitdirectory — it's a multiple input.
   const fileInput = byTestId(page, 'llm-upload-files').locator('input[type="file"]')
   await fileInput.setInputFiles(folderPath)
   await page.waitForLoadState('domcontentloaded')
