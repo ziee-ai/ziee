@@ -21,16 +21,12 @@ export type InputProps = Omit<React.ComponentProps<'input'>, 'size' | 'prefix' |
   'data-testid': string
 } & KitStyleProps
 
-// Match the shadcn control scale: default = h-9 (stock), sm = h-8, lg = h-10.
-const heightFor = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
-
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ size: ownSize, loading, prefix, suffix, invalid, disabled, readOnly, allowClear, style, allowStyle, className, ...props }, ref) => {
     const s = useSurface({ disabled, readOnly, size: ownSize })
 
     if (s.loading) {
-      return <Skeleton className={cn(heightFor(s.size), 'w-full rounded-md', className)} />
+      return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
     }
 
     const showClear = allowClear && props.value != null && props.value !== '' && !s.disabled && !s.readOnly && !loading
@@ -54,11 +50,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         aria-invalid={invalid || undefined}
         aria-busy={loading || undefined}
         className={cn(
-          heightFor(s.size),
           prefix && 'pl-9',
           rightAdornment && 'pr-9',
           className,
-          invalid && 'border-destructive focus-visible:ring-destructive',
         )}
         {...props}
       />

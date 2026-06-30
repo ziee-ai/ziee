@@ -146,9 +146,6 @@ interface ComboboxBase {
 // Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
 export type ComboboxProps = ComboboxBase & ValueBinding<string> & KitStyleProps
 
-const triggerH = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
-
 export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(function Combobox(
   { options, value, defaultValue, onValueChange, onChange, onBlur, placeholder, searchPlaceholder, emptyText,
     disabled, loading, invalid, virtual, size, name, id, className, style,
@@ -168,7 +165,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
   })
   const locked = s.disabled || loading || s.readOnly
   const choose = (v: string) => { setCurrent(v); setOpen(false) }
-  if (s.loading) return <Skeleton className={cn(triggerH(s.size), 'w-full rounded-md', className)} />
+  if (s.loading) return <Skeleton className={cn('h-9', 'w-full rounded-md', className)} />
   const currentLabel = options.find((o) => o.value === current)?.label
   return (
     <Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) onBlur?.() }}>
@@ -192,7 +189,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
           className={cn(
             'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-            triggerH(s.size), className, invalid && 'border-destructive focus-visible:ring-destructive',
+            'h-9', className, invalid && 'border-destructive focus-visible:ring-destructive',
           )}
         >
           <span className={cn('truncate', currentLabel == null && 'text-muted-foreground')}>

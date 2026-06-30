@@ -29,9 +29,6 @@ interface SegmentedBase {
 // Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
 export type SegmentedProps = SegmentedBase & ValueBinding<string>
 
-// Match the shadcn control scale: default = h-9 (stock), sm = h-8, lg = h-10.
-const itemH = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9')
-
 export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(function Segmented(
   { options, value, defaultValue, onValueChange, onChange, onBlur, disabled, size, name, id, invalid, className,
     'aria-label': ariaLabel, 'aria-describedby': ariaDescribedby, 'data-testid': testid },
@@ -46,7 +43,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
     if (!v) return // ToggleGroup emits '' on deselect — keep a value selected
     setCurrent(v)
   }
-  if (s.loading) return <Skeleton className={cn(itemH(s.size), 'w-full rounded-md', className)} />
+  if (s.loading) return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
   return (
     <>
     {/* carry `name` for native form submission / name-based selectors (ToggleGroup has none). */}
@@ -55,6 +52,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
       ref={ref}
       id={id}
       type="single"
+      size={s.size === 'lg' ? 'lg' : s.size === 'sm' ? 'sm' : 'default'}
       value={current}
       onValueChange={handle}
       onBlur={onBlur}
@@ -71,7 +69,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
           value={o.value}
           disabled={o.disabled}
           data-testid={`${testid}-opt-${o.value}`}
-          className={cn(itemH(s.size), 'data-[state=on]:bg-background data-[state=on]:shadow-sm')}
+          className={cn('data-[state=on]:bg-background data-[state=on]:shadow-sm')}
         >
           {o.label}
         </ToggleGroupItem>

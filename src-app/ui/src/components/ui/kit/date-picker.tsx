@@ -58,9 +58,6 @@ export type DatePickerProps = {
   'data-testid': string
 } & KitStyleProps
 
-const triggerH = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
-
 export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(function DatePicker(
   {
     value, defaultValue, onChange, onValueChange, onBlur, placeholder,
@@ -94,7 +91,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
     return m
   }, [minDate, maxDate, disabledDate])
 
-  if (s.loading) return <Skeleton className={cn(triggerH(s.size), 'w-full rounded-md', className)} />
+  if (s.loading) return <Skeleton className={cn('h-9', 'w-full rounded-md', className)} />
 
   const choose = (d: Date | undefined) => {
     if (s.readOnly) return
@@ -127,7 +124,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
           className={cn(
             'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-            triggerH(s.size), invalid && 'border-destructive focus-visible:ring-destructive', className,
+            'h-9', invalid && 'border-destructive focus-visible:ring-destructive', className,
           )}
         >
           <span className={cn('truncate', !selected && 'text-muted-foreground')}>

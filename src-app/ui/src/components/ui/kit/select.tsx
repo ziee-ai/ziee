@@ -69,10 +69,6 @@ export type SelectProps = SelectBase &
 const isGroup = (o: SelectOption | SelectOptionGroup): o is SelectOptionGroup =>
   Array.isArray((o as SelectOptionGroup).options)
 
-// Match the shadcn control scale: default = h-9 (stock), sm = h-8, lg = h-10.
-const triggerH = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
-
 function flatOptions(options: (SelectOption | SelectOptionGroup)[]): SelectOption[] {
   return options.flatMap((o) => (isGroup(o) ? o.options : [o]))
 }
@@ -142,7 +138,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
   }, [options])
 
   if (s.loading) {
-    return <Skeleton className={cn(triggerH(s.size), 'w-full rounded-md', className)} />
+    return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
   }
 
   // Custom selected display: a per-option selectedLabel or a labelRender means the trigger
@@ -172,7 +168,8 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           aria-labelledby={ariaLabelledby}
           aria-required={ariaRequired}
           data-testid={testid}
-          className={cn(triggerH(s.size), 'w-full', className, showClear && 'pr-12', invalid && 'border-destructive focus-visible:ring-destructive')}
+          size={s.size === 'sm' ? 'sm' : 'default'}
+          className={cn('w-full', className, showClear && 'pr-12')}
         >
           <SelectValue placeholder={placeholder}>{customDisplay}</SelectValue>
           {loading && <Loader2 className="ml-2 size-4 shrink-0 animate-spin opacity-70" aria-hidden />}
