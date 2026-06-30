@@ -28,11 +28,11 @@ export function Result({ status = 'info', title, subtitle, icon, extra, classNam
   const Icon = icons[semantic]
   const role = semantic === 'error' || semantic === 'warning' ? 'alert' : 'status'
   return (
-    <div role={role} className={cn('flex flex-col items-center gap-2 text-center', className)} data-testid={testid}>
+    <div role={role} className={cn('flex flex-col items-center gap-2 px-6 py-12 text-center', className)} data-testid={testid}>
       {icon ?? <Icon className={cn('size-12', colors[semantic])} aria-hidden />}
-      <div className="font-semibold">{title}</div>
-      {subtitle != null && <div className="text-sm text-muted-foreground">{subtitle}</div>}
-      {extra != null && <div className="flex gap-2">{extra}</div>}
+      <div className="text-lg font-semibold">{title}</div>
+      {subtitle != null && <div className="max-w-md text-sm text-muted-foreground">{subtitle}</div>}
+      {extra != null && <div className="mt-4 flex gap-2">{extra}</div>}
     </div>
   )
 }

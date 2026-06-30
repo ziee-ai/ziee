@@ -88,7 +88,7 @@ const TagInner = React.forwardRef<HTMLSpanElement, TagProps>(function Tag(
           onClick={onClose}
           aria-label={closeLabel}
           data-testid={props['data-testid'] != null ? `${props['data-testid'] as string}-close` : undefined}
-          className="inline-flex items-center justify-center focus-visible:outline-none"
+          className="-mr-0.5 ml-0.5 inline-flex items-center justify-center rounded-sm opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           <X className="size-3" aria-hidden />
         </button>

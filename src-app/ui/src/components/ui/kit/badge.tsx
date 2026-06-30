@@ -76,9 +76,9 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
       const hideBubble = !dot && numeric <= 0 && !showZero
       const hasLabel = props['aria-label'] != null
 
-      const dotCls = cn('inline-block size-2', bubbleTone)
+      const dotCls = cn('inline-block size-2 rounded-full', bubbleTone)
       const pillCls = cn(
-        'inline-flex min-w-4 items-center justify-center text-[10px] font-medium leading-4 tabular-nums',
+        'inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium leading-4 tabular-nums',
         bubbleTone,
       )
 
@@ -111,7 +111,7 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
           aria-label={props['aria-label']}
           aria-hidden={dot && !hasLabel ? true : undefined}
           style={cornerStyle}
-          className={cn('absolute right-0 top-0', dot ? dotCls : pillCls)}
+          className={cn('absolute right-0 top-0 ring-2 ring-background', dot ? dotCls : pillCls)}
         >
           {display}
         </span>
@@ -134,7 +134,7 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
         ref={ref}
         style={style}
         className={cn(
-          'inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium [&_svg]:size-3',
+          'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium [&_svg]:size-3',
           tones[tone],
           className,
         )}

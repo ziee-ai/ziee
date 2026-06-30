@@ -42,7 +42,7 @@ function CopyButton({ copyable }: { copyable: Copyable }) {
           timer.current = setTimeout(() => setDone(false), 1500)
         })
       }}
-      className="ml-1 inline-flex align-middle"
+      className="ml-1 inline-flex align-middle opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {done ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
     </button>
@@ -74,7 +74,7 @@ export const Text = React.forwardRef<HTMLSpanElement, TextProps>(function Text(
   // With a copy button, truncation must wrap the CONTENT only (else the button is clipped).
   if (copyable != null) {
     return (
-      <span ref={ref} style={style} className={cn('inline-flex max-w-full items-center', textTone[t], strong && 'font-semibold', code && codeCls, className)} {...props}>
+      <span ref={ref} style={style} className={cn('inline-flex max-w-full items-center text-sm', textTone[t], strong && 'font-semibold', code && codeCls, className)} {...props}>
         <span className={cn(ellipsis && 'truncate')}>{children}</span>
         <CopyButton copyable={copyable} />
       </span>
@@ -84,7 +84,7 @@ export const Text = React.forwardRef<HTMLSpanElement, TextProps>(function Text(
     <span
       ref={ref}
       style={style}
-      className={cn(textTone[t], strong && 'font-semibold', code && codeCls, ellipsis && 'inline-block max-w-full truncate align-bottom', className)}
+      className={cn('text-sm', textTone[t], strong && 'font-semibold', code && codeCls, ellipsis && 'inline-block max-w-full truncate align-bottom', className)}
       {...props}
     >
       {children}
@@ -95,12 +95,15 @@ export const Text = React.forwardRef<HTMLSpanElement, TextProps>(function Text(
 export type TitleProps = Omit<React.ComponentProps<'h1'>, 'style'> & {
   level?: 1 | 2 | 3 | 4 | 5
 } & KitStyleProps
+// Matches shadcn's documented Typography scale (ui.shadcn.com/docs/components/typography):
+// h1 text-4xl extrabold · h2 text-3xl · h3 text-2xl · h4 text-xl, all semibold/tracking-tight.
+// Level 5 is a kit-only extra step below h4.
 const titleCls = {
-  1: 'font-bold tracking-tight',
-  2: 'font-semibold tracking-tight',
-  3: 'font-semibold',
-  4: 'font-semibold',
-  5: 'font-semibold',
+  1: 'text-4xl font-extrabold tracking-tight text-balance',
+  2: 'text-3xl font-semibold tracking-tight',
+  3: 'text-2xl font-semibold tracking-tight',
+  4: 'text-xl font-semibold tracking-tight',
+  5: 'text-lg font-semibold tracking-tight',
 } as const
 export const Title = React.forwardRef<HTMLHeadingElement, TitleProps>(function Title(
   { level = 1, style, allowStyle: _a, className, ...props }, ref,
@@ -122,7 +125,7 @@ export const Paragraph = React.forwardRef<HTMLParagraphElement, ParagraphProps>(
   function Paragraph({ tone, type, strong, code, ellipsis, copyable, style, allowStyle: _a, className, children, ...props }, ref) {
     const t = tone ?? type ?? 'default'
     return (
-      <p ref={ref} style={style} className={cn('leading-relaxed', textTone[t], strong && 'font-semibold', code && codeCls, ellipsis && 'truncate', className)} {...props}>
+      <p ref={ref} style={style} className={cn('text-sm leading-relaxed', textTone[t], strong && 'font-semibold', code && codeCls, ellipsis && 'truncate', className)} {...props}>
         {children}
         {copyable != null && <CopyButton copyable={copyable} />}
       </p>
@@ -151,7 +154,7 @@ export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(function Link
       target={target}
       // _blank always gets noopener noreferrer — appended to (not replaced by) any caller rel.
       rel={target === '_blank' ? cn('noopener noreferrer', rel) : rel}
-      className={cn('underline-offset-4 hover:underline', className)}
+      className={cn('text-primary underline-offset-4 hover:underline', className)}
     >
       {children}
     </a>

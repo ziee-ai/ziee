@@ -231,8 +231,10 @@ export function Tree({
         tabIndex={n.disabled ? undefined : isActive ? 0 : -1}
         style={{ paddingLeft: `${(r.level - 1) * 1}rem` }}
         className={cn(
-          'flex items-center gap-1 text-sm truncate',
-          className,
+          'flex items-center gap-1 rounded px-1 py-0.5 text-sm focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+          !n.disabled && 'cursor-pointer hover:bg-accent',
+          selected === n.key && 'bg-accent',
+          n.disabled && 'opacity-50',
         )}
         onClick={() => { if (n.disabled) return; setActive(n.key); if (hasKids) toggle(n); setSelected(n.key) }}
       >

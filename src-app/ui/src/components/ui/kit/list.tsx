@@ -23,7 +23,9 @@ export interface ListProps<T> {
   'data-testid': string
 }
 
-export function List<T>({ dataSource, renderItem, rowKey, header, footer, empty, loading, className, 'aria-label': ariaLabel, 'data-testid': testid }: ListProps<T>) {
+const rowPad = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'px-3 py-2' : size === 'lg' ? 'px-5 py-4' : 'px-4 py-3')
+
+export function List<T>({ dataSource, renderItem, rowKey, header, footer, empty, loading, size, className, 'aria-label': ariaLabel, 'data-testid': testid }: ListProps<T>) {
   const s = useSurface({})
   const busy = loading || s.loading
   const keyOf = (item: T, i: number) =>
@@ -32,23 +34,23 @@ export function List<T>({ dataSource, renderItem, rowKey, header, footer, empty,
       : String(i)
   return (
     <div className={cn('rounded-md border', className)} data-testid={testid}>
-      {header != null && <div className={cn('border-b', className)}>{header}</div>}
+      {header != null && <div className={cn('border-b font-medium', rowPad(size))}>{header}</div>}
       {busy ? (
         <ul className="divide-y">
           {Array.from({ length: 3 }).map((_, i) => (
-            <li key={`sk-${i}`}><Skeleton className="h-4 w-full" /></li>
+            <li key={`sk-${i}`} className={rowPad(size)}><Skeleton className="h-4 w-full" /></li>
           ))}
         </ul>
       ) : dataSource.length === 0 ? (
-        <div>{empty ?? <Empty data-testid={`${testid}-empty`} />}</div>
+        <div className="p-6">{empty ?? <Empty data-testid={`${testid}-empty`} />}</div>
       ) : (
         <ul aria-label={ariaLabel} className="divide-y">
           {dataSource.map((item, i) => (
-            <li key={keyOf(item, i)} data-testid={testid ? `${testid}-row-${keyOf(item, i)}` : undefined}>{renderItem(item, i)}</li>
+            <li key={keyOf(item, i)} data-testid={testid ? `${testid}-row-${keyOf(item, i)}` : undefined} className={rowPad(size)}>{renderItem(item, i)}</li>
           ))}
         </ul>
       )}
-      {footer != null && <div className={cn('border-t', className)}>{footer}</div>}
+      {footer != null && <div className={cn('border-t', rowPad(size))}>{footer}</div>}
     </div>
   )
 }

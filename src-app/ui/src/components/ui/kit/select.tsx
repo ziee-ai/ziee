@@ -101,7 +101,8 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
     () =>
       options.map((o, i) =>
         isGroup(o) ? (
-          <SelectGroup key={o.options[0]?.value ?? `g${i}`}>
+          <SelectGroup key={o.options[0]?.value ?? `g${i}`} className="p-0">
+            {/* p-0 cancels base-nova's group inset (the popup now owns p-1). */}
             {o.label != null && <SelectLabel>{o.label}</SelectLabel>}
             {o.options.map((opt) => (
               <SelectItem
@@ -136,7 +137,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
   }, [options])
 
   if (s.loading) {
-    return <Skeleton className={cn('h-9 w-full', className)} />
+    return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
   }
 
   // Custom selected display: a per-option selectedLabel or a labelRender means the trigger
@@ -170,7 +171,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           className={cn('w-full', className, showClear && 'pr-12')}
         >
           <SelectValue placeholder={placeholder}>{customDisplay}</SelectValue>
-          {loading && <Loader2 className="ml-2 size-4 shrink-0 animate-spin" aria-hidden />}
+          {loading && <Loader2 className="ml-2 size-4 shrink-0 animate-spin opacity-70" aria-hidden />}
         </SelectTrigger>
         {showClear && (
           <button
@@ -180,18 +181,18 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
             onClick={clear}
             // pointer-down stop so clearing via mouse doesn't also open the Radix dropdown.
             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation() }}
-            className="absolute right-7 top-1/2 -translate-y-1/2"
+            className="absolute right-7 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-sm opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <X className="size-3.5" aria-hidden />
           </button>
         )}
       </div>
-      {/* base-nova carries the list inset (p-1) on SelectGroup, not the popup —
-          so wrap ungrouped items in a group too rather than overriding padding
-          on either side. match=false → let the popup grow past the trigger
-          width (Base UI defaults the popup to the trigger's `--anchor-width`). */}
-      <SelectContent className={!popupMatchSelectWidth ? 'w-auto min-w-(--anchor-width)' : undefined}>
-        {options.some(isGroup) ? items : <SelectGroup>{items}</SelectGroup>}
+      {/* p-1: base-nova puts the list inset on SelectGroup only, so flat
+          (ungrouped) items would sit flush against the popup edge — restore it
+          on the popup. match=false → let the popup grow past the trigger width
+          (Base UI defaults the popup to the trigger's `--anchor-width`). */}
+      <SelectContent className={cn('p-1', !popupMatchSelectWidth && 'w-auto min-w-(--anchor-width)')}>
+        {items}
       </SelectContent>
     </SelectRoot>
   )

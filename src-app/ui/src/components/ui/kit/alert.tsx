@@ -11,6 +11,8 @@ const toneIcon: Record<AlertTone, React.ComponentType<{ className?: string }>> =
   warning: AlertTriangle,
   error: XCircle,
 }
+// Semantic status tokens (dark-aware, AA as text on the page bg) — not raw
+// palette hues, which failed WCAG AA contrast in dark mode.
 const toneCls: Record<AlertTone, string> = {
   info: 'border-info/35 text-info [&>svg]:text-info',
   success: 'border-success/35 text-success [&>svg]:text-success',
@@ -25,8 +27,11 @@ interface AlertCommon {
   icon?: React.ReactNode
   className?: string
   children?: React.ReactNode
+  /** Test selector — forwarded onto <root> (i18n-safe). */
   'data-testid': string
 }
+// A dismissible alert MUST supply both onClose and an explicit closeLabel (no built-in
+// default — the caller owns the string so it can be translated).
 export type AlertProps =
   | (AlertCommon & { onClose?: undefined; closeLabel?: never })
   | (AlertCommon & { onClose: () => void; closeLabel: string })
@@ -49,7 +54,7 @@ export function Alert({ tone = 'info', title, description, icon, className, chil
           onClick={onClose}
           aria-label={closeLabel}
           data-testid={`${testid}-close`}
-          className="absolute right-2 top-2"
+          className="absolute right-2 top-2 rounded-sm p-1 text-foreground/60 hover:text-foreground hover:bg-foreground/10"
         >
           <X className="size-4" aria-hidden />
         </button>
