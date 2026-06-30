@@ -193,6 +193,29 @@ ui:
 antd-check:
     cd src-app/ui && ./scripts/antd-diagnose.sh
 
+# ─── Visual / aesthetic testing (component gallery) ─────────────────
+# See src-app/ui/src/dev/gallery/README.md. Backend-free (Vite-only).
+
+# Layer A (layout invariants + axe a11y) + the detector meta-test. Deterministic,
+# no baseline — the same checks the visual-tests.yml CI workflow runs.
+visual:
+    cd src-app/ui && npx playwright test -c playwright.visual.config.ts
+
+# (Re)bless Layer B pixel baselines locally (machine-specific — prefer the
+# visual-snapshots.yml container workflow for committable baselines).
+visual-bless:
+    cd src-app/ui && VISUAL_SNAPSHOTS=1 npx playwright test -c playwright.visual.config.ts --update-snapshots
+
+# Open the dev component gallery in a browser (Vite dev server).
+visual-gallery:
+    @echo "Gallery: http://localhost:1420/dev-gallery.html  (or /dev/gallery in the running app)"
+    cd src-app/ui && npm run dev
+
+# Layer C — delta-gated vision-model aesthetic judge (off the test loop; needs
+# ANTHROPIC_API_KEY, or pass --dry-run).
+visual-judge *ARGS:
+    cd src-app/ui && node scripts/visual-judge.mjs {{ARGS}}
+
 # ─── Desktop (Tauri) app ────────────────────────────────────────────
 
 # Run the desktop app in dev mode (Tauri window + hot-reload Vite).
