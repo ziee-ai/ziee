@@ -94,6 +94,12 @@ html.dark {
     /* `-webkit-font-smoothing: antialiased` is considered an anti-pattern
      * in 2025+: makes SF Pro look too thin. Letting the OS default
      * (subpixel) handle it. */
+    /* Theme-follow the foreground/background tokens so RAW HTML (headings,
+     * labels, body text not wrapped in a shadcn component) inherits the
+     * themed color. Without this, text defaults to #000 and stays black in
+     * dark mode — failing WCAG color-contrast on the auth/setup pages. */
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
   }
 
   #root {

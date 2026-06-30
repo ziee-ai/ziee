@@ -228,7 +228,7 @@ test.describe('Provider API key modal (chat model selector)', () => {
 
     // Click Save with an EMPTY key field → guard rejects it.
     await byTestId(modal, 'ullm-apikey-save-button').click()
-    await expect(byTestId(modal, 'apiKey-error')).toBeVisible({ timeout: 5000 })
+    await expect(byTestId(modal, 'field-error-apiKey')).toBeVisible({ timeout: 5000 })
     // The modal stays open (save did not proceed).
     await expect(modal).toBeVisible()
   })

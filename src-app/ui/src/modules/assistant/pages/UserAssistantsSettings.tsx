@@ -10,6 +10,7 @@ import {
   Tag,
   Tooltip,
   Text,
+  message,
 } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect, useMemo } from 'react'
@@ -41,6 +42,7 @@ export function UserAssistantsSettings() {
   const handleDelete = async (assistant: Assistant) => {
     try {
       await Stores.UserAssistants.deleteUserAssistant(assistant.id)
+      message.success('Assistant deleted successfully')
     } catch (error) {
       console.error('Failed to delete assistant:', error)
       // Error is surfaced via the store error effect above

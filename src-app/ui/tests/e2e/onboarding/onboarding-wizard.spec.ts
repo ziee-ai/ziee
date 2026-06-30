@@ -247,7 +247,7 @@ test.describe('Onboarding wizard', () => {
     // Navigate to a normal in-app route; the redirect, if it fired, would
     // replace the URL with /onboarding before the shell renders.
     await page.goto(`${baseURL}/`)
-    await expect(byTestId(page, 'chat-history-new-chat-btn')).toBeVisible({
+    await expect(byTestId(page, 'chat-message-textarea')).toBeVisible({
       timeout: 20000,
     })
     await expect(page).not.toHaveURL(/\/onboarding/)
@@ -271,17 +271,17 @@ test.describe('First-run admin setup', () => {
     // once if the setup form doesn't render (mirrors loginAsAdmin). This is a
     // PRE-submit retry, so it doesn't mask the post-submit bug under test.
     try {
-      await page.waitForSelector('#setup-form_username', { timeout: 8000 })
+      await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 8000 })
     } catch {
       await page.reload({ waitUntil: 'load' })
-      await page.waitForSelector('#setup-form_username', { timeout: 30000 })
+      await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
     }
 
     const suffix = Date.now().toString(36)
-    await page.fill('#setup-form_username', `admin_${suffix}`)
-    await page.fill('#setup-form_email', `admin_${suffix}@ex.com`)
-    await page.fill('#setup-form_password', 'password123')
-    await page.fill('#setup-form_confirm_password', 'password123')
+    await byTestId(page, 'app-setup-username-input').fill(`admin_${suffix}`)
+    await byTestId(page, 'app-setup-email-input').fill(`admin_${suffix}@ex.com`)
+    await byTestId(page, 'app-setup-password-input').fill('password123')
+    await byTestId(page, 'app-setup-confirm-password-input').fill('password123')
     await byTestId(page, 'app-setup-submit-button').click()
 
     // CRITICAL: no reload / goto here. Before the Auth.store fix the AuthGuard

@@ -1,9 +1,9 @@
-name: ziee-test-${RUN_ID}
+name: ziee-tailtest-${RUN_ID}
 
 services:
   postgres-test-${RUN_ID}:
     image: pgvector/pgvector:pg18
-    container_name: ziee-test-postgres-${RUN_ID}
+    container_name: ziee-tailtest-postgres-${RUN_ID}
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password

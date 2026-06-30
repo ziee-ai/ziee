@@ -36,7 +36,9 @@ test.describe('Layout — sidebar collapse survives navigation', () => {
     await expect(toggle).toHaveAttribute('aria-label', 'Open navigation menu')
 
     // Client-side navigate via the profile widget dropdown (NOT a reload).
-    await byTestId(page, 'user-profile-widget').click()
+    // The sidebar-collapse animation keeps the widget moving briefly, so the
+    // default stability gate can time out — force the click (already visible).
+    await byTestId(page, 'user-profile-widget').click({ force: true })
     await byTestId(page, 'userprofile-menu-dropdown-item-profile').click()
     await expect(page).toHaveURL(/\/settings\/profile$/)
 

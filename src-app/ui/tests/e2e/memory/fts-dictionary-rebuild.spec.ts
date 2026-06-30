@@ -40,9 +40,17 @@ test.describe('Memory admin — FTS dictionary rebuild', () => {
     await expect(ftsCard).toBeVisible({ timeout: 20000 })
 
     // Change the Dictionary Select from the default ('simple') to 'english'.
-    // Kit Select emits options as `${selectTestid}-opt-${value}`.
+    // The FTS card sits near the bottom of a long admin page, so the opened
+    // radix Select positions its option list outside the viewport — clicking
+    // the option (even with force) fails. Drive it via radix typeahead
+    // instead: open, type the option label, Enter to commit.
+    await byTestId(page, 'memory-fts-dictionary-select').scrollIntoViewIfNeeded()
     await byTestId(page, 'memory-fts-dictionary-select').click()
-    await byTestId(page, 'memory-fts-dictionary-select-opt-english').click()
+    await page.keyboard.type('english')
+    await page.keyboard.press('Enter')
+    await expect(byTestId(page, 'memory-fts-dictionary-select')).toContainText(
+      'english',
+    )
 
     // Save → the dictionary changed, so a confirm Modal is shown (NOT an
     // in-place save).

@@ -360,8 +360,9 @@ test.describe('Settings - Profile (self-service)', () => {
     await byTestId(page, 'user-profile-widget').click()
     await byTestId(page, 'userprofile-menu-dropdown-item-logout').click()
 
-    // Logged out → redirected to /auth; the widget is gone.
-    await expect(page).toHaveURL(/\/auth(\b|\/|$)/, { timeout: 15000 })
+    // Logged out → the AuthGuard renders the login wall inline (no URL
+    // redirect); the login form appears and the profile widget is gone.
+    await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'user-profile-widget')).toHaveCount(0)
   })
 

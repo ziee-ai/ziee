@@ -200,8 +200,11 @@ test.describe('App Setup', () => {
     // the sequence shifts by one (the confirm field gets the display-name
     // text → "Passwords do not match" → the form never submits).
 
-    // Tab to username field
-    await page.keyboard.press('Tab')
+    // Focus the username field explicitly. The migrated Input renders with
+    // autoFocus, so a leading Tab would step OFF username and shift the whole
+    // sequence by one. Focusing directly makes the subsequent Tab counts
+    // deterministic regardless of autoFocus timing.
+    await byTestId(page, 'app-setup-username-input').focus()
     await page.keyboard.type('admin')
 
     // Tab to email field

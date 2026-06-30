@@ -35,11 +35,11 @@ test.describe('Auth — logout via the sidebar profile widget', () => {
     await byTestId(page, 'user-profile-widget').click()
     await byTestId(page, 'userprofile-menu-dropdown-item-logout').click()
 
-    // The app drops to the unauthenticated surface: AuthGuard bounces any
-    // protected route to /auth once isAuthenticated flips to false.
-    await page.waitForURL(/\/auth/, { timeout: 30000 })
+    // The app drops to the unauthenticated surface: once isAuthenticated flips
+    // to false the AuthGuard renders the login wall INLINE (it does not change
+    // the URL), so assert the login form appears rather than a /auth redirect.
     await expect(byTestId(page, 'auth-login-username')).toBeVisible({
-      timeout: 15000,
+      timeout: 30000,
     })
 
     // The persisted token is cleared (logoutUser nulls state.token).

@@ -60,7 +60,7 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
     )
   }
 
-  if (providers.length === 0) return null
+  if (!providers || providers.length === 0) return null
 
   const onClick = (name: string) => {
     const target = returnTo ?? window.location.pathname + window.location.search
