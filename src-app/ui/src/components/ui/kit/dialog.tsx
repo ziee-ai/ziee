@@ -33,7 +33,14 @@ export function Dialog({ open, onOpenChange, title, description, footer, size = 
           {description != null && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         {children}
-        {footer != null && <DialogFooter>{footer}</DialogFooter>}
+        {/* Full-bleed footer band with a separating top border (house style:
+            DialogContent is p-6, so cancel its L/R/bottom padding and restore it
+            on the footer to span the divider edge-to-edge). */}
+        {footer != null && (
+          <DialogFooter className="-mx-6 -mb-6 mt-2 border-t px-6 pb-6 pt-4">
+            {footer}
+          </DialogFooter>
+        )}
       </DialogContent>
     </Root>
   )

@@ -65,6 +65,13 @@ export const ACCENT_PRESETS = {
     light: { primary: '32 78% 35%', fg: '0 0% 100%' },
     dark: { primary: '38 82% 60%', fg: '32 60% 10%' },
   },
+  black: {
+    label: 'Black',
+    // Monochrome accent — inverts per theme so the fill stays visible and AA-max:
+    // near-black fill + white text in light, near-white fill + near-black text in dark.
+    light: { primary: '0 0% 9%', fg: '0 0% 100%' },
+    dark: { primary: '0 0% 98%', fg: '0 0% 9%' },
+  },
 } as const satisfies Record<string, AccentPresetDef>
 
 export type AccentPreset = keyof typeof ACCENT_PRESETS
