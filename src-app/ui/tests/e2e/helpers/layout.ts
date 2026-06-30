@@ -288,12 +288,17 @@ export async function assertLayoutSane(
   const enabled = (c: LayoutCheck) => checks[c] !== false
   const page = scope.page()
 
-  // Resolve a stable selector for the scope (prefer its data-testid).
+  // Resolve a selector that uniquely identifies THIS scope element so probe()
+  // re-queries the right node. Prefer its data-testid; otherwise stamp a unique
+  // marker attribute (a bare tagName would match the first such tag in the
+  // document — e.g. a role-resolved overlay div resolving to gallery-root).
   const scopeSelector = await scope.evaluate(el => {
     const tid = el.getAttribute('data-testid')
     if (tid) return `[data-testid="${CSS.escape(tid)}"]`
-    // Fallback: a nth-of-type path (rarely needed; sections have testids).
-    return el.tagName.toLowerCase()
+    const existing = el.getAttribute('data-ls-scope')
+    const marker = existing ?? `s${Math.random().toString(36).slice(2)}`
+    if (!existing) el.setAttribute('data-ls-scope', marker)
+    return `[data-ls-scope="${marker}"]`
   })
 
   const probes = await probe(page, scopeSelector, opts.ignoreSelectors ?? [])
@@ -325,12 +330,17 @@ export async function assertLayoutSane(
     // A `display:contents` parent (e.g. <fieldset class="contents">) has no
     // layout box — its rect is 0×0, so overflow against it is meaningless.
     const parentHasBox = !!p.parentRect && p.parentRect.w > 0
+    // Pure `inline` elements have a line-box model: vertical padding/border
+    // bleeds OUTSIDE the line without expanding the parent (a CSS quirk, not an
+    // overflow bug). Box-overflow only applies to block/flex/grid/inline-block.
+    const isInline = p.styles.display === 'inline'
     if (
       enabled('childOverflow') &&
       p.parentRect &&
       parentHasBox &&
       !positioned &&
-      !p.transformed
+      !p.transformed &&
+      !isInline
     ) {
       // Only auto/scroll parents are a clean exemption (they're meant to scroll).
       // hidden/clip parents still CLIP overflowing content — a real bug — so they

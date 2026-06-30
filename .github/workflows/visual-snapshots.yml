@@ -49,6 +49,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The container bakes only ONE Playwright browser build. If the lockfile
+      # has drifted off 1.60.0 (e.g. a future `npm update` under the ^ range),
+      # the baked browsers won't match → fail loudly instead of silently.
+      - name: Assert Playwright version matches the container image
+        working-directory: src-app/ui
+        run: |
+          V=$(npx playwright --version | awk '{print $2}')
+          echo "Playwright: $V (container image: v1.60.0-jammy)"
+          test "$V" = "1.60.0" || { echo "::error::Playwright $V != container 1.60.0 — bump the container image tag in this workflow (and the @playwright/test pin)."; exit 1; }
+
       - name: Bless baselines
         if: inputs.mode == 'bless'
         working-directory: src-app/ui

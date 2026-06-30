@@ -55,34 +55,28 @@ for (const theme of ['light', 'dark'] as const) {
         if (o.kind === 'hover') await trigger.hover()
         else await trigger.click()
 
-        // Wait for the open content to settle.
-        const content = o.content ? page.getByTestId(o.content) : null
-        if (content) {
-          await content.waitFor({ state: 'visible' })
-        } else if (o.waitRole) {
-          await page.getByRole(o.waitRole as 'dialog').first().waitFor({
-            state: 'visible',
-          })
-        }
+        // Resolve a handle to the open content: the kit's forwarded content
+        // testid when available, else the portal's ARIA role (listbox/dialog).
+        const content = o.content
+          ? page.getByTestId(o.content)
+          : o.waitRole
+            ? page.getByRole(o.waitRole as 'dialog').first()
+            : null
+        // Wait for it to settle — if the trigger failed to open, this times out
+        // and FAILS (no catch), so "opened" is genuinely asserted.
+        if (content) await content.waitFor({ state: 'visible' })
 
-        // Layer A — invariants on the open content (localized when we have a
-        // handle). Overlays are dense layout surfaces; this is where header/body/
-        // footer/action alignment bugs live.
+        // Layer A — invariants on the open content for EVERY overlay (incl. the
+        // role-resolved listbox/dialog cases). Overlays are dense layout surfaces;
+        // this is where header/body/footer/action/option alignment bugs live.
         if (content) {
           await assertLayoutSane(content, { checks: { horizontalScroll: false } })
         }
 
         // Layer B — snapshot the open overlay (opt-in; needs blessed baselines).
         if (SNAPSHOTS_ENABLED) {
-          if (content) {
-            await expect(content).toHaveScreenshot(
-              `overlay-${o.name}-${theme}.png`,
-            )
-          } else {
-            await expect(page).toHaveScreenshot(`overlay-${o.name}-${theme}.png`, {
-              fullPage: false,
-            })
-          }
+          const shot = content ?? page
+          await expect(shot).toHaveScreenshot(`overlay-${o.name}-${theme}.png`)
         }
 
         // Close so the next overlay opens clean.

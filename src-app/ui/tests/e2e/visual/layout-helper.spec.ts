@@ -176,6 +176,24 @@ test('touchTarget fires on an undersized standalone button; not on a normal one'
   expect(has(await violationsFor(page, 'ok', 'touchTarget'), 'touchTarget')).toBe(false)
 })
 
+test('scopes to a locator WITHOUT a data-testid (no tag-fallback mis-scope)', async ({
+  page,
+}) => {
+  // A clean role=dialog (no testid) + an off-grid div elsewhere. assertLayoutSane
+  // on the dialog must scope to THE DIALOG (→ 0 violations), not fall back to the
+  // first <div> and probe the bad one. Guards the mis-scope bug the overlay
+  // layout assertions surfaced.
+  await page.setContent(`
+    <div style="padding:7px">off-grid sibling</div>
+    <div role="dialog"><span style="padding:8px">clean dialog</span></div>
+  `)
+  const v = await assertLayoutSane(page.getByRole('dialog'), {
+    checks: { horizontalScroll: false },
+    collect: true,
+  })
+  expect(v, JSON.stringify(v)).toHaveLength(0)
+})
+
 test('a clean DOM produces no violations (no false positives)', async ({
   page,
 }) => {
