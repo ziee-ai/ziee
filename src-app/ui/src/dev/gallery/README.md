@@ -11,7 +11,7 @@ It's three layers over one shared canvas — the **gallery**:
 |---|---|---|---|
 | Gallery | dev-only canvas: every kit component × variant/state/tone/size + composite scenes, URL-driven by `?theme=&accent=` | `src/dev/gallery/` | n/a (dev route) |
 | **A** | deterministic layout invariants + axe a11y (no baseline) | `tests/e2e/helpers/layout.ts`, `tests/e2e/visual/layout.spec.ts` | yes, every run |
-| **B** | visual-regression snapshots over the matrix | `tests/e2e/visual/gallery.spec.ts` | yes, needs blessed baseline |
+| **B** | visual-regression snapshots over the matrix (3 viewports × 2 themes × **all 8 accents** = 48 cells; subset via `VISUAL_ACCENTS`) | `tests/e2e/visual/gallery.spec.ts` | yes, needs blessed baseline |
 | **C** | vision-model aesthetic judge (delta-gated, on-demand) | `scripts/visual-judge.mjs` | **no** — off the test loop |
 
 ## The gallery

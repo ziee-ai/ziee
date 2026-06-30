@@ -14,12 +14,12 @@ export type GalleryTheme = 'light' | 'dark'
 export const GALLERY_THEMES: GalleryTheme[] = ['light', 'dark']
 
 /**
- * Accents the screenshot matrix sweeps. The full preset list is selectable in
- * the control bar, but the snapshot matrix uses a representative subset
- * (default + two structurally-distinct hues) to bound baseline count — the
- * point is to prove components hold under *any* accent, not to snapshot all 8.
+ * Accents the screenshot matrix sweeps = EVERY user-selectable accent (the same
+ * `ACCENT_ORDER` the Settings → Appearance picker offers), so Layer B proves the
+ * kit holds under every accent a user can actually pick. The Playwright spec
+ * mirrors this in tests/e2e/visual/_gallery.ts (and can subset via VISUAL_ACCENTS).
  */
-export const GALLERY_MATRIX_ACCENTS: AccentPreset[] = ['blue', 'teal', 'rose']
+export const GALLERY_MATRIX_ACCENTS: AccentPreset[] = [...ACCENT_ORDER]
 
 /** Every accent (for the manual control bar). */
 export const GALLERY_ALL_ACCENTS: AccentPreset[] = [...ACCENT_ORDER]

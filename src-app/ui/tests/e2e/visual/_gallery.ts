@@ -12,9 +12,27 @@ export const STANDALONE_PATH = '/dev-gallery.html'
 export const THEMES = ['light', 'dark'] as const
 export type Theme = (typeof THEMES)[number]
 
-/** Representative accent subset for the snapshot matrix (default + two hues). */
-export const MATRIX_ACCENTS = ['blue', 'teal', 'rose'] as const
-export type Accent = (typeof MATRIX_ACCENTS)[number]
+/**
+ * The snapshot matrix sweeps EVERY user-selectable accent — i.e. the full
+ * `ACCENT_ORDER` the Settings → Appearance picker offers (accentPresets.ts).
+ * Keep this list in lockstep with that picker. For a fast local run, override
+ * with VISUAL_ACCENTS="blue,teal" (comma-separated keys).
+ */
+export const ALL_ACCENTS = [
+  'blue',
+  'indigo',
+  'slate',
+  'teal',
+  'green',
+  'violet',
+  'rose',
+  'amber',
+] as const
+export type Accent = (typeof ALL_ACCENTS)[number]
+
+export const MATRIX_ACCENTS: readonly string[] = process.env.VISUAL_ACCENTS
+  ? process.env.VISUAL_ACCENTS.split(',').map(s => s.trim())
+  : ALL_ACCENTS
 
 export const VIEWPORTS = [
   { name: 'mobile', width: 390, height: 844 },

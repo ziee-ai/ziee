@@ -12,7 +12,20 @@ import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 import { assertLayoutSane } from '../helpers/layout'
 import { isBaselined } from './axe-baseline'
-import { VIEWPORTS, openGallery, sectionTestIds } from './_gallery'
+import { ALL_ACCENTS, VIEWPORTS, openGallery, sectionTestIds } from './_gallery'
+
+// Drift guard: the spec inlines the accent list (ALL_ACCENTS in _gallery.ts) to
+// stay decoupled from the app module graph. Assert it still equals the app's
+// source of truth — ACCENT_ORDER, the exact list the Settings → Appearance
+// picker offers — so a newly-added accent can't silently escape the matrix.
+// accentPresets.ts is dependency-free, so the relative import loads cleanly in
+// the Playwright runner.
+test('accent matrix matches Settings → Appearance ACCENT_ORDER (drift guard)', async () => {
+  const { ACCENT_ORDER } = await import(
+    '../../../src/components/ThemeProvider/accentPresets'
+  )
+  expect([...ALL_ACCENTS].sort()).toEqual([...ACCENT_ORDER].sort())
+})
 
 for (const vp of VIEWPORTS) {
   test(`layout invariants — ${vp.name} (${vp.width}px)`, async ({ page }) => {
