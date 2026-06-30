@@ -42,7 +42,9 @@ test.describe('Skills - Admin page gating', () => {
 
     await page.goto(`${baseURL}/settings/skills-admin`)
 
-    await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible()
+    // `/settings/*` renders inside SettingsPage, so a forbidden section shows
+    // the SETTINGS-level Result, not the router-level gate.
+    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
     await expect(byTestId(page, 'skills-admin-page')).toHaveCount(0)
   })
 })
