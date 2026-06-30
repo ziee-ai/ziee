@@ -65,17 +65,23 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
     const linkHref = href ? safeHref(href) : undefined
     const node =
       linkHref && !isDisabled ? (
-        <ButtonBase asChild size={size} className={className} onClick={onClick as React.MouseEventHandler} {...props}>
-          <a
-            ref={ref as React.Ref<HTMLAnchorElement>}
-            href={linkHref}
-            target={target}
-            rel={target === '_blank' ? 'noopener noreferrer' : undefined}
-            aria-label={ariaLabel}
-          >
-            {inner}
-          </a>
-        </ButtonBase>
+        <ButtonBase
+          size={size}
+          className={className}
+          onClick={onClick as React.MouseEventHandler}
+          {...props}
+          render={
+            <a
+              ref={ref as React.Ref<HTMLAnchorElement>}
+              href={linkHref}
+              target={target}
+              rel={target === '_blank' ? 'noopener noreferrer' : undefined}
+              aria-label={ariaLabel}
+            >
+              {inner}
+            </a>
+          }
+        />
       ) : (
         <ButtonBase
           ref={ref as React.Ref<HTMLButtonElement>}
@@ -96,9 +102,9 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
 
     if (tooltip == null) return node
     return (
-      <TooltipProvider delayDuration={300}>
+      <TooltipProvider delay={300}>
         <Tooltip>
-          <TooltipTrigger asChild>{node}</TooltipTrigger>
+          <TooltipTrigger render={node} />
           <TooltipContent>{tooltip}</TooltipContent>
         </Tooltip>
       </TooltipProvider>

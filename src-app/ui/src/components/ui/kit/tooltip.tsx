@@ -33,9 +33,9 @@ export const Tooltip = React.forwardRef<HTMLElement, TooltipProps>(function Tool
   )
   if (body == null) return child
   return (
-    <TooltipProvider delayDuration={delay}>
+    <TooltipProvider delay={delay}>
       <TT>
-        <TooltipTrigger asChild>{child}</TooltipTrigger>
+        <TooltipTrigger render={child} />
         <TooltipContent side={side} className={className}>{body}</TooltipContent>
       </TT>
     </TooltipProvider>

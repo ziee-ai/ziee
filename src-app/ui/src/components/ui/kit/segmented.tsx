@@ -51,10 +51,9 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
     <ToggleGroup
       ref={ref}
       id={id}
-      type="single"
       size={s.size === 'lg' ? 'lg' : s.size === 'sm' ? 'sm' : 'default'}
-      value={current}
-      onValueChange={handle}
+      value={current ? [current] : []}
+      onValueChange={(v) => handle((v as string[])[0] ?? '')}
       onBlur={onBlur}
       disabled={s.disabled || s.readOnly}
       aria-label={ariaLabel}

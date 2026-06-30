@@ -169,7 +169,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
   const currentLabel = options.find((o) => o.value === current)?.label
   return (
     <Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) onBlur?.() }}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger render={
         <button
           ref={ref}
           type="button"
@@ -199,7 +199,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
             ? <Loader2 className="size-4 shrink-0 animate-spin opacity-70" aria-hidden />
             : <ChevronsUpDown className="size-4 shrink-0 opacity-50" aria-hidden />}
         </button>
-      </PopoverTrigger>
+      } />
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         {virtual ? (
           <VirtualList options={options} current={current} onChoose={choose} searchPlaceholder={searchPlaceholder} emptyText={emptyText} listboxId={listboxId} optionTestid={optionTestid} />

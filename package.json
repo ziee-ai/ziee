@@ -21,5 +21,9 @@
   "workspaces": [
     "src-app/ui",
     "src-app/desktop/ui"
-  ]
+  ],
+  "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "radix-ui": "^1.6.1"
+  }
 }

@@ -261,9 +261,9 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
     <Root open={open} onOpenChange={(o) => { if (locked && o) return; setOpen(o); if (!o) { onBlur?.(); setQuery('') } }}>
       {/* native form submission: one hidden input per selected value (div trigger has no name). */}
       {name != null && uniqueCurrent.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
-      <PopoverTrigger asChild>
-        {/* a DIV (not a <button>) so the removable Tag <button>s can legally nest; keyboard
-            open is wired manually since a div has no implicit button activation. */}
+      <PopoverTrigger render={
+        /* a DIV (not a <button>) so the removable Tag <button>s can legally nest; keyboard
+           open is wired manually since a div has no implicit button activation. */
         <div
           ref={ref}
           id={id}
@@ -306,7 +306,7 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
           })}
           <ChevronsUpDown className="ml-auto size-4 shrink-0 opacity-50" aria-hidden />
         </div>
-      </PopoverTrigger>
+      } />
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         {virtual ? (
           <VirtualMultiList

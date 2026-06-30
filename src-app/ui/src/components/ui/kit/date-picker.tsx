@@ -103,7 +103,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
     <Root open={open} onOpenChange={(o) => { if (blocked) return; setOpen(o) }}>
       {/* native form submission (the trigger is a button with no value of its own). */}
       {name != null && <input type="hidden" name={name} value={current} />}
-      <PopoverTrigger asChild>
+      <PopoverTrigger render={
         <button
           ref={ref}
           type="button"
@@ -132,7 +132,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
           </span>
           <CalendarIcon className="size-4 shrink-0 opacity-50" aria-hidden />
         </button>
-      </PopoverTrigger>
+      } />
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"

@@ -108,7 +108,6 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
                 key={opt.value}
                 value={opt.value}
                 disabled={opt.disabled}
-                textValue={typeof opt.label === 'string' ? opt.label : opt.value}
                 data-testid={testid ? `${testid}-opt-${opt.value}` : undefined}
               >
                 {optionRender ? optionRender(opt) : opt.label}
@@ -120,7 +119,6 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
             key={o.value}
             value={o.value}
             disabled={o.disabled}
-            textValue={typeof o.label === 'string' ? o.label : o.value}
             data-testid={testid ? `${testid}-opt-${o.value}` : undefined}
           >
             {optionRender ? optionRender(o) : o.label}
@@ -153,7 +151,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
   const showClear = allowClear && current !== '' && !locked
 
   return (
-    <SelectRoot value={current} onValueChange={handleChange} disabled={locked} name={name}>
+    <SelectRoot value={current} onValueChange={(v) => handleChange(v ?? '')} disabled={locked} name={name}>
       {/* relative wrapper so the clear button is a SIBLING of the trigger, never a <button>
           nested inside the trigger <button> (invalid HTML + keyboard-unreachable). */}
       <div className="relative">

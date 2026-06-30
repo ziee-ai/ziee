@@ -75,15 +75,24 @@ export function Sheet({ open, onOpenChange, title, description, footer, side = '
         : side === 'top' ? 'bottom-0 left-0 w-full h-1.5 cursor-ns-resize'
           : 'top-0 left-0 w-full h-1.5 cursor-ns-resize'
 
+  // maskClosable=false → backdrop click no longer dismisses (Base UI Dialog
+  // exposes this on the Root via `dismissible`; Escape still works).
   return (
-    <Root open={open} onOpenChange={onOpenChange}>
-      {trigger != null && <SheetTrigger asChild>{trigger}</SheetTrigger>}
+    <Root
+      open={open}
+      onOpenChange={(o, details) => {
+        // maskClosable=false: ignore outside/backdrop dismissals (Escape +
+        // programmatic close still work). Base UI has no `dismissible` prop, so
+        // we filter on the change reason instead.
+        if (!o && maskClosable === false && (details as { reason?: string }).reason === 'outside-press') return
+        onOpenChange?.(o)
+      }}
+    >
+      {trigger != null && <SheetTrigger render={trigger} />}
       <SheetContent
         side={side}
         className={cn(resizable && 'max-w-none', className)}
         style={resizable ? (horizontal ? { width: size } : { height: size }) : undefined}
-        // maskClosable=false → backdrop click no longer dismisses (Escape still works).
-        onPointerDownOutside={maskClosable ? undefined : (e) => e.preventDefault()}
         data-testid={testid}
         {...(description == null ? { 'aria-describedby': undefined } : {})}
       >

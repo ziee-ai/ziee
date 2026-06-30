@@ -39,7 +39,7 @@ export interface DropdownProps {
 export function Dropdown({ items, children, side, align = 'end', disabled, onSelect, open, onOpenChange, defaultOpen, 'data-testid': testid }: DropdownProps) {
   return (
     <Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
-      <DropdownMenuTrigger asChild disabled={disabled}>{children}</DropdownMenuTrigger>
+      <DropdownMenuTrigger render={children} disabled={disabled} />
       <DropdownMenuContent side={side} align={align} data-testid={testid}>
         {items.map((it, i) =>
           'type' in it && it.type === 'divider' ? (
