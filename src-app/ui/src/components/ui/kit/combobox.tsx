@@ -165,7 +165,7 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
   })
   const locked = s.disabled || loading || s.readOnly
   const choose = (v: string) => { setCurrent(v); setOpen(false) }
-  if (s.loading) return <Skeleton className={cn('h-9', 'w-full rounded-md', className)} />
+  if (s.loading) return <Skeleton className={cn('h-8', 'w-full rounded-lg', className)} />
   const currentLabel = options.find((o) => o.value === current)?.label
   return (
     <Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) onBlur?.() }}>
@@ -187,9 +187,9 @@ export const Combobox = React.forwardRef<HTMLButtonElement, ComboboxProps>(funct
           disabled={locked}
           style={style}
           className={cn(
-            'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-            'h-9', className, invalid && 'border-destructive focus-visible:ring-destructive',
+            'flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm',
+            'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 outline-none disabled:cursor-not-allowed disabled:opacity-50',
+            'h-8', className, invalid && 'border-destructive focus-visible:ring-destructive',
           )}
         >
           <span className={cn('truncate', currentLabel == null && 'text-muted-foreground')}>
