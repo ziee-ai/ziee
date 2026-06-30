@@ -11,10 +11,12 @@ const toneIcon: Record<AlertTone, React.ComponentType<{ className?: string }>> =
   warning: AlertTriangle,
   error: XCircle,
 }
+// Semantic status tokens (dark-aware, AA as text on the page bg) — not raw
+// palette hues, which failed WCAG AA contrast in dark mode.
 const toneCls: Record<AlertTone, string> = {
-  info: 'border-blue-500/30 text-blue-800 dark:text-blue-300 [&>svg]:text-blue-600',
-  success: 'border-green-500/30 text-green-800 dark:text-green-300 [&>svg]:text-green-600',
-  warning: 'border-amber-500/30 text-amber-900 dark:text-amber-300 [&>svg]:text-amber-600',
+  info: 'border-info/35 text-info [&>svg]:text-info',
+  success: 'border-success/35 text-success [&>svg]:text-success',
+  warning: 'border-warning/35 text-warning [&>svg]:text-warning',
   error: 'border-destructive/40 text-destructive [&>svg]:text-destructive',
 }
 

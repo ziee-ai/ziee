@@ -52,7 +52,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   // Prefer the catalog-curated title over the bare leaf. Subscribe to
   // `Stores.HubCatalog.catalog` so the title updates when the catalog
   // refreshes (e.g. mid-test against the mock Pages server).
-  const indexItem = Stores.HubCatalog.catalog?.items.find(
+  const indexItem = Stores.HubCatalog.catalog?.items?.find(
     it => it.category === 'mcp-server' && it.name === server.name,
   )
   const displayTitle = indexItem?.title ?? leaf

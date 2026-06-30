@@ -23,7 +23,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Pinned brew formula versions. Bump in lockstep with what's actually
 /// installed on the build machine — we read these specific versions
@@ -44,6 +44,32 @@ const RUST_MUSL_IMAGE: &str = "rust:1.90-alpine3.20";
 /// `<binaries>/<target>/sandbox-runtime/bundle.tar.zst`. Returns Ok(())
 /// on non-mac-arm64 targets (no-op).
 pub fn setup(target: &str, target_dir: &Path, out_dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Toggling the escape hatch (or any other env the assembly reads) must
+    // re-run this build script — otherwise switching ZIEE_SKIP_SANDBOX_BUNDLE
+    // on/off silently reuses the cached placeholder/bundle.
+    println!("cargo:rerun-if-env-changed=ZIEE_SKIP_SANDBOX_BUNDLE");
+
+    // Fail-soft contract (mirrors pgvector/biomcp): no matter WHERE the
+    // mac-arm64 assembly fails — missing Docker, cross-user Docker-Desktop
+    // perms, no network, missing toolchain — we MUST still leave a placeholder
+    // bundle on disk so `code_sandbox::embedded`'s include_bytes! resolves and
+    // the crate compiles. Without this, an assembly error returns Err with no
+    // bundle.tar.zst written and the whole build hard-fails. The sandbox then
+    // self-disables at first use against the zero-byte bundle.
+    match setup_inner(target, target_dir, out_dir) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            eprintln!(
+                "sandbox-runtime: assembly failed ({e}); writing placeholder \
+                 bundle (sandbox will self-disable at runtime)"
+            );
+            write_placeholder(target_dir)?;
+            Ok(())
+        }
+    }
+}
+
+fn setup_inner(target: &str, target_dir: &Path, out_dir: &str) -> Result<(), Box<dyn std::error::Error>> {
     if target != "aarch64-apple-darwin" {
         println!("sandbox-runtime: skipping (target = {target}, not aarch64-apple-darwin)");
         // Ensure the placeholder file exists so include_bytes! always resolves.
@@ -275,34 +301,47 @@ fn fetch_dylibs(lib_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
 /// the target arch which apt/brew don't provide on Mac.
 fn build_guest_agent(workspace: &Path, out_dir: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
     println!("sandbox-runtime: cross-compiling guest agent in {RUST_MUSL_IMAGE}");
-    let docker_target = PathBuf::from(out_dir).join("guest-agent-target");
-    fs::create_dir_all(&docker_target)?;
-
     let src_app = workspace.canonicalize()?;
-    let status = Command::new("docker")
+
+    // Stream the built binary OUT over stdout instead of writing it into a
+    // host bind-mount. The Docker daemon may run as a *different* user than
+    // this build (Docker Desktop multi-user, rootless, CI), in which case a
+    // bind-mounted host dir is not writable by the container → EACCES. By
+    // building to a container-internal CARGO_TARGET_DIR and `cat`ing the
+    // result to stdout, the only host write is done by THIS process (which
+    // owns out_dir). The source is mounted read-only with `--locked` so
+    // cargo never tries to touch the host workspace either.
+    let output = Command::new("docker")
         .args([
             "run", "--rm",
             "--platform", "linux/arm64",
-            "-v", &format!("{}:/work", src_app.display()),
-            "-v", &format!("{}:/cargo-target", docker_target.display()),
+            "-v", &format!("{}:/work:ro", src_app.display()),
             "-w", "/work/sandbox-guest-agent",
-            "-e", "CARGO_TARGET_DIR=/cargo-target",
+            "-e", "CARGO_TARGET_DIR=/tmp/cargo-target",
             "-e", "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=-C target-feature=+crt-static",
             "-e", "LIBSECCOMP_LINK_TYPE=static",
             "-e", "LIBSECCOMP_LIB_PATH=/usr/lib",
             RUST_MUSL_IMAGE,
             "sh", "-c",
-            "apk add -q libseccomp-dev libseccomp-static musl-dev build-base pkgconf >/dev/null && \
-             cargo build --release --target aarch64-unknown-linux-musl 2>&1 | tail -5",
+            // Build chatter to stderr; emit ONLY the binary bytes on stdout.
+            "apk add -q libseccomp-dev libseccomp-static musl-dev build-base pkgconf >/dev/null 2>&1 && \
+             cargo build --release --locked --target aarch64-unknown-linux-musl 1>&2 && \
+             cat /tmp/cargo-target/aarch64-unknown-linux-musl/release/ziee-sandbox-agent",
         ])
-        .status()?;
-    if !status.success() {
-        return Err("guest agent cross-compile failed".into());
+        .output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut tail: Vec<&str> = stderr.lines().rev().take(10).collect();
+        tail.reverse();
+        return Err(format!("guest agent cross-compile failed:\n{}", tail.join("\n")).into());
     }
-    let out = docker_target.join("aarch64-unknown-linux-musl/release/ziee-sandbox-agent");
-    if !out.exists() {
-        return Err(format!("guest agent binary missing at {}", out.display()).into());
+    if output.stdout.is_empty() {
+        return Err("guest agent binary was empty on stdout".into());
     }
+    // Host-side write done by us (we own out_dir) — no cross-user write.
+    let out = PathBuf::from(out_dir).join("ziee-sandbox-agent");
+    fs::write(&out, &output.stdout)?;
+    make_executable(&out)?;
     Ok(out)
 }
 
@@ -311,12 +350,16 @@ fn build_guest_agent(workspace: &Path, out_dir: &str) -> Result<PathBuf, Box<dyn
 /// /dev character nodes (can't exist on macOS volumes).
 fn assemble_guest_root(guest_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     println!("sandbox-runtime: assembling guest-root via {ALPINE_IMAGE}");
-    let guest_root_abs = guest_root.canonicalize().unwrap_or_else(|_| guest_root.to_path_buf());
-    let status = Command::new("docker")
+    // Build the userland inside the container and stream it OUT as a tar on
+    // stdout; THIS process extracts it into guest_root so the host owns every
+    // file. Same rationale as build_guest_agent: a bind-mounted /out is not
+    // writable when the Docker daemon runs as a different user (Docker Desktop
+    // multi-user, rootless, CI), and the host-side pack later can't read/delete
+    // daemon-owned files with restrictive perms (apk makes /root 0700).
+    let output = Command::new("docker")
         .args([
             "run", "--rm",
             "--platform", "linux/arm64",
-            "-v", &format!("{}:/out", guest_root_abs.display()),
             ALPINE_IMAGE,
             "sh", "-c",
             "set -e
@@ -340,17 +383,38 @@ fn assemble_guest_root(guest_root: &Path) -> Result<(), Box<dyn std::error::Erro
              echo 'sandboxuser:x:1001:1001:Sandbox User:/home/sandboxuser:/bin/bash' > /root-stage/etc/ziee-sandbox-passwd
              echo 'sandboxuser:x:1001:' > /root-stage/etc/ziee-sandbox-group
              : > /root-stage/etc/ziee-sandbox-empty
-             # Sync to volume, skipping /dev character nodes (macOS volume can't host them).
+             du -sh /root-stage 1>&2
+             # Emit the tree as a tar on stdout, skipping /dev character nodes
+             # (a macOS volume can't host them) and the agent (added separately).
              cd /root-stage
              tar -cf - --exclude=./dev/console --exclude=./dev/null --exclude=./dev/zero \
                        --exclude=./dev/urandom --exclude=./dev/random --exclude=./dev/full \
-                       --exclude=./dev/tty --exclude=./usr/bin/ziee-sandbox-agent . \
-               | tar -xf - -C /out
-             echo \"guest-root: $(du -sh /out | cut -f1)\"",
+                       --exclude=./dev/tty --exclude=./usr/bin/ziee-sandbox-agent .",
         ])
-        .status()?;
+        .stderr(Stdio::inherit())
+        .output()?;
+    if !output.status.success() {
+        return Err("guest-root assembly (container) failed".into());
+    }
+    if output.stdout.is_empty() {
+        return Err("guest-root tar was empty on stdout".into());
+    }
+    // Extract the streamed tar into guest_root on the host (we own the files).
+    let mut child = Command::new("tar")
+        .arg("-xf")
+        .arg("-")
+        .arg("-C")
+        .arg(guest_root)
+        .stdin(Stdio::piped())
+        .spawn()?;
+    child
+        .stdin
+        .as_mut()
+        .ok_or("failed to open host tar stdin")?
+        .write_all(&output.stdout)?;
+    let status = child.wait()?;
     if !status.success() {
-        return Err("guest-root assembly failed".into());
+        return Err("extracting guest-root tar on host failed".into());
     }
     Ok(())
 }

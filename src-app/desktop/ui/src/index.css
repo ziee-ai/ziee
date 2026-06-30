@@ -20,7 +20,10 @@
     font-family:
       -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro",
       system-ui, sans-serif;
-    font-size: 16px;
+    /* 14px base — matches the web `ui/src/index.css` body rule and the
+     * antd fontSize token. (Was 16px, which diverged from the web base
+     * and rendered the whole desktop UI one step too large.) */
+    font-size: 14px;
     /* Leave -webkit-font-smoothing at default (subpixel). Forcing
      * `antialiased` in 2025+ makes SF Pro look anemic. */
   }

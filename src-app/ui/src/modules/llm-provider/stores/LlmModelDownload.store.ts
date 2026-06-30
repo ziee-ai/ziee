@@ -73,7 +73,7 @@ const loadExistingDownloads = async (set: any): Promise<void> => {
 
     // Filter to only keep pending, downloading, and failed
     // (exclude completed and cancelled)
-    const downloads = response.downloads.filter(download =>
+    const downloads = (response?.downloads ?? []).filter(download =>
       ['pending', 'downloading', 'failed'].includes(download.status),
     )
 

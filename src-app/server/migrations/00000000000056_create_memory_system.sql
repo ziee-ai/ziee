@@ -76,7 +76,12 @@ CREATE TABLE memory_admin_settings (
     default_extraction_model_id UUID REFERENCES llm_models(id) ON DELETE SET NULL,
     default_top_k               SMALLINT NOT NULL DEFAULT 8 CHECK (default_top_k > 0 AND default_top_k <= 100),
     cosine_threshold            REAL NOT NULL DEFAULT 0.6 CHECK (cosine_threshold >= 0.0 AND cosine_threshold <= 2.0),
-    enabled                     BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Memory is ON by default deployment-wide: the built-in memory MCP
+    -- server registers at boot and is offered to tool-capable chats. The
+    -- runtime still fail-softs to disabled if pgvector is a stub build
+    -- (see build_helper/pgvector.rs) and per-user extraction/retrieval
+    -- remain opt-in via user_memory_settings above.
+    enabled                     BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
