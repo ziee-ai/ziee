@@ -85,9 +85,7 @@ test.describe('Realtime sync — session (group-permission fan-out)', () => {
       // regex against the accessible name MISSES this entry. Filter by inner
       // text instead — that's "Users" alone, distinct from "User Groups" /
       // "MCP Servers" which share the "User" or "Servers" substring.
-      const usersMenu = pageB
-        .getByRole('menuitem')
-        .filter({ hasText: /^Users$/ })
+      const usersMenu = byTestId(pageB, 'settings-nav-menu-item-users')
       await expect(usersMenu).toHaveCount(0)
 
       // ── Device A: admin creates a group with users::read, then
@@ -211,9 +209,7 @@ test.describe('Realtime sync — session (group-permission fan-out)', () => {
       // regex against the accessible name MISSES this entry. Filter by inner
       // text instead — that's "Users" alone, distinct from "User Groups" /
       // "MCP Servers" which share the "User" or "Servers" substring.
-      const usersMenu = pageB
-        .getByRole('menuitem')
-        .filter({ hasText: /^Users$/ })
+      const usersMenu = byTestId(pageB, 'settings-nav-menu-item-users')
       await expect(usersMenu).toBeVisible({ timeout: 15_000 })
 
       // ── Admin removes the member from the group ─────────────────

@@ -41,7 +41,7 @@ export default async function globalSetup(_config: FullConfig) {
   // Only remove containers whose lock files are missing or stale
   console.log('🧹 Cleaning up stale PostgreSQL containers...')
   try {
-    const containers = execSync('docker ps -a --filter "name=ziee-test-postgres-" --format "{{.Names}}"', {
+    const containers = execSync('docker ps -a --filter "name=ziee-tailtest-postgres-" --format "{{.Names}}"', {
       encoding: 'utf-8',
     }).trim()
 
@@ -52,7 +52,7 @@ export default async function globalSetup(_config: FullConfig) {
 
       for (const container of containerList) {
         // Extract run ID from container name: ziee-test-postgres-{runId}
-        const runId = container.replace('ziee-test-postgres-', '')
+        const runId = container.replace('ziee-tailtest-postgres-', '')
         const configPath = resolve(__dirname, `.test-configs/postgres-${runId}.json`)
 
         // Check if config file exists
@@ -216,7 +216,7 @@ export default defineConfig({
   }
 
   console.log('   Test infrastructure:')
-  console.log(`   - PostgreSQL: port ${postgresPort} (container: ziee-test-postgres-${runId})`)
+  console.log(`   - PostgreSQL: port ${postgresPort} (container: ziee-tailtest-postgres-${runId})`)
   console.log('   - Each worker: 2 dynamic ports (vite preview + backend)')
   console.log('   - Each test: unique database + backend restart')
   console.log('   - Worker 0: 9000+9100, Worker 1: 9001+9101, etc.\n')

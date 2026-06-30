@@ -102,7 +102,8 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
 
   // Enabled switch
   if (data.enabled !== undefined) {
-    const enabledSwitch = byTestId(drawer, 'mcp-drawer-enabled-switch')
+    // Enabled switch renders in the Drawer header (titleNode), OUTSIDE mcp-drawer-form.
+    const enabledSwitch = byTestId(page, 'mcp-drawer-enabled-switch')
     if ((await switchIsChecked(enabledSwitch)) !== data.enabled) {
       await enabledSwitch.scrollIntoViewIfNeeded()
       await enabledSwitch.click()

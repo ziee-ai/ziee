@@ -47,7 +47,7 @@ test.describe('Sync reconnect self-gating', () => {
     // Land on the app shell.
     await page.goto(`${baseURL}/`)
     await expect(
-      byTestId(page, 'chat-history-new-chat-btn'),
+      byTestId(page, 'chat-message-textarea'),
     ).toBeVisible({ timeout: 20_000 })
 
     // Record any forbidden API response from here on.

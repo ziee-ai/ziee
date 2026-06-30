@@ -10,7 +10,7 @@ import { execSync } from 'child_process'
 // (observed as a graceful "Shutdown signal received" ~20s into startup).
 // Pair with ZIEE_E2E_BASE_VITE_PORT / ZIEE_E2E_BASE_BACKEND_PORT.
 const LOCK_DIR = process.env.ZIEE_E2E_LOCK_DIR || resolve(tmpdir(), 'ziee-test-locks')
-const LOCK_TIMEOUT_MS = 180000 // 3 minutes - max test duration
+const LOCK_TIMEOUT_MS = 1800000 // 30 minutes - covers a full dir run; postgres locks are not heartbeat-refreshed
 // @ts-ignore - Reserved for future use
 const _HEARTBEAT_INTERVAL_MS = 5000 // 5 seconds - heartbeat update frequency (reserved for future use)
 const HEARTBEAT_STALE_MS = 10000 // 10 seconds - consider stale if no heartbeat
