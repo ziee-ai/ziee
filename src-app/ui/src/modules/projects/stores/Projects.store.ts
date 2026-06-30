@@ -138,7 +138,7 @@ export const useProjectsStore = create<ProjectsState>()(
             })
             set({
               projects: new Map(
-                response.projects.map((p: Project) => [p.id, p]),
+                (response?.projects ?? []).map((p: Project) => [p.id, p]),
               ),
               isInitialized: true,
               loading: false,

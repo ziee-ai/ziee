@@ -138,7 +138,7 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
 
             set({
               assistants: new Map(
-                response.assistants.map((assistant: Assistant) => [
+                (response?.assistants ?? []).map((assistant: Assistant) => [
                   assistant.id,
                   assistant,
                 ]),
