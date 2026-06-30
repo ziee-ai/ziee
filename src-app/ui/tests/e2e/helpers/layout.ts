@@ -510,6 +510,9 @@ function detectSiblingOverlap(
     if (p.parentIndex < 0) continue
     if (p.styles.position === 'absolute' || p.styles.position === 'fixed')
       continue
+    // Negative margins overlap siblings BY DESIGN (avatar stacks, stacked chips,
+    // overlapping cards). Exclude such elements from the overlap check.
+    if (p.styles.margins.some(m => m < -tol)) continue
     const arr = byParent.get(p.parentIndex) ?? []
     arr.push(p)
     byParent.set(p.parentIndex, arr)

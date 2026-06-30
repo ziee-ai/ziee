@@ -142,6 +142,40 @@ test('horizontalScroll fires when the document overflows its width', async ({
   expect(has(v, 'horizontalScroll')).toBe(true)
 })
 
+test('siblingOverlap fires on overlapping flow siblings; not on negative-margin stacks', async ({
+  page,
+}) => {
+  await page.setContent(`
+    <div data-testid="bad" style="display:grid">
+      <div style="grid-area:1/1;width:60px;height:60px;background:#000"></div>
+      <div style="grid-area:1/1;width:60px;height:60px;background:#111"></div>
+    </div>
+    <div data-testid="stack">
+      <div style="width:40px;height:40px;background:#000"></div>
+      <div style="width:40px;height:40px;margin-top:-20px;background:#111"></div>
+    </div>
+    <div data-testid="none">
+      <div style="width:40px;height:40px"></div>
+      <div style="width:40px;height:40px"></div>
+    </div>
+  `)
+  expect(has(await violationsFor(page, 'bad', 'siblingOverlap'), 'siblingOverlap')).toBe(true)
+  // negative-margin overlap is intentional → exempt
+  expect(has(await violationsFor(page, 'stack', 'siblingOverlap'), 'siblingOverlap')).toBe(false)
+  expect(has(await violationsFor(page, 'none', 'siblingOverlap'), 'siblingOverlap')).toBe(false)
+})
+
+test('touchTarget fires on an undersized standalone button; not on a normal one', async ({
+  page,
+}) => {
+  await page.setContent(`
+    <div data-testid="bad"><button style="width:40px;height:20px">x</button></div>
+    <div data-testid="ok"><button style="width:40px;height:32px">x</button></div>
+  `)
+  expect(has(await violationsFor(page, 'bad', 'touchTarget'), 'touchTarget')).toBe(true)
+  expect(has(await violationsFor(page, 'ok', 'touchTarget'), 'touchTarget')).toBe(false)
+})
+
 test('a clean DOM produces no violations (no false positives)', async ({
   page,
 }) => {
