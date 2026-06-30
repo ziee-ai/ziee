@@ -27,10 +27,19 @@ test.describe('Conversation project chip — interactive', () => {
       await fetch(`${apiURL}/api/conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: 'Conv in project', project_id: projectId }),
+        body: JSON.stringify({ title: 'Conv in project' }),
       })
     ).json()
     const convId = conv.id as string
+
+    // Link the conversation to the project via the real attach endpoint —
+    // POST /api/conversations does NOT accept project_id in its body (the
+    // association is made through project_conversations, not on create).
+    const attachRes = await fetch(
+      `${apiURL}/api/projects/${projectId}/conversations/${convId}`,
+      { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+    )
+    expect(attachRes.ok).toBeTruthy()
 
     await page.goto(`${baseURL}/chat/${convId}`)
     await page.waitForLoadState('domcontentloaded')
