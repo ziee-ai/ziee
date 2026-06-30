@@ -18,10 +18,16 @@ export function MessageList() {
 
   if (!loading && messagesArray.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center py-20">
-        <MessageSquare className="text-5xl mb-4" />
-        <Text className="text-lg">Start your conversation</Text>
-      </div>
+      <Flex className={'flex-col gap-1 w-full h-full'} data-testid="chat-messages">
+        {/* Header extensions (e.g. the "In project" chip) are persistent
+            markers on the conversation page — keep them visible even before
+            the first message, not only once messages exist. */}
+        <ExtensionSlot name="message_list_header" />
+        <div className="flex flex-1 flex-col items-center justify-center text-center py-20">
+          <MessageSquare className="text-5xl mb-4" />
+          <Text className="text-lg">Start your conversation</Text>
+        </div>
+      </Flex>
     )
   }
 
