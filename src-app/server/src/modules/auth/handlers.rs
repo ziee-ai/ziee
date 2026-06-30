@@ -626,6 +626,7 @@ pub fn me_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_profile(
     auth: RequirePermissions<(ProfileEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(req): Json<UpdateProfileRequest>,
 ) -> ApiResult<Json<User>> {
     let user_id = auth.user.id;
@@ -673,6 +674,18 @@ pub async fn update_profile(
         .map_err(AppError::to_api_error)?;
 
     event_bus.emit_async(UserEvent::updated(updated_user.clone()));
+
+    // Owner-scoped realtime sync so the user's OTHER devices re-bootstrap
+    // /auth/me and converge on the new username / display_name without a
+    // reload. Mirrors the admin edit path (user::update_user); the self-echo
+    // is suppressed via the originating connection id.
+    sync_publish(
+        SyncEntity::Profile,
+        SyncAction::Update,
+        updated_user.id,
+        Audience::owner(updated_user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(updated_user)))
 }
