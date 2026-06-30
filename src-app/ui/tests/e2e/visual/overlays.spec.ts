@@ -81,7 +81,8 @@ for (const theme of ['light', 'dark'] as const) {
 
         // Close so the next overlay opens clean.
         await page.keyboard.press('Escape')
-        if (content) await content.waitFor({ state: 'hidden' }).catch(() => {})
+        if (content)
+          await content.waitFor({ state: 'hidden' }).catch(() => undefined)
       })
     }
   })

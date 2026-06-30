@@ -25,7 +25,14 @@ export interface AxeBaselineEntry {
   note: string
 }
 
-export const AXE_BASELINE: AxeBaselineEntry[] = []
+export const AXE_BASELINE: AxeBaselineEntry[] = [
+  {
+    rule: 'scrollable-region-focusable',
+    section: 'gallery-section-scroll-area',
+    targetIncludes: 'overlayscrollbars-contents',
+    note: "ScrollArea wraps the third-party OverlayScrollbars lib, whose generated scroll-viewport div has no tabindex. axe flags it when the wrapped content is non-focusable (as in this synthetic story); in real usage ScrollArea wraps focusable content (lists/links) so it doesn't fire. Low severity + lib-internal (can't set tabindex on the lib's generated node without a custom plugin). Re-evaluate if OverlayScrollbars exposes a focusable-viewport option.",
+  },
+]
 
 /**
  * True when a violation is a documented, baselined finding. Matches on

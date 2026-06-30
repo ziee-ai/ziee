@@ -7,6 +7,7 @@ import { compositeStories } from './composite.story'
 import { controlStories } from './controls.story'
 import { dataStories } from './data.story'
 import { displayStories } from './display.story'
+import { missingStories } from './missing.story'
 import { overlayStories } from './overlays.story'
 import { stressStories } from './stress.story'
 import { typographyStories } from './typography.story'
@@ -19,4 +20,5 @@ export const ALL_STORIES: GalleryStory[] = [
   ...typographyStories,
   ...compositeStories,
   ...stressStories,
+  ...missingStories,
 ]

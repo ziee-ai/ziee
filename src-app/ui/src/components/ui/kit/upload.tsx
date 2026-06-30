@@ -36,13 +36,17 @@ export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function U
     if (files.length) onFiles(multiple ? files : files.slice(0, 1))
   }
   return (
+    // The file <input> is a SIBLING of the role="button" dropzone (not a child):
+    // a focusable widget nested inside another interactive element is an axe
+    // `nested-interactive` violation. `display:contents` keeps the wrapper boxless
+    // so layout is unchanged.
+    <div className="contents" style={style}>
     <div
       role="button"
       tabIndex={locked ? -1 : 0}
       aria-label={label}
       aria-disabled={locked || undefined}
       data-testid={testid}
-      style={style}
       onClick={() => !locked && inputRef.current?.click()}
       onKeyDown={(e) => { if (!locked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); inputRef.current?.click() } }}
       onDragOver={(e) => { if (!locked) { e.preventDefault(); setDrag(true) } }}
@@ -57,6 +61,7 @@ export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function U
       )}
     >
       {children}
+    </div>
       <input
         ref={inputRef}
         type="file"
