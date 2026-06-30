@@ -44,6 +44,32 @@ const RUST_MUSL_IMAGE: &str = "rust:1.90-alpine3.20";
 /// `<binaries>/<target>/sandbox-runtime/bundle.tar.zst`. Returns Ok(())
 /// on non-mac-arm64 targets (no-op).
 pub fn setup(target: &str, target_dir: &Path, out_dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Toggling the escape hatch (or any other env the assembly reads) must
+    // re-run this build script — otherwise switching ZIEE_SKIP_SANDBOX_BUNDLE
+    // on/off silently reuses the cached placeholder/bundle.
+    println!("cargo:rerun-if-env-changed=ZIEE_SKIP_SANDBOX_BUNDLE");
+
+    // Fail-soft contract (mirrors pgvector/biomcp): no matter WHERE the
+    // mac-arm64 assembly fails — missing Docker, cross-user Docker-Desktop
+    // perms, no network, missing toolchain — we MUST still leave a placeholder
+    // bundle on disk so `code_sandbox::embedded`'s include_bytes! resolves and
+    // the crate compiles. Without this, an assembly error returns Err with no
+    // bundle.tar.zst written and the whole build hard-fails. The sandbox then
+    // self-disables at first use against the zero-byte bundle.
+    match setup_inner(target, target_dir, out_dir) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            eprintln!(
+                "sandbox-runtime: assembly failed ({e}); writing placeholder \
+                 bundle (sandbox will self-disable at runtime)"
+            );
+            write_placeholder(target_dir)?;
+            Ok(())
+        }
+    }
+}
+
+fn setup_inner(target: &str, target_dir: &Path, out_dir: &str) -> Result<(), Box<dyn std::error::Error>> {
     if target != "aarch64-apple-darwin" {
         println!("sandbox-runtime: skipping (target = {target}, not aarch64-apple-darwin)");
         // Ensure the placeholder file exists so include_bytes! always resolves.
