@@ -45,7 +45,7 @@ test.describe('Memory admin — FTS dictionary rebuild', () => {
     // into view first so the opened option list isn't pushed outside the viewport.
     await byTestId(page, 'memory-fts-dictionary-select').scrollIntoViewIfNeeded()
     await byTestId(page, 'memory-fts-dictionary-select').click()
-    await byTestId(page, 'memory-fts-dictionary-select-opt-english').click()
+    await byTestId(page, 'memory-fts-dictionary-select-opt-english').click({ force: true })
 
     // Save → the dictionary changed, so a confirm Modal is shown (NOT an
     // in-place save).
