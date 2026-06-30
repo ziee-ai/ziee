@@ -28,7 +28,10 @@ function walk(dir, acc = []) {
     const full = path.join(dir, e)
     const st = fs.statSync(full)
     if (st.isDirectory()) {
-      if (!['node_modules', 'dist', 'build', '.git', 'tests'].includes(e)) walk(full, acc)
+      // `dev/` = the dev-only component gallery (visual-testing canvas); its
+      // testids are gallery-internal and must not expand the app's typed
+      // production test-id registry.
+      if (!['node_modules', 'dist', 'build', '.git', 'tests', 'dev'].includes(e)) walk(full, acc)
     } else if (/\.(tsx|jsx|ts)$/.test(e)) acc.push(full)
   }
   return acc

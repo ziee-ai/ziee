@@ -118,7 +118,11 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:visual": "playwright test -c playwright.visual.config.ts",
+    "test:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots",
+    "test:visual:list": "playwright test -c playwright.visual.config.ts --list",
+    "visual:judge": "node scripts/visual-judge.mjs"
   },
   "type": "module",
   "types": "./dist/index.d.ts"
