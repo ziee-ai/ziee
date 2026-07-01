@@ -210,7 +210,7 @@ export function MyMemoriesSection() {
                         <div className="flex gap-1 items-center justify-end">
                           <Tooltip title="Edit memory">
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="default"
                               icon={<Pencil />}
                               onClick={() => setEditing(row)}
@@ -239,7 +239,7 @@ export function MyMemoriesSection() {
                           >
                             <Tooltip title="Delete memory">
                               <Button
-                                variant="destructive"
+                                variant="ghost"
                                 size="default"
                                 icon={<Trash2 />}
                                 aria-label={`Delete memory ${row.id}`}

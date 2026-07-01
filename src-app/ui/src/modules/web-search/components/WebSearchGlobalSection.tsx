@@ -248,7 +248,7 @@ export function WebSearchGlobalSection() {
                   <Tooltip content="Remove from chain">
                     <Button
                       data-testid={`websearch-chain-${key}-remove`}
-                      variant="destructive"
+                      variant="ghost"
                       size="default"
                       aria-label={`Remove ${nameOf(key)} from chain`}
                       icon={<Trash2 />}
