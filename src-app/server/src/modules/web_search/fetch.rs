@@ -121,6 +121,13 @@ pub async fn fetch_url(
 /// convert the raw HTML so the model still gets something usable.
 fn extract_markdown(html: &str, url: &str) -> (String, String) {
     use dom_smoothie::Readability;
+    // Non-HTML bodies (JSON, CSV, plain text) carry no markup. Running them
+    // through Readability + an HTML→markdown converter mangles or drops the
+    // substantive content (e.g. a JSON document's values vanish). If the body
+    // has no tags, return it verbatim so the model sees the real content.
+    if !looks_like_html(html) {
+        return (String::new(), html.to_string());
+    }
     match Readability::new(html, Some(url), None).and_then(|mut r| r.parse()) {
         Ok(article) => {
             let title = article.title.clone();
@@ -130,6 +137,28 @@ fn extract_markdown(html: &str, url: &str) -> (String, String) {
         }
         Err(_) => (String::new(), htmd::convert(html).unwrap_or_default()),
     }
+}
+
+/// Cheap heuristic: is this body an actual HTML document/fragment (worth
+/// running Readability + the HTML→markdown converter on)? We deliberately
+/// match only *recognizable HTML element markers* rather than "any `<tag`":
+/// the converter escapes markdown specials (e.g. `foo_bar` → `foo\_bar`) and
+/// drops structure, which corrupts non-HTML payloads. JSON / CSV / plain text
+/// (no tags) AND generic XML (e.g. an Atom/RSS feed: `<feed><entry><title>…`,
+/// whose tags are NOT in this HTML set) are returned verbatim so the model
+/// sees the real content. HTML pages and fragments (`<div>`, `<p>`, `<a …`)
+/// still go through extraction. The markers are unambiguous HTML tags only —
+/// `<title>` is intentionally excluded because it also appears in XML feeds.
+fn looks_like_html(body: &str) -> bool {
+    let lower = body.to_ascii_lowercase();
+    const HTML_MARKERS: &[&str] = &[
+        "<!doctype html", "<html", "<head>", "<head ", "<body", "<div", "<span",
+        "<p>", "<p ", "<a ", "<a>", "<br", "<table", "<ul>", "<ul ", "<ol>",
+        "<ol ", "<li>", "<li ", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6",
+        "<img", "<article", "<section", "<header", "<footer", "<nav", "<main",
+        "<blockquote", "<pre", "<strong", "<em>", "<em ", "<script", "<style",
+    ];
+    HTML_MARKERS.iter().any(|m| lower.contains(m))
 }
 
 /// Truncate to `max_chars` on a char boundary; returns (text, was_truncated).

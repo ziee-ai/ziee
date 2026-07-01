@@ -503,11 +503,16 @@ mod tests {
         // skip the unknown ('continue') and resolve the known/configured ones in
         // chain order — so a mixed chain still produces a working fallback list
         // instead of failing. Exercises the real descriptor/is_configured/build.
+        // searxng's `build()` calls `validate_outbound_url`, which RESOLVES the
+        // host via DNS. A made-up name like `s.example` fails resolution and the
+        // provider would be wrongly dropped from the resolved chain. Use a
+        // loopback IP literal (allowed by SEARXNG_POLICY, no DNS needed) so the
+        // test exercises the resolution/skip logic, not the network.
         let rows = vec![
             WebSearchProviderRow {
                 provider: "searxng".into(),
                 api_key: None,
-                config: json!({ "base_url": "https://s.example" }),
+                config: json!({ "base_url": "http://127.0.0.1:8888" }),
             },
             WebSearchProviderRow {
                 provider: "brave".into(),

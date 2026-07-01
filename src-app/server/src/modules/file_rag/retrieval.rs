@@ -459,13 +459,33 @@ mod tests {
                 .fetch_one(&db)
                 .await
                 .expect("seed user");
-        let file_id: Uuid = sqlx::query_scalar(
-            "INSERT INTO files (user_id, filename, file_size) VALUES ($1, 'rag.txt', 1) RETURNING id",
-        )
-        .bind(user_id)
-        .fetch_one(&db)
-        .await
-        .expect("seed file");
+        // `files.current_version_id` is NOT NULL (migration 93) with a DEFERRABLE
+        // FK to `file_versions`. Seed both rows in one transaction (v1 id ==
+        // file_id, the head-pointer invariant) so the deferred FK verifies at
+        // COMMIT — a bare `INSERT INTO files` violates the NOT NULL.
+        let file_id = Uuid::new_v4();
+        {
+            let mut tx = db.begin().await.expect("begin file seed tx");
+            sqlx::query(
+                "INSERT INTO files (id, user_id, filename, file_size, current_version_id) \
+                 VALUES ($1, $2, 'rag.txt', 1, $1)",
+            )
+            .bind(file_id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .expect("seed file");
+            sqlx::query(
+                "INSERT INTO file_versions \
+                 (id, file_id, version, is_head, blob_version_id, file_size, created_by) \
+                 VALUES ($1, $1, 1, true, $1, 1, 'user')",
+            )
+            .bind(file_id)
+            .execute(&mut *tx)
+            .await
+            .expect("seed file_version");
+            tx.commit().await.expect("commit file seed tx");
+        }
 
         let embedding = HalfVector::from_f32_slice(&vec![0.1f32; 768]);
         // Chunk A: a fully-embedded row (post-rebuild / not yet NULLed).

@@ -166,7 +166,17 @@ async fn run(
     // 2. Re-embed every row whose embedding_model != new_model_name
     // (or is NULL). Batched to avoid loading huge memory lists into
     // process memory.
+    //
+    // Keyset pagination on `id` is load-bearing, NOT just an optimization:
+    // a row whose embed FAILS (or returns a wrong-dim vector) keeps its
+    // embedding NULL, so a plain `WHERE embedding IS NULL ... LIMIT n`
+    // re-selects that same row on every iteration → infinite loop (the
+    // batch never empties). Advancing a `id > last_id` cursor past every
+    // row we've *attempted* this run guarantees forward progress and a
+    // clean termination — failed rows are left for the next rebuild,
+    // never retried in a tight loop.
     let mut total_done: i64 = 0;
+    let mut last_id = Uuid::nil();
     loop {
         let batch = sqlx::query!(
             r#"
@@ -174,9 +184,12 @@ async fn run(
             FROM user_memories
             WHERE deleted_at IS NULL
               AND (embedding IS NULL OR embedding_model IS DISTINCT FROM $1)
-            LIMIT $2
+              AND id > $2
+            ORDER BY id
+            LIMIT $3
             "#,
             new_model_name,
+            last_id,
             REBUILD_BATCH_SIZE
         )
         .fetch_all(&pool)
@@ -189,6 +202,9 @@ async fn run(
 
         for row in batch {
             let id = row.id;
+            // Advance the cursor for EVERY row we attempt, before the embed
+            // call — so a failed/skipped row is never re-selected next batch.
+            last_id = id;
             let user_id = row.user_id;
             let content = row.content;
             match crate::modules::memory::engine::dispatch::embed(new_model_id, &content)
