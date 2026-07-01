@@ -439,10 +439,15 @@ function CreateMemoryDrawer({
       title="Add memory"
       onClose={onClose}
       size={600}
-      extra={
-        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-create-submit-btn">
-          Add
-        </Button>
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saving} data-testid="memory-create-cancel-btn">
+            Cancel
+          </Button>
+          <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-create-submit-btn">
+            Add
+          </Button>
+        </div>
       }
     >
       <Form
@@ -528,10 +533,15 @@ function EditMemoryDrawer({
       title="Edit memory"
       onClose={onClose}
       size={600}
-      extra={
-        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-edit-submit-btn">
-          Save
-        </Button>
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saving} data-testid="memory-edit-cancel-btn">
+            Cancel
+          </Button>
+          <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-edit-submit-btn">
+            Save
+          </Button>
+        </div>
       }
     >
       <Form form={form} layout="vertical" onSubmit={handleSubmit} data-testid="memory-edit-form">
