@@ -119,26 +119,31 @@ export async function assertGroupWidgetShowsCount(page: Page, groupName: string,
 // Group Assignment in MCP Servers (Card + Drawer)
 // =====================================================
 
-/** The user-groups assignment accordion for a server (by name, or the first). */
+// server→groups is now the shared `UserGroupAssignment` (testid prefix
+// `mcp-groups-<serverId>`): a `-toggle` collapsible, an `-assign` button, an
+// `-empty` note or `-tag-<gid>` chips, and an editor Drawer with `-save` /
+// `-cancel` + per-group `-drawer-card-<gid>` / `-drawer-switch-<gid>`. The
+// server card wraps it in `[data-card-type="user-groups-assignment"]`.
+/** The user-groups assignment widget for a server (by name, or the first). */
 function groupsWidgetForServer(page: Page, serverDisplayName?: string): Locator {
   if (serverDisplayName) {
     return page
       .getByTestId(/^mcp-system-server-card-/)
       .filter({ hasText: serverDisplayName })
       .first()
-      .getByTestId(/^mcp-groups-accordion-/)
+      .locator('[data-card-type="user-groups-assignment"]')
   }
-  return page.getByTestId(/^mcp-groups-accordion-/).first()
+  return page.locator('[data-card-type="user-groups-assignment"]').first()
 }
 
-/** Expand the accordion so the assigned-groups list (or empty state) shows. */
+/** Expand the collapsible so the assigned-groups list (or empty state) shows. */
 async function expandGroupsCollapseFor(page: Page, serverDisplayName?: string) {
   const widget = groupsWidgetForServer(page, serverDisplayName)
   await widget.waitFor({ state: 'visible', timeout: 10000 })
-  const trigger = widget.getByRole('button').first()
-  const expanded = (await trigger.getAttribute('aria-expanded')) === 'true'
+  const toggle = widget.getByTestId(/^mcp-groups-.+-toggle$/)
+  const expanded = (await toggle.getAttribute('aria-expanded')) === 'true'
   if (!expanded) {
-    await trigger.click()
+    await toggle.click()
   }
 }
 
@@ -146,31 +151,37 @@ export async function openGroupAssignmentDrawerFromServer(page: Page, serverDisp
   const widget = groupsWidgetForServer(page, serverDisplayName)
   await widget.scrollIntoViewIfNeeded()
   await widget.waitFor({ state: 'visible', timeout: 10000 })
-  await widget.getByTestId(/^mcp-groups-assign-btn-/).click()
-  await byTestId(page, 'mcp-groups-drawer-save-btn').waitFor({ state: 'visible', timeout: 5000 })
+  await widget.getByTestId(/^mcp-groups-.+-assign$/).click()
+  await page.getByTestId(/^mcp-groups-.+-save$/).waitFor({ state: 'visible', timeout: 5000 })
 }
 
 export async function toggleGroupInDrawer(page: Page, groupName: string, enable: boolean) {
   const groupCard = page
-    .getByTestId(/^mcp-groups-drawer-card-/)
+    .getByTestId(/^mcp-groups-.+-drawer-card-/)
     .filter({ hasText: groupName })
     .first()
   await groupCard.waitFor({ state: 'visible', timeout: 5000 })
-  const switchElement = groupCard.getByTestId(/^mcp-groups-drawer-switch-/)
-  const isChecked = (await switchElement.getAttribute('aria-checked')) === 'true'
-  if (isChecked !== enable) {
+  const switchElement = groupCard.getByTestId(/^mcp-groups-.+-drawer-switch-/)
+  // Robust to a Base UI switch dropping a click that lands mid-re-render:
+  // click until aria-checked (mirrors the controlled value) reaches the target.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (((await switchElement.getAttribute('aria-checked')) === 'true') === enable) break
     await switchElement.click()
+    await page.waitForTimeout(150)
   }
+  await expect(switchElement).toHaveAttribute('aria-checked', String(enable))
 }
 
 export async function saveGroupAssignment(page: Page) {
-  await byTestId(page, 'mcp-groups-drawer-save-btn').click()
-  await byTestId(page, 'mcp-groups-drawer-save-btn').waitFor({ state: 'detached', timeout: 10000 })
+  const save = page.getByTestId(/^mcp-groups-.+-save$/)
+  await save.click()
+  await save.waitFor({ state: 'detached', timeout: 10000 })
 }
 
 export async function cancelGroupAssignment(page: Page) {
-  await byTestId(page, 'mcp-groups-drawer-cancel-btn').click()
-  await byTestId(page, 'mcp-groups-drawer-cancel-btn').waitFor({ state: 'detached', timeout: 5000 })
+  const cancel = page.getByTestId(/^mcp-groups-.+-cancel$/)
+  await cancel.click()
+  await cancel.waitFor({ state: 'detached', timeout: 5000 })
 }
 
 export async function assignGroupToServer(
@@ -198,21 +209,21 @@ export async function removeGroupFromServer(
 export async function assertGroupInServerCard(page: Page, groupName: string, serverDisplayName?: string) {
   await expandGroupsCollapseFor(page, serverDisplayName)
   const widget = groupsWidgetForServer(page, serverDisplayName)
-  const groupTag = widget.getByTestId(/^mcp-group-tag-/).filter({ hasText: groupName })
+  const groupTag = widget.getByTestId(/^mcp-groups-.+-tag-/).filter({ hasText: groupName })
   await expect(groupTag).toBeVisible()
 }
 
 export async function assertGroupNotInServerCard(page: Page, groupName: string, serverDisplayName?: string) {
   await expandGroupsCollapseFor(page, serverDisplayName)
   const widget = groupsWidgetForServer(page, serverDisplayName)
-  const groupTag = widget.getByTestId(/^mcp-group-tag-/).filter({ hasText: groupName })
+  const groupTag = widget.getByTestId(/^mcp-groups-.+-tag-/).filter({ hasText: groupName })
   await expect(groupTag).toHaveCount(0)
 }
 
 export async function assertServerCardShowsCount(page: Page, expectedCount: number, serverDisplayName?: string) {
   await expandGroupsCollapseFor(page, serverDisplayName)
   const widget = groupsWidgetForServer(page, serverDisplayName)
-  await expect(widget.getByTestId(/^mcp-group-tag-/)).toHaveCount(expectedCount)
+  await expect(widget.getByTestId(/^mcp-groups-.+-tag-/)).toHaveCount(expectedCount)
 }
 
 // =====================================================
