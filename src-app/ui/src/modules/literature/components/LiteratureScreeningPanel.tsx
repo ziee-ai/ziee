@@ -134,11 +134,11 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
 
       {/* PRISMA-style counts */}
       <Space wrap size="small">
-        <Tag data-testid="lit-screening-tag-identified">Identified: {identifiedTotal}</Tag>
-        <Tag data-testid="lit-screening-tag-after-dedup">After dedup: {afterDedup}</Tag>
-        <Tag tone="info" data-testid="lit-screening-tag-screened">Screened: {screened}</Tag>
-        <Tag tone="success" data-testid="lit-screening-tag-included">Included: {counts.include}</Tag>
-        <Tag tone="error" data-testid="lit-screening-tag-excluded">Excluded: {counts.exclude}</Tag>
+        <Tag variant="outline" data-testid="lit-screening-tag-identified">Identified: {identifiedTotal}</Tag>
+        <Tag variant="outline" data-testid="lit-screening-tag-after-dedup">After dedup: {afterDedup}</Tag>
+        <Tag variant="outline" tone="info" data-testid="lit-screening-tag-screened">Screened: {screened}</Tag>
+        <Tag variant="outline" tone="success" data-testid="lit-screening-tag-included">Included: {counts.include}</Tag>
+        <Tag variant="outline" tone="error" data-testid="lit-screening-tag-excluded">Excluded: {counts.exclude}</Tag>
       </Space>
 
       {degradedSources.length > 0 && (
@@ -164,13 +164,13 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           label={selected.size > 0 ? `${selected.size} selected` : 'Select all'}
           data-testid="lit-screening-select-all-checkbox"
         />
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
+        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
           Include
         </Button>
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
+        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
           Exclude
         </Button>
-        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
+        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
           Unscreen
         </Button>
         <Dropdown
@@ -182,7 +182,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           onSelect={(key: string) => doExport(key as 'ris' | 'bibtex' | 'csv')}
           data-testid="lit-screening-export-dropdown"
         >
-          <Button icon={<Download />} size="sm" disabled={records.length === 0} data-testid="lit-screening-export-button">
+          <Button icon={<Download />} size="default" disabled={records.length === 0} data-testid="lit-screening-export-button">
             Export {counts.include > 0 ? 'included' : 'all'}
           </Button>
         </Dropdown>
@@ -218,7 +218,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                 <Text strong className="text-sm">
                   {i + 1}. {record.title}
                 </Text>
-                {record.is_preprint && <Tag data-testid={`lit-screening-preprint-${i}`} className="ml-1">preprint</Tag>}
+                {record.is_preprint && <Tag variant="outline" data-testid={`lit-screening-preprint-${i}`} className="ml-1">preprint</Tag>}
                 <Paragraph type="secondary" className="text-xs !mb-0">
                   {record.authors?.slice(0, 3).join(', ')}
                   {record.authors?.length > 3 ? ' et al.' : ''}

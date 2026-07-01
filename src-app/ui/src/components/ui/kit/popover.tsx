@@ -27,11 +27,9 @@ export function Popover({ content, title, children, open, onOpenChange, side, al
     : {}
   return (
     <Root open={isOpen} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        {hover
-          ? <span className="inline-block" {...hoverHandlers}>{children}</span>
-          : children}
-      </PopoverTrigger>
+      <PopoverTrigger
+        render={hover ? <span className="inline-block" {...hoverHandlers}>{children}</span> : (children as React.ReactElement)}
+      />
       <PopoverContent side={side} align={align} className={className} {...hoverHandlers}>
         {title != null && <div className="mb-1 font-medium">{title}</div>}
         {content}

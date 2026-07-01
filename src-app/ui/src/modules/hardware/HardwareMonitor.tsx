@@ -60,7 +60,7 @@ export function HardwareMonitor() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Text strong>Real-time Monitoring:</Text>
-            <Tag data-testid="hardware-connection-status-tag" tone={sseConnected ? 'success' : 'error'}>
+            <Tag variant="outline" data-testid="hardware-connection-status-tag" tone={sseConnected ? 'success' : 'error'}>
               {sseConnected ? 'Connected' : 'Disconnected'}
             </Tag>
             {usageLoading && (

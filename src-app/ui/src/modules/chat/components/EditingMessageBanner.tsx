@@ -31,7 +31,7 @@ export function EditingMessageBanner() {
         <Button
           data-testid="chat-editing-cancel-btn"
           variant="ghost"
-          size="sm"
+          size="default"
           icon={<X />}
           onClick={() => Stores.Chat.__state.cancelEdit()}
           aria-label="Cancel edit"

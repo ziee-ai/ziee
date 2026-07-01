@@ -122,7 +122,7 @@ function VirtualMultiList({
         <button
           type="button"
           onClick={() => commit(trimmed)}
-          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 outline-none"
         >
           <Plus className="size-4 shrink-0" aria-hidden />
           <span className="truncate">{createLabel(trimmed)}</span>
@@ -256,14 +256,14 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
     }
   }
 
-  if (s.loading) return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
+  if (s.loading) return <Skeleton className={cn('h-8 w-full rounded-lg', className)} />
   return (
     <Root open={open} onOpenChange={(o) => { if (locked && o) return; setOpen(o); if (!o) { onBlur?.(); setQuery('') } }}>
       {/* native form submission: one hidden input per selected value (div trigger has no name). */}
       {name != null && uniqueCurrent.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
-      <PopoverTrigger asChild>
-        {/* a DIV (not a <button>) so the removable Tag <button>s can legally nest; keyboard
-            open is wired manually since a div has no implicit button activation. */}
+      <PopoverTrigger render={
+        /* a DIV (not a <button>) so the removable Tag <button>s can legally nest; keyboard
+           open is wired manually since a div has no implicit button activation. */
         <div
           ref={ref}
           id={id}
@@ -286,8 +286,8 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
             if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); setOpen(true) }
           }}
           className={cn(
-            'flex min-h-9 w-full flex-wrap items-center gap-1 rounded-md border border-input bg-transparent px-2 py-1 text-sm',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'flex min-h-8 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-2 py-1 text-sm',
+            'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 outline-none',
             locked && 'cursor-not-allowed opacity-50',
             className, invalid && 'border-destructive focus-visible:ring-destructive',
           )}
@@ -306,8 +306,8 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
           })}
           <ChevronsUpDown className="ml-auto size-4 shrink-0 opacity-50" aria-hidden />
         </div>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      } />
+      <PopoverContent className="w-(--anchor-width) p-0" align="start">
         {virtual ? (
           <VirtualMultiList
             options={options} selectedSet={selectedSet} onToggle={toggle}

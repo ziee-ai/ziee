@@ -3,8 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Separator,
-  Flex,
   Form,
   FormField,
   InputNumber,
@@ -21,6 +19,7 @@ import { RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 
 const READ_PERM = Permissions.FileRagAdminRead
@@ -154,7 +153,19 @@ export function EmbeddingSection() {
 
   return (
     <>
-      <Card data-testid="filerag-embedding-card" title="Embedding (semantic search)">
+      <Card
+        data-testid="filerag-embedding-card"
+        title="Embedding (semantic search)"
+        footer={canManage ? (
+          <SettingsFormActions
+            onSave={form.handleSubmit(handleSubmit)}
+            onCancel={() => form.reset()}
+            saving={saving}
+            saveTestid="filerag-embedding-save"
+            cancelTestid="filerag-embedding-cancel"
+          />
+        ) : undefined}
+      >
         {error && <Alert data-testid="filerag-embedding-error-alert" tone="error" className="!mb-4" title={error} />}
         {noModelsAvailable && (
           <Alert
@@ -242,16 +253,6 @@ export function EmbeddingSection() {
             </div>
           </div>
 
-          {canManage && (
-            <>
-              <Separator className="!my-3" />
-              <Flex justify="end">
-                <Button data-testid="filerag-embedding-save" type="submit" loading={saving}>
-                  Save
-                </Button>
-              </Flex>
-            </>
-          )}
         </Form>
       </Card>
 

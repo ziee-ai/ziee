@@ -170,7 +170,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                       cancelText="Cancel"
                       okButtonProps={{ danger: true, disabled: deleting }}
                     >
-                      <Button data-testid="chat-bulk-delete-btn" variant="destructive" icon={<Trash2 />} loading={deleting}>
+                      <Button data-testid="chat-bulk-delete-btn" variant="ghost" icon={<Trash2 />} loading={deleting}>
                         Delete Selected
                       </Button>
                     </Confirm>

@@ -65,6 +65,13 @@ export const ACCENT_PRESETS = {
     light: { primary: '32 78% 35%', fg: '0 0% 100%' },
     dark: { primary: '38 82% 60%', fg: '32 60% 10%' },
   },
+  black: {
+    label: 'Black',
+    // Monochrome accent — inverts per theme so the fill stays visible and AA-max:
+    // near-black fill + white text in light, near-white fill + near-black text in dark.
+    light: { primary: '0 0% 9%', fg: '0 0% 100%' },
+    dark: { primary: '0 0% 98%', fg: '0 0% 9%' },
+  },
 } as const satisfies Record<string, AccentPresetDef>
 
 export type AccentPreset = keyof typeof ACCENT_PRESETS
@@ -75,10 +82,13 @@ export const ACCENT_ORDER = Object.keys(ACCENT_PRESETS) as AccentPreset[]
 export function applyAccent(root: HTMLElement, preset: AccentPreset, isDark: boolean) {
   const def = ACCENT_PRESETS[preset] ?? ACCENT_PRESETS[DEFAULT_ACCENT]
   const v = isDark ? def.dark : def.light
-  root.style.setProperty('--primary', v.primary)
-  root.style.setProperty('--primary-foreground', v.fg)
-  root.style.setProperty('--ring', v.primary)
-  // sidebar tokens are stored wrapped in hsl(...) in index.css, so match that form.
+  // Tokens are full color VALUES now (oklch palette, v4 `@theme inline`), no
+  // longer raw channels fed through `hsl(var(--*))`. Emit the preset's HSL
+  // channels wrapped as a complete `hsl(...)` color so alpha modifiers
+  // (e.g. `ring/50`) resolve via color-mix like every other token.
+  root.style.setProperty('--primary', `hsl(${v.primary})`)
+  root.style.setProperty('--primary-foreground', `hsl(${v.fg})`)
+  root.style.setProperty('--ring', `hsl(${v.primary})`)
   root.style.setProperty('--sidebar-primary', `hsl(${v.primary})`)
   root.style.setProperty('--sidebar-primary-foreground', `hsl(${v.fg})`)
   root.style.setProperty('--sidebar-ring', `hsl(${v.primary})`)

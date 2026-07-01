@@ -125,7 +125,7 @@ export function WorkflowRunProgressView({
   return (
     <div className="flex flex-col gap-3">
       <Space direction="horizontal" align="center" wrap>
-        <Tag data-testid="wf-progress-status-tag" tone={tone}>{run.status}</Tag>
+        <Tag variant="outline" data-testid="wf-progress-status-tag" tone={tone}>{run.status}</Tag>
         <Text type="secondary" className="text-xs">
           {run.totalTokens.toLocaleString()} tokens
         </Text>
@@ -138,7 +138,7 @@ export function WorkflowRunProgressView({
           <Button
             data-testid="wf-progress-cancel-btn"
             variant="destructive"
-            size="sm"
+            size="default"
             icon={<Ban />}
             loading={cancelling}
             onClick={() => void Stores.WorkflowRun.cancel(runId)}
@@ -151,7 +151,7 @@ export function WorkflowRunProgressView({
         {!terminal && (
           <Button
             data-testid="wf-progress-remove-timeout-btn"
-            size="sm"
+            size="default"
             loading={removingTimeout}
             disabled={removingTimeout}
             onClick={async () => {
@@ -196,7 +196,7 @@ export function WorkflowRunProgressView({
           <div key={s.stepId} className="flex flex-col gap-2 py-2">
             <Space direction="horizontal" size={8}>
               <Text>{s.description || s.message || s.stepId}</Text>
-              {s.stepKind && <Tag data-testid={`wf-progress-step-kind-tag-${s.stepId}`} className="text-xs !m-0">{s.stepKind}</Tag>}
+              {s.stepKind && <Tag variant="outline" data-testid={`wf-progress-step-kind-tag-${s.stepId}`} className="text-xs !m-0">{s.stepKind}</Tag>}
             </Space>
             <div className="flex flex-col gap-1 ml-4">
               {s.tracks && Object.keys(s.tracks).length > 0 && (

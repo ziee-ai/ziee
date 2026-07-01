@@ -50,8 +50,8 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
           </Space>
           {canManage && (
             <Button
-              size="sm"
-              variant="link"
+              size="default"
+              variant="ghost"
               icon={<Pencil aria-hidden="true" />}
               onClick={handleEdit}
               aria-label={`Edit System MCP Servers for ${group.name}`}

@@ -115,6 +115,7 @@ export function ConversationSkillsPanel({
               ) : null}
             </div>
             <Switch
+              tooltip="Toggle this skill for the conversation"
               size="sm"
               data-testid={`skill-conversation-switch-${skill.id}`}
               checked={visible}

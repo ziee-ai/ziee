@@ -99,7 +99,7 @@ export function Pagination({
     setJump('')
   }
   return (
-    <Base className={cn('flex items-center gap-3', className)} aria-label={ariaLabel} data-testid={testid}>
+    <Base className={cn('flex w-full items-center justify-end gap-3', className)} aria-label={ariaLabel} data-testid={testid}>
       {showTotal != null && <span className="text-sm text-muted-foreground">{showTotal(total, [from, to])}</span>}
       {pageCount > 1 && (
         <PaginationContent>

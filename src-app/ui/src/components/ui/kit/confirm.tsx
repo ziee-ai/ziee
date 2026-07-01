@@ -51,7 +51,7 @@ export function Confirm({ title, description, okText, cancelText, danger, onConf
   const isDanger = danger || okButtonProps?.danger
   return (
     <Root open={isOpen} onOpenChange={(o) => { setOpen(o); if (!o) onCancel?.() }}>
-      {children != null && <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>}
+      {children != null && <AlertDialogTrigger render={children} />}
       {/* suppress Radix's missing-description warning when intentionally absent */}
       <AlertDialogContent data-testid={testid} {...(description == null ? { 'aria-describedby': undefined } : {})}>
         <AlertDialogHeader>

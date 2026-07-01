@@ -1,13 +1,10 @@
 import { useEffect } from 'react'
 import {
   Alert,
-  Button,
   Card,
-  Flex,
   Form,
   FormField,
   InputNumber,
-  Separator,
   Switch,
   message,
   useForm,
@@ -17,6 +14,7 @@ import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 
 const READ_PERM = Permissions.FileRagAdminRead
@@ -104,7 +102,19 @@ export function FullTextSection() {
   }
 
   return (
-    <Card data-testid="filerag-fts-card" title="Full-text search">
+    <Card
+      data-testid="filerag-fts-card"
+      title="Full-text search"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSubmit)}
+          onCancel={() => form.reset()}
+          saving={saving}
+          saveTestid="filerag-fts-save"
+          cancelTestid="filerag-fts-cancel"
+        />
+      ) : undefined}
+    >
       {error && <Alert data-testid="filerag-fts-error-alert" tone="error" className="!mb-4" title={error} />}
       <Form
         data-testid="filerag-fts-form"
@@ -147,16 +157,6 @@ export function FullTextSection() {
           <InputNumber data-testid="filerag-fts-min-rank" min={0} max={1} step={0.05} className="w-40" />
         </FormField>
 
-        {canManage && (
-          <>
-            <Separator className="!my-3" />
-            <Flex justify="end">
-              <Button data-testid="filerag-fts-save" type="submit" loading={saving}>
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
     </Card>
   )

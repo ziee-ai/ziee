@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
-import { Alert, Button, Card, Flex, Form, FormField, InputNumber, Separator, Switch, message, useForm, zodResolver } from '@/components/ui'
+import { Alert, Card, Form, FormField, InputNumber, Switch, message, useForm, zodResolver } from '@/components/ui'
 import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
@@ -73,7 +74,19 @@ export function EnableSection() {
   }
 
   return (
-    <Card data-testid="filerag-enable-card" title="Document search">
+    <Card
+      data-testid="filerag-enable-card"
+      title="Document search"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSubmit)}
+          onCancel={() => form.reset()}
+          saving={saving}
+          saveTestid="filerag-enable-save"
+          cancelTestid="filerag-enable-cancel"
+        />
+      ) : undefined}
+    >
       {error && <Alert data-testid="filerag-enable-error-alert" tone="error" className="!mb-4" title={error} />}
       <Form
         data-testid="filerag-enable-form"
@@ -100,16 +113,6 @@ export function EnableSection() {
           <InputNumber data-testid="filerag-enable-top-k" min={1} max={50} className="w-40" />
         </FormField>
 
-        {canManage && (
-          <>
-            <Separator className="!my-3" />
-            <Flex justify="end">
-              <Button data-testid="filerag-enable-save" type="submit" loading={saving}>
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
     </Card>
   )

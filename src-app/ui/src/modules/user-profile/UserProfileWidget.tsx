@@ -30,7 +30,7 @@ function SidebarItem({
       }}
       className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150 text-foreground focus-visible:outline focus-visible:outline-2"
       onMouseEnter={e => {
-        e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.9)'
+        e.currentTarget.style.backgroundColor = 'color-mix(in oklab, var(--primary) 90%, transparent)'
         e.currentTarget.style.color = 'white'
       }}
       onMouseLeave={e => {
@@ -38,7 +38,7 @@ function SidebarItem({
         e.currentTarget.style.color = ''
       }}
       onFocus={e => {
-        e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.9)'
+        e.currentTarget.style.backgroundColor = 'color-mix(in oklab, var(--primary) 90%, transparent)'
         e.currentTarget.style.color = 'white'
       }}
       onBlur={e => {

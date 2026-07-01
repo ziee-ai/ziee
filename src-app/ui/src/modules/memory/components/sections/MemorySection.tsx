@@ -3,8 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Separator,
-  Flex,
   Form,
   FormField,
   useForm,
@@ -17,6 +15,7 @@ import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -70,7 +69,7 @@ export function MemorySection() {
           title="Failed to load memory settings"
           description={error}
         >
-          <Button data-testid="memory-section-retry-btn" size="sm" onClick={() => Stores.MemoryAdmin.load()}>
+          <Button data-testid="memory-section-retry-btn" size="default" onClick={() => Stores.MemoryAdmin.load()}>
             Retry
           </Button>
         </Alert>
@@ -94,7 +93,19 @@ export function MemorySection() {
   }
 
   return (
-    <Card title="Memory" data-testid="memory-admin-master-card">
+    <Card
+      title="Memory"
+      data-testid="memory-admin-master-card"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSubmit)}
+          onCancel={() => form.reset()}
+          saving={saving}
+          saveTestid="memory-admin-master-save-btn"
+          cancelTestid="memory-admin-master-cancel-btn"
+        />
+      ) : undefined}
+    >
       <Form
         name="memory-admin-master-form"
         form={form}
@@ -120,16 +131,6 @@ export function MemorySection() {
           <InputNumber min={1} max={100} className="w-40" data-testid="memory-admin-topk-input" />
         </FormField>
 
-        {canManage && (
-          <>
-            <Separator className="!my-3" />
-            <Flex justify="end">
-              <Button type="submit" loading={saving} data-testid="memory-admin-master-save-btn">
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
     </Card>
   )

@@ -58,9 +58,6 @@ export type DatePickerProps = {
   'data-testid': string
 } & KitStyleProps
 
-const triggerH = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
-
 export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(function DatePicker(
   {
     value, defaultValue, onChange, onValueChange, onBlur, placeholder,
@@ -94,7 +91,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
     return m
   }, [minDate, maxDate, disabledDate])
 
-  if (s.loading) return <Skeleton className={cn(triggerH(s.size), 'w-full rounded-md', className)} />
+  if (s.loading) return <Skeleton className={cn('h-8', 'w-full rounded-lg', className)} />
 
   const choose = (d: Date | undefined) => {
     if (s.readOnly) return
@@ -106,7 +103,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
     <Root open={open} onOpenChange={(o) => { if (blocked) return; setOpen(o) }}>
       {/* native form submission (the trigger is a button with no value of its own). */}
       {name != null && <input type="hidden" name={name} value={current} />}
-      <PopoverTrigger asChild>
+      <PopoverTrigger render={
         <button
           ref={ref}
           type="button"
@@ -125,9 +122,9 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
           onBlur={() => onBlur?.()}
           style={style}
           className={cn(
-            'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-            triggerH(s.size), invalid && 'border-destructive focus-visible:ring-destructive', className,
+            'flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm',
+            'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 outline-none disabled:cursor-not-allowed disabled:opacity-50',
+            'h-8', invalid && 'border-destructive focus-visible:ring-destructive', className,
           )}
         >
           <span className={cn('truncate', !selected && 'text-muted-foreground')}>
@@ -135,7 +132,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(f
           </span>
           <CalendarIcon className="size-4 shrink-0 opacity-50" aria-hidden />
         </button>
-      </PopoverTrigger>
+      } />
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"

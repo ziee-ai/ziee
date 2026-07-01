@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Card, Empty, InputNumber, Space, Spin } from '@/components/ui'
+import { Button, Card, Empty, InputNumber, Spin } from '@/components/ui'
 import { Table, Tag, Text, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -27,23 +27,24 @@ export function AuditLogSection() {
         assistant&rsquo;s tools added, and what you deleted (and when).
       </Paragraph>
 
-      <Space className="mb-4" align="center">
-        <Text>Show last</Text>
+      <div className="mb-4 flex flex-nowrap items-center gap-2">
+        <Text className="whitespace-nowrap">Show last</Text>
         <InputNumber
           data-testid="memory-audit-limit-input"
           min={1}
           max={500}
           value={pendingLimit}
           onChange={v => setPendingLimit(typeof v === 'number' ? v : 100)}
+          suffix="entries"
+          className="w-40"
         />
-        <Text>entries</Text>
         <Button
           data-testid="memory-audit-limit-apply"
           onClick={() => Stores.MemoryAudit.setLimit(pendingLimit)}
         >
           Apply
         </Button>
-      </Space>
+      </div>
 
       {loading ? (
         <div className="flex justify-center py-6">
@@ -81,7 +82,7 @@ export function AuditLogSection() {
                       : v === 'DELETE'
                         ? 'error'
                         : 'warning'
-                return <Tag data-testid={`memory-audit-status-${v}`} tone={tone}>{v}</Tag>
+                return <Tag variant="outline" data-testid={`memory-audit-status-${v}`} tone={tone}>{v}</Tag>
               },
             },
             {
@@ -98,7 +99,7 @@ export function AuditLogSection() {
                       ? 'success'
                       : 'info'
                 return (
-                  <Tag data-testid={`memory-audit-source-${v}`} tone={tone}>
+                  <Tag variant="outline" data-testid={`memory-audit-source-${v}`} tone={tone}>
                     {v === 'mcp_tool' ? 'tool' : v}
                   </Tag>
                 )
@@ -110,7 +111,7 @@ export function AuditLogSection() {
               dataIndex: 'actor_kind',
               width: 100,
               render: (record: MemoryAuditEntry) => {
-                return <Tag data-testid={`memory-audit-actor-${record.actor_kind}`}>{record.actor_kind}</Tag>
+                return <Tag variant="outline" data-testid={`memory-audit-actor-${record.actor_kind}`}>{record.actor_kind}</Tag>
               },
             },
             {

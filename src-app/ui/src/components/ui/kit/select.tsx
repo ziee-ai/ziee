@@ -69,9 +69,6 @@ export type SelectProps = SelectBase &
 const isGroup = (o: SelectOption | SelectOptionGroup): o is SelectOptionGroup =>
   Array.isArray((o as SelectOptionGroup).options)
 
-const triggerH = (size?: 'sm' | 'default' | 'lg') =>
-  size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
-
 function flatOptions(options: (SelectOption | SelectOptionGroup)[]): SelectOption[] {
   return options.flatMap((o) => (isGroup(o) ? o.options : [o]))
 }
@@ -104,14 +101,14 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
     () =>
       options.map((o, i) =>
         isGroup(o) ? (
-          <SelectGroup key={o.options[0]?.value ?? `g${i}`}>
+          <SelectGroup key={o.options[0]?.value ?? `g${i}`} className="p-0">
+            {/* p-0 cancels base-nova's group inset (the popup now owns p-1). */}
             {o.label != null && <SelectLabel>{o.label}</SelectLabel>}
             {o.options.map((opt) => (
               <SelectItem
                 key={opt.value}
                 value={opt.value}
                 disabled={opt.disabled}
-                textValue={typeof opt.label === 'string' ? opt.label : opt.value}
                 data-testid={testid ? `${testid}-opt-${opt.value}` : undefined}
               >
                 {optionRender ? optionRender(opt) : opt.label}
@@ -123,7 +120,6 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
             key={o.value}
             value={o.value}
             disabled={o.disabled}
-            textValue={typeof o.label === 'string' ? o.label : o.value}
             data-testid={testid ? `${testid}-opt-${o.value}` : undefined}
           >
             {optionRender ? optionRender(o) : o.label}
@@ -141,22 +137,25 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
   }, [options])
 
   if (s.loading) {
-    return <Skeleton className={cn(triggerH(s.size), 'w-full rounded-md', className)} />
+    return <Skeleton className={cn('h-9 w-full rounded-md', className)} />
   }
 
   // Custom selected display: a per-option selectedLabel or a labelRender means the trigger
   // must show something other than the row text → render controlled SelectValue children.
   const selectedOpt = current ? optionByValue.get(current) : undefined
+  // base-ui's SelectValue renders the raw VALUE when given no children, so a plain
+  // option would show its value ("light") instead of its label ("Light"). Always
+  // drive the trigger from the option's label (or an explicit override).
   const customDisplay =
     labelRender != null
       ? labelRender(selectedOpt)
       : selectedOpt?.selectedLabel != null
         ? selectedOpt.selectedLabel
-        : undefined
+        : selectedOpt?.label
   const showClear = allowClear && current !== '' && !locked
 
   return (
-    <SelectRoot value={current} onValueChange={handleChange} disabled={locked} name={name}>
+    <SelectRoot value={current} onValueChange={(v) => handleChange(v ?? '')} disabled={locked} name={name}>
       {/* relative wrapper so the clear button is a SIBLING of the trigger, never a <button>
           nested inside the trigger <button> (invalid HTML + keyboard-unreachable). */}
       <div className="relative">
@@ -171,7 +170,8 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           aria-labelledby={ariaLabelledby}
           aria-required={ariaRequired}
           data-testid={testid}
-          className={cn(triggerH(s.size), 'w-full', className, showClear && 'pr-12', invalid && 'border-destructive focus-visible:ring-destructive')}
+          size={s.size === 'sm' ? 'sm' : 'default'}
+          className={cn('w-full', className, showClear && 'pr-14')}
         >
           <SelectValue placeholder={placeholder}>{customDisplay}</SelectValue>
           {loading && <Loader2 className="ml-2 size-4 shrink-0 animate-spin opacity-70" aria-hidden />}
@@ -184,15 +184,17 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
             onClick={clear}
             // pointer-down stop so clearing via mouse doesn't also open the Radix dropdown.
             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation() }}
-            className="absolute right-7 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-sm opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute right-7 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-sm opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <X className="size-3.5" aria-hidden />
           </button>
         )}
       </div>
-      {/* match=true → pin to the trigger width (shadcn already sets min-w to it; cap the max).
-          match=false → keep the default grow-for-long-options behavior. */}
-      <SelectContent className={popupMatchSelectWidth ? 'max-w-[var(--radix-select-trigger-width)]' : undefined}>
+      {/* p-1: base-nova puts the list inset on SelectGroup only, so flat
+          (ungrouped) items would sit flush against the popup edge — restore it
+          on the popup. match=false → let the popup grow past the trigger width
+          (Base UI defaults the popup to the trigger's `--anchor-width`). */}
+      <SelectContent className={cn('p-1', !popupMatchSelectWidth && 'w-auto min-w-(--anchor-width)')}>
         {items}
       </SelectContent>
     </SelectRoot>

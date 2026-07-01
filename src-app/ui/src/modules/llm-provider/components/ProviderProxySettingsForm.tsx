@@ -1,20 +1,17 @@
 import {
-  Button,
   Card,
-  Flex,
   Form,
   FormField,
   Input,
   PasswordInput,
-  Separator,
   Switch,
-  Text,
   useForm,
   zodResolver,
 } from '@/components/ui'
 import { z } from 'zod'
 import { useEffect, useState } from 'react'
 import type { ProxySettings } from '@/api-client/types'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 
 const proxySettingsSchema = z.object({
   enabled: z.boolean().optional(),
@@ -90,142 +87,75 @@ export function ProviderProxySettingsForm({
   }
 
   return (
-    <Card title={'Proxy Settings'} data-testid="llm-proxy-settings-card">
+    <Card
+      title="Proxy Settings"
+      data-testid="llm-proxy-settings-card"
+      footer={
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSave)}
+          onCancel={handleReset}
+          saving={loading}
+          cancelDisabled={disabled}
+          saveDisabled={disabled}
+          cancelLabel="Reset"
+          saveTestid="llm-proxy-save-btn"
+          cancelTestid="llm-proxy-reset-btn"
+        />
+      }
+    >
       <Form
         name="provider-proxy-form"
         form={form}
-        layout="vertical"
+        layout="horizontal"
         onSubmit={handleSave}
         disabled={disabled}
         data-testid="llm-proxy-form"
       >
-        <Flex className={'flex-col'}>
-          <Flex className={'flex-col gap-3'}>
-            {/* Enable Proxy Toggle */}
-            <div>
-              <div className={'flex justify-between items-center'}>
-                <div className="flex-1 mr-4">
-                  <Text strong>Enable Proxy</Text>
-                  <br />
-                  <Text type="secondary">
-                    Route all API requests through a proxy server
-                  </Text>
-                </div>
-                <FormField
-                  name="enabled"
-                  aria-label="Enable proxy"
-                  valuePropName="checked"
-                >
-                  <Switch
-                    aria-label="Enable or disable proxy settings"
-                    data-testid="llm-proxy-enabled-switch"
-                  />
-                </FormField>
-              </div>
-            </div>
-
-            {/* Proxy URL */}
-            <div>
-              <Text strong>Proxy URL</Text>
-              <br />
-              <Text type="secondary">
-                The URL of your proxy server (e.g.,
-                http://proxy.company.com:8080)
-              </Text>
-              <div className="mt-2">
-                <FormField
-                  name="url"
-                  aria-label="Proxy URL"
-                >
-                  <Input
-                    placeholder={'http://proxy.example.com:8080'}
-                    data-testid="llm-proxy-url-input"
-                  />
-                </FormField>
-              </div>
-            </div>
-
-            {/* Authentication */}
-            <div>
-              <Text strong>Authentication</Text>
-              <br />
-              <Text type="secondary">
-                Optional username and password for proxy authentication
-              </Text>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <FormField name="username" aria-label="Proxy username">
-                  <Input
-                    placeholder={'Username (optional)'}
-                    data-testid="llm-proxy-username-input"
-                  />
-                </FormField>
-                <FormField name="password" aria-label="Proxy password">
-                  <PasswordInput
-                    placeholder={'Password (optional)'}
-                    showLabel="Show"
-                    hideLabel="Hide"
-                    data-testid="llm-proxy-password-input"
-                  />
-                </FormField>
-              </div>
-            </div>
-
-            {/* No Proxy */}
-            <div>
-              <Text strong>No Proxy Hosts</Text>
-              <br />
-              <Text type="secondary">
-                Comma-separated list of hosts that should bypass the proxy
-              </Text>
-              <div className="mt-2">
-                <FormField name="no_proxy" aria-label="No-proxy hosts">
-                  <Input
-                    placeholder={'localhost,127.0.0.1,.example.com'}
-                    data-testid="llm-proxy-no-proxy-input"
-                  />
-                </FormField>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center">
-              <div className="flex-1 mr-4">
-                <Text strong>Ignore SSL Certificate Errors</Text>
-                <br />
-                <Text type="secondary">
-                  Allow connections even if SSL certificate validation fails
-                  (not recommended for production)
-                </Text>
-              </div>
-              <FormField
-                name="ignore_ssl_certificates"
-                aria-label="Ignore SSL certificate errors"
-                valuePropName="checked"
-              >
-                <Switch
-                  aria-label="Ignore SSL certificate errors"
-                  data-testid="llm-proxy-ignore-ssl-switch"
-                />
-              </FormField>
-            </div>
-          </Flex>
-        </Flex>
-
-        <Separator />
-
-        <div className={'flex justify-end'}>
-          <Flex className="gap-2">
-            <Button variant="outline" onClick={handleReset} data-testid="llm-proxy-reset-btn">
-              Reset
-            </Button>
-            <Button
-              type="submit"
-              loading={loading}
-              data-testid="llm-proxy-save-btn"
-            >
-              Save
-            </Button>
-          </Flex>
-        </div>
+        <FormField
+          name="enabled"
+          label="Enable proxy"
+          description="Route all API requests through a proxy server."
+          valuePropName="checked"
+        >
+          <Switch tooltip="Enable or disable proxy settings" data-testid="llm-proxy-enabled-switch" />
+        </FormField>
+        <FormField
+          name="url"
+          label="Proxy URL"
+          description="The URL of your proxy server (e.g., http://proxy.company.com:8080)."
+        >
+          <Input placeholder="http://proxy.example.com:8080" data-testid="llm-proxy-url-input" />
+        </FormField>
+        <FormField
+          name="username"
+          label="Username"
+          description="Optional credentials for proxy authentication."
+        >
+          <Input placeholder="Username (optional)" data-testid="llm-proxy-username-input" />
+        </FormField>
+        <FormField name="password" label="Password">
+          <PasswordInput
+            placeholder="Password (optional)"
+            showLabel="Show"
+            hideLabel="Hide"
+            data-testid="llm-proxy-password-input"
+          />
+        </FormField>
+        <FormField
+          name="no_proxy"
+          label="No-proxy hosts"
+          description="Comma-separated list of hosts that should bypass the proxy."
+        >
+          <Input placeholder="localhost,127.0.0.1,.example.com" data-testid="llm-proxy-no-proxy-input" />
+        </FormField>
+        <FormField
+          name="ignore_ssl_certificates"
+          label="Ignore SSL certificate errors"
+          description="Allow connections even if SSL certificate validation fails (not recommended for production)."
+          valuePropName="checked"
+        >
+          <Switch tooltip="Ignore SSL certificate errors" data-testid="llm-proxy-ignore-ssl-switch" />
+        </FormField>
       </Form>
     </Card>
   )

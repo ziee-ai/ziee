@@ -12,7 +12,7 @@ export { useControllableState } from './kit/use-controllable-state'
 // multi-level menu primitives (composable; for nav flyouts / app menubars / right-click menus)
 export {
   NavigationMenu, NavigationMenuList, NavigationMenuItem, NavigationMenuContent,
-  NavigationMenuTrigger, NavigationMenuLink, NavigationMenuIndicator, NavigationMenuViewport,
+  NavigationMenuTrigger, NavigationMenuLink, NavigationMenuIndicator,
 } from './shadcn/navigation-menu'
 export {
   Menubar, MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem, MenubarGroup, MenubarLabel,

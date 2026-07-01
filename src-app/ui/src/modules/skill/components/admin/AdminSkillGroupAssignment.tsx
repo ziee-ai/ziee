@@ -86,7 +86,7 @@ export function AdminSkillGroupAssignment({
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
-          size="sm"
+          size="default"
           data-testid="skill-group-toggle-button"
           onClick={() => setOpen(o => !o)}
           aria-expanded={open}
@@ -99,7 +99,7 @@ export function AdminSkillGroupAssignment({
           {canAssign ? (
             <Button
               variant="ghost"
-              size="sm"
+              size="default"
               data-testid="skill-group-assign-button"
               icon={<Pencil aria-hidden="true" />}
               onClick={() => { setOpen(true); void startEdit() }}
@@ -132,11 +132,11 @@ export function AdminSkillGroupAssignment({
                   aria-label="Select groups"
                 />
                 <Flex gap="small" justify="end">
-                  <Button size="sm" variant="outline" data-testid="skill-group-cancel-button" onClick={() => setEditing(false)}>
+                  <Button size="default" variant="outline" data-testid="skill-group-cancel-button" onClick={() => setEditing(false)}>
                     Cancel
                   </Button>
                   <Button
-                    size="sm"
+                    size="default"
                     loading={saving}
                     data-testid="skill-group-save-button"
                     onClick={save}
@@ -154,7 +154,7 @@ export function AdminSkillGroupAssignment({
             ) : (
               <Space wrap size="small">
                 {assignedIds.map(id => (
-                  <Tag key={id} tone="info" data-testid={`skill-group-tag-${id}`}>
+                  <Tag variant="outline" key={id} tone="info" data-testid={`skill-group-tag-${id}`}>
                     {nameFor(id)}
                   </Tag>
                 ))}

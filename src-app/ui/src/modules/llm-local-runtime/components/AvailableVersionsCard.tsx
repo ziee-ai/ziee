@@ -235,7 +235,7 @@ function BackendsRow({
         {gpu.available.map(b => (
           <Tag
             key={b}
-            variant="solid"
+            variant="outline"
             tone={b === gpu.recommended ? 'success' : undefined}
             data-testid={`llmrt-backend-tag-${b}`}
           >
@@ -276,9 +276,9 @@ function AvailableVersionRow({
                 {formatBytes(v.size_bytes)}
               </Text>
             )}
-            {isLatest && <Tag tone="info" variant="solid" data-testid={`llmrt-version-latest-tag-${v.version}`}>latest</Tag>}
-            {v.installed && <Tag tone="success" variant="solid" data-testid={`llmrt-version-installed-tag-${v.version}`}>installed</Tag>}
-            {v.prerelease && <Tag variant="solid" data-testid={`llmrt-version-prerelease-tag-${v.version}`}>prerelease</Tag>}
+            {isLatest && <Tag tone="info" variant="outline" data-testid={`llmrt-version-latest-tag-${v.version}`}>latest</Tag>}
+            {v.installed && <Tag tone="success" variant="outline" data-testid={`llmrt-version-installed-tag-${v.version}`}>installed</Tag>}
+            {v.prerelease && <Tag variant="outline" data-testid={`llmrt-version-prerelease-tag-${v.version}`}>prerelease</Tag>}
           </Space>
           <Can permission={Permissions.RuntimeVersionCreate}>
             <Button

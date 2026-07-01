@@ -56,7 +56,7 @@ export function McpServerGroupsAssignmentCard({
                   <div className="mb-2">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="default"
                       icon={<Pencil aria-hidden="true" />}
                       onClick={e => {
                         e.stopPropagation()
@@ -84,7 +84,7 @@ export function McpServerGroupsAssignmentCard({
                     </Text>
                     <Space wrap size="small">
                       {assignedGroups.map(group => (
-                        <Tag
+                        <Tag variant="outline"
                           key={group.id}
                           tone="info"
                           className="text-[13px] px-2 py-1"

@@ -136,6 +136,7 @@ export function McpServerGroupsAssignmentDrawer() {
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
+                          tooltip="Assign this group"
                           checked={isChecked}
                           onChange={checked => handleToggle(group.id, checked)}
                           disabled={!canManage}
@@ -151,7 +152,7 @@ export function McpServerGroupsAssignmentDrawer() {
                           {group.is_default && (
                             <Tag
                               tone="info"
-                              variant="solid"
+                              variant="outline"
                               className="text-[11px] m-0"
                               data-testid={`mcp-groups-drawer-default-tag-${group.id}`}
                             >

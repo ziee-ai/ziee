@@ -146,7 +146,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
           <Switch
             data-testid="onboarding-memory-enable-switch"
             checked={enableMemory}
-            aria-label="Enable memory"
+            tooltip="Enable memory"
             onChange={(checked) => Stores.MemorySetupStep.setEnableMemory(checked)}
           />
         </div>
@@ -183,7 +183,7 @@ function PickModelScreen({
         <Button
           data-testid="onboarding-memory-pick-back-button"
           icon={<ArrowLeft />}
-          size="sm"
+          size="default"
           onClick={onBack}
           aria-label="Back"
         />
@@ -207,7 +207,7 @@ function PickModelScreen({
       <div className="mb-2 flex items-center gap-2">
         <Text strong>Embedding model</Text>
         {noModelsAvailable && (
-          <Tag data-testid="onboarding-memory-pick-no-models-tag" tone="warning">No embedding-capable models</Tag>
+          <Tag variant="outline" data-testid="onboarding-memory-pick-no-models-tag" tone="warning">No embedding-capable models</Tag>
         )}
       </div>
 

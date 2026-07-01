@@ -81,7 +81,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
               </li>
             ))}
           </ul>
-          <Button size="sm" onClick={open} data-testid="lit-tool-result-open-button">
+          <Button size="default" onClick={open} data-testid="lit-tool-result-open-button">
             Open in screening ({sc.records.length})
           </Button>
         </>

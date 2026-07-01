@@ -103,7 +103,7 @@ export function WorkflowDetailDrawer() {
       footer={
         editable ? (
           <>
-            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="destructive" size="sm" icon={<Trash2 />}>
+            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="ghost" size="default" icon={<Trash2 />}>
               Delete
             </Button>
             <Dialog
@@ -192,7 +192,7 @@ export function WorkflowDetailDrawer() {
                 <div key={i} className="flex flex-col gap-1">
                   <Space size={8}>
                     <Text>{s.message || s.id}</Text>
-                    {s.kind && <Tag data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
+                    {s.kind && <Tag variant="outline" data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
                   </Space>
                   {s.dependsOn && s.dependsOn.length > 0 && (
                     <Text type="secondary" className="text-xs">

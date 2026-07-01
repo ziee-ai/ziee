@@ -33,7 +33,7 @@ export function SettingsSectionStatus({
           {onRetry ? (
             <div className="mt-2">
               <Button
-                size="sm"
+                size="default"
                 onClick={onRetry}
                 data-testid="settings-section-status-retry"
               >

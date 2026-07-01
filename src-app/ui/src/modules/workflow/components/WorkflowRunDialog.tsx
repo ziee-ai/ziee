@@ -182,7 +182,7 @@ export function WorkflowRunDialog({
         </div>
       )}
       <div className="mt-2 flex items-center gap-2">
-        <Switch data-testid="wf-run-capture-logs-switch" checked={captureLogs} onChange={setCaptureLogs} size="sm" />
+        <Switch tooltip="Capture debug logs for this run" data-testid="wf-run-capture-logs-switch" checked={captureLogs} onChange={setCaptureLogs} size="sm" />
         <Text type="secondary" className="text-xs">
           Capture debug logs (prompts + raw output) for this run
         </Text>

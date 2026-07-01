@@ -60,7 +60,7 @@ export function CoreMemoryBlocksEditor({
       }
       extra={
         <Button
-          size="sm"
+          size="default"
           icon={<Plus />}
           onClick={() => setCreating(true)}
           data-testid="memory-core-add-block-btn"
@@ -98,9 +98,9 @@ export function CoreMemoryBlocksEditor({
                   </Paragraph>
                 </div>
                 <Space>
-                  <Button
+                  <Button variant="outline"
                     icon={<Pencil />}
-                    size="sm"
+                    size="default"
                     onClick={() => setEditing(b)}
                     data-testid={`memory-core-block-edit-btn-${b.id}`}
                   />
@@ -129,8 +129,8 @@ export function CoreMemoryBlocksEditor({
                   >
                     <Button
                       icon={<Trash2 />}
-                      size="sm"
-                      variant="destructive"
+                      size="default"
+                      variant="outline"
                       aria-label={`Delete block ${b.block_label}`}
                       data-testid={`memory-core-block-delete-btn-${b.id}`}
                     />

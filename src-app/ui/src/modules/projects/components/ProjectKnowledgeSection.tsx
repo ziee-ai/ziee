@@ -26,7 +26,7 @@ export function ProjectKnowledgeSection() {
         <Text strong>Project knowledge</Text>
         <Button
           data-testid="project-knowledge-manage-button"
-          size="sm"
+          size="default"
           onClick={openDrawer}
           aria-label="Manage knowledge files"
           className="!ml-auto"

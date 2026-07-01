@@ -10,13 +10,13 @@ import {
   InputNumber,
   Paragraph,
   Select,
-  Separator,
   Switch,
   message,
   useForm,
 } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
@@ -226,7 +226,20 @@ export function FullTextSearchSection() {
 
   return (
     <>
-      <Card title="Full-text search" data-testid="memory-fts-card">
+      <Card
+        title="Full-text search"
+        data-testid="memory-fts-card"
+        footer={canManage ? (
+          <SettingsFormActions
+            onSave={form.handleSubmit(handleSubmit)}
+            onCancel={() => form.reset()}
+            saving={saving || triggeringFtsRebuild}
+            saveDisabled={ftsRebuildStatus?.in_progress === true}
+            saveTestid="memory-fts-save-btn"
+            cancelTestid="memory-fts-cancel-btn"
+          />
+        ) : undefined}
+      >
         {bothArmsOff && (
           <Alert
             tone="warning"
@@ -248,7 +261,6 @@ export function FullTextSearchSection() {
           name="memory-admin-fts-form"
           form={form}
           layout="horizontal"
-          labelWidth="42%"
           onSubmit={handleSubmit}
           disabled={!canManage}
           data-testid="memory-fts-form"
@@ -306,26 +318,6 @@ export function FullTextSearchSection() {
             <InputNumber min={0} max={1} step={0.05} className="w-40" data-testid="memory-fts-minrank-input" />
           </FormField>
 
-          {canManage && (
-            <>
-              <Separator className="!my-3" />
-              <Flex justify="end">
-                <Button
-                  type="submit"
-                  loading={saving || triggeringFtsRebuild}
-                  data-testid="memory-fts-save-btn"
-                  disabled={ftsRebuildStatus?.in_progress === true}
-                  title={
-                    ftsRebuildStatus?.in_progress
-                      ? 'A rebuild is in progress — finish before saving.'
-                      : undefined
-                  }
-                >
-                  Save
-                </Button>
-              </Flex>
-            </>
-          )}
         </Form>
       </Card>
 

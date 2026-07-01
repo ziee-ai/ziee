@@ -210,7 +210,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     //set root document background color based on theme
     const root = document.documentElement
-    root.style.backgroundColor = 'hsl(var(--card))'
+    root.style.backgroundColor = 'var(--card)'
   }, [])
 
   // Visual viewport listener for mobile keyboard adjustments
@@ -425,7 +425,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             : 'translateX(0)',
           backdropFilter: windowMinSize.xs ? 'blur(8px)' : undefined,
           borderRight: windowMinSize.xs
-            ? `1px solid hsl(var(--border))`
+            ? `1px solid var(--border)`
             : undefined,
           borderRadius: windowMinSize.xs ? 12 : undefined,
           // Box-shadow extends ~16px past the wrapper edges. When the

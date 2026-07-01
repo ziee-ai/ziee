@@ -33,7 +33,7 @@ const dialogStory: GalleryStory = {
             </Button>
           }
           footer={
-            <Button data-testid="g-dialog-ok" size="sm">
+            <Button data-testid="g-dialog-ok" size="default">
               Confirm
             </Button>
           }

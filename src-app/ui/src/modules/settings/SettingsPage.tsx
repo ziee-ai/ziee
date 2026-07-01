@@ -288,7 +288,7 @@ export default function SettingsPage() {
               <Button
                 data-testid="settings-onboarding-link"
                 variant="ghost"
-                size="sm"
+                size="default"
                 icon={<Compass />}
                 className="justify-start"
                 onClick={() => navigate('/onboarding')}

@@ -9,10 +9,10 @@ import {
   zodResolver,
   Input,
   Textarea,
-  Pagination,
   Tooltip,
   message,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { z } from 'zod'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
@@ -115,7 +115,8 @@ export function UserGroupsSettings() {
       <Can permission={Permissions.GroupsCreate}>
         <Tooltip title="Create group">
           <Button
-            variant="ghost"
+            variant="default"
+            size="icon"
             icon={<Plus aria-hidden="true" />}
             onClick={() => setCreateModalVisible(true)}
             aria-label="Create group"
@@ -147,28 +148,16 @@ export function UserGroupsSettings() {
               onViewMembers={handleViewMembers}
             />
           ))}
-          <div className="flex justify-end">
-            <Pagination
-              data-testid="user-groups-pagination"
-              aria-label="Groups pagination"
-              previousLabel="Previous page"
-              nextLabel="Next page"
-              pageLabel={(page) => `Page ${page}`}
-              current={storePage}
-              total={totalGroups}
-              pageSize={storePageSize}
-              showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size) => handlePageChange(1, size)}
-              showQuickJumper
-              jumpLabel="Go to page"
-              showTotal={(total, range) =>
-                `${range[0]}-${range[1]} of ${total} groups`
-              }
-              onChange={(page) => handlePageChange(page)}
-              pageSizeOptions={[5, 10, 20, 50]}
-            />
-          </div>
+          <ListPagination
+          data-testid="user-groups-pagination"
+          current={storePage}
+          total={totalGroups}
+          pageSize={storePageSize}
+          onChange={(page) => handlePageChange(page)}
+          onPageSizeChange={(size) => handlePageChange(1, size)}
+          itemNoun="groups"
+          aria-label="Groups pagination"
+        />
         </>
       )}
 
