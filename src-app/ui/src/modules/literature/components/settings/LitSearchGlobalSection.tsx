@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import {
   Alert,
-  Button,
   Card,
   Flex,
   Form,
@@ -17,6 +16,7 @@ import {
 } from '@/components/ui'
 import { Permissions, type UpdateLitSearchSettingsRequest } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Stores } from '@/core/stores'
 
 interface CapsForm {
@@ -73,7 +73,22 @@ export function LitSearchGlobalSection() {
   }
 
   return (
-    <Card title="General" data-testid="lit-global-card">
+    <Card
+      title="General"
+      data-testid="lit-global-card"
+      footer={
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleCapsSubmit)}
+          onCancel={() => form.reset()}
+          saving={savingSettings}
+          saveDisabled={!canManage || !form.formState.isDirty}
+          cancelDisabled={!canManage}
+          saveLabel="Save caps"
+          saveTestid="lit-global-save-caps-button"
+          cancelTestid="lit-global-caps-cancel-button"
+        />
+      }
+    >
       {!canManage && (
         <Alert
           tone="info"
@@ -132,16 +147,6 @@ export function LitSearchGlobalSection() {
         <FormField label="Request timeout (s)" name="request_timeout_secs">
           <InputNumber min={1} max={120} className="w-full" data-testid="lit-global-request-timeout-input" />
         </FormField>
-        <Flex justify="end">
-          <Button
-            type="submit"
-            loading={savingSettings}
-            disabled={!canManage || !form.formState.isDirty}
-            data-testid="lit-global-save-caps-button"
-          >
-            Save caps
-          </Button>
-        </Flex>
       </Form>
     </Card>
   )

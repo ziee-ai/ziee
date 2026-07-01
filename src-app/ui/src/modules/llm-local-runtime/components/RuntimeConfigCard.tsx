@@ -1,10 +1,7 @@
 import { useEffect } from 'react'
 import { z } from 'zod'
 import {
-  Button,
   Card,
-  Separator,
-  Flex,
   Form,
   FormField,
   useForm,
@@ -15,6 +12,7 @@ import {
 } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 
 const schema = z.object({
@@ -79,7 +77,19 @@ export function RuntimeConfigCard() {
   }
 
   return (
-    <Card title="Runtime configuration" data-testid="llmrt-runtime-config-card">
+    <Card
+      title="Runtime configuration"
+      data-testid="llmrt-runtime-config-card"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSave)}
+          onCancel={() => form.reset()}
+          saving={savingSettings}
+          saveTestid="llmrt-config-save-btn"
+          cancelTestid="llmrt-config-cancel-btn"
+        />
+      ) : undefined}
+    >
       <Form
         form={form}
         onSubmit={handleSave}
@@ -118,20 +128,6 @@ export function RuntimeConfigCard() {
           <InputNumber min={1} max={600} className="!w-full" data-testid="llmrt-config-drain-timeout" />
         </FormField>
 
-        {canManage && (
-          <>
-            <Separator className="!my-3" />
-            <Flex justify="end">
-              <Button
-                loading={savingSettings}
-                type="submit"
-                data-testid="llmrt-config-save-btn"
-              >
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
     </Card>
   )
