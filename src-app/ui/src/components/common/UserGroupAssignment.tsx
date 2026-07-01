@@ -1,15 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Pencil, ChevronDown, ChevronRight } from 'lucide-react'
-import {
-  message,
-  Button,
-  Flex,
-  MultiSelect,
-  Space,
-  Spin,
-  Tag,
-  Text,
-} from '@/components/ui'
+import { message, Button, MultiSelect, Space, Spin, Tag, Text } from '@/components/ui'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 export interface UserGroupOption {
   id: string
@@ -28,21 +20,25 @@ export interface UserGroupAssignmentProps {
   /** Testid prefix; sub-parts derive `${testid}-{toggle,assign,empty,…}`. */
   'data-testid': string
   /**
-   * Inline editor. When provided, Assign loads all groups and shows a MultiSelect
-   * + Save/Cancel inline. When omitted, Assign calls `onAssign` (e.g. open a drawer).
+   * Inline editor. When provided, Assign opens a Drawer with a group MultiSelect +
+   * Save/Cancel. When omitted, Assign calls `onAssign` (e.g. open a bespoke drawer,
+   * as the MCP card does).
    */
   editor?: {
     loadAllGroups: () => Promise<UserGroupOption[]>
     save: (ids: string[]) => Promise<void>
   }
+  /** Title of the editor Drawer (default "Assign User Groups"). */
+  drawerTitle?: string
   onAssign?: () => void
 }
 
 /**
  * Shared "User Groups" assignment section used by System MCP servers, System
  * Skills and System Workflows. A chevron disclosure (User Groups toggle + Assign
- * action), collapsible body showing the assigned-group tags, an empty line, or —
- * when an inline `editor` is supplied — a MultiSelect editor with Save/Cancel.
+ * action) with a collapsible body showing the assigned-group tags or an empty
+ * line. Clicking Assign opens a Drawer (either the shared editor Drawer when an
+ * `editor` is supplied, or a caller-owned one via `onAssign`).
  */
 export function UserGroupAssignment({
   assignedGroups,
@@ -51,6 +47,7 @@ export function UserGroupAssignment({
   emptyText,
   description,
   editor,
+  drawerTitle = 'Assign User Groups',
   onAssign,
   'data-testid': testid,
 }: UserGroupAssignmentProps) {
@@ -84,7 +81,6 @@ export function UserGroupAssignment({
     try {
       setAllGroups(await editor.loadAllGroups())
       setEditing(true)
-      setOpen(true)
     } catch {
       message.error('Failed to load groups')
     }
@@ -96,6 +92,7 @@ export function UserGroupAssignment({
     try {
       await editor.save(draft)
       setEditing(false)
+      setOpen(true)
     } catch {
       message.error('Failed to save group assignments')
     } finally {
@@ -118,7 +115,7 @@ export function UserGroupAssignment({
           <Text className="font-medium text-sm">User Groups</Text>
         </Button>
         <div className="ml-auto">
-          {canAssign && !editing ? (
+          {canAssign ? (
             <Button
               variant="ghost"
               size="default"
@@ -136,29 +133,6 @@ export function UserGroupAssignment({
         <div className="pt-2">
           {loading ? (
             <Spin size="sm" label="Loading" />
-          ) : editing ? (
-            <Space direction="vertical" className="w-full">
-              <MultiSelect
-                className="w-full"
-                data-testid={tid('multiselect')}
-                placeholder="Restrict to specific groups (empty = all users)"
-                searchPlaceholder="Search groups"
-                emptyText="No groups found"
-                removeLabel={label => `Remove ${label}`}
-                value={draft}
-                onChange={setDraft}
-                options={allGroups.map(g => ({ label: g.name, value: g.id }))}
-                aria-label="Select groups"
-              />
-              <Flex gap="small" justify="end">
-                <Button size="default" variant="outline" data-testid={tid('cancel')} onClick={() => setEditing(false)}>
-                  Cancel
-                </Button>
-                <Button size="default" loading={saving} data-testid={tid('save')} onClick={save}>
-                  Save
-                </Button>
-              </Flex>
-            </Space>
           ) : assignedGroups.length === 0 ? (
             <Text type="secondary" className="text-xs" data-testid={tid('empty')}>
               {emptyText}
@@ -182,6 +156,39 @@ export function UserGroupAssignment({
             </Space>
           )}
         </div>
+      )}
+
+      {editor && (
+        <Drawer
+          open={editing}
+          onClose={() => setEditing(false)}
+          title={drawerTitle}
+          size={600}
+          data-testid={tid('drawer')}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" data-testid={tid('cancel')} onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+              <Button loading={saving} data-testid={tid('save')} onClick={save}>
+                Save
+              </Button>
+            </div>
+          }
+        >
+          <MultiSelect
+            className="w-full"
+            data-testid={tid('multiselect')}
+            placeholder="Restrict to specific groups (empty = all users)"
+            searchPlaceholder="Search groups"
+            emptyText="No groups found"
+            removeLabel={label => `Remove ${label}`}
+            value={draft}
+            onChange={setDraft}
+            options={allGroups.map(g => ({ label: g.name, value: g.id }))}
+            aria-label="Select groups"
+          />
+        </Drawer>
       )}
     </div>
   )
