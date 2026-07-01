@@ -79,6 +79,10 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
           size={size}
           className={className}
           onClick={onClick as React.MouseEventHandler}
+          // Rendering as an <a> (href): tell Base UI this is not a native
+          // <button> so it doesn't warn/attach button-only semantics. Mirrors
+          // shadcn/pagination.tsx's anchor case.
+          nativeButton={false}
           {...props}
           render={
             <a

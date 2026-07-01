@@ -48,12 +48,19 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
     onChange?.(v)
   }
   if (s.loading) return <Skeleton className={cn('h-[1.15rem] w-8 rounded-full', className)} />
+  // Controlled intent = a bound value or a change handler is present. In that case
+  // ALWAYS pass a defined boolean (coerce a not-yet-loaded `undefined` → false) so
+  // the switch never flips uncontrolled→controlled when the backing state resolves
+  // (Base UI warns on that transition). Only a purely-uncontrolled switch
+  // (defaultChecked, no value/handler) stays uncontrolled.
+  const controlled =
+    checked !== undefined || value !== undefined || onCheckedChange !== undefined || onChange !== undefined
   const baseEl = (
     <Base
       ref={ref}
       id={ctrlId}
-      checked={checked ?? value}
-      defaultChecked={defaultChecked}
+      checked={controlled ? Boolean(checked ?? value) : undefined}
+      defaultChecked={controlled ? undefined : defaultChecked}
       onCheckedChange={handle}
       onBlur={onBlur}
       disabled={s.disabled || s.readOnly || loading}
@@ -81,7 +88,13 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
   // Tooltip used everywhere else.
   const maybeTip = tooltip != null ? (
     <Tooltip content={tooltip}>
-      <span className="inline-flex">{control}</span>
+      {/* w-fit: inside a FormField's `flex flex-col` (align-items: stretch) a
+          width-less wrapper would stretch to the full row, so the tooltip (anchored
+          to this span) would center mid-form instead of over the ~32px switch.
+          w-fit alone constrains the width; do NOT add self-start — in a horizontal
+          row (e.g. a table cell next to buttons) it would top-align the switch and
+          break its vertical alignment with sibling buttons. */}
+      <span className="inline-flex w-fit">{control}</span>
     </Tooltip>
   ) : control
   if (label == null) return maybeTip

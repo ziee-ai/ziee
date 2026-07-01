@@ -2,15 +2,17 @@
 //! rows, and the idempotent built-in MCP server upsert. (The full-text cache
 //! index methods live alongside in `fulltext::cache`.)
 
+use std::collections::HashMap;
+
 use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::common::secret::{encrypt_secret, resolve_optional_secret};
+use crate::common::secret::{encrypt_secret, mask_secret, resolve_optional_secret};
 use crate::core::secrets::storage_key;
 
-use super::models::LitSearchSettings;
+use super::models::{LitSearchSettings, UserConnectorKeyEntry};
 
 /// A connector's stored config with the API key DECRYPTED (for internal dispatch
 /// + the configured-state check). Never serialized to the API.
@@ -202,5 +204,117 @@ impl LitSearchRepository {
         .await
         .map_err(AppError::database_error)?;
         Ok(())
+    }
+
+    // ── Per-user connector keys ───────────────────────────────────────────────
+    // Mirror `llm_provider::UserKeyRepository`: a user's own key for a connector,
+    // resolved FIRST at search time with the deployment key as the fallback.
+
+    /// All of a user's connector keys, decrypted, as a `connector -> key` map for
+    /// request-time resolution. One query (no N+1 across the connector fan-out).
+    pub async fn list_user_keys_raw(
+        &self,
+        user_id: Uuid,
+    ) -> Result<HashMap<String, String>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT connector, api_key, api_key_encrypted FROM user_lit_search_connector_keys
+            WHERE user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let mut map = HashMap::with_capacity(rows.len());
+        for r in rows {
+            if let Some(key) =
+                resolve_optional_secret(&self.pool, r.api_key_encrypted, r.api_key).await
+            {
+                map.insert(r.connector, key);
+            }
+        }
+        Ok(map)
+    }
+
+    /// Save or update a user's key for a connector (encrypts when a storage key
+    /// is configured; dev-mode plaintext otherwise). Race-safe via the
+    /// `(user_id, connector)` unique index + `ON CONFLICT`.
+    pub async fn upsert_user_key(
+        &self,
+        user_id: Uuid,
+        connector: &str,
+        api_key: &str,
+    ) -> Result<(), AppError> {
+        let (plaintext, encrypted): (Option<&str>, Option<Vec<u8>>) =
+            match encrypt_secret(&self.pool, api_key, storage_key()).await? {
+                Some(blob) => (None, Some(blob)),
+                None => (Some(api_key), None),
+            };
+
+        sqlx::query!(
+            r#"
+            INSERT INTO user_lit_search_connector_keys (user_id, connector, api_key, api_key_encrypted)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, connector)
+            DO UPDATE SET api_key = EXCLUDED.api_key,
+                          api_key_encrypted = EXCLUDED.api_key_encrypted,
+                          updated_at = NOW()
+            "#,
+            user_id,
+            connector,
+            plaintext,
+            encrypted.as_deref()
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// Delete a user's key for a connector.
+    pub async fn delete_user_key(&self, user_id: Uuid, connector: &str) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            DELETE FROM user_lit_search_connector_keys
+            WHERE user_id = $1 AND connector = $2
+            "#,
+            user_id,
+            connector
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// A user's stored keys in MASKED form (`connector -> first-4 + ***`) — the
+    /// only shape ever returned to the API. Never emits plaintext.
+    pub async fn list_user_keys_masked(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<UserConnectorKeyEntry>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT connector, api_key, api_key_encrypted FROM user_lit_search_connector_keys
+            WHERE user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let mut entries = Vec::with_capacity(rows.len());
+        for r in rows {
+            let resolved =
+                resolve_optional_secret(&self.pool, r.api_key_encrypted, r.api_key).await;
+            entries.push(UserConnectorKeyEntry {
+                connector: r.connector,
+                masked_key: mask_secret(resolved.as_deref()),
+            });
+        }
+        Ok(entries)
     }
 }

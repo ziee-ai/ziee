@@ -46,12 +46,14 @@ function SetupBackdrop() {
     <>
       <div
         aria-hidden
+        data-allow-custom-color
         className="pointer-events-none absolute inset-0 -z-0 bg-cover bg-bottom bg-no-repeat"
         style={{ backgroundColor: '#02365b', backgroundImage: `url(${setupCloudsUrl})` }}
       />
       {/* dark-mode darkening mask */}
       <div
         aria-hidden
+        data-allow-custom-color
         className="pointer-events-none absolute inset-0 -z-0 hidden bg-[#020a12]/55 dark:block"
       />
     </>

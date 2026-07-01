@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Plus, X } from 'lucide-react'
 import { Tabs as Root, TabsList, TabsTrigger, TabsContent } from '../shadcn/tabs'
 import { useSurface } from './surface'
+import { useControllableState } from './use-controllable-state'
 import { cn } from '@/lib/utils'
 
 export interface TabItem {
@@ -60,6 +61,16 @@ export function Tabs({
   // React to an ambient disabled surface (e.g. inside a disabled Form/Card).
   const s = useSurface({ disabled })
 
+  // Track the active key (controlled or uncontrolled) so we can emit a stable,
+  // primitive-independent `data-state="active"|"inactive"` hook on each trigger:
+  // Base UI marks the active tab with a bare `data-active`, but tests assert the
+  // old Radix `data-state` vocabulary. Mirrors kit/segmented.tsx.
+  const [current, setCurrent] = useControllableState<string>({
+    value,
+    defaultValue: defaultValue ?? items[0]?.key ?? '',
+    onChange: onValueChange,
+  })
+
   const remove = (item: TabItem) => {
     onClose?.(item.key)
     onEdit?.('remove', item.key)
@@ -68,9 +79,8 @@ export function Tabs({
 
   return (
     <Root
-      value={value}
-      defaultValue={value === undefined ? (defaultValue ?? items[0]?.key) : undefined}
-      onValueChange={onValueChange}
+      value={current}
+      onValueChange={(v) => setCurrent(String(v ?? ''))}
       className={cn('w-full', className)}
       data-testid={testid}
     >
@@ -90,6 +100,7 @@ export function Tabs({
                 value={t.key}
                 disabled={t.disabled || s.disabled}
                 data-testid={testid ? `${testid}-tab-${t.key}` : undefined}
+                data-state={current === t.key ? 'active' : 'inactive'}
                 onClick={() => onTabClick?.(t.key)}
                 className={cn(size === 'sm' && 'px-2 py-1 text-xs', showClose && 'pr-7')}
               >

@@ -1,6 +1,7 @@
 import { Import as ImportIcon } from 'lucide-react'
 import { Button, Empty, Flex, Space, Text } from '@/components/ui'
-import { useState } from 'react'
+import { ListPagination } from '@/components/common/ListPagination'
+import { useEffect, useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
@@ -19,6 +20,17 @@ export function AdminWorkflowsPage() {
   const { systemWorkflows, loading } = Stores.SystemWorkflow
   const { multiUserMode } = Stores.AppMode
   const [importOpen, setImportOpen] = useState(false)
+
+  // Client-side pagination (the store loads the full list via listSystem()).
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const total = systemWorkflows.length
+  // Snap back to a valid page if the list shrinks (e.g. after a delete).
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(total / pageSize))
+    if (page > maxPage) setPage(maxPage)
+  }, [total, pageSize, page])
+  const pagedWorkflows = systemWorkflows.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <SettingsPageContainer
@@ -42,7 +54,7 @@ export function AdminWorkflowsPage() {
         {loading && <Text type="secondary">Loading system workflows...</Text>}
 
         <div className="flex flex-col gap-3">
-          {systemWorkflows.map(workflow => (
+          {pagedWorkflows.map(workflow => (
             <div
               key={workflow.id}
               className="relative overflow-hidden border rounded-lg"
@@ -81,6 +93,19 @@ export function AdminWorkflowsPage() {
             data-testid="wf-admin-empty"
             description="No system workflows installed"
             className="!mt-12"
+          />
+        )}
+
+        {total > 0 && (
+          <ListPagination
+            data-testid="wf-admin-pagination"
+            current={page}
+            total={total}
+            pageSize={pageSize}
+            onChange={(p: number) => setPage(p)}
+            onPageSizeChange={(size: number) => { setPageSize(size); setPage(1) }}
+            itemNoun="workflows"
+            aria-label="System workflows pagination"
           />
         )}
 

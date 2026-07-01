@@ -60,9 +60,14 @@ export function WorkflowRunDialog({
       ),
     [inputsForSchema],
   )
-  const form = useForm({
-    resolver: zodResolver(inputSchema),
-    defaultValues: {} as Record<string, unknown>,
+  const form = useForm<Record<string, unknown>>({
+    // The schema is built from the workflow's dynamic inputs (all string fields),
+    // so its inferred output is Record<string, string | undefined>; cast to the
+    // form's Record<string, unknown> value type (validation is runtime).
+    resolver: zodResolver(inputSchema) as unknown as import('react-hook-form').Resolver<
+      Record<string, unknown>
+    >,
+    defaultValues: {},
   })
   const [jsonInputs, setJsonInputs] = useState('{}')
   const [submitting, setSubmitting] = useState(false)

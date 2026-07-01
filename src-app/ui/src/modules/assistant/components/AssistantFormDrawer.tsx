@@ -235,7 +235,18 @@ export function AssistantFormDrawer() {
       onClose={handleClose}
       size={600}
       mask={{ closable: false }}
-      footer={null}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button data-testid="assistant-form-cancel" variant="outline" onClick={handleClose} disabled={loading}>
+            {canSave ? 'Cancel' : 'Close'}
+          </Button>
+          {canSave && (
+            <Button data-testid="assistant-form-submit" type="submit" form="assistant-form" loading={loading}>
+              {editingAssistant ? 'Save' : 'Create'}
+            </Button>
+          )}
+        </div>
+      }
     >
       <Form
         data-testid="assistant-form"
@@ -251,6 +262,15 @@ export function AssistantFormDrawer() {
             placeholder="Enter assistant name"
             aria-label="Assistant name"
           />
+        </FormField>
+
+        <FormField
+          name="enabled"
+          label="Enabled"
+          valuePropName="checked"
+          description="Whether this assistant is enabled"
+        >
+          <Switch data-testid="assistant-form-enabled" />
         </FormField>
 
         <FormField name="description" label="Description">
@@ -287,15 +307,6 @@ export function AssistantFormDrawer() {
         </FormField>
 
         <FormField
-          name="enabled"
-          label="Enabled"
-          valuePropName="checked"
-          description="Whether this assistant is enabled"
-        >
-          <Switch data-testid="assistant-form-enabled" />
-        </FormField>
-
-        <FormField
           name="is_default"
           label="Set as Default"
           valuePropName="checked"
@@ -307,17 +318,6 @@ export function AssistantFormDrawer() {
         >
           <Switch data-testid="assistant-form-default" />
         </FormField>
-
-        <div className="flex justify-end gap-3 pt-4">
-          <Button data-testid="assistant-form-cancel" variant="outline" onClick={handleClose} disabled={loading}>
-            {canSave ? 'Cancel' : 'Close'}
-          </Button>
-          {canSave && (
-            <Button data-testid="assistant-form-submit" type="submit" loading={loading}>
-              {editingAssistant ? 'Save' : 'Create'}
-            </Button>
-          )}
-        </div>
       </Form>
     </Drawer>
   )

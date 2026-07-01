@@ -1,6 +1,6 @@
+use crate::common::TestServer;
 use serde_json::Value;
 use serde_json::json;
-use crate::common::TestServer;
 
 // Integration + HTTP-handler tests for the lit_search module.
 //
@@ -18,12 +18,12 @@ use crate::common::TestServer;
 // seams (compiled out of release) point them at the loopback mocks below, paired
 // with `LIT_SEARCH_ALLOW_LOOPBACK=1` so the SSRF policy permits 127.0.0.1.
 
+mod cross_subsystem_test;
 mod fulltext_test;
 mod mcp_test;
 mod real_llm_test;
 mod sandbox_mount_test;
 mod settings_test;
-mod cross_subsystem_test;
 // Integration + HTTP-handler tests for the lit_search module.
 //
 // Tier 2 — admin settings/connectors CRUD + permission gating + secret
@@ -42,6 +42,41 @@ mod cross_subsystem_test;
 
 mod citations_handoff_test;
 mod multistep_test;
+mod user_keys_test;
+
+/// Spawn a loopback mock CORE that RECORDS every inbound `Authorization` header
+/// (`Bearer <key>`) so a test can prove WHICH key (the user's vs the deployment's)
+/// reached the upstream. Returns the endpoint URL (for `LIT_SEARCH_CORE_ENDPOINT`)
+/// + a shared vec of the bearer tokens it received. Pair with
+/// `LIT_SEARCH_ALLOW_LOOPBACK=1`.
+pub async fn start_capturing_core() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    use axum::{Json, Router, extract::State, http::HeaderMap, routing::get};
+    use std::sync::{Arc, Mutex};
+    let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new()
+        .route(
+            "/search",
+            get(
+                |State(seen): State<Arc<Mutex<Vec<String>>>>, headers: HeaderMap| async move {
+                    let bearer = headers
+                        .get("Authorization")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.strip_prefix("Bearer "))
+                        .unwrap_or("")
+                        .to_string();
+                    seen.lock().unwrap().push(bearer);
+                    Json(json!({ "results": [] }))
+                },
+            ),
+        )
+        .with_state(seen.clone());
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app.into_make_service()).await;
+    });
+    (format!("http://127.0.0.1:{port}/search"), seen)
+}
 
 /// Build a JSON-RPC request to the lit_search MCP endpoint.
 pub fn jsonrpc(
@@ -92,7 +127,9 @@ pub async fn configure(server: &TestServer, admin_token: &str, connectors: &[&st
 /// that overlaps Crossref by DOI (`10.1/shared`) + one Europe-PMC-only record.
 /// Set `LIT_SEARCH_EUROPEPMC_ENDPOINT=<base>/search`.
 pub async fn start_mock_europepmc() -> String {
-    use axum::{Json, Router, extract::Query, http::StatusCode, response::IntoResponse, routing::get};
+    use axum::{
+        Json, Router, extract::Query, http::StatusCode, response::IntoResponse, routing::get,
+    };
     use std::collections::HashMap;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -130,7 +167,9 @@ pub async fn start_mock_europepmc() -> String {
 /// abstract, to exercise the merge-keeps-longest rule) + one Crossref-only DOI.
 /// Set `LIT_SEARCH_CROSSREF_ENDPOINT=<base>/works`.
 pub async fn start_mock_crossref() -> String {
-    use axum::{Json, Router, extract::Query, http::StatusCode, response::IntoResponse, routing::get};
+    use axum::{
+        Json, Router, extract::Query, http::StatusCode, response::IntoResponse, routing::get,
+    };
     use std::collections::HashMap;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -164,8 +203,7 @@ pub async fn start_mock_crossref() -> String {
 /// `Retry-After: 0`) and a 200 payload on the second — to exercise the
 /// connector's single 429-retry. Returns (base_url, hit_counter).
 /// Set `LIT_SEARCH_S2_ENDPOINT=<base>/search`.
-pub async fn start_mock_s2_flaky()
--> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+pub async fn start_mock_s2_flaky() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
     use axum::{
         Json, Router, http::StatusCode, http::header, response::IntoResponse, routing::get,
     };
@@ -245,8 +283,8 @@ pub async fn start_mock_s2_paper() -> String {
 /// and counts hits (so a cache-hit test can prove the second fetch did NOT
 /// re-request upstream). Returns (base_url, hit_counter).
 /// Set `LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT=<base>`.
-pub async fn start_mock_epmc_fulltext()
--> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+pub async fn start_mock_epmc_fulltext() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>)
+{
     use axum::{Router, response::Html, routing::get};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -274,4 +312,3 @@ pub async fn start_mock_epmc_fulltext()
     });
     (format!("http://127.0.0.1:{port}"), hits)
 }
-

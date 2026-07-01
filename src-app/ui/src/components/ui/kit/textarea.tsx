@@ -41,6 +41,11 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         style={{ ...autoStyle, ...style }}
         className={cn(auto && '[field-sizing:content]', className, invalid && 'border-destructive focus-visible:ring-destructive')}
         {...props}
+        // A controlled textarea must never receive null/undefined (React warns +
+        // Base UI flips uncontrolled↔controlled). Form bindings pass a `value` that
+        // may be null before data loads → coerce to ''. Uncontrolled use (no `value`
+        // prop, only defaultValue) is left untouched.
+        {...('value' in props ? { value: props.value ?? '' } : {})}
       />
     )
     // own `loading` → in-place spinner (region loading uses the skeleton above).

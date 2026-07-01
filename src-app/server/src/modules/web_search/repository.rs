@@ -1,15 +1,17 @@
 //! web_search persistence: the singleton settings row, the per-provider
 //! config/key rows, and the idempotent built-in MCP server upsert.
 
+use std::collections::HashMap;
+
 use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::common::secret::{encrypt_secret, resolve_optional_secret};
+use crate::common::secret::{encrypt_secret, mask_secret, resolve_optional_secret};
 use crate::core::secrets::storage_key;
 
-use super::models::WebSearchSettings;
+use super::models::{UserProviderKeyEntry, WebSearchSettings};
 
 /// A provider's stored config with the API key DECRYPTED (for internal
 /// dispatch + the configured-state check). Never serialized to the API.
@@ -201,6 +203,118 @@ impl WebSearchRepository {
         .await
         .map_err(AppError::database_error)?;
         Ok(())
+    }
+
+    // ── Per-user provider keys ────────────────────────────────────────────────
+    // Mirror `llm_provider::UserKeyRepository`: a user's own key for a provider,
+    // resolved FIRST at search time with the deployment key as the fallback.
+
+    /// All of a user's provider keys, decrypted, as a `provider -> key` map for
+    /// request-time resolution. One query (no N+1 across the chain).
+    pub async fn list_user_keys_raw(
+        &self,
+        user_id: Uuid,
+    ) -> Result<HashMap<String, String>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT provider, api_key, api_key_encrypted FROM user_web_search_provider_keys
+            WHERE user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let mut map = HashMap::with_capacity(rows.len());
+        for r in rows {
+            if let Some(key) =
+                resolve_optional_secret(&self.pool, r.api_key_encrypted, r.api_key).await
+            {
+                map.insert(r.provider, key);
+            }
+        }
+        Ok(map)
+    }
+
+    /// Save or update a user's key for a provider (encrypts when a storage key is
+    /// configured; dev-mode plaintext otherwise). Race-safe via the
+    /// `(user_id, provider)` unique index + `ON CONFLICT`.
+    pub async fn upsert_user_key(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+        api_key: &str,
+    ) -> Result<(), AppError> {
+        let (plaintext, encrypted): (Option<&str>, Option<Vec<u8>>) =
+            match encrypt_secret(&self.pool, api_key, storage_key()).await? {
+                Some(blob) => (None, Some(blob)),
+                None => (Some(api_key), None),
+            };
+
+        sqlx::query!(
+            r#"
+            INSERT INTO user_web_search_provider_keys (user_id, provider, api_key, api_key_encrypted)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, provider)
+            DO UPDATE SET api_key = EXCLUDED.api_key,
+                          api_key_encrypted = EXCLUDED.api_key_encrypted,
+                          updated_at = NOW()
+            "#,
+            user_id,
+            provider,
+            plaintext,
+            encrypted.as_deref()
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// Delete a user's key for a provider.
+    pub async fn delete_user_key(&self, user_id: Uuid, provider: &str) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            DELETE FROM user_web_search_provider_keys
+            WHERE user_id = $1 AND provider = $2
+            "#,
+            user_id,
+            provider
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// A user's stored keys in MASKED form (`provider -> first-4 + ***`) — the
+    /// only shape ever returned to the API. Never emits plaintext.
+    pub async fn list_user_keys_masked(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<UserProviderKeyEntry>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT provider, api_key, api_key_encrypted FROM user_web_search_provider_keys
+            WHERE user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let mut entries = Vec::with_capacity(rows.len());
+        for r in rows {
+            let resolved =
+                resolve_optional_secret(&self.pool, r.api_key_encrypted, r.api_key).await;
+            entries.push(UserProviderKeyEntry {
+                provider: r.provider,
+                masked_key: mask_secret(resolved.as_deref()),
+            });
+        }
+        Ok(entries)
     }
 }
 

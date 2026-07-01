@@ -21,7 +21,7 @@ export function Separator({ orientation = 'horizontal', children, titlePlacement
     const lead = titlePlacement === 'left' ? 'w-4 flex-none' : 'flex-1'
     const trail = titlePlacement === 'right' ? 'w-4 flex-none' : 'flex-1'
     return (
-      <div className={cn('flex items-center gap-3 text-xs text-muted-foreground', className)}>
+      <div className={cn('flex items-center gap-3 text-sm text-muted-foreground', className)}>
         <div role="separator" aria-orientation="horizontal" className={cn('h-px bg-border', lead)} />
         <span className="shrink-0">{children}</span>
         <div aria-hidden className={cn('h-px bg-border', trail)} />

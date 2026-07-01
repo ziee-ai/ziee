@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { LeftSidebar } from '@/modules/layouts/app-layout/components/LeftSidebar'
 import { SidebarToggleButton } from '@/modules/layouts/app-layout/components/SidebarToggleButton'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
-import tinycolor from 'tinycolor2'
+import { cn } from '@/lib/utils'
 import 'overlayscrollbars/overlayscrollbars.css'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
@@ -364,18 +364,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {...(windowMinSize.xs && !isSidebarCollapsed
           ? { 'data-sidebar-mask-active': '' }
           : {})}
-        className={'fixed h-full w-full z-3'}
-        // Runtime-computed: derives from the `--card` theme token via tinycolor with a
-        // state-driven alpha (0.7 when the mobile overlay is open, else 0) — not a static hue.
-        data-allow-custom-color
-        style={{
-          backgroundColor: tinycolor('hsl(var(--card))')
-            .setAlpha(windowMinSize.xs && !isSidebarCollapsed ? 0.7 : 0)
-            .toRgbString(),
-          pointerEvents:
-            windowMinSize.xs && !isSidebarCollapsed ? 'auto' : 'none',
-          transition: 'background-color 200ms ease-out',
-        }}
+        // Standard shadcn overlay (matches Dialog/Sheet): a faint tint + blur —
+        // not a custom card-tinted mask. Always mounted; visibility toggles via
+        // opacity (no first-render transition flash), and opacity:0 also hides
+        // the backdrop blur so it never filters the screen while closed.
+        className={cn(
+          'fixed h-full w-full z-3 bg-black/10 supports-backdrop-filter:backdrop-blur-xs transition-opacity duration-200',
+          windowMinSize.xs && !isSidebarCollapsed
+            ? 'opacity-100 pointer-events-auto'
+            : 'opacity-0 pointer-events-none',
+        )}
         onClick={handleMaskClick}
         aria-hidden="true"
       />
@@ -392,6 +390,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         aria-hidden={
           windowMinSize.xs ? isSidebarCollapsed : undefined
         }
+        // Mobile overlay: a solid opaque surface behind the (translucent
+        // bg-muted/40) sidebar so it reads as a solid panel, outlined the same
+        // way the Dialog is — a ring-1 ring-foreground/10 (crisper than
+        // border-border), NOT a drop shadow (see the style block below).
+        className={cn(windowMinSize.xs && 'bg-background ring-1 ring-foreground/10')}
         // Neutral, state-gated drop shadow (rgba black, not a brand hue) that is part of the
         // combined inline transition below; value is computed per collapse/viewport state.
         data-allow-custom-color
@@ -423,23 +426,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           transform: isSidebarCollapsed
             ? 'translateX(-100%)'
             : 'translateX(0)',
-          backdropFilter: windowMinSize.xs ? 'blur(8px)' : undefined,
-          borderRight: windowMinSize.xs
-            ? `1px solid var(--border)`
-            : undefined,
-          borderRadius: windowMinSize.xs ? 12 : undefined,
-          // Box-shadow extends ~16px past the wrapper edges. When the
-          // wrapper translates offscreen on collapse (translateX(-100%)
-          // on xs), the right-edge tail of that 16px-blur shadow re-
-          // enters the visible viewport as a phantom 16px stripe along
-          // the screen's left side. Gating on `!isSidebarCollapsed`
-          // means there's no shadow when there's nothing to bleed
-          // from. The shadow fades back in on slide-out via
-          // SIDEBAR_TRANSITION's `box-shadow 200ms ease-out`.
-          boxShadow:
-            windowMinSize.xs && !isSidebarCollapsed
-              ? 'rgba(0, 0, 0, 0.075) 0px 2px 16px 0px'
-              : 'none',
+          // No drop shadow on the mobile overlay — the Dialog-style border
+          // (className above) provides the separation. (The border lives in
+          // className, not here, so it isn't part of the transform transition.)
           // Single transition spanning every value that can change
           // on the xs threshold flip. Property name stays constant,
           // so the browser doesn't reset mid-flight. Kept in sync

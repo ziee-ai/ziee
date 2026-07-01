@@ -67,3 +67,39 @@ pub struct UpdateProviderRequest {
     #[serde(default)]
     pub config: Option<serde_json::Value>,
 }
+
+// ── Per-user provider keys (user-facing surface) ─────────────────────────────
+
+/// A user's stored key for one provider, in MASKED form only. The raw key is
+/// never serialized — `masked_key` is `first-4 + ***`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct UserProviderKeyEntry {
+    pub provider: String,
+    pub masked_key: String,
+}
+
+/// One row in the user-facing key catalog: a key-accepting provider joined with
+/// the calling user's own key state + whether a deployment (shared) key exists.
+/// Neither the user key nor the deployment key value is ever exposed.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct UserProviderKeyCatalogEntry {
+    pub provider: String,
+    pub display_name: String,
+    pub needs_api_key: bool,
+    /// True when the deployment/admin has a shared key for this provider — the
+    /// fallback used when the user sets none. Boolean only, never the value.
+    pub system_key_set: bool,
+    /// The user's own key in masked form, or `null` when they've set none.
+    pub user_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct UserProviderKeyCatalogResponse {
+    pub providers: Vec<UserProviderKeyCatalogEntry>,
+}
+
+/// PUT body to set the calling user's own key for a provider.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct SaveUserProviderKeyRequest {
+    pub api_key: String,
+}

@@ -13,7 +13,6 @@ import type { useProviderGroupCardStore } from '@/modules/llm-provider/component
 import type { useLlmProviderGroupWidgetStore } from '@/modules/llm-provider/widgets/LLMProviderGroupWidget.store'
 import type { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
 import type { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
-import type { useLlmProviderGroupsAssignmentStore } from '@/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -42,9 +41,6 @@ declare module '@/core/stores' {
     LlmModelUpload: StoreProxy<ReturnType<typeof useUploadStore.getState>>
     GroupLlmProvidersAssignment: StoreProxy<
       ReturnType<typeof useGroupLlmProvidersAssignmentStore.getState>
-    >
-    LlmProviderGroupsAssignment: StoreProxy<
-      ReturnType<typeof useLlmProviderGroupsAssignmentStore.getState>
     >
     LlmProviderGroupWidget: StoreProxy<
       ReturnType<typeof useLlmProviderGroupWidgetStore.getState>

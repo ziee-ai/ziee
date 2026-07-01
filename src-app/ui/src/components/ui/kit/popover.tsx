@@ -25,9 +25,16 @@ export function Popover({ content, title, children, open, onOpenChange, side, al
   const hoverHandlers = hover
     ? { onMouseEnter: () => setInternal(true), onMouseLeave: () => setInternal(false) }
     : {}
+  // Base UI's trigger defaults to nativeButton=true and warns if the rendered
+  // element isn't a real <button>. The hover wrapper is a <span>; otherwise the
+  // caller's child may be a <button>, a component (assumed to render one), or a
+  // non-button intrinsic. Only a non-'button' intrinsic needs nativeButton=false.
+  const childType = (children as React.ReactElement)?.type
+  const nativeButton = hover ? false : typeof childType === 'string' ? childType === 'button' : true
   return (
     <Root open={isOpen} onOpenChange={setOpen}>
       <PopoverTrigger
+        nativeButton={nativeButton}
         render={hover ? <span className="inline-block" {...hoverHandlers}>{children}</span> : (children as React.ReactElement)}
       />
       <PopoverContent side={side} align={align} className={className} {...hoverHandlers}>

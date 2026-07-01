@@ -9,9 +9,12 @@
 pub mod brave;
 pub mod searxng;
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::core::Repos;
@@ -118,7 +121,9 @@ pub fn is_configured(desc: &ProviderDescriptor, api_key: Option<&str>, config: &
 pub fn any_configured_in_chain(chain: &[String], rows: &[WebSearchProviderRow]) -> bool {
     let default_cfg = serde_json::json!({});
     chain.iter().any(|key| {
-        let Some(desc) = descriptor(key) else { return false };
+        let Some(desc) = descriptor(key) else {
+            return false;
+        };
         let row = rows.iter().find(|r| r.provider == *key);
         let api_key = row.and_then(|r| r.api_key.as_deref());
         let config = row.map(|r| &r.config).unwrap_or(&default_cfg);
@@ -153,7 +158,10 @@ pub fn build(
                         "searxng requires a base_url",
                     )
                 })?;
-            Ok(Box::new(searxng::SearxngProvider::new(base_url, timeout_secs)?))
+            Ok(Box::new(searxng::SearxngProvider::new(
+                base_url,
+                timeout_secs,
+            )?))
         }
         "brave" => {
             let key = api_key.filter(|k| !k.trim().is_empty()).ok_or_else(|| {
@@ -206,7 +214,10 @@ pub fn validate_config(provider: &str, config: &Value) -> Result<(), AppError> {
             // Match what SearxngProvider::new enforces at search time, so a bad
             // value is rejected at WRITE time rather than mis-reported as
             // configured (the guarantee this fn's doc comment promises).
-            match url::Url::parse(base).ok().filter(|u| matches!(u.scheme(), "http" | "https")) {
+            match url::Url::parse(base)
+                .ok()
+                .filter(|u| matches!(u.scheme(), "http" | "https"))
+            {
                 None => {
                     return Err(AppError::bad_request(
                         "WEB_SEARCH_BAD_BASE_URL",
@@ -226,9 +237,25 @@ pub fn validate_config(provider: &str, config: &Value) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Resolve the effective API key for a provider: the calling user's own key
+/// takes precedence; a blank/whitespace user key falls back to the
+/// deployment/admin key (`user_key.or(system_key)`, mirroring
+/// `resolve_api_key_for_user`). Pure, so the precedence is unit-testable.
+pub(crate) fn effective_api_key(
+    user_keys: &HashMap<String, String>,
+    provider: &str,
+    deployment_key: Option<String>,
+) -> Option<String> {
+    match user_keys.get(provider) {
+        Some(k) if !k.trim().is_empty() => Some(k.clone()),
+        _ => deployment_key,
+    }
+}
+
 /// Run a query through the configured fallback chain. `settings` is passed in
 /// by the caller (which has already loaded it + checked `enabled`), so the row
-/// is read once per search.
+/// is read once per search. `user_id` is the calling user, whose own
+/// per-provider keys take precedence over the deployment keys.
 ///
 /// Iterates `settings.provider_chain` in order: skip entries that aren't a
 /// known/configured provider; otherwise call `search`. **Fall back to the next
@@ -239,9 +266,13 @@ pub async fn search_via_chain(
     query: &str,
     count: usize,
     settings: &WebSearchSettings,
+    user_id: Uuid,
 ) -> Result<SearchOutcome, AppError> {
     let timeout = settings.request_timeout_secs.max(1) as u64;
     let rows = Repos.web_search.list_providers().await?;
+    // The calling user's own keys (one query) — resolved FIRST, deployment key
+    // is the fallback.
+    let user_keys = Repos.web_search.list_user_keys_raw(user_id).await?;
 
     // Resolve the chain into built provider instances (skipping unknown /
     // unconfigured entries). The pure walk happens in `run_chain` below so the
@@ -249,10 +280,14 @@ pub async fn search_via_chain(
     let mut candidates: Vec<(String, Box<dyn SearchProvider>)> = Vec::new();
     let mut build_err: Option<AppError> = None;
     for key in &settings.provider_chain {
-        let Some(desc) = descriptor(key) else { continue };
+        let Some(desc) = descriptor(key) else {
+            continue;
+        };
         let row = rows.iter().find(|r| &r.provider == key);
-        let api_key = row.and_then(|r| r.api_key.clone());
-        let config = row.map(|r| r.config.clone()).unwrap_or_else(|| serde_json::json!({}));
+        let api_key = effective_api_key(&user_keys, key, row.and_then(|r| r.api_key.clone()));
+        let config = row
+            .map(|r| r.config.clone())
+            .unwrap_or_else(|| serde_json::json!({}));
         if !is_configured(&desc, api_key.as_deref(), &config) {
             continue;
         }
@@ -286,15 +321,21 @@ pub async fn run_chain(
     let mut last_err: Option<AppError> = None;
     for (key, provider) in candidates {
         match provider.search(query, count).await {
-            Ok(results) => return Ok(SearchOutcome { provider: key, results }),
+            Ok(results) => {
+                return Ok(SearchOutcome {
+                    provider: key,
+                    results,
+                });
+            }
             Err(e) => {
                 tracing::warn!("web_search: provider '{key}' failed ({e}); trying next in chain");
                 last_err = Some(e);
             }
         }
     }
-    Err(last_err
-        .unwrap_or_else(|| AppError::internal_error("web search failed for all configured providers")))
+    Err(last_err.unwrap_or_else(|| {
+        AppError::internal_error("web search failed for all configured providers")
+    }))
 }
 
 #[cfg(test)]
@@ -304,6 +345,46 @@ mod tests {
 
     fn desc(key: &str) -> ProviderDescriptor {
         descriptor(key).unwrap()
+    }
+
+    #[test]
+    fn effective_api_key_user_beats_deployment_and_falls_back() {
+        let mut user_keys = HashMap::new();
+        user_keys.insert("brave".to_string(), "USER-KEY".to_string());
+        // user key present + deployment present → user wins.
+        assert_eq!(
+            effective_api_key(&user_keys, "brave", Some("DEPLOY".into())).as_deref(),
+            Some("USER-KEY")
+        );
+        // user key absent for this provider → deployment key used.
+        assert_eq!(
+            effective_api_key(&user_keys, "searxng", Some("DEPLOY".into())).as_deref(),
+            Some("DEPLOY")
+        );
+        // neither → None.
+        assert_eq!(effective_api_key(&user_keys, "searxng", None), None);
+    }
+
+    #[test]
+    fn effective_api_key_blank_user_key_falls_back() {
+        let mut user_keys = HashMap::new();
+        user_keys.insert("brave".to_string(), "   ".to_string());
+        // a whitespace-only user key is NOT treated as set — falls back.
+        assert_eq!(
+            effective_api_key(&user_keys, "brave", Some("DEPLOY".into())).as_deref(),
+            Some("DEPLOY")
+        );
+    }
+
+    #[test]
+    fn user_key_catalog_is_exactly_the_key_accepting_providers() {
+        let keyed: Vec<&str> = catalog()
+            .into_iter()
+            .filter(|d| d.needs_api_key)
+            .map(|d| d.key)
+            .collect();
+        // v1: only brave needs a key (searxng is keyless).
+        assert_eq!(keyed, vec!["brave"]);
     }
 
     #[test]
@@ -318,7 +399,11 @@ mod tests {
         let d = desc("searxng");
         assert!(!is_configured(&d, None, &json!({})));
         assert!(!is_configured(&d, None, &json!({ "base_url": "" })));
-        assert!(is_configured(&d, None, &json!({ "base_url": "https://s.example" })));
+        assert!(is_configured(
+            &d,
+            None,
+            &json!({ "base_url": "https://s.example" })
+        ));
     }
 
     #[test]
@@ -378,7 +463,10 @@ mod tests {
         assert!(!any_configured_in_chain(&["nope".into()], &rows));
         assert!(!any_configured_in_chain(&[], &rows));
         // a ready provider anywhere in the chain → true.
-        assert!(any_configured_in_chain(&["brave".into(), "searxng".into()], &rows));
+        assert!(any_configured_in_chain(
+            &["brave".into(), "searxng".into()],
+            &rows
+        ));
     }
 
     #[test]
@@ -394,7 +482,9 @@ mod tests {
         assert!(validate_config("searxng", &json!("a string")).is_err());
         assert!(validate_config("brave", &json!([1, 2, 3])).is_err());
         // Embedded credentials in the base_url are rejected at write time.
-        assert!(validate_config("searxng", &json!({ "base_url": "https://user:pass@host" })).is_err());
+        assert!(
+            validate_config("searxng", &json!({ "base_url": "https://user:pass@host" })).is_err()
+        );
     }
 
     fn settings(enabled: bool, chain: &[&str]) -> WebSearchSettings {
@@ -531,9 +621,7 @@ mod tests {
             let Some(d) = descriptor(key) else { continue };
             let row = rows.iter().find(|r| &r.provider == key);
             let api_key = row.and_then(|r| r.api_key.clone());
-            let config = row
-                .map(|r| r.config.clone())
-                .unwrap_or_else(|| json!({}));
+            let config = row.map(|r| r.config.clone()).unwrap_or_else(|| json!({}));
             if !is_configured(&d, api_key.as_deref(), &config) {
                 continue;
             }

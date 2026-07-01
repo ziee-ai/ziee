@@ -261,9 +261,10 @@ export const MultiSelect = React.forwardRef<HTMLDivElement, MultiSelectProps>(fu
     <Root open={open} onOpenChange={(o) => { if (locked && o) return; setOpen(o); if (!o) { onBlur?.(); setQuery('') } }}>
       {/* native form submission: one hidden input per selected value (div trigger has no name). */}
       {name != null && uniqueCurrent.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
-      <PopoverTrigger render={
+      <PopoverTrigger nativeButton={false} render={
         /* a DIV (not a <button>) so the removable Tag <button>s can legally nest; keyboard
-           open is wired manually since a div has no implicit button activation. */
+           open is wired manually since a div has no implicit button activation. Base UI must
+           be told this isn't a native button (nativeButton=false) or it warns. */
         <div
           ref={ref}
           id={id}

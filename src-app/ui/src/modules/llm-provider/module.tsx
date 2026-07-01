@@ -4,7 +4,6 @@ import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
 import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
 import { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
-import { useLlmProviderGroupsAssignmentStore } from '@/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.store'
 import { useProviderGroupCardStore } from '@/modules/llm-provider/components/ProviderGroupAssignmentCard.store'
 import { DownloadIndicatorWidget } from '@/modules/llm-provider/components/widgets/DownloadIndicatorWidget'
 import {
@@ -32,11 +31,6 @@ const LlmProviderSettings = lazyWithPreload(() =>
 const GroupLlmProvidersAssignmentDrawer = lazyWithPreload(() =>
   import('./components/GroupLlmProvidersAssignmentDrawer').then(m => ({
     default: m.GroupLlmProvidersAssignmentDrawer,
-  })),
-)
-const LlmProviderGroupsAssignmentDrawer = lazyWithPreload(() =>
-  import('./components/LlmProviderGroupsAssignmentDrawer').then(m => ({
-    default: m.LlmProviderGroupsAssignmentDrawer,
   })),
 )
 const LLMProviderGroupWidget = lazyWithPreload(() =>
@@ -108,10 +102,6 @@ export default createModule({
       store: useGroupLlmProvidersAssignmentStore,
     },
     {
-      name: 'LlmProviderGroupsAssignment',
-      store: useLlmProviderGroupsAssignmentStore,
-    },
-    {
       name: 'LlmProviderGroupWidget',
       store: useLlmProviderGroupWidgetStore,
     },
@@ -127,13 +117,6 @@ export default createModule({
       shouldMount: () =>
         useDelayedFalse(() => Stores.GroupLlmProvidersAssignment.isOpen),
       order: 100,
-    },
-    {
-      id: 'llm-provider-groups-assignment-drawer',
-      component: LlmProviderGroupsAssignmentDrawer,
-      shouldMount: () =>
-        useDelayedFalse(() => Stores.LlmProviderGroupsAssignment.isOpen),
-      order: 101,
     },
     {
       // Globally-mounted listener for the
