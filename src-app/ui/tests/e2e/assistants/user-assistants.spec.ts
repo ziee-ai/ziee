@@ -6,6 +6,7 @@ import {
   goToUserAssistantsPage,
   openCreateAssistantDrawer,
   fillAssistantForm,
+  setAssistantSwitch,
   submitAssistantForm,
   cancelAssistantForm,
   editUserAssistant,
@@ -192,9 +193,7 @@ test.describe('User Assistants - Settings Page', () => {
     // Set second assistant as default
     await editUserAssistant(page, 'Assistant 2')
 
-    const defaultSwitch = byTestId(page, 'assistant-form-default')
-    await defaultSwitch.waitFor({ state: 'visible', timeout: 10000 })
-    await defaultSwitch.click()
+    await setAssistantSwitch(page, 'assistant-form-default', true)
 
     await submitAssistantForm(page)
     await assertSuccessMessage(page, 'Assistant updated successfully')
@@ -226,9 +225,7 @@ test.describe('User Assistants - Settings Page', () => {
     // Disable it
     await editUserAssistant(page, 'Enabled Test Assistant')
 
-    const enabledSwitch = byTestId(page, 'assistant-form-enabled')
-    await enabledSwitch.waitFor({ state: 'visible', timeout: 10000 })
-    await enabledSwitch.click()
+    await setAssistantSwitch(page, 'assistant-form-enabled', false)
 
     await submitAssistantForm(page)
     await assertSuccessMessage(page, 'Assistant updated successfully')
