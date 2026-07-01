@@ -88,7 +88,10 @@ test.describe('Memory — manual add', () => {
     await byTestId(row, `memory-row-edit-btn-${id}`).click()
     const drawer = page.getByRole('dialog')
     await expect(byTestId(drawer, 'memory-edit-form')).toBeVisible()
-    const updated = `${original}_UPDATED`
+    // Use a token that is NOT a superstring of `original` — otherwise the
+    // `hasText: original` count-0 assertion below matches the edited row too
+    // (e.g. "EDITME_x_UPDATED" contains "EDITME_x") and fails a working edit.
+    const updated = `UPDATED_${Date.now().toString(36)}`
     await byTestId(drawer, 'memory-edit-content-input').fill(updated)
     await byTestId(page, 'memory-edit-submit-btn').click()
 
