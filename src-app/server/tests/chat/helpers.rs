@@ -925,8 +925,17 @@ pub async fn send_body_and_collect_events(
     let resp_body: Value = resp.json().await.unwrap_or(Value::Null);
     assert_eq!(status, StatusCode::OK, "send body failed: {resp_body}");
 
+    // Default 60s is ample for Linux/bwrap. The macOS libkrun backend pays a
+    // one-time full-flavor (~850 MB) microVM cold-start when a Tier-5 test
+    // spawns a *sandboxed* stdio MCP server (the echo-server case), which can
+    // exceed 60s. `ZIEE_TEST_CHAT_COLLECT_SECS` lets such runs extend the
+    // window without slowing fast-failure detection on Linux.
+    let collect_secs = std::env::var("ZIEE_TEST_CHAT_COLLECT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(60);
     let frames = probe
-        .collect_until(conversation_id, stop_at, std::time::Duration::from_secs(60))
+        .collect_until(conversation_id, stop_at, std::time::Duration::from_secs(collect_secs))
         .await;
     frames
         .into_iter()
