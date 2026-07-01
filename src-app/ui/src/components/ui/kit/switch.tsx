@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Loader2 } from 'lucide-react'
 import { Switch as Base } from '../shadcn/switch'
 import { Skeleton } from '../shadcn/skeleton'
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../shadcn/tooltip'
+import { Tooltip } from './tooltip'
 import { useSurface } from './surface'
 import { cn } from '@/lib/utils'
 import type { CheckedBinding } from './value-binding'
@@ -75,13 +75,14 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
       <Loader2 className="pointer-events-none absolute left-1/2 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 animate-spin opacity-80" aria-hidden />
     </span>
   ) : baseEl
+  // Tooltip trigger is an inert wrapping <span>, NOT the switch itself — making
+  // the tiny (~18px) interactive switch the trigger caused base-ui to open then
+  // immediately close the tooltip (flicker). Same stable pattern as the kit
+  // Tooltip used everywhere else.
   const maybeTip = tooltip != null ? (
-    <TooltipProvider delay={300}>
-      <Tooltip>
-        <TooltipTrigger render={control} />
-        <TooltipContent>{tooltip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip content={tooltip}>
+      <span className="inline-flex">{control}</span>
+    </Tooltip>
   ) : control
   if (label == null) return maybeTip
   return (
