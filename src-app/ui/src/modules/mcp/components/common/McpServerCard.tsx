@@ -239,7 +239,7 @@ export function McpServerCard({
                         checked={server.enabled}
                         onChange={handleToggleEnable}
                         loading={enableLoading}
-                        aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
+                        tooltip={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
                         data-testid="mcp-server-enable-switch"
                       />
                     </Tooltip>

@@ -103,7 +103,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
           size="sm"
           checked={hideBuiltIn}
           onChange={v => Stores.McpToolCalls.setHideBuiltIn(v)}
-          aria-label="Hide built-in"
+          tooltip="Hide built-in"
           data-testid="mcp-tool-calls-hide-builtin"
         />
       </div>

@@ -100,7 +100,7 @@ export function LitSearchGlobalSection() {
       )}
       <Flex align="center" gap="small" className="mb-3">
         <Switch
-          aria-label="Enable literature search"
+          tooltip="Enable literature search"
           checked={settings.enabled}
           disabled={!canManage}
           onChange={v => save({ enabled: v }, v ? 'Literature search enabled' : 'Disabled')}
@@ -111,7 +111,7 @@ export function LitSearchGlobalSection() {
 
       <Flex align="center" gap="small" className="mb-3">
         <Switch
-          aria-label="Show completeness estimate"
+          tooltip="Show completeness estimate"
           checked={settings.completeness_estimate_enabled}
           disabled={!canManage}
           onChange={v => save({ completeness_estimate_enabled: v }, 'Completeness estimate updated')}

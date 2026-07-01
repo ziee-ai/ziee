@@ -7,7 +7,6 @@ import {
   Empty,
   Flex,
   Switch,
-  Tooltip,
   Text,
 } from '@/components/ui'
 import { message } from '@/components/ui'
@@ -166,7 +165,7 @@ export function LlmModelsSection() {
           key="enable"
           checked={llmModel.enabled !== false}
           onChange={checked => handleToggleLlmModel(llmModel.id, checked)}
-          aria-label={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
+          tooltip={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
           data-testid={`llm-model-enable-switch-${llmModel.id}`}
         />,
       )
@@ -255,30 +254,26 @@ export function LlmModelsSection() {
             },
           ]}
         >
-          <Tooltip content="Add model">
-            <Button
-              variant="default"
-              size="icon"
-              icon={<Plus aria-hidden="true" />}
-              aria-label="Add model"
-              data-testid="llm-models-add-local-btn"
-            />
-          </Tooltip>
+          <Button
+            variant="default"
+            size="icon"
+            icon={<Plus aria-hidden="true" />}
+            aria-label="Add model"
+            data-testid="llm-models-add-local-btn"
+          />
         </Dropdown>
       )
     }
 
     return (
-      <Tooltip content="Add model">
-        <Button
-          variant="default"
-          size="icon"
-          icon={<Plus aria-hidden="true" />}
-          onClick={handleAddLlmModel}
-          aria-label="Add model"
-          data-testid="llm-models-add-remote-btn"
-        />
-      </Tooltip>
+      <Button
+        variant="default"
+        size="icon"
+        icon={<Plus aria-hidden="true" />}
+        onClick={handleAddLlmModel}
+        tooltip="Add model"
+        data-testid="llm-models-add-remote-btn"
+      />
     )
   }
 

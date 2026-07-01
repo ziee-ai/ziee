@@ -192,7 +192,7 @@ export function PermissionsField({
             size="sm"
             checked={advanced}
             disabled={disabled}
-            aria-label="Advanced JSON"
+            tooltip="Advanced JSON"
             data-testid="user-permissions-advanced-switch"
             onChange={checked => (checked ? enterAdvanced() : setAdvanced(false))}
           />

@@ -202,7 +202,7 @@ export function ProviderHeader() {
             onChange={enabled =>
               handleProviderToggle(currentProvider.id, enabled)
             }
-            aria-label={`${currentProvider.enabled ? 'Disable' : 'Enable'} ${currentProvider.name} provider`}
+            tooltip={`${currentProvider.enabled ? 'Disable' : 'Enable'} ${currentProvider.name} provider`}
             data-testid="llm-provider-header-enabled-switch"
           />
         )

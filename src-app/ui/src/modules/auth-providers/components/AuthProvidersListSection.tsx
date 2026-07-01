@@ -106,7 +106,7 @@ export function AuthProvidersListSection() {
         checked={row.enabled}
         loading={pendingToggleId === row.id}
         onChange={next => onToggle(row, next)}
-        aria-label={`Toggle ${row.name}`}
+        tooltip={`Toggle ${row.name}`}
       />
       <Button
         data-testid={`authprov-test-button-${row.name}`}

@@ -41,6 +41,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
       </button>
     ) : null
     const rightAdornment = loading ? <Loader2 className="size-4 animate-spin opacity-70" aria-hidden /> : (clearBtn ?? suffix)
+    const adorned = !!(prefix || rightAdornment)
     const field = (
       <InputBase
         ref={ref}
@@ -52,14 +53,16 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         className={cn(
           prefix && 'pl-9',
           rightAdornment && 'pr-9',
-          className,
+          // When adorned, sizing lives on the wrapper (below) so the adornment
+          // sits at the input's edge; the field just fills that box.
+          adorned ? 'w-full' : className,
         )}
         {...props}
       />
     )
-    if (!prefix && !rightAdornment) return field
+    if (!adorned) return field
     return (
-      <div className="relative w-full">
+      <div className={cn('relative w-full', className)}>
         {prefix && (
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground [&_svg]:size-4">
             {prefix}

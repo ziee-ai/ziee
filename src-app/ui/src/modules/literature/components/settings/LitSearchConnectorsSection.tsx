@@ -166,7 +166,7 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
 
       <Flex align="center" gap="small" className="mb-2">
         <Switch
-          aria-label={`Enable ${entry.display_name}`}
+          tooltip={`Enable ${entry.display_name}`}
           checked={isEnabled}
           onChange={toggleEnabled}
           loading={savingSettings}
