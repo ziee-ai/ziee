@@ -445,6 +445,26 @@ ${
 export default defineConfig({
   root: ${JSON.stringify(srcRoot)},
   build: { outDir: ${JSON.stringify(distDir)} },
+  plugins: [
+    {
+      // vite 8's preview server gzips static assets via @polka/compression,
+      // serving them Transfer-Encoding: chunked (no Content-Length). Under the
+      // app's long-lived SSE reconnect churn (/api/sync, /api/chat/stream) the
+      // compressed asset stream gets cut mid-response
+      // (ERR_INCOMPLETE_CHUNKED_ENCODING) and the SPA bundle fails to load ->
+      // the page blanks and every testid vanishes. Stripping Accept-Encoding
+      // here (this hook body runs BEFORE vite installs the compression
+      // middleware) forces uncompressed, Content-Length responses that cannot
+      // be truncated the same way.
+      name: 'e2e-disable-preview-compression',
+      configurePreviewServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          delete req.headers['accept-encoding']
+          next()
+        })
+      },
+    },
+  ],
   preview: {
     port: ${vitePort},
     strictPort: true,

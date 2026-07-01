@@ -36,6 +36,11 @@ export function WorkflowDetailDrawer() {
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [dryRunOpen, setDryRunOpen] = useState(false)
   const [testsOpen, setTestsOpen] = useState(false)
+  // Must live above the `if (!workflow) return` early return below — a hook
+  // after a conditional return changes the hook count between renders (workflow
+  // null while the drawer's data loads, then non-null), tripping React #310 and
+  // blanking the whole route via the error boundary.
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
 
   // FE LOW-1: the drawer is a singleton bound to Stores.WorkflowDrawer; when
@@ -78,8 +83,6 @@ export function WorkflowDetailDrawer() {
       message.error('Failed to delete workflow')
     }
   }
-
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   return (
     <Dialog
