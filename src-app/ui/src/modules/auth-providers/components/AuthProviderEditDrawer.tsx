@@ -3,7 +3,6 @@ import { z } from 'zod'
 import {
   Alert,
   Button,
-  Flex,
   Form,
   FormField,
   useForm,
@@ -361,25 +360,31 @@ export function AuthProviderEditDrawer({
       maskClosable={false}
       destroyOnHidden
       footer={
-        // Cancel/Close → Save, right-aligned. Matches the dominant
-        // convention from 08-cross-cutting-consistency I-1 (every
-        // non-user-module drawer uses justify-end + Cancel-then-Submit).
+        // Test config on the left; Cancel/Close → Save on the right.
         // Read-only users get a "Close" button instead of "Cancel"
         // because there's nothing to cancel.
-        <Flex className="justify-end gap-2">
-          <Button variant="outline" data-testid="authprov-drawer-cancel-button" onClick={handleClose} disabled={saving}>
-            {canManage ? 'Cancel' : 'Close'}
-          </Button>
-          <Can permission={Permissions.AuthProvidersManage}>
-            {/* Footer button lives OUTSIDE the form (project Drawer
-                convention), so htmlType="submit" wouldn't work
-                here — Enter-to-submit is handled by Form's
-                `onSubmit={handleSave}` instead. */}
-            <Button data-testid="authprov-drawer-save-button" loading={saving} onClick={handleSave}>
-              {existing ? 'Save' : 'Create'}
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <Can permission={Permissions.AuthProvidersManage}>
+              <Button variant="outline" data-testid="authprov-test-config-button" loading={testing} onClick={onTestConfig}>
+                Test config
+              </Button>
+            </Can>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" data-testid="authprov-drawer-cancel-button" onClick={handleClose} disabled={saving}>
+              {canManage ? 'Cancel' : 'Close'}
             </Button>
-          </Can>
-        </Flex>
+            <Can permission={Permissions.AuthProvidersManage}>
+              {/* Footer button lives OUTSIDE the form (Drawer convention),
+                  so type="submit" wouldn't work here — Enter-to-submit is
+                  handled by Form's `onSubmit={handleSave}` instead. */}
+              <Button data-testid="authprov-drawer-save-button" loading={saving} onClick={handleSave}>
+                {existing ? 'Save' : 'Create'}
+              </Button>
+            </Can>
+          </div>
+        </div>
       }
     >
       {/* The project's <Drawer> wrapper applies `flex w-full` to its
@@ -449,13 +454,6 @@ export function AuthProviderEditDrawer({
               Leave <code>client_secret</code> empty to keep the existing value.
             </Paragraph>
           )}
-          <Can permission={Permissions.AuthProvidersManage}>
-            <Flex className="mt-4">
-              <Button data-testid="authprov-test-config-button" loading={testing} onClick={onTestConfig}>
-                Test config
-              </Button>
-            </Flex>
-          </Can>
         </Form>
       </div>
     </Drawer>

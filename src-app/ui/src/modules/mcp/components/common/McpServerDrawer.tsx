@@ -1370,33 +1370,6 @@ export function McpServerDrawer() {
             />
           )}
         </Form>
-
-        <div className="flex gap-2 justify-end">
-          {canManage && !!transportType && (
-            <Button
-              className="mr-auto"
-              loading={testing}
-              disabled={loading}
-              onClick={handleSaveAndTest}
-              data-testid="mcp-drawer-save-test-btn"
-            >
-              Save &amp; Test Connection
-            </Button>
-          )}
-          <Button variant="outline" onClick={handleClose} data-testid="mcp-drawer-cancel-btn">
-            {canManage ? 'Cancel' : 'Close'}
-          </Button>
-          {canManage && (
-            <Button
-              loading={loading}
-              disabled={testing}
-              onClick={handleSubmit}
-              data-testid="mcp-drawer-submit-btn"
-            >
-              {getButtonText()}
-            </Button>
-          )}
-        </div>
       </div>
   )
 
@@ -1404,7 +1377,44 @@ export function McpServerDrawer() {
   // Create mode has no server id yet, so just render the form.
   const isEditMode = mode === 'edit' || mode === 'edit-system'
   return (
-    <Drawer open={open} onClose={handleClose} title={titleNode} size={600}>
+    <Drawer
+      open={open}
+      onClose={handleClose}
+      title={titleNode}
+      size={600}
+      footer={
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            {canManage && !!transportType && (
+              <Button
+                variant="outline"
+                loading={testing}
+                disabled={loading}
+                onClick={handleSaveAndTest}
+                data-testid="mcp-drawer-save-test-btn"
+              >
+                Save &amp; Test Connection
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleClose} data-testid="mcp-drawer-cancel-btn">
+              {canManage ? 'Cancel' : 'Close'}
+            </Button>
+            {canManage && (
+              <Button
+                loading={loading}
+                disabled={testing}
+                onClick={handleSubmit}
+                data-testid="mcp-drawer-submit-btn"
+              >
+                {getButtonText()}
+              </Button>
+            )}
+          </div>
+        </div>
+      }
+    >
       {isEditMode && editingServer ? (
         <Tabs
           defaultValue="details"
