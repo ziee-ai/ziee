@@ -43,7 +43,7 @@ async fn pool(server: &TestServer) -> sqlx::PgPool {
 // ── Tier 2: DB ───────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn builtin_row_registered_and_hidden() {
+async fn builtin_row_registered() {
     let server = TestServer::start().await;
     let pool = pool(&server).await;
 
@@ -63,6 +63,71 @@ async fn builtin_row_registered_and_hidden() {
     assert!(row.enabled);
     assert_eq!(row.transport_type, "http");
     assert!(row.url.unwrap().ends_with("/api/control/mcp"));
+}
+
+#[tokio::test]
+async fn appears_on_system_mcp_page_and_admin_can_toggle_enabled() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "ctl_sysadmin", &["*"]).await;
+    let client = reqwest::Client::new();
+    let control_id = control_mcp_server_id().to_string();
+
+    // 1. Control appears in the System MCP listing (it's a visible, editable
+    //    built-in like bio_mcp — NOT hidden).
+    let list: Value = client
+        .get(server.api_url("/mcp/system-servers?per_page=100"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let ids: Vec<String> = list["servers"]
+        .as_array()
+        .expect("servers array")
+        .iter()
+        .map(|s| s["id"].as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        ids.contains(&control_id),
+        "control must be listed on the System MCP page: {ids:?}"
+    );
+
+    // 2. Admin toggles it OFF (no longer immutable) → 200.
+    let res = client
+        .put(server.api_url(&format!("/mcp/system-servers/{control_id}")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        res.status().is_success(),
+        "admin must be able to toggle control enabled: {}",
+        res.status()
+    );
+
+    // 3. The row reflects enabled=false (the runtime auto-attach honors this).
+    let pool = pool(&server).await;
+    let enabled = sqlx::query_scalar!(
+        "SELECT enabled FROM mcp_servers WHERE id = $1",
+        control_mcp_server_id()
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!enabled, "control row must be disabled after the admin toggle");
+
+    // 4. Re-enable round-trips too.
+    let res = client
+        .put(server.api_url(&format!("/mcp/system-servers/{control_id}")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success());
 }
 
 #[tokio::test]
