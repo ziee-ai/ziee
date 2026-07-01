@@ -25,7 +25,10 @@ test.describe('App Setup — server error', () => {
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
-          body: JSON.stringify({ message: 'Admin already exists' }),
+          // Match the real backend's AppError shape ({ error, error_code }),
+          // which the API client parses via `.error`. A `{ message }` body is
+          // not read, so the alert falls back to the bare "HTTP error!" string.
+          body: JSON.stringify({ error: 'Admin already exists' }),
         })
       } else {
         await route.fallback()
