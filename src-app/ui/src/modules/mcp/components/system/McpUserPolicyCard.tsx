@@ -37,7 +37,23 @@ export function McpUserPolicyCard() {
   )
   const canEdit = usePermission(Permissions.McpUserPolicyEdit)
   const [saving, setSaving] = useState(false)
-  const { selectOptions: flavorOptions } = Stores.SandboxFlavors
+  const { flavors: rawFlavors, selectOptions: fallbackFlavorOptions } = Stores.SandboxFlavors
+  // Rich options: the trigger shows just the flavor name (capitalized), the
+  // dropdown shows name + description + size on two lines.
+  const flavorOptions = rawFlavors.length
+    ? rawFlavors.map((e) => ({
+        value: e.flavor,
+        selectedLabel: <span className="capitalize">{e.flavor}</span>,
+        label: (
+          <div className="flex flex-col py-0.5">
+            <span className="font-medium capitalize">{e.flavor}</span>
+            <span className="text-xs text-muted-foreground">
+              {e.description} · ~{e.approximate_size_mb} MB
+            </span>
+          </div>
+        ),
+      }))
+    : fallbackFlavorOptions
 
   const form = useForm<PolicyForm>({
     defaultValues: { http: false, stdio: false, flavor: null, retention_days: 90 },
