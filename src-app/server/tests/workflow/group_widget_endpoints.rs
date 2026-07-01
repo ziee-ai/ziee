@@ -270,6 +270,52 @@ async fn system_workflow_group_bidirectional_consistency() {
 }
 
 #[tokio::test]
+async fn system_workflow_still_listed_after_group_assignment() {
+    // Regression (B-WF-12): the admin system-workflow list (`Workflow.listSystem`,
+    // GET /workflows/system) must keep showing a system workflow AFTER it's been
+    // assigned to a group. The old handler used the group-access-filtered
+    // `list_for_user(nil)`, which hid assigned system workflows — breaking the
+    // assignment picker (drawer showed "No system workflows available" on reopen).
+    let server = plain_server().await;
+    let admin = admin(&server, "wf_listsys_after_assign").await;
+    let wid = install_system_wf(&server, &admin.token, "wf-listsys").await;
+    let gid = create_group(&server, &admin.token, "wf-listsys-grp").await;
+
+    // Present before assignment.
+    let before: Json = reqwest::Client::new()
+        .get(server.api_url("/workflows/system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list system")
+        .json()
+        .await
+        .expect("parse");
+    assert!(
+        before["workflows"].as_array().unwrap().iter().any(|w| w["id"] == wid),
+        "system workflow should be listed before assignment"
+    );
+
+    // Assign to a group the admin is NOT a member of.
+    put_group_workflows(&server, &admin.token, &gid, &[&wid]).await;
+
+    // STILL present after assignment.
+    let after: Json = reqwest::Client::new()
+        .get(server.api_url("/workflows/system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list system")
+        .json()
+        .await
+        .expect("parse");
+    assert!(
+        after["workflows"].as_array().unwrap().iter().any(|w| w["id"] == wid),
+        "system workflow must STILL be listed after group assignment: {after}"
+    );
+}
+
+#[tokio::test]
 async fn system_workflow_group_cascade_on_group_delete() {
     let server = plain_server().await;
     let admin = create_user_with_permissions(

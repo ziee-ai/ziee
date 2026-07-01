@@ -1058,6 +1058,49 @@ pub async fn remove_workflow_group(
     Ok(())
 }
 
+/// All `scope = 'system'` workflows, unconditionally (NOT access-filtered by
+/// group membership — mirrors skill's `list_system`). This is the admin
+/// moderation / assignment-picker surface: a system workflow already assigned
+/// to a group must still appear here, which the group-filtered `list_for_user`
+/// would hide.
+pub async fn list_system(pool: &PgPool, limit: i64, offset: i64) -> Result<Vec<Workflow>, AppError> {
+    let rows = sqlx::query_as!(
+        Workflow,
+        r#"
+        SELECT
+            id,
+            name,
+            version,
+            display_name,
+            description,
+            extracted_path,
+            bundle_sha256,
+            bundle_size_bytes,
+            file_count,
+            entry_point,
+            tags as "tags: _",
+            scope,
+            owner_user_id,
+            created_by,
+            enabled,
+            is_dev,
+            compiled_ir_json as "compiled_ir_json: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflows
+        WHERE scope = 'system'
+        ORDER BY name ASC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit,
+        offset,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
 pub async fn get_system_workflows_for_group(
     pool: &PgPool,
     group_id: Uuid,

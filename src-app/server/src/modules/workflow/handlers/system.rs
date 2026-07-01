@@ -27,17 +27,14 @@ use crate::modules::workflow::types::{
 pub async fn list_system_workflows(
     _auth: RequirePermissions<(WorkflowsManageSystem,)>,
 ) -> ApiResult<Json<WorkflowListResponse>> {
-    // System workflows are visible to everyone; admin list is the
-    // moderation surface (delete-only here).
-    let workflows = repository::list_for_user(
-        Repos.pool(),
-        Uuid::nil(),
-        crate::common::DEFAULT_PAGE_SIZE as i64,
-        0,
-    )
-    .await?;
-    let only_system: Vec<_> = workflows.into_iter().filter(|w| w.scope == "system").collect();
-    Ok((StatusCode::OK, Json(WorkflowListResponse { workflows: only_system })))
+    // Admin moderation + group-assignment picker surface: ALL system
+    // workflows, unconditionally. Must NOT use the group-access-filtered
+    // `list_for_user` (with nil user that hides any system workflow already
+    // assigned to a group). Mirrors skill's `list_system`.
+    let workflows =
+        repository::list_system(Repos.pool(), crate::common::PAGINATION_MAX_PER_PAGE as i64, 0)
+            .await?;
+    Ok((StatusCode::OK, Json(WorkflowListResponse { workflows })))
 }
 
 pub fn list_system_workflows_docs(op: TransformOperation) -> TransformOperation {
