@@ -194,11 +194,11 @@ test.describe('App Setup', () => {
     // Wait for form to be visible
     await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
 
-    // NOTE on Tab counts: each password Input renders a focusable
-    // eye-toggle (tabindex="0") AFTER its input, so reaching the next
-    // field requires an extra Tab to step past the toggle. Without that,
-    // the sequence shifts by one (the confirm field gets the display-name
-    // text → "Passwords do not match" → the form never submits).
+    // NOTE on Tab counts: the setup form uses plain `<Input type="password">`
+    // (NOT the kit PasswordInput), so there is NO focusable eye-toggle between
+    // fields — a single Tab reaches the next input. (An extra Tab per password
+    // field would shift the sequence by one: the value meant for Confirm lands
+    // in Display Name, Confirm stays empty, and the form never submits.)
 
     // Focus the username field explicitly. The migrated Input renders with
     // autoFocus, so a leading Tab would step OFF username and shift the whole
@@ -215,19 +215,16 @@ test.describe('App Setup', () => {
     await page.keyboard.press('Tab')
     await page.keyboard.type('password123')
 
-    // Tab past the password eye-toggle, then to the confirm-password field
-    await page.keyboard.press('Tab')
+    // Tab to the confirm-password field
     await page.keyboard.press('Tab')
     await page.keyboard.type('password123')
 
-    // Tab past the confirm-password eye-toggle, then to the display-name field
-    await page.keyboard.press('Tab')
+    // Tab to the display-name field
     await page.keyboard.press('Tab')
     await page.keyboard.type('System Administrator')
 
     // Submit via Enter from the (text) display-name field — standard HTML
-    // form submission (a final "Tab to the submit button" is fragile
-    // because of the eye-toggles above).
+    // form submission (a final "Tab to the submit button" is fragile).
     await page.keyboard.press('Enter')
 
     // Should redirect to home
