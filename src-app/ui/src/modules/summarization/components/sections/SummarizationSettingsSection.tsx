@@ -1,10 +1,7 @@
 import { useEffect } from 'react'
 import {
   Alert,
-  Button,
   Card,
-  Separator,
-  Flex,
   Form,
   FormField,
   useForm,
@@ -20,6 +17,7 @@ import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 
 const READ_PERM = Permissions.SummarizationSettingsRead
 const MANAGE_PERM = Permissions.SummarizationSettingsManage
@@ -177,7 +175,19 @@ export function SummarizationSettingsSection() {
   }
 
   return (
-    <Card title="Summarization" data-testid="summ-settings-card">
+    <Card
+      title="Summarization"
+      data-testid="summ-settings-card"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSubmit)}
+          onCancel={() => form.reset()}
+          saving={saving}
+          saveTestid="summ-save-button"
+          cancelTestid="summ-cancel-button"
+        />
+      ) : undefined}
+    >
       <Form
         data-testid="summ-settings-form"
         name="summarization-admin-form"
@@ -254,16 +264,6 @@ export function SummarizationSettingsSection() {
           <Textarea data-testid="summ-incremental-prompt-textarea" autoSize={{ minRows: 2, maxRows: 6 }} />
         </FormField>
 
-        {canManage && (
-          <>
-            <Separator className="!my-3" />
-            <Flex justify="end">
-              <Button type="submit" data-testid="summ-save-button" loading={saving}>
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
     </Card>
   )

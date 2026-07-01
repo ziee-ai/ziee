@@ -1,10 +1,7 @@
 import { useEffect } from 'react'
 import {
   Alert,
-  Button,
   Card,
-  Separator,
-  Flex,
   Form,
   FormField,
   useForm,
@@ -16,6 +13,7 @@ import {
 import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
@@ -108,7 +106,19 @@ export function ChunkingSection() {
   }
 
   return (
-    <Card data-testid="filerag-chunking-card" title="Chunking">
+    <Card
+      data-testid="filerag-chunking-card"
+      title="Chunking"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSubmit)}
+          onCancel={() => form.reset()}
+          saving={saving}
+          saveTestid="filerag-chunking-save"
+          cancelTestid="filerag-chunking-cancel"
+        />
+      ) : undefined}
+    >
       {error && (
         <Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error} />
       )}
@@ -149,16 +159,6 @@ export function ChunkingSection() {
           <InputNumber data-testid="filerag-chunking-max-chunks" min={1} max={100000} step={100} className="w-40" />
         </FormField>
 
-        {canManage && (
-          <>
-            <Separator className="my-3" />
-            <Flex justify="end">
-              <Button data-testid="filerag-chunking-save" type="submit" loading={saving}>
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
     </Card>
   )

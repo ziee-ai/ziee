@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Separator,
   Flex,
   Form,
   FormField,
@@ -18,6 +17,7 @@ import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 
 
 const READ_PERM = Permissions.MemoryRead
@@ -106,7 +106,24 @@ export function PreferencesSection() {
           data-testid="memory-prefs-admin-disabled-alert"
         />
       )}
-      <Card title="Preferences" data-testid="memory-prefs-card">
+      <Card
+        title="Preferences"
+        data-testid="memory-prefs-card"
+        footer={canWrite ? (
+          <SettingsFormActions
+            onSave={form.handleSubmit(handleSubmit)}
+            onCancel={() => form.reset({
+              extraction_enabled: settings.extraction_enabled,
+              retrieval_enabled: settings.retrieval_enabled,
+              max_memories: settings.max_memories,
+              retention_days: settings.retention_days,
+            })}
+            saving={saving}
+            saveTestid="memory-prefs-save-btn"
+            cancelTestid="memory-prefs-cancel-btn"
+          />
+        ) : undefined}
+      >
         {/*
         Horizontal layout: label + description on the left, the
         control on the right. Compact enough that Switch /
@@ -160,17 +177,6 @@ export function PreferencesSection() {
             Forever
           </Button>
         </Flex>
-
-        {canWrite && (
-          <>
-            <Separator className="!my-3" />
-            <Flex justify="end">
-              <Button type="submit" loading={saving} data-testid="memory-prefs-save-btn">
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
       </Card>
     </>

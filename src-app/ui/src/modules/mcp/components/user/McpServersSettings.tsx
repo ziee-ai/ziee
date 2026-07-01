@@ -6,7 +6,8 @@ import {
   Select,
   Text,
 } from '@/components/ui'
-import { Plus, Search, Eraser } from 'lucide-react'
+import { Search, Eraser } from 'lucide-react'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -145,14 +146,11 @@ export function McpServersSettings() {
                 the backend would 422 the create regardless. Surfaces
                 the right empty-state copy below instead. */}
             {policyAllowsAdd && (
-              <Button
-                variant="default"
-                icon={<Plus />}
+              <AddButton
+                label="Add server"
                 onClick={handleAddServer}
                 data-testid="mcp-settings-add-btn"
-              >
-                Add Server
-              </Button>
+              />
             )}
           </Can>
         </div>

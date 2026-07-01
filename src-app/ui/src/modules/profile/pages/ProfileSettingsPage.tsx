@@ -2,10 +2,8 @@ import { useEffect } from 'react'
 import {
   Alert,
   Avatar,
-  Button,
   Card,
   Descriptions,
-  Separator,
   Flex,
   Form,
   FormField,
@@ -23,6 +21,7 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 
 interface ProfileFormValues {
   display_name: string
@@ -125,7 +124,19 @@ export function ProfileSettingsPage() {
 
   return (
     <SettingsPageContainer title="Profile">
-      <Card title="Account" data-testid="profile-account-card">
+      <Card
+        title="Account"
+        data-testid="profile-account-card"
+        footer={canEdit ? (
+          <SettingsFormActions
+            onSave={profileForm.handleSubmit(handleProfileSubmit)}
+            onCancel={() => profileForm.reset({ display_name: user.display_name ?? '', username: user.username })}
+            saving={savingProfile}
+            saveTestid="profile-save-button"
+            cancelTestid="profile-cancel-btn"
+          />
+        ) : undefined}
+      >
         {/* Wrap the body in a flex column with explicit gap. Per-child
             mb-* wasn't taking effect — antd v6's Card body layout
             collapses sibling margins; flex gap is the reliable lever. */}
@@ -199,37 +210,25 @@ export function ProfileSettingsPage() {
           <FormField name="username" label="Username" required>
             <Input data-testid="profile-username-input" maxLength={255} placeholder="Your username" />
           </FormField>
-
-          {canEdit && (
-            <>
-              <Separator className="!my-3" />
-              <Flex justify="end" gap="small">
-                <Button
-                  data-testid="profile-cancel-btn"
-                  type="button"
-                  disabled={savingProfile}
-                  onClick={() => {
-                    // Discard unsaved edits — restore the persisted values.
-                    profileForm.reset({
-                      display_name: user.display_name ?? '',
-                      username: user.username,
-                    })
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" data-testid="profile-save-button" loading={savingProfile}>
-                  Save
-                </Button>
-              </Flex>
-            </>
-          )}
         </Form>
         </Flex>
       </Card>
 
       {canEdit && (
-        <Card title="Password" data-testid="profile-password-card">
+        <Card
+          title="Password"
+          data-testid="profile-password-card"
+          footer={hasPassword ? (
+            <SettingsFormActions
+              onSave={passwordForm.handleSubmit(handlePasswordSubmit)}
+              onCancel={() => passwordForm.reset()}
+              saving={savingPassword}
+              saveLabel="Change password"
+              saveTestid="profile-change-password-button"
+              cancelTestid="profile-password-cancel-btn"
+            />
+          ) : undefined}
+        >
           {hasPassword ? (
             <Form
               name="password-form"
@@ -276,21 +275,6 @@ export function ProfileSettingsPage() {
                   placeholder="Confirm new password"
                 />
               </FormField>
-
-              <Separator className="!my-3" />
-              <Flex justify="end" gap="small">
-                <Button
-                  data-testid="profile-password-cancel-btn"
-                  type="button"
-                  disabled={savingPassword}
-                  onClick={() => passwordForm.reset()}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" data-testid="profile-change-password-button" loading={savingPassword}>
-                  Change password
-                </Button>
-              </Flex>
             </Form>
           ) : (
             <Text type="secondary" data-testid="profile-no-password-notice">
