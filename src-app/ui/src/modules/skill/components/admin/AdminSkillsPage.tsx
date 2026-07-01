@@ -1,6 +1,7 @@
 import { Import } from 'lucide-react'
-import { Button, Card, Empty, Flex, Text } from '@/components/ui'
-import { useState } from 'react'
+import { Button, Empty, Flex, Text } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
+import { useEffect, useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
@@ -19,6 +20,16 @@ export function AdminSkillsPage() {
   const { systemSkills, loading } = Stores.SystemSkill
   const { multiUserMode } = Stores.AppMode
   const [importOpen, setImportOpen] = useState(false)
+
+  // Client-side pagination (the store loads the full list).
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const total = systemSkills.length
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(total / pageSize))
+    if (page > maxPage) setPage(maxPage)
+  }, [total, pageSize, page])
+  const pagedSkills = systemSkills.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <SettingsPageContainer
@@ -41,10 +52,12 @@ export function AdminSkillsPage() {
         {loading && <Text type="secondary">Loading system skills...</Text>}
 
         <div className="flex flex-col gap-3">
-          {systemSkills.map(skill => (
-            <Card
+          {pagedSkills.map(skill => (
+            // Plain bordered div (not kit Card) so the only padding is the inner
+            // p-3 header — a Card would add its own px-6/py-4 on top (double pad).
+            <div
               key={skill.id}
-              className="overflow-hidden"
+              className="overflow-hidden border rounded-lg"
               data-skill-id={skill.id}
               data-testid={`skill-admin-card-${skill.id}`}
             >
@@ -75,12 +88,25 @@ export function AdminSkillsPage() {
               {multiUserMode && (
                 <AdminSkillGroupAssignment skillId={skill.id} />
               )}
-            </Card>
+            </div>
           ))}
         </div>
 
         {!loading && systemSkills.length === 0 && (
           <Empty description="No system skills installed" className="!mt-12" data-testid="skill-admin-empty" />
+        )}
+
+        {total > 0 && (
+          <ListPagination
+            data-testid="skill-admin-pagination"
+            current={page}
+            total={total}
+            pageSize={pageSize}
+            onChange={(p: number) => setPage(p)}
+            onPageSizeChange={(size: number) => { setPageSize(size); setPage(1) }}
+            itemNoun="skills"
+            aria-label="System skills pagination"
+          />
         )}
 
         <SkillDetailDrawer />

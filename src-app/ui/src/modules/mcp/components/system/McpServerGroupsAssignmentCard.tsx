@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
-import { Pencil } from 'lucide-react'
-import { Button, Accordion, Empty, Flex, Space, Spin, Tag, Text } from '@/components/ui'
+import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
+import { emitMcpServerGroupsChanged } from '@/modules/mcp/events'
 
 interface McpServerGroupsAssignmentCardProps {
   serverId: string
@@ -11,11 +12,8 @@ interface McpServerGroupsAssignmentCardProps {
 
 /**
  * Section for managing which user groups have access to a system MCP server.
- * Displays assigned groups and opens a drawer for management.
- * Uses a dedicated store to prevent duplicate API calls and cache data.
- *
- * IMPORTANT: Section fetches data on mount AND listens to events for real-time updates.
- * This ensures data is loaded even after page reloads.
+ * Thin wrapper over the shared UserGroupAssignment; Assign opens the shared
+ * editor Drawer, and save persists via SystemMcpServer.assignServerToGroups.
  */
 export function McpServerGroupsAssignmentCard({
   serverId,
@@ -29,77 +27,25 @@ export function McpServerGroupsAssignmentCard({
     Stores.SystemMcpServerGroupCard.loadGroupsForServer(serverId)
   }, [serverId])
 
-  const handleManageGroups = () => {
-    Stores.McpServerGroupsAssignment.openDrawer(serverId)
-  }
-
   return (
-    // pb-3 keeps the User Groups section from flush-bottoming
-    // against the parent McpServerCard's edge — gives the same
-    // breathing room as the rest of the card's interior padding.
-    <div
-      className="pb-3"
-      data-server-id={serverId}
-      data-card-type="user-groups-assignment"
-    >
-      <Accordion
-        ghost
-        collapsible
-        data-testid={`mcp-groups-accordion-${serverId}`}
-        items={[
-          {
-            key: 'groups',
-            label: <Text className="font-medium text-sm">User Groups</Text>,
-            children: (
-              <>
-                {canManage && (
-                  <div className="mb-2">
-                    <Button
-                      variant="ghost"
-                      size="default"
-                      icon={<Pencil aria-hidden="true" />}
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleManageGroups()
-                      }}
-                      aria-label="Manage user groups"
-                      data-testid={`mcp-groups-assign-btn-${serverId}`}
-                    >
-                      Assign
-                    </Button>
-                  </div>
-                )}
-                {loading ? (
-                  <Spin size="sm" label="Loading" />
-                ) : assignedGroups.length === 0 ? (
-                  <Empty
-                    description="No groups assigned"
-                    className="!my-2"
-                    data-testid={`mcp-groups-empty-${serverId}`}
-                  />
-                ) : (
-                  <Flex vertical gap="small" className="w-full">
-                    <Text type="secondary" className="text-xs">
-                      User groups that have access to this MCP server
-                    </Text>
-                    <Space wrap size="small">
-                      {assignedGroups.map(group => (
-                        <Tag variant="outline"
-                          key={group.id}
-                          tone="info"
-                          className="text-[13px] px-2 py-1"
-                          data-testid={`mcp-group-tag-${group.id}`}
-                        >
-                          {group.name}
-                        </Tag>
-                      ))}
-                    </Space>
-                  </Flex>
-                )}
-              </>
-            ),
+    <div data-server-id={serverId} data-card-type="user-groups-assignment">
+      <UserGroupAssignment
+        data-testid={`mcp-groups-${serverId}`}
+        assignedGroups={assignedGroups.map(g => ({ id: g.id, name: g.name }))}
+        loading={loading}
+        canAssign={canManage}
+        emptyText="No groups assigned"
+        description="User groups that have access to this MCP server"
+        editor={{
+          loadAllGroups: async () => {
+            const res = await ApiClient.UserGroup.list({ page: 1, per_page: 100 })
+            return res.groups.map(g => ({ id: g.id, name: g.name, description: g.description, is_default: g.is_default }))
           },
-        ]}
+          save: async ids => {
+            await Stores.SystemMcpServer.assignServerToGroups(serverId, ids)
+            await emitMcpServerGroupsChanged(serverId, ids)
+          },
+        }}
       />
     </div>
   )

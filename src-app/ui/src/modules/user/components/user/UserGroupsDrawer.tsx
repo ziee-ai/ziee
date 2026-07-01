@@ -12,7 +12,6 @@ import {
   Button,
   Empty,
   List,
-  Tooltip,
 } from '@/components/ui'
 
 export function UserGroupsDrawer() {
@@ -103,12 +102,11 @@ export function UserGroupsDrawer() {
       }}
       open={isOpen}
       size={600}
-      extra={
-        canAssign && (
-          <Tooltip title="Assign group">
+      footer={
+        canAssign ? (
+          <div className="flex justify-end">
             <Button
               variant="default"
-              size="icon"
               icon={<Plus aria-hidden="true" />}
               onClick={() => {
                 Stores.UserGroupsDrawer.closeUserGroupsDrawer()
@@ -116,12 +114,12 @@ export function UserGroupsDrawer() {
                   Stores.AssignGroupDrawer.openAssignGroupDrawer(user)
                 }
               }}
-              className={'mr-2'}
-              aria-label="Assign group"
               data-testid="user-groups-drawer-assign-button"
-            />
-          </Tooltip>
-        )
+            >
+              Assign group
+            </Button>
+          </div>
+        ) : undefined
       }
     >
       {loadingUserGroups ? (

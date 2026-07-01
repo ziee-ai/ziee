@@ -37,6 +37,7 @@ export function WorkflowDetailDrawer() {
   const [dryRunOpen, setDryRunOpen] = useState(false)
   const [testsOpen, setTestsOpen] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   // FE LOW-1: the drawer is a singleton bound to Stores.WorkflowDrawer; when
   // the user opens a different workflow's card while the drawer is open the
@@ -78,8 +79,6 @@ export function WorkflowDetailDrawer() {
       message.error('Failed to delete workflow')
     }
   }
-
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   return (
     <Dialog

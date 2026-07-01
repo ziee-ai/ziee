@@ -1,4 +1,4 @@
-import { Alert } from '@/components/ui'
+import { Alert, Tabs } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { LitSearchGlobalSection } from './LitSearchGlobalSection'
@@ -26,8 +26,22 @@ export function LitSearchSettingsPage() {
           data-testid="lit-settings-error-alert"
         />
       )}
-      <LitSearchGlobalSection />
-      <LitSearchConnectorsSection />
+      <Tabs
+        defaultValue="general"
+        data-testid="lit-settings-tabs"
+        items={[
+          {
+            key: 'general',
+            label: 'General',
+            children: <LitSearchGlobalSection />,
+          },
+          {
+            key: 'sources',
+            label: 'Sources',
+            children: <LitSearchConnectorsSection />,
+          },
+        ]}
+      />
     </SettingsPageContainer>
   )
 }

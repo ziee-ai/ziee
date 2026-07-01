@@ -44,6 +44,8 @@ export interface DrawerProps {
   zIndex?: number
   /** Render children directly (caller owns scrolling) instead of inside the DivScrollY layer. */
   noBodyScrollWrap?: boolean
+  /** Overrides the default `layout-drawer-content` testid on the content root. */
+  'data-testid'?: string
   children?: React.ReactNode
 }
 
@@ -77,6 +79,7 @@ export const Drawer: React.FC<DrawerProps> = ({
   styles,
   zIndex,
   noBodyScrollWrap = false,
+  'data-testid': testid,
   children,
 }) => {
   const windowMinSize = useWindowMinSize()
@@ -129,7 +132,7 @@ export const Drawer: React.FC<DrawerProps> = ({
           />
         )}
         <DialogPrimitive.Content
-          data-testid="layout-drawer-content"
+          data-testid={testid ?? 'layout-drawer-content'}
           // maskClosable=false → backdrop/outside click doesn't dismiss (Escape still does).
           onPointerDownOutside={maskClosable ? undefined : e => e.preventDefault()}
           onInteractOutside={maskClosable ? undefined : e => e.preventDefault()}

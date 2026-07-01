@@ -7,7 +7,7 @@ import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
 import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
-import { Button, Card, Flex, Text, Input, Select } from '@/components/ui'
+import { Button, Card, Flex, Text, Input, Select, Tabs } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 
 export function SystemMcpServersPage() {
@@ -70,11 +70,15 @@ export function SystemMcpServersPage() {
       }
     >
       <div className="flex flex-col gap-3 h-full">
-        {/* Admin-only user policy card. Hidden on single-admin desktop
-            (where the policy has no meaningful audience) via its own
-            multiUserMode check. */}
-        <McpUserPolicyCard />
-
+        <Tabs
+          defaultValue="servers"
+          data-testid="mcp-system-tabs"
+          items={[
+            {
+              key: 'servers',
+              label: 'Servers',
+              children: (
+                <div className="flex flex-col gap-3">
         {systemServersLoading && (
           <Text type="secondary">Loading system servers...</Text>
         )}
@@ -184,6 +188,17 @@ export function SystemMcpServersPage() {
           aria-label="System MCP servers pagination"
         />
         )}
+                </div>
+              ),
+            },
+            {
+              key: 'policy',
+              label: 'Policy',
+              // Admin-only user policy card (self-hides on single-admin desktop).
+              children: <McpUserPolicyCard />,
+            },
+          ]}
+        />
 
         {/* Drawer */}
         <McpServerDrawer />
