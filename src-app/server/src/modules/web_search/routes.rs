@@ -26,4 +26,14 @@ pub fn web_search_router() -> ApiRouter {
             "/web-search/providers/{provider}",
             put_with(handlers::update_provider, handlers::update_provider_docs),
         )
+        // User-scoped: the caller's OWN provider keys (masked read + set/clear).
+        .api_route(
+            "/web-search/user-keys",
+            get_with(handlers::list_user_keys, handlers::list_user_keys_docs),
+        )
+        .api_route(
+            "/web-search/user-keys/{provider}",
+            put_with(handlers::save_user_key, handlers::save_user_key_docs)
+                .delete_with(handlers::delete_user_key, handlers::delete_user_key_docs),
+        )
 }

@@ -157,3 +157,41 @@ pub struct UpdateConnectorRequest {
     #[serde(default)]
     pub api_key: Option<String>,
 }
+
+// ── Per-user connector keys (user-facing surface) ────────────────────────────
+
+/// A user's stored key for one connector, in MASKED form only. The raw key is
+/// never serialized — `masked_key` is `first-4 + ***`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct UserConnectorKeyEntry {
+    pub connector: String,
+    pub masked_key: String,
+}
+
+/// One row in the user-facing key catalog: a key-accepting connector joined with
+/// the calling user's own key state + whether a deployment (shared) key exists.
+/// Neither the user key nor the deployment key value is ever exposed.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct UserConnectorKeyCatalogEntry {
+    pub connector: String,
+    pub display_name: String,
+    /// The connector's key-field descriptor (label / help / docs / required),
+    /// so the user form renders the same guidance as the admin surface.
+    pub key_field: Option<KeyFieldInfo>,
+    /// True when the deployment/admin has a shared key for this connector — the
+    /// fallback used when the user sets none. Boolean only, never the value.
+    pub system_key_set: bool,
+    /// The user's own key in masked form, or `null` when they've set none.
+    pub user_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct UserConnectorKeyCatalogResponse {
+    pub connectors: Vec<UserConnectorKeyCatalogEntry>,
+}
+
+/// PUT body to set the calling user's own key for a connector.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct SaveUserConnectorKeyRequest {
+    pub api_key: String,
+}
