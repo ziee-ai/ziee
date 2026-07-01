@@ -1,15 +1,22 @@
-import { Globe } from 'lucide-react'
+import { Globe, KeyRound } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useWebSearchAdminStore } from './stores/WebSearchAdmin.store'
+import { useWebSearchUserKeysStore } from './stores/WebSearchUserKeys.store'
 import './types' // CRITICAL: enable store type declaration merging
 
 const WebSearchSettingsPage = lazyWithPreload(() =>
   import('./components/WebSearchSettingsPage').then(m => ({
     default: m.WebSearchSettingsPage,
+  })),
+)
+
+const WebSearchUserKeysPage = lazyWithPreload(() =>
+  import('./components/WebSearchUserKeysPage').then(m => ({
+    default: m.WebSearchUserKeysPage,
   })),
 )
 
@@ -28,11 +35,22 @@ export default createModule({
       permission: Permissions.WebSearchAdminRead,
       layout: SettingsLayoutDef,
     },
+    {
+      path: '/settings/web-search-keys',
+      element: WebSearchUserKeysPage,
+      requiresAuth: true,
+      permission: Permissions.WebSearchUse,
+      layout: SettingsLayoutDef,
+    },
   ],
   stores: [
     {
       name: 'WebSearchAdmin',
       store: useWebSearchAdminStore,
+    },
+    {
+      name: 'WebSearchUserKeys',
+      store: useWebSearchUserKeysStore,
     },
   ],
   slots: {
@@ -44,6 +62,16 @@ export default createModule({
         path: 'web-search',
         order: 27,
         permission: Permissions.WebSearchAdminRead,
+      },
+    ],
+    settingsUserPages: [
+      {
+        id: 'web-search-keys',
+        icon: <KeyRound />,
+        label: 'Web Search Keys',
+        path: 'web-search-keys',
+        order: 16,
+        permission: Permissions.WebSearchUse,
       },
     ],
   },

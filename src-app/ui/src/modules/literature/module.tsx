@@ -1,10 +1,11 @@
-import { FileSearch } from 'lucide-react'
+import { FileSearch, KeyRound } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useLitSearchAdminStore } from './stores/LitSearchAdmin.store'
+import { useLitSearchUserKeysStore } from './stores/LitSearchUserKeys.store'
 import './types' // CRITICAL: enable store + panel-renderer type declaration merging
 
 // The screening right-panel + tool-result card register via the auto-discovered
@@ -14,6 +15,12 @@ import './types' // CRITICAL: enable store + panel-renderer type declaration mer
 const LitSearchSettingsPage = lazyWithPreload(() =>
   import('./components/settings/LitSearchSettingsPage').then(m => ({
     default: m.LitSearchSettingsPage,
+  })),
+)
+
+const LitSearchUserKeysPage = lazyWithPreload(() =>
+  import('./components/settings/LitSearchUserKeysPage').then(m => ({
+    default: m.LitSearchUserKeysPage,
   })),
 )
 
@@ -36,11 +43,22 @@ export default createModule({
       permission: Permissions.LitSearchAdminRead,
       layout: SettingsLayoutDef,
     },
+    {
+      path: '/settings/literature-keys',
+      element: LitSearchUserKeysPage,
+      requiresAuth: true,
+      permission: Permissions.LitSearchUse,
+      layout: SettingsLayoutDef,
+    },
   ],
   stores: [
     {
       name: 'LitSearchAdmin',
       store: useLitSearchAdminStore,
+    },
+    {
+      name: 'LitSearchUserKeys',
+      store: useLitSearchUserKeysStore,
     },
   ],
   slots: {
@@ -54,6 +72,16 @@ export default createModule({
         // web-search 27); avoids the workflow module's 28 (deterministic order).
         order: 29,
         permission: Permissions.LitSearchAdminRead,
+      },
+    ],
+    settingsUserPages: [
+      {
+        id: 'literature-keys',
+        icon: <KeyRound />,
+        label: 'Literature Keys',
+        path: 'literature-keys',
+        order: 17,
+        permission: Permissions.LitSearchUse,
       },
     ],
   },
