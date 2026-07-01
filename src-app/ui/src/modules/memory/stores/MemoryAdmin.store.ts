@@ -128,7 +128,13 @@ const loadCandidateModels = async (
       }),
     ])
     set(s => {
-      s.availableModels = allBody.models.map(toRow)
+      // Extraction picker = all models MINUS embedders ("not an embedder"
+      // rather than "is chat", so a manually-added chat model with no
+      // capability flag still appears). Without this filter the embedding
+      // models leak into the extraction dropdown.
+      s.availableModels = allBody.models
+        .map(toRow)
+        .filter(m => !m.capabilities?.text_embedding)
       s.embeddingModels = embeddingBody.models.map(toRow)
       s.loadingModels = false
     })
