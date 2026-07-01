@@ -110,7 +110,7 @@ export function AuthProvidersListSection() {
       />
       <Button
         data-testid={`authprov-test-button-${row.name}`}
-        variant="ghost"
+        variant="outline"
         icon={<FlaskConical />}
         aria-label={`Test ${row.name}`}
         loading={testingIds.has(row.id)}
@@ -120,7 +120,7 @@ export function AuthProvidersListSection() {
       </Button>
       <Button
         data-testid={`authprov-edit-button-${row.name}`}
-        variant="ghost"
+        variant="outline"
         icon={<Pencil />}
         aria-label={`Edit ${row.name}`}
         onClick={() => setDrawer({ mode: 'edit', existing: row })}
@@ -138,7 +138,7 @@ export function AuthProvidersListSection() {
       >
         <Button
           data-testid={`authprov-delete-button-${row.name}`}
-          variant="ghost"
+          variant="destructive"
           icon={<Trash2 />}
           aria-label={`Delete ${row.name}`}
         >

@@ -280,7 +280,7 @@ export function ProjectDetailPage() {
           </div>
           <div className="flex items-center gap-1">
             <Can permission={Permissions.ProjectsEdit}>
-              <Button data-testid="project-detail-edit-button" variant="ghost" icon={<Pencil />} onClick={handleEdit}>
+              <Button data-testid="project-detail-edit-button" variant="outline" icon={<Pencil />} onClick={handleEdit}>
                 Edit
               </Button>
             </Can>
@@ -387,7 +387,7 @@ export function ProjectDetailPage() {
                   >
                     <Button
                       data-testid="project-detail-bulk-delete-button"
-                      variant="ghost"
+                      variant="destructive"
                       size="default"
                       icon={<Trash2 />}
                       loading={bulkDeleting}
@@ -440,7 +440,7 @@ export function ProjectDetailPage() {
               <Can permission={Permissions.ProjectsEdit}>
                 <Button
                   data-testid="project-detail-meta-edit-button"
-                  variant="ghost"
+                  variant="outline"
                   icon={<Pencil />}
                   onClick={handleEdit}
                   aria-label="Edit project details"

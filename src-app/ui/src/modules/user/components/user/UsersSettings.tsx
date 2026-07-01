@@ -128,7 +128,7 @@ export function UsersSettings() {
       actions.push(
         <Button
           key="edit"
-          variant="ghost"
+          variant="outline"
           icon={<Pencil />}
           onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
           data-testid={`user-edit-button-${user.id}`}

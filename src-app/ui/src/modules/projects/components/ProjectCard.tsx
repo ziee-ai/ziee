@@ -83,7 +83,7 @@ export function ProjectCard({
             <Tooltip content="Edit">
               <Button
                 data-testid={`project-card-edit-button-${project.id}`}
-                variant="ghost"
+                variant="outline"
                 size="default"
                 icon={<Pencil />}
                 aria-label={`Edit ${project.name}`}

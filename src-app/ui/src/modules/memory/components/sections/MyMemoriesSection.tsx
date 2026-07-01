@@ -210,7 +210,7 @@ export function MyMemoriesSection() {
                         <div className="flex gap-1 items-center justify-end">
                           <Tooltip title="Edit memory">
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="default"
                               icon={<Pencil />}
                               onClick={() => setEditing(row)}

@@ -166,7 +166,7 @@ function DeleteVersionButton({
       onConfirm={onConfirm}
     >
       <Button
-        variant="ghost"
+        variant="destructive"
         icon={<Trash2 />}
         loading={loading}
         disabled={!canManage}

@@ -39,7 +39,7 @@ export function ProviderGroupAssignmentCard() {
       data-testid="llm-provider-groups-card"
       extra={
         <Button
-          variant="ghost"
+          variant="outline"
           icon={<Pencil />}
           onClick={handleManageGroups}
           aria-label="Manage user groups"

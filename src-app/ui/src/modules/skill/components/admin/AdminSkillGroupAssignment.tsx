@@ -98,7 +98,7 @@ export function AdminSkillGroupAssignment({
         <div className="ml-auto">
           {canAssign ? (
             <Button
-              variant="ghost"
+              variant="outline"
               size="default"
               data-testid="skill-group-assign-button"
               icon={<Pencil aria-hidden="true" />}

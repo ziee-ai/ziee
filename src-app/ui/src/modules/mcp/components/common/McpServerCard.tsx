@@ -246,7 +246,7 @@ export function McpServerCard({
                   )}
                   {canTest && (
                     <Tooltip title="Test the connection to this server">
-                      <Button
+                      <Button variant="outline"
                         icon={<Plug />}
                         loading={testing}
                         onClick={e => {
@@ -261,7 +261,7 @@ export function McpServerCard({
                     </Tooltip>
                   )}
                   {canEdit && (
-                    <Button
+                    <Button variant="outline"
                       icon={<Pencil />}
                       onClick={e => {
                         e.stopPropagation()

@@ -133,7 +133,7 @@ export function AdminWorkflowGroupAssignment({
         <div className="flex justify-end px-4 pb-2">
           <Button
             data-testid="wf-group-assign-edit-btn"
-            variant="ghost"
+            variant="outline"
             size="default"
             icon={<Pencil aria-hidden="true" />}
             onClick={() => void startEdit()}

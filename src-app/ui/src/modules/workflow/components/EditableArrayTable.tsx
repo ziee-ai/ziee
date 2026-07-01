@@ -285,7 +285,7 @@ export function EditableArrayTable({
                     </Button>
                   </>
                 )}
-                <Button
+                <Button variant="destructive"
                   data-testid="wf-array-bulk-delete-btn"
                   size="default"
                   disabled={disabled || selectedKeys.length === 0}

@@ -98,7 +98,7 @@ export function CoreMemoryBlocksEditor({
                   </Paragraph>
                 </div>
                 <Space>
-                  <Button
+                  <Button variant="outline"
                     icon={<Pencil />}
                     size="default"
                     onClick={() => setEditing(b)}

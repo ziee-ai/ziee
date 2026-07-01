@@ -95,7 +95,7 @@ export function MessageActions() {
       {isUser && (
         <Tooltip content="Edit message">
           <Button
-            variant="ghost"
+            variant="outline"
             size="default"
             icon={<Pencil />}
             disabled={isBusy}

@@ -65,7 +65,7 @@ export function GroupListItem({
       actions.push(
         <Button
           key="edit"
-          variant="ghost"
+          variant="outline"
           icon={<Pencil aria-hidden="true" />}
           onClick={() => onEdit(group)}
           aria-label={`Edit ${group.name}`}

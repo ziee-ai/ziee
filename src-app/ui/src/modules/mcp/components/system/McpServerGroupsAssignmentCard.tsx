@@ -55,7 +55,7 @@ export function McpServerGroupsAssignmentCard({
                 {canManage && (
                   <div className="mb-2">
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="default"
                       icon={<Pencil aria-hidden="true" />}
                       onClick={e => {

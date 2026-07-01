@@ -68,7 +68,7 @@ export function AssistantsSettings() {
         <Button
           key="edit"
           data-testid={`template-assistant-${assistant.id}-edit`}
-          variant="ghost"
+          variant="outline"
           icon={<Pencil />}
           onClick={() => handleEdit(assistant)}
         >
@@ -193,8 +193,8 @@ export function AssistantsSettings() {
                   pageSize={storePageSize}
                   onChange={(page) => handlePageChange(page, storePageSize)}
                   showSizeChanger
-                  pageSizeOptions={[10, 20, 50]}
-                  pageSizeLabel="Items per page"
+                  pageSizeOptions={[5, 10, 20, 50]}
+                  pageSizeLabel="Page size"
                   onPageSizeChange={(size) => handlePageChange(1, size)}
                   aria-label="Assistants pagination"
                 />
