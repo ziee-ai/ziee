@@ -115,7 +115,7 @@ export function SandboxRootfsVersionsSection() {
     if (isMajorBump(pinnedVersion, version)) {
       const convCount = conversationCount ?? 0
       const mcpCount = mcpServerWorkspaceCount ?? 0
-      dialog.confirm({
+      void dialog.confirm({
         title: `Set v${version} as default (major version bump)`,
         description: (
           <div>
@@ -161,7 +161,11 @@ export function SandboxRootfsVersionsSection() {
         okText: 'Set as default and wipe caches',
         cancelText: 'Cancel',
         testid: 'sandbox-major-bump-confirm',
-        onConfirm: () => doSetPin(version),
+      }).then(ok => {
+        // `dialog.confirm` resolves a boolean (there is no `onConfirm`
+        // callback option — it was silently ignored, so confirming did
+        // nothing). Run the pin only when the admin confirms.
+        if (ok) void doSetPin(version)
       })
     } else {
       void doSetPin(version)
