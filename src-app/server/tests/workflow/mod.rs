@@ -52,6 +52,7 @@ mod validate_and_dry_run;
 mod conversation_elicit;
 mod test_endpoint;
 mod diamond_dag;
+mod group_widget_endpoints;
 
 /// Reverse-DNS name of the fixture workflow the mock catalog serves.
 pub const FIXTURE_WORKFLOW_NAME: &str = "io.github.test/research-summarize-write";

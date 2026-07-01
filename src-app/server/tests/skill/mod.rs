@@ -20,6 +20,7 @@ use crate::hub::mock_release_server::spawn_mock_hub;
 
 mod access_and_security;
 mod builtin;
+mod group_endpoints;
 mod cross_subsystem_test;
 mod hide_in_conversation;
 mod install_from_hub;
