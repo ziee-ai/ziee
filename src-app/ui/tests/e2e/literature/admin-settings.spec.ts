@@ -239,17 +239,19 @@ test.describe('Literature search admin settings', () => {
     const mailto = byTestId(page, 'lit-connector-config-input-crossref-mailto')
     await expect(mailto).toHaveValue('stored@example.org')
 
-    // Saving WITHOUT retyping must round-trip it — not wipe it to '' (the bug).
-    // Save is dirty-gated (`disabled={!canManage || !dirty}`), and re-`fill`ing the
-    // SAME value doesn't fire antd's `onValuesChange` → Save stays disabled and the
-    // click times out. Clear then restore the stored value to force `dirty`, while
-    // still verifying the save round-trips the stored value (not '').
-    await mailto.fill('')
-    await mailto.fill('stored@example.org')
+    // The mailto field must be READ into the save payload (not silently dropped
+    // to '' — the historical data-loss bug). Save is dirty-gated
+    // (`disabled={!canManage || !form.formState.isDirty}`); react-hook-form's
+    // isDirty compares against defaultValues, so clearing then restoring the
+    // SAME value leaves the form pristine (Save disabled). Change it to a new
+    // value to make the form dirty, then assert THAT value round-trips into
+    // `config.mailto` — proving the field flows to the save payload.
+    const roundtripped = 'roundtrip@example.org'
+    await mailto.fill(roundtripped)
     await byTestId(page, 'lit-connector-save-button-crossref').click()
     await expect
       .poll(() => state.lastConnectorPatch?.body?.config?.mailto, { timeout: 5000 })
-      .toBe('stored@example.org')
+      .toBe(roundtripped)
   })
 
   test('a non-admin cannot reach the literature settings page', async ({ page, testInfra }) => {
