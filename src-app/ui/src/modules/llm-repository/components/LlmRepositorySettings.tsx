@@ -318,9 +318,7 @@ export function LlmRepositorySettings() {
 
           {totalRepositories > 0 && (
             <>
-              <Separator className="!my-3" />
-              <Flex justify="end">
-                <ListPagination
+              <ListPagination
           data-testid="llmrepo-pagination"
           current={storePage}
           total={totalRepositories}
@@ -330,7 +328,6 @@ export function LlmRepositorySettings() {
           itemNoun="repositories"
           aria-label="Pagination"
         />
-              </Flex>
             </>
           )}
         </Flex>

@@ -311,9 +311,7 @@ export function MyMemoriesSection() {
 
       {totalMemories > 0 && (
         <>
-          <Separator className="!my-3" />
-          <Flex justify="end">
-            <ListPagination
+          <ListPagination
           data-testid="memory-pagination"
           current={storePage}
           total={totalMemories}
@@ -323,7 +321,6 @@ export function MyMemoriesSection() {
           itemNoun="memories"
           aria-label="Memory pagination"
         />
-          </Flex>
         </>
       )}
 

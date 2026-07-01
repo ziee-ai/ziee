@@ -148,8 +148,7 @@ export function UserGroupsSettings() {
               onViewMembers={handleViewMembers}
             />
           ))}
-          <div className="flex justify-end">
-            <ListPagination
+          <ListPagination
           data-testid="user-groups-pagination"
           current={storePage}
           total={totalGroups}
@@ -159,7 +158,6 @@ export function UserGroupsSettings() {
           itemNoun="groups"
           aria-label="Groups pagination"
         />
-          </div>
         </>
       )}
 

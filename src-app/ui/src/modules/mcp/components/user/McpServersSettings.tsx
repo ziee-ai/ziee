@@ -202,8 +202,7 @@ export function McpServersSettings() {
         )}
 
         {totalServers > 0 && (
-          <div className="flex justify-end">
-            <ListPagination
+          <ListPagination
           data-testid="mcp-settings-pagination"
           current={storePage}
           total={totalServers}
@@ -213,7 +212,6 @@ export function McpServersSettings() {
           itemNoun="servers"
           aria-label="Pagination"
         />
-          </div>
         )}
       </div>
 

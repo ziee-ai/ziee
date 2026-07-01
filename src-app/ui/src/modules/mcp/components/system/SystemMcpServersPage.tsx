@@ -173,8 +173,7 @@ export function SystemMcpServersPage() {
         )}
 
         {systemServersTotal > 0 && (
-          <Flex justify="end">
-            <ListPagination
+          <ListPagination
           data-testid="mcp-system-pagination"
           current={systemServersPage}
           total={systemServersTotal}
@@ -184,7 +183,6 @@ export function SystemMcpServersPage() {
           itemNoun="servers"
           aria-label="System MCP servers pagination"
         />
-          </Flex>
         )}
 
         {/* Drawer */}

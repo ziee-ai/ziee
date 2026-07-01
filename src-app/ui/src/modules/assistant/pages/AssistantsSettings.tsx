@@ -183,7 +183,6 @@ export function AssistantsSettings() {
 
           {assistants.length > 0 && (
             <>
-              <Separator className="mb-4" />
               <ListPagination
                 data-testid="template-assistants-pagination"
                 current={storePage}

@@ -277,9 +277,7 @@ export function UsersSettings() {
 
             {users.length > 0 && (
               <>
-                <Separator className="mb-4" />
-                <div className="flex justify-end">
-                  <ListPagination
+                <ListPagination
           data-testid="user-list-pagination"
           current={storePage}
           total={totalUsers}
@@ -289,7 +287,6 @@ export function UsersSettings() {
           itemNoun="users"
           aria-label="Pagination"
         />
-                </div>
               </>
             )}
           </Card>
