@@ -10,14 +10,16 @@ export interface DescriptionsItem {
 }
 
 // legacy Descriptions: a label/value detail grid. Rendered as a semantic <table>
-// (the way Ant Design does it) rather than a CSS grid — a table with automatic
-// layout is inherently responsive: on a narrow container the cells shrink and
-// their content wraps instead of overflowing (a grid with `auto` label tracks
-// can't shrink and pushes the row wider than the screen).
+// (the way Ant Design does it) so cell content wraps to fit. On top of that it is
+// RESPONSIVE like antd: the effective number of label/value pairs per row is
+// reduced as the container narrows, so values keep enough width to wrap into
+// words instead of being squeezed to one character per line. We measure the
+// component's OWN container (ResizeObserver) rather than the viewport, so it
+// adapts correctly inside a narrow drawer as well as a full-width page.
 export type DescriptionsProps = {
   items: DescriptionsItem[]
   title?: React.ReactNode
-  /** Number of label/value pairs per row (default 1). */
+  /** Max number of label/value pairs per row (default 1). Reduced automatically on narrow containers. */
   column?: number
   bordered?: boolean
   size?: 'sm' | 'default'
@@ -25,9 +27,30 @@ export type DescriptionsProps = {
   'data-testid': string
   className?: string} & KitStyleProps
 
+// Minimum comfortable width (px) for one label+value pair before we drop a column.
+const MIN_PAIR_WIDTH = 220
+
 export function Descriptions({ items, title, column = 1, bordered, size = 'default', className, style, 'data-testid': testid }: DescriptionsProps) {
   const pad = size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'
-  const cols = Math.max(1, column)
+  const requested = Math.max(1, column)
+
+  const rootRef = React.useRef<HTMLDivElement>(null)
+  const [width, setWidth] = React.useState<number | null>(null)
+  React.useLayoutEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    setWidth(el.offsetWidth)
+    const ro = new ResizeObserver((entries) => {
+      setWidth(entries[0].contentRect.width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // How many pairs actually fit; clamp to the requested max. Until measured
+  // (first paint), render the requested count.
+  const cols =
+    width == null ? requested : Math.max(1, Math.min(requested, Math.floor(width / MIN_PAIR_WIDTH)))
 
   // Chunk items into rows of at most `cols` "units" (an item with span S takes S
   // units), so multi-column layouts reflow into rows exactly like Ant Design.
@@ -52,7 +75,7 @@ export function Descriptions({ items, title, column = 1, bordered, size = 'defau
   if (cur.length) rows.push(cur)
 
   return (
-    <div className={cn('w-full', className)} style={style} data-testid={testid}>
+    <div ref={rootRef} className={cn('w-full', className)} style={style} data-testid={testid}>
       {title != null && <div className="mb-2 font-semibold">{title}</div>}
       <div className={cn(bordered && 'overflow-hidden rounded-md border')}>
         <table className="w-full border-collapse text-left">

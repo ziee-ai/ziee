@@ -376,7 +376,7 @@ _No always-required props._
 | `allowStyle` | `true | undefined` |  |
 | `bordered` | `boolean | undefined` |  |
 | `className` | `string | undefined` |  |
-| `column` | `number | undefined` | Number of label/value pairs per row (default 1). |
+| `column` | `number | undefined` | Max number of label/value pairs per row (default 1). Reduced automatically on narrow containers. |
 | `size` | `"default" | "sm" | undefined` |  |
 | `style` | `CSSProperties | undefined` |  |
 | `title` | `ReactNode` |  |
