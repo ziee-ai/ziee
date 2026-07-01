@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Pencil, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   message,
@@ -59,6 +59,19 @@ export function UserGroupAssignment({
   const [allGroups, setAllGroups] = useState<UserGroupOption[]>([])
   const [draft, setDraft] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+
+  // On expand, load the full group list so the assigned tags can show names
+  // (stores that only keep ids pass name = id until this resolves). MCP has no
+  // inline editor and its assignedGroups already carry names, so this is a no-op.
+  useEffect(() => {
+    if (!open || !editor || allGroups.length > 0) return
+    let cancelled = false
+    void editor.loadAllGroups().then(groups => {
+      if (!cancelled) setAllGroups(groups)
+    }).catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const tid = (part: string) => `${testid}-${part}`
 
