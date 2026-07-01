@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
+import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
+import { emitMcpServerGroupsChanged } from '@/modules/mcp/events'
 
 interface McpServerGroupsAssignmentCardProps {
   serverId: string
@@ -10,8 +12,8 @@ interface McpServerGroupsAssignmentCardProps {
 
 /**
  * Section for managing which user groups have access to a system MCP server.
- * Thin wrapper over the shared UserGroupAssignment; editing happens in a
- * dedicated drawer (opened via `onAssign`) rather than an inline editor.
+ * Thin wrapper over the shared UserGroupAssignment; Assign opens the shared
+ * editor Drawer, and save persists via SystemMcpServer.assignServerToGroups.
  */
 export function McpServerGroupsAssignmentCard({
   serverId,
@@ -34,7 +36,16 @@ export function McpServerGroupsAssignmentCard({
         canAssign={canManage}
         emptyText="No groups assigned"
         description="User groups that have access to this MCP server"
-        onAssign={() => Stores.McpServerGroupsAssignment.openDrawer(serverId)}
+        editor={{
+          loadAllGroups: async () => {
+            const res = await ApiClient.UserGroup.list({ page: 1, per_page: 100 })
+            return res.groups.map(g => ({ id: g.id, name: g.name, description: g.description, is_default: g.is_default }))
+          },
+          save: async ids => {
+            await Stores.SystemMcpServer.assignServerToGroups(serverId, ids)
+            await emitMcpServerGroupsChanged(serverId, ids)
+          },
+        }}
       />
     </div>
   )
