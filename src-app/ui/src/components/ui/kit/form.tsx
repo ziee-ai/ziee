@@ -153,7 +153,9 @@ export function Form<T extends FieldValues>({ form, onSubmit, disabled, size, na
     <FormProvider {...form}>
       <FormLayoutContext.Provider value={React.useMemo(() => ({ layout, labelWidth: effectiveLabelWidth }), [layout, effectiveLabelWidth])}>
         <KitSurfaceProvider disabled={disabled} size={size}>
-          <form name={name} onSubmit={form.handleSubmit(onSubmit)} className={className} noValidate data-testid={testid}>
+          {/* id={name} lets a submit button rendered OUTSIDE the <form> (e.g. in a
+              Drawer/Dialog footer) trigger it via the native `form="<name>"` attribute. */}
+          <form id={name} name={name} onSubmit={form.handleSubmit(onSubmit)} className={className} noValidate data-testid={testid}>
             {/* KitSurface disables kit components (+ <a>/custom); <fieldset disabled>
                 also disables native + third-party form controls. `contents` keeps layout. */}
             <fieldset disabled={disabled} className="contents">

@@ -120,7 +120,18 @@ export function LlmProviderDrawer() {
       title={provider ? `Edit Provider: ${provider.name}` : 'Add Provider'}
       open={open}
       onClose={handleClose}
-      footer={null}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={handleClose} disabled={loading} data-testid="llm-provider-cancel-btn">
+            {canSave ? 'Cancel' : 'Close'}
+          </Button>
+          {canSave && (
+            <Button type="submit" form="llm-provider-form" loading={loading} data-testid="llm-provider-submit-btn">
+              {provider ? 'Save' : 'Add'}
+            </Button>
+          )}
+        </div>
+      }
       size={600}
       mask={{ closable: false }}
     >
@@ -138,6 +149,14 @@ export function LlmProviderDrawer() {
           required
         >
           <Input placeholder="My Custom Provider" data-testid="llm-provider-name-input" />
+        </FormField>
+
+        <FormField
+          name="enabled"
+          label="Enable Provider"
+          valuePropName="checked"
+        >
+          <Switch aria-label="Enable or disable this provider" data-testid="llm-provider-enabled-switch" />
         </FormField>
 
         <FormField
@@ -181,24 +200,6 @@ export function LlmProviderDrawer() {
           </>
         )}
 
-        <FormField
-          name="enabled"
-          label="Enable Provider"
-          valuePropName="checked"
-        >
-          <Switch aria-label="Enable or disable this provider" data-testid="llm-provider-enabled-switch" />
-        </FormField>
-
-        <div className="flex justify-end gap-3 pt-4">
-          <Button variant="outline" onClick={handleClose} disabled={loading} data-testid="llm-provider-cancel-btn">
-            {canSave ? 'Cancel' : 'Close'}
-          </Button>
-          {canSave && (
-            <Button type="submit" loading={loading} data-testid="llm-provider-submit-btn">
-              {provider ? 'Save' : 'Add'}
-            </Button>
-          )}
-        </div>
       </Form>
     </Drawer>
   )
