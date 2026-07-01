@@ -172,19 +172,21 @@ export function SkillDetailDrawer() {
       }
       footer={
         editable ? (
-          <Confirm
-            data-testid="skill-delete-confirm"
-            title="Delete this skill?"
-            description="This removes the skill and its extracted files."
-            onConfirm={handleDelete}
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-          >
-            <Button variant="ghost" size="default" data-testid="skill-delete-button" icon={<Trash2 />}>
-              Delete
-            </Button>
-          </Confirm>
+          <div className="flex justify-end">
+            <Confirm
+              data-testid="skill-delete-confirm"
+              title="Delete this skill?"
+              description="This removes the skill and its extracted files."
+              onConfirm={handleDelete}
+              okText="Delete"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
+            >
+              <Button variant="ghost" size="default" data-testid="skill-delete-button" icon={<Trash2 />}>
+                Delete
+              </Button>
+            </Confirm>
+          </div>
         ) : null
       }
     >
