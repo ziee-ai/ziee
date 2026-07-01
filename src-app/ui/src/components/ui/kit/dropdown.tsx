@@ -48,7 +48,9 @@ export function Dropdown({ items, children, side, align = 'end', disabled, onSel
   return (
     <Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
       <DropdownMenuTrigger render={children} disabled={disabled} nativeButton={nativeButton} />
-      <DropdownMenuContent side={side} align={align} data-testid={testid}>
+      {/* w-fit: size the menu to its widest item, not the trigger width (the
+          vendored content defaults to w-(--anchor-width)). */}
+      <DropdownMenuContent side={side} align={align} className="w-fit" data-testid={testid}>
         {items.map((it, i) =>
           'type' in it && it.type === 'divider' ? (
             <DropdownMenuSeparator key={`d${i}`} />
