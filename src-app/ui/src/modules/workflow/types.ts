@@ -6,6 +6,8 @@ import type {
   useWorkflowRunsStore,
   useWorkflowStore,
 } from '@/modules/workflow/stores'
+import type { useGroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsWidget.store'
+import type { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -17,6 +19,12 @@ declare module '@/core/stores' {
     WorkflowRuns: StoreProxy<ReturnType<typeof useWorkflowRunsStore.getState>>
     WorkflowDrawer: StoreProxy<
       ReturnType<typeof useWorkflowDrawerStore.getState>
+    >
+    GroupSystemWorkflowsWidget: StoreProxy<
+      ReturnType<typeof useGroupSystemWorkflowsWidgetStore.getState>
+    >
+    GroupSystemWorkflowsAssignment: StoreProxy<
+      ReturnType<typeof useGroupSystemWorkflowsAssignmentStore.getState>
     >
   }
 }
