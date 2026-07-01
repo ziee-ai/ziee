@@ -10,7 +10,6 @@ import {
   InputNumber,
   Select,
   Switch,
-  Flex,
   Separator,
   Tabs,
   Tooltip,
@@ -1015,29 +1014,9 @@ export function McpServerDrawer() {
       healthReason ?? 'unknown reason'
     }`
   }
-  const titleNode = (
-    <Flex justify="between" align="center" className="w-full pr-6">
-      <span>{getTitle()}</span>
-      {!!editingServer || mode === 'create' || mode === 'create-system' ? (
-        <Tooltip
-          title={
-            <span style={{ whiteSpace: 'pre-line' }}>
-              {formatHealthTooltip()}
-            </span>
-          }
-        >
-          <Switch
-            tooltip="Enable server"
-            checked={enabledValue}
-            loading={togglingEnable}
-            disabled={!canManage || togglingEnable}
-            onChange={handleEnabledToggle}
-            data-testid="mcp-drawer-enabled-switch"
-          />
-        </Tooltip>
-      ) : null}
-    </Flex>
-  )
+  // The Enabled switch used to live here in the title; it now sits in the form
+  // body right after the name (see below), so the header is just the title text.
+  const titleNode = getTitle()
 
   const detailsBody = (
       <div className="flex flex-col gap-4">
@@ -1087,6 +1066,32 @@ export function McpServerDrawer() {
           >
             <Input placeholder="e.g., Filesystem Access, Web Fetch" data-testid="mcp-drawer-display-name-input" />
           </FormField>
+
+          {/* Enabled — right after the name, not in the header. Controlled
+              externally (enabledValue + handleEnabledToggle: edit-mode toggles
+              persist + probe), so it's a plain labeled row, not a form-bound
+              FormField. */}
+          {(!!editingServer || mode === 'create' || mode === 'create-system') && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Enabled</span>
+              <Tooltip
+                title={
+                  <span style={{ whiteSpace: 'pre-line' }}>
+                    {formatHealthTooltip()}
+                  </span>
+                }
+              >
+                <Switch
+                  aria-label="Enable server"
+                  checked={enabledValue}
+                  loading={togglingEnable}
+                  disabled={!canManage || togglingEnable}
+                  onChange={handleEnabledToggle}
+                  data-testid="mcp-drawer-enabled-switch"
+                />
+              </Tooltip>
+            </div>
+          )}
 
           {/* Description */}
           <FormField label="Description" name="description">
