@@ -104,7 +104,9 @@ export const Drawer: React.FC<DrawerProps> = ({
   const body = (
     // px-3 (not pr-3): the horizontal gutter must live INSIDE the scroll layer, or
     // the OverlayScrollbars viewport clips the left edge of an input's focus ring.
-    <div className={cn('flex w-full h-full px-3', classNames?.body)} style={styles?.body}>
+    // pb-4: breathing room so content scrolled to the bottom doesn't butt against
+    // the footer band.
+    <div className={cn('flex w-full h-full px-3 pb-4', classNames?.body)} style={styles?.body}>
       {React.Children.map(children, child =>
         React.isValidElement<{ className?: string }>(child)
           ? React.cloneElement(child, {
