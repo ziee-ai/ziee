@@ -115,17 +115,37 @@ export function MyMemoriesSection() {
           />
         ) : null
       }
+      footer={
+        <Flex justify="end" gap="small" className="w-full">
+          <Dropdown items={exportMenu.items} data-testid="memory-export-dropdown">
+            <Button icon={<Download />} data-testid="memory-export-btn">Export</Button>
+          </Dropdown>
+          {canWrite && (
+            <Confirm
+              title="Delete all memories?"
+              data-testid="memory-delete-all-confirm"
+              description="This is permanent and cannot be undone."
+              okText="Delete"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
+              onConfirm={async () => {
+                try {
+                  const n = await Stores.Memories.removeAll()
+                  message.success(`Deleted ${n} memories`)
+                } catch (error) {
+                  message.error(
+                    error instanceof Error ? error.message : 'Delete-all failed.',
+                  )
+                }
+              }}
+            >
+              <Button variant="destructive" icon={<Trash2 />} data-testid="memory-delete-all-btn">Delete all</Button>
+            </Confirm>
+          )}
+        </Flex>
+      }
     >
-      {/*
-        Filter + action toolbar — responsive. Search grows to fill,
-        Kind/Source selects keep a sensible min-width, Export and
-        Delete-all hug the right edge. `flex-wrap` lets controls
-        stack on narrow widths (≤sm) instead of overflowing.
-      */}
-      {/* mb-3 (12px) below the toolbar. Inline style as a belt-and-
-        * suspenders in case Tailwind doesn't pick the class up for
-        * some reason — antd Flex doesn't reset margins, but visual
-        * verification showed the class wasn't applying. */}
+      {/* Filter toolbar — search grows to fill; kind/source keep a min-width. */}
       <Flex
         wrap
         gap="small"
@@ -136,7 +156,7 @@ export function MyMemoriesSection() {
           placeholder="Search content"
           allowClear
           onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
-          className="min-w-[200px] flex-[1_1_240px] max-w-[360px]"
+          className="min-w-[200px] flex-1"
           data-testid="memory-search-input"
         />
         <Select
@@ -167,37 +187,6 @@ export function MyMemoriesSection() {
             { value: 'mcp_tool', label: 'Assistant tool' },
           ]}
         />
-        {/* Spacer pushes Export/Delete to the right when there's
-          * room; on narrow viewports they wrap to the next line
-          * naturally. */}
-        <div className="flex-1" />
-        <Dropdown items={exportMenu.items} data-testid="memory-export-dropdown">
-          <Button icon={<Download />} data-testid="memory-export-btn">Export</Button>
-        </Dropdown>
-        {canWrite && (
-          <Confirm
-            title="Delete all memories?"
-            data-testid="memory-delete-all-confirm"
-            description="This is permanent and cannot be undone."
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-            onConfirm={async () => {
-              try {
-                const n = await Stores.Memories.removeAll()
-                message.success(`Deleted ${n} memories`)
-              } catch (error) {
-                message.error(
-                  error instanceof Error
-                    ? error.message
-                    : 'Delete-all failed.',
-                )
-              }
-            }}
-          >
-            <Button variant="destructive" data-testid="memory-delete-all-btn">Delete all</Button>
-          </Confirm>
-        )}
       </Flex>
 
       {loading && filtered.length === 0 ? (
