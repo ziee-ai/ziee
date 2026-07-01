@@ -25,4 +25,14 @@ pub fn lit_search_router() -> ApiRouter {
             "/lit-search/connectors/{connector}",
             put_with(handlers::update_connector, handlers::update_connector_docs),
         )
+        // User-scoped: the caller's OWN connector keys (masked read + set/clear).
+        .api_route(
+            "/lit-search/user-keys",
+            get_with(handlers::list_user_keys, handlers::list_user_keys_docs),
+        )
+        .api_route(
+            "/lit-search/user-keys/{connector}",
+            put_with(handlers::save_user_key, handlers::save_user_key_docs)
+                .delete_with(handlers::delete_user_key, handlers::delete_user_key_docs),
+        )
 }

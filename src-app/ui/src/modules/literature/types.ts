@@ -1,9 +1,13 @@
 import type { StoreProxy } from '@/core/stores'
 import type { useLitSearchAdminStore } from './stores/LitSearchAdmin.store'
+import type { useLitSearchUserKeysStore } from './stores/LitSearchUserKeys.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
     LitSearchAdmin: StoreProxy<ReturnType<typeof useLitSearchAdminStore.getState>>
+    LitSearchUserKeys: StoreProxy<
+      ReturnType<typeof useLitSearchUserKeysStore.getState>
+    >
   }
 }
 

@@ -135,24 +135,56 @@ pub async fn resolve_optional_secret(
     plaintext: Option<String>,
 ) -> Option<String> {
     if let Some(ref enc) = encrypted
-        && let Some(key) = crate::core::secrets::storage_key() {
-            match decrypt_secret(pool, enc, key).await {
-                Ok(plain) => return Some(plain),
-                Err(e) => {
-                    tracing::error!(
-                        error = ?e,
-                        "Failed to decrypt secret column; falling back to plaintext column \
-                         (likely wrong storage_key or corrupted ciphertext)"
-                    );
-                }
+        && let Some(key) = crate::core::secrets::storage_key()
+    {
+        match decrypt_secret(pool, enc, key).await {
+            Ok(plain) => return Some(plain),
+            Err(e) => {
+                tracing::error!(
+                    error = ?e,
+                    "Failed to decrypt secret column; falling back to plaintext column \
+                     (likely wrong storage_key or corrupted ciphertext)"
+                );
             }
         }
+    }
     plaintext
+}
+
+/// Mask a secret for display: the first 4 characters followed by `***`, or
+/// just `***` when the value is absent or ≤4 chars. Uses `.chars()` (not byte
+/// indexing) so a multibyte/emoji-leading key never panics on a mid-UTF-8
+/// boundary (closes the class of bug tracked as `06-llm-provider F-14`). This
+/// is the single masking helper for every per-user API-key surface.
+pub fn mask_secret(value: Option<&str>) -> String {
+    match value {
+        Some(key) if key.chars().count() > 4 => {
+            let prefix: String = key.chars().take(4).collect();
+            format!("{prefix}***")
+        }
+        _ => "***".to_string(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mask_secret_shows_first_four_then_stars() {
+        assert_eq!(mask_secret(Some("sk-1234567890")), "sk-1***");
+        // ≤4 chars or absent → fully masked (never leaks a short key wholesale).
+        assert_eq!(mask_secret(Some("abcd")), "***");
+        assert_eq!(mask_secret(Some("")), "***");
+        assert_eq!(mask_secret(None), "***");
+    }
+
+    #[test]
+    fn mask_secret_is_char_safe_on_multibyte() {
+        // A leading multibyte char must not panic on a mid-UTF-8 byte boundary
+        // (byte index 4 would split "🔑"); .chars() keeps it safe.
+        assert_eq!(mask_secret(Some("🔑abcdef")), "🔑abc***");
+    }
 
     #[test]
     fn secret_view_serializes_redacted() {

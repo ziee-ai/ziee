@@ -21,8 +21,9 @@ use crate::modules::permissions::{RequirePermissions, with_permission};
 use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 use super::models::{
-    AggregateResult, ConfigFieldInfo, ConnectorCatalogEntry, ConnectorCatalogResponse, KeyFieldInfo,
-    LitSearchSettings, UpdateConnectorRequest, UpdateLitSearchSettingsRequest,
+    AggregateResult, ConfigFieldInfo, ConnectorCatalogEntry, ConnectorCatalogResponse,
+    KeyFieldInfo, LitSearchSettings, SaveUserConnectorKeyRequest, UpdateConnectorRequest,
+    UpdateLitSearchSettingsRequest, UserConnectorKeyCatalogEntry, UserConnectorKeyCatalogResponse,
 };
 use super::permissions::{LitSearchAdminManage, LitSearchAdminRead, LitSearchUse};
 use super::{connectors, fulltext};
@@ -38,13 +39,21 @@ pub async fn jsonrpc_handler(
     let raw: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(e) => {
-            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::parse_error(e.to_string()));
+            return error_response(
+                None,
+                StatusCode::BAD_REQUEST,
+                JsonRpcError::parse_error(e.to_string()),
+            );
         }
     };
     let req: JsonRpcRequest = match serde_json::from_value(raw) {
         Ok(r) => r,
         Err(e) => {
-            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::invalid_request(e.to_string()));
+            return error_response(
+                None,
+                StatusCode::BAD_REQUEST,
+                JsonRpcError::invalid_request(e.to_string()),
+            );
         }
     };
 
@@ -64,18 +73,29 @@ pub async fn jsonrpc_handler(
         ),
         "tools/list" => ok_response(id, super::tools::tool_list()),
         "ping" => ok_response(id, json!({})),
-        "tools/call" => match dispatch_tool_call(auth.user.id, conversation_id, &req.params).await {
-            Ok(value) => ok_response(id, value),
-            Err(e) => error_response(id, e.0, e.1),
-        },
-        _ => error_response(id, StatusCode::OK, JsonRpcError::method_not_found(&req.method)),
+        "tools/call" => {
+            match dispatch_tool_call(auth.user.id, conversation_id, &req.params).await {
+                Ok(value) => ok_response(id, value),
+                Err(e) => error_response(id, e.0, e.1),
+            }
+        }
+        _ => error_response(
+            id,
+            StatusCode::OK,
+            JsonRpcError::method_not_found(&req.method),
+        ),
     }
 }
 
 fn ok_response(id: Option<Value>, result: Value) -> Response {
     (
         StatusCode::OK,
-        Json(JsonRpcResponse { jsonrpc: "2.0", id, result: Some(result), error: None }),
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: Some(result),
+            error: None,
+        }),
     )
         .into_response()
 }
@@ -83,7 +103,12 @@ fn ok_response(id: Option<Value>, result: Value) -> Response {
 fn error_response(id: Option<Value>, http: StatusCode, err: JsonRpcError) -> Response {
     (
         http,
-        Json(JsonRpcResponse { jsonrpc: "2.0", id, result: None, error: Some(err) }),
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: None,
+            error: Some(err),
+        }),
     )
         .into_response()
 }
@@ -100,17 +125,26 @@ async fn dispatch_tool_call(
     conversation_id: Option<Uuid>,
     params: &Value,
 ) -> Result<Value, (StatusCode, JsonRpcError)> {
-    let call: ToolCallParams = serde_json::from_value(params.clone())
-        .map_err(|e| (StatusCode::OK, JsonRpcError::invalid_params(format!("tools/call params: {e}"))))?;
+    let call: ToolCallParams = serde_json::from_value(params.clone()).map_err(|e| {
+        (
+            StatusCode::OK,
+            JsonRpcError::invalid_params(format!("tools/call params: {e}")),
+        )
+    })?;
     let result = match call.name.as_str() {
-        "literature_search" => do_search(&call.arguments).await,
-        "fetch_paper_fulltext" => do_fetch_fulltext(user_id, conversation_id, &call.arguments).await,
+        "literature_search" => do_search(user_id, &call.arguments).await,
+        "fetch_paper_fulltext" => {
+            do_fetch_fulltext(user_id, conversation_id, &call.arguments).await
+        }
         "dedup_records" => do_dedup_records(&call.arguments).await,
         "select_included" => do_select_included(&call.arguments).await,
         "verify_quote" => do_verify_quote(&call.arguments).await,
         "fetch_references" => do_fetch_references(&call.arguments).await,
         other => {
-            return Err((StatusCode::OK, JsonRpcError::method_not_found(&format!("lit_search tool: {other}"))));
+            return Err((
+                StatusCode::OK,
+                JsonRpcError::method_not_found(&format!("lit_search tool: {other}")),
+            ));
         }
     };
     result.map_err(|e| (StatusCode::OK, JsonRpcError::from_app_error(&e)))
@@ -139,7 +173,7 @@ struct SearchArgs {
 // `tool_result(text, structured)` helper (mirroring `citations::handlers`). The
 // one exception is `do_fetch_fulltext`, whose envelope is bespoke (multi-paper
 // text + a `lit_dir`/`note` structuredContent) and is built inline.
-async fn do_search(args: &Value) -> Result<Value, AppError> {
+async fn do_search(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
     use chrono::Datelike;
     let args: SearchArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
@@ -150,14 +184,20 @@ async fn do_search(args: &Value) -> Result<Value, AppError> {
     // free. Single-query mode keeps the strict "must not be empty" error.
     let (queries, batch_mode): (Vec<String>, bool) = if let Some(qs) = &args.queries {
         (
-            qs.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+            qs.iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
             true,
         )
     } else if let Some(q) = &args.query {
         let q = q.trim().to_string();
         (if q.is_empty() { vec![] } else { vec![q] }, false)
     } else {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "query or queries is required"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "query or queries is required",
+        ));
     };
     if queries.is_empty() {
         if batch_mode {
@@ -166,7 +206,10 @@ async fn do_search(args: &Value) -> Result<Value, AppError> {
                 .map_err(|e| AppError::internal_error(e.to_string()))?;
             return Ok(tool_result(build_digest(&empty), structured));
         }
-        return Err(AppError::bad_request("VALIDATION_ERROR", "query must not be empty"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "query must not be empty",
+        ));
     }
 
     // Reject an inverted year range (otherwise it silently yields zero results).
@@ -201,13 +244,23 @@ async fn do_search(args: &Value) -> Result<Value, AppError> {
     // work — preserves the common-path behavior exactly). Multiple queries: run
     // each and merge the union (dedup→rank→cap), mirroring `aggregate_search`'s tail.
     let result = if queries.len() == 1 {
-        connectors::aggregate_search(&queries[0], args.year_from, args.year_to, &settings).await?
+        connectors::aggregate_search(
+            &queries[0],
+            args.year_from,
+            args.year_to,
+            &settings,
+            user_id,
+        )
+        .await?
     } else {
         let mut all: Vec<super::models::LitRecord> = Vec::new();
-        let mut identified: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        let mut identified: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
         let mut degraded: Vec<String> = Vec::new();
         for q in &queries {
-            let r = connectors::aggregate_search(q, args.year_from, args.year_to, &settings).await?;
+            let r =
+                connectors::aggregate_search(q, args.year_from, args.year_to, &settings, user_id)
+                    .await?;
             for (k, v) in r.identified {
                 *identified.entry(k).or_insert(0) += v;
             }
@@ -268,7 +321,11 @@ fn build_digest(r: &AggregateResult) -> String {
 
     let mut s = String::new();
     let identified_total: usize = r.identified.values().sum();
-    let per_source: Vec<String> = r.identified.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    let per_source: Vec<String> = r
+        .identified
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
     s.push_str(&format!(
         "Literature search: \"{}\" — {} identified ({}), {} after dedup.\n",
         r.query,
@@ -277,10 +334,18 @@ fn build_digest(r: &AggregateResult) -> String {
         r.after_dedup
     ));
     if !r.degraded_sources.is_empty() {
-        s.push_str(&format!("Degraded/skipped sources: {}.\n", r.degraded_sources.join(", ")));
+        s.push_str(&format!(
+            "Degraded/skipped sources: {}.\n",
+            r.degraded_sources.join(", ")
+        ));
     }
     if let Some(c) = &r.completeness {
-        s.push_str(&format!("Saturation estimate: {} ({}). {}\n", c.estimate.to_uppercase(), c.method, c.caveat));
+        s.push_str(&format!(
+            "Saturation estimate: {} ({}). {}\n",
+            c.estimate.to_uppercase(),
+            c.method,
+            c.caveat
+        ));
     }
     s.push('\n');
 
@@ -288,14 +353,27 @@ fn build_digest(r: &AggregateResult) -> String {
         // Budget on CHARS (matching the consumer's char-based kept-result cap),
         // not bytes — a multibyte-heavy digest must still stay under 8000 chars.
         if s.chars().count() >= DIGEST_CHAR_BUDGET {
-            s.push_str(&format!("… (+{} more records in the full result)\n", r.records.len() - i));
+            s.push_str(&format!(
+                "… (+{} more records in the full result)\n",
+                r.records.len() - i
+            ));
             break;
         }
-        let year = rec.year.map(|y| y.to_string()).unwrap_or_else(|| "n.d.".into());
+        let year = rec
+            .year
+            .map(|y| y.to_string())
+            .unwrap_or_else(|| "n.d.".into());
         let preprint = if rec.is_preprint { " [preprint]" } else { "" };
         // Cap title/venue like the abstract snippet so a single pathological
         // record can't blow the per-record line past the budget.
-        s.push_str(&format!("{}. {} ({}) — {}{}\n", i + 1, clip(&rec.title, 300), year, rec.source, preprint));
+        s.push_str(&format!(
+            "{}. {} ({}) — {}{}\n",
+            i + 1,
+            clip(&rec.title, 300),
+            year,
+            rec.source,
+            preprint
+        ));
         let authors = if rec.authors.is_empty() {
             String::new()
         } else if rec.authors.len() <= 3 {
@@ -324,7 +402,11 @@ fn build_digest(r: &AggregateResult) -> String {
         }
         if let Some(abs) = &rec.abstract_text {
             let snip: String = abs.chars().take(SNIPPET_CHARS).collect();
-            let ell = if abs.chars().count() > SNIPPET_CHARS { "…" } else { "" };
+            let ell = if abs.chars().count() > SNIPPET_CHARS {
+                "…"
+            } else {
+                ""
+            };
             s.push_str(&format!("   {}{}\n", snip.replace('\n', " "), ell));
         }
     }
@@ -352,9 +434,17 @@ async fn do_fetch_fulltext(
 ) -> Result<Value, AppError> {
     let args: FulltextArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
-    let ids: Vec<String> = args.ids.into_iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    let ids: Vec<String> = args
+        .ids
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     if ids.is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "ids must not be empty"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "ids must not be empty",
+        ));
     }
     let settings = Repos.lit_search.get_settings().await?;
     if !settings.enabled {
@@ -420,7 +510,8 @@ async fn do_dedup_records(args: &Value) -> Result<Value, AppError> {
     // hard-capped so a pathological caller can't exhaust memory before dedup.
     const MAX_DEDUP_UNION: usize = 5000;
     let mut all: Vec<super::models::LitRecord> = Vec::new();
-    let mut identified: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut identified: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
     let mut dropped = 0usize;
     let mut union_capped = false;
     'flatten: for set in args.record_sets {
@@ -591,7 +682,10 @@ async fn do_verify_quote(args: &Value) -> Result<Value, AppError> {
     let id = args.id.trim();
     let quote = args.quote.trim();
     if id.is_empty() || quote.is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "id and quote must not be empty"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "id and quote must not be empty",
+        ));
     }
 
     let ids = fulltext::resolvers::parse_id(id);
@@ -601,7 +695,11 @@ async fn do_verify_quote(args: &Value) -> Result<Value, AppError> {
     use fulltext::cache::{STATUS_FULL_TEXT, STATUS_NOT_FOUND, STATUS_NOT_OA};
     let (status, verified) = match &entry {
         Some(e) if e.status == STATUS_FULL_TEXT => {
-            match e.content_hash.as_deref().and_then(fulltext::cache::read_blob) {
+            match e
+                .content_hash
+                .as_deref()
+                .and_then(fulltext::cache::read_blob)
+            {
                 Some(text) => {
                     let found = quote_in_text(&text, quote);
                     (if found { "verified" } else { STATUS_NOT_FOUND }, found)
@@ -738,7 +836,8 @@ async fn do_fetch_references(args: &Value) -> Result<Value, AppError> {
 
     // PRISMA "identified" = per-source counts BEFORE dedup (so the digest can
     // distinguish identified from after_dedup); count from the raw fetched set.
-    let mut identified: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut identified: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
     for r in &fetched.records {
         *identified.entry(r.source.clone()).or_insert(0) += 1;
     }
@@ -789,26 +888,42 @@ pub async fn update_settings(
 ) -> ApiResult<Json<LitSearchSettings>> {
     if let Some(ref set) = body.enabled_connectors {
         if set.is_empty() {
-            return Err(AppError::bad_request("VALIDATION_ERROR", "enabled_connectors must not be empty").into());
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "enabled_connectors must not be empty",
+            )
+            .into());
         }
         connectors::validate_connectors(set)?;
     }
     if let Some(n) = body.max_results
         && !(1..=200).contains(&n)
     {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "max_results out of range (1..=200)").into());
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "max_results out of range (1..=200)",
+        )
+        .into());
     }
     if let Some(n) = body.per_source_limit
         && !(1..=100).contains(&n)
     {
         // Ceiling matches the connector reality: every connector clamps its page
         // size to 100, so a higher per_source_limit fetches nothing extra.
-        return Err(AppError::bad_request("VALIDATION_ERROR", "per_source_limit out of range (1..=100)").into());
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "per_source_limit out of range (1..=100)",
+        )
+        .into());
     }
     if let Some(n) = body.request_timeout_secs
         && !(1..=120).contains(&n)
     {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "request_timeout_secs out of range (1..=120)").into());
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "request_timeout_secs out of range (1..=120)",
+        )
+        .into());
     }
 
     let row = Repos
@@ -837,7 +952,9 @@ pub fn update_settings_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(LitSearchAdminManage,)>(op)
         .id("LitSearch.updateSettings")
         .tag("LitSearch")
-        .summary("Update literature search settings (enable, active connectors, caps, completeness)")
+        .summary(
+            "Update literature search settings (enable, active connectors, caps, completeness)",
+        )
         .response::<200, Json<LitSearchSettings>>()
 }
 
@@ -851,7 +968,9 @@ async fn build_catalog() -> Result<ConnectorCatalogResponse, AppError> {
         .map(|d| {
             let row = rows.iter().find(|r| r.connector == d.key);
             let api_key = row.and_then(|r| r.api_key.as_deref());
-            let config = row.map(|r| r.config.clone()).unwrap_or_else(|| serde_json::json!({}));
+            let config = row
+                .map(|r| r.config.clone())
+                .unwrap_or_else(|| serde_json::json!({}));
             let configured = connectors::is_configured(&d, api_key, &config);
             ConnectorCatalogEntry {
                 key: d.key.to_string(),
@@ -925,7 +1044,10 @@ pub async fn update_connector(
         if k.is_empty() { None } else { Some(k) }
     });
 
-    Repos.lit_search.upsert_connector(&connector, api_key_action, config).await?;
+    Repos
+        .lit_search
+        .upsert_connector(&connector, api_key_action, config)
+        .await?;
 
     sync_publish(
         SyncEntity::LitSearchSettings,
@@ -943,6 +1065,187 @@ pub fn update_connector_docs(op: TransformOperation) -> TransformOperation {
         .tag("LitSearch")
         .summary("Upsert one connector's API key / config")
         .response::<200, Json<ConnectorCatalogResponse>>()
+}
+
+// ─────────────────────── User REST: per-user connector keys ──────────────────
+// Gated on `lit_search::use` (held by the Users group): a user who can use
+// literature search may manage their OWN key, resolved before the deployment
+// key. The raw key is never echoed — only masked state + a `system_key_set` bool.
+
+/// Validate a user-supplied API key: non-empty, ≤500 chars, no control chars.
+/// Mirrors `llm_provider::handlers::user::save_user_api_key`.
+fn validate_user_key(raw: &str) -> Result<String, AppError> {
+    let key = raw.trim().to_string();
+    if key.is_empty() {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "API key cannot be empty",
+        ));
+    }
+    if key.len() > 500 {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "API key too long",
+        ));
+    }
+    if key.bytes().any(|b| b < 0x20 && b != b'\t') {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "API key contains invalid characters",
+        ));
+    }
+    Ok(key)
+}
+
+/// Build the user-facing key catalog: the key-accepting connectors joined with
+/// the deployment key-set boolean + the user's own masked key.
+async fn build_user_key_catalog(
+    user_id: Uuid,
+) -> Result<UserConnectorKeyCatalogResponse, AppError> {
+    let rows = Repos.lit_search.list_connectors().await?;
+    let user_keys = Repos.lit_search.list_user_keys_masked(user_id).await?;
+    let connectors = connectors::catalog()
+        .into_iter()
+        .filter(|d| d.key_field.is_some())
+        .map(|d| {
+            let system_key_set = rows
+                .iter()
+                .find(|r| r.connector == d.key)
+                .and_then(|r| r.api_key.as_deref())
+                .map(|k| !k.trim().is_empty())
+                .unwrap_or(false);
+            let user_key = user_keys
+                .iter()
+                .find(|e| e.connector == d.key)
+                .map(|e| e.masked_key.clone());
+            UserConnectorKeyCatalogEntry {
+                connector: d.key.to_string(),
+                display_name: d.display_name.to_string(),
+                key_field: d.key_field.as_ref().map(|k| KeyFieldInfo {
+                    required: k.required,
+                    label: k.label.to_string(),
+                    help: k.help.map(String::from),
+                    docs_url: k.docs_url.map(String::from),
+                }),
+                system_key_set,
+                user_key,
+            }
+        })
+        .collect();
+    Ok(UserConnectorKeyCatalogResponse { connectors })
+}
+
+/// List the calling user's lit-search connector keys (masked) + catalog state.
+#[debug_handler]
+pub async fn list_user_keys(
+    auth: RequirePermissions<(LitSearchUse,)>,
+) -> ApiResult<Json<UserConnectorKeyCatalogResponse>> {
+    Ok((
+        StatusCode::OK,
+        Json(build_user_key_catalog(auth.user.id).await?),
+    ))
+}
+
+pub fn list_user_keys_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LitSearchUse,)>(op)
+        .id("LitSearch.listUserKeys")
+        .tag("LitSearch")
+        .summary("List the caller's own lit-search connector keys (masked) + catalog")
+        .description(
+            "Returns each key-accepting connector with the caller's own key in masked \
+             form (or null) and whether a shared deployment key exists. The raw key \
+             value is never returned.",
+        )
+        .response::<200, Json<UserConnectorKeyCatalogResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// Save or update the calling user's own key for a connector.
+#[debug_handler]
+pub async fn save_user_key(
+    auth: RequirePermissions<(LitSearchUse,)>,
+    origin: SyncOrigin,
+    Path(connector): Path<String>,
+    Json(body): Json<SaveUserConnectorKeyRequest>,
+) -> ApiResult<Json<UserConnectorKeyCatalogResponse>> {
+    // Only known connectors that accept a key may hold a user key.
+    match connectors::descriptor(&connector) {
+        Some(d) if d.key_field.is_some() => {}
+        Some(_) => {
+            return Err(AppError::bad_request(
+                "LIT_SEARCH_CONNECTOR_NO_KEY",
+                format!("connector '{connector}' does not use an API key"),
+            )
+            .into());
+        }
+        None => {
+            return Err(AppError::bad_request(
+                "LIT_SEARCH_UNKNOWN_CONNECTOR",
+                format!("unknown connector: {connector}"),
+            )
+            .into());
+        }
+    }
+
+    let key = validate_user_key(&body.api_key)?;
+    Repos
+        .lit_search
+        .upsert_user_key(auth.user.id, &connector, &key)
+        .await?;
+
+    sync_publish(
+        SyncEntity::LitSearchUserKey,
+        SyncAction::Update,
+        Uuid::nil(),
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
+    Ok((
+        StatusCode::OK,
+        Json(build_user_key_catalog(auth.user.id).await?),
+    ))
+}
+
+pub fn save_user_key_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LitSearchUse,)>(op)
+        .id("LitSearch.saveUserKey")
+        .tag("LitSearch")
+        .summary("Save the caller's own API key for a lit-search connector")
+        .description("Stores the caller's own key (encrypted). The key is never echoed back.")
+        .response::<200, Json<UserConnectorKeyCatalogResponse>>()
+        .response_with::<400, (), _>(|res| res.description("Validation error / unknown connector"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// Delete the calling user's own key for a connector (falls back to shared key).
+#[debug_handler]
+pub async fn delete_user_key(
+    auth: RequirePermissions<(LitSearchUse,)>,
+    origin: SyncOrigin,
+    Path(connector): Path<String>,
+) -> ApiResult<()> {
+    Repos
+        .lit_search
+        .delete_user_key(auth.user.id, &connector)
+        .await?;
+
+    sync_publish(
+        SyncEntity::LitSearchUserKey,
+        SyncAction::Delete,
+        Uuid::nil(),
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
+    Ok((StatusCode::NO_CONTENT, ()))
+}
+
+pub fn delete_user_key_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LitSearchUse,)>(op)
+        .id("LitSearch.deleteUserKey")
+        .tag("LitSearch")
+        .summary("Delete the caller's own API key for a lit-search connector")
+        .response::<204, ()>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 
 #[cfg(test)]
@@ -1004,13 +1307,13 @@ mod tests {
             LitRecord {
                 doi: Some(format!("10.1234/very-long-doi-suffix-{i:04}")),
                 pmid: Some(format!("3{i:07}")),
-                title: "T".repeat(500),         // clipped to 300
+                title: "T".repeat(500),                // clipped to 300
                 abstract_text: Some("a".repeat(2000)), // snippet → 200
                 // Exactly 3 PATHOLOGICALLY long names → hits the verbatim
                 // (non-"et al.") join path, which must also be clipped.
                 authors: vec!["A".repeat(3000), "B".repeat(3000), "C".repeat(3000)],
                 year: Some(2024),
-                venue: Some("V".repeat(400)),   // clipped to 200
+                venue: Some("V".repeat(400)), // clipped to 200
                 url: None,
                 source: "semanticscholar".into(),
                 source_ids: vec![format!("semanticscholar:{i}")],
@@ -1059,7 +1362,10 @@ mod tests {
     fn quote_match_is_whitespace_and_newline_insensitive() {
         // pdfium/JATS extraction folds line breaks + runs of spaces.
         let text = "off-target effects were\n   observed   in   3 of 40 samples";
-        assert!(quote_in_text(text, "off-target effects were observed in 3 of 40 samples"));
+        assert!(quote_in_text(
+            text,
+            "off-target effects were observed in 3 of 40 samples"
+        ));
     }
 
     #[test]
@@ -1094,7 +1400,7 @@ mod tests {
 
     #[tokio::test]
     async fn search_empty_queries_batch_is_noop() {
-        let out = do_search(&json!({ "queries": [] }))
+        let out = do_search(Uuid::nil(), &json!({ "queries": [] }))
             .await
             .expect("empty batch must be a no-op, not an error");
         let recs = out["structuredContent"]["records"].as_array().unwrap();
@@ -1105,21 +1411,30 @@ mod tests {
     #[tokio::test]
     async fn search_queries_all_blank_is_noop() {
         // Whitespace-only entries are dropped → empty → no-op (not an error).
-        let out = do_search(&json!({ "queries": ["  ", ""] }))
+        let out = do_search(Uuid::nil(), &json!({ "queries": ["  ", ""] }))
             .await
             .expect("all-blank batch must be a no-op");
-        assert!(out["structuredContent"]["records"].as_array().unwrap().is_empty());
+        assert!(
+            out["structuredContent"]["records"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
     async fn search_single_empty_query_still_errors() {
         // Back-compat: single-query mode keeps the strict empty-query error.
-        assert!(do_search(&json!({ "query": "" })).await.is_err());
+        assert!(
+            do_search(Uuid::nil(), &json!({ "query": "" }))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn search_no_query_field_errors() {
-        assert!(do_search(&json!({})).await.is_err());
+        assert!(do_search(Uuid::nil(), &json!({})).await.is_err());
     }
 
     #[tokio::test]
@@ -1127,7 +1442,12 @@ mod tests {
         let out = do_fetch_references(&json!({ "ids": [] }))
             .await
             .expect("empty ids must be a no-op, not an error");
-        assert!(out["structuredContent"]["records"].as_array().unwrap().is_empty());
+        assert!(
+            out["structuredContent"]["records"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -1145,7 +1465,11 @@ mod tests {
         .await
         .expect("ok");
         let sc = &out["structuredContent"];
-        assert_eq!(sc["included_ids"], json!(["10.1/a", "10.3/c"]), "deduped includes: {sc}");
+        assert_eq!(
+            sc["included_ids"],
+            json!(["10.1/a", "10.3/c"]),
+            "deduped includes: {sc}"
+        );
         assert_eq!(sc["included"], 2, "unique included studies");
         assert_eq!(sc["excluded"], 1);
         assert_eq!(sc["skipped"], 1, "the null decision is skipped");
