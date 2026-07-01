@@ -11,8 +11,8 @@ import {
   Separator,
   Text,
   Confirm,
-  Pagination,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
@@ -279,23 +279,16 @@ export function UsersSettings() {
               <>
                 <Separator className="mb-4" />
                 <div className="flex justify-end">
-                  <Pagination
-              data-testid="user-list-pagination"
-              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
-                    current={storePage}
-                    total={totalUsers}
-                    pageSize={storePageSize}
-                    showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size: number) => handlePageChange(1, size)}
-                    showQuickJumper
-              jumpLabel="Go to page"
-                    showTotal={(total, range) =>
-                      `${range[0]}-${range[1]} of ${total} users`
-                    }
-                    onChange={handlePageChange}
-                    pageSizeOptions={[5, 10, 20, 50]}
-                  />
+                  <ListPagination
+          data-testid="user-list-pagination"
+          current={storePage}
+          total={totalUsers}
+          pageSize={storePageSize}
+          onChange={handlePageChange}
+          onPageSizeChange={(size: number) => handlePageChange(1, size)}
+          itemNoun="users"
+          aria-label="Pagination"
+        />
                 </div>
               </>
             )}

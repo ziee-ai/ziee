@@ -5,12 +5,12 @@ import {
   Descriptions,
   Separator,
   Empty,
-  Pagination,
   Confirm,
   Tag,
   Text,
   message,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
@@ -184,21 +184,15 @@ export function AssistantsSettings() {
           {assistants.length > 0 && (
             <>
               <Separator className="mb-4" />
-              <div className="flex justify-end">
-                <Pagination
-              data-testid="template-assistants-pagination"
-              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`}
-                  current={storePage}
-                  total={totalAssistants}
-                  pageSize={storePageSize}
-                  onChange={(page) => handlePageChange(page, storePageSize)}
-                  showSizeChanger
-                  pageSizeOptions={[5, 10, 20, 50]}
-                  pageSizeLabel="Page size"
-                  onPageSizeChange={(size) => handlePageChange(1, size)}
-                  aria-label="Assistants pagination"
-                />
-              </div>
+              <ListPagination
+                data-testid="template-assistants-pagination"
+                current={storePage}
+                total={totalAssistants}
+                pageSize={storePageSize}
+                onChange={(page) => handlePageChange(page, storePageSize)}
+                onPageSizeChange={(size) => handlePageChange(1, size)}
+                aria-label="Assistants pagination"
+              />
             </>
           )}
         </Card>

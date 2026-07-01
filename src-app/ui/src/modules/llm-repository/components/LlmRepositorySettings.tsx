@@ -5,9 +5,9 @@ import {
   Card,
   Empty,
   Flex,
-  Pagination,
   Switch,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import {
   Text,
   message,
@@ -320,23 +320,16 @@ export function LlmRepositorySettings() {
             <>
               <Separator className="!my-3" />
               <Flex justify="end">
-                <Pagination
-              data-testid="llmrepo-pagination"
-              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
-                  current={storePage}
-                  total={totalRepositories}
-                  pageSize={storePageSize}
-                  showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size: number) => handlePageChange(1, size)}
-                  showQuickJumper
-              jumpLabel="Go to page"
-                  showTotal={(total: number, range: [number, number]) =>
-                    `${range[0]}-${range[1]} of ${total} repositories`
-                  }
-                  onChange={handlePageChange}
-                  pageSizeOptions={[5, 10, 20, 50]}
-                />
+                <ListPagination
+          data-testid="llmrepo-pagination"
+          current={storePage}
+          total={totalRepositories}
+          pageSize={storePageSize}
+          onChange={handlePageChange}
+          onPageSizeChange={(size: number) => handlePageChange(1, size)}
+          itemNoun="repositories"
+          aria-label="Pagination"
+        />
               </Flex>
             </>
           )}

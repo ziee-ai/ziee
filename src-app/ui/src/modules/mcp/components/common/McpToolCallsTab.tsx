@@ -6,10 +6,10 @@ import {
   Tag,
   Text,
   Paragraph,
-  Pagination,
   type TableColumn,
   type TagTone,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { Stores } from '@/core/stores'
 import { type McpToolCall } from '@/api-client/types'
 
@@ -152,21 +152,15 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
           </div>
         </div>
       ) : null}
-      <Pagination
-        current={currentPage}
-        pageSize={pageSize}
-        total={total}
-        data-testid="mcp-tool-calls-pagination"
-        aria-label="Tool-call pages"
-        previousLabel="Previous page"
-        nextLabel="Next page"
-        pageLabel={p => `Page ${p}`}
-        showSizeChanger
-        pageSizeOptions={[10, 20, 50]}
-        pageSizeLabel="Page size"
-        onPageSizeChange={size => Stores.McpToolCalls.setPage(1, size)}
-        onChange={page => Stores.McpToolCalls.setPage(page, pageSize)}
-      />
+      <ListPagination
+          data-testid="mcp-tool-calls-pagination"
+          current={currentPage}
+          total={total}
+          pageSize={pageSize}
+          onChange={page => Stores.McpToolCalls.setPage(page, pageSize)}
+          onPageSizeChange={size => Stores.McpToolCalls.setPage(1, size)}
+          aria-label="Tool-call pages"
+        />
     </div>
   )
 }

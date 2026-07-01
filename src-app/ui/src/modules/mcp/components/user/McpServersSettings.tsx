@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import {
   Button,
   Input,
-  Pagination,
   Select,
   Text,
 } from '@/components/ui'
@@ -16,6 +15,7 @@ import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { message } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 
 export function McpServersSettings() {
   const {
@@ -203,23 +203,16 @@ export function McpServersSettings() {
 
         {totalServers > 0 && (
           <div className="flex justify-end">
-            <Pagination
-              data-testid="mcp-settings-pagination"
-              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
-              current={storePage}
-              total={totalServers}
-              pageSize={storePageSize}
-              showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size: number) => handlePageChange(1, size)}
-              showQuickJumper
-              jumpLabel="Go to page"
-              showTotal={(total, range) =>
-                `${range[0]}-${range[1]} of ${total} servers`
-              }
-              onChange={handlePageChange}
-              pageSizeOptions={[5, 10, 20, 50]}
-            />
+            <ListPagination
+          data-testid="mcp-settings-pagination"
+          current={storePage}
+          total={totalServers}
+          pageSize={storePageSize}
+          onChange={handlePageChange}
+          onPageSizeChange={(size: number) => handlePageChange(1, size)}
+          itemNoun="servers"
+          aria-label="Pagination"
+        />
           </div>
         )}
       </div>

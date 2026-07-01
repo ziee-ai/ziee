@@ -11,7 +11,6 @@ import {
   FormField,
   Input,
   InputNumber,
-  Pagination,
   Select,
   Separator,
   Spin,
@@ -23,6 +22,7 @@ import {
   useForm,
   zodResolver,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
@@ -313,26 +313,16 @@ export function MyMemoriesSection() {
         <>
           <Separator className="!my-3" />
           <Flex justify="end">
-            <Pagination
-              data-testid="memory-pagination"
-              current={storePage}
-              total={totalMemories}
-              pageSize={storePageSize}
-              showSizeChanger
-              pageSizeLabel="Memories per page"
-              pageSizeOptions={[5, 10, 20, 50]}
-              onPageSizeChange={(size) => Stores.Memories.load(1, size)}
-              showQuickJumper
-              jumpLabel="Jump to page"
-              showTotal={(total, range) =>
-                `${range[0]}-${range[1]} of ${total} memories`
-              }
-              onChange={(page) => Stores.Memories.load(page, storePageSize)}
-              aria-label="Memory pagination"
-              previousLabel="Previous page"
-              nextLabel="Next page"
-              pageLabel={(p) => `Page ${p}`}
-            />
+            <ListPagination
+          data-testid="memory-pagination"
+          current={storePage}
+          total={totalMemories}
+          pageSize={storePageSize}
+          onChange={(page) => Stores.Memories.load(page, storePageSize)}
+          onPageSizeChange={(size) => Stores.Memories.load(1, size)}
+          itemNoun="memories"
+          aria-label="Memory pagination"
+        />
           </Flex>
         </>
       )}

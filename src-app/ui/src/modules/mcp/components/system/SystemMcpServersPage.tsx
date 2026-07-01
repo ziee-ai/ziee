@@ -7,7 +7,8 @@ import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
 import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
-import { Button, Card, Flex, Text, Input, Select, Pagination } from '@/components/ui'
+import { Button, Card, Flex, Text, Input, Select } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 
 export function SystemMcpServersPage() {
   const {
@@ -173,26 +174,16 @@ export function SystemMcpServersPage() {
 
         {systemServersTotal > 0 && (
           <Flex justify="end">
-            <Pagination
-              data-testid="mcp-system-pagination"
-              aria-label="System MCP servers pagination"
-              previousLabel="Previous page"
-              nextLabel="Next page"
-              pageLabel={(p: number) => `Page ${p}`}
-              current={systemServersPage}
-              total={systemServersTotal}
-              pageSize={systemServersPageSize as number}
-              showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size: number) => handlePageChange(1, size)}
-              showQuickJumper
-              jumpLabel="Go to page"
-              showTotal={(total: number, range: [number, number]) =>
-                `${range[0]}-${range[1]} of ${total} servers`
-              }
-              onChange={(page: number) => handlePageChange(page)}
-              pageSizeOptions={[5, 10, 20, 50]}
-            />
+            <ListPagination
+          data-testid="mcp-system-pagination"
+          current={systemServersPage}
+          total={systemServersTotal}
+          pageSize={systemServersPageSize as number}
+          onChange={(page: number) => handlePageChange(page)}
+          onPageSizeChange={(size: number) => handlePageChange(1, size)}
+          itemNoun="servers"
+          aria-label="System MCP servers pagination"
+        />
           </Flex>
         )}
 
