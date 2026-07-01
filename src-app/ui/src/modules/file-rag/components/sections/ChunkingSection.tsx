@@ -131,7 +131,6 @@ export function ChunkingSection() {
         name="file-rag-admin-chunking-form"
         form={form}
         layout="horizontal"
-        labelWidth="10rem"
         onSubmit={handleSubmit}
         disabled={!canManage}
       >

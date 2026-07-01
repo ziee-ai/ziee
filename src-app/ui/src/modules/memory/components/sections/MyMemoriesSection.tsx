@@ -36,9 +36,9 @@ import {
   Trash2,
   Download,
   Pencil,
-  Plus,
 } from 'lucide-react'
 import { Stores } from '@/core/stores'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { UserMemory } from '@/api-client/types'
@@ -108,15 +108,11 @@ export function MyMemoriesSection() {
       data-testid="memory-my-card"
       extra={
         canWrite ? (
-          <Tooltip title="Add memory">
-            <Button
-              variant="ghost"
-              icon={<Plus />}
-              onClick={() => setCreating(true)}
-              aria-label="Add memory"
-              data-testid="memory-add-btn"
-            />
-          </Tooltip>
+          <AddButton
+            label="Add memory"
+            onClick={() => setCreating(true)}
+            data-testid="memory-add-btn"
+          />
         ) : null
       }
     >

@@ -1,4 +1,4 @@
-import { Trash2, Pencil, Lock, Plus, Users, User as UserIcon } from 'lucide-react'
+import { Trash2, Pencil, Lock, Users, User as UserIcon } from 'lucide-react'
 import {
   Badge,
   Button,
@@ -7,7 +7,6 @@ import {
   Descriptions,
   Empty,
   Flex,
-  Tooltip,
   message,
   Separator,
   Text,
@@ -17,6 +16,7 @@ import {
 import { Loading } from '@/core/components/Loading'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type User } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
@@ -218,17 +218,11 @@ export function UsersSettings() {
             data-testid="user-list-card"
             extra={
               <Can permission={Permissions.UsersCreate}>
-                <Tooltip content="Create user">
-                  <Button
-                    variant="ghost"
-                    icon={<Plus aria-hidden="true" />}
-                    onClick={() =>
-                      Stores.CreateUserDrawer.openCreateUserDrawer()
-                    }
-                    aria-label="Create user"
-                    data-testid="user-create-open-button"
-                  />
-                </Tooltip>
+                <AddButton
+                  label="Create user"
+                  onClick={() => Stores.CreateUserDrawer.openCreateUserDrawer()}
+                  data-testid="user-create-open-button"
+                />
               </Can>
             }
           >

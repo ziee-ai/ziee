@@ -104,7 +104,6 @@ export function RetentionLimitsSection() {
         name="memory-admin-retention-form"
         form={form}
         layout="horizontal"
-        labelWidth="10rem"
         onSubmit={handleSubmit}
         disabled={!canManage}
         data-testid="memory-retention-form"

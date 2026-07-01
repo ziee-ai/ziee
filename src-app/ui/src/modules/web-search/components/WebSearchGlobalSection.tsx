@@ -148,7 +148,6 @@ export function WebSearchGlobalSection() {
         data-testid="websearch-global-form"
         form={form}
         layout="horizontal"
-        labelWidth="42%"
         disabled={!canManage}
         onSubmit={onSubmit}
       >

@@ -1,4 +1,4 @@
-import { CloudDownload, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CloudDownload, Pencil, Trash2 } from 'lucide-react'
 import {
   Alert,
   Button,
@@ -7,7 +7,6 @@ import {
   Flex,
   Pagination,
   Switch,
-  Tooltip,
 } from '@/components/ui'
 import {
   Text,
@@ -16,6 +15,7 @@ import {
   Confirm,
 } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type LlmRepository } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
@@ -211,17 +211,11 @@ export function LlmRepositorySettings() {
         data-testid="llmrepo-card"
         extra={
           <Can permission={Permissions.LlmRepositoriesCreate}>
-            <Tooltip title="Add repository">
-              <Button
-                data-testid="llmrepo-add-btn"
-                variant="outline"
-                size="icon"
-                icon={<Plus />}
-                onClick={handleAddRepository}
-                aria-label="Add repository"
-                tooltip="Add repository"
-              />
-            </Tooltip>
+            <AddButton
+              label="Add repository"
+              onClick={handleAddRepository}
+              data-testid="llmrepo-add-btn"
+            />
           </Can>
         }
       >

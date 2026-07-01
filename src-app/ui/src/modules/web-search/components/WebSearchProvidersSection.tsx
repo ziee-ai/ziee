@@ -159,7 +159,6 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
         data-testid={`websearch-provider-${entry.key}-form`}
         form={form}
         layout="horizontal"
-        labelWidth="33%"
         onSubmit={onSubmit}
         disabled={!canManage}
       >

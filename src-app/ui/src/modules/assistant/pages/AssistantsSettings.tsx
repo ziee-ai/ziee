@@ -1,4 +1,4 @@
-import { Bot, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Bot, Pencil, Trash2 } from 'lucide-react'
 import {
   Button,
   Card,
@@ -8,7 +8,6 @@ import {
   Pagination,
   Confirm,
   Tag,
-  Tooltip,
   Text,
   message,
 } from '@/components/ui'
@@ -16,6 +15,7 @@ import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Permissions, type Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
@@ -116,15 +116,11 @@ export function AssistantsSettings() {
           title="Template Assistants"
           extra={
             <Can permission={Permissions.AssistantsTemplateCreate}>
-              <Tooltip content="Create assistant">
-                <Button
-                  data-testid="template-assistants-create-btn"
-                  variant="ghost"
-                  icon={<Plus aria-hidden="true" />}
-                  onClick={handleCreate}
-                  aria-label="Create assistant"
-                />
-              </Tooltip>
+              <AddButton
+                label="Create assistant"
+                onClick={handleCreate}
+                data-testid="template-assistants-create-btn"
+              />
             </Can>
           }
         >

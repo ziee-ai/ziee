@@ -99,7 +99,6 @@ export function RuntimeConfigCard() {
         // right. xs (mobile) collapses to stacked (label on top of
         // input) so neither side gets squeezed below a usable width.
         layout="horizontal"
-        labelWidth="41.67%"
       >
         <FormField
           name="idle_unload_secs"

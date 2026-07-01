@@ -196,7 +196,6 @@ export function ProfileSettingsPage() {
           data-testid="profile-info-form"
           form={profileForm}
           layout="horizontal"
-          labelWidth={160}
           onSubmit={handleProfileSubmit}
           disabled={!canEdit}
         >
@@ -235,7 +234,6 @@ export function ProfileSettingsPage() {
               data-testid="profile-password-form"
               form={passwordForm}
               layout="horizontal"
-              labelWidth={160}
               onSubmit={handlePasswordSubmit}
             >
               <FormField

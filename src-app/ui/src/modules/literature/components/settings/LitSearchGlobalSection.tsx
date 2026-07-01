@@ -133,7 +133,6 @@ export function LitSearchGlobalSection() {
         form={form}
         name="lit-caps"
         layout="horizontal"
-        labelWidth="42%"
         disabled={!canManage}
         onSubmit={handleCapsSubmit}
         data-testid="lit-global-caps-form"

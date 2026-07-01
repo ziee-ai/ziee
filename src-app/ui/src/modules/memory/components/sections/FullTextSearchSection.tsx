@@ -261,7 +261,6 @@ export function FullTextSearchSection() {
           name="memory-admin-fts-form"
           form={form}
           layout="horizontal"
-          labelWidth="42%"
           onSubmit={handleSubmit}
           disabled={!canManage}
           data-testid="memory-fts-form"
