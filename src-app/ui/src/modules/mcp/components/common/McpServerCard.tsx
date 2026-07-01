@@ -33,6 +33,7 @@ interface McpServerCardProps {
 export function McpServerCard({
   server,
   isEditable = true,
+  bordered = true,
 }: McpServerCardProps) {
   const [enableLoading, setEnableLoading] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -133,10 +134,7 @@ export function McpServerCard({
     }
   }
 
-  return (
-    <Card
-      data-testid={`mcp-server-card-${server.id}`}
-    >
+  const cardBody = (
       <div className="flex items-start gap-3 flex-wrap">
         {/* Server Info */}
         <div className="flex-1">
@@ -364,6 +362,14 @@ export function McpServerCard({
           </div>
         </div>
       </div>
-    </Card>
+  )
+
+  // The System MCP page renders this card INSIDE an outer Card (SettingsPage
+  // section). Drop the border + padding there so it doesn't read as a card-in-
+  // card. The User MCP page renders it standalone → keep the bordered Card.
+  return bordered ? (
+    <Card data-testid={`mcp-server-card-${server.id}`}>{cardBody}</Card>
+  ) : (
+    <div data-testid={`mcp-server-card-${server.id}`}>{cardBody}</div>
   )
 }
