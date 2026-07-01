@@ -137,14 +137,26 @@ export function LitSearchGlobalSection() {
         onSubmit={handleCapsSubmit}
         data-testid="lit-global-caps-form"
       >
-        <FormField label="Max deduped results" name="max_results">
+        <FormField
+          label="Max deduped results"
+          name="max_results"
+          description="Maximum number of deduplicated results returned per search after merging all sources."
+        >
           <InputNumber min={1} max={200} className="w-full" data-testid="lit-global-max-results-input" />
         </FormField>
-        <FormField label="Per-source limit" name="per_source_limit">
+        <FormField
+          label="Per-source limit"
+          name="per_source_limit"
+          description="Cap on results fetched from each individual source before dedup + ranking."
+        >
           <InputNumber min={1} max={100} className="w-full" data-testid="lit-global-per-source-limit-input" />
         </FormField>
-        <FormField label="Request timeout (s)" name="request_timeout_secs">
-          <InputNumber min={1} max={120} className="w-full" data-testid="lit-global-request-timeout-input" />
+        <FormField
+          label="Request timeout"
+          name="request_timeout_secs"
+          description="How long to wait for each source before giving up and moving on."
+        >
+          <InputNumber min={1} max={120} suffix="s" className="w-full" data-testid="lit-global-request-timeout-input" />
         </FormField>
       </Form>
     </Card>
