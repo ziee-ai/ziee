@@ -194,7 +194,7 @@ export function WorkflowDetailDrawer() {
               {steps.map((s, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <Space size={8}>
-                    <Text>{s.message || s.id}</Text>
+                    <Text>{s.description || s.id}</Text>
                     {s.kind && <Tag variant="outline" data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
                   </Space>
                   {s.dependsOn && s.dependsOn.length > 0 && (
