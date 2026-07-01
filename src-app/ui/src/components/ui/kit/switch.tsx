@@ -88,7 +88,11 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
   // Tooltip used everywhere else.
   const maybeTip = tooltip != null ? (
     <Tooltip content={tooltip}>
-      <span className="inline-flex">{control}</span>
+      {/* w-fit + self-start: inside a FormField's `flex flex-col` (align-items:
+          stretch) a width-less wrapper would stretch to the full row, so the
+          tooltip (anchored to this span) would center mid-form instead of over
+          the ~32px switch. Constrain it to the switch's width. */}
+      <span className="inline-flex w-fit self-start">{control}</span>
     </Tooltip>
   ) : control
   if (label == null) return maybeTip
