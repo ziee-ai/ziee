@@ -93,6 +93,7 @@ pub async fn subscribe(
     let snapshot = SSEWorkflowRunEvent::Snapshot(SSESnapshotData {
         run_id,
         status: row.status.clone(),
+        error: row.error_message.clone(),
         current_step: row.current_step.clone(),
         total_tokens: row.total_tokens as u64,
         step_outputs_json: row.step_outputs_json.clone(),
