@@ -140,7 +140,7 @@ export function LitSearchGlobalSection() {
         </FormField>
       </Form>
 
-      <Separator titlePlacement="left">
+      <Separator titlePlacement="left" className="mt-6 mb-4">
         <Text className="text-sm">Caps</Text>
       </Separator>
 

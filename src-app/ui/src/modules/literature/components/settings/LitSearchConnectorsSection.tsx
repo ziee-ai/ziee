@@ -144,50 +144,52 @@ export function LitSearchConnectorsSection() {
                 </Paragraph>
               )}
 
-              <FormField name={`${entry.key}.enabled`} label="Enable" valuePropName="checked">
-                <Switch tooltip={`Enable ${entry.display_name}`} data-testid={`lit-connector-enable-switch-${entry.key}`} />
-              </FormField>
-
-              {entry.config_fields.map((f) => (
-                <FormField
-                  key={f.key}
-                  name={`${entry.key}.${f.key}`}
-                  label={f.label}
-                  description={f.help ?? undefined}
-                  required={f.required}
-                >
-                  <Input placeholder={f.placeholder} data-testid={`lit-connector-config-input-${entry.key}-${f.key}`} />
+              <div className="flex flex-col gap-5">
+                <FormField name={`${entry.key}.enabled`} label="Enable" valuePropName="checked">
+                  <Switch tooltip={`Enable ${entry.display_name}`} data-testid={`lit-connector-enable-switch-${entry.key}`} />
                 </FormField>
-              ))}
 
-              {entry.key_field && (
-                <FormField
-                  name={`${entry.key}.api_key`}
-                  label={entry.key_field.label}
-                  description={
-                    <>
-                      {entry.api_key_set
-                        ? 'A key is stored. Leave blank to keep it, or type a new one.'
-                        : (entry.key_field.help ?? 'No key stored yet.')}
-                      {entry.key_field.docs_url && (
-                        <>
-                          {' '}
-                          <a href={entry.key_field.docs_url} target="_blank" rel="noreferrer">
-                            Get a key →
-                          </a>
-                        </>
-                      )}
-                    </>
-                  }
-                >
-                  <PasswordInput
-                    showLabel="Show key"
-                    hideLabel="Hide key"
-                    placeholder={entry.api_key_set ? '•••••••• (stored)' : 'Enter API key'}
-                    data-testid={`lit-connector-api-key-input-${entry.key}`}
-                  />
-                </FormField>
-              )}
+                {entry.config_fields.map((f) => (
+                  <FormField
+                    key={f.key}
+                    name={`${entry.key}.${f.key}`}
+                    label={f.label}
+                    description={f.help ?? undefined}
+                    required={f.required}
+                  >
+                    <Input placeholder={f.placeholder} data-testid={`lit-connector-config-input-${entry.key}-${f.key}`} />
+                  </FormField>
+                ))}
+
+                {entry.key_field && (
+                  <FormField
+                    name={`${entry.key}.api_key`}
+                    label={entry.key_field.label}
+                    description={
+                      <>
+                        {entry.api_key_set
+                          ? 'A key is stored. Leave blank to keep it, or type a new one.'
+                          : (entry.key_field.help ?? 'No key stored yet.')}
+                        {entry.key_field.docs_url && (
+                          <>
+                            {' '}
+                            <a href={entry.key_field.docs_url} target="_blank" rel="noreferrer">
+                              Get a key →
+                            </a>
+                          </>
+                        )}
+                      </>
+                    }
+                  >
+                    <PasswordInput
+                      showLabel="Show key"
+                      hideLabel="Hide key"
+                      placeholder={entry.api_key_set ? '•••••••• (stored)' : 'Enter API key'}
+                      data-testid={`lit-connector-api-key-input-${entry.key}`}
+                    />
+                  </FormField>
+                )}
+              </div>
 
               {entry.key_field && entry.api_key_set && (
                 <Flex justify="end" className="mb-2">
