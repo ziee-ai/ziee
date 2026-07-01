@@ -37,9 +37,17 @@ export interface DropdownProps {
 }
 
 export function Dropdown({ items, children, side, align = 'end', disabled, onSelect, open, onOpenChange, defaultOpen, 'data-testid': testid }: DropdownProps) {
+  // Base UI's trigger defaults to `nativeButton: true` and warns if the rendered
+  // element isn't a real <button>. Our trigger is a caller-supplied element that
+  // may be a native <button>, a component (e.g. kit <Button>, which renders one),
+  // or a bare <div role="button"> (legacy Radix pattern). Only a literal
+  // intrinsic that isn't 'button' needs nativeButton=false — then Base UI supplies
+  // the button ARIA/keyboard semantics on the non-button element.
+  const childType = (children as React.ReactElement)?.type
+  const nativeButton = typeof childType === 'string' ? childType === 'button' : true
   return (
     <Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
-      <DropdownMenuTrigger render={children} disabled={disabled} />
+      <DropdownMenuTrigger render={children} disabled={disabled} nativeButton={nativeButton} />
       <DropdownMenuContent side={side} align={align} data-testid={testid}>
         {items.map((it, i) =>
           'type' in it && it.type === 'divider' ? (
