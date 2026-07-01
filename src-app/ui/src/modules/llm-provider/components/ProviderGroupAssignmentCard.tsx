@@ -40,8 +40,10 @@ export function ProviderGroupAssignmentCard() {
       extra={
         <Button
           variant="outline"
-          icon={<Pencil />}
+          size="icon"
+          icon={<Pencil aria-hidden="true" />}
           onClick={handleManageGroups}
+          tooltip="Manage user groups"
           aria-label="Manage user groups"
           data-testid="llm-provider-groups-manage-btn"
         />

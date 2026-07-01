@@ -53,8 +53,18 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
     const nativeDisabled = surfaceDisabled
     const isDisabled = surfaceDisabled || loading
     // a string tooltip becomes the accessible name (unless an explicit aria-label is given).
-    const ariaLabel =
-      (props as { 'aria-label'?: string })['aria-label'] ?? (typeof tooltip === 'string' ? tooltip : undefined)
+    const ariaLabelProp = (props as { 'aria-label'?: string })['aria-label']
+    const ariaLabel = ariaLabelProp ?? (typeof tooltip === 'string' ? tooltip : undefined)
+    // Icon-only buttons (an icon, no visible text) should surface their accessible
+    // name as a hover/focus tooltip too. If the caller gave an aria-label but no
+    // explicit tooltip, reuse it — so every icon button has a tooltip without
+    // per-call-site wiring.
+    // Suppressed when an outer kit <Tooltip> already wraps this button (it injects
+    // data-tooltip-wrapped via Slot) — avoids a double tooltip popup.
+    const tooltipWrapped = (props as Record<string, unknown>)['data-tooltip-wrapped'] != null
+    const iconOnly = icon != null && children == null
+    const effectiveTooltip =
+      tooltip ?? (iconOnly && !tooltipWrapped && typeof ariaLabelProp === 'string' ? ariaLabelProp : undefined)
     const inner = (
       <>
         {loading ? <Loader2 className="animate-spin" aria-hidden /> : (icon != null && <span aria-hidden className="[&_svg]:size-4">{icon}</span>)}
@@ -100,12 +110,12 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
         </ButtonBase>
       )
 
-    if (tooltip == null) return node
+    if (effectiveTooltip == null) return node
     return (
       <TooltipProvider delay={300}>
         <Tooltip>
           <TooltipTrigger render={node} />
-          <TooltipContent>{tooltip}</TooltipContent>
+          <TooltipContent>{effectiveTooltip}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     )
