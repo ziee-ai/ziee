@@ -6,6 +6,22 @@ use axum::http::StatusCode;
 // Validation Functions
 // =====================================================
 
+/// True for Unicode bidirectional-control / zero-width / format characters that
+/// `char::is_control()` (category Cc only) misses. These enable Trojan-source /
+/// homoglyph display spoofing (e.g. U+202E RIGHT-TO-LEFT OVERRIDE reordering an
+/// admin's visible username), so they are rejected in user/display names.
+/// Closes 13-misc F-06.
+fn is_bidi_or_zero_width(c: char) -> bool {
+    matches!(c,
+        '\u{200B}'..='\u{200F}'   // zero-width space/joiner/non-joiner + LRM/RLM
+        | '\u{202A}'..='\u{202E}' // bidi embeddings + LRO/RLO override
+        | '\u{2060}'..='\u{2064}' // word joiner + invisible operators
+        | '\u{2066}'..='\u{2069}' // bidi isolates
+        | '\u{061C}'              // arabic letter mark
+        | '\u{FEFF}'              // zero-width no-break space / BOM
+    )
+}
+
 pub fn validate_setup_request(req: &SetupAdminRequest) -> Result<(), (StatusCode, AppError)> {
     // Username validation. Closes 13-misc F-06 (Low): reject control
     // chars (incl. RTL override U+202E) and whitespace, which can be
@@ -19,7 +35,7 @@ pub fn validate_setup_request(req: &SetupAdminRequest) -> Result<(), (StatusCode
     if req
         .username
         .chars()
-        .any(|c| c.is_control() || c.is_whitespace())
+        .any(|c| c.is_control() || c.is_whitespace() || is_bidi_or_zero_width(c))
     {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -38,7 +54,7 @@ pub fn validate_setup_request(req: &SetupAdminRequest) -> Result<(), (StatusCode
                 AppError::bad_request("INVALID_DISPLAY_NAME", "Display name exceeds 200 chars"),
             ));
         }
-        if dn.chars().any(|c| c.is_control()) {
+        if dn.chars().any(|c| c.is_control() || is_bidi_or_zero_width(c)) {
             return Err((
                 StatusCode::BAD_REQUEST,
                 AppError::bad_request(

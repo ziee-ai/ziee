@@ -253,19 +253,21 @@ pub(crate) async fn run_ask_user_elicitation(
     if message.is_empty() {
         return ask_result("ask_user requires a non-empty 'message'.".to_string(), true);
     }
-    let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
-        input
-            .get("schema")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({ "type": "object" })),
-    );
-
     // The schema is LLM-generated and arbitrary; the FE renders a form field
     // per property, so a pathologically large/nested schema can hang the
     // browser. Reject anything over the same 1 MB cap used for structured
     // content rather than streaming it to the client. The model gets a clean
     // tool-result error and can retry with a smaller schema.
-    let schema_bytes = serde_json::to_vec(&requested_schema)
+    //
+    // Measure the RAW input schema BEFORE `cap_requested_schema`: that helper
+    // replaces an oversized schema with a tiny error-marker object, so checking
+    // the capped value would never see the original size and the guard would
+    // never fire.
+    let raw_schema = input
+        .get("schema")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
+    let schema_bytes = serde_json::to_vec(&raw_schema)
         .map(|v| v.len())
         .unwrap_or(usize::MAX);
     if schema_bytes > MAX_STRUCTURED_CONTENT_BYTES {
@@ -277,6 +279,8 @@ pub(crate) async fn run_ask_user_elicitation(
             true,
         );
     }
+    let requested_schema =
+        crate::modules::mcp::elicitation::models::cap_requested_schema(raw_schema);
 
     // No interactive stream (e.g. the before_llm_call no-SSE path) → nobody to ask.
     let Some(sse_tx) = sse_tx else {
