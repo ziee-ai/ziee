@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test'
+import { Page, Route } from '@playwright/test'
 
 /**
  * page.route helpers for mocking chat SSE streams and elicitation endpoints.
@@ -164,6 +164,25 @@ export async function mockChatTokenStream(
     },
   )
 
+  // Fulfil a chat-stream GET, returning false if the connection was aborted
+  // (client navigated/reconnected) before delivery — route.fulfill rejects on a
+  // dead request. The caller re-queues undelivered frames so they aren't lost.
+  const safeFulfill = async (
+    route: Route,
+    body: string,
+  ): Promise<boolean> => {
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body,
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   await page.route(/\/api\/chat\/stream(\?|$)/, async (route, request) => {
     if (request.method() !== 'GET') {
       return route.fallback()
@@ -177,20 +196,22 @@ export async function mockChatTokenStream(
     const payload = await dequeue()
     if ('failed' in payload) {
       // The matching send failed — no frames; serve the handshake only.
-      return route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        body: handshake,
-      })
+      await safeFulfill(route, handshake)
+      return
     }
     const body =
       handshake +
       serializeChatStreamFrames(scripts[payload.scriptIdx], payload.conversationId)
-    await route.fulfill({
-      status: 200,
-      contentType: 'text/event-stream',
-      body,
-    })
+    // The client keeps only ONE chat-stream open and aborts the old one on every
+    // navigation/reconnect, so a GET that dequeued a payload may already be dead
+    // (e.g. goToNewChatPage tears down the connection that grabbed it). If
+    // delivery fails, re-queue the frames so the next LIVE GET reconnect gets
+    // them — otherwise the send's `complete` never arrives, the post-complete
+    // /messages reload never fires, and the assistant bubble never mounts.
+    const delivered = await safeFulfill(route, body)
+    if (!delivered) {
+      enqueue(payload)
+    }
   })
 
   return {
