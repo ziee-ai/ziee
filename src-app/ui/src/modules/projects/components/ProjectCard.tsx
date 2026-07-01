@@ -83,7 +83,7 @@ export function ProjectCard({
             <Tooltip content="Edit">
               <Button
                 data-testid={`project-card-edit-button-${project.id}`}
-                variant="ghost"
+                variant="outline"
                 size="default"
                 icon={<Pencil />}
                 aria-label={`Edit ${project.name}`}
@@ -125,7 +125,7 @@ export function ProjectCard({
             >
               <Button
                 data-testid={`project-card-delete-button-${project.id}`}
-                variant="ghost"
+                variant="outline"
                 size="default"
                 icon={<Trash2 />}
                 loading={deleting}

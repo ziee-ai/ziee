@@ -453,7 +453,7 @@ export function FileCard({
             >
               <Tooltip content="Remove">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="default"
                   icon={<Trash2 />}
                   aria-label="Remove file"

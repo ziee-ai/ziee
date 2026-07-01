@@ -98,7 +98,7 @@ export function CoreMemoryBlocksEditor({
                   </Paragraph>
                 </div>
                 <Space>
-                  <Button variant="ghost"
+                  <Button variant="outline"
                     icon={<Pencil />}
                     size="default"
                     onClick={() => setEditing(b)}
@@ -130,7 +130,7 @@ export function CoreMemoryBlocksEditor({
                     <Button
                       icon={<Trash2 />}
                       size="default"
-                      variant="ghost"
+                      variant="outline"
                       aria-label={`Delete block ${b.block_label}`}
                       data-testid={`memory-core-block-delete-btn-${b.id}`}
                     />

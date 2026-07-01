@@ -129,7 +129,7 @@ export function WorkflowRunsList({
               >
                 <Button
                   data-testid={`wf-run-delete-btn-${run.id}`}
-                  variant="ghost"
+                  variant="outline"
                   size="default"
                   icon={<Trash2 />}
                   loading={!!deleting[run.id]}

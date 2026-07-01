@@ -45,7 +45,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
           </Space>
           <Button
             size="default"
-            variant="outline"
+            variant="ghost"
             icon={<Pencil aria-hidden="true" />}
             onClick={handleEdit}
             aria-label={`Edit LLM Providers for ${group.name}`}

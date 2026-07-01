@@ -139,7 +139,7 @@ export function MyMemoriesSection() {
                 }
               }}
             >
-              <Button variant="destructive" icon={<Trash2 />} data-testid="memory-delete-all-btn">Delete all</Button>
+              <Button variant="ghost" icon={<Trash2 />} data-testid="memory-delete-all-btn">Delete all</Button>
             </Confirm>
           )}
         </Flex>
@@ -210,7 +210,7 @@ export function MyMemoriesSection() {
                         <div className="flex gap-1 items-center justify-end">
                           <Tooltip title="Edit memory">
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="default"
                               icon={<Pencil />}
                               onClick={() => setEditing(row)}
@@ -239,7 +239,7 @@ export function MyMemoriesSection() {
                           >
                             <Tooltip title="Delete memory">
                               <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="default"
                                 icon={<Trash2 />}
                                 aria-label={`Delete memory ${row.id}`}

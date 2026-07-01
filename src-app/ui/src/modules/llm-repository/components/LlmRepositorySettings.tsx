@@ -155,7 +155,7 @@ export function LlmRepositorySettings() {
         <Button
           key="test"
           data-testid={`llmrepo-test-btn-${repository.id}`}
-          variant="outline"
+          variant="ghost"
           icon={<CloudDownload />}
           loading={testing}
           onClick={() => testRepositoryConnection(repository)}
@@ -170,7 +170,7 @@ export function LlmRepositorySettings() {
         <Button
           key="edit"
           data-testid={`llmrepo-edit-btn-${repository.id}`}
-          variant="outline"
+          variant="ghost"
           icon={<Pencil />}
           onClick={() => handleEditRepository(repository)}
         >
@@ -190,7 +190,7 @@ export function LlmRepositorySettings() {
           cancelText="Cancel"
           okButtonProps={{ danger: true }}
         >
-          <Button data-testid={`llmrepo-delete-btn-${repository.id}`} variant="destructive" icon={<Trash2 />}>
+          <Button data-testid={`llmrepo-delete-btn-${repository.id}`} variant="ghost" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,

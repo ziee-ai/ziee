@@ -135,7 +135,7 @@ export function RuntimeVersionCard({ version }: Props) {
         }}
       >
         <Button
-          variant="destructive"
+          variant="ghost"
           icon={<Trash2 />}
           loading={isDeleting}
           data-testid={`llmrt-version-delete-${version.version}`}

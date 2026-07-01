@@ -237,7 +237,7 @@ export function ProjectFilesManagePanel() {
         </Button>
         <Button
           size="default"
-          variant="destructive"
+          variant="ghost"
           icon={<Trash2 />}
           onClick={handleBatchDelete}
           data-testid="file-project-delete-selected-btn"
@@ -313,7 +313,7 @@ export function ProjectFilesManagePanel() {
                   >
                     <Tooltip title="Delete">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         icon={<Trash2 />}
                         aria-label={`Delete ${file.filename}`}
                         data-testid={`file-project-delete-btn-${file.id}`}

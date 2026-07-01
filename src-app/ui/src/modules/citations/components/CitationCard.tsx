@@ -72,7 +72,7 @@ export function CitationCard({
             >
               <Button
                 size="default"
-                variant="ghost"
+                variant="outline"
                 type="button"
                 aria-label={`Delete ${entry.citation_key}`}
                 icon={<Trash2 />}

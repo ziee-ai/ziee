@@ -128,7 +128,7 @@ export function UsersSettings() {
       actions.push(
         <Button
           key="edit"
-          variant="outline"
+          variant="ghost"
           icon={<Pencil />}
           onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
           data-testid={`user-edit-button-${user.id}`}
@@ -179,7 +179,7 @@ export function UsersSettings() {
             data-testid={`user-delete-confirm-${user.id}`}
           >
             <Button
-              variant="destructive"
+              variant="ghost"
               icon={<Trash2 aria-hidden="true" />}
               aria-label={`Delete ${user.username}`}
               data-testid={`user-delete-button-${user.id}`}

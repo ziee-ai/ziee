@@ -500,7 +500,7 @@ export function McpConfigModal() {
                     data-testid={`mcp-config-pertool-input-${limit.server_id}-${limit.tool_name}`}
                   />
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     icon={<Trash2 />}
                     onClick={() => mcpStore.removePerToolLimit(currentConversationId, limit.server_id, limit.tool_name)}
                     data-testid={`mcp-config-pertool-remove-${limit.server_id}-${limit.tool_name}`}

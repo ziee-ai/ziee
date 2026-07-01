@@ -103,7 +103,7 @@ export function WorkflowDetailDrawer() {
       footer={
         editable ? (
           <>
-            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="destructive" size="default" icon={<Trash2 />}>
+            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="ghost" size="default" icon={<Trash2 />}>
               Delete
             </Button>
             <Dialog

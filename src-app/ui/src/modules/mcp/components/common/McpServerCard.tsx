@@ -246,7 +246,7 @@ export function McpServerCard({
                   )}
                   {canTest && (
                     <Tooltip title="Test the connection to this server">
-                      <Button variant="outline"
+                      <Button variant="ghost"
                         icon={<Plug />}
                         loading={testing}
                         onClick={e => {
@@ -261,7 +261,7 @@ export function McpServerCard({
                     </Tooltip>
                   )}
                   {canEdit && (
-                    <Button variant="outline"
+                    <Button variant="ghost"
                       icon={<Pencil />}
                       onClick={e => {
                         e.stopPropagation()
@@ -295,7 +295,7 @@ export function McpServerCard({
                       >
                         <Button
                           icon={<Trash2 />}
-                          variant="destructive"
+                          variant="ghost"
                           disabled={server.enabled}
                           onClick={e => e.stopPropagation()}
                           aria-label={`Delete ${server.display_name}`}

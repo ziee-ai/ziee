@@ -68,7 +68,7 @@ export function AssistantsSettings() {
         <Button
           key="edit"
           data-testid={`template-assistant-${assistant.id}-edit`}
-          variant="outline"
+          variant="ghost"
           icon={<Pencil />}
           onClick={() => handleEdit(assistant)}
         >
@@ -88,7 +88,7 @@ export function AssistantsSettings() {
           okText="Delete"
           cancelText="Cancel"
         >
-          <Button data-testid={`template-assistant-${assistant.id}-delete`} variant="destructive" icon={<Trash2 />}>
+          <Button data-testid={`template-assistant-${assistant.id}-delete`} variant="ghost" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,

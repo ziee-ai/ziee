@@ -173,7 +173,7 @@ export function ConversationCard({
                   ? 'opacity-100'
                   : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100'
               }`}
-              variant="ghost"
+              variant="outline"
               size="default"
               icon={<Trash2 />}
               onClick={(e: React.MouseEvent) => {

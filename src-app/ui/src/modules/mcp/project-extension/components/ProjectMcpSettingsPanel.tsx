@@ -115,7 +115,7 @@ export function ProjectMcpSettingsPanel() {
       extra={
         canEdit && (
           <Button
-            variant="outline"
+            variant="ghost"
             icon={<Pencil />}
             onClick={handleConfigure}
             aria-label="Edit MCP defaults"

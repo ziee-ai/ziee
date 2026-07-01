@@ -595,7 +595,7 @@ export function LlmRepositoryDrawer() {
               </Text>
               <Button
                 data-testid="llmrepo-form-test-btn"
-                variant="outline"
+                variant="ghost"
                 icon={<CloudDownload />}
                 loading={testing}
                 onClick={testRepositoryFromForm}

@@ -65,7 +65,7 @@ export function GroupListItem({
       actions.push(
         <Button
           key="edit"
-          variant="outline"
+          variant="ghost"
           icon={<Pencil aria-hidden="true" />}
           onClick={() => onEdit(group)}
           aria-label={`Edit ${group.name}`}
@@ -89,7 +89,7 @@ export function GroupListItem({
           data-testid={`user-group-delete-confirm-${group.id}`}
         >
           <Button
-            variant="destructive"
+            variant="ghost"
             icon={<Trash2 aria-hidden="true" />}
             aria-label={`Delete ${group.name}`}
             data-testid={`user-group-delete-button-${group.id}`}

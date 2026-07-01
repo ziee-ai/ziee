@@ -196,7 +196,7 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="edit"
-          variant="ghost"
+          variant="outline"
           icon={<Pencil aria-hidden="true" />}
           onClick={() => handleEditLlmModel(llmModel.id)}
           aria-label={`Edit ${llmModel.display_name} model`}
@@ -211,7 +211,7 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="delete"
-          variant="ghost"
+          variant="outline"
           icon={<Trash2 aria-hidden="true" />}
           onClick={() => handleDeleteLlmModel(llmModel.id)}
           aria-label={`Delete ${llmModel.display_name} model`}

@@ -187,7 +187,7 @@ export function SkillDetailDrawer() {
             cancelText="Cancel"
             okButtonProps={{ danger: true }}
           >
-            <Button variant="destructive" size="default" data-testid="skill-delete-button" icon={<Trash2 />}>
+            <Button variant="ghost" size="default" data-testid="skill-delete-button" icon={<Trash2 />}>
               Delete
             </Button>
           </Confirm>
