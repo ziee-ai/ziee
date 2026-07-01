@@ -1,6 +1,6 @@
 import * as React from 'react'
 import {
-  DropdownMenu as Root, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
+  DropdownMenu as Root, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuGroup,
 } from '../shadcn/dropdown-menu'
 import { cn } from '@/lib/utils'
 
@@ -53,7 +53,12 @@ export function Dropdown({ items, children, side, align = 'end', disabled, onSel
           'type' in it && it.type === 'divider' ? (
             <DropdownMenuSeparator key={`d${i}`} />
           ) : 'type' in it && it.type === 'label' ? (
-            <DropdownMenuLabel key={`l${i}`}>{it.label}</DropdownMenuLabel>
+            // Base UI's GroupLabel requires a Group ancestor (throws
+            // "MenuGroupContext is missing" otherwise), so wrap the section
+            // label in its own group.
+            <DropdownMenuGroup key={`l${i}`}>
+              <DropdownMenuLabel>{it.label}</DropdownMenuLabel>
+            </DropdownMenuGroup>
           ) : (
             <DropdownMenuItem
               key={(it as { key: string }).key}
