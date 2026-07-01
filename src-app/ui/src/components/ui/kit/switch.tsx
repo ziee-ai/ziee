@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Loader2 } from 'lucide-react'
 import { Switch as Base } from '../shadcn/switch'
 import { Skeleton } from '../shadcn/skeleton'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../shadcn/tooltip'
 import { useSurface } from './surface'
 import { cn } from '@/lib/utils'
 import type { CheckedBinding } from './value-binding'
@@ -16,6 +17,9 @@ interface SwitchBase {
   id?: string
   /** Inline label; if omitted, provide aria-label/aria-labelledby or wrap in a FormField. */
   label?: React.ReactNode
+  /** Tooltip on hover/focus. For a label-less switch it ALSO becomes the accessible
+   * name (aria-label) when it's a string — so a bare switch is never nameless. */
+  tooltip?: React.ReactNode
   className?: string
   'aria-label'?: string
   'aria-labelledby'?: string
@@ -28,11 +32,13 @@ interface SwitchBase {
 export type SwitchProps = SwitchBase & CheckedBinding
 
 export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function Switch(
-  { checked, value, defaultChecked, onCheckedChange, onChange, onBlur, disabled, loading, size, name, id, label, className,
+  { checked, value, defaultChecked, onCheckedChange, onChange, onBlur, disabled, loading, size, name, id, label, tooltip, className,
     'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby, 'aria-describedby': ariaDescribedby, invalid,
     'data-testid': testid },
   ref,
 ) {
+  // A label-less switch with a string tooltip gets that tooltip as its accessible name.
+  const nameFromTooltip = typeof tooltip === 'string' ? tooltip : undefined
   const s = useSurface({ disabled })
   const reactId = React.useId()
   const ctrlId = id ?? reactId
@@ -52,7 +58,7 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
       onBlur={onBlur}
       disabled={s.disabled || s.readOnly || loading}
       name={name}
-      aria-label={label == null ? ariaLabel : undefined}
+      aria-label={label == null ? (ariaLabel ?? nameFromTooltip) : undefined}
       aria-labelledby={ariaLabelledby}
       aria-describedby={ariaDescribedby}
       aria-invalid={invalid || undefined}
@@ -69,7 +75,15 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
       <Loader2 className="pointer-events-none absolute left-1/2 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 animate-spin opacity-80" aria-hidden />
     </span>
   ) : baseEl
-  if (label == null) return control
+  const maybeTip = tooltip != null ? (
+    <TooltipProvider delay={300}>
+      <Tooltip>
+        <TooltipTrigger render={control} />
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ) : control
+  if (label == null) return maybeTip
   return (
     <div className="flex items-center gap-2">
       {control}

@@ -99,6 +99,7 @@ export function UsersSettings() {
       actions.push(
         <div key="active-confirm" className="inline-flex items-center">
           <Switch
+            tooltip={user.is_active ? 'Deactivate user' : 'Activate user'}
             className={'mr-2!'}
             checked={user.is_active}
             onChange={() => setActiveConfirmUserId(user.id)}

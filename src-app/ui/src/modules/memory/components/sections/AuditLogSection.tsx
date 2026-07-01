@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Card, Empty, InputNumber, Space, Spin } from '@/components/ui'
+import { Button, Card, Empty, InputNumber, Spin } from '@/components/ui'
 import { Table, Tag, Text, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -27,23 +27,24 @@ export function AuditLogSection() {
         assistant&rsquo;s tools added, and what you deleted (and when).
       </Paragraph>
 
-      <Space className="mb-4" align="center">
-        <Text>Show last</Text>
+      <div className="mb-4 flex flex-nowrap items-center gap-2">
+        <Text className="whitespace-nowrap">Show last</Text>
         <InputNumber
           data-testid="memory-audit-limit-input"
           min={1}
           max={500}
           value={pendingLimit}
           onChange={v => setPendingLimit(typeof v === 'number' ? v : 100)}
+          suffix="entries"
+          className="w-40"
         />
-        <Text>entries</Text>
         <Button
           data-testid="memory-audit-limit-apply"
           onClick={() => Stores.MemoryAudit.setLimit(pendingLimit)}
         >
           Apply
         </Button>
-      </Space>
+      </div>
 
       {loading ? (
         <div className="flex justify-center py-6">

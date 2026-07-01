@@ -124,6 +124,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
+                          tooltip="Assign this provider"
                           checked={isChecked}
                           onChange={checked =>
                             handleToggle(provider.id, checked)

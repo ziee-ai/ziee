@@ -162,10 +162,10 @@ export function PreferencesSection() {
         </FormField>
         <FormField
           name="retention_days"
-          label="Retention (days)"
+          label="Retention"
           description="Empty = forever. Older memories are soft-deleted by the nightly reaper."
         >
-          <InputNumber min={1} max={3650} className="w-40" data-testid="memory-prefs-retention-input" />
+          <InputNumber min={1} max={3650} suffix="days" className="w-40" data-testid="memory-prefs-retention-input" />
         </FormField>
         <Flex justify="end" className="-mt-2">
           <Button

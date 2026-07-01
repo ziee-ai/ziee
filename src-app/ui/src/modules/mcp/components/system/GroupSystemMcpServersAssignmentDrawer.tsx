@@ -132,6 +132,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
+                          tooltip="Assign this server"
                           checked={isChecked}
                           onChange={checked => handleToggle(server.id, checked)}
                           disabled={!canManage}

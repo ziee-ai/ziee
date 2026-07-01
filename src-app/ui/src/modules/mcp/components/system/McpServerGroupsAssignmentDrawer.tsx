@@ -136,6 +136,7 @@ export function McpServerGroupsAssignmentDrawer() {
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
+                          tooltip="Assign this group"
                           checked={isChecked}
                           onChange={checked => handleToggle(group.id, checked)}
                           disabled={!canManage}

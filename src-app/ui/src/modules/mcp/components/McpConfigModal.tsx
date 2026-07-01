@@ -287,6 +287,7 @@ export function McpConfigModal() {
         <div className="flex items-center justify-between w-full" data-testid={`mcp-config-server-row-${server.id}`} onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2">
             <Switch
+              tooltip="Enable this server for the conversation"
               checked={!!selection}
               onChange={(checked) => handleServerToggle(server.id, checked)}
               size="sm"
@@ -321,6 +322,7 @@ export function McpConfigModal() {
                     <div className="flex items-center gap-1">
                       <Text type="secondary" className="text-xs">Auto Approve</Text>
                       <Switch
+                        tooltip="Auto-approve this tool"
                         size="sm"
                         checked={isToolAutoApproved(server.id, tool.name)}
                         onChange={() => handleAutoApproveToggle(server.id, tool.name)}
@@ -419,6 +421,7 @@ export function McpConfigModal() {
             <div className="flex items-center justify-between">
               <Text>Stop when AI doesn't call any tools</Text>
               <Switch
+                tooltip="Stop when the AI calls no tools"
                 checked={loopSettings.stop_when_no_tool_calling ?? true}
                 onChange={(checked) => mcpStore.setLoopSettings(currentConversationId, { stop_when_no_tool_calling: checked })}
                 data-testid="mcp-config-stop-no-tools-switch"
@@ -427,6 +430,7 @@ export function McpConfigModal() {
             <div className="flex items-center justify-between">
               <Text>Force final answer when limits reached</Text>
               <Switch
+                tooltip="Force a final answer when limits are reached"
                 checked={loopSettings.force_final_answer ?? false}
                 onChange={(checked) => mcpStore.setLoopSettings(currentConversationId, { force_final_answer: checked })}
                 data-testid="mcp-config-force-final-switch"
