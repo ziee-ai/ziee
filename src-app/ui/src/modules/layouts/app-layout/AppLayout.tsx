@@ -390,10 +390,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         aria-hidden={
           windowMinSize.xs ? isSidebarCollapsed : undefined
         }
-        // Solid opaque surface behind the (translucent bg-muted/40) sidebar on
-        // the mobile overlay — so it reads as a solid panel, not a see-through/
-        // frosted one.
-        className={cn(windowMinSize.xs && 'bg-background')}
+        // Mobile overlay: a solid opaque surface behind the (translucent
+        // bg-muted/40) sidebar so it reads as a solid panel, plus a full border
+        // like the Dialog (no drop shadow — see the style block below).
+        className={cn(windowMinSize.xs && 'bg-background border border-border')}
         // Neutral, state-gated drop shadow (rgba black, not a brand hue) that is part of the
         // combined inline transition below; value is computed per collapse/viewport state.
         data-allow-custom-color
@@ -425,21 +425,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           transform: isSidebarCollapsed
             ? 'translateX(-100%)'
             : 'translateX(0)',
-          borderRight: windowMinSize.xs
-            ? `1px solid var(--border)`
-            : undefined,
-          // Box-shadow extends ~16px past the wrapper edges. When the
-          // wrapper translates offscreen on collapse (translateX(-100%)
-          // on xs), the right-edge tail of that 16px-blur shadow re-
-          // enters the visible viewport as a phantom 16px stripe along
-          // the screen's left side. Gating on `!isSidebarCollapsed`
-          // means there's no shadow when there's nothing to bleed
-          // from. The shadow fades back in on slide-out via
-          // SIDEBAR_TRANSITION's `box-shadow 200ms ease-out`.
-          boxShadow:
-            windowMinSize.xs && !isSidebarCollapsed
-              ? 'rgba(0, 0, 0, 0.075) 0px 2px 16px 0px'
-              : 'none',
+          // No drop shadow on the mobile overlay — the Dialog-style border
+          // (className above) provides the separation. (The border lives in
+          // className, not here, so it isn't part of the transform transition.)
           // Single transition spanning every value that can change
           // on the xs threshold flip. Property name stays constant,
           // so the browser doesn't reset mid-flight. Kept in sync
