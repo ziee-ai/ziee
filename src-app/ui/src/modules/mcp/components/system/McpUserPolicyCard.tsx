@@ -184,6 +184,7 @@ export function McpUserPolicyCard() {
               value={retentionDays}
               onChange={v => setRetentionDays(typeof v === 'number' ? v : 90)}
               disabled={!canEdit}
+              aria-label="MCP tool-call history retention (days)"
               data-testid="mcp-tool-call-retention-days"
             />
             <Text type="secondary">days</Text>

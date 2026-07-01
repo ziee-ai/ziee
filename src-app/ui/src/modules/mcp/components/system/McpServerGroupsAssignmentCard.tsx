@@ -50,25 +50,24 @@ export function McpServerGroupsAssignmentCard({
           {
             key: 'groups',
             label: <Text className="font-medium text-sm">User Groups</Text>,
+            // The Assign action lives in the header "extra" slot (always visible,
+            // and clicking it opens the drawer WITHOUT toggling the panel) rather
+            // than inside the collapsed body — otherwise an admin would have to
+            // expand the panel just to reach it.
+            extra: canManage ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Pencil aria-hidden="true" />}
+                onClick={handleManageGroups}
+                aria-label="Manage user groups"
+                data-testid={`mcp-groups-assign-btn-${serverId}`}
+              >
+                Assign
+              </Button>
+            ) : undefined,
             children: (
               <>
-                {canManage && (
-                  <div className="mb-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<Pencil aria-hidden="true" />}
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleManageGroups()
-                      }}
-                      aria-label="Manage user groups"
-                      data-testid={`mcp-groups-assign-btn-${serverId}`}
-                    >
-                      Assign
-                    </Button>
-                  </div>
-                )}
                 {loading ? (
                   <Spin size="sm" label="Loading" />
                 ) : assignedGroups.length === 0 ? (

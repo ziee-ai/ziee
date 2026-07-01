@@ -22,9 +22,13 @@ AccordionItem.displayName = "AccordionItem"
 
 const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <AccordionPrimitive.Header className="flex">
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger> & {
+    /** Header-right action rendered OUTSIDE the trigger button, so clicking it
+     *  does not toggle the panel (e.g. an inline "Edit"/"Assign" affordance). */
+    extra?: React.ReactNode
+  }
+>(({ className, children, extra, ...props }, ref) => (
+  <AccordionPrimitive.Header className="flex items-center">
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
@@ -36,6 +40,14 @@ const AccordionTrigger = React.forwardRef<
       {children}
       <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
     </AccordionPrimitive.Trigger>
+    {extra != null && (
+      <div
+        className="ml-2 flex items-center"
+        onClick={e => e.stopPropagation()}
+      >
+        {extra}
+      </div>
+    )}
   </AccordionPrimitive.Header>
 ))
 AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName
