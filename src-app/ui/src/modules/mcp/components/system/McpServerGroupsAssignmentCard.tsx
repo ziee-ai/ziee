@@ -44,7 +44,7 @@ export function McpServerGroupsAssignmentCard({
     >
       {/* Always-visible User Groups section (no accordion): the "User Groups"
           heading with the Assign action next to it, then the list below. */}
-      <Flex justify="between" align="center" className="gap-2 mb-1">
+      <Flex align="center" className="gap-2 mb-1">
         <Text className="font-medium text-sm">User Groups</Text>
         {canManage && (
           <Button

@@ -1,8 +1,6 @@
 import { Pencil } from 'lucide-react'
 import {
   Button,
-  Accordion,
-  Empty,
   Flex,
   MultiSelect,
   Space,
@@ -71,66 +69,12 @@ export function AdminWorkflowGroupAssignment({
 
   return (
     <div className="pb-3" data-workflow-id={workflowId}>
-      <Accordion
-        data-testid="wf-group-assign-accordion"
-        collapsible
-        items={[
-          {
-            key: 'groups',
-            label: <Text className="font-medium text-sm">User Groups</Text>,
-            children: loading ? (
-              <Spin size="sm" label="Loading groups" />
-            ) : editing ? (
-              <Space direction="vertical" className="w-full">
-                <MultiSelect
-                  data-testid="wf-group-assign-multiselect"
-                  className="w-full"
-                  aria-label="Restrict to groups"
-                  placeholder="Restrict to specific groups (empty = all users)"
-                  searchPlaceholder="Search groups…"
-                  value={draft}
-                  onChange={setDraft}
-                  options={allGroups.map(g => ({
-                    label: g.name,
-                    value: g.id,
-                  }))}
-                  removeLabel={(label) => `Remove ${label}`}
-                  emptyText="No groups found"
-                />
-                <Flex gap="sm" justify="end">
-                  <Button data-testid="wf-group-assign-cancel-btn" size="default" variant="outline" onClick={() => setEditing(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    data-testid="wf-group-assign-save-btn"
-                    size="default"
-                    loading={saving}
-                    onClick={save}
-                  >
-                    Save
-                  </Button>
-                </Flex>
-              </Space>
-            ) : assignedIds.length === 0 ? (
-              <Empty
-                data-testid="wf-group-assign-empty"
-                description="Available to all users"
-                className="!my-2"
-              />
-            ) : (
-              <Space wrap size="middle">
-                {assignedIds.map(id => (
-                  <Tag variant="outline" key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
-                    {nameFor(id)}
-                  </Tag>
-                ))}
-              </Space>
-            ),
-          },
-        ]}
-      />
-      {canAssign && !editing && assignedIds.length > 0 && (
-        <div className="flex justify-end px-4 pb-2">
+      {/* Always-visible User Groups section (matches McpServerGroupsAssignmentCard):
+          the "User Groups" heading with the Assign action next to it, then the
+          content below. */}
+      <Flex align="center" className="gap-2 mb-1">
+        <Text className="font-medium text-sm">User Groups</Text>
+        {canAssign && !editing && (
           <Button
             data-testid="wf-group-assign-edit-btn"
             variant="ghost"
@@ -141,7 +85,53 @@ export function AdminWorkflowGroupAssignment({
           >
             Assign
           </Button>
-        </div>
+        )}
+      </Flex>
+      {loading ? (
+        <Spin size="sm" label="Loading groups" />
+      ) : editing ? (
+        <Space direction="vertical" className="w-full">
+          <MultiSelect
+            data-testid="wf-group-assign-multiselect"
+            className="w-full"
+            aria-label="Restrict to groups"
+            placeholder="Restrict to specific groups (empty = all users)"
+            searchPlaceholder="Search groups…"
+            value={draft}
+            onChange={setDraft}
+            options={allGroups.map(g => ({
+              label: g.name,
+              value: g.id,
+            }))}
+            removeLabel={(label) => `Remove ${label}`}
+            emptyText="No groups found"
+          />
+          <Flex gap="sm" justify="end">
+            <Button data-testid="wf-group-assign-cancel-btn" size="default" variant="outline" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+            <Button
+              data-testid="wf-group-assign-save-btn"
+              size="default"
+              loading={saving}
+              onClick={save}
+            >
+              Save
+            </Button>
+          </Flex>
+        </Space>
+      ) : assignedIds.length === 0 ? (
+        <Text type="secondary" className="text-xs" data-testid="wf-group-assign-empty">
+          Available to all users
+        </Text>
+      ) : (
+        <Space wrap size="middle">
+          {assignedIds.map(id => (
+            <Tag variant="outline" key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
+              {nameFor(id)}
+            </Tag>
+          ))}
+        </Space>
       )}
     </div>
   )
