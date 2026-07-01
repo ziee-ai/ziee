@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Pencil } from 'lucide-react'
-import { Button, Accordion, Empty, Flex, Space, Spin, Tag, Text } from '@/components/ui'
+import { Button, Empty, Flex, Space, Spin, Tag, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -42,65 +42,50 @@ export function McpServerGroupsAssignmentCard({
       data-server-id={serverId}
       data-card-type="user-groups-assignment"
     >
-      <Accordion
-        ghost
-        collapsible
-        data-testid={`mcp-groups-accordion-${serverId}`}
-        items={[
-          {
-            key: 'groups',
-            label: <Text className="font-medium text-sm">User Groups</Text>,
-            children: (
-              <>
-                {canManage && (
-                  <div className="mb-2">
-                    <Button
-                      variant="ghost"
-                      size="default"
-                      icon={<Pencil aria-hidden="true" />}
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleManageGroups()
-                      }}
-                      aria-label="Manage user groups"
-                      data-testid={`mcp-groups-assign-btn-${serverId}`}
-                    >
-                      Assign
-                    </Button>
-                  </div>
-                )}
-                {loading ? (
-                  <Spin size="sm" label="Loading" />
-                ) : assignedGroups.length === 0 ? (
-                  <Empty
-                    description="No groups assigned"
-                    className="!my-2"
-                    data-testid={`mcp-groups-empty-${serverId}`}
-                  />
-                ) : (
-                  <Flex vertical gap="small" className="w-full">
-                    <Text type="secondary" className="text-xs">
-                      User groups that have access to this MCP server
-                    </Text>
-                    <Space wrap size="small">
-                      {assignedGroups.map(group => (
-                        <Tag variant="outline"
-                          key={group.id}
-                          tone="info"
-                          className="text-[13px] px-2 py-1"
-                          data-testid={`mcp-group-tag-${group.id}`}
-                        >
-                          {group.name}
-                        </Tag>
-                      ))}
-                    </Space>
-                  </Flex>
-                )}
-              </>
-            ),
-          },
-        ]}
-      />
+      {/* Always-visible User Groups section (no accordion): the "User Groups"
+          heading with the Assign action next to it, then the list below. */}
+      <Flex justify="between" align="center" className="gap-2 mb-2">
+        <Text className="font-medium text-sm">User Groups</Text>
+        {canManage && (
+          <Button
+            variant="ghost"
+            size="default"
+            icon={<Pencil aria-hidden="true" />}
+            onClick={handleManageGroups}
+            aria-label="Manage user groups"
+            data-testid={`mcp-groups-assign-btn-${serverId}`}
+          >
+            Assign
+          </Button>
+        )}
+      </Flex>
+      {loading ? (
+        <Spin size="sm" label="Loading" />
+      ) : assignedGroups.length === 0 ? (
+        <Empty
+          description="No groups assigned"
+          className="!my-2"
+          data-testid={`mcp-groups-empty-${serverId}`}
+        />
+      ) : (
+        <Flex vertical gap="small" className="w-full">
+          <Text type="secondary" className="text-xs">
+            User groups that have access to this MCP server
+          </Text>
+          <Space wrap size="small">
+            {assignedGroups.map(group => (
+              <Tag variant="outline"
+                key={group.id}
+                tone="info"
+                className="text-[13px] px-2 py-1"
+                data-testid={`mcp-group-tag-${group.id}`}
+              >
+                {group.name}
+              </Tag>
+            ))}
+          </Space>
+        </Flex>
+      )}
     </div>
   )
 }
