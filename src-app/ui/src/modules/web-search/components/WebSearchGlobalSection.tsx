@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Flex,
   Form,
   FormField,
   InputNumber,
@@ -22,6 +21,7 @@ import {
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 
 const MIB = 1024 * 1024
@@ -118,7 +118,22 @@ export function WebSearchGlobalSection() {
   }
 
   return (
-    <Card data-testid="websearch-global-card" title="Web search">
+    <>
+    <Card
+      data-testid="websearch-global-card"
+      title="Web search"
+      footer={
+        <SettingsFormActions
+          onSave={form.handleSubmit(onSubmit)}
+          onCancel={() => form.reset()}
+          saving={savingSettings}
+          saveDisabled={!canManage || !form.formState.isDirty}
+          cancelDisabled={!canManage}
+          saveTestid="websearch-global-save"
+          cancelTestid="websearch-global-cancel"
+        />
+      }
+    >
       {!canManage && (
         <Alert
           data-testid="websearch-global-readonly-alert"
@@ -172,23 +187,10 @@ export function WebSearchGlobalSection() {
           <InputNumber data-testid="websearch-global-timeout" min={1} max={120} suffix="s" className="w-full" />
         </FormField>
 
-        <Flex justify="end" gap="small">
-          <Button
-            data-testid="websearch-global-save"
-            type="submit"
-            loading={savingSettings}
-            disabled={!canManage || !form.formState.isDirty}
-          >
-            Save
-          </Button>
-        </Flex>
       </Form>
+    </Card>
 
-      <Separator titlePlacement="left">
-        <Text className="text-xs" type="secondary">
-          Provider chain
-        </Text>
-      </Separator>
+    <Card data-testid="websearch-chain-card" title="Provider chain">
       <Paragraph type="secondary" className="text-xs">
         Engines are tried top-to-bottom. The chain advances to the next engine
         only on failure (error / timeout / quota) — an engine returning no
@@ -274,5 +276,6 @@ export function WebSearchGlobalSection() {
         />
       )}
     </Card>
+    </>
   )
 }
