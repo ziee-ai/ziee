@@ -100,6 +100,13 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
   const dirty = form.formState.isDirty
   const apiKeyValue = form.watch('api_key')
 
+  // Enable toggle rendered as a normal FormField (auto-saves on change).
+  const enableForm = useForm<{ enabled: boolean }>()
+  useEffect(() => {
+    enableForm.reset({ enabled: settings?.enabled_connectors?.includes(entry.key) ?? false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.enabled_connectors, entry.key])
+
   useEffect(() => {
     if (!form.formState.isDirty) {
       form.reset(buildInit())
@@ -149,33 +156,37 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
   // Read the SAME field the toggle writes (`enabled_connectors`) so display and
   // mutation can't drift — `entry.enabled` (the catalog snapshot) is not
   // refreshed by `updateSettings`. Falls back to false until settings load.
-  const isEnabled = settings?.enabled_connectors?.includes(entry.key) ?? false
 
   return (
     <>
       <Separator titlePlacement="left">
         <Text className="text-sm">{entry.display_name}</Text>
       </Separator>
-      <Paragraph type="secondary" className="text-xs !mb-1">
-        {isEnabled && <Tag variant="outline" tone="success" data-testid={`lit-connector-active-tag-${entry.key}`}>Active</Tag>}
-        {needsKey && <Tag variant="outline" tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>Needs key</Tag>}
-      </Paragraph>
+      {needsKey && (
+        <Paragraph type="secondary" className="text-xs !mb-1">
+          <Tag variant="outline" tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>Needs key</Tag>
+        </Paragraph>
+      )}
       <Paragraph type="secondary" className="text-xs !mb-2">
         {entry.keyless_note}
       </Paragraph>
 
-      <Flex align="center" gap="small" className="mb-2">
-        <Switch
-          tooltip={`Enable ${entry.display_name}`}
-          checked={isEnabled}
-          onChange={toggleEnabled}
-          loading={savingSettings}
-          // Disabled while a settings save is in flight → no double-toggle race.
-          disabled={!canManage || !settings || savingSettings}
-          data-testid={`lit-connector-enable-switch-${entry.key}`}
-        />
-        <Text className="text-xs">{isEnabled ? 'Enabled' : 'Disabled'}</Text>
-      </Flex>
+      <Form
+        form={enableForm}
+        layout="horizontal"
+        disabled={!canManage || !settings || savingSettings}
+        onSubmit={() => {}}
+        data-testid={`lit-connector-enable-form-${entry.key}`}
+      >
+        <FormField name="enabled" label="Enable" valuePropName="checked">
+          <Switch
+            tooltip={`Enable ${entry.display_name}`}
+            loading={savingSettings}
+            onChange={(v: boolean) => toggleEnabled(v)}
+            data-testid={`lit-connector-enable-switch-${entry.key}`}
+          />
+        </FormField>
+      </Form>
 
       {hasFields && (
         <Form

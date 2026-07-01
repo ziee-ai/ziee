@@ -2,11 +2,9 @@ import { useEffect } from 'react'
 import {
   Alert,
   Card,
-  Flex,
   Form,
   FormField,
   InputNumber,
-  Paragraph,
   Separator,
   Spin,
   Switch,
@@ -35,6 +33,17 @@ export function LitSearchGlobalSection() {
   const { settings, loading, savingSettings } = Stores.LitSearchAdmin
   const canManage = usePermission(Permissions.LitSearchAdminManage)
   const form = useForm<CapsForm>()
+  const togglesForm = useForm<{ enabled: boolean; completeness: boolean }>()
+
+  useEffect(() => {
+    if (settings) {
+      togglesForm.reset({
+        enabled: settings.enabled,
+        completeness: settings.completeness_estimate_enabled,
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.enabled, settings?.completeness_estimate_enabled])
 
   useEffect(() => {
     if (settings && !form.formState.isDirty) {
@@ -98,32 +107,38 @@ export function LitSearchGlobalSection() {
           data-testid="lit-global-readonly-alert"
         />
       )}
-      <Flex align="center" gap="small" className="mb-3">
-        <Switch
-          tooltip="Enable literature search"
-          checked={settings.enabled}
-          disabled={!canManage}
-          onChange={v => save({ enabled: v }, v ? 'Literature search enabled' : 'Disabled')}
-          data-testid="lit-global-enable-switch"
-        />
-        <Text>Enable literature search</Text>
-      </Flex>
-
-      <Flex align="center" gap="small" className="mb-3">
-        <Switch
-          tooltip="Show completeness estimate"
-          checked={settings.completeness_estimate_enabled}
-          disabled={!canManage}
-          onChange={v => save({ completeness_estimate_enabled: v }, 'Completeness estimate updated')}
-          data-testid="lit-global-completeness-switch"
-        />
-        <Text>Show completeness (saturation) estimate</Text>
-      </Flex>
-
-      <Paragraph type="secondary" className="text-xs">
-        The saturation estimate is a heuristic — never a measured recall rate. This
-        feature is an adjunct to, not a replacement for, systematic searching.
-      </Paragraph>
+      <Form
+        form={togglesForm}
+        layout="horizontal"
+        disabled={!canManage}
+        onSubmit={() => {}}
+        data-testid="lit-global-toggles-form"
+      >
+        <FormField
+          name="enabled"
+          label="Enable literature search"
+          description="Master switch for literature search across all sources."
+          valuePropName="checked"
+        >
+          <Switch
+            tooltip="Enable literature search"
+            onChange={(v: boolean) => save({ enabled: v }, v ? 'Literature search enabled' : 'Disabled')}
+            data-testid="lit-global-enable-switch"
+          />
+        </FormField>
+        <FormField
+          name="completeness"
+          label="Show completeness estimate"
+          description="The saturation estimate is a heuristic — never a measured recall rate — and an adjunct to, not a replacement for, systematic searching."
+          valuePropName="checked"
+        >
+          <Switch
+            tooltip="Show completeness estimate"
+            onChange={(v: boolean) => save({ completeness_estimate_enabled: v }, 'Completeness estimate updated')}
+            data-testid="lit-global-completeness-switch"
+          />
+        </FormField>
+      </Form>
 
       <Separator titlePlacement="left">
         <Text className="text-sm">Caps</Text>
