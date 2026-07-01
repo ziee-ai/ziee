@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Alert,
   Card,
@@ -38,6 +38,9 @@ export function ChunkingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, saving, error } = Stores.FileRagAdmin
+  // Client-side cross-field validation (overlap < chunk) surfaced as a persistent
+  // alert, alongside the toast + field errors.
+  const [validationError, setValidationError] = useState<string | null>(null)
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -80,6 +83,7 @@ export function ChunkingSection() {
 
   const handleSubmit = async (values: FormValues) => {
     if (values.chunk_overlap_chars >= values.chunk_chars) {
+      setValidationError('Overlap must be smaller than the chunk size.')
       message.error('Overlap must be smaller than the chunk size.')
       form.setError('chunk_chars', {
         type: 'manual',
@@ -91,6 +95,7 @@ export function ChunkingSection() {
       })
       return
     }
+    setValidationError(null)
     try {
       await Stores.FileRagAdmin.update({
         chunk_chars: values.chunk_chars,
@@ -119,8 +124,8 @@ export function ChunkingSection() {
         />
       ) : undefined}
     >
-      {error && (
-        <Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error} />
+      {(error || validationError) && (
+        <Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error || validationError} />
       )}
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Applies to files indexed after saving; existing files keep their current
