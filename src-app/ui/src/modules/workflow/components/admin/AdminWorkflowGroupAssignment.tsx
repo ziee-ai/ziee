@@ -38,7 +38,7 @@ export function AdminWorkflowGroupAssignment({
         editor={{
           loadAllGroups: async () => {
             const res = await ApiClient.UserGroup.list({ page: 1, per_page: 100 })
-            return res.groups.map(g => ({ id: g.id, name: g.name }))
+            return res.groups.map(g => ({ id: g.id, name: g.name, description: g.description, is_default: g.is_default }))
           },
           save: ids => Stores.SystemWorkflow.setGroups(workflowId, ids),
         }}

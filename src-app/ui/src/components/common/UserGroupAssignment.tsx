@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Pencil, ChevronDown, ChevronRight } from 'lucide-react'
-import { message, Button, MultiSelect, Space, Spin, Tag, Text } from '@/components/ui'
+import { message, Button, Card, Flex, Space, Spin, Switch, Tag, Text, Title } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 export interface UserGroupOption {
   id: string
   name: string
+  description?: string | null
+  is_default?: boolean
 }
 
 export interface UserGroupAssignmentProps {
@@ -176,18 +178,54 @@ export function UserGroupAssignment({
             </div>
           }
         >
-          <MultiSelect
-            className="w-full"
-            data-testid={tid('multiselect')}
-            placeholder="Restrict to specific groups (empty = all users)"
-            searchPlaceholder="Search groups"
-            emptyText="No groups found"
-            removeLabel={label => `Remove ${label}`}
-            value={draft}
-            onChange={setDraft}
-            options={allGroups.map(g => ({ label: g.name, value: g.id }))}
-            aria-label="Select groups"
-          />
+          {/* Same list-of-group-cards-with-switches layout the MCP + LLM-provider
+              group-assignment drawers use, so every "Assign User Groups" drawer
+              looks the same. */}
+          <Flex direction="column" gap="large" className="w-full">
+            <div>
+              <Title level={5} className="mb-2">Available Groups</Title>
+              <Text type="secondary">Select which groups have access (none = all users)</Text>
+            </div>
+            {allGroups.length === 0 ? (
+              <div className="p-4 text-center">
+                <Text type="secondary">No groups available</Text>
+              </div>
+            ) : (
+              <Flex direction="column" gap="middle" className="w-full">
+                {allGroups.map(g => {
+                  const checked = draft.includes(g.id)
+                  return (
+                    <Card key={g.id} data-testid={`${testid}-drawer-card-${g.id}`}>
+                      <div className="flex items-start gap-3">
+                        <Switch
+                          tooltip="Assign this group"
+                          checked={checked}
+                          onChange={next =>
+                            setDraft(d => (next ? [...d, g.id] : d.filter(x => x !== g.id)))
+                          }
+                          className="mt-0.5"
+                          data-testid={`${testid}-drawer-switch-${g.id}`}
+                        />
+                        <div className="flex flex-col gap-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Text strong className="text-sm">{g.name}</Text>
+                            {g.is_default && (
+                              <Tag tone="info" variant="outline" className="text-[11px] m-0" data-testid={`${testid}-drawer-default-tag-${g.id}`}>
+                                Default
+                              </Tag>
+                            )}
+                          </div>
+                          {g.description && (
+                            <Text type="secondary" className="text-xs">{g.description}</Text>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  )
+                })}
+              </Flex>
+            )}
+          </Flex>
         </Drawer>
       )}
     </div>
