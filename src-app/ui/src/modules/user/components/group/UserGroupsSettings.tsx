@@ -2,7 +2,6 @@ import { Plus } from 'lucide-react'
 import {
   Button,
   Empty,
-  Flex,
   Form,
   FormField,
   useForm,
@@ -169,11 +168,30 @@ export function UserGroupsSettings() {
           setCreateModalVisible(false)
           createForm.reset()
         }}
-        footer={null}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateModalVisible(false)
+                createForm.reset()
+              }}
+              data-testid="user-create-group-cancel-button"
+            >
+              {canCreate ? 'Cancel' : 'Close'}
+            </Button>
+            {canCreate && (
+              <Button type="submit" form="create-group-form" data-testid="user-create-group-submit-button">
+                Create
+              </Button>
+            )}
+          </div>
+        }
         size={600}
         mask={{ closable: false }}
       >
         <Form
+          name="create-group-form"
           form={createForm}
           layout="vertical"
           onSubmit={handleCreateGroup}
@@ -189,24 +207,6 @@ export function UserGroupsSettings() {
           <FormField name="permissions" label="Permissions">
             <PermissionsField disabled={!canCreate} />
           </FormField>
-
-          <Flex className="justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCreateModalVisible(false)
-                createForm.reset()
-              }}
-              data-testid="user-create-group-cancel-button"
-            >
-              {canCreate ? 'Cancel' : 'Close'}
-            </Button>
-            {canCreate && (
-              <Button type="submit" data-testid="user-create-group-submit-button">
-                Create
-              </Button>
-            )}
-          </Flex>
         </Form>
       </Drawer>
 

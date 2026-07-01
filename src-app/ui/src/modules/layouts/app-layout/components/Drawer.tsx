@@ -91,7 +91,8 @@ export const Drawer: React.FC<DrawerProps> = ({
   const sizeStyle: React.CSSProperties = horizontal ? { width: axisPx } : { height: axisPx }
 
   const footerNode = Array.isArray(footer) ? (
-    <div className="flex gap-2">
+    // Array footers (e.g. [Cancel, Save]) right-align by convention.
+    <div className="flex justify-end gap-2">
       {footer.map((item, i) => (
         <React.Fragment key={i}>{item}</React.Fragment>
       ))}
