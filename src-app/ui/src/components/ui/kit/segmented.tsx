@@ -67,6 +67,11 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
             value={o.value}
             disabled={o.disabled || s.disabled || s.readOnly}
             data-testid={`${testid}-opt-${o.value}`}
+            // Stable, primitive-independent selected-state hook. Base UI marks the
+            // active tab with a bare `data-active`; we additionally emit an explicit
+            // `data-state="on"|"off"` (the old Radix vocabulary) so tests can assert
+            // selection semantically without reaching into Base UI internals.
+            data-state={current === o.value ? 'on' : 'off'}
             className={cn(s.size === 'sm' && 'px-2 py-1 text-xs')}
           >
             {o.label}
