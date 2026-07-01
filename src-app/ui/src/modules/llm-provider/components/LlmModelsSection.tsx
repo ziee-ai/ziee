@@ -8,6 +8,7 @@ import {
   Flex,
   Switch,
   Text,
+  Tooltip,
 } from '@/components/ui'
 import { message } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
@@ -254,13 +255,17 @@ export function LlmModelsSection() {
             },
           ]}
         >
-          <Button
-            variant="default"
-            size="icon"
-            icon={<Plus aria-hidden="true" />}
-            aria-label="Add model"
-            data-testid="llm-models-add-local-btn"
-          />
+          <Tooltip content="Add model">
+            <span className="inline-flex">
+              <Button
+                variant="default"
+                size="icon"
+                icon={<Plus aria-hidden="true" />}
+                aria-label="Add model"
+                data-testid="llm-models-add-local-btn"
+              />
+            </span>
+          </Tooltip>
         </Dropdown>
       )
     }

@@ -190,7 +190,7 @@ export function WebSearchGlobalSection() {
     </Card>
 
     <Card data-testid="websearch-chain-card" title="Provider chain">
-      <Paragraph type="secondary" className="text-sm">
+      <Paragraph type="secondary" className="text-sm !mb-4">
         Engines are tried top-to-bottom. The chain advances to the next engine
         only on failure (error / timeout / quota) — an engine returning no
         results is treated as a valid answer.
