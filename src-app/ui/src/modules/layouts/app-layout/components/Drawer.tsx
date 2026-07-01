@@ -163,7 +163,17 @@ export const Drawer: React.FC<DrawerProps> = ({
           </div>
 
           {footerNode != null && (
-            <div className={cn('px-3 pb-3 pt-1.5', classNames?.footer)} style={styles?.footer}>
+            <div
+              // Standard footer band (matches Card/Dialog): a top separator + muted
+              // fill, with the bottom corners rounded to the drawer card (square on
+              // the xs full-bleed layout, which has no rounded corners).
+              className={cn(
+                'border-t bg-muted/50 px-4 py-3',
+                windowMinSize.xs ? '' : 'rounded-b-lg',
+                classNames?.footer,
+              )}
+              style={styles?.footer}
+            >
               {footerNode}
             </div>
           )}
