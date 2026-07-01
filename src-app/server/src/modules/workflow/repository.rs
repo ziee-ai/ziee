@@ -97,6 +97,33 @@ impl WorkflowRepository {
     ) -> Result<(), AppError> {
         remove_workflow_group(&self.pool, workflow_id, group_id).await
     }
+
+    /// All system workflows assigned to a group (group → workflows direction,
+    /// for the User Groups page assignment widget). Mirrors the MCP
+    /// `get_system_servers_for_group`.
+    pub async fn get_system_workflows_for_group(
+        &self,
+        group_id: Uuid,
+    ) -> Result<Vec<Workflow>, AppError> {
+        get_system_workflows_for_group(&self.pool, group_id).await
+    }
+
+    /// Assign one system workflow to a group. The `group_workflows` trigger
+    /// rejects non-system workflows, so callers MUST pre-validate scope.
+    pub async fn assign_workflow_to_group(
+        &self,
+        workflow_id: Uuid,
+        group_id: Uuid,
+    ) -> Result<(), AppError> {
+        assign_workflow_to_group(&self.pool, workflow_id, group_id).await
+    }
+
+    /// How many of the given ids are existing `scope = 'system'` workflows.
+    /// The group-assignment update handler compares this to the requested
+    /// count to reject non-system / unknown ids with a 400 before writing.
+    pub async fn count_system_workflows_in(&self, ids: &[Uuid]) -> Result<i64, AppError> {
+        count_system_workflows_in(&self.pool, ids).await
+    }
 }
 
 pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, AppError> {
@@ -1029,6 +1056,81 @@ pub async fn remove_workflow_group(
     .await
     .map_err(AppError::database_error)?;
     Ok(())
+}
+
+pub async fn get_system_workflows_for_group(
+    pool: &PgPool,
+    group_id: Uuid,
+) -> Result<Vec<Workflow>, AppError> {
+    let rows = sqlx::query_as!(
+        Workflow,
+        r#"
+        SELECT
+            w.id,
+            w.name,
+            w.version,
+            w.display_name,
+            w.description,
+            w.extracted_path,
+            w.bundle_sha256,
+            w.bundle_size_bytes,
+            w.file_count,
+            w.entry_point,
+            w.tags as "tags: _",
+            w.scope,
+            w.owner_user_id,
+            w.created_by,
+            w.enabled,
+            w.is_dev,
+            w.compiled_ir_json as "compiled_ir_json: _",
+            w.created_at as "created_at: _",
+            w.updated_at as "updated_at: _"
+        FROM workflows w
+        INNER JOIN group_workflows gw ON w.id = gw.workflow_id
+        WHERE gw.group_id = $1 AND w.scope = 'system'
+        ORDER BY w.name ASC
+        "#,
+        group_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
+pub async fn assign_workflow_to_group(
+    pool: &PgPool,
+    workflow_id: Uuid,
+    group_id: Uuid,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        INSERT INTO group_workflows (group_id, workflow_id)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+        "#,
+        group_id,
+        workflow_id,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+pub async fn count_system_workflows_in(pool: &PgPool, ids: &[Uuid]) -> Result<i64, AppError> {
+    let count = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM workflows
+        WHERE scope = 'system' AND id = ANY($1)
+        "#,
+        ids,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(count)
 }
 
 /// Recent runs owned by `user_id`, newest first, capped at `limit`.

@@ -91,4 +91,13 @@ pub fn admin_routes() -> ApiRouter {
             "/skills/system/{id}/groups/{group_id}",
             delete_with(remove_skill_from_group, remove_skill_from_group_docs),
         )
+        // Group-centric assignment (User Groups page widget)
+        .api_route(
+            "/groups/{group_id}/system-skills",
+            get_with(get_group_system_skills, get_group_system_skills_docs),
+        )
+        .api_route(
+            "/groups/{group_id}/system-skills",
+            put_with(update_group_system_skills, update_group_system_skills_docs),
+        )
 }

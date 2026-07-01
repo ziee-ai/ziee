@@ -52,7 +52,8 @@ use super::permissions::{
 };
 use super::types::{
     AvailableSkillEntry, AvailableSkillsQuery, AvailableSkillsResponse,
-    HideSkillInConversationRequest, SkillBodyResponse, SkillGroupsRequest, SkillListResponse,
+    GroupSystemSkillsResponse, HideSkillInConversationRequest, SkillBodyResponse,
+    SkillGroupsRequest, SkillListResponse, UpdateGroupSystemSkillsRequest,
 };
 
 // =====================================================
@@ -618,5 +619,93 @@ pub fn remove_skill_from_group_docs(op: TransformOperation) -> TransformOperatio
         .tag("Skills - System")
         .summary("Remove a skill from one group")
         .response_with::<204, (), _>(|r| r.description("Removed"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+// ---- Group-centric assignment (User Groups page widget) ----
+// The reverse of `get/set_skill_groups`: given a group, list/replace the
+// system skills assigned to it. Mirrors MCP's `get/update_group_system_servers`.
+
+/// Get all system skills assigned to a group (for the User Groups widget).
+#[debug_handler]
+pub async fn get_group_system_skills(
+    _auth: RequirePermissions<(SkillsAssignToGroups,)>,
+    Path(group_id): Path<Uuid>,
+) -> ApiResult<Json<GroupSystemSkillsResponse>> {
+    let skills = Repos.skill.get_system_skills_for_group(group_id).await?;
+    Ok((StatusCode::OK, Json(GroupSystemSkillsResponse { skills })))
+}
+
+pub fn get_group_system_skills_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsAssignToGroups,)>(op)
+        .id("Group.getSystemSkills")
+        .tag("Admin - Groups")
+        .summary("Get all system skills assigned to a group")
+        .description("Get all system skills assigned to a group (for the User Groups assignment widget)")
+        .response::<200, Json<GroupSystemSkillsResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+/// Atomically replace the set of system skills assigned to a group. Rejects
+/// non-system / unknown skill ids with a 400 before writing anything.
+#[debug_handler]
+pub async fn update_group_system_skills(
+    _auth: RequirePermissions<(SkillsAssignToGroups,)>,
+    Path(group_id): Path<Uuid>,
+    origin: SyncOrigin,
+    Json(request): Json<UpdateGroupSystemSkillsRequest>,
+) -> ApiResult<Json<GroupSystemSkillsResponse>> {
+    use std::collections::HashSet;
+
+    let new_ids: HashSet<Uuid> = request.skill_ids.iter().copied().collect();
+
+    // Guard: every requested id must be an existing system-scope skill.
+    if !new_ids.is_empty() {
+        let system_count = Repos
+            .skill
+            .count_system_skills_in(&new_ids.iter().copied().collect::<Vec<_>>())
+            .await?;
+        if system_count as usize != new_ids.len() {
+            return Err(AppError::bad_request(
+                "INVALID_SCOPE",
+                "only existing system-scope skills can be assigned to groups",
+            )
+            .into());
+        }
+    }
+
+    let current = Repos.skill.get_system_skills_for_group(group_id).await?;
+    let current_ids: HashSet<Uuid> = current.iter().map(|s| s.id).collect();
+
+    let to_add: Vec<Uuid> = new_ids.difference(&current_ids).copied().collect();
+    let to_remove: Vec<Uuid> = current_ids.difference(&new_ids).copied().collect();
+
+    let mut affected: HashSet<Uuid> = HashSet::new();
+    affected.extend(to_add.iter().copied());
+    affected.extend(to_remove.iter().copied());
+
+    for skill_id in to_remove {
+        Repos.skill.remove_skill_from_group(skill_id, group_id).await?;
+    }
+    for skill_id in to_add {
+        Repos.skill.assign_skill_to_group(skill_id, group_id).await?;
+    }
+
+    for skill_id in affected {
+        events::emit_system_skill(SyncAction::Update, skill_id, origin.0);
+    }
+
+    let skills = Repos.skill.get_system_skills_for_group(group_id).await?;
+    Ok((StatusCode::OK, Json(GroupSystemSkillsResponse { skills })))
+}
+
+pub fn update_group_system_skills_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsAssignToGroups,)>(op)
+        .id("Group.updateSystemSkills")
+        .tag("Admin - Groups")
+        .summary("Update system skills assigned to a group")
+        .description("Atomically updates system-skill assignments. Adds new skills and removes unspecified ones.")
+        .response::<200, Json<GroupSystemSkillsResponse>>()
+        .response_with::<400, (), _>(|r| r.description("Bad request — non-system or unknown skill id"))
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }

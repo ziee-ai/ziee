@@ -88,3 +88,19 @@ pub struct HideSkillInConversationRequest {
 pub struct SkillGroupsRequest {
     pub group_ids: Vec<Uuid>,
 }
+
+/// `GET/PUT /api/groups/{group_id}/system-skills` response — the system
+/// skills assigned to a group (group → skills direction, for the User
+/// Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct GroupSystemSkillsResponse {
+    pub skills: Vec<Skill>,
+}
+
+/// `PUT /api/groups/{group_id}/system-skills` body — the full desired set
+/// of system-skill ids for the group. Mirrors MCP's
+/// `UpdateGroupSystemServersRequest`.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct UpdateGroupSystemSkillsRequest {
+    pub skill_ids: Vec<Uuid>,
+}

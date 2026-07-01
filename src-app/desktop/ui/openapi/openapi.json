@@ -16312,6 +16312,124 @@
         ]
       }
     },
+    "/api/groups/{group_id}/system-skills": {
+      "get": {
+        "tags": [
+          "Admin - Groups"
+        ],
+        "summary": "Get all system skills assigned to a group",
+        "description": "Get all system skills assigned to a group (for the User Groups assignment widget)",
+        "operationId": "Group.getSystemSkills",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope skills",
+                        "name": "SkillsAssignToGroups",
+                        "value": "skills::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "`GET/PUT /api/groups/{group_id}/system-skills` response — the system\n skills assigned to a group (group → skills direction, for the User\n Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSystemSkillsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin - Groups"
+        ],
+        "summary": "Update system skills assigned to a group",
+        "description": "Atomically updates system-skill assignments. Adds new skills and removes unspecified ones.",
+        "operationId": "Group.updateSystemSkills",
+        "requestBody": {
+          "description": "`PUT /api/groups/{group_id}/system-skills` body — the full desired set\n of system-skill ids for the group. Mirrors MCP's\n `UpdateGroupSystemServersRequest`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGroupSystemSkillsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope skills",
+                        "name": "SkillsAssignToGroups",
+                        "value": "skills::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "`GET/PUT /api/groups/{group_id}/system-skills` response — the system\n skills assigned to a group (group → skills direction, for the User\n Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSystemSkillsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — non-system or unknown skill id"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/assistants/{assistant_id}/core-memory": {
       "get": {
         "tags": [
@@ -17955,6 +18073,124 @@
           },
           "204": {
             "description": "Removed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups/{group_id}/system-workflows": {
+      "get": {
+        "tags": [
+          "Admin - Groups"
+        ],
+        "summary": "Get all system workflows assigned to a group",
+        "description": "Get all system workflows assigned to a group (for the User Groups assignment widget)",
+        "operationId": "Group.getSystemWorkflows",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope workflows",
+                        "name": "WorkflowsAssignToGroups",
+                        "value": "workflows::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "`GET/PUT /api/groups/{group_id}/system-workflows` response — the system\n workflows assigned to a group (group → workflows direction, for the User\n Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSystemWorkflowsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin - Groups"
+        ],
+        "summary": "Update system workflows assigned to a group",
+        "description": "Atomically updates system-workflow assignments. Adds new workflows and removes unspecified ones.",
+        "operationId": "Group.updateSystemWorkflows",
+        "requestBody": {
+          "description": "`PUT /api/groups/{group_id}/system-workflows` body — the full desired set\n of system-workflow ids for the group. Mirrors MCP's\n `UpdateGroupSystemServersRequest`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGroupSystemWorkflowsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope workflows",
+                        "name": "WorkflowsAssignToGroups",
+                        "value": "workflows::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "`GET/PUT /api/groups/{group_id}/system-workflows` response — the system\n workflows assigned to a group (group → workflows direction, for the User\n Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSystemWorkflowsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — non-system or unknown workflow id"
           },
           "401": {
             "description": "Unauthorized"
@@ -24862,6 +25098,36 @@
         },
         "required": [
           "servers"
+        ]
+      },
+      "GroupSystemSkillsResponse": {
+        "description": "`GET/PUT /api/groups/{group_id}/system-skills` response — the system\n skills assigned to a group (group → skills direction, for the User\n Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.",
+        "type": "object",
+        "properties": {
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Skill"
+            }
+          }
+        },
+        "required": [
+          "skills"
+        ]
+      },
+      "GroupSystemWorkflowsResponse": {
+        "description": "`GET/PUT /api/groups/{group_id}/system-workflows` response — the system\n workflows assigned to a group (group → workflows direction, for the User\n Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.",
+        "type": "object",
+        "properties": {
+          "workflows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Workflow"
+            }
+          }
+        },
+        "required": [
+          "workflows"
         ]
       },
       "HardwareInfo": {
@@ -35027,6 +35293,38 @@
         },
         "required": [
           "server_ids"
+        ]
+      },
+      "UpdateGroupSystemSkillsRequest": {
+        "description": "`PUT /api/groups/{group_id}/system-skills` body — the full desired set\n of system-skill ids for the group. Mirrors MCP's\n `UpdateGroupSystemServersRequest`.",
+        "type": "object",
+        "properties": {
+          "skill_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "skill_ids"
+        ]
+      },
+      "UpdateGroupSystemWorkflowsRequest": {
+        "description": "`PUT /api/groups/{group_id}/system-workflows` body — the full desired set\n of system-workflow ids for the group. Mirrors MCP's\n `UpdateGroupSystemServersRequest`.",
+        "type": "object",
+        "properties": {
+          "workflow_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "workflow_ids"
         ]
       },
       "UpdateHostMountPolicyRequest": {

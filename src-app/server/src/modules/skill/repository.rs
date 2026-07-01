@@ -192,6 +192,23 @@ impl SkillRepository {
         remove_skill_from_group(&self.pool, skill_id, group_id).await
     }
 
+    /// All system skills assigned to a group (group → skills direction,
+    /// for the User Groups page assignment widget). Mirrors the MCP
+    /// `get_system_servers_for_group`.
+    pub async fn get_system_skills_for_group(
+        &self,
+        group_id: Uuid,
+    ) -> Result<Vec<Skill>, AppError> {
+        get_system_skills_for_group(&self.pool, group_id).await
+    }
+
+    /// How many of the given ids are existing `scope = 'system'` skills.
+    /// The group-assignment update handler compares this to the requested
+    /// count to reject non-system / unknown ids with a 400 before writing.
+    pub async fn count_system_skills_in(&self, ids: &[Uuid]) -> Result<i64, AppError> {
+        count_system_skills_in(&self.pool, ids).await
+    }
+
     /// Replace the full set of groups assigned to a skill in ONE
     /// transaction. The previous read-diff-then-N-writes flow left the
     /// assignment set partially updated if any write failed midway; doing
@@ -963,4 +980,48 @@ pub async fn remove_skill_from_group(
     .await
     .map_err(AppError::database_error)?;
     Ok(())
+}
+
+pub async fn get_system_skills_for_group(
+    pool: &PgPool,
+    group_id: Uuid,
+) -> Result<Vec<Skill>, AppError> {
+    let rows = sqlx::query_as!(
+        Skill,
+        r#"
+        SELECT
+            s.id, s.name, s.version, s.display_name, s.description, s.when_to_use,
+            s.extracted_path, s.bundle_sha256, s.bundle_size_bytes, s.file_count,
+            s.entry_point,
+            s.frontmatter_json as "frontmatter_json: _",
+            s.tags as "tags: _", s.scope, s.owner_user_id, s.created_by,
+            s.enabled, s.is_dev,
+            s.created_at as "created_at: _",
+            s.updated_at as "updated_at: _"
+        FROM skills s
+        INNER JOIN group_skills gs ON s.id = gs.skill_id
+        WHERE gs.group_id = $1 AND s.scope = 'system'
+        ORDER BY s.name ASC
+        "#,
+        group_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
+pub async fn count_system_skills_in(pool: &PgPool, ids: &[Uuid]) -> Result<i64, AppError> {
+    let count = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM skills
+        WHERE scope = 'system' AND id = ANY($1)
+        "#,
+        ids,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(count)
 }
