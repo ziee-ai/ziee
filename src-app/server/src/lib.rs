@@ -507,6 +507,12 @@ async fn setup_server(
             axum::http::StatusCode::REQUEST_TIMEOUT,
             std::time::Duration::from_secs(660),
         ));
+    // Build the control MCP catalog from the now-fully-populated OpenAPI doc
+    // (embedded/desktop bootstrap path — mirrors main.rs). Skipped when the
+    // deploy kill-switch is off (§16).
+    if config.control_mcp.as_ref().map(|c| c.enabled).unwrap_or(true) {
+        crate::modules::control_mcp::catalog::init_from_openapi(&api_doc);
+    }
     let app = core::app_builder::apply_rate_limit_layer(app, &config, None);
     let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
