@@ -67,22 +67,31 @@ export async function fillAssistantForm(
   }
 
   if (data.enabled !== undefined) {
-    const enabledSwitch = byTestId(page, 'assistant-form-enabled')
-    await enabledSwitch.waitFor({ state: 'visible', timeout: 5000 })
-    const isEnabled = await enabledSwitch.getAttribute('aria-checked')
-    if ((isEnabled === 'true') !== data.enabled) {
-      await enabledSwitch.click()
-    }
+    await setAssistantSwitch(page, 'assistant-form-enabled', data.enabled)
   }
 
   if (data.isDefault !== undefined) {
-    const defaultSwitch = byTestId(page, 'assistant-form-default')
-    await defaultSwitch.waitFor({ state: 'visible', timeout: 5000 })
-    const isDefault = await defaultSwitch.getAttribute('aria-checked')
-    if ((isDefault === 'true') !== data.isDefault) {
-      await defaultSwitch.click()
-    }
+    await setAssistantSwitch(page, 'assistant-form-default', data.isDefault)
   }
+}
+
+/**
+ * Drive a Base UI Switch to a target checked state, robust to a lost click.
+ * The assistant form's parameters textarea prettifies JSON on blur
+ * (`form.setValue` → re-render); a switch click that lands mid-re-render is
+ * dropped, so a single click can leave the controlled switch (and thus the RHF
+ * field) unchanged. Click until `aria-checked` — which mirrors the controlled
+ * `field.value` — reaches the target, so the value is committed before submit.
+ */
+export async function setAssistantSwitch(page: Page, testid: string, target: boolean) {
+  const sw = byTestId(page, testid)
+  await sw.waitFor({ state: 'visible', timeout: 5000 })
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if ((await sw.getAttribute('aria-checked')) === String(target)) break
+    await sw.click()
+    await page.waitForTimeout(150)
+  }
+  await expect(sw).toHaveAttribute('aria-checked', String(target))
 }
 
 export async function submitAssistantForm(page: Page) {

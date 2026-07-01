@@ -21,12 +21,12 @@ inputs:
 steps:
   - id: gather
     kind: llm
-    message: "Gather sources"
+    description: "Gather sources"
     prompt: |
       Find sources on "{{ inputs.topic }}".
   - id: synthesize
     kind: llm
-    message: "Synthesize answer"
+    description: "Synthesize answer"
     prompt: |
       Synthesize from the gathered sources.
     depends_on: [gather]

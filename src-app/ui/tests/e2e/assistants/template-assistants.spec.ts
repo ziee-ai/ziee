@@ -6,6 +6,7 @@ import {
   goToTemplateAssistantsSettings,
   openCreateAssistantDrawer,
   fillAssistantForm,
+  setAssistantSwitch,
   submitAssistantForm,
   editTemplateAssistant,
   deleteTemplateAssistant,
@@ -272,9 +273,8 @@ test.describe('Template Assistants - Settings Page', () => {
     // Set second template as default
     await editTemplateAssistant(page, 'Template 2')
 
-    // Toggle the "Set as Default" switch.
-    const defaultSwitch = byTestId(page, 'assistant-form-default')
-    await defaultSwitch.click()
+    // Set as default (robust to the Base UI switch re-render dropping a click).
+    await setAssistantSwitch(page, 'assistant-form-default', true)
 
     await submitAssistantForm(page)
 

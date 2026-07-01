@@ -8,6 +8,9 @@ export interface AccordionItemDef {
   label: React.ReactNode
   children?: React.ReactNode
   disabled?: boolean
+  /** Header-right action rendered OUTSIDE the toggle, so clicking it does not
+   *  expand/collapse the panel (e.g. an always-visible "Assign"/"Edit" button). */
+  extra?: React.ReactNode
 }
 
 export type AccordionProps =
@@ -20,7 +23,7 @@ const ghostCls = '[&_[data-slot=accordion-item]]:border-0'
 function renderItems(items: AccordionItemDef[], surfaceDisabled: boolean) {
   return items.map((it) => (
     <AccordionItem key={it.key} value={it.key} disabled={it.disabled || surfaceDisabled}>
-      <AccordionTrigger>{it.label}</AccordionTrigger>
+      <AccordionTrigger extra={it.extra}>{it.label}</AccordionTrigger>
       <AccordionContent>{it.children}</AccordionContent>
     </AccordionItem>
   ))

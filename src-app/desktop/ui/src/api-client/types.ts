@@ -4616,6 +4616,7 @@ export interface SSERunStartedData {
 
 export interface SSESnapshotData {
   current_step?: string
+  error?: string | null
   final_output_json?: unknown
   pending_elicitation_json?: unknown
   run_id: string

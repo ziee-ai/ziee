@@ -36,8 +36,12 @@ export function WorkflowDetailDrawer() {
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [dryRunOpen, setDryRunOpen] = useState(false)
   const [testsOpen, setTestsOpen] = useState(false)
-  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  // Must live above the `if (!workflow) return` early return below — a hook
+  // after a conditional return changes the hook count between renders (workflow
+  // null while the drawer's data loads, then non-null), tripping React #310 and
+  // blanking the whole route via the error boundary.
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
 
   // FE LOW-1: the drawer is a singleton bound to Stores.WorkflowDrawer; when
   // the user opens a different workflow's card while the drawer is open the
@@ -190,7 +194,7 @@ export function WorkflowDetailDrawer() {
               {steps.map((s, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <Space size={8}>
-                    <Text>{s.message || s.id}</Text>
+                    <Text>{s.description || s.id}</Text>
                     {s.kind && <Tag variant="outline" data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
                   </Space>
                   {s.dependsOn && s.dependsOn.length > 0 && (

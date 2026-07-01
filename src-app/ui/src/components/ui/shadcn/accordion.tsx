@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion"
 
 import { cn } from "@/lib/utils"
@@ -26,10 +27,15 @@ function AccordionItem({ className, ...props }: AccordionPrimitive.Item.Props) {
 function AccordionTrigger({
   className,
   children,
+  extra,
   ...props
-}: AccordionPrimitive.Trigger.Props) {
+}: AccordionPrimitive.Trigger.Props & {
+  /** Header-right action rendered OUTSIDE the trigger button, so clicking it
+   *  does not toggle the panel (e.g. an inline "Edit"/"Assign" affordance). */
+  extra?: ReactNode
+}) {
   return (
-    <AccordionPrimitive.Header className="flex">
+    <AccordionPrimitive.Header className="flex items-center">
       <AccordionPrimitive.Trigger
         data-slot="accordion-trigger"
         className={cn(
@@ -42,6 +48,11 @@ function AccordionTrigger({
         <ChevronDownIcon data-slot="accordion-trigger-icon" className="pointer-events-none shrink-0 group-aria-expanded/accordion-trigger:hidden" />
         <ChevronUpIcon data-slot="accordion-trigger-icon" className="pointer-events-none hidden shrink-0 group-aria-expanded/accordion-trigger:inline" />
       </AccordionPrimitive.Trigger>
+      {extra != null && (
+        <div className="ml-2 flex items-center" onClick={e => e.stopPropagation()}>
+          {extra}
+        </div>
+      )}
     </AccordionPrimitive.Header>
   )
 }
