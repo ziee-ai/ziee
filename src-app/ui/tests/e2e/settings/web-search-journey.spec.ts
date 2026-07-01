@@ -36,14 +36,18 @@ test.describe('Web search — configure then chat journey', () => {
       timeout: 30000,
     })
 
+    // Web search is enabled deployment-wide by DEFAULT (web_search_settings
+    // migration). Only toggle + save when it isn't already on — Save is
+    // dirty-gated (disabled={!isDirty}), so clicking it without a real change
+    // (i.e. when already enabled) just times out on a disabled button.
     const toggle = byTestId(page, 'websearch-global-enabled')
     if (!(await toggle.isChecked())) {
       await toggle.click()
+      await byTestId(page, 'websearch-global-save').click()
+      await expect(
+        page.locator('[data-sonner-toast][data-type="success"]').first(),
+      ).toBeVisible({ timeout: 10000 })
     }
-    await byTestId(page, 'websearch-global-save').click()
-    await expect(
-      page.locator('[data-sonner-toast][data-type="success"]').first(),
-    ).toBeVisible({ timeout: 10000 })
 
     // ── Phase 2: seed a chat turn backed by a web_search tool_result ──
     const token = await page.evaluate(() =>
