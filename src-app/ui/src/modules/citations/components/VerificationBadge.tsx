@@ -9,23 +9,23 @@ export function VerificationBadge({
 }) {
   switch (status) {
     case 'verified':
-      return <Tag tone="success" data-testid="cite-badge-verified">verified</Tag>
+      return <Tag variant="outline" tone="success" data-testid="cite-badge-verified">verified</Tag>
     case 'mismatch':
       return (
         <Tooltip title="The identifier resolves, but to a record whose title differs from what was supplied — review it.">
-          <Tag tone="warning" data-testid="cite-badge-mismatch">mismatch</Tag>
+          <Tag variant="outline" tone="warning" data-testid="cite-badge-mismatch">mismatch</Tag>
         </Tooltip>
       )
     case 'not_found':
       return (
         <Tooltip title="The supplied DOI/PMID did NOT resolve to a real record — likely fabricated.">
-          <Tag tone="error" data-testid="cite-badge-not-found">not found</Tag>
+          <Tag variant="outline" tone="error" data-testid="cite-badge-not-found">not found</Tag>
         </Tooltip>
       )
     default:
       return (
         <Tooltip title="No identifier to verify against (e.g. a book / thesis / dataset). Not a problem — just unverified.">
-          <Tag data-testid="cite-badge-unverified">unverified</Tag>
+          <Tag variant="outline" data-testid="cite-badge-unverified">unverified</Tag>
         </Tooltip>
       )
   }

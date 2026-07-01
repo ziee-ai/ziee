@@ -1,21 +1,21 @@
-import { Bot, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Bot, Pencil, Trash2 } from 'lucide-react'
 import {
   Button,
   Card,
   Descriptions,
   Separator,
   Empty,
-  Pagination,
   Confirm,
   Tag,
-  Tooltip,
   Text,
   message,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Permissions, type Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
@@ -88,7 +88,7 @@ export function AssistantsSettings() {
           okText="Delete"
           cancelText="Cancel"
         >
-          <Button data-testid={`template-assistant-${assistant.id}-delete`} variant="destructive" icon={<Trash2 />}>
+          <Button data-testid={`template-assistant-${assistant.id}-delete`} variant="ghost" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,
@@ -116,15 +116,11 @@ export function AssistantsSettings() {
           title="Template Assistants"
           extra={
             <Can permission={Permissions.AssistantsTemplateCreate}>
-              <Tooltip content="Create assistant">
-                <Button
-                  data-testid="template-assistants-create-btn"
-                  variant="ghost"
-                  icon={<Plus aria-hidden="true" />}
-                  onClick={handleCreate}
-                  aria-label="Create assistant"
-                />
-              </Tooltip>
+              <AddButton
+                label="Create assistant"
+                onClick={handleCreate}
+                data-testid="template-assistants-create-btn"
+              />
             </Can>
           }
         >
@@ -152,10 +148,10 @@ export function AssistantsSettings() {
                               {assistant.name}
                             </Text>
                             {assistant.is_default && (
-                              <Tag data-testid={`template-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
+                              <Tag variant="outline" data-testid={`template-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag data-testid={`template-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
+                              <Tag variant="outline" data-testid={`template-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
                             )}
                           </div>
                         </div>
@@ -187,22 +183,15 @@ export function AssistantsSettings() {
 
           {assistants.length > 0 && (
             <>
-              <Separator className="mb-4" />
-              <div className="flex justify-end">
-                <Pagination
-              data-testid="template-assistants-pagination"
-              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`}
-                  current={storePage}
-                  total={totalAssistants}
-                  pageSize={storePageSize}
-                  onChange={(page) => handlePageChange(page, storePageSize)}
-                  showSizeChanger
-                  pageSizeOptions={[10, 20, 50]}
-                  pageSizeLabel="Items per page"
-                  onPageSizeChange={(size) => handlePageChange(1, size)}
-                  aria-label="Assistants pagination"
-                />
-              </div>
+              <ListPagination
+                data-testid="template-assistants-pagination"
+                current={storePage}
+                total={totalAssistants}
+                pageSize={storePageSize}
+                onChange={(page) => handlePageChange(page, storePageSize)}
+                onPageSizeChange={(size) => handlePageChange(1, size)}
+                aria-label="Assistants pagination"
+              />
             </>
           )}
         </Card>

@@ -32,7 +32,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
         <span>{language || 'code'}</span>
         <Button
           data-testid="chat-code-copy-btn"
-          size="sm"
+          size="default"
           variant="ghost"
           icon={copied ? <Check /> : <CopyIcon />}
           onClick={handleCopy}

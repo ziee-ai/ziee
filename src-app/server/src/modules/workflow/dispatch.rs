@@ -1262,6 +1262,8 @@ impl StepDispatcher for ToolDispatcher {
                     &headers,
                     &allowed_roots,
                     Some(manager.jwt_secret()), // E9
+                    Some(manager.jwt_issuer()),
+                    Some(manager.jwt_audience()),
                 )
                 .await
                 .unwrap_or_default();

@@ -368,7 +368,7 @@ export function InstalledHubTab() {
                             onConfirm={() => remove(row)}
                           >
                             <Button
-                              variant="destructive"
+                              variant="ghost"
                               icon={<Trash2 />}
                               loading={busyId === row.entity_id}
                               data-testid={`hub-installed-remove-btn-${row.entity_id}`}

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ToggleGroup, ToggleGroupItem } from '../shadcn/toggle-group'
+import { Tabs, TabsList, TabsTrigger } from '../shadcn/tabs'
 import { Skeleton } from '../shadcn/skeleton'
 import { useSurface } from './surface'
 import { useControllableState } from './use-controllable-state'
@@ -29,8 +29,9 @@ interface SegmentedBase {
 // Controlled `value` requires a change handler (see ValueBinding); FormField stays valid.
 export type SegmentedProps = SegmentedBase & ValueBinding<string>
 
-const itemH = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'h-7 text-xs' : size === 'lg' ? 'h-10' : 'h-8')
-
+// A segmented control is a Tabs header without panels: same nova-base TabsList /
+// TabsTrigger styling (muted rail + raised active pill, themed for light & dark),
+// single-select, always one value active.
 export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(function Segmented(
   { options, value, defaultValue, onValueChange, onChange, onBlur, disabled, size, name, id, invalid, className,
     'aria-label': ariaLabel, 'aria-describedby': ariaDescribedby, 'data-testid': testid },
@@ -41,41 +42,38 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
   const [current, setCurrent] = useControllableState<string>({
     value, defaultValue: defaultValue ?? '', onChange: (v) => { onValueChange?.(v); onChange?.(v) },
   })
-  const handle = (v: string) => {
-    if (!v) return // ToggleGroup emits '' on deselect — keep a value selected
-    setCurrent(v)
-  }
-  if (s.loading) return <Skeleton className={cn(itemH(s.size), 'w-full rounded-md', className)} />
+  if (s.loading) return <Skeleton className={cn('h-8 w-full rounded-lg', className)} />
   return (
     <>
-    {/* carry `name` for native form submission / name-based selectors (ToggleGroup has none). */}
+    {/* carry `name` for native form submission / name-based selectors (Tabs has none). */}
     {name != null && <input type="hidden" name={name} value={current} />}
-    <ToggleGroup
+    <Tabs
       ref={ref}
-      id={id}
-      type="single"
       value={current}
-      onValueChange={handle}
-      onBlur={onBlur}
-      disabled={s.disabled || s.readOnly}
-      aria-label={ariaLabel}
-      aria-describedby={ariaDescribedby}
-      aria-invalid={invalid || undefined}
+      onValueChange={(v) => setCurrent(String(v ?? ''))}
       data-testid={testid}
-      className={cn('inline-flex rounded-md bg-muted p-0.5', className)}
     >
-      {options.map((o) => (
-        <ToggleGroupItem
-          key={o.value}
-          value={o.value}
-          disabled={o.disabled}
-          data-testid={`${testid}-opt-${o.value}`}
-          className={cn(itemH(s.size), 'data-[state=on]:bg-background data-[state=on]:shadow-sm')}
-        >
-          {o.label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
+      <TabsList
+        id={id}
+        onBlur={onBlur}
+        aria-label={ariaLabel}
+        aria-describedby={ariaDescribedby}
+        aria-invalid={invalid || undefined}
+        className={className}
+      >
+        {options.map((o) => (
+          <TabsTrigger
+            key={o.value}
+            value={o.value}
+            disabled={o.disabled || s.disabled || s.readOnly}
+            data-testid={`${testid}-opt-${o.value}`}
+            className={cn(s.size === 'sm' && 'px-2 py-1 text-xs')}
+          >
+            {o.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
     </>
   )
 })

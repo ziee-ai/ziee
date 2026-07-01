@@ -92,7 +92,7 @@ export function Table<T>({ columns, dataSource, rowKey, loading, caption, empty,
                     }
                   : undefined
               }
-              className={onRowClick ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : undefined}
+              className={onRowClick ? 'cursor-pointer focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50' : undefined}
             >
               {columns.map((c) => (
                 <TableCell key={c.key} className={c.align ? alignCls[c.align] : undefined}>

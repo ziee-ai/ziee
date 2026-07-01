@@ -137,7 +137,7 @@ export function SummarizationStatusPill() {
         onSelect={(key) => setRemote(key as Mode)}
         disabled={loading}
       >
-        <Tag
+        <Tag variant="outline"
           data-testid="summ-mode-tag"
           tone={toneByMode[mode]}
           icon={

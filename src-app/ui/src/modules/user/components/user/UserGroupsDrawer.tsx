@@ -107,7 +107,8 @@ export function UserGroupsDrawer() {
         canAssign && (
           <Tooltip title="Assign group">
             <Button
-              variant="link"
+              variant="default"
+              size="icon"
               icon={<Plus aria-hidden="true" />}
               onClick={() => {
                 Stores.UserGroupsDrawer.closeUserGroupsDrawer()
@@ -143,14 +144,14 @@ export function UserGroupsDrawer() {
                   cancelText="Cancel"
                   data-testid={`user-groups-drawer-remove-confirm-${group.id}`}
                 >
-                  <Button variant="link" size="sm" data-testid={`user-groups-drawer-remove-button-${group.id}`}>
+                  <Button variant="link" size="default" data-testid={`user-groups-drawer-remove-button-${group.id}`}>
                     Remove
                   </Button>
                 </Confirm>
               ) : (
                 <Button
                   variant="link"
-                  size="sm"
+                  size="default"
                   onClick={() => handleAssignToGroup(group.id)}
                   data-testid={`user-groups-drawer-assign-row-button-${group.id}`}
                 >
@@ -164,8 +165,8 @@ export function UserGroupsDrawer() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     {group.name}
-                    {isMember && <Tag tone="success" data-testid={`user-groups-drawer-member-tag-${group.id}`}>Member</Tag>}
-                    {group.is_system && <Tag tone="warning" data-testid={`user-groups-drawer-system-tag-${group.id}`}>System</Tag>}
+                    {isMember && <Tag variant="outline" tone="success" data-testid={`user-groups-drawer-member-tag-${group.id}`}>Member</Tag>}
+                    {group.is_system && <Tag variant="outline" tone="warning" data-testid={`user-groups-drawer-system-tag-${group.id}`}>System</Tag>}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     {group.description || 'No description'}

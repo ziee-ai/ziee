@@ -2,11 +2,11 @@ import { useEffect } from 'react'
 import {
   Button,
   Input,
-  Pagination,
   Select,
   Text,
 } from '@/components/ui'
-import { Plus, Search, Eraser } from 'lucide-react'
+import { Search, Eraser } from 'lucide-react'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -15,6 +15,7 @@ import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { message } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 
 export function McpServersSettings() {
   const {
@@ -145,14 +146,11 @@ export function McpServersSettings() {
                 the backend would 422 the create regardless. Surfaces
                 the right empty-state copy below instead. */}
             {policyAllowsAdd && (
-              <Button
-                variant="default"
-                icon={<Plus />}
+              <AddButton
+                label="Add server"
                 onClick={handleAddServer}
                 data-testid="mcp-settings-add-btn"
-              >
-                Add Server
-              </Button>
+              />
             )}
           </Can>
         </div>
@@ -169,7 +167,7 @@ export function McpServersSettings() {
                 .join(', ')}
             </Text>
             <Button
-              size="sm"
+              size="default"
               variant="ghost"
               icon={<Eraser />}
               onClick={clearAllFilters}
@@ -204,25 +202,16 @@ export function McpServersSettings() {
         )}
 
         {totalServers > 0 && (
-          <div className="flex justify-end">
-            <Pagination
-              data-testid="mcp-settings-pagination"
-              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
-              current={storePage}
-              total={totalServers}
-              pageSize={storePageSize}
-              showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size: number) => handlePageChange(1, size)}
-              showQuickJumper
-              jumpLabel="Go to page"
-              showTotal={(total, range) =>
-                `${range[0]}-${range[1]} of ${total} servers`
-              }
-              onChange={handlePageChange}
-              pageSizeOptions={[5, 10, 20, 50]}
-            />
-          </div>
+          <ListPagination
+          data-testid="mcp-settings-pagination"
+          current={storePage}
+          total={totalServers}
+          pageSize={storePageSize}
+          onChange={handlePageChange}
+          onPageSizeChange={(size: number) => handlePageChange(1, size)}
+          itemNoun="servers"
+          aria-label="Pagination"
+        />
         )}
       </div>
 

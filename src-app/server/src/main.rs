@@ -319,6 +319,13 @@ async fn main() {
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
         .layer(tower_http::timeout::TimeoutLayer::with_status_code(axum::http::StatusCode::REQUEST_TIMEOUT, std::time::Duration::from_secs(660)));
+    // Build the control MCP catalog from the now-fully-populated OpenAPI doc so
+    // the built-in control tools can drive every registered route precisely.
+    // Skipped when the deploy kill-switch is off (§16 — no control-specific work
+    // runs when disabled).
+    if config.control_mcp.as_ref().map(|c| c.enabled).unwrap_or(true) {
+        crate::modules::control_mcp::catalog::init_from_openapi(&api_doc);
+    }
     // Rate limiter (tower-governor) — see core::app_builder::apply_rate_limit_layer.
     // Gated on `server.rate_limit.enabled`; the standalone server passes a
     // Some((50,500)) default so an un-configured deployment is still protected.

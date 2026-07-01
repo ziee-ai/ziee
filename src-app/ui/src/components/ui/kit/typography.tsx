@@ -42,7 +42,7 @@ function CopyButton({ copyable }: { copyable: Copyable }) {
           timer.current = setTimeout(() => setDone(false), 1500)
         })
       }}
-      className="ml-1 inline-flex align-middle opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="ml-1 inline-flex align-middle opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {done ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
     </button>
@@ -95,12 +95,15 @@ export const Text = React.forwardRef<HTMLSpanElement, TextProps>(function Text(
 export type TitleProps = Omit<React.ComponentProps<'h1'>, 'style'> & {
   level?: 1 | 2 | 3 | 4 | 5
 } & KitStyleProps
+// Matches shadcn's documented Typography scale (ui.shadcn.com/docs/components/typography):
+// h1 text-4xl extrabold · h2 text-3xl · h3 text-2xl · h4 text-xl, all semibold/tracking-tight.
+// Level 5 is a kit-only extra step below h4.
 const titleCls = {
-  1: 'text-3xl font-bold tracking-tight',
-  2: 'text-2xl font-semibold tracking-tight',
-  3: 'text-xl font-semibold',
-  4: 'text-lg font-semibold',
-  5: 'text-base font-semibold',
+  1: 'text-4xl font-extrabold tracking-tight text-balance',
+  2: 'text-3xl font-semibold tracking-tight',
+  3: 'text-2xl font-semibold tracking-tight',
+  4: 'text-xl font-semibold tracking-tight',
+  5: 'text-lg font-semibold tracking-tight',
 } as const
 export const Title = React.forwardRef<HTMLHeadingElement, TitleProps>(function Title(
   { level = 1, style, allowStyle: _a, className, ...props }, ref,

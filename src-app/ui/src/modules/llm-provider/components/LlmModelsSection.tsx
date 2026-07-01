@@ -7,8 +7,8 @@ import {
   Empty,
   Flex,
   Switch,
-  Tooltip,
   Text,
+  Tooltip,
 } from '@/components/ui'
 import { message } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
@@ -166,7 +166,7 @@ export function LlmModelsSection() {
           key="enable"
           checked={llmModel.enabled !== false}
           onChange={checked => handleToggleLlmModel(llmModel.id, checked)}
-          aria-label={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
+          tooltip={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
           data-testid={`llm-model-enable-switch-${llmModel.id}`}
         />,
       )
@@ -179,7 +179,7 @@ export function LlmModelsSection() {
         <Button
           key="start-stop"
           data-testid={`llm-model-start-stop-${llmModel.id}`}
-          size="sm"
+          size="default"
           variant={llmModel.is_active ? 'outline' : 'default'}
           loading={busy}
           disabled={busy}
@@ -197,7 +197,7 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="edit"
-          variant="ghost"
+          variant="outline"
           icon={<Pencil aria-hidden="true" />}
           onClick={() => handleEditLlmModel(llmModel.id)}
           aria-label={`Edit ${llmModel.display_name} model`}
@@ -212,7 +212,7 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="delete"
-          variant="ghost"
+          variant="outline"
           icon={<Trash2 aria-hidden="true" />}
           onClick={() => handleDeleteLlmModel(llmModel.id)}
           aria-label={`Delete ${llmModel.display_name} model`}
@@ -232,50 +232,60 @@ export function LlmModelsSection() {
 
     if (currentProvider.provider_type === 'local') {
       return (
-        <Dropdown
-          data-testid="llm-models-add-dropdown"
-          items={[
-            {
-              key: 'upload',
-              label: 'Upload from Files',
-              icon: <Upload />,
-              onClick: () =>
-                Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
-                  currentProvider.id,
-                ),
-            },
-            {
-              key: 'download',
-              label: 'Download from Repository',
-              icon: <Plus />,
-              onClick: () =>
-                Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
-                  currentProvider.id,
-                ),
-            },
-          ]}
-        >
-          <Tooltip content="Add model">
-            <Button
-              variant="ghost"
-              icon={<Plus aria-hidden="true" />}
-              aria-label="Add model"
-              data-testid="llm-models-add-local-btn"
-            />
-          </Tooltip>
-        </Dropdown>
+        // Tooltip OUTERMOST (wrapping the span that wraps the Dropdown) so it
+        // doesn't share a trigger element with the Dropdown — the same stable
+        // pattern as AddProviderMenu; a Tooltip nested INSIDE the Dropdown
+        // double-triggers on the button and flickers.
+        <Tooltip content="Add model">
+          <span className="inline-flex">
+            <Dropdown
+              data-testid="llm-models-add-dropdown"
+              items={[
+                {
+                  key: 'upload',
+                  label: 'Upload from Files',
+                  icon: <Upload />,
+                  onClick: () =>
+                    Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
+                      currentProvider.id,
+                    ),
+                },
+                {
+                  key: 'download',
+                  label: 'Download from Repository',
+                  icon: <Plus />,
+                  onClick: () =>
+                    Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
+                      currentProvider.id,
+                    ),
+                },
+              ]}
+            >
+              <Button
+                variant="default"
+                size="icon"
+                icon={<Plus aria-hidden="true" />}
+                aria-label="Add model"
+                data-testid="llm-models-add-local-btn"
+              />
+            </Dropdown>
+          </span>
+        </Tooltip>
       )
     }
 
     return (
       <Tooltip content="Add model">
-        <Button
-          variant="ghost"
-          icon={<Plus aria-hidden="true" />}
-          onClick={handleAddLlmModel}
-          aria-label="Add model"
-          data-testid="llm-models-add-remote-btn"
-        />
+        <span className="inline-flex">
+          <Button
+            variant="default"
+            size="icon"
+            icon={<Plus aria-hidden="true" />}
+            onClick={handleAddLlmModel}
+            aria-label="Add model"
+            data-testid="llm-models-add-remote-btn"
+          />
+        </span>
       </Tooltip>
     )
   }

@@ -238,6 +238,8 @@ pub async fn persist_links(
     server_headers: &serde_json::Value,
     allowed_roots: &[PathBuf],
     jwt_secret: Option<&str>,
+    jwt_issuer: Option<&str>,
+    jwt_audience: Option<&str>,
 ) -> Result<PersistOutcome, AppError> {
     // C4: on this branch `files.workflow_run_id` + `Repos.file.set_workflow_run_id`
     // exist, so each newly-ingested file is linked to the producing run below (after
@@ -343,7 +345,10 @@ pub async fn persist_links(
         // Build auth headers appropriate for the server type.
         let mut fetch_headers = reqwest::header::HeaderMap::new();
         if server_is_built_in {
-            match McpSessionManager::generate_short_lived_jwt(user_id, secret, 10) {
+            let issuer = jwt_issuer.unwrap_or("ziee");
+            let audience = jwt_audience.unwrap_or("ziee-api");
+            match McpSessionManager::generate_short_lived_jwt(user_id, secret, issuer, audience, 10)
+            {
                 Ok(token) => {
                     if let Ok(hval) =
                         reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))

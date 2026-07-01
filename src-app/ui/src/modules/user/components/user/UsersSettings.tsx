@@ -1,4 +1,4 @@
-import { Trash2, Pencil, Lock, Plus, Users, User as UserIcon } from 'lucide-react'
+import { Trash2, Pencil, Lock, Users, User as UserIcon } from 'lucide-react'
 import {
   Badge,
   Button,
@@ -7,16 +7,16 @@ import {
   Descriptions,
   Empty,
   Flex,
-  Tooltip,
   message,
   Separator,
   Text,
   Confirm,
-  Pagination,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type User } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
@@ -99,6 +99,7 @@ export function UsersSettings() {
       actions.push(
         <div key="active-confirm" className="inline-flex items-center">
           <Switch
+            tooltip={user.is_active ? 'Deactivate user' : 'Activate user'}
             className={'mr-2!'}
             checked={user.is_active}
             onChange={() => setActiveConfirmUserId(user.id)}
@@ -115,7 +116,7 @@ export function UsersSettings() {
             cancelText="Cancel"
             data-testid={`user-toggle-active-confirm-${user.id}`}
           >
-            <Button variant="ghost" size="sm" data-testid={`user-toggle-active-button-${user.id}`}>
+            <Button variant="ghost" size="default" data-testid={`user-toggle-active-button-${user.id}`}>
               {user.is_active ? 'Deactivate' : 'Activate'}
             </Button>
           </Confirm>
@@ -178,7 +179,7 @@ export function UsersSettings() {
             data-testid={`user-delete-confirm-${user.id}`}
           >
             <Button
-              variant="destructive"
+              variant="ghost"
               icon={<Trash2 aria-hidden="true" />}
               aria-label={`Delete ${user.username}`}
               data-testid={`user-delete-button-${user.id}`}
@@ -218,17 +219,11 @@ export function UsersSettings() {
             data-testid="user-list-card"
             extra={
               <Can permission={Permissions.UsersCreate}>
-                <Tooltip content="Create user">
-                  <Button
-                    variant="ghost"
-                    icon={<Plus aria-hidden="true" />}
-                    onClick={() =>
-                      Stores.CreateUserDrawer.openCreateUserDrawer()
-                    }
-                    aria-label="Create user"
-                    data-testid="user-create-open-button"
-                  />
-                </Tooltip>
+                <AddButton
+                  label="Create user"
+                  onClick={() => Stores.CreateUserDrawer.openCreateUserDrawer()}
+                  data-testid="user-create-open-button"
+                />
               </Can>
             }
           >
@@ -282,26 +277,16 @@ export function UsersSettings() {
 
             {users.length > 0 && (
               <>
-                <Separator className="mb-4" />
-                <div className="flex justify-end">
-                  <Pagination
-              data-testid="user-list-pagination"
-              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
-                    current={storePage}
-                    total={totalUsers}
-                    pageSize={storePageSize}
-                    showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size: number) => handlePageChange(1, size)}
-                    showQuickJumper
-              jumpLabel="Go to page"
-                    showTotal={(total, range) =>
-                      `${range[0]}-${range[1]} of ${total} users`
-                    }
-                    onChange={handlePageChange}
-                    pageSizeOptions={[5, 10, 20, 50]}
-                  />
-                </div>
+                <ListPagination
+          data-testid="user-list-pagination"
+          current={storePage}
+          total={totalUsers}
+          pageSize={storePageSize}
+          onChange={handlePageChange}
+          onPageSizeChange={(size: number) => handlePageChange(1, size)}
+          itemNoun="users"
+          aria-label="Pagination"
+        />
               </>
             )}
           </Card>

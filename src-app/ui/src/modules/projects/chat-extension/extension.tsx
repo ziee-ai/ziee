@@ -153,7 +153,7 @@ function ProjectChipForConversationHeader() {
 
   return (
     <div className="px-4 pt-2">
-      <Tag
+      <Tag variant="outline"
         data-testid="project-header-chip-tag"
         tone="info"
         className="cursor-pointer"
@@ -318,7 +318,7 @@ function ProjectTagWithRemove({
             }
           }}
         >
-          <Tag
+          <Tag variant="outline"
             data-testid="project-trailing-membership-tag"
             tone="info"
             icon={<FolderOpen />}
@@ -458,7 +458,7 @@ function ProjectMembershipTrailing({
           <Button
             data-testid="project-trailing-add-button"
             variant="ghost"
-            size="sm"
+            size="default"
             icon={<CirclePlus />}
             aria-label="Add to project"
             onClick={(e: React.MouseEvent) => {

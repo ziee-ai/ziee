@@ -366,6 +366,10 @@ pub struct TestServerOptions {
     /// opt in explicitly. The `BIO_MCP_SIDECAR_URL` debug seam (set via
     /// `extra_env`) lets a test point the proxy at a mock sidecar.
     pub bio_mcp_enabled: bool,
+    /// Deploy-level kill-switch for the `control_mcp` built-in. `None` omits the
+    /// config section (module default = enabled). `Some(false)` disables the
+    /// whole control surface (no MCP row, no route).
+    pub control_mcp_enabled: Option<bool>,
 }
 
 impl TestServer {
@@ -613,6 +617,12 @@ secrets:
             "\nbio_mcp:\n  enabled: {}\n",
             opts.bio_mcp_enabled
         ));
+
+        // control_mcp defaults ON; only write the section when a test overrides
+        // it (the kill-switch test sets Some(false)).
+        if let Some(control_enabled) = opts.control_mcp_enabled {
+            config.push_str(&format!("\ncontrol_mcp:\n  enabled: {control_enabled}\n"));
+        }
 
         fs::write(&temp_config_path, config).expect("Failed to write temporary config");
 

@@ -99,14 +99,14 @@ export function TitleEditor() {
           data-testid="chat-title-save-btn"
           type="submit"
           variant="ghost"
-          size="sm"
+          size="default"
           icon={<Check />}
           className="!p-1"
         />
         <Button
           data-testid="chat-title-cancel-btn"
           variant="ghost"
-          size="sm"
+          size="default"
           icon={<X />}
           onClick={handleCancel}
           className="!p-1"
@@ -135,7 +135,7 @@ export function TitleEditor() {
       <Tooltip title="Edit title">
         <Button
           data-testid="chat-title-edit-btn"
-          variant="ghost"
+          variant="outline"
           icon={<Pencil />}
           onClick={handleEditClick}
           aria-label="Edit conversation title"

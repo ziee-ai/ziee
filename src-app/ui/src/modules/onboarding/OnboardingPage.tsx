@@ -154,7 +154,7 @@ export default function OnboardingPage() {
         <Button
           data-testid="onboarding-page-back-to-chat-button"
           variant="ghost"
-          size="sm"
+          size="default"
           icon={<ArrowLeft />}
           onClick={() => navigate('/chat')}
           className="!px-0 mb-3"

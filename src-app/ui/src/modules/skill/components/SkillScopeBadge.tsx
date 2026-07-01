@@ -16,20 +16,20 @@ export function SkillScopeBadge({ scope, isDev }: SkillScopeBadgeProps) {
   return (
     <>
       {scope === 'built_in' ? (
-        <Tag tone="success" data-testid="skill-scope-badge-builtin">
+        <Tag variant="outline" tone="success" data-testid="skill-scope-badge-builtin">
           Built-in
         </Tag>
       ) : scope === 'system' ? (
-        <Tag tone="info" data-testid="skill-scope-badge-system">
+        <Tag variant="outline" tone="info" data-testid="skill-scope-badge-system">
           System
         </Tag>
       ) : (
-        <Tag tone="info" data-testid="skill-scope-badge-mine">
+        <Tag variant="outline" tone="info" data-testid="skill-scope-badge-mine">
           Mine
         </Tag>
       )}
       {isDev && (
-        <Tag tone="warning" data-testid="skill-scope-badge-dev">
+        <Tag variant="outline" tone="warning" data-testid="skill-scope-badge-dev">
           Dev
         </Tag>
       )}

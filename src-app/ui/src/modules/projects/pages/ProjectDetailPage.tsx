@@ -347,7 +347,7 @@ export function ProjectDetailPage() {
                 <Button
                   data-testid="project-detail-bulk-clear-button"
                   variant="ghost"
-                  size="sm"
+                  size="default"
                   icon={<CircleX />}
                   onClick={handleDeselectAll}
                 >
@@ -356,7 +356,7 @@ export function ProjectDetailPage() {
                 <Button
                   data-testid="project-detail-bulk-select-all-button"
                   variant="ghost"
-                  size="sm"
+                  size="default"
                   onClick={handleSelectAll}
                   disabled={
                     selectedIds.size === visibleConversationIds.size
@@ -372,7 +372,7 @@ export function ProjectDetailPage() {
                   okText="Remove"
                   cancelText="Cancel"
                 >
-                  <Button data-testid="project-detail-bulk-remove-button" variant="ghost" size="sm" loading={bulkDeleting}>
+                  <Button data-testid="project-detail-bulk-remove-button" variant="ghost" size="default" loading={bulkDeleting}>
                     Remove from project
                   </Button>
                 </Confirm>
@@ -388,7 +388,7 @@ export function ProjectDetailPage() {
                     <Button
                       data-testid="project-detail-bulk-delete-button"
                       variant="ghost"
-                      size="sm"
+                      size="default"
                       icon={<Trash2 />}
                       loading={bulkDeleting}
                     >

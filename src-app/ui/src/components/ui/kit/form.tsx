@@ -145,9 +145,13 @@ export interface FormProps<T extends FieldValues> {
 }
 
 export function Form<T extends FieldValues>({ form, onSubmit, disabled, size, name, layout = 'vertical', labelWidth, className, children, 'data-testid': testid }: FormProps<T>) {
+  // Horizontal forms with no explicit `labelWidth` otherwise let the label column
+  // grow to ~half the row (huge gap before the control). Default to a consistent
+  // fixed column so every settings form aligns the same way.
+  const effectiveLabelWidth = layout === 'horizontal' && labelWidth == null ? '13rem' : labelWidth
   return (
     <FormProvider {...form}>
-      <FormLayoutContext.Provider value={React.useMemo(() => ({ layout, labelWidth }), [layout, labelWidth])}>
+      <FormLayoutContext.Provider value={React.useMemo(() => ({ layout, labelWidth: effectiveLabelWidth }), [layout, effectiveLabelWidth])}>
         <KitSurfaceProvider disabled={disabled} size={size}>
           <form name={name} onSubmit={form.handleSubmit(onSubmit)} className={className} noValidate data-testid={testid}>
             {/* KitSurface disables kit components (+ <a>/custom); <fieldset disabled>

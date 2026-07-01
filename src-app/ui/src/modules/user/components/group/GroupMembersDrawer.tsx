@@ -39,7 +39,7 @@ export function GroupMembersDrawer() {
               <span className="font-medium">{user.username}</span>
               <div>
                 <div>{user.email}</div>
-                <Tag tone={user.is_active ? 'success' : 'error'} data-testid={`user-group-member-status-tag-${user.id}`}>
+                <Tag variant="outline" tone={user.is_active ? 'success' : 'error'} data-testid={`user-group-member-status-tag-${user.id}`}>
                   {user.is_active ? 'Active' : 'Inactive'}
                 </Tag>
               </div>

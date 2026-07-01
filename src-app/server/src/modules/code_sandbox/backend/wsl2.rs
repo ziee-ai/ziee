@@ -1280,7 +1280,21 @@ impl SandboxBackend for Wsl2Backend {
         flavor: &str,
         server_id: uuid::Uuid,
     ) -> Result<(), AppError> {
-        let distro = Self::distro_name(flavor);
+        // Resolve the same pinned rootfs version `open_long_lived_session`
+        // used, so we target the matching `ziee-sandbox-<flavor>-v<version>`
+        // distro. This is a cache hit: the session that drove us here already
+        // fetched the rootfs (distro_name took `(flavor, version)` as of
+        // Plan 5 Phase 3, when versioned distros were introduced).
+        let cache = cache_dir(state);
+        let fetched = runtime_fetch::ensure_fetched_format(
+            &cache,
+            flavor,
+            RootfsFormat::TarZst,
+            |_| {},
+        )
+        .await
+        .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+        let distro = Self::distro_name(flavor, &fetched.version);
         let host_workspace = state
             .workspace_root
             .join("mcp")

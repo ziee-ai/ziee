@@ -68,7 +68,7 @@ export function StepLogExpander({
         {
           key: kind,
           label: (
-            <Button data-testid={`wf-step-log-btn-${stepId}-${kind}`} variant="link" size="sm" className="!px-0">
+            <Button data-testid={`wf-step-log-btn-${stepId}-${kind}`} variant="link" size="default" className="!px-0">
               {label}
             </Button>
           ),

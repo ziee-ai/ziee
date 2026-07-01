@@ -77,9 +77,9 @@ export default function AboutSettings() {
                 <>
                   <Text code>{latestVersion}</Text>{' '}
                   {updateAvailable ? (
-                    <Tag data-testid="serverupd-update-available-tag" tone="info">update available</Tag>
+                    <Tag variant="outline" data-testid="serverupd-update-available-tag" tone="info">update available</Tag>
                   ) : (
-                    <Tag data-testid="serverupd-uptodate-tag" tone="success">up to date</Tag>
+                    <Tag variant="outline" data-testid="serverupd-uptodate-tag" tone="success">up to date</Tag>
                   )}
                 </>
               ) : (

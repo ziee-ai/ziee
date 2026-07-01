@@ -34,19 +34,24 @@ export function AddProviderMenu({ onPick, existingNames, disabled }: Props) {
   const isDisabled = disabled || allTaken
 
   return (
-    <Dropdown data-testid="authprov-add-dropdown" items={items} onSelect={(key) => {
-      const item = available.find(t => t.key === key)
-      if (item) onPick(item)
-    }} disabled={isDisabled}>
-      <Tooltip content={allTaken ? 'All providers taken' : 'Add authentication provider'}>
-        <Button
-          data-testid="authprov-add-button"
-          variant="ghost"
-          icon={<Plus />}
-          disabled={isDisabled}
-          aria-label="Add authentication provider"
-        />
-      </Tooltip>
-    </Dropdown>
+    // Tooltip on an outer span (NOT the Button) so it doesn't share a trigger
+    // element with the Dropdown — that double-trigger made the tooltip flicker.
+    <Tooltip content={allTaken ? 'All providers taken' : 'Add authentication provider'}>
+      <span className="inline-flex">
+        <Dropdown data-testid="authprov-add-dropdown" items={items} onSelect={(key) => {
+          const item = available.find(t => t.key === key)
+          if (item) onPick(item)
+        }} disabled={isDisabled}>
+          <Button
+            data-testid="authprov-add-button"
+            variant="default"
+            size="icon"
+            icon={<Plus />}
+            disabled={isDisabled}
+            aria-label="Add authentication provider"
+          />
+        </Dropdown>
+      </span>
+    </Tooltip>
   )
 }

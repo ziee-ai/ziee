@@ -5,8 +5,10 @@ import { Input, type InputProps } from './input'
 // Keeps a local string buffer while editing so intermediate states ("1.", "-", "1.0")
 // survive a controlled round-trip and never emit NaN. Clamps to min/max on blur.
 export type InputNumberProps = Omit<InputProps, 'type' | 'value' | 'defaultValue' | 'onChange' | 'prefix' | 'style' | 'allowStyle'> & {
-  value?: number
-  defaultValue?: number
+  // `null` is accepted (and shown as empty) so form fields whose "unset" value is
+  // null — e.g. retention_days = null ("forever") — don't render the string "null".
+  value?: number | null
+  defaultValue?: number | null
   onChange?: (value: number | undefined) => void
   onBlur?: () => void
   min?: number
@@ -17,7 +19,7 @@ export type InputNumberProps = Omit<InputProps, 'type' | 'value' | 'defaultValue
   prefix?: React.ReactNode
 }
 
-const numToStr = (n: number | undefined) => (n === undefined || Number.isNaN(n) ? '' : String(n))
+const numToStr = (n: number | null | undefined) => (n == null || Number.isNaN(n) ? '' : String(n))
 // A partial number the user may still be typing: "", "-", "1.", "1.0", "-0", "1e", "1e-".
 const isIntermediate = (s: string) => s === '' || /^-?(\d*\.?\d*)?(e-?\d*)?$/i.test(s) && Number.isNaN(Number(s))
 
@@ -28,8 +30,9 @@ export const InputNumber = React.forwardRef<HTMLInputElement, InputNumberProps>(
   // Sync the buffer from a controlled value only when it differs NUMERICALLY (so an
   // in-progress "1." isn't clobbered when the parent echoes back 1).
   React.useEffect(() => {
-    if (value === undefined) {
-      // controlled reset/clear: empty the buffer (Number('')===0 would otherwise mask this).
+    if (value == null) {
+      // controlled reset/clear (undefined OR null): empty the buffer so a null
+      // "unset" value never renders as the literal string "null".
       if (buf !== '') setBuf('')
     } else if (Number(buf) !== value) {
       setBuf(numToStr(value))

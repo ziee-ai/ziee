@@ -77,7 +77,7 @@ export function WorkflowRunsList({
         >
           <div className="flex justify-between items-center">
             <Space size={8} wrap>
-              <Tag data-testid={`wf-run-status-tag-${run.id}`} tone={STATUS_COLOR[run.status] === 'green' ? 'success' : STATUS_COLOR[run.status] === 'red' ? 'error' : STATUS_COLOR[run.status] === 'blue' ? 'info' : STATUS_COLOR[run.status] === 'gold' ? 'warning' : undefined} className="!m-0">
+              <Tag variant="outline" data-testid={`wf-run-status-tag-${run.id}`} tone={STATUS_COLOR[run.status] === 'green' ? 'success' : STATUS_COLOR[run.status] === 'red' ? 'error' : STATUS_COLOR[run.status] === 'blue' ? 'info' : STATUS_COLOR[run.status] === 'gold' ? 'warning' : undefined} className="!m-0">
                 {run.status}
               </Tag>
               {run.invocation_source === 'conversation' && run.conversation_id ? (
@@ -86,7 +86,7 @@ export function WorkflowRunsList({
                 // DownloadItem) inside the badge opens the originating
                 // conversation. stopPropagation so the click navigates instead of
                 // firing the div's open-progress onClick.
-                <Tag data-testid={`wf-run-source-tag-${run.id}`} className="!m-0 text-xs">
+                <Tag variant="outline" data-testid={`wf-run-source-tag-${run.id}`} className="!m-0 text-xs">
                   <Link
                     href="#"
                     className="text-xs"
@@ -100,7 +100,7 @@ export function WorkflowRunsList({
                   </Link>
                 </Tag>
               ) : (
-                <Tag data-testid={`wf-run-source-tag-${run.id}`} className="!m-0 text-xs">
+                <Tag variant="outline" data-testid={`wf-run-source-tag-${run.id}`} className="!m-0 text-xs">
                   {INVOCATION_SOURCE_LABEL[run.invocation_source] ?? 'Workflow page'}
                 </Tag>
               )}
@@ -129,8 +129,8 @@ export function WorkflowRunsList({
               >
                 <Button
                   data-testid={`wf-run-delete-btn-${run.id}`}
-                  variant="destructive"
-                  size="sm"
+                  variant="outline"
+                  size="default"
                   icon={<Trash2 />}
                   loading={!!deleting[run.id]}
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}

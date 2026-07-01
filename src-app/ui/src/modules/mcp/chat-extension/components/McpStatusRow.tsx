@@ -28,7 +28,7 @@ export function McpStatusRow() {
         const server = servers.find(s => s.id === serverId)!
 
         return (
-          <Tag
+          <Tag variant="outline"
             key={serverId}
             tone="info"
             icon={<Wrench />}

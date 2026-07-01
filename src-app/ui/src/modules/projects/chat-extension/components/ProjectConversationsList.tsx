@@ -172,7 +172,7 @@ function RemoveFromProjectButton({
             open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
           variant="ghost"
-          size="sm"
+          size="default"
           icon={<CircleMinus />}
           aria-label="Remove from project"
           onClick={(e: React.MouseEvent) => {

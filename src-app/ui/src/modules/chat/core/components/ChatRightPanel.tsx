@@ -81,7 +81,7 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
       />
       <Button
         variant="ghost"
-        size="sm"
+        size="default"
         icon={<X className="size-3" />}
         className="!w-6 !h-6 !min-w-0 !p-0 opacity-60 hover:opacity-100 mr-1"
         title="Close panel"

@@ -39,9 +39,11 @@ export function ProviderGroupAssignmentCard() {
       data-testid="llm-provider-groups-card"
       extra={
         <Button
-          variant="ghost"
-          icon={<Pencil />}
+          variant="outline"
+          size="icon"
+          icon={<Pencil aria-hidden="true" />}
           onClick={handleManageGroups}
+          tooltip="Manage user groups"
           aria-label="Manage user groups"
           data-testid="llm-provider-groups-manage-btn"
         />
@@ -56,7 +58,7 @@ export function ProviderGroupAssignmentCard() {
       ) : providerData?.groups && providerData.groups.length > 0 ? (
         <Flex gap="middle" wrap>
           {providerData.groups.map(group => (
-            <Tag key={group.id} tone="info" data-testid={`llm-provider-assigned-group-tag-${group.id}`}>
+            <Tag variant="outline" key={group.id} tone="info" data-testid={`llm-provider-assigned-group-tag-${group.id}`}>
               {group.name}
             </Tag>
           ))}

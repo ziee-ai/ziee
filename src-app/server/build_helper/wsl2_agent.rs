@@ -33,6 +33,19 @@ pub fn setup(
     fs::create_dir_all(&bundle_dir)?;
     let agent_dest = bundle_dir.join("ziee-sandbox-agent");
 
+    // Guarantee the `include_bytes!` target ALWAYS exists, on every target,
+    // before any fallible step below. `wsl2_agent_embedded` unconditionally
+    // `include_bytes!`s this path on Windows; if the cross-compile fails (no
+    // Docker on the Windows host PATH — it lives inside WSL — no network,
+    // etc.) and we returned `Err` without a file here, the crate would fail
+    // to COMPILE ("couldn't read ... ziee-sandbox-agent: os error 2") rather
+    // than fail soft. A successful Windows cross-compile overwrites this
+    // 0-byte placeholder with the real ELF; otherwise it stands and the
+    // runtime `is_supported()` gate returns false (sibling-of-exe fallback).
+    if !agent_dest.exists() {
+        fs::write(&agent_dest, b"")?;
+    }
+
     if !target.contains("windows") {
         println!(
             "wsl2-agent: skipping (target = {target}, not *-windows-*)"
@@ -117,9 +130,18 @@ pub fn setup(
         );
     }
 
-    println!("wsl2-agent: cross-compiling sandbox-guest-agent for x86_64-unknown-linux-musl via {RUST_MUSL_IMAGE}");
-    require_docker()?;
-    let built = build_guest_agent(workspace, out_dir)?;
+    let driver = detect_docker().ok_or(
+        "wsl2-agent: no Docker available to cross-compile the agent. Looked for \
+         `docker`/`docker.exe` on PATH (Docker Desktop) and for Docker inside the \
+         default WSL distro (`wsl -- docker`). Install one, or set \
+         `ZIEE_SKIP_WSL2_AGENT_BUNDLE=1` for a placeholder build (the runtime then \
+         falls back to the sibling-of-exe agent lookup).",
+    )?;
+    println!(
+        "wsl2-agent: cross-compiling sandbox-guest-agent for x86_64-unknown-linux-musl \
+         via {driver:?} docker / {RUST_MUSL_IMAGE}"
+    );
+    let built = build_guest_agent(workspace, out_dir, driver)?;
     fs::copy(&built, &agent_dest)?;
     println!(
         "wsl2-agent: wrote {} ({} bytes)",
@@ -129,22 +151,62 @@ pub fn setup(
     Ok(())
 }
 
-fn require_docker() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::var_os("PATH").ok_or("PATH not set")?;
-    for dir in std::env::split_paths(&path) {
-        // Both `docker` and `docker.exe` are acceptable; Windows
-        // resolution searches PATHEXT.
-        if dir.join("docker").is_file() || dir.join("docker.exe").is_file() {
-            return Ok(());
+/// Which Docker we drive to cross-compile the agent.
+#[derive(Clone, Copy, Debug)]
+enum DockerDriver {
+    /// `docker`/`docker.exe` on PATH (Docker Desktop, or a native CLI).
+    /// `--mount` source paths are passed as host (Windows) paths — the
+    /// Docker Desktop VM translates them.
+    Native,
+    /// Docker running *inside* the default WSL distro, reached via
+    /// `wsl -- docker ...`. Common on Windows build hosts that run
+    /// docker in WSL rather than installing Docker Desktop. `--mount`
+    /// source paths must be WSL paths (`/mnt/c/...`).
+    Wsl,
+}
+
+/// Find a Docker we can use: prefer one on PATH (Docker Desktop), then
+/// fall back to Docker inside the default WSL distro. Returns `None` when
+/// neither is available (caller fails soft to the placeholder).
+fn detect_docker() -> Option<DockerDriver> {
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            // Both `docker` and `docker.exe` are acceptable; Windows
+            // resolution searches PATHEXT.
+            if dir.join("docker").is_file() || dir.join("docker.exe").is_file() {
+                return Some(DockerDriver::Native);
+            }
         }
     }
-    Err(
-        "wsl2-agent: `docker` not on PATH; install Docker Desktop for Windows so \
-         the agent can be cross-compiled into the release binary. (Dev/test \
-         workaround: `scripts/build-sandbox-agent-linux.sh` + the runtime's \
-         sibling-of-exe lookup, or set `ZIEE_SKIP_WSL2_AGENT_BUNDLE=1`.)"
-            .into(),
-    )
+    // Windows host with no Docker on PATH: many build hosts run Docker
+    // inside WSL (the same place this repo runs its pgvector build DB)
+    // instead of Docker Desktop. Probe `wsl -- docker version`.
+    if cfg!(windows) {
+        let reachable = Command::new("wsl")
+            .args(["--", "docker", "version"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if reachable {
+            return Some(DockerDriver::Wsl);
+        }
+    }
+    None
+}
+
+/// Translate a Windows path (`C:\Users\x\y`) to its WSL mount equivalent
+/// (`/mnt/c/Users/x/y`) so a Docker daemon running inside WSL can bind it.
+fn win_to_wsl_mount(p: &str) -> String {
+    let p = p.strip_prefix(r"\\?\").unwrap_or(p);
+    if let Some((drive, rest)) = p.split_once(':') {
+        if drive.len() == 1 && drive.chars().all(|c| c.is_ascii_alphabetic()) {
+            let rest = rest.replace('\\', "/");
+            return format!("/mnt/{}/{}", drive.to_ascii_lowercase(), rest.trim_start_matches('/'));
+        }
+    }
+    p.replace('\\', "/")
 }
 
 /// Cross-compile the agent to x86_64-unknown-linux-musl (the arch that
@@ -155,6 +217,7 @@ fn require_docker() -> Result<(), Box<dyn std::error::Error>> {
 fn build_guest_agent(
     workspace: &Path,
     out_dir: &str,
+    driver: DockerDriver,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let docker_target = PathBuf::from(out_dir).join("wsl2-guest-agent-target");
     fs::create_dir_all(&docker_target)?;
@@ -174,36 +237,57 @@ fn build_guest_agent(
     let docker_target_clean = docker_target_str
         .strip_prefix(r"\\?\")
         .unwrap_or(&docker_target_str);
-    let mount_src = format!("type=bind,source={src_app_clean},target=/work");
-    let mount_target = format!("type=bind,source={docker_target_clean},target=/cargo-target");
+    // For the WSL driver the Docker daemon lives inside WSL, so bind sources
+    // must be WSL paths (`/mnt/c/...`); for the Native (Docker Desktop)
+    // driver they stay host (Windows) paths. The cargo-target bind points at
+    // the SAME on-disk location either way, so reading the built binary back
+    // via the Windows `docker_target` path below works for both.
+    let (src_bind, tgt_bind) = match driver {
+        DockerDriver::Native => (src_app_clean.to_string(), docker_target_clean.to_string()),
+        DockerDriver::Wsl => (
+            win_to_wsl_mount(src_app_clean),
+            win_to_wsl_mount(docker_target_clean),
+        ),
+    };
+    let mount_src = format!("type=bind,source={src_bind},target=/work");
+    let mount_target = format!("type=bind,source={tgt_bind},target=/cargo-target");
 
-    let status = Command::new("docker")
-        .args([
-            "run",
-            "--rm",
-            "--platform",
-            "linux/amd64",
-            "--mount",
-            &mount_src,
-            "--mount",
-            &mount_target,
-            "-w",
-            "/work/sandbox-guest-agent",
-            "-e",
-            "CARGO_TARGET_DIR=/cargo-target",
-            "-e",
-            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=-C target-feature=+crt-static",
-            "-e",
-            "LIBSECCOMP_LINK_TYPE=static",
-            "-e",
-            "LIBSECCOMP_LIB_PATH=/usr/lib",
-            RUST_MUSL_IMAGE,
-            "sh",
-            "-c",
-            "apk add -q libseccomp-dev libseccomp-static musl-dev build-base pkgconf >/dev/null && \
-             cargo build --release --target x86_64-unknown-linux-musl 2>&1 | tail -5",
-        ])
-        .status()?;
+    let docker_args = [
+        "run",
+        "--rm",
+        "--platform",
+        "linux/amd64",
+        "--mount",
+        &mount_src,
+        "--mount",
+        &mount_target,
+        "-w",
+        "/work/sandbox-guest-agent",
+        "-e",
+        "CARGO_TARGET_DIR=/cargo-target",
+        "-e",
+        "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=-C target-feature=+crt-static",
+        "-e",
+        "LIBSECCOMP_LINK_TYPE=static",
+        "-e",
+        "LIBSECCOMP_LIB_PATH=/usr/lib",
+        RUST_MUSL_IMAGE,
+        "sh",
+        "-c",
+        "apk add -q libseccomp-dev libseccomp-static musl-dev build-base pkgconf >/dev/null && \
+         cargo build --release --target x86_64-unknown-linux-musl 2>&1 | tail -5",
+    ];
+
+    // Native: `docker run ...`. Wsl: `wsl -- docker run ...` (default distro).
+    let mut cmd = match driver {
+        DockerDriver::Native => Command::new("docker"),
+        DockerDriver::Wsl => {
+            let mut c = Command::new("wsl");
+            c.arg("--").arg("docker");
+            c
+        }
+    };
+    let status = cmd.args(docker_args).status()?;
     if !status.success() {
         return Err("wsl2-agent: cross-compile via docker failed".into());
     }

@@ -48,10 +48,10 @@ const spaceStory: GalleryStory = {
       render: () => (
         <div className="flex flex-col gap-4">
           <Space data-testid="g-space-h" size="md">
-            <Button data-testid="g-space-b1" size="sm">
+            <Button data-testid="g-space-b1" size="default">
               One
             </Button>
-            <Button data-testid="g-space-b2" size="sm" variant="outline">
+            <Button data-testid="g-space-b2" size="default" variant="outline">
               Two
             </Button>
             <Tag data-testid="g-space-tag" tone="info">
@@ -283,7 +283,7 @@ function FormListDemo() {
             ))}
             <Button
               data-testid="g-fl-add"
-              size="sm"
+              size="default"
               variant="outline"
               onClick={() => append({ value: '' })}
             >

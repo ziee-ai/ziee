@@ -227,7 +227,7 @@ export function DownloadIndicatorWidget() {
               <Flex justify="end" gap="sm" className="mt-1">
                 <Tooltip title="Dismiss this failed download">
                   <Button
-                    size="sm"
+                    size="default"
                     variant="outline"
                     icon={<X />}
                     onClick={() => handleClear(download)}
@@ -238,7 +238,7 @@ export function DownloadIndicatorWidget() {
                 </Tooltip>
                 <Tooltip title="Start a new download with the same settings">
                   <Button
-                    size="sm"
+                    size="default"
                     variant="default"
                     icon={<RotateCw />}
                     onClick={() => handleRetry(download)}

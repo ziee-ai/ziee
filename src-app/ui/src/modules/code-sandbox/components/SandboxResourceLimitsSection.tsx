@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   Alert,
-  Button,
   Card,
   Separator,
-  Flex,
   Form,
   FormField,
   Input,
@@ -19,6 +17,7 @@ import {
 import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import {
   Permissions,
   type CodeSandboxResourceLimits,
@@ -213,7 +212,22 @@ export function SandboxResourceLimitsSection() {
       {loading && !limits ? (
         <Spin label="Loading resource limits…" description="Loading resource limits…" />
       ) : (
-        <Card title="Resource limits" data-testid="sandbox-resource-limits-card">
+        <Card
+          title="Resource limits"
+          data-testid="sandbox-resource-limits-card"
+          footer={
+            <SettingsFormActions
+              onSave={form.handleSubmit(onSubmit)}
+              onCancel={onReset}
+              saving={saving}
+              saveDisabled={!canManage || !dirty}
+              cancelDisabled={!dirty || saving}
+              cancelLabel="Reset"
+              saveTestid="sandbox-rl-save-btn"
+              cancelTestid="sandbox-rl-reset-btn"
+            />
+          }
+        >
         <Form
           form={form}
           layout="horizontal"
@@ -345,22 +359,6 @@ export function SandboxResourceLimitsSection() {
           >
             <InputNumber min={256} max={262_144} suffix="MiB" className="w-full" data-testid="sandbox-rl-mac-ram" />
           </FormField>
-
-          {/* Actions on the right — matches the pattern used by the
-            * Memory admin / PreferencesSection forms. */}
-          <Flex justify="end" gap="small" className="mt-3">
-            <Button variant="outline" onClick={onReset} disabled={!dirty || saving} data-testid="sandbox-rl-reset-btn">
-              Reset
-            </Button>
-            <Button
-              type="submit"
-              loading={saving}
-              disabled={!canManage || !dirty}
-              data-testid="sandbox-rl-save-btn"
-            >
-              Save
-            </Button>
-          </Flex>
 
           <Paragraph type="secondary" className="mt-6">
             Defaults: 512 MiB memory, 256 PIDs, 1 CPU, 4 GiB address space,

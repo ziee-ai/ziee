@@ -62,10 +62,10 @@ export function WorkflowTestsPanel({
       {result && (
         <div className="flex flex-col gap-3">
           <Space>
-            <Tag data-testid="wf-tests-passed-tag" tone="success">{result.passed} passed</Tag>
-            {result.failed > 0 && <Tag data-testid="wf-tests-failed-tag" tone="error">{result.failed} failed</Tag>}
+            <Tag variant="outline" data-testid="wf-tests-passed-tag" tone="success">{result.passed} passed</Tag>
+            {result.failed > 0 && <Tag variant="outline" data-testid="wf-tests-failed-tag" tone="error">{result.failed} failed</Tag>}
             {result.skipped > 0 && (
-              <Tag data-testid="wf-tests-skipped-tag">{result.skipped} skipped</Tag>
+              <Tag variant="outline" data-testid="wf-tests-skipped-tag">{result.skipped} skipped</Tag>
             )}
           </Space>
           <List

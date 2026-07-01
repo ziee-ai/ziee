@@ -43,7 +43,8 @@ export const Checkbox = React.forwardRef<HTMLButtonElement, CheckboxProps>(funct
     <Base
       ref={ref}
       id={ctrlId}
-      checked={indeterminate ? 'indeterminate' : (checked ?? value)}
+      checked={checked ?? value}
+      indeterminate={indeterminate}
       defaultChecked={defaultChecked}
       onCheckedChange={handle}
       onBlur={onBlur}

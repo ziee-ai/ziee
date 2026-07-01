@@ -1027,7 +1027,7 @@ export function McpServerDrawer() {
           }
         >
           <Switch
-            aria-label="Enable server"
+            tooltip="Enable server"
             checked={enabledValue}
             loading={togglingEnable}
             disabled={!canManage || togglingEnable}

@@ -147,9 +147,21 @@ impl McpSessionManager {
                 );
             }
 
-            // Inject Authorization header with a short-lived JWT if not already set
+            // Inject Authorization header with a short-lived JWT if not already set.
+            // TTL is 60s (not 5s): a built-in tool call can chain multiple hops
+            // (e.g. control's `invoke_capability` re-dispatches to a REST route
+            // over loopback, forwarding this same token) and, under a slow model
+            // or a loaded host, a 5s window expired mid-chain → spurious 401s.
+            // 60s stays short-lived (loopback-only, per-user) while giving ample
+            // headroom for the multi-hop built-ins.
             if !headers.contains_key("authorization") && !headers.contains_key("Authorization") {
-                let token = Self::generate_short_lived_jwt(user_id, &self.config.jwt.secret, 5)?;
+                let token = Self::generate_short_lived_jwt(
+                    user_id,
+                    &self.config.jwt.secret,
+                    &self.config.jwt.issuer,
+                    &self.config.jwt.audience,
+                    60,
+                )?;
                 headers.insert(
                     "Authorization".to_string(),
                     Value::String(format!("Bearer {}", token)),
@@ -178,10 +190,27 @@ impl McpSessionManager {
         &self.config.jwt.secret
     }
 
+    /// The deployment JWT issuer/audience — MUST accompany `jwt_secret()` when
+    /// minting an internal token (see `generate_short_lived_jwt`).
+    pub fn jwt_issuer(&self) -> &str {
+        &self.config.jwt.issuer
+    }
+
+    pub fn jwt_audience(&self) -> &str {
+        &self.config.jwt.audience
+    }
+
     /// Generate a short-lived JWT for internal service-to-service calls.
+    ///
+    /// `issuer`/`audience` MUST come from the deployment config — hardcoding
+    /// `"ziee"`/`"ziee-api"` breaks token validation on any deployment (or test)
+    /// whose `jwt.issuer`/`jwt.audience` differs (the validator rejects with
+    /// `InvalidIssuer`), which silently 401s every built-in MCP server.
     pub fn generate_short_lived_jwt(
         user_id: Uuid,
         secret: &str,
+        issuer: &str,
+        audience: &str,
         ttl_seconds: i64,
     ) -> Result<String, AppError> {
         let now = Utc::now();
@@ -190,8 +219,8 @@ impl McpSessionManager {
             sub: user_id.to_string(),
             exp: exp.timestamp(),
             iat: now.timestamp(),
-            iss: "ziee".to_string(),
-            aud: "ziee-api".to_string(),
+            iss: issuer.to_string(),
+            aud: audience.to_string(),
             username: String::new(),
             email: String::new(),
             is_admin: false,

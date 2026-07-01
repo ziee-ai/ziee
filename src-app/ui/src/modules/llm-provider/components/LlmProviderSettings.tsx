@@ -104,27 +104,12 @@ export function LlmProviderSettings() {
     `}
     >
       {menuItems.map(item => {
-        const IconComponent =
-          item.key !== 'add-provider'
-            ? PROVIDER_ICONS[
-                providers.find(p => p.id === item.key)?.provider_type || 'custom'
-              ] || PROVIDER_ICONS.custom
-            : null
         return (
           <Button
             key={item.key}
             variant="ghost"
             block
             data-testid={`llm-provider-nav-${item.key}`}
-            icon={
-              item.key === 'add-provider' ? (
-                <span className="text-base">
-                  <Plus />
-                </span>
-              ) : (
-                IconComponent && <IconComponent className="text-base" />
-              )
-            }
             onClick={() => {
               if (item.key === 'add-provider') {
                 Stores.LlmProviderDrawer.openLlmProviderDrawer()

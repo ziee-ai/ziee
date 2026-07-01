@@ -83,7 +83,7 @@ export function McpServerGroupsAssignmentCard({
                     </Text>
                     <Space wrap size="small">
                       {assignedGroups.map(group => (
-                        <Tag
+                        <Tag variant="outline"
                           key={group.id}
                           tone="info"
                           className="text-[13px] px-2 py-1"

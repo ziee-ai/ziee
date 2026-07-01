@@ -69,8 +69,8 @@ _No always-required props._
 
 | prop | type | notes |
 |---|---|---|
-| `orientation` | `"vertical" | "horizontal" | "squareImage" | null | undefined` |  |
-| `size` | `"default" | "sm" | "xs" | null | undefined` |  |
+| `orientation` | `"vertical" | "horizontal" | null | undefined` |  |
+| `size` | `"default" | "xs" | "sm" | null | undefined` |  |
 | `state` | `"idle" | "uploading" | "processing" | "error" | "done" | undefined` |  |
 
 </details>
@@ -83,13 +83,12 @@ _No always-required props._
 |---|---|---|
 | `aria-label` | `string` | Defines a string value that labels the current element. |
 
-<details><summary>Optional props (3)</summary>
+<details><summary>Optional props (2)</summary>
 
 | prop | type | notes |
 |---|---|---|
-| `asChild` | `boolean | undefined` |  |
-| `size` | `"default" | "sm" | "lg" | "icon" | null | undefined` |  |
-| `variant` | `"link" | "default" | "destructive" | "outline" | "secondary" | "ghost" | null | undefined` |  |
+| `size` | `"default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg" | null | un…` |  |
+| `variant` | `"link" | "default" | "outline" | "secondary" | "ghost" | "destructive" | null | undefined` |  |
 
 </details>
 
@@ -187,20 +186,19 @@ _No always-required props._
 |---|---|---|
 | `data-testid` | `string` | Test selector — REQUIRED, forwarded onto the rendered button/anchor via {...props} (i18n-safe). |
 
-<details><summary>Optional props (10)</summary>
+<details><summary>Optional props (9)</summary>
 
 | prop | type | notes |
 |---|---|---|
 | `aria-label` | `string | undefined` | Defines a string value that labels the current element. |
-| `asChild` | `boolean | undefined` |  |
 | `block` | `boolean | undefined` | Full-width block button (legacy `block`). |
 | `href` | `string | undefined` | Render as an <a> styled as a button (pair with variant="link" for a text link). |
 | `icon` | `ReactNode` | Leading icon (legacy `icon`); rendered before children, replaced by the spinner while loading. |
 | `loading` | `boolean | undefined` |  |
-| `size` | `"default" | "sm" | "lg" | "icon" | undefined` |  |
+| `size` | `"default" | "lg" | "icon" | undefined` |  |
 | `target` | `string | undefined` |  |
 | `tooltip` | `string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstruct…` | Tooltip shown on hover AND keyboard focus. Doubles as the accessible name when a string. |
-| `variant` | `"link" | "default" | "destructive" | "outline" | "secondary" | "ghost" | null | undefined` |  |
+| `variant` | `"link" | "default" | "outline" | "secondary" | "ghost" | "destructive" | null | undefined` |  |
 
 </details>
 
@@ -266,13 +264,12 @@ _No always-required props._
 
 | prop | type | notes |
 |---|---|---|
-| `data-testid` | `string` | Test selector — forwarded onto <root> (i18n-safe). Options derive `${testid}-opt-${value}`. |
+| `data-testid` | `string` | Test selector — forwarded onto the field (i18n-safe). Options derive `${testid}-opt-${value}`. |
 | `emptyText` | `string` | Shown when the filter matches nothing (required — i18n). |
 | `options` | `ComboboxOption[]` |  |
-| `placeholder` | `string` | Trigger text when nothing is selected (required — caller owns it for i18n). |
-| `searchPlaceholder` | `string` | Search box placeholder (required — i18n). |
+| `placeholder` | `string` | Field text when nothing is selected (required — caller owns it for i18n). |
 
-<details><summary>Optional props (18)</summary>
+<details><summary>Optional props (19)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -290,10 +287,11 @@ _No always-required props._
 | `onBlur` | `(() => void) | undefined` |  |
 | `onChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
 | `onValueChange` | `((value: string) => void) | ((value: string) => void) | ((value: string) => void) | und…` |  |
+| `searchPlaceholder` | `string | undefined` | Kept for API compatibility; the base combobox filters in the same field, so the `placeholder` above is what's shown. |
 | `size` | `"default" | "sm" | "lg" | undefined` |  |
 | `style` | `CSSProperties | undefined` |  |
 | `value` | `string | undefined` |  |
-| `virtual` | `boolean | undefined` | Window the option list for large sets (own filter + keyboard nav, replaces cmdk). |
+| `virtual` | `boolean | undefined` | Kept for API compatibility — Base UI Combobox windows large lists itself. |
 
 </details>
 
@@ -607,7 +605,7 @@ _No always-required props._
 | prop | type | notes |
 |---|---|---|
 | `allowClear` | `boolean | undefined` | Show a clear (×) button when there's a value (legacy `allowClear`). Fires onChange with ''. |
-| `defaultValue` | `number | undefined` |  |
+| `defaultValue` | `number | null | undefined` |  |
 | `invalid` | `boolean | undefined` |  |
 | `loading` | `boolean | undefined` |  |
 | `max` | `number | undefined` |  |
@@ -619,7 +617,7 @@ _No always-required props._
 | `size` | `"default" | "sm" | "lg" | undefined` |  |
 | `step` | `number | undefined` |  |
 | `suffix` | `ReactNode` |  |
-| `value` | `number | undefined` |  |
+| `value` | `number | null | undefined` |  |
 
 </details>
 
@@ -810,7 +808,7 @@ _No always-required props._
 | `ellipsis` | `boolean | undefined` |  |
 | `strong` | `boolean | undefined` |  |
 | `style` | `CSSProperties | undefined` |  |
-| `tone` | `"default" | "destructive" | "secondary" | "success" | "warning" | "muted" | "danger" | …` |  |
+| `tone` | `"default" | "secondary" | "destructive" | "success" | "warning" | "muted" | "danger" | …` |  |
 | `type` | `"secondary" | "success" | "warning" | "danger" | undefined` | legacy `type` — alias of `tone`. |
 
 </details>
@@ -1072,13 +1070,12 @@ _No always-required props._
 | `aria-label` | `string` | Defines a string value that labels the current element. |
 | `data-testid` | `string` | Test selector — REQUIRED, forwarded onto the trigger via {...props} (i18n-safe). |
 
-<details><summary>Optional props (3)</summary>
+<details><summary>Optional props (2)</summary>
 
 | prop | type | notes |
 |---|---|---|
-| `asChild` | `boolean | undefined` |  |
-| `size` | `"default" | "sm" | "lg" | "icon" | null | undefined` |  |
-| `variant` | `"link" | "default" | "destructive" | "outline" | "secondary" | "ghost" | null | undefined` |  |
+| `size` | `"default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg" | null | un…` |  |
+| `variant` | `"link" | "default" | "outline" | "secondary" | "ghost" | "destructive" | null | undefined` |  |
 
 </details>
 
@@ -1107,12 +1104,13 @@ _No always-required props._
 |---|---|---|
 | `label` | `string` | Required accessible label for the loading state (no default — caller owns it for i18n). |
 
-<details><summary>Optional props (5)</summary>
+<details><summary>Optional props (6)</summary>
 
 | prop | type | notes |
 |---|---|---|
 | `children` | `ReactNode` |  |
 | `className` | `string | undefined` |  |
+| `data-testid` | `string | undefined` |  |
 | `description` | `ReactNode` | Visible caption under the spinner (legacy `tip`/`description`). |
 | `size` | `"default" | "sm" | "lg" | undefined` |  |
 | `spinning` | `boolean | undefined` |  |
@@ -1168,7 +1166,7 @@ _No always-required props._
 |---|---|---|
 | `data-testid` | `string` | Test selector — forwarded onto <root> (i18n-safe). |
 
-<details><summary>Optional props (17)</summary>
+<details><summary>Optional props (18)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -1188,6 +1186,7 @@ _No always-required props._
 | `onChange` | `((checked: boolean) => void) | ((checked: boolean) => void) | ((checked: boolean) => vo…` |  |
 | `onCheckedChange` | `((checked: boolean) => void) | ((checked: boolean) => void) | ((checked: boolean) => vo…` |  |
 | `size` | `"default" | "sm" | undefined` |  |
+| `tooltip` | `ReactNode` | Tooltip on hover/focus. For a label-less switch it ALSO becomes the accessible name (aria-label) when it's a string — so a bare switch is… |
 | `value` | `boolean | undefined` |  |
 
 </details>
@@ -1280,7 +1279,7 @@ _No always-required props._
 | `ellipsis` | `boolean | undefined` | Single-line truncation with ellipsis (legacy `ellipsis`). |
 | `strong` | `boolean | undefined` | Bold text (legacy `strong`). |
 | `style` | `CSSProperties | undefined` |  |
-| `tone` | `"default" | "destructive" | "secondary" | "success" | "warning" | "muted" | "danger" | …` | Kit tones + legacy `type` aliases (secondary/success/warning/danger). |
+| `tone` | `"default" | "secondary" | "destructive" | "success" | "warning" | "muted" | "danger" | …` | Kit tones + legacy `type` aliases (secondary/success/warning/danger). |
 | `type` | `"secondary" | "success" | "warning" | "danger" | undefined` | legacy `type` — alias of `tone`. |
 
 </details>

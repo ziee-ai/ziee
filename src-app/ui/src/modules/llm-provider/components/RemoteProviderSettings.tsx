@@ -1,12 +1,10 @@
 import {
-  Button,
   Card,
   Flex,
   Form,
   FormField,
   Input,
   PasswordInput,
-  Separator,
   Text,
   Title,
   message,
@@ -17,6 +15,7 @@ import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { ProviderProxySettingsForm } from '@/modules/llm-provider/components/ProviderProxySettingsForm'
 import { ProviderHeader } from '@/modules/llm-provider/components/ProviderHeader'
 import { LlmModelsSection } from '@/modules/llm-provider/components/LlmModelsSection'
@@ -135,7 +134,20 @@ export function RemoteProviderSettings() {
         onSubmit={handleSaveSettings}
         data-testid="llm-remote-settings-form"
       >
-        <Card title={'API Configuration'} data-testid="llm-remote-api-config-card">
+        <Card
+          title={'API Configuration'}
+          data-testid="llm-remote-api-config-card"
+          footer={canEditProvider ? (
+            <SettingsFormActions
+              onSave={form.handleSubmit(handleSaveSettings)}
+              onCancel={() => form.reset()}
+              saveDisabled={!isDirty}
+              cancelDisabled={!isDirty}
+              saveTestid="llm-remote-save-btn"
+              cancelTestid="llm-remote-cancel-btn"
+            />
+          ) : undefined}
+        >
           <Flex className={'flex-col gap-3'}>
             <div>
               <Title level={5}>API Key</Title>
@@ -185,16 +197,6 @@ export function RemoteProviderSettings() {
             </div>
           </Flex>
 
-          {canEditProvider && (
-            <>
-              <Separator className="!my-3" />
-              <Flex justify="end">
-                <Button type="submit" disabled={!isDirty} data-testid="llm-remote-save-btn">
-                  Save
-                </Button>
-              </Flex>
-            </>
-          )}
         </Card>
       </Form>
 

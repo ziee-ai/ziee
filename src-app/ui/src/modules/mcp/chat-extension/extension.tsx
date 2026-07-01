@@ -68,7 +68,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           </Text>
         </div>
         <Button
-          size="sm"
+          size="default"
           variant="ghost"
           onClick={() => setIsExpanded(!isExpanded)}
           data-testid={`mcp-toolcall-details-btn-${toolCall.tool_use_id}`}
@@ -199,7 +199,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
           )}
         </div>
         {hasDetails && (
-          <Button size="sm" variant="ghost" onClick={() => setIsExpanded(!isExpanded)} data-testid={`mcp-tooluse-details-btn-${toolUseData.id}`}>
+          <Button size="default" variant="ghost" onClick={() => setIsExpanded(!isExpanded)} data-testid={`mcp-tooluse-details-btn-${toolUseData.id}`}>
             {isExpanded ? 'Hide' : 'Show'} details
           </Button>
         )}

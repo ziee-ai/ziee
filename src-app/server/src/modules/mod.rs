@@ -6,6 +6,7 @@ pub mod auth;
 pub mod bio_mcp;
 pub mod chat;
 pub mod citations;
+pub mod control_mcp;
 pub mod elicitation_mcp;
 pub mod file;
 pub mod file_rag;

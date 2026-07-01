@@ -98,12 +98,12 @@ export function AdminWorkflowGroupAssignment({
                   emptyText="No groups found"
                 />
                 <Flex gap="sm" justify="end">
-                  <Button data-testid="wf-group-assign-cancel-btn" size="sm" variant="outline" onClick={() => setEditing(false)}>
+                  <Button data-testid="wf-group-assign-cancel-btn" size="default" variant="outline" onClick={() => setEditing(false)}>
                     Cancel
                   </Button>
                   <Button
                     data-testid="wf-group-assign-save-btn"
-                    size="sm"
+                    size="default"
                     loading={saving}
                     onClick={save}
                   >
@@ -120,7 +120,7 @@ export function AdminWorkflowGroupAssignment({
             ) : (
               <Space wrap size="middle">
                 {assignedIds.map(id => (
-                  <Tag key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
+                  <Tag variant="outline" key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
                     {nameFor(id)}
                   </Tag>
                 ))}
@@ -134,7 +134,7 @@ export function AdminWorkflowGroupAssignment({
           <Button
             data-testid="wf-group-assign-edit-btn"
             variant="ghost"
-            size="sm"
+            size="default"
             icon={<Pencil aria-hidden="true" />}
             onClick={() => void startEdit()}
             aria-label="Manage user groups"
