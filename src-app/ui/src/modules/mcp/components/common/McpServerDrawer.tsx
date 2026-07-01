@@ -10,7 +10,6 @@ import {
   InputNumber,
   Select,
   Switch,
-  Flex,
   Separator,
   Tabs,
   Tooltip,
@@ -1015,29 +1014,9 @@ export function McpServerDrawer() {
       healthReason ?? 'unknown reason'
     }`
   }
-  const titleNode = (
-    <Flex justify="between" align="center" className="w-full pr-6">
-      <span>{getTitle()}</span>
-      {!!editingServer || mode === 'create' || mode === 'create-system' ? (
-        <Tooltip
-          title={
-            <span style={{ whiteSpace: 'pre-line' }}>
-              {formatHealthTooltip()}
-            </span>
-          }
-        >
-          <Switch
-            tooltip="Enable server"
-            checked={enabledValue}
-            loading={togglingEnable}
-            disabled={!canManage || togglingEnable}
-            onChange={handleEnabledToggle}
-            data-testid="mcp-drawer-enabled-switch"
-          />
-        </Tooltip>
-      ) : null}
-    </Flex>
-  )
+  // The Enabled switch used to live here in the title; it now sits in the form
+  // body right after the name (see below), so the header is just the title text.
+  const titleNode = getTitle()
 
   const detailsBody = (
       <div className="flex flex-col gap-4">
@@ -1087,6 +1066,32 @@ export function McpServerDrawer() {
           >
             <Input placeholder="e.g., Filesystem Access, Web Fetch" data-testid="mcp-drawer-display-name-input" />
           </FormField>
+
+          {/* Enabled — right after the name, not in the header. Controlled
+              externally (enabledValue + handleEnabledToggle: edit-mode toggles
+              persist + probe), so it's a plain labeled row, not a form-bound
+              FormField. */}
+          {(!!editingServer || mode === 'create' || mode === 'create-system') && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Enabled</span>
+              <Tooltip
+                title={
+                  <span style={{ whiteSpace: 'pre-line' }}>
+                    {formatHealthTooltip()}
+                  </span>
+                }
+              >
+                <Switch
+                  aria-label="Enable server"
+                  checked={enabledValue}
+                  loading={togglingEnable}
+                  disabled={!canManage || togglingEnable}
+                  onChange={handleEnabledToggle}
+                  data-testid="mcp-drawer-enabled-switch"
+                />
+              </Tooltip>
+            </div>
+          )}
 
           {/* Description */}
           <FormField label="Description" name="description">
@@ -1370,33 +1375,6 @@ export function McpServerDrawer() {
             />
           )}
         </Form>
-
-        <div className="flex gap-2 justify-end">
-          {canManage && !!transportType && (
-            <Button
-              className="mr-auto"
-              loading={testing}
-              disabled={loading}
-              onClick={handleSaveAndTest}
-              data-testid="mcp-drawer-save-test-btn"
-            >
-              Save &amp; Test Connection
-            </Button>
-          )}
-          <Button variant="outline" onClick={handleClose} data-testid="mcp-drawer-cancel-btn">
-            {canManage ? 'Cancel' : 'Close'}
-          </Button>
-          {canManage && (
-            <Button
-              loading={loading}
-              disabled={testing}
-              onClick={handleSubmit}
-              data-testid="mcp-drawer-submit-btn"
-            >
-              {getButtonText()}
-            </Button>
-          )}
-        </div>
       </div>
   )
 
@@ -1404,7 +1382,44 @@ export function McpServerDrawer() {
   // Create mode has no server id yet, so just render the form.
   const isEditMode = mode === 'edit' || mode === 'edit-system'
   return (
-    <Drawer open={open} onClose={handleClose} title={titleNode} size={600}>
+    <Drawer
+      open={open}
+      onClose={handleClose}
+      title={titleNode}
+      size={600}
+      footer={
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            {canManage && !!transportType && (
+              <Button
+                variant="outline"
+                loading={testing}
+                disabled={loading}
+                onClick={handleSaveAndTest}
+                data-testid="mcp-drawer-save-test-btn"
+              >
+                Save &amp; Test Connection
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleClose} data-testid="mcp-drawer-cancel-btn">
+              {canManage ? 'Cancel' : 'Close'}
+            </Button>
+            {canManage && (
+              <Button
+                loading={loading}
+                disabled={testing}
+                onClick={handleSubmit}
+                data-testid="mcp-drawer-submit-btn"
+              >
+                {getButtonText()}
+              </Button>
+            )}
+          </div>
+        </div>
+      }
+    >
       {isEditMode && editingServer ? (
         <Tabs
           defaultValue="details"

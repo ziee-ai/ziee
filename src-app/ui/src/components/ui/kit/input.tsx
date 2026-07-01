@@ -58,6 +58,10 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           adorned ? 'w-full' : className,
         )}
         {...props}
+        // A controlled input must never receive null/undefined (React warns + Base UI
+        // flips uncontrolled↔controlled). Form bindings pass a `value` that may be null
+        // before data loads → coerce to ''. Uncontrolled use (no `value`) is untouched.
+        {...('value' in props ? { value: props.value ?? '' } : {})}
       />
     )
     if (!adorned) return field

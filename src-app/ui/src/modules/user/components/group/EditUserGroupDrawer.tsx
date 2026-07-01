@@ -81,7 +81,18 @@ export function EditUserGroupDrawer() {
       title={group ? `Edit Group: ${group.name}` : 'Edit User Group'}
       open={open}
       onClose={handleClose}
-      footer={null}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={handleClose} disabled={loading} data-testid="user-edit-group-cancel-button">
+            {canEdit ? 'Cancel' : 'Close'}
+          </Button>
+          {canEdit && (
+            <Button type="submit" form="edit-user-group-form" loading={loading} data-testid="user-edit-group-save-button">
+              Save
+            </Button>
+          )}
+        </div>
+      }
       size={600}
       mask={{ closable: false }}
     >
@@ -100,6 +111,10 @@ export function EditUserGroupDrawer() {
           <Input placeholder="Enter group name" data-testid="user-edit-group-name-input" />
         </FormField>
 
+        <FormField name="is_active" label="Active" valuePropName="checked">
+          <Switch aria-label="Set group as active or inactive" data-testid="user-edit-group-active-switch" />
+        </FormField>
+
         <FormField name="description" label="Description">
           <Textarea
             placeholder="Enter group description (optional)"
@@ -112,21 +127,6 @@ export function EditUserGroupDrawer() {
         <FormField name="permissions" label="Permissions">
           <PermissionsField disabled={!canEdit} />
         </FormField>
-
-        <FormField name="is_active" label="Active" valuePropName="checked">
-          <Switch aria-label="Set group as active or inactive" data-testid="user-edit-group-active-switch" />
-        </FormField>
-
-        <div className="flex justify-end gap-3 pt-4">
-          <Button variant="outline" onClick={handleClose} disabled={loading} data-testid="user-edit-group-cancel-button">
-            {canEdit ? 'Cancel' : 'Close'}
-          </Button>
-          {canEdit && (
-            <Button type="submit" loading={loading} data-testid="user-edit-group-save-button">
-              Save
-            </Button>
-          )}
-        </div>
       </Form>
     </Drawer>
   )

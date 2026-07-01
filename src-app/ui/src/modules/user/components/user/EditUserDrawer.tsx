@@ -1,4 +1,4 @@
-import { Button, Flex, Form, FormField, useForm, zodResolver, Input, Switch, message } from '@/components/ui'
+import { Button, Form, FormField, useForm, zodResolver, Input, Switch, message } from '@/components/ui'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
@@ -68,7 +68,25 @@ export function EditUserDrawer() {
         Stores.EditUserDrawer.closeEditUserDrawer()
         editForm.reset()
       }}
-      footer={null}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              Stores.EditUserDrawer.closeEditUserDrawer()
+              editForm.reset()
+            }}
+            data-testid="user-edit-cancel-button"
+          >
+            {canEdit ? 'Cancel' : 'Close'}
+          </Button>
+          {canEdit && (
+            <Button type="submit" form="edit-user-form" data-testid="user-edit-submit-button">
+              Save
+            </Button>
+          )}
+        </div>
+      }
       size={600}
       mask={{ closable: false }}
     >
@@ -83,11 +101,11 @@ export function EditUserDrawer() {
         <FormField name="username" label="Username" required>
           <Input placeholder="Enter username" data-testid="user-edit-username-input" />
         </FormField>
-        <FormField name="display_name" label="Display Name">
-          <Input placeholder="Enter display name (optional)" data-testid="user-edit-display-name-input" />
-        </FormField>
         <FormField name="is_active" label="Active" valuePropName="checked">
           <Switch aria-label="Active" data-testid="user-edit-active-switch" />
+        </FormField>
+        <FormField name="display_name" label="Display Name">
+          <Input placeholder="Enter display name (optional)" data-testid="user-edit-display-name-input" />
         </FormField>
         {/*
          * Email + Permissions removed from this form per security work:
@@ -98,23 +116,6 @@ export function EditUserDrawer() {
          *   themselves wildcard '*' (03-user F-01). Use group
          *   assignment (POST /api/groups/{id}/users) instead.
          */}
-        <Flex className="justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              Stores.EditUserDrawer.closeEditUserDrawer()
-              editForm.reset()
-            }}
-            data-testid="user-edit-cancel-button"
-          >
-            {canEdit ? 'Cancel' : 'Close'}
-          </Button>
-          {canEdit && (
-            <Button type="submit" data-testid="user-edit-submit-button">
-              Save
-            </Button>
-          )}
-        </Flex>
       </Form>
     </Drawer>
   )

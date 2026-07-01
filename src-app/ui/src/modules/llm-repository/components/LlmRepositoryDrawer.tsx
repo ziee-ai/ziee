@@ -455,7 +455,43 @@ export function LlmRepositoryDrawer() {
       }
       open={open}
       onClose={handleClose}
-      footer={null}
+      footer={
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            {showTestButton && (
+              <Button
+                data-testid="llmrepo-form-test-btn"
+                variant="outline"
+                icon={<CloudDownload />}
+                loading={testing}
+                onClick={testRepositoryFromForm}
+              >
+                Test Connection
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              data-testid="llmrepo-form-cancel-btn"
+              variant="outline"
+              onClick={handleClose}
+              disabled={loading || creating || updating}
+            >
+              {canSave ? 'Cancel' : 'Close'}
+            </Button>
+            {canSave && (
+              <Button
+                data-testid="llmrepo-form-submit-btn"
+                type="submit"
+                form="llm-repository-form"
+                loading={loading || creating || updating}
+              >
+                {repository ? 'Save' : 'Add'}
+              </Button>
+            )}
+          </div>
+        </div>
+      }
       size={600}
       mask={{ closable: false }}
     >
@@ -505,6 +541,23 @@ export function LlmRepositoryDrawer() {
             disabled={repository?.built_in}
           />
         </FormField>
+
+        <FormField name="_enabled_display" label="Enable Repository">
+          <Switch
+            data-testid="llmrepo-form-enabled-switch"
+            checked={enabledValue}
+            disabled={repository?.built_in}
+            loading={togglingEnable}
+            onChange={handleEnabledToggle}
+            aria-label="Enable repository"
+          />
+        </FormField>
+        {mode === 'edit' && (
+          <Text type="secondary" className="block mb-3 mt-1 text-xs">
+            Enabling runs a connection probe; the repository stays
+            disabled if it can't reach the upstream.
+          </Text>
+        )}
 
         <FormField
           name="url"
@@ -585,77 +638,6 @@ export function LlmRepositoryDrawer() {
           />
         </FormField>
 
-        {/* Test Connection Section */}
-        {showTestButton && (
-          <FormField name="_test_connection_placeholder" label="Connection Test">
-            <div>
-              <Text type="secondary" className="block mb-3">
-                Test your repository configuration to ensure it's
-                accessible
-              </Text>
-              <Button
-                data-testid="llmrepo-form-test-btn"
-                variant="ghost"
-                icon={<CloudDownload />}
-                loading={testing}
-                onClick={testRepositoryFromForm}
-              >
-                Test Connection
-              </Button>
-            </div>
-          </FormField>
-        )}
-
-        {/* Enable Repository switch.
-         *
-         * Hidden form field carries the value into the form state so
-         * `persistRepository` still sees a populated `values.enabled`.
-         * The visible Switch is driven by local `enabledValue` so the
-         * save-then-probe-then-revert flow can snap it back without
-         * waiting for a form re-render.
-         *
-         * In CREATE mode: Switch toggles local state + form value; the
-         * bottom Add button persists.
-         * In EDIT mode: Switch immediately PUTs the change (OFF = minimal
-         * disable, ON = save full form + backend probe with auto-revert
-         * on probe failure).
-         */}
-        <FormField name="_enabled_display" label="Enable Repository">
-          <Switch
-            data-testid="llmrepo-form-enabled-switch"
-            checked={enabledValue}
-            disabled={repository?.built_in}
-            loading={togglingEnable}
-            onChange={handleEnabledToggle}
-            aria-label="Enable repository"
-          />
-        </FormField>
-        {mode === 'edit' && (
-          <Text type="secondary" className="block mt-1 text-xs">
-            Enabling runs a connection probe; the repository stays
-            disabled if it can't reach the upstream.
-          </Text>
-        )}
-
-        <div className="flex justify-end gap-3 pt-4">
-          <Button
-            data-testid="llmrepo-form-cancel-btn"
-            variant="outline"
-            onClick={handleClose}
-            disabled={loading || creating || updating}
-          >
-            {canSave ? 'Cancel' : 'Close'}
-          </Button>
-          {canSave && (
-            <Button
-              data-testid="llmrepo-form-submit-btn"
-              type="submit"
-              loading={loading || creating || updating}
-            >
-              {repository ? 'Save' : 'Add'}
-            </Button>
-          )}
-        </div>
       </Form>
     </Drawer>
   )

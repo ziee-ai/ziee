@@ -145,21 +145,41 @@ export interface FormProps<T extends FieldValues> {
 }
 
 export function Form<T extends FieldValues>({ form, onSubmit, disabled, size, name, layout = 'vertical', labelWidth, className, children, 'data-testid': testid }: FormProps<T>) {
+  // Responsive: a horizontal form (label BESIDE the control) stacks to vertical
+  // (label ABOVE the control) once its own container gets narrow — otherwise the
+  // fixed label column leaves the control almost no room on small screens. We
+  // observe the form's OWN width (not the viewport), so it also stacks inside a
+  // narrow drawer/card.
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const [narrow, setNarrow] = React.useState(false)
+  React.useLayoutEffect(() => {
+    const el = formRef.current
+    if (!el || layout !== 'horizontal') return
+    const update = (w: number) => setNarrow(w < 480)
+    update(el.offsetWidth)
+    const ro = new ResizeObserver((entries) => update(entries[0].contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [layout])
+  const effectiveLayout: FormLayout = layout === 'horizontal' && narrow ? 'vertical' : layout
   // Horizontal forms with no explicit `labelWidth` otherwise let the label column
   // grow to ~half the row (huge gap before the control). Default to a consistent
-  // fixed column so every settings form aligns the same way.
-  const effectiveLabelWidth = layout === 'horizontal' && labelWidth == null ? '13rem' : labelWidth
+  // fixed column so every settings form aligns the same way. (Dropped when stacked.)
+  const effectiveLabelWidth =
+    effectiveLayout === 'horizontal' ? (labelWidth == null ? '13rem' : labelWidth) : undefined
   return (
     <FormProvider {...form}>
-      <FormLayoutContext.Provider value={React.useMemo(() => ({ layout, labelWidth: effectiveLabelWidth }), [layout, effectiveLabelWidth])}>
+      <FormLayoutContext.Provider value={React.useMemo(() => ({ layout: effectiveLayout, labelWidth: effectiveLabelWidth }), [effectiveLayout, effectiveLabelWidth])}>
         <KitSurfaceProvider disabled={disabled} size={size}>
-          <form name={name} onSubmit={form.handleSubmit(onSubmit)} className={className} noValidate data-testid={testid}>
+          {/* id={name} lets a submit button rendered OUTSIDE the <form> (e.g. in a
+              Drawer/Dialog footer) trigger it via the native `form="<name>"` attribute. */}
+          <form ref={formRef} id={name} name={name} onSubmit={form.handleSubmit(onSubmit)} className={className} noValidate data-testid={testid}>
             {/* KitSurface disables kit components (+ <a>/custom); <fieldset disabled>
                 also disables native + third-party form controls. `contents` keeps layout. */}
             <fieldset disabled={disabled} className="contents">
               {/* inline forms flow horizontally + wrap; the per-field <Field> is w-full by
                   default, so override it to w-auto here or every field claims a full row. */}
-              <FieldGroup className={layout === 'inline' ? 'flex-row flex-wrap items-end gap-4 [&>[data-slot=field]]:w-auto' : undefined}>
+              <FieldGroup className={effectiveLayout === 'inline' ? 'flex-row flex-wrap items-end gap-4 [&>[data-slot=field]]:w-auto' : undefined}>
                 {children}
               </FieldGroup>
             </fieldset>
