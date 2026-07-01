@@ -129,18 +129,16 @@ export function ProviderHeader() {
               <Input className={'!text-lg'} data-testid="llm-provider-header-name-input" />
             </FormField>
             <div className={'flex items-center gap-2'}>
-              <Button type="submit" aria-label="Save provider name" data-testid="llm-provider-header-save-name-btn">
-                <Check aria-hidden="true" />
-              </Button>
+              <Button type="submit" size="icon" icon={<Check aria-hidden="true" />} aria-label="Save provider name" data-testid="llm-provider-header-save-name-btn" />
               <Button
                 type="button"
+                size="icon"
                 variant="outline"
+                icon={<X aria-hidden="true" />}
                 onClick={() => setIsEditingName(false)}
                 aria-label="Cancel editing provider name"
                 data-testid="llm-provider-header-cancel-name-btn"
-              >
-                <X aria-hidden="true" />
-              </Button>
+              />
             </div>
           </div>
         </Form>
@@ -159,15 +157,15 @@ export function ProviderHeader() {
           <div className={'flex items-center'}>
             {canEdit && (
               <Button
-                variant="ghost"
+                variant="outline"
+                size="icon"
+                icon={<Pencil aria-hidden="true" />}
                 onClick={() => {
                   setIsEditingName(!isEditingName)
                 }}
                 aria-label="Edit provider name"
                 data-testid="llm-provider-header-edit-name-btn"
-              >
-                <Pencil aria-hidden="true" />
-              </Button>
+              />
             )}
             {canDelete && !currentProvider.built_in && (
               <Confirm
@@ -180,12 +178,12 @@ export function ProviderHeader() {
                 data-testid="llm-provider-delete-confirm"
               >
                 <Button
-                  variant="ghost"
+                  variant="outline"
+                  size="icon"
+                  icon={<Trash2 aria-hidden="true" />}
                   aria-label="Delete provider"
                   data-testid="llm-provider-delete-btn"
-                >
-                  <Trash2 aria-hidden="true" />
-                </Button>
+                />
               </Confirm>
             )}
           </div>

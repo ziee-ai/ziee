@@ -110,7 +110,7 @@ export function WebSearchProvidersSection() {
         />
       ) : undefined}
     >
-      <Paragraph type="secondary" className="text-xs">
+      <Paragraph type="secondary" className="text-sm">
         Configure each engine you want available. Keys are stored encrypted and
         never shown again.
       </Paragraph>
@@ -124,17 +124,9 @@ export function WebSearchProvidersSection() {
       >
         {providers.map((entry) => (
           <div key={entry.key}>
-            <Separator titlePlacement="left">
+            <Separator titlePlacement="left" className="mt-5 mb-3">
               <Text className="text-sm">{entry.display_name}</Text>
             </Separator>
-            <Paragraph
-              type={entry.configured ? 'success' : 'secondary'}
-              className="text-xs !mb-2"
-              data-testid={`websearch-provider-${entry.key}-status`}
-              data-configured={entry.configured ? 'true' : 'false'}
-            >
-              {entry.configured ? 'Configured' : 'Not configured'}
-            </Paragraph>
 
             {entry.config_fields.map((f) => (
               <FormField key={f.key} name={`${entry.key}.${f.key}`} label={f.label} required={f.required}>
