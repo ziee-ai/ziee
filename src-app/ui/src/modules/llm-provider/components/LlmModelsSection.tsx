@@ -232,31 +232,35 @@ export function LlmModelsSection() {
 
     if (currentProvider.provider_type === 'local') {
       return (
-        <Dropdown
-          data-testid="llm-models-add-dropdown"
-          items={[
-            {
-              key: 'upload',
-              label: 'Upload from Files',
-              icon: <Upload />,
-              onClick: () =>
-                Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
-                  currentProvider.id,
-                ),
-            },
-            {
-              key: 'download',
-              label: 'Download from Repository',
-              icon: <Plus />,
-              onClick: () =>
-                Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
-                  currentProvider.id,
-                ),
-            },
-          ]}
-        >
-          <Tooltip content="Add model">
-            <span className="inline-flex">
+        // Tooltip OUTERMOST (wrapping the span that wraps the Dropdown) so it
+        // doesn't share a trigger element with the Dropdown — the same stable
+        // pattern as AddProviderMenu; a Tooltip nested INSIDE the Dropdown
+        // double-triggers on the button and flickers.
+        <Tooltip content="Add model">
+          <span className="inline-flex">
+            <Dropdown
+              data-testid="llm-models-add-dropdown"
+              items={[
+                {
+                  key: 'upload',
+                  label: 'Upload from Files',
+                  icon: <Upload />,
+                  onClick: () =>
+                    Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
+                      currentProvider.id,
+                    ),
+                },
+                {
+                  key: 'download',
+                  label: 'Download from Repository',
+                  icon: <Plus />,
+                  onClick: () =>
+                    Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
+                      currentProvider.id,
+                    ),
+                },
+              ]}
+            >
               <Button
                 variant="default"
                 size="icon"
@@ -264,21 +268,25 @@ export function LlmModelsSection() {
                 aria-label="Add model"
                 data-testid="llm-models-add-local-btn"
               />
-            </span>
-          </Tooltip>
-        </Dropdown>
+            </Dropdown>
+          </span>
+        </Tooltip>
       )
     }
 
     return (
-      <Button
-        variant="default"
-        size="icon"
-        icon={<Plus aria-hidden="true" />}
-        onClick={handleAddLlmModel}
-        tooltip="Add model"
-        data-testid="llm-models-add-remote-btn"
-      />
+      <Tooltip content="Add model">
+        <span className="inline-flex">
+          <Button
+            variant="default"
+            size="icon"
+            icon={<Plus aria-hidden="true" />}
+            onClick={handleAddLlmModel}
+            aria-label="Add model"
+            data-testid="llm-models-add-remote-btn"
+          />
+        </span>
+      </Tooltip>
     )
   }
 
