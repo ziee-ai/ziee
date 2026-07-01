@@ -26,7 +26,9 @@ export function AdminWorkflowGroupAssignment({
   }, [workflowId])
 
   return (
-    <div data-workflow-id={workflowId}>
+    // px-3 aligns the section with the card's p-3 header (the card is a plain
+    // bordered div with no content padding of its own).
+    <div data-workflow-id={workflowId} className="px-3">
       <UserGroupAssignment
         data-testid="wf-group"
         assignedGroups={assignedIds.map(id => ({ id, name: id }))}

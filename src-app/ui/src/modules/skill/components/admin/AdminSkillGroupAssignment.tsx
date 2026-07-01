@@ -29,7 +29,9 @@ export function AdminSkillGroupAssignment({
   }, [skillId])
 
   return (
-    <div data-skill-id={skillId}>
+    // px-3 aligns the section with the card's p-3 header (the card is a plain
+    // bordered div with no content padding of its own).
+    <div data-skill-id={skillId} className="px-3">
       <UserGroupAssignment
         data-testid="skill-group"
         assignedGroups={assignedIds.map(id => ({ id, name: id }))}
