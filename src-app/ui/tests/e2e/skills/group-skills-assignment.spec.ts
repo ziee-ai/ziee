@@ -36,7 +36,7 @@ test.describe('System Skills assignment in User Groups', () => {
     await clickGroupItem(page, group)
     const card = page.getByTestId(/^user-group-card-/).filter({ hasText: group }).first()
     await expect(card.getByTestId(/^skill-group-widget-card-/)).toBeVisible({ timeout: 15000 })
-    await expect(card.getByText('System Skills')).toBeVisible()
+    await expect(card.getByText('System Skills', { exact: true })).toBeVisible()
     await deleteUserGroup(page, group)
   })
 

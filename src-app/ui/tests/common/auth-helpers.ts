@@ -102,7 +102,9 @@ export async function loginAsAdmin(
     await page.fill('[data-testid="app-setup-email-input"]', email)
     await page.fill('[data-testid="app-setup-password-input"]', password)
     await page.fill('[data-testid="app-setup-confirm-password-input"]', password)
-    await page.click('button[type="submit"]')
+    // The setup submit is a kit Button (onClick=handleSubmit), not a native
+    // type=submit, post-shadcn — key off its stable testid.
+    await page.click('[data-testid="app-setup-submit-button"]')
 
     // Wait for the persisted token. authenticateUser's catch block
     // preserves the token across an aborted /me (see Auth.store.ts) —
