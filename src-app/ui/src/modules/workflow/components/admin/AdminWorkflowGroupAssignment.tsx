@@ -120,7 +120,7 @@ export function AdminWorkflowGroupAssignment({
             ) : (
               <Space wrap size="middle">
                 {assignedIds.map(id => (
-                  <Tag key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
+                  <Tag variant="outline" key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
                     {nameFor(id)}
                   </Tag>
                 ))}

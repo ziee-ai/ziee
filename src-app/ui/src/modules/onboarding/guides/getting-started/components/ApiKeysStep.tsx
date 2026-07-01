@@ -138,7 +138,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
             })()}
             <Text strong className="text-base">{currentProvider.name}</Text>
             {(currentProvider.api_key_configured || hasUserKey) && (
-              <Tag data-testid="onboarding-apikeys-key-status-tag" icon={<CircleCheck />} tone="success">
+              <Tag variant="outline" data-testid="onboarding-apikeys-key-status-tag" icon={<CircleCheck />} tone="success">
                 {hasUserKey ? 'Your key configured' : 'Admin key configured'}
               </Tag>
             )}

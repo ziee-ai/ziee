@@ -71,7 +71,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
         ) : (
           <Space wrap size="small" data-testid="provider-tags-container">
             {providers.map(provider => (
-              <Tag
+              <Tag variant="outline"
                 key={provider.id}
                 tone={provider.enabled ? 'info' : undefined}
                 className="text-xs"

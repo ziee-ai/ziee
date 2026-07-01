@@ -138,7 +138,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                   <div>
                     <div className="flex items-center gap-2">
                       <Text strong>{leaf}</Text>
-                      {alreadyInstalled && <Tag data-testid={`onboarding-mcp-hub-server-installed-tag-${server.name}`}>Already installed</Tag>}
+                      {alreadyInstalled && <Tag variant="outline" data-testid={`onboarding-mcp-hub-server-installed-tag-${server.name}`}>Already installed</Tag>}
                     </div>
                     {server.description && (
                       <Text tone="secondary" className="block text-sm">

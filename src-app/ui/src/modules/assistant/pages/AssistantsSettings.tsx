@@ -148,10 +148,10 @@ export function AssistantsSettings() {
                               {assistant.name}
                             </Text>
                             {assistant.is_default && (
-                              <Tag data-testid={`template-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
+                              <Tag variant="outline" data-testid={`template-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag data-testid={`template-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
+                              <Tag variant="outline" data-testid={`template-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
                             )}
                           </div>
                         </div>

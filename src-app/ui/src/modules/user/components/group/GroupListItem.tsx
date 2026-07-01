@@ -136,7 +136,7 @@ export function GroupListItem({
               <Flex className="gap-2 items-center">
                 <Users aria-hidden="true" />
                 <Text className="font-medium">{group.name}</Text>
-                {group.is_system && <Tag tone="warning" data-testid={`user-group-system-tag-${group.id}`}>System</Tag>}
+                {group.is_system && <Tag variant="outline" tone="warning" data-testid={`user-group-system-tag-${group.id}`}>System</Tag>}
                 <Badge color={group.is_active ? 'green' : 'red'} data-testid={`user-group-active-badge-${group.id}`} />
                 <Text data-testid={`user-group-status-text-${group.id}`}>{group.is_active ? 'Active' : 'Inactive'}</Text>
               </Flex>

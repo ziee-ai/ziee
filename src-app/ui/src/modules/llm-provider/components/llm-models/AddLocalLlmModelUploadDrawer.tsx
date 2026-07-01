@@ -440,7 +440,7 @@ export function AddLocalLlmModelUploadDrawer() {
                     {item.file.name}
                   </Text>
                   <div className="flex items-center gap-2">
-                    <Tag tone={item.required ? 'success' : 'info'} className="m-0" data-testid={`llm-upload-file-tag-${item.file.name}`}>
+                    <Tag variant="outline" tone={item.required ? 'success' : 'info'} className="m-0" data-testid={`llm-upload-file-tag-${item.file.name}`}>
                       {item.purpose}
                     </Tag>
                     <Text type="secondary" className="text-xs">

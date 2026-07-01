@@ -37,21 +37,21 @@ export function DownloadItem({
     switch (download.status) {
       case 'downloading':
       case 'pending':
-        return <Tag tone="info" data-testid="llm-download-status-tag">Downloading...</Tag>
+        return <Tag variant="outline" tone="info" data-testid="llm-download-status-tag">Downloading...</Tag>
       case 'completed':
         return (
-          <Tag tone="success" icon={<CircleCheck />} data-testid="llm-download-status-tag">
+          <Tag variant="outline" tone="success" icon={<CircleCheck />} data-testid="llm-download-status-tag">
             Downloaded
           </Tag>
         )
       case 'failed':
         return (
-          <Tag tone="error" icon={<CircleAlert />} data-testid="llm-download-status-tag">
+          <Tag variant="outline" tone="error" icon={<CircleAlert />} data-testid="llm-download-status-tag">
             Failed
           </Tag>
         )
       case 'cancelled':
-        return <Tag data-testid="llm-download-status-tag">Cancelled</Tag>
+        return <Tag variant="outline" data-testid="llm-download-status-tag">Cancelled</Tag>
       default:
         return null
     }

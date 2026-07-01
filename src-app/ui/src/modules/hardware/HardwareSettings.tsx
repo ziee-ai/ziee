@@ -298,7 +298,7 @@ export default function HardwareSettings() {
                 Compute Support
               </Text>
               <div className="flex flex-wrap gap-1">
-                <Tag
+                <Tag variant="outline"
                   data-testid={`hardware-gpu-cuda-tag-${index}`}
                   tone={gpu.compute_capabilities.cuda_support ? 'success' : 'info'}
                 >
@@ -306,20 +306,20 @@ export default function HardwareSettings() {
                   {gpu.compute_capabilities.cuda_version &&
                     ` (${gpu.compute_capabilities.cuda_version})`}
                 </Tag>
-                <Tag
+                <Tag variant="outline"
                   data-testid={`hardware-gpu-metal-tag-${index}`}
                   tone={gpu.compute_capabilities.metal_support ? 'success' : 'info'}
                 >
                   Metal {gpu.compute_capabilities.metal_support ? '✓' : '✗'}
                 </Tag>
-                <Tag
+                <Tag variant="outline"
                   data-testid={`hardware-gpu-opencl-tag-${index}`}
                   tone={gpu.compute_capabilities.opencl_support ? 'success' : 'info'}
                 >
                   OpenCL {gpu.compute_capabilities.opencl_support ? '✓' : '✗'}
                 </Tag>
                 {gpu.compute_capabilities.vulkan_support !== undefined && (
-                  <Tag
+                  <Tag variant="outline"
                     data-testid={`hardware-gpu-vulkan-tag-${index}`}
                     tone={gpu.compute_capabilities.vulkan_support ? 'success' : 'info'}
                   >
@@ -502,7 +502,7 @@ export default function HardwareSettings() {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-3 flex-wrap">
           <Text strong>Real-time Monitoring:</Text>
-          <Tag data-testid="hardware-settings-connection-tag" tone={sseConnected ? 'success' : 'error'}>
+          <Tag variant="outline" data-testid="hardware-settings-connection-tag" tone={sseConnected ? 'success' : 'error'}>
             {sseConnected ? 'Connected' : 'Disconnected'}
           </Tag>
         </div>

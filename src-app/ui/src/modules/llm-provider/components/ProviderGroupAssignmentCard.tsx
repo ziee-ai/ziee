@@ -56,7 +56,7 @@ export function ProviderGroupAssignmentCard() {
       ) : providerData?.groups && providerData.groups.length > 0 ? (
         <Flex gap="middle" wrap>
           {providerData.groups.map(group => (
-            <Tag key={group.id} tone="info" data-testid={`llm-provider-assigned-group-tag-${group.id}`}>
+            <Tag variant="outline" key={group.id} tone="info" data-testid={`llm-provider-assigned-group-tag-${group.id}`}>
               {group.name}
             </Tag>
           ))}

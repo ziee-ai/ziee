@@ -134,7 +134,7 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
                 </Text>
                 <div>
                   {engineUsage.unresolved.map(m => (
-                    <Tag key={m.id} data-testid={`llmrt-unresolved-tag-${m.id}`}>{m.display_name}</Tag>
+                    <Tag variant="outline" key={m.id} data-testid={`llmrt-unresolved-tag-${m.id}`}>{m.display_name}</Tag>
                   ))}
                 </div>
               </Flex>

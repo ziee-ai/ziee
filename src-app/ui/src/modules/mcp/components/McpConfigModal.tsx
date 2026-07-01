@@ -294,7 +294,7 @@ export function McpConfigModal() {
               data-testid={`mcp-config-server-switch-${server.id}`}
             />
             <Text strong>{server.display_name}</Text>
-            <Tag tone={server.user_id ? 'info' : 'success'} className="text-xs" data-testid={`mcp-config-server-tag-${server.id}`}>
+            <Tag variant="outline" tone={server.user_id ? 'info' : 'success'} className="text-xs" data-testid={`mcp-config-server-tag-${server.id}`}>
               {server.user_id ? 'User' : 'System'}
             </Tag>
           </div>
@@ -456,7 +456,7 @@ export function McpConfigModal() {
             <Text strong>Stop When These Tools Are Called:</Text>
             <div className="mt-2 flex flex-wrap gap-1">
               {(loopSettings.stop_when_tools_called || []).map((tool) => (
-                <Tag
+                <Tag variant="outline"
                   key={`${tool.server_id}-${tool.tool_name}`}
                   onClose={() => mcpStore.removeStopWhenToolCalled(currentConversationId, tool.server_id, tool.tool_name)}
                   closeLabel="Remove"

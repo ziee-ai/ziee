@@ -153,10 +153,10 @@ export function ProfileSettingsPage() {
             <Avatar className="size-16" fallback={<User />} />
           )}
           <Flex gap="sm" wrap>
-            <Tag data-testid="profile-role-tag" tone={user.is_admin ? 'warning' : undefined}>
+            <Tag variant="outline" data-testid="profile-role-tag" tone={user.is_admin ? 'warning' : undefined}>
               {user.is_admin ? 'Administrator' : 'User'}
             </Tag>
-            <Tag data-testid="profile-email-verified-tag" tone={user.email_verified ? 'success' : 'warning'}>
+            <Tag variant="outline" data-testid="profile-email-verified-tag" tone={user.email_verified ? 'success' : 'warning'}>
               {user.email_verified ? 'Email verified' : 'Email unverified'}
             </Tag>
           </Flex>

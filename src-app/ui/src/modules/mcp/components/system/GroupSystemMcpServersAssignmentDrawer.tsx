@@ -147,7 +147,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                           </Text>
                           <Tag
                             tone="info"
-                            variant="solid"
+                            variant="outline"
                             className="text-xs m-0"
                             data-testid={`mcp-group-assign-transport-tag-${server.id}`}
                           >
@@ -156,7 +156,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                           {server.enabled ? (
                             <Tag
                               tone="success"
-                              variant="solid"
+                              variant="outline"
                               className="text-xs m-0"
                               data-testid={`mcp-group-assign-status-tag-${server.id}`}
                             >
@@ -165,7 +165,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                           ) : (
                             <Tag
                               tone="warning"
-                              variant="solid"
+                              variant="outline"
                               className="text-xs m-0"
                               data-testid={`mcp-group-assign-status-tag-${server.id}`}
                             >

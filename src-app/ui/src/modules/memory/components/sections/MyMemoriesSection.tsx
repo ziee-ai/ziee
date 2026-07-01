@@ -259,13 +259,13 @@ export function MyMemoriesSection() {
                         {
                           key: 'kind',
                           label: 'Kind',
-                          children: <Tag className="!m-0" data-testid={`memory-row-kind-tag-${row.id}`}>{row.kind}</Tag>,
+                          children: <Tag variant="outline" className="!m-0" data-testid={`memory-row-kind-tag-${row.id}`}>{row.kind}</Tag>,
                         },
                         {
                           key: 'source',
                           label: 'Source',
                           children: (
-                            <Tag
+                            <Tag variant="outline"
                               className="!m-0"
                               data-testid={`memory-row-source-tag-${row.id}`}
                               tone={

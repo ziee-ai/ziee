@@ -136,10 +136,10 @@ export function UserAssistantsSettings() {
                             <Bot />
                             <Text className="font-medium">{assistant.name}</Text>
                             {assistant.is_default && (
-                              <Tag data-testid={`user-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
+                              <Tag variant="outline" data-testid={`user-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag data-testid={`user-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
+                              <Tag variant="outline" data-testid={`user-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
                             )}
                           </Flex>
                         </div>

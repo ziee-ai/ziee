@@ -154,7 +154,7 @@ export function AdminSkillGroupAssignment({
             ) : (
               <Space wrap size="small">
                 {assignedIds.map(id => (
-                  <Tag key={id} tone="info" data-testid={`skill-group-tag-${id}`}>
+                  <Tag variant="outline" key={id} tone="info" data-testid={`skill-group-tag-${id}`}>
                     {nameFor(id)}
                   </Tag>
                 ))}

@@ -58,7 +58,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
         <span>
           {row.tool_name}
           {row.is_built_in ? (
-            <Tag className="ml-1" data-testid="mcp-tool-call-builtin-tag">
+            <Tag variant="outline" className="ml-1" data-testid="mcp-tool-call-builtin-tag">
               built-in
             </Tag>
           ) : null}
@@ -70,7 +70,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       key: 'status',
       width: 110,
       render: row => (
-        <Tag tone={row.is_error ? 'error' : (STATUS_TONE[row.status] ?? 'default')} data-testid={`mcp-tool-call-status-${row.id}`}>
+        <Tag variant="outline" tone={row.is_error ? 'error' : (STATUS_TONE[row.status] ?? 'default')} data-testid={`mcp-tool-call-status-${row.id}`}>
           {row.status}
         </Tag>
       ),
@@ -80,7 +80,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       key: 'source',
       width: 110,
       render: row => (
-        <Tag tone={SOURCE_TONE[row.source] ?? 'default'} data-testid={`mcp-tool-call-source-${row.id}`}>{row.source}</Tag>
+        <Tag variant="outline" tone={SOURCE_TONE[row.source] ?? 'default'} data-testid={`mcp-tool-call-source-${row.id}`}>{row.source}</Tag>
       ),
     },
     {

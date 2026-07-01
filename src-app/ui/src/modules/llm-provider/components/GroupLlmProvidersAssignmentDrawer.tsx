@@ -139,7 +139,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                             {provider.name}
                           </Text>
                           {provider.built_in && (
-                            <Tag
+                            <Tag variant="outline"
                               tone="info"
                               className="text-[11px] m-0"
                               data-testid={`llm-group-provider-builtin-tag-${provider.id}`}
@@ -148,7 +148,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                             </Tag>
                           )}
                           {provider.enabled ? (
-                            <Tag
+                            <Tag variant="outline"
                               tone="success"
                               className="text-[11px] m-0"
                               data-testid={`llm-group-provider-status-tag-${provider.id}`}
@@ -156,7 +156,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
                               Enabled
                             </Tag>
                           ) : (
-                            <Tag
+                            <Tag variant="outline"
                               tone="warning"
                               className="text-[11px] m-0"
                               data-testid={`llm-group-provider-status-tag-${provider.id}`}

@@ -207,7 +207,7 @@ function PickModelScreen({
       <div className="mb-2 flex items-center gap-2">
         <Text strong>Embedding model</Text>
         {noModelsAvailable && (
-          <Tag data-testid="onboarding-memory-pick-no-models-tag" tone="warning">No embedding-capable models</Tag>
+          <Tag variant="outline" data-testid="onboarding-memory-pick-no-models-tag" tone="warning">No embedding-capable models</Tag>
         )}
       </div>
 

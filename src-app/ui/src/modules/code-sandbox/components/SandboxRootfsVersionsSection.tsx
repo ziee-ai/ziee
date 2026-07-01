@@ -206,11 +206,11 @@ export function SandboxRootfsVersionsSection() {
         <div>
           <Text strong>Currently default: </Text>
           {pinnedVersion ? (
-            <Tag tone="info" icon={<Star />} data-testid="default-chip">
+            <Tag variant="outline" tone="info" icon={<Star />} data-testid="default-chip">
               v{pinnedVersion}
             </Tag>
           ) : (
-            <Tag data-testid="default-chip">
+            <Tag variant="outline" data-testid="default-chip">
               Not yet set (defaults on first reachable GitHub call)
             </Tag>
           )}

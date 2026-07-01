@@ -164,7 +164,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
                             {group.name}
                           </Text>
                           {group.is_system && (
-                            <Tag
+                            <Tag variant="outline"
                               tone="warning"
                               className="text-xs m-0"
                               data-testid={`llm-provider-group-system-tag-${group.id}`}
@@ -173,7 +173,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
                             </Tag>
                           )}
                           {group.is_active ? (
-                            <Tag
+                            <Tag variant="outline"
                               tone="success"
                               className="text-xs m-0"
                               data-testid={`llm-provider-group-status-tag-${group.id}`}
@@ -181,7 +181,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
                               Active
                             </Tag>
                           ) : (
-                            <Tag
+                            <Tag variant="outline"
                               className="text-xs m-0"
                               data-testid={`llm-provider-group-status-tag-${group.id}`}
                             >

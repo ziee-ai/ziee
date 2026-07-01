@@ -66,11 +66,11 @@ export function ProjectMcpSettingsPanel() {
           {serverName(rule.server_id)}
         </Text>
         {allTools ? (
-          <Tag tone={tone} data-testid={`mcp-project-rule-${tone}-${rule.server_id}`}>All tools</Tag>
+          <Tag variant="outline" tone={tone} data-testid={`mcp-project-rule-${tone}-${rule.server_id}`}>All tools</Tag>
         ) : (
           <Space size={[4, 4]} wrap>
             {rule.tools.map(t => (
-              <Tag key={t} tone={tone} data-testid={`mcp-project-rule-${tone}-${rule.server_id}-${t}`}>
+              <Tag variant="outline" key={t} tone={tone} data-testid={`mcp-project-rule-${tone}-${rule.server_id}-${t}`}>
                 {t}
               </Tag>
             ))}
@@ -145,7 +145,7 @@ export function ProjectMcpSettingsPanel() {
             data-test-mcp-approval-mode={approvalMode}
           >
             <Text strong>Approval mode:</Text>
-            <Tag data-testid="mcp-project-approval-tag">{approvalLabel}</Tag>
+            <Tag variant="outline" data-testid="mcp-project-approval-tag">{approvalLabel}</Tag>
           </div>
 
           {/* Auto-approved + disabled rule lists. Each section is

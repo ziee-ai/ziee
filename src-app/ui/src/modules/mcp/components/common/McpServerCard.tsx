@@ -151,9 +151,9 @@ export function McpServerCard({
                 <Wrench aria-hidden="true" className="text-base" />
                 <Text className="font-semibold text-base">{server.display_name}</Text>
                 {!isEditable && server.is_system && (
-                  <Tag tone="info" data-testid="mcp-server-system-tag">System</Tag>
+                  <Tag variant="outline" tone="info" data-testid="mcp-server-system-tag">System</Tag>
                 )}
-                <Tag
+                <Tag variant="outline"
                   data-testid="mcp-server-transport-tag"
                   tone={
                     server.transport_type === 'stdio'
@@ -167,11 +167,11 @@ export function McpServerCard({
                 </Tag>
                 {server.supports_sampling && (
                   <Tooltip title={`Sampling enabled · ${server.usage_mode === 'always' ? 'Always mode' : 'Auto mode'}`}>
-                    <Tag tone="info" data-testid="mcp-sampling-badge">Sampling</Tag>
+                    <Tag variant="outline" tone="info" data-testid="mcp-sampling-badge">Sampling</Tag>
                   </Tooltip>
                 )}
                 {server.usage_mode === 'always' && (
-                  <Tag tone="warning" data-testid="mcp-always-badge">Always</Tag>
+                  <Tag variant="outline" tone="warning" data-testid="mcp-always-badge">Always</Tag>
                 )}
                 {/* Health status from the last probe — surfaces
                     boot-time auto-disable reasons + Test Connection
@@ -199,7 +199,7 @@ export function McpServerCard({
                           </span>
                         }
                       >
-                        <Tag tone="error" data-testid="mcp-health-unhealthy">
+                        <Tag variant="outline" tone="error" data-testid="mcp-health-unhealthy">
                           Unhealthy
                         </Tag>
                       </Tooltip>
@@ -214,7 +214,7 @@ export function McpServerCard({
                             : ''
                         }`}
                       >
-                        <Tag tone="success" data-testid="mcp-health-healthy">
+                        <Tag variant="outline" tone="success" data-testid="mcp-health-healthy">
                           Healthy
                         </Tag>
                       </Tooltip>
@@ -222,7 +222,7 @@ export function McpServerCard({
                   }
                   return (
                     <Tooltip title="Connection has not been tested yet. Click Test Connection or toggle Enabled to run a probe.">
-                      <Tag data-testid="mcp-health-untested">Untested</Tag>
+                      <Tag variant="outline" data-testid="mcp-health-untested">Untested</Tag>
                     </Tooltip>
                   )
                 })()}

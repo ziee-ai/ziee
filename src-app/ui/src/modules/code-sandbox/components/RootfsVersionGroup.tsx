@@ -75,12 +75,12 @@ export function RootfsVersionGroup({
           {/* A filled blue Tag (not the sibling module's muted "(Default)"
               text) to match THIS page's header "Currently default" chip. */}
           {group.isDefault && (
-            <Tag tone="info" icon={<Star />} data-testid="default-tag">
+            <Tag variant="outline" tone="info" icon={<Star />} data-testid="default-tag">
               Default
             </Tag>
           )}
           {anyDraining && (
-            <Tag tone="warning" data-testid="row-draining">
+            <Tag variant="outline" tone="warning" data-testid="row-draining">
               Draining
             </Tag>
           )}
@@ -193,10 +193,10 @@ function FlavorSubRow({
   return (
     <div data-testid={`rootfs-row-${version}-${f.flavor}`}>
       <Flex align="center" gap="small" wrap>
-        <Tag data-testid={`sandbox-flavor-tag-${version}-${f.flavor}`}>{f.flavor}</Tag>
-        <Tag data-testid={`sandbox-arch-tag-${version}-${f.flavor}`}>{f.arch}</Tag>
+        <Tag variant="outline" data-testid={`sandbox-flavor-tag-${version}-${f.flavor}`}>{f.flavor}</Tag>
+        <Tag variant="outline" data-testid={`sandbox-arch-tag-${version}-${f.flavor}`}>{f.arch}</Tag>
         {f.artifact ? (
-          <Tag
+          <Tag variant="outline"
             icon={<CircleCheck />}
             tone="success"
             data-testid={`sandbox-status-tag-${version}-${f.flavor}`}
@@ -205,7 +205,7 @@ function FlavorSubRow({
             Downloaded
           </Tag>
         ) : (
-          <Tag
+          <Tag variant="outline"
             data-testid={`sandbox-status-tag-${version}-${f.flavor}`}
             data-state="available"
           >
@@ -213,7 +213,7 @@ function FlavorSubRow({
           </Tag>
         )}
         {f.live > 0 && (
-          <Tag
+          <Tag variant="outline"
             tone={f.isDraining ? 'warning' : undefined}
             data-testid={`inflight-${version}-${f.flavor}`}
           >

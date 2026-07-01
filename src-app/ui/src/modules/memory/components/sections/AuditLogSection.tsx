@@ -82,7 +82,7 @@ export function AuditLogSection() {
                       : v === 'DELETE'
                         ? 'error'
                         : 'warning'
-                return <Tag data-testid={`memory-audit-status-${v}`} tone={tone}>{v}</Tag>
+                return <Tag variant="outline" data-testid={`memory-audit-status-${v}`} tone={tone}>{v}</Tag>
               },
             },
             {
@@ -99,7 +99,7 @@ export function AuditLogSection() {
                       ? 'success'
                       : 'info'
                 return (
-                  <Tag data-testid={`memory-audit-source-${v}`} tone={tone}>
+                  <Tag variant="outline" data-testid={`memory-audit-source-${v}`} tone={tone}>
                     {v === 'mcp_tool' ? 'tool' : v}
                   </Tag>
                 )
@@ -111,7 +111,7 @@ export function AuditLogSection() {
               dataIndex: 'actor_kind',
               width: 100,
               render: (record: MemoryAuditEntry) => {
-                return <Tag data-testid={`memory-audit-actor-${record.actor_kind}`}>{record.actor_kind}</Tag>
+                return <Tag variant="outline" data-testid={`memory-audit-actor-${record.actor_kind}`}>{record.actor_kind}</Tag>
               },
             },
             {

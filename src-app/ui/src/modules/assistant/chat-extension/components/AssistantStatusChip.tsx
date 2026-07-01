@@ -18,7 +18,7 @@ export function AssistantStatusChip() {
   if (!assistant) return null
 
   return (
-    <Tag
+    <Tag variant="outline"
       data-testid="assistant-status-chip"
       tone="info"
       icon={<Bot />}

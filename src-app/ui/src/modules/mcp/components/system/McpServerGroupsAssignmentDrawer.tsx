@@ -152,7 +152,7 @@ export function McpServerGroupsAssignmentDrawer() {
                           {group.is_default && (
                             <Tag
                               tone="info"
-                              variant="solid"
+                              variant="outline"
                               className="text-[11px] m-0"
                               data-testid={`mcp-groups-drawer-default-tag-${group.id}`}
                             >

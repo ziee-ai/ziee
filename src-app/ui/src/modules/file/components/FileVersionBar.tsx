@@ -81,7 +81,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
       />
       {isViewingOld ? (
         <>
-          <Tag tone="warning" data-testid="file-version-old-tag">viewing v{current} — not current</Tag>
+          <Tag variant="outline" tone="warning" data-testid="file-version-old-tag">viewing v{current} — not current</Tag>
           <Button
             size="default"
             variant="outline"
@@ -97,7 +97,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
           </Button>
         </>
       ) : (
-        <Tag data-testid="file-version-current-tag">v{headVersion} · {versions.length} versions</Tag>
+        <Tag variant="outline" data-testid="file-version-current-tag">v{headVersion} · {versions.length} versions</Tag>
       )}
     </div>
   )

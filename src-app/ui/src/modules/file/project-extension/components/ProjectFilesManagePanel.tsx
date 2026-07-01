@@ -183,7 +183,7 @@ export function ProjectFilesManagePanel() {
   if (!project) return null
 
   const counterChip = (
-    <Tag
+    <Tag variant="outline"
       tone={atCap ? 'error' : nearCap ? 'warning' : undefined}
       aria-label={`Project file count: ${count} of ${PROJECT_FILE_CAP}`}
       data-testid="file-project-count-tag"

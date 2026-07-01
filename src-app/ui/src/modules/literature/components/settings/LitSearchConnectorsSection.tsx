@@ -157,8 +157,8 @@ function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
         <Text className="text-sm">{entry.display_name}</Text>
       </Separator>
       <Paragraph type="secondary" className="text-xs !mb-1">
-        {isEnabled && <Tag tone="success" data-testid={`lit-connector-active-tag-${entry.key}`}>Active</Tag>}
-        {needsKey && <Tag tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>Needs key</Tag>}
+        {isEnabled && <Tag variant="outline" tone="success" data-testid={`lit-connector-active-tag-${entry.key}`}>Active</Tag>}
+        {needsKey && <Tag variant="outline" tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>Needs key</Tag>}
       </Paragraph>
       <Paragraph type="secondary" className="text-xs !mb-2">
         {entry.keyless_note}

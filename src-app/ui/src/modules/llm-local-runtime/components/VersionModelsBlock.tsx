@@ -142,7 +142,7 @@ function ModelRow({
         <Space>
           <span className={`inline-block size-2 rounded-full ${model.running ? 'bg-primary' : 'bg-muted-foreground/40'}`} aria-hidden />
           <span>{model.display_name}</span>
-          {!model.pinned && <Tag tone="default" data-testid={`llmrt-model-inherited-tag-${model.id}`}>inherited</Tag>}
+          {!model.pinned && <Tag variant="outline" tone="default" data-testid={`llmrt-model-inherited-tag-${model.id}`}>inherited</Tag>}
         </Space>
         <Space>
           {canManage && (
