@@ -391,9 +391,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           windowMinSize.xs ? isSidebarCollapsed : undefined
         }
         // Mobile overlay: a solid opaque surface behind the (translucent
-        // bg-muted/40) sidebar so it reads as a solid panel, plus a full border
-        // like the Dialog (no drop shadow — see the style block below).
-        className={cn(windowMinSize.xs && 'bg-background border border-border')}
+        // bg-muted/40) sidebar so it reads as a solid panel, outlined the same
+        // way the Dialog is — a ring-1 ring-foreground/10 (crisper than
+        // border-border), NOT a drop shadow (see the style block below).
+        className={cn(windowMinSize.xs && 'bg-background ring-1 ring-foreground/10')}
         // Neutral, state-gated drop shadow (rgba black, not a brand hue) that is part of the
         // combined inline transition below; value is computed per collapse/viewport state.
         data-allow-custom-color
