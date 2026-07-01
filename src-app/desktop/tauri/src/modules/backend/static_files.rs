@@ -24,7 +24,13 @@ use axum::{
 use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
-#[folder = "../../ui/dist/"] // src-app/desktop/ui/dist relative to src-app/desktop/tauri/Cargo.toml
+// src-app/desktop/ui/dist, relative to this crate's Cargo.toml
+// (src-app/desktop/tauri). It must match tauri.conf.json's `frontendDist`
+// ("../ui/dist"). Was "../../ui/dist/", which resolves to the REMOVED
+// src-app/ui/dist bundle (see module doc) — a path that doesn't exist, so
+// release builds (rust-embed embeds at compile time; debug reads from disk)
+// failed with "folder '…/ui/dist/' does not exist".
+#[folder = "../ui/dist/"]
 pub struct Assets;
 
 // Wrapper to access the RustEmbed trait method

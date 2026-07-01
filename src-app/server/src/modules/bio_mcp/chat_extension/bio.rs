@@ -161,6 +161,14 @@ mod tests {
     /// `attach_bio_mcp` flag is set and no untrusted-content note is injected.
     #[tokio::test]
     async fn before_llm_call_skips_when_bio_row_not_enabled() {
+        // The enable-gate reads the global `Repos`. If no other lib test has
+        // initialized the factory, install a never-connectable lazy pool so the
+        // query path runs and fails closed (enabled=false) instead of panicking
+        // with "RepositoryFactory not initialized". Guarded so we never clobber a
+        // real pool another (DB-backed) test installed.
+        if !crate::core::is_repos_initialized() {
+            crate::core::init_repositories(lazy_pool());
+        }
         let ext = BioMcpExtension::new(lazy_pool());
 
         let mut metadata = HashMap::new();
