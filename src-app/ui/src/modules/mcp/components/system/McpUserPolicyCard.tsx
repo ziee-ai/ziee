@@ -48,7 +48,7 @@ export function McpUserPolicyCard() {
           <div className="flex flex-col py-0.5">
             <span className="font-medium capitalize">{e.flavor}</span>
             <span className="text-xs text-muted-foreground">
-              {e.description} · ~{e.approximate_size_mb} MB
+              {e.description}
             </span>
           </div>
         ),
