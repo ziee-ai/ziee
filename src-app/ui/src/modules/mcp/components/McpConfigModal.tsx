@@ -21,7 +21,24 @@ import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/mcp/stores
  * - Individual tool toggles
  * - Visibility controlled via store (Stores.McpComposer.openConfigModal/closeConfigModal)
  */
+// The modal is a global-store-driven singleton, but it is mounted from more
+// than one host (the chat composer's `input_area_suffix` slot AND the project
+// MCP settings panel). On a page that renders both — e.g. the project detail
+// page, which has an inline ChatInput *and* the project MCP panel — two
+// instances would both open on the same global flag, duplicating the dialog.
+// A module-level mount guard ensures only the first-mounted instance renders.
+let mcpConfigModalMounts = 0
+
 export function McpConfigModal() {
+  const [isPrimaryModal, setIsPrimaryModal] = useState(false)
+  useEffect(() => {
+    mcpConfigModalMounts += 1
+    if (mcpConfigModalMounts === 1) setIsPrimaryModal(true)
+    return () => {
+      mcpConfigModalMounts -= 1
+    }
+  }, [])
+
   const { servers } = Stores.McpServer  // Reactive access to MCP module store
   const mcpStore = Stores.McpComposer
   // Extract all store properties unconditionally at the top (store proxy uses hooks).
@@ -340,6 +357,10 @@ export function McpConfigModal() {
       ),
     }
   })
+
+  // Only the first-mounted instance renders the (singleton) dialog; any extra
+  // mount points no-op so the same global open-flag can't show two dialogs.
+  if (!isPrimaryModal) return null
 
   return (
     <Dialog
