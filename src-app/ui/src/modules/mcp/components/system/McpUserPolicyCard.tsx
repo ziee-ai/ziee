@@ -9,7 +9,7 @@ import {
 import { Title, Paragraph, Text, message } from '@/components/ui'
 import { useEffect, useMemo, useState } from 'react'
 import { Stores } from '@/core/stores'
-import { Can, usePermission } from '@/core/permissions'
+import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 
 /**
@@ -103,7 +103,16 @@ export function McpUserPolicyCard() {
   }
 
   return (
-    <Card data-testid="mcp-user-policy-card">
+    <Card
+      data-testid="mcp-user-policy-card"
+      footer={canEdit ? (
+        <div className="flex w-full justify-end">
+          <Button loading={saving} onClick={handleSave} data-testid="mcp-policy-save-btn">
+            Save policy
+          </Button>
+        </div>
+      ) : undefined}
+    >
       <div className="flex flex-col gap-3">
         <div>
           <Title level={5} className="!m-0">
@@ -177,25 +186,16 @@ export function McpUserPolicyCard() {
             “Calls” tab) before a background job prunes it. Set to 0 to keep
             it forever.
           </Paragraph>
-          <div className="flex items-center gap-2">
-            <InputNumber
-              min={0}
-              max={3650}
-              value={retentionDays}
-              onChange={v => setRetentionDays(typeof v === 'number' ? v : 90)}
-              disabled={!canEdit}
-              data-testid="mcp-tool-call-retention-days"
-            />
-            <Text type="secondary">days</Text>
-          </div>
-        </div>
-
-        <div className="flex justify-end">
-          <Can permission={Permissions.McpUserPolicyEdit}>
-            <Button loading={saving} onClick={handleSave} data-testid="mcp-policy-save-btn">
-              Save policy
-            </Button>
-          </Can>
+          <InputNumber
+            min={0}
+            max={3650}
+            value={retentionDays}
+            onChange={v => setRetentionDays(typeof v === 'number' ? v : 90)}
+            disabled={!canEdit}
+            suffix="days"
+            className="w-40"
+            data-testid="mcp-tool-call-retention-days"
+          />
         </div>
       </div>
     </Card>

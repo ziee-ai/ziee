@@ -107,7 +107,8 @@ export function UserGroupsDrawer() {
         canAssign && (
           <Tooltip title="Assign group">
             <Button
-              variant="link"
+              variant="default"
+              size="icon"
               icon={<Plus aria-hidden="true" />}
               onClick={() => {
                 Stores.UserGroupsDrawer.closeUserGroupsDrawer()

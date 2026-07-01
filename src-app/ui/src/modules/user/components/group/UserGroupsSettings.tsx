@@ -115,7 +115,8 @@ export function UserGroupsSettings() {
       <Can permission={Permissions.GroupsCreate}>
         <Tooltip title="Create group">
           <Button
-            variant="ghost"
+            variant="default"
+            size="icon"
             icon={<Plus aria-hidden="true" />}
             onClick={() => setCreateModalVisible(true)}
             aria-label="Create group"

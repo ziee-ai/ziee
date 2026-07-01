@@ -68,7 +68,8 @@ export function ProjectsListPage() {
           <Can permission={Permissions.ProjectsCreate}>
             <Button
               data-testid="project-list-create-button"
-              variant="ghost"
+              variant="default"
+              size="icon"
               icon={<Plus />}
               onClick={handleCreate}
               aria-label="Create project"

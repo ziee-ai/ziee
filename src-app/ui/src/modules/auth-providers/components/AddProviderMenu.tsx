@@ -41,7 +41,8 @@ export function AddProviderMenu({ onPick, existingNames, disabled }: Props) {
       <Tooltip content={allTaken ? 'All providers taken' : 'Add authentication provider'}>
         <Button
           data-testid="authprov-add-button"
-          variant="ghost"
+          variant="default"
+          size="icon"
           icon={<Plus />}
           disabled={isDisabled}
           aria-label="Add authentication provider"

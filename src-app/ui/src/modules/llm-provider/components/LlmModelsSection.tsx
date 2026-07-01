@@ -257,7 +257,8 @@ export function LlmModelsSection() {
         >
           <Tooltip content="Add model">
             <Button
-              variant="ghost"
+              variant="default"
+              size="icon"
               icon={<Plus aria-hidden="true" />}
               aria-label="Add model"
               data-testid="llm-models-add-local-btn"
@@ -270,7 +271,8 @@ export function LlmModelsSection() {
     return (
       <Tooltip content="Add model">
         <Button
-          variant="ghost"
+          variant="default"
+          size="icon"
           icon={<Plus aria-hidden="true" />}
           onClick={handleAddLlmModel}
           aria-label="Add model"
