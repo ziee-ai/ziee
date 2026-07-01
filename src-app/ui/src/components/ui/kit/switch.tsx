@@ -48,12 +48,19 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(function 
     onChange?.(v)
   }
   if (s.loading) return <Skeleton className={cn('h-[1.15rem] w-8 rounded-full', className)} />
+  // Controlled intent = a bound value or a change handler is present. In that case
+  // ALWAYS pass a defined boolean (coerce a not-yet-loaded `undefined` → false) so
+  // the switch never flips uncontrolled→controlled when the backing state resolves
+  // (Base UI warns on that transition). Only a purely-uncontrolled switch
+  // (defaultChecked, no value/handler) stays uncontrolled.
+  const controlled =
+    checked !== undefined || value !== undefined || onCheckedChange !== undefined || onChange !== undefined
   const baseEl = (
     <Base
       ref={ref}
       id={ctrlId}
-      checked={checked ?? value}
-      defaultChecked={defaultChecked}
+      checked={controlled ? Boolean(checked ?? value) : undefined}
+      defaultChecked={controlled ? undefined : defaultChecked}
       onCheckedChange={handle}
       onBlur={onBlur}
       disabled={s.disabled || s.readOnly || loading}
