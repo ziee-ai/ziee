@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Alert, Button, Card, Confirm, Tag, Text, Tooltip, Switch, Flex } from '@/components/ui'
-import { Pencil, Wrench, Trash2, Plug } from 'lucide-react'
+import { Pencil, Trash2, Plug } from 'lucide-react'
 import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -146,7 +146,6 @@ export function McpServerCard({
           <div className="mb-3 flex items-center gap-2 flex-wrap">
             <div className="flex-1 min-w-48">
               <Flex className="gap-2 items-center">
-                <Wrench aria-hidden="true" className="text-base" />
                 <Text className="font-semibold text-base">{server.display_name}</Text>
                 {!isEditable && server.is_system && (
                   <Tag variant="outline" tone="info" data-testid="mcp-server-system-tag">System</Tag>
