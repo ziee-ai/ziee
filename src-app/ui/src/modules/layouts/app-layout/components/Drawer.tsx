@@ -51,8 +51,11 @@ const sizePx = (size: DrawerProps['size']): number =>
   size === 'default' ? 378 : size === 'large' ? 736 : typeof size === 'number' ? size : 520
 
 const sidePos: Record<Placement, string> = {
-  right: 'inset-y-0 right-0 h-full data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
-  left: 'inset-y-0 left-0 h-full data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
+  // No `h-full`: with the floating-card `m-2` margin, height:100% (=100vh) plus the
+  // 8px top margin pushes the bottom 8px+ off-screen. `inset-y-0` (top:0 + bottom:0)
+  // with height:auto stretches to fill BETWEEN the insets, honoring the margins.
+  right: 'inset-y-0 right-0 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
+  left: 'inset-y-0 left-0 data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
   top: 'inset-x-0 top-0 w-full data-[state=open]:slide-in-from-top data-[state=closed]:slide-out-to-top',
   bottom: 'inset-x-0 bottom-0 w-full data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
 }
@@ -98,7 +101,9 @@ export const Drawer: React.FC<DrawerProps> = ({
   )
 
   const body = (
-    <div className={cn('flex w-full h-full pr-3', classNames?.body)} style={styles?.body}>
+    // px-3 (not pr-3): the horizontal gutter must live INSIDE the scroll layer, or
+    // the OverlayScrollbars viewport clips the left edge of an input's focus ring.
+    <div className={cn('flex w-full h-full px-3', classNames?.body)} style={styles?.body}>
       {React.Children.map(children, child =>
         React.isValidElement<{ className?: string }>(child)
           ? React.cloneElement(child, {
@@ -115,7 +120,9 @@ export const Drawer: React.FC<DrawerProps> = ({
       <DialogPrimitive.Portal>
         {showOverlay && (
           <DialogPrimitive.Overlay
-            className="fixed inset-0 z-50 bg-background/75 backdrop-brightness-75 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+            // Standard shadcn overlay (matches Dialog/Sheet): a faint tint + blur,
+            // not a custom mask color.
+            className="fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
           />
         )}
         <DialogPrimitive.Content
@@ -151,7 +158,7 @@ export const Drawer: React.FC<DrawerProps> = ({
             </div>
           )}
 
-          <div className="flex-1 min-h-0 pl-3 pr-0 pt-0 overflow-x-visible">
+          <div className="flex-1 min-h-0 pt-0">
             {noBodyScrollWrap ? body : <DivScrollY className="flex w-full h-full">{body}</DivScrollY>}
           </div>
 
