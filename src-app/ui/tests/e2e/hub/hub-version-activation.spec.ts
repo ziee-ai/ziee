@@ -29,10 +29,11 @@ test.describe('Hub catalog version surface (admin)', () => {
     await waitForHubDataLoad(page)
 
     // Read-only diagnostic tag showing the currently-installed catalog
-    // version (seed = v0.0.x).
+    // version. Match any semver (the bundled seed version bumps over time —
+    // don't pin a specific major/minor).
     const versionTag = page.getByTestId('hub-version-tag')
     await expect(versionTag).toBeVisible({ timeout: 15000 })
-    await expect(versionTag).toContainText(/v0\.0\.\d/)
+    await expect(versionTag).toContainText(/v\d+\.\d+\.\d+/)
   })
 
   test('admin sees the Installed tab with per-category empty hints', async ({

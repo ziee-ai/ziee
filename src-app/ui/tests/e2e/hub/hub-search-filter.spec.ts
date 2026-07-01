@@ -213,7 +213,7 @@ test.describe('Hub Search and Filters', () => {
       await waitForHubDataLoad(page)
 
       // Search should be cleared on tab switch (or persisted, depending on design)
-      const searchInput = page.locator('[data-testid60"-search-input"]').first()
+      const searchInput = page.locator('[data-testid$="-search-input"]').first()
       const searchValue = await searchInput.inputValue()
 
       // Either empty (cleared) or still has value (persisted)
@@ -271,7 +271,7 @@ test.describe('Hub Search and Filters', () => {
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
 
-      const searchInput = page.locator('[data-testid60"-search-input"]').first()
+      const searchInput = page.locator('[data-testid$="-search-input"]').first()
 
       // Type quickly
       await searchInput.fill('l')
@@ -305,7 +305,7 @@ test.describe('Hub Search and Filters', () => {
       await waitForHubDataLoad(page)
 
       // Check if search persisted (depends on implementation)
-      const searchInput = page.locator('[data-testid60"-search-input"]').first()
+      const searchInput = page.locator('[data-testid$="-search-input"]').first()
       const newSearchValue = await searchInput.inputValue()
 
       // Either persisted or cleared is acceptable
