@@ -1,4 +1,5 @@
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { Tabs } from '@/components/ui'
 import { SandboxRootfsVersionsSection } from './SandboxRootfsVersionsSection'
 import { SandboxResourceLimitsSection } from './SandboxResourceLimitsSection'
 
@@ -25,8 +26,22 @@ export function SandboxSettingsPage() {
       title="Code Sandbox"
       subtitle="Manage rootfs environments and the runtime resource caps applied to every execute_command."
     >
-      <SandboxRootfsVersionsSection />
-      <SandboxResourceLimitsSection />
+      <Tabs
+        defaultValue="rootfs"
+        data-testid="sandbox-tabs"
+        items={[
+          {
+            key: 'rootfs',
+            label: 'Rootfs',
+            children: <SandboxRootfsVersionsSection />,
+          },
+          {
+            key: 'resource',
+            label: 'Resource',
+            children: <SandboxResourceLimitsSection />,
+          },
+        ]}
+      />
     </SettingsPageContainer>
   )
 }
