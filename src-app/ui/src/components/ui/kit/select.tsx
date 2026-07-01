@@ -143,12 +143,15 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
   // Custom selected display: a per-option selectedLabel or a labelRender means the trigger
   // must show something other than the row text → render controlled SelectValue children.
   const selectedOpt = current ? optionByValue.get(current) : undefined
+  // base-ui's SelectValue renders the raw VALUE when given no children, so a plain
+  // option would show its value ("light") instead of its label ("Light"). Always
+  // drive the trigger from the option's label (or an explicit override).
   const customDisplay =
     labelRender != null
       ? labelRender(selectedOpt)
       : selectedOpt?.selectedLabel != null
         ? selectedOpt.selectedLabel
-        : undefined
+        : selectedOpt?.label
   const showClear = allowClear && current !== '' && !locked
 
   return (
