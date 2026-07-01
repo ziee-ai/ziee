@@ -162,6 +162,15 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::citations::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::citations::citations_server_id());
     }
+    // `control` attaches behind the flag set by the control chat extension
+    // (`attach_control_mcp`), gated on the deploy kill-switch + tool-capable.
+    // Unlike the read-only built-ins it is NOT approval-bypassed (see
+    // `is_builtin_server_id` — control is intentionally absent); mutating
+    // `invoke_capability` calls are forced through approval by the per-tool
+    // `control_call_needs_approval` classifier in the approval loop below.
+    if flag(crate::modules::control_mcp::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::control_mcp::control_mcp_server_id());
+    }
     // `skill_mcp` attaches behind the flag set by the skill chat extension
     // (`attach_skill_mcp`), gated on tool-capable + ≥1 available skill. Without
     // this the injected skill listing tells the model to call `load_skill` but
@@ -278,8 +287,22 @@ impl McpChatExtension {
     ) -> Result<(Vec<MessageContentData>, Vec<String>, Option<String>), AppError> {
         let mut tool_results = Vec::new();
         let mut executed_tool_use_ids = Vec::new();
-        let accessible_servers =
+        let mut accessible_servers =
             helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
+        // Augment with the auto-attached built-in servers (by deterministic id),
+        // exactly as the initial classification path does — otherwise an APPROVED
+        // tool on a non-group-gated built-in that requires approval (i.e.
+        // `control`'s mutating `invoke_capability`) can't be resolved here and
+        // fails with "Server not found", so the approved write never executes.
+        for id in auto_attach_builtin_ids(&context.metadata) {
+            if !accessible_servers.iter().any(|s| s.id == id) {
+                if let Some(bs) = crate::core::Repos.mcp.get_any_server(id).await? {
+                    if bs.enabled {
+                        accessible_servers.push(bs);
+                    }
+                }
+            }
+        }
 
         // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
         let (elicit_notify_tx, mut elicit_notify_rx) =
@@ -544,6 +567,8 @@ impl McpChatExtension {
                     &server.headers,
                     &allowed_roots,
                     Some(self.config.jwt.secret.as_str()),
+                    Some(self.config.jwt.issuer.as_str()),
+                    Some(self.config.jwt.audience.as_str()),
                 )
                 .await
                 .unwrap_or_default();
@@ -1792,9 +1817,19 @@ impl ChatExtension for McpChatExtension {
         // Built-in privileged servers (files/memory/elicitation) always execute,
         // even when the conversation has MCP approval Disabled — so a user with MCP off
         // still gets file reading + memory saving.
+        // Control is auto-attached but NOT on `is_builtin_server_id` (its writes
+        // require approval). It must still count here so a Disabled-approval
+        // conversation does NOT early-return on a control-only turn — otherwise
+        // the control `tool_use` would be left without a paired `tool_result`.
+        // Reaching the classification loop, a control call in Disabled mode takes
+        // the `tools_disabled` path (a synthesized denial), which is correct: MCP
+        // is off, so control doesn't run, but the tool_use is properly answered.
         let has_builtin_call = tool_uses.iter().any(|(_, _, sid, _)| {
             uuid::Uuid::parse_str(sid)
-                .map(is_builtin_server_id)
+                .map(|id| {
+                    is_builtin_server_id(id)
+                        || id == crate::modules::control_mcp::control_mcp_server_id()
+                })
                 .unwrap_or(false)
         });
 
@@ -1852,7 +1887,18 @@ impl ChatExtension for McpChatExtension {
                 continue;
             }
 
-            let needs_approval = if is_builtin {
+            // The control server is auto-attached but NOT approval-bypassed:
+            // read-only control tools auto-run, but a mutating `invoke_capability`
+            // ALWAYS requires explicit approval — overriding even AutoApprove.
+            let is_control = uuid::Uuid::parse_str(&server_id)
+                .map(|id| id == crate::modules::control_mcp::control_mcp_server_id())
+                .unwrap_or(false);
+
+            let needs_approval = if is_control {
+                crate::modules::control_mcp::handlers::control_call_needs_approval(
+                    &tool_name, &input,
+                )
+            } else if is_builtin {
                 false
             } else {
                 match approval_mode {
@@ -2324,6 +2370,8 @@ impl ChatExtension for McpChatExtension {
                     &server.headers,
                     &allowed_roots,
                     Some(self.config.jwt.secret.as_str()),
+                    Some(self.config.jwt.issuer.as_str()),
+                    Some(self.config.jwt.audience.as_str()),
                 )
                 .await
                 .unwrap_or_default();
@@ -2968,6 +3016,37 @@ mod builtin_tests {
         let only_base = auto_attach_builtin_ids(&m2);
         assert_eq!(only_base.len(), 2);
         assert!(always_on.iter().all(|id| only_base.contains(id)));
+    }
+
+    /// control_mcp attach seam (M7) + the security-critical negative (H8).
+    /// control is auto-attached behind `attach_control_mcp` (the documented
+    /// silent-failure footgun), but is deliberately NOT on the approval-bypass
+    /// list — so a mutating `invoke_capability` is always forced through approval.
+    #[test]
+    fn control_attaches_on_flag_and_is_not_approval_bypassed() {
+        let control = crate::modules::control_mcp::control_mcp_server_id();
+
+        let mut m: HashMap<String, serde_json::Value> = HashMap::new();
+        m.insert("model_tools_capable".into(), json!(true));
+        assert!(
+            !auto_attach_builtin_ids(&m).contains(&control),
+            "control must not attach without its flag"
+        );
+        m.insert(
+            crate::modules::control_mcp::chat_extension::ATTACH_FLAG.into(),
+            json!("true"),
+        );
+        assert!(
+            auto_attach_builtin_ids(&m).contains(&control),
+            "attach_control_mcp must push the control server id (both mcp.rs edits)"
+        );
+
+        // The linchpin of "mutating writes require approval": if control were
+        // ever added to is_builtin_server_id, its writes would auto-run.
+        assert!(
+            !is_builtin_server_id(control),
+            "control must NOT be approval-bypassed"
+        );
     }
 
     /// The three life-science built-ins (`bio_mcp`, `lit_search`, `citations`)

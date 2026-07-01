@@ -1673,7 +1673,7 @@ pub async fn list_system_mcp_servers(
           -- they never appear here. Excluding them in SQL (not client-side) also
           -- keeps the pagination total/label honest. The other built-ins
           -- (filesystem/fetch/browser/git/code_sandbox) remain visible.
-          AND id NOT IN ($5, $6, $7, $8, $9, $10, $11)
+          AND id NOT IN ($5, $6, $7, $8, $9, $10, $11, $12)
           AND ($3::text IS NULL
                OR name ILIKE '%' || $3 || '%'
                OR display_name ILIKE '%' || $3 || '%'
@@ -1693,6 +1693,7 @@ pub async fn list_system_mcp_servers(
         crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
         crate::modules::lit_search::lit_search_server_id(),
         crate::modules::citations::citations_server_id(),
+        crate::modules::control_mcp::control_mcp_server_id(),
     )
     .fetch_all(pool)
     .await?;
@@ -1741,7 +1742,7 @@ pub async fn list_system_mcp_servers(
           -- Match the rows query: exclude the built-ins configured elsewhere
           -- (files, memory, elicitation, web_search, tool_result, lit_search,
           -- citations) so the pagination total stays in sync with the page.
-          AND id NOT IN ($3, $4, $5, $6, $7, $8, $9)
+          AND id NOT IN ($3, $4, $5, $6, $7, $8, $9, $10)
           AND ($1::text IS NULL
                OR name ILIKE '%' || $1 || '%'
                OR display_name ILIKE '%' || $1 || '%'
@@ -1757,6 +1758,7 @@ pub async fn list_system_mcp_servers(
         crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
         crate::modules::lit_search::lit_search_server_id(),
         crate::modules::citations::citations_server_id(),
+        crate::modules::control_mcp::control_mcp_server_id(),
     )
     .fetch_one(pool)
     .await?
@@ -1801,7 +1803,11 @@ pub async fn update_system_mcp_server(
         || existing.id == crate::modules::tool_result_mcp::tool_result_mcp_server_id()
         // citations is config-elsewhere too (per-user library on Settings →
         // Citations); its mcp row has no editable surface, so it's immutable.
-        || existing.id == crate::modules::citations::citations_server_id();
+        || existing.id == crate::modules::citations::citations_server_id()
+        // control is config-elsewhere (deploy kill-switch + per-user perms); its
+        // mcp row has no editable surface, so it's immutable + hidden from the
+        // System MCP page listing.
+        || existing.id == crate::modules::control_mcp::control_mcp_server_id();
     if is_zero_config_builtin {
         return Err(AppError::bad_request(
             "BUILT_IN_SERVER",

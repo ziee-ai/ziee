@@ -19,6 +19,8 @@ pub struct Config {
     #[serde(default)]
     pub web_search: Option<WebSearchConfig>,
     #[serde(default)]
+    pub control_mcp: Option<ControlMcpConfig>,
+    #[serde(default)]
     pub secrets: Option<SecretsConfig>,
     /// Per-cache path overrides. Defaults to all-None; `Config::resolve_paths`
     /// fills each unset field with a subdir of `app.data_dir`. Operators
@@ -260,6 +262,32 @@ impl Default for WebSearchConfig {
     fn default() -> Self {
         Self {
             enabled: default_web_search_enabled(),
+        }
+    }
+}
+
+/// Configuration for the `control_mcp` built-in MCP server (app-control tools
+/// that let the chat model operate ziee's own REST API). Enabled for everyone by
+/// default. Operators disable the WHOLE control surface with
+/// `control_mcp: { enabled: false }` — a **deploy-level** kill switch (§16).
+/// When false, `init()` returns before the MCP row upsert and `register_routes`
+/// skips the endpoint, so the tools are never registered.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ControlMcpConfig {
+    /// Master switch. When false, the module's `init()` returns early (no MCP
+    /// row upsert) and the route is not registered. Defaults to true.
+    #[serde(default = "default_control_mcp_enabled")]
+    pub enabled: bool,
+}
+
+fn default_control_mcp_enabled() -> bool {
+    true
+}
+
+impl Default for ControlMcpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_control_mcp_enabled(),
         }
     }
 }

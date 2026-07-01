@@ -91,6 +91,8 @@ async fn persist_ingests_ziee_under_root_and_handles_mixed_links() {
         &serde_json::json!({}),
         &[root.clone()],
         None,
+        None, // jwt_issuer
+        None, // jwt_audience
     )
     .await
     .expect("persist_links");
@@ -174,6 +176,8 @@ async fn ziee_link_from_external_server_is_ignored() {
         &serde_json::json!({}),
         &[root.clone()],
         None,
+        None, // jwt_issuer
+        None, // jwt_audience
     )
     .await
     .expect("persist_links");
@@ -211,6 +215,8 @@ async fn ziee_workflow_runs_handle_is_not_ingested_and_preserved() {
         &serde_json::json!({}),
         &[],
         None,
+        None, // jwt_issuer
+        None, // jwt_audience
     )
     .await
     .expect("persist_links");
@@ -251,6 +257,8 @@ async fn ziee_link_read_failure_is_blanked() {
         &serde_json::json!({}),
         &[root.clone()],
         None,
+        None, // jwt_issuer
+        None, // jwt_audience
     )
     .await
     .expect("persist_links");
@@ -287,6 +295,8 @@ async fn http_link_without_jwt_secret_is_skipped() {
         &serde_json::json!({}),
         &[],
         None, // no jwt secret → HTTP branch is skipped (the dispatcher path)
+        None, // jwt_issuer
+        None, // jwt_audience
     )
     .await
     .expect("persist_links");
@@ -373,6 +383,8 @@ async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
         &serde_json::json!({}),
         &[root.clone()],
         None,
+        None, // jwt_issuer
+        None, // jwt_audience
     )
     .await
     .expect("persist_links");
@@ -458,6 +470,8 @@ async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
         &serde_json::json!({}),
         &[root.clone()],
         None,
+        None, // jwt_issuer
+        None, // jwt_audience
     )
     .await
     .expect("persist_links");

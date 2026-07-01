@@ -8,6 +8,7 @@ mod bio_mcp;
 mod chat;
 mod citations;
 mod code_sandbox;
+mod control_mcp;
 mod common;
 mod elicitation_mcp;
 mod file;
