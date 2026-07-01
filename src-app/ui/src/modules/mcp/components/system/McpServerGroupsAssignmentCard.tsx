@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Pencil } from 'lucide-react'
-import { Button, Empty, Flex, Space, Spin, Tag, Text } from '@/components/ui'
+import { Button, Flex, Space, Spin, Tag, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -44,7 +44,7 @@ export function McpServerGroupsAssignmentCard({
     >
       {/* Always-visible User Groups section (no accordion): the "User Groups"
           heading with the Assign action next to it, then the list below. */}
-      <Flex justify="between" align="center" className="gap-2 mb-2">
+      <Flex justify="between" align="center" className="gap-2 mb-1">
         <Text className="font-medium text-sm">User Groups</Text>
         {canManage && (
           <Button
@@ -62,11 +62,13 @@ export function McpServerGroupsAssignmentCard({
       {loading ? (
         <Spin size="sm" label="Loading" />
       ) : assignedGroups.length === 0 ? (
-        <Empty
-          description="No groups assigned"
-          className="!my-2"
+        <Text
+          type="secondary"
+          className="text-xs"
           data-testid={`mcp-groups-empty-${serverId}`}
-        />
+        >
+          No groups assigned
+        </Text>
       ) : (
         <Flex vertical gap="small" className="w-full">
           <Text type="secondary" className="text-xs">
