@@ -8,6 +8,7 @@ import {
   Form,
   FormField,
   useForm,
+  zodResolver,
   Button,
   Alert,
   Text,
@@ -16,6 +17,7 @@ import {
   Input,
   Textarea,
 } from '@/components/ui'
+import { z } from 'zod'
 import { parseWorkflowIr } from './workflowIr'
 
 interface WorkflowRunDialogProps {
@@ -39,7 +41,29 @@ export function WorkflowRunDialog({
   conversationId,
   onStarted,
 }: WorkflowRunDialogProps) {
-  const form = useForm({ defaultValues: {} as Record<string, unknown> })
+  // Dynamic required-field validation for the workflow's typed inputs: the kit
+  // FormField's `required` prop only decorates the label (aria-required + a
+  // visual *), so the actual rule + "<name> is required" message must come from
+  // the form resolver.
+  const inputsForSchema = useMemo(() => parseWorkflowIr(workflow).inputs, [workflow])
+  const inputSchema = useMemo(
+    () =>
+      z.object(
+        Object.fromEntries(
+          inputsForSchema.map(i => [
+            i.name,
+            i.required
+              ? z.string().min(1, `${i.name} is required`)
+              : z.string().optional(),
+          ]),
+        ),
+      ),
+    [inputsForSchema],
+  )
+  const form = useForm({
+    resolver: zodResolver(inputSchema),
+    defaultValues: {} as Record<string, unknown>,
+  })
   const [jsonInputs, setJsonInputs] = useState('{}')
   const [submitting, setSubmitting] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
@@ -78,22 +102,7 @@ export function WorkflowRunDialog({
     setCaptureLogs(false)
   }, [open, workflow.id, form, selectedModelId])
 
-  const handleRun = async () => {
-    let inputValues: Record<string, unknown> = {}
-    if (structured) {
-      const valid = await form.trigger()
-      if (!valid) return
-      inputValues = form.getValues()
-    } else {
-      try {
-        inputValues = JSON.parse(jsonInputs || '{}')
-        setJsonError(null)
-      } catch {
-        setJsonError('Inputs must be valid JSON')
-        return
-      }
-    }
-
+  const runWith = async (inputValues: Record<string, unknown>) => {
     if (!conversationId && !modelId) {
       message.error('Select a model to run this workflow')
       return
@@ -116,6 +125,25 @@ export function WorkflowRunDialog({
       message.error(e instanceof Error ? e.message : 'Failed to start run')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleRun = () => {
+    if (structured) {
+      // handleSubmit runs the resolver AND marks the form submitted, so the
+      // FormField surfaces "<name> is required" for empty required inputs
+      // (its error is gated on isTouched || isSubmitted).
+      void form.handleSubmit(values => runWith(values))()
+    } else {
+      let inputValues: Record<string, unknown>
+      try {
+        inputValues = JSON.parse(jsonInputs || '{}')
+        setJsonError(null)
+      } catch {
+        setJsonError('Inputs must be valid JSON')
+        return
+      }
+      void runWith(inputValues)
     }
   }
 
