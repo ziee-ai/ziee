@@ -174,6 +174,36 @@ async function captureInstalls(page: Page): Promise<InstallReq[]> {
 }
 
 async function gotoSandbox(page: Page, baseURL: string) {
+  // The resource-limits section shares the /settings/sandbox page and loads its
+  // own GET /api/code-sandbox/resource-limits on mount. This spec doesn't mock
+  // that endpoint, so in-test the fetch never settles and the section is stuck in
+  // its loading <Spin> (no card) — which starves the readiness gate below and
+  // fails EVERY test. Mock it so the section renders its card deterministically.
+  await page.route(/\/api\/code-sandbox\/resource-limits$/, async route => {
+    if (route.request().method() !== 'GET') return route.continue()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        address_space_bytes: 2147483648,
+        cpu_max: '50000 100000',
+        cpu_secs_max: 60,
+        created_at: '2026-01-01T00:00:00Z',
+        fsize_bytes: 1073741824,
+        mac_vm_ram_mib: 2048,
+        mac_vm_vcpus: 2,
+        memory_max_bytes: 536870912,
+        memory_swap_max_bytes: 0,
+        nofile_max: 1024,
+        nproc_max: 256,
+        pids_max: 128,
+        timeout_secs: 30,
+        updated_at: '2026-01-01T00:00:00Z',
+        vm_idle_evict_secs: 300,
+        vm_max_concurrent_execs: 4,
+      }),
+    })
+  })
   // The resource-limits card renders for everyone who reaches the page (its own
   // section gate aside), so it's a stable readiness signal independent of the
   // rootfs section's per-perm rendering.
