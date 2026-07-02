@@ -1,4 +1,4 @@
-import { Separator, Alert } from '@/components/ui'
+import { Alert, ScrollArea } from '@/components/ui'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@/core/stores'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
@@ -43,10 +43,13 @@ export function FilePreviewList() {
 
   return (
     <>
-      <Separator className="m-0" />
-      <div style={{ padding: '8px' }}>
+      <div className="mb-1.5">
+        {/* Horizontal overflow scrolls via the app's overlay ScrollArea (not a
+            native scrollbar). px-1 py-1 gutter keeps a focused card's ring from
+            being clipped inside the scroll viewport. */}
+        <ScrollArea axis="x" className="w-full">
         <div
-          className="flex gap-2 w-full overflow-x-auto"
+          className="flex gap-2 w-max px-1 py-1"
           role="list"
           aria-label="Attached files"
         >
@@ -90,6 +93,7 @@ export function FilePreviewList() {
             </div>
           ))}
         </div>
+        </ScrollArea>
 
         {advisories.length > 0 && (
           <div className="flex flex-col gap-1 mt-2">

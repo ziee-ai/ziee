@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Button, Popover, message } from '@/components/ui'
-import { Plus, Send as SendIcon } from 'lucide-react'
+import { Button, Popover, Tooltip, message } from '@/components/ui'
+import { Plus, SendHorizontal as SendIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
@@ -50,7 +50,8 @@ export function ChatInput({
   }
 
   return (
-    <div className={`w-full relative ${className}`} style={style}>
+    <div className={`w-full relative ${className}`} style={style} data-chat-composer>
+
       <div
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -78,25 +79,35 @@ export function ChatInput({
         <div className="flex justify-between items-center px-2 pt-1 pb-2">
           {/* Left: + dropdown + other toolbar actions */}
           <div className="flex items-center gap-1">
-            <Popover
-              open={plusOpen}
-              onOpenChange={setPlusOpen}
-              align="start"
-              side="top"
-              content={
-                <PlusDropdownContext.Provider value={{ close: () => setPlusOpen(false) }}>
-                  <ExtensionSlot name="toolbar_plus_items" className="flex flex-col" />
-                </PlusDropdownContext.Provider>
-              }
-            >
-              <Button
-                data-testid="chat-input-add-btn"
-                icon={<Plus className="size-4" />}
-                variant="ghost"
-                size="default"
-                aria-label="Add attachment"
-              />
-            </Popover>
+            {/* Tooltip anchors to the wrapper span (a distinct DOM node), not
+                the Popover-trigger button — two triggers on ONE node thrash and
+                flicker. The button suppresses its own aria-label auto-tooltip via
+                data-tooltip-wrapped so only the span's tooltip shows. */}
+            <Tooltip content="Add tools & files">
+              <span className="inline-flex">
+                <Popover
+                  open={plusOpen}
+                  onOpenChange={setPlusOpen}
+                  align="start"
+                  side="top"
+                  className="w-auto"
+                  content={
+                    <PlusDropdownContext.Provider value={{ close: () => setPlusOpen(false) }}>
+                      <ExtensionSlot name="toolbar_plus_items" className="flex flex-col" />
+                    </PlusDropdownContext.Provider>
+                  }
+                >
+                  <Button
+                    data-testid="chat-input-add-btn"
+                    data-tooltip-wrapped=""
+                    icon={<Plus className="size-4" />}
+                    variant="ghost"
+                    size="default"
+                    aria-label="Add tools & files"
+                  />
+                </Popover>
+              </span>
+            </Tooltip>
             <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1" />
           </div>
 
@@ -106,7 +117,7 @@ export function ChatInput({
             <Button
               data-testid="chat-input-send-btn"
               size="default"
-              icon={<SendIcon className="rotate-[270deg]" />}
+              icon={<SendIcon className="-rotate-90" />}
               onClick={handleSend}
               disabled={sending || isStreaming || disabled || isBlockedByExtension}
               loading={sending || isStreaming || isBlockedByExtension}

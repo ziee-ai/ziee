@@ -1,5 +1,5 @@
 import { Button, Card, Empty, Skeleton, Space, Tag, Text } from '@/components/ui'
-import { Pencil, Wrench } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import {
@@ -103,12 +103,7 @@ export function ProjectMcpSettingsPanel() {
 
   return (
     <Card
-      title={
-        <span>
-          <Wrench className="mr-2" />
-          MCP Defaults
-        </span>
-      }
+      title="MCP Defaults"
       // Card header `extra` slot — moves the edit affordance out of the
       // body so it sits inline with the title, mirroring the other
       // project-detail cards (Knowledge, etc.).

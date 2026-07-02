@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Flex, Confirm, Tooltip, Text, Title } from '@/components/ui'
 import { Copy, Folder, Pencil, Trash2 } from 'lucide-react'
@@ -32,6 +33,7 @@ export function ProjectCard({
   deleting = false,
 }: ProjectCardProps) {
   const navigate = useNavigate()
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const canEdit = usePermission(Permissions.ProjectsEdit)
   const canCreate = usePermission(Permissions.ProjectsCreate)
   const canRead = usePermission(Permissions.ProjectsRead)
@@ -98,7 +100,7 @@ export function ProjectCard({
             <Tooltip content="Duplicate">
               <Button
                 data-testid={`project-card-duplicate-button-${project.id}`}
-                variant="ghost"
+                variant="outline"
                 size="default"
                 icon={<Copy />}
                 loading={duplicating}
@@ -111,28 +113,35 @@ export function ProjectCard({
             </Tooltip>
           )}
           {canDelete && (
-            <Confirm
-              data-testid={`project-card-delete-confirm-${project.id}`}
-              title="Delete project"
-              description={`Are you sure you want to delete "${project.name}"? Conversations inside it will be preserved as unfiled.`}
-              okText="Delete"
-              cancelText="Cancel"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => {
-                onDelete(project)
-              }}
-              onCancel={stop}
-            >
-              <Button
-                data-testid={`project-card-delete-button-${project.id}`}
-                variant="outline"
-                size="default"
-                icon={<Trash2 />}
-                loading={deleting}
-                aria-label={`Delete ${project.name}`}
-                onClick={stop}
+            <>
+              <Tooltip content="Delete">
+                <Button
+                  data-testid={`project-card-delete-button-${project.id}`}
+                  variant="outline"
+                  size="default"
+                  icon={<Trash2 />}
+                  loading={deleting}
+                  aria-label={`Delete ${project.name}`}
+                  onClick={(e: React.MouseEvent) => {
+                    stop(e)
+                    setDeleteOpen(true)
+                  }}
+                />
+              </Tooltip>
+              <Confirm
+                data-testid={`project-card-delete-confirm-${project.id}`}
+                open={deleteOpen}
+                onOpenChange={setDeleteOpen}
+                title="Delete project"
+                description={`Are you sure you want to delete "${project.name}"? Conversations inside it will be preserved as unfiled.`}
+                okText="Delete"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => {
+                  onDelete(project)
+                }}
               />
-            </Confirm>
+            </>
           )}
         </Flex>
       }

@@ -201,7 +201,7 @@ export default function SettingsPage() {
   const SettingsMenu = () => (
     <Menu
       data-testid="settings-nav-menu"
-      className="w-fit p-1"
+      className="w-fit px-2 py-1"
       items={kitMenuItems}
       selectedKey={currentSection ?? validSections[0]}
       onSelect={handleMenuClick}

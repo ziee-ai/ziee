@@ -111,7 +111,7 @@ export function ProjectsListPage() {
           </div>
         ) : (
           <div className="text-center py-12 m-auto" data-testid="project-list-empty">
-            <Folder className="text-6xl mb-4" />
+            <Folder className="size-16 mx-auto mb-4" />
               <Title level={3} className="text-muted-foreground">
                 No projects yet
               </Title>

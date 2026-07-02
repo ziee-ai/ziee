@@ -28,14 +28,13 @@ export function McpMenuItem() {
     <div
       data-testid="chat-mcp-menu-item"
       className={cn(
-        "flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer",
+        "flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer",
         "text-foreground",
         "hover:bg-muted"
       )}
-      style={{ minWidth: 180 }}
       onClick={() => { mcpStore.openConfigModal(); close() }}
     >
-      <Wrench style={{ fontSize: 16 }} />
+      <Wrench className="size-4" />
       <span className="text-sm">MCP tools & servers</span>
     </div>
   )

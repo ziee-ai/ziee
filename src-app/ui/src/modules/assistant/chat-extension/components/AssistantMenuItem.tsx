@@ -55,20 +55,15 @@ export function AssistantMenuItem() {
       content={popoverContent}
       side="right"
       align="start"
+      className="w-auto"
     >
       <div
         data-testid="assistant-menu-trigger"
-        className="flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px]"
-        onMouseEnter={e => {
-          e.currentTarget.className = 'flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px] bg-muted'
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.className = 'flex items-center justify-between gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[200px]'
-        }}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-foreground hover:bg-muted"
       >
         <div className="flex items-center gap-2">
-          <Bot style={{ fontSize: 16 }} />
-          <span style={{ fontSize: 14 }}>
+          <Bot className="size-4" />
+          <span className="text-sm">
             {loading && availableAssistants.length === 0
               ? 'Loading assistants…'
               : selectedAssistant
@@ -76,7 +71,7 @@ export function AssistantMenuItem() {
                 : 'Select assistant'}
           </span>
         </div>
-        <ChevronRight style={{ fontSize: 10, opacity: 0.45 }} />
+        <ChevronRight className="size-3 opacity-45" />
       </div>
     </Popover>
   )

@@ -136,7 +136,7 @@ export default function ChatHistoryPage() {
          * ConversationList above) isn't shadowed by a duplicate empty panel. */}
         {!loading && conversations.length === 0 && !error && (
           <div className="text-center py-12 m-auto">
-            <MessageSquare className="text-6xl mb-4" />
+            <MessageSquare className="size-16 mx-auto mb-4" />
             <Title level={3}>
               No chat history yet
             </Title>

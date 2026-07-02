@@ -4,6 +4,7 @@ import {
   type ContentRendererProps,
 } from '@/modules/chat/core/extensions'
 import { FilePreviewList } from '@/modules/file/chat-extension/components/FilePreviewList'
+import { FileUploadArea } from '@/modules/file/chat-extension/components/FileUploadArea'
 import { FileAttachMenuItem } from '@/modules/file/chat-extension/components/FileAttachMenuItem'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
@@ -396,6 +397,8 @@ const fileExtension: ChatExtension = createExtension({
     toolbar_plus_items: { component: FileAttachMenuItem, order: 10 },
     // File preview list above textarea
     input_area_prefix: { component: FilePreviewList, order: 10 },
+    // Drag-and-drop overlay — attaches to the composer via [data-chat-composer].
+    input_area_suffix: { component: FileUploadArea, order: 10 },
   },
 })
 

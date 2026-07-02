@@ -167,7 +167,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
           selectedKey={primarySelectedKey}
           items={primaryItems}
           onSelect={handlePrimaryMenuClick}
-          className="px-1"
+          className="px-2"
         />
       )}
 
@@ -188,7 +188,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
               },
             ]}
             onSelect={handleNavMenuClick}
-            className="px-1"
+            className="px-2"
           />
         </div>
       )}
@@ -225,7 +225,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
               },
             ]}
             onSelect={handleToolsMenuClick}
-            className="px-1"
+            className="px-2"
           />
 
           {/* Bottom Widgets (hidden in icon-only mode) */}
