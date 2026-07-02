@@ -76,17 +76,6 @@ pub enum RootfsFormat {
     TarZst,
 }
 
-impl RootfsFormat {
-    /// File-name extension (no leading dot) for this packaging.
-    #[allow(dead_code)]
-    pub fn ext(self) -> &'static str {
-        match self {
-            RootfsFormat::Squashfs => "squashfs",
-            RootfsFormat::TarZst => "tar.zst",
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum FetchError {
     /// Stable catch-all surfaced from the version_manager — the inner

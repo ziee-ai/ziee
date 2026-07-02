@@ -1345,18 +1345,6 @@ impl Drop for InflightGuard {
     }
 }
 
-impl InflightGuard {
-    #[allow(dead_code)]
-    pub fn artifact_id(&self) -> Uuid {
-        self.artifact.artifact_id
-    }
-
-    #[allow(dead_code)]
-    pub fn version(&self) -> &str {
-        &self.artifact.version
-    }
-}
-
 /// In-memory registry of live mounts. Keyed by artifact_id so a
 /// per-conversation exec can look up its mount in O(1) and the
 /// pin-swap drain task can iterate every stale-version entry.
@@ -1440,6 +1428,16 @@ pub fn list_mounted_artifacts() -> Vec<Arc<MountedArtifact>> {
 /// version-manager registry — without this, MOUNTED_ARTIFACTS leaks
 /// stale entries until the next server restart. Returns the count
 /// of entries removed.
+//
+// FIXME(mount-leak): this function has ZERO callers — the described caller
+// `runtime_mount::evict_flavor` does not exist in the tree (grep confirms).
+// The wholesale-eviction path (admin DELETE /code-sandbox/environments/{flavor})
+// therefore never flushes MOUNTED_ARTIFACTS, so evicting a flavor across pinned
+// versions leaks stale registry entries until the next server restart — the
+// exact leak this function was written to prevent. Wire this into the flavor-
+// eviction handler (or delete both if the eviction path is truly gone). Kept
+// under #[allow(dead_code)] rather than deleted so the intended fix isn't lost.
+// See WARNING_AUDIT.md §"Latent findings".
 #[allow(dead_code)]
 pub fn deregister_mounts_for_flavor(flavor: &str) -> usize {
     let stale: Vec<Uuid> = MOUNTED_ARTIFACTS

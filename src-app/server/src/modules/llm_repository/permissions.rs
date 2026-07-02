@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-use crate::modules::permissions::{PermissionCheck, PermissionInfo};
+use crate::modules::permissions::PermissionCheck;
 
 // =====================================================
 // LLM Repository Management Permissions

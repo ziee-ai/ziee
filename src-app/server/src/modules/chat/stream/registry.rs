@@ -234,15 +234,6 @@ impl ChatStreamRegistry {
         }
     }
 
-    /// Number of live connections (test/diagnostic helper).
-    #[allow(dead_code)]
-    pub fn connection_count(&self) -> usize {
-        self.inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clients
-            .len()
-    }
 }
 
 /// Publish one generation frame to the owner's subscribed connections (and the

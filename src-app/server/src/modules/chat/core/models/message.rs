@@ -70,14 +70,3 @@ impl Message {
         self.role.parse()
     }
 }
-
-/// Branch-Message junction table entity
-/// Represents the many-to-many relationship between branches and messages
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct BranchMessage {
-    pub id: Uuid,
-    pub branch_id: Uuid,
-    pub message_id: Uuid,
-    pub is_clone: bool, // true if message was cloned from another branch
-    pub created_at: DateTime<Utc>,
-}
