@@ -41,7 +41,11 @@ export async function filterByTags(page: Page, tags: string[]) {
  */
 export async function sortHubResources(
   page: Page,
-  sortBy: 'popular' | 'name' | 'size',
+  // v2 Phase 7 dropped `popularity_score` + `size_gb` from models/assistants,
+  // so their sort selects expose only `name`/`display_name`; the MCP tab still
+  // offers `popular` (aliased to name). Callers pass a value valid for the tab
+  // they're on.
+  sortBy: 'popular' | 'name' | 'size' | 'display_name',
 ) {
   const sortSelect = page
     .locator('[data-testid$="-sort-select"], [data-testid$="-sort-combobox"]')

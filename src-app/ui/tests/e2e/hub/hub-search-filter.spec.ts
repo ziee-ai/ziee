@@ -157,12 +157,15 @@ test.describe('Hub Search and Filters', () => {
   })
 
   test.describe('Sorting', () => {
-    test('should sort by popularity', async ({ page, testInfra }) => {
+    // v2 Phase 7 dropped `popularity_score` from models, so the models sort
+    // select no longer offers "Popular" — the second real option is
+    // `display_name`. (Popularity sort still exists on the MCP tab.)
+    test('should sort by display name', async ({ page, testInfra }) => {
       const { baseURL } = testInfra
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
 
-      await sortHubResources(page, 'popular')
+      await sortHubResources(page, 'display_name')
 
       // Verify sort applied (would need to check actual order)
       const modelCards = await getModelCards(page)
@@ -182,16 +185,10 @@ test.describe('Hub Search and Filters', () => {
       // Could verify alphabetical order by extracting names
     })
 
-    test('should sort by size', async ({ page, testInfra}) => {
-      const { baseURL } = testInfra
-      await navigateToHub(page, baseURL, 'models')
-      await waitForHubDataLoad(page)
-
-      await sortHubResources(page, 'size')
-
-      const modelCards = await getModelCards(page)
-      expect(await modelCards.count()).toBeGreaterThan(0)
-    })
+    // NOTE: "sort by size" was removed — v2 Phase 7 dropped the model-wide
+    // `size_gb`, so the models sort select no longer offers a size option.
+    // Coverage of the two remaining sorts lives in the name + display_name
+    // tests above.
   })
 
   test.describe('Combined Filters', () => {
