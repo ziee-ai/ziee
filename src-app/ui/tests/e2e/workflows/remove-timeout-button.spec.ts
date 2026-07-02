@@ -82,6 +82,7 @@ test.describe('Workflows - Remove timeout button', () => {
     // Open the workflow → its (paused) run's progress view.
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-remove-timeout')
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 

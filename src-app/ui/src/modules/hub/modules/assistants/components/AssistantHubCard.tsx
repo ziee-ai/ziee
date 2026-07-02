@@ -122,9 +122,8 @@ for new users.`,
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
-                <Flex className="gap-2 items-center">
-                  <Bot />
-                  <Text className="font-medium cursor-pointer">
+                <Flex className="gap-2 items-center flex-wrap">
+                  <Text className="font-medium cursor-pointer whitespace-nowrap">
                     {assistant.display_name}
                   </Text>
                   {/* v2 per-entry version. Surfaced so admins can spot a
@@ -145,7 +144,7 @@ for new users.`,
                   )}
                 </Flex>
               </div>
-              <div className="flex gap-1 items-center justify-end">
+              <div className="flex flex-wrap gap-1 items-center justify-end">
                 <Button
                   icon={<Info />}
                   onClick={e => {

@@ -54,7 +54,7 @@ test.describe('Workflows - sandbox step rendering', () => {
 
     // The drawer's step list renders both steps; the second carries the
     // `sandbox` kind tag and declares its dependency on the llm step.
-    const drawer = byTestId(page, 'wf-detail-dialog')
+    const drawer = byTestId(page, 'wf-detail-drawer')
     await expect(drawer).toContainText('plan', { timeout: 15000 })
     await expect(drawer).toContainText('process')
     await expect(drawer).toContainText('sandbox')

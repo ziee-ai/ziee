@@ -1,4 +1,4 @@
-import { Button, Dropdown, Flex, Link, Result, Title, Text } from '@/components/ui'
+import { Button, Dropdown, Flex, Link, Result, ScrollArea, Title, Text } from '@/components/ui'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -201,7 +201,7 @@ export default function SettingsPage() {
   const SettingsMenu = () => (
     <Menu
       data-testid="settings-nav-menu"
-      className="w-fit h-full p-1"
+      className="w-fit p-1"
       items={kitMenuItems}
       selectedKey={currentSection ?? validSections[0]}
       onSelect={handleMenuClick}
@@ -280,9 +280,9 @@ export default function SettingsPage() {
             role="navigation"
             aria-label="Settings sections"
           >
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <ScrollArea axis="y" className="flex-1 min-h-0">
               <SettingsMenu />
-            </div>
+            </ScrollArea>
             {/* Help + onboarding guidance, pinned to the bottom of the nav. */}
             <div className="border-t border-border p-2 flex flex-col gap-1">
               <Button

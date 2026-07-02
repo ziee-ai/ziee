@@ -3,11 +3,17 @@ import { Progress as Base } from '../shadcn/progress'
 import { cn } from '@/lib/utils'
 
 export type ProgressTone = 'primary' | 'success' | 'warning' | 'error'
+// Colour ONLY the indicator (the filled portion). The DOM is
+// Root > Track > Indicator, and Base UI sizes the indicator via an inline
+// `width: <percent>%`. Targeting `[&>div]` (the Track) instead painted the
+// whole track with the fill colour, so every bar looked 100% full regardless
+// of value — key off the indicator's `data-slot` so the muted track shows
+// through for the empty portion.
 const toneCls: Record<ProgressTone, string> = {
-  primary: '[&>[data-state]]:bg-primary [&>div]:bg-primary',
-  success: '[&>[data-state]]:bg-green-600 [&>div]:bg-green-600',
-  warning: '[&>[data-state]]:bg-amber-500 [&>div]:bg-amber-500',
-  error: '[&>[data-state]]:bg-destructive [&>div]:bg-destructive',
+  primary: '[&_[data-slot=progress-indicator]]:bg-primary',
+  success: '[&_[data-slot=progress-indicator]]:bg-green-600',
+  warning: '[&_[data-slot=progress-indicator]]:bg-amber-500',
+  error: '[&_[data-slot=progress-indicator]]:bg-destructive',
 }
 
 const strokeCls: Record<ProgressTone, string> = {

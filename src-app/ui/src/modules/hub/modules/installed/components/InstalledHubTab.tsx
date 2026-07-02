@@ -280,7 +280,7 @@ export function InstalledHubTab() {
                         <div className="flex-1 min-w-48">
                           {/* Title row — name + scope tag + version tag. */}
                           <Flex align="center" gap="small" wrap>
-                            <Text className="font-semibold">
+                            <Text className="font-semibold whitespace-nowrap">
                               {row.name || row.hub_id}
                             </Text>
                             {row.is_system && (
@@ -320,7 +320,7 @@ export function InstalledHubTab() {
                             </Tooltip>
                           </Flex>
                         </div>
-                        <div className="flex gap-2 items-center justify-end">
+                        <div className="flex flex-wrap gap-2 items-center justify-end">
                           {row.hub_category === 'model' ||
                           ((row.hub_category === 'skill' ||
                             row.hub_category === 'workflow') &&

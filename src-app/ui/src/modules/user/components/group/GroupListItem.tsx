@@ -141,7 +141,7 @@ export function GroupListItem({
                 <Text data-testid={`user-group-status-text-${group.id}`}>{group.is_active ? 'Active' : 'Inactive'}</Text>
               </Flex>
             </div>
-            <div className={'flex gap-1 items-center justify-end'}>
+            <div className={'flex flex-wrap gap-1 items-center justify-end'}>
               {getGroupActions()}
             </div>
           </div>

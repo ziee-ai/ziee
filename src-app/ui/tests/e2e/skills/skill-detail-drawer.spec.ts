@@ -27,7 +27,7 @@ test.describe('Skills — detail drawer', () => {
     await loginAsAdmin(page, baseURL)
     await installSeedSkill(apiURL, await getAdminToken(apiURL))
 
-    await page.goto(`${baseURL}/skills`)
+    await page.goto(`${baseURL}/settings/skills`)
     const card = page.locator('[data-testid^="skill-list-card-"]').first()
     await expect(card).toBeVisible({ timeout: 30000 })
     await card.click()
@@ -61,7 +61,7 @@ test.describe('Skills — detail drawer', () => {
       return route.fallback()
     })
 
-    await page.goto(`${baseURL}/skills`)
+    await page.goto(`${baseURL}/settings/skills`)
     const card = page.locator('[data-testid^="skill-list-card-"]').first()
     await expect(card).toBeVisible({ timeout: 30000 })
     await card.click()

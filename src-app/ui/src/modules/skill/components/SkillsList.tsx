@@ -1,6 +1,7 @@
-import { BookOpen, Import as ImportIcon } from 'lucide-react'
+import { Import as ImportIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Button, Card, Empty, Flex, Space, Text } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
@@ -19,6 +20,18 @@ import { SkillScopeBadge } from './SkillScopeBadge'
 export function SkillsList() {
   const { skills, loading } = Stores.Skill
   const [importOpen, setImportOpen] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+
+  // Client-side pagination — the skills list endpoint returns the full set (no
+  // server total). Clamp the page so deletions can't strand the view on an
+  // empty page.
+  const totalPages = Math.max(1, Math.ceil(skills.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedSkills = skills.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
 
   return (
     <SettingsPageContainer
@@ -41,7 +54,7 @@ export function SkillsList() {
         {loading && <Text type="secondary">Loading skills...</Text>}
 
         <div className="flex flex-col gap-3">
-          {skills.map(skill => (
+          {pagedSkills.map(skill => (
             <Card
               key={skill.id}
               hoverable
@@ -61,9 +74,8 @@ export function SkillsList() {
             >
               <Flex justify="between" align="start" className="gap-3">
                 <Space direction="vertical" className="min-w-0" size="small">
-                  <Space size={8}>
-                    <BookOpen />
-                    <Text strong>{skill.display_name || skill.name}</Text>
+                  <Space size={8} wrap>
+                    <Text strong className="whitespace-nowrap">{skill.display_name || skill.name}</Text>
                     <SkillScopeBadge scope={skill.scope} isDev={skill.is_dev} />
                   </Space>
                   {skill.description && (
@@ -76,6 +88,21 @@ export function SkillsList() {
             </Card>
           ))}
         </div>
+
+        {skills.length > 0 && (
+          <ListPagination
+            data-testid="skill-list-pagination"
+            current={currentPage}
+            total={skills.length}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            aria-label="Skills pagination"
+          />
+        )}
 
         {!loading && skills.length === 0 && (
           <Empty

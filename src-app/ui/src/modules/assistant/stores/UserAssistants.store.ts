@@ -1,4 +1,3 @@
-import { enableMapSet } from 'immer'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -17,12 +16,12 @@ import {
   emitAssistantUpdated,
 } from '@/modules/assistant/events'
 
-// Enable Map and Set support in Immer
-enableMapSet()
-
 interface UserAssistantsState {
   // Data
-  assistants: Map<string, Assistant>
+  assistants: Assistant[]
+  total: number
+  currentPage: number
+  pageSize: number
   isInitialized: boolean
 
   // Loading states
@@ -42,7 +41,7 @@ interface UserAssistantsState {
   __destroy__?: () => void
 
   // Actions
-  loadUserAssistants: (force?: boolean) => Promise<void>
+  loadUserAssistants: (page?: number, pageSize?: number) => Promise<void>
   createUserAssistant: (data: CreateAssistantRequest) => Promise<Assistant>
   updateUserAssistant: (
     id: string,
@@ -58,7 +57,10 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
     immer(
       (set, get): UserAssistantsState => ({
         // Initial state
-        assistants: new Map<string, Assistant>(),
+        assistants: [],
+        total: 0,
+        currentPage: 1,
+        pageSize: 10,
         isInitialized: false,
         loading: false,
         creating: false,
@@ -70,51 +72,21 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             const eventBus = Stores.EventBus
             const GROUP = 'UserAssistantsStore'
 
-            // Subscribe to assistant.created
-            eventBus.on(
-              'assistant.created',
-              async event => {
-                const { assistant } = event.data
-                set(state => {
-                  state.assistants.set(assistant.id, assistant)
-                })
-              },
-              GROUP,
-            )
+            // Reload the current page on any local mutation so pagination
+            // (total / current page) stays consistent.
+            const reloadCurrent = () => void get().loadUserAssistants()
 
-            // Subscribe to assistant.updated
-            eventBus.on(
-              'assistant.updated',
-              async event => {
-                const { assistant } = event.data
-                set(state => {
-                  state.assistants.set(assistant.id, assistant)
-                })
-              },
-              GROUP,
-            )
-
-            // Subscribe to assistant.deleted
-            eventBus.on(
-              'assistant.deleted',
-              async event => {
-                const { assistantId } = event.data
-                set(state => {
-                  state.assistants.delete(assistantId)
-                })
-              },
-              GROUP,
-            )
+            eventBus.on('assistant.created', reloadCurrent, GROUP)
+            eventBus.on('assistant.updated', reloadCurrent, GROUP)
+            eventBus.on('assistant.deleted', reloadCurrent, GROUP)
 
             // Remote sync: refetch on a remote change or on (re)connect.
             // Self-gate the sync-driven refetch: `sync:reconnect` fires for
             // every store regardless of the user's permissions, so without
-            // this an assistants-read-less user would 403 on reconnect. Auth
-            // is already populated by the time these events fire (unlike the
-            // mount-time __init__ load), so the snapshot check is reliable here.
+            // this an assistants-read-less user would 403 on reconnect.
             const reload = () => {
               if (!hasPermissionNow(Permissions.AssistantsRead)) return
-              void get().loadUserAssistants(true)
+              void get().loadUserAssistants()
             }
             eventBus.on('sync:assistant', reload, GROUP)
             eventBus.on('sync:reconnect', reload, GROUP)
@@ -123,26 +95,30 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
         },
 
         // Actions
-        loadUserAssistants: async (force = false): Promise<void> => {
-          const state = get()
-          if ((state.isInitialized && !force) || state.loading) {
+        loadUserAssistants: async (
+          page?: number,
+          pageSize?: number,
+        ): Promise<void> => {
+          if (!hasPermissionNow(Permissions.AssistantsRead)) {
             return
           }
           try {
+            const currentState = get()
+            const requestPage = page || currentState.currentPage
+            const requestPageSize = pageSize || currentState.pageSize
+
             set({ loading: true, error: null })
 
             const response = await ApiClient.Assistant.list({
-              page: 1,
-              limit: 50,
+              page: requestPage,
+              limit: requestPageSize,
             })
 
             set({
-              assistants: new Map(
-                (response?.assistants ?? []).map((assistant: Assistant) => [
-                  assistant.id,
-                  assistant,
-                ]),
-              ),
+              assistants: response?.assistants ?? [],
+              total: response?.total ?? 0,
+              currentPage: requestPage,
+              pageSize: requestPageSize,
               isInitialized: true,
               loading: false,
             })
@@ -166,8 +142,6 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
 
             const assistant = await ApiClient.Assistant.create(data)
 
-            // Emit event after successful API call
-            // Event handler will update state (no manual state update here)
             try {
               await emitAssistantCreated(assistant)
             } catch (eventError) {
@@ -176,6 +150,9 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
                 eventError,
               )
             }
+
+            // Reload to maintain pagination consistency.
+            await get().loadUserAssistants()
 
             set({ creating: false })
 
@@ -204,8 +181,6 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
               ...data,
             })
 
-            // Emit event after successful API call
-            // Event handler will update state (no manual state update here)
             try {
               await emitAssistantUpdated(assistant)
             } catch (eventError) {
@@ -214,6 +189,8 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
                 eventError,
               )
             }
+
+            await get().loadUserAssistants()
 
             set({ updating: false })
 
@@ -236,8 +213,6 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
 
             await ApiClient.Assistant.delete({ id })
 
-            // Emit event after successful API call
-            // Event handler will update state (no manual state update here)
             try {
               await emitAssistantDeleted(id)
             } catch (eventError) {
@@ -246,6 +221,8 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
                 eventError,
               )
             }
+
+            await get().loadUserAssistants()
 
             set({ deleting: false })
           } catch (error) {
@@ -265,7 +242,7 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
         },
 
         getUserDefaultAssistant: (): Assistant | undefined => {
-          return Array.from(get().assistants.values()).find(a => a.is_default)
+          return get().assistants.find(a => a.is_default)
         },
 
         __destroy__: () => {

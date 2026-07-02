@@ -49,9 +49,9 @@ export function WorkflowsList() {
               onClick={() => Stores.WorkflowDrawer.open(workflow)}
               data-workflow-id={workflow.id}
               title={
-                <Space size={8}>
+                <Space size={8} wrap>
                   <WorkflowIcon />
-                  <Text strong>{workflow.display_name || workflow.name}</Text>
+                  <Text strong className="whitespace-nowrap">{workflow.display_name || workflow.name}</Text>
                   <WorkflowScopeBadge
                     scope={workflow.scope}
                     isDev={workflow.is_dev}

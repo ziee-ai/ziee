@@ -225,7 +225,7 @@ export function McpServerCard({
                 })()}
               </Flex>
             </div>
-            <div className="flex gap-2 items-center justify-end">
+            <div className="flex flex-wrap gap-2 items-center justify-end">
               {isEditable && (
                 <>
                   {canEdit && (

@@ -147,7 +147,7 @@ export async function openWorkflowCard(page: Page, name: string) {
     .click()
   // The detail dialog opens; assert on its testid (i18n-safe) + that it shows
   // the workflow name the test created (dynamic data).
-  const dialog = byTestId(page, 'wf-detail-dialog')
+  const dialog = byTestId(page, 'wf-detail-drawer')
   await expect(dialog).toBeVisible({ timeout: 15000 })
   await expect(dialog).toContainText(name)
 }

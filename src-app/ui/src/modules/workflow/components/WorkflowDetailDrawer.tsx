@@ -5,11 +5,13 @@ import {
   Dialog,
   Empty,
   Space,
+  Tabs,
   Tag,
   Text,
   Title,
   message,
 } from '@/components/ui'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useMemo, useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
@@ -42,6 +44,7 @@ export function WorkflowDetailDrawer() {
   // blanking the whole route via the error boundary.
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'details' | 'runs'>('details')
 
   // FE LOW-1: the drawer is a singleton bound to Stores.WorkflowDrawer; when
   // the user opens a different workflow's card while the drawer is open the
@@ -49,6 +52,7 @@ export function WorkflowDetailDrawer() {
   // workflow's progress view doesn't render under the new workflow's header.
   useEffect(() => {
     setActiveRunId(null)
+    setActiveTab('details')
   }, [workflow?.id])
 
   const { steps } = useMemo(
@@ -58,11 +62,11 @@ export function WorkflowDetailDrawer() {
 
   if (!workflow) {
     return (
-      <Dialog
-        data-testid="wf-detail-dialog-empty"
+      <Drawer
+        data-testid="wf-detail-drawer-empty"
         open={isOpen}
-        onOpenChange={(open) => { if (!open) Stores.WorkflowDrawer.close() }}
-        className="!max-w-[480px]"
+        onClose={() => Stores.WorkflowDrawer.close()}
+        size={480}
         title=""
       />
     )
@@ -85,16 +89,14 @@ export function WorkflowDetailDrawer() {
   }
 
   return (
-    <Dialog
-      data-testid="wf-detail-dialog"
+    <Drawer
+      data-testid="wf-detail-drawer"
       open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          setActiveRunId(null)
-          Stores.WorkflowDrawer.close()
-        }
+      onClose={() => {
+        setActiveRunId(null)
+        Stores.WorkflowDrawer.close()
       }}
-      className="!max-w-[480px]"
+      size={480}
       title={
         <Space>
           <Title level={5} className="!m-0">
@@ -134,98 +136,122 @@ export function WorkflowDetailDrawer() {
         ) : null
       }
     >
-      <div className="flex flex-col gap-4">
-        {workflow.description && <Text>{workflow.description}</Text>}
+      <Tabs
+        data-testid="wf-detail-tabs"
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as 'details' | 'runs')}
+        items={[
+          {
+            key: 'details',
+            label: 'Details',
+            children: (
+              <div className="flex flex-col gap-4">
+                {workflow.description && <Text>{workflow.description}</Text>}
 
-        <Descriptions data-testid="wf-detail-descriptions" size="sm" column={1} bordered
-          items={[
-            { key: 'name', label: 'Name', children: workflow.name },
-            ...(workflow.version ? [{ key: 'version', label: 'Version', children: workflow.version }] : []),
-            { key: 'files', label: 'Files', children: workflow.file_count },
-          ]}
-        />
+                <Descriptions data-testid="wf-detail-descriptions" size="sm" column={1} bordered
+                  items={[
+                    { key: 'name', label: 'Name', children: workflow.name },
+                    ...(workflow.version ? [{ key: 'version', label: 'Version', children: workflow.version }] : []),
+                    { key: 'files', label: 'Files', children: workflow.file_count },
+                  ]}
+                />
 
-        <Space wrap>
-          {canExecute && (
-            <Button
-              data-testid="wf-detail-run-btn"
-              variant="default"
-              icon={<CirclePlay />}
-              onClick={() => setRunDialogOpen(true)}
-            >
-              Run
-            </Button>
-          )}
-          <Button
-            data-testid="wf-detail-dry-run-btn"
-            variant="outline"
-            icon={<Calculator />}
-            onClick={() => setDryRunOpen(true)}
-          >
-            Dry-run preview
-          </Button>
-          {workflow.is_dev && (
-            <Button
-              data-testid="wf-detail-run-tests-btn"
-              variant="outline"
-              icon={<FlaskConical />}
-              onClick={() => setTestsOpen(true)}
-            >
-              Run tests
-            </Button>
-          )}
-        </Space>
+                <Space wrap>
+                  {canExecute && (
+                    <Button
+                      data-testid="wf-detail-run-btn"
+                      variant="default"
+                      icon={<CirclePlay />}
+                      onClick={() => setRunDialogOpen(true)}
+                    >
+                      Run
+                    </Button>
+                  )}
+                  <Button
+                    data-testid="wf-detail-dry-run-btn"
+                    variant="outline"
+                    icon={<Calculator />}
+                    onClick={() => setDryRunOpen(true)}
+                  >
+                    Dry-run preview
+                  </Button>
+                  {workflow.is_dev && (
+                    <Button
+                      data-testid="wf-detail-run-tests-btn"
+                      variant="outline"
+                      icon={<FlaskConical />}
+                      onClick={() => setTestsOpen(true)}
+                    >
+                      Run tests
+                    </Button>
+                  )}
+                </Space>
 
-        {activeRunId && (
-          <div className="border-t pt-3">
-            <Text strong className="block mb-2">
-              Run progress
-            </Text>
-            <WorkflowRunProgressView runId={activeRunId} />
-          </div>
-        )}
-
-        <div>
-          <Text strong className="block mb-2">
-            Steps
-          </Text>
-          {steps.length > 0 ? (
-            <div className="space-y-3">
-              {steps.map((s, i) => (
-                <div key={i} className="flex flex-col gap-1">
-                  <Space size={8}>
-                    <Text>{s.description || s.id}</Text>
-                    {s.kind && <Tag variant="outline" data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
-                  </Space>
-                  {s.dependsOn && s.dependsOn.length > 0 && (
-                    <Text type="secondary" className="text-xs">
-                      depends on: {s.dependsOn.join(', ')}
-                    </Text>
+                <div>
+                  <Text strong className="block mb-2">
+                    Steps
+                  </Text>
+                  {steps.length > 0 ? (
+                    <div className="space-y-3">
+                      {steps.map((s, i) => (
+                        <div key={i} className="flex flex-col gap-1">
+                          <Space size={8}>
+                            <Text>{s.description || s.id}</Text>
+                            {s.kind && <Tag variant="outline" data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
+                          </Space>
+                          {s.dependsOn && s.dependsOn.length > 0 && (
+                            <Text type="secondary" className="text-xs">
+                              depends on: {s.dependsOn.join(', ')}
+                            </Text>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty data-testid="wf-detail-steps-empty" description="Step details available after running" />
                   )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <Empty data-testid="wf-detail-steps-empty" description="Step details available after running" />
-          )}
-        </div>
+              </div>
+            ),
+          },
+          {
+            key: 'runs',
+            label: 'Runs',
+            children: (
+              <div className="flex flex-col gap-4">
+                {activeRunId && (
+                  <div>
+                    <Text strong className="block mb-2">
+                      Run progress
+                    </Text>
+                    <WorkflowRunProgressView runId={activeRunId} />
+                  </div>
+                )}
 
-        <div className="border-t pt-3">
-          <Text strong className="block mb-2" data-testid="wf-runs-heading">
-            Runs
-          </Text>
-          <WorkflowRunsList
-            workflowId={workflow.id}
-            onSelectRun={setActiveRunId}
-          />
-        </div>
-      </div>
+                <div>
+                  <Text strong className="block mb-2" data-testid="wf-runs-heading">
+                    Runs
+                  </Text>
+                  <WorkflowRunsList
+                    workflowId={workflow.id}
+                    onSelectRun={setActiveRunId}
+                  />
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <WorkflowRunDialog
         workflow={workflow}
         open={runDialogOpen}
         onClose={() => setRunDialogOpen(false)}
-        onStarted={runId => setActiveRunId(runId)}
+        onStarted={runId => {
+          setActiveRunId(runId)
+          // Surface the live run in the Runs tab.
+          setActiveTab('runs')
+        }}
       />
       <DryRunPreviewDialog
         workflow={workflow}
@@ -237,6 +263,6 @@ export function WorkflowDetailDrawer() {
         open={testsOpen}
         onClose={() => setTestsOpen(false)}
       />
-    </Dialog>
+    </Drawer>
   )
 }
