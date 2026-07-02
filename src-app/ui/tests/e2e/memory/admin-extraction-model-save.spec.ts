@@ -82,10 +82,12 @@ test.describe('Memory — admin extraction-model save', () => {
     )
 
     // Reload → the chosen model is still selected (PUT persisted). The kit
-    // Combobox renders the selected option's label in its trigger.
+    // Combobox trigger is an <input role="combobox"> whose selected label lives
+    // in its `value` attribute, so assert with toHaveValue (not toContainText,
+    // which reads text content an <input> never has).
     await page.reload()
     await expect(
       byTestId(page, 'memory-extraction-model-combobox'),
-    ).toContainText(chatName, { timeout: 30000 })
+    ).toHaveValue(chatName, { timeout: 30000 })
   })
 })

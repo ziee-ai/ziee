@@ -102,6 +102,11 @@ type State = {
   catalog: Connector[]
   lastSettingsPatch: Partial<Settings> | null
   lastConnectorPatch: { connector: string; body: any } | null
+  // The Sources card now saves ALL connectors in ONE submit (commit 935af6ac:
+  // "one Save for all Sources"), so a single save fires a PATCH per connector.
+  // Keep a per-connector map so a test can assert the payload of the specific
+  // connector it edited, independent of iteration order.
+  connectorPatches: Record<string, any>
 }
 
 async function mockApi(page: Page, state: State) {
@@ -130,6 +135,7 @@ async function mockApi(page: Page, state: State) {
       const connector = req.url().split('/').pop() as string
       const body = JSON.parse(req.postData() ?? '{}')
       state.lastConnectorPatch = { connector, body }
+      state.connectorPatches[connector] = body
       state.catalog = state.catalog.map(c => {
         if (c.key !== connector) return c
         const hasKey = body.api_key !== undefined ? body.api_key.length > 0 : c.api_key_set
@@ -145,9 +151,11 @@ async function gotoLiterature(page: Page, baseURL: string) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await page.goto(`${baseURL}/settings/literature`)
-      // The connectors card always renders (even when the settings GET errors),
-      // so it's the stable "page mounted" signal.
-      await expect(byTestId(page, 'lit-connectors-card')).toBeVisible({ timeout: 10000 })
+      // The page is a two-tab layout (General | Sources). The tabs shell always
+      // renders once the page mounts, so it's the stable "page mounted" signal
+      // (the General tab is selected by default; the Sources card lives behind
+      // its own tab, which shadcn Tabs unmounts until selected).
+      await expect(byTestId(page, 'lit-settings-tabs')).toBeVisible({ timeout: 10000 })
       return
     } catch (e) {
       if (attempt === 3) throw e
@@ -156,8 +164,22 @@ async function gotoLiterature(page: Page, baseURL: string) {
   }
 }
 
+// The connector cards live under the "Sources" tab, which shadcn Tabs keeps
+// unmounted until selected. Switch to it (and wait for the card) before
+// touching any lit-connector-* control.
+async function openSourcesTab(page: Page) {
+  await page.getByRole('tab', { name: 'Sources' }).click()
+  await expect(byTestId(page, 'lit-connectors-card')).toBeVisible({ timeout: 10000 })
+}
+
 function freshState(): State {
-  return { settings: defaultSettings(), catalog: defaultCatalog(), lastSettingsPatch: null, lastConnectorPatch: null }
+  return {
+    settings: defaultSettings(),
+    catalog: defaultCatalog(),
+    lastSettingsPatch: null,
+    lastConnectorPatch: null,
+    connectorPatches: {},
+  }
 }
 
 test.describe('Literature search admin settings', () => {
@@ -170,15 +192,21 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
+    // General tab (default) carries the master enable switch.
     await expect(byTestId(page, 'lit-global-enable-switch')).toBeVisible()
-    // The descriptor-driven connector cards render (Europe PMC + CORE).
+
+    // The descriptor-driven connector cards render under the Sources tab
+    // (Europe PMC + CORE).
+    await openSourcesTab(page)
     await expect(byTestId(page, 'lit-connector-enable-switch-europepmc')).toBeVisible()
     await expect(byTestId(page, 'lit-connector-enable-switch-core')).toBeVisible()
     // CORE (required key, unset) shows the "Needs key" tag.
     await expect(byTestId(page, 'lit-connector-needs-key-tag-core')).toBeVisible()
     // The descriptor-driven config field's `help` text renders (proves the
-    // generic catalog→UI contract covers help/docs_url, not just labels).
-    await expect(byTestId(page, 'field-desc-mailto')).toContainText(
+    // generic catalog→UI contract covers help/docs_url, not just labels). The
+    // kit FormField derives its description testid from the field `name`, which
+    // is namespaced `<connector>.<field>` → `field-desc-crossref.mailto`.
+    await expect(byTestId(page, 'field-desc-crossref.mailto')).toContainText(
       'Joins the Crossref polite pool',
     )
   })
@@ -204,12 +232,12 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
+    await openSourcesTab(page)
     await byTestId(page, 'lit-connector-api-key-input-core').fill(SECRET)
-    // The CORE connector's own Save button.
-    await byTestId(page, 'lit-connector-save-button-core').click()
+    // One Save for the whole Sources card.
+    await byTestId(page, 'lit-connectors-save').click()
 
-    await expect.poll(() => state.lastConnectorPatch?.connector, { timeout: 5000 }).toBe('core')
-    expect(state.lastConnectorPatch?.body.api_key).toBe(SECRET)
+    await expect.poll(() => state.connectorPatches['core']?.api_key, { timeout: 5000 }).toBe(SECRET)
     // The secret is never echoed back into the page (the key field resets blank).
     await expect(byTestId(page, 'lit-connector-api-key-input-core')).toHaveValue('')
     await expect(page.locator('body')).not.toContainText(SECRET)
@@ -222,10 +250,12 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
+    await openSourcesTab(page)
     await byTestId(page, 'lit-connector-config-input-crossref-mailto').fill('researcher@example.org')
-    await byTestId(page, 'lit-connector-save-button-crossref').click()
-    await expect.poll(() => state.lastConnectorPatch?.connector, { timeout: 5000 }).toBe('crossref')
-    expect(state.lastConnectorPatch?.body.config.mailto).toBe('researcher@example.org')
+    await byTestId(page, 'lit-connectors-save').click()
+    await expect
+      .poll(() => state.connectorPatches['crossref']?.config?.mailto, { timeout: 5000 })
+      .toBe('researcher@example.org')
   })
 
   test('stored mailto pre-fills and round-trips on save (no silent data loss)', async ({ page, testInfra }) => {
@@ -235,6 +265,7 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
+    await openSourcesTab(page)
     // The form must PRE-FILL the stored value (not start blank).
     const mailto = byTestId(page, 'lit-connector-config-input-crossref-mailto')
     await expect(mailto).toHaveValue('stored@example.org')
@@ -248,9 +279,9 @@ test.describe('Literature search admin settings', () => {
     // `config.mailto` — proving the field flows to the save payload.
     const roundtripped = 'roundtrip@example.org'
     await mailto.fill(roundtripped)
-    await byTestId(page, 'lit-connector-save-button-crossref').click()
+    await byTestId(page, 'lit-connectors-save').click()
     await expect
-      .poll(() => state.lastConnectorPatch?.body?.config?.mailto, { timeout: 5000 })
+      .poll(() => state.connectorPatches['crossref']?.config?.mailto, { timeout: 5000 })
       .toBe(roundtripped)
   })
 
@@ -295,7 +326,11 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
+    await openSourcesTab(page)
+    // Enable is a staged form field now; the Save commits enabled_connectors via
+    // the settings PUT (onSaveAll).
     await byTestId(page, 'lit-connector-enable-switch-core').click()
+    await byTestId(page, 'lit-connectors-save').click()
     await expect.poll(() => state.lastSettingsPatch?.enabled_connectors).toContain('core')
     // The originally-enabled sources are preserved (not clobbered).
     expect(state.lastSettingsPatch?.enabled_connectors).toEqual(
@@ -314,9 +349,10 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
+    await openSourcesTab(page)
+    // Clear-key fires its own immediate PATCH (not routed through the card Save).
     await byTestId(page, 'lit-connector-clear-key-button-core').click()
-    await expect.poll(() => state.lastConnectorPatch?.connector).toBe('core')
-    expect(state.lastConnectorPatch?.body.api_key).toBe('')
+    await expect.poll(() => state.connectorPatches['core']?.api_key).toBe('')
   })
 
   test('shows an error Alert when settings fail to load', async ({ page, testInfra }) => {
@@ -357,13 +393,23 @@ test.describe('Literature search admin settings', () => {
     await mockApi(page, state)
     await gotoLiterature(page, baseURL)
 
-    // CORE shows the "Needs key" tag (the warning state the validation guards).
+    await openSourcesTab(page)
+    // CORE shows the "Needs key" tag (the warning state).
     await expect(byTestId(page, 'lit-connector-needs-key-tag-core')).toBeVisible()
 
-    // With the key field empty, the required-key gate keeps CORE's Save disabled,
-    // so an invalid CORE config can never be persisted (no connector PUT).
-    await expect(byTestId(page, 'lit-connector-save-button-core')).toBeDisabled({ timeout: 5000 })
-    expect(state.lastConnectorPatch).toBeNull()
+    // The Sources card now has one Save for all connectors (commit 935af6ac).
+    // Saving with CORE's key left empty must NEVER transmit an empty/blank key:
+    // onSaveAll omits api_key entirely for a required connector whose field is
+    // blank (`if (c.key_field && apiKey)`), so an invalid CORE key is never
+    // persisted. Assert the invariant on the payload rather than a removed
+    // per-connector disabled-Save gate.
+    await byTestId(page, 'lit-connectors-save').click()
+    // Wait for the save-all to have fired (the settings PUT always goes).
+    await expect.poll(() => state.lastSettingsPatch, { timeout: 5000 }).not.toBeNull()
+    // CORE's PATCH (if any) carries no api_key — the blank required key is dropped.
+    expect(state.connectorPatches['core']?.api_key).toBeUndefined()
+    // CORE stays flagged as needing a key (still unconfigured).
+    await expect(byTestId(page, 'lit-connector-needs-key-tag-core')).toBeVisible()
   })
 
   // audit id bfae0a63e1633179 — the page's load-error branch

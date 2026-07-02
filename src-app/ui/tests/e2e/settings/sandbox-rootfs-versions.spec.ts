@@ -204,10 +204,14 @@ async function gotoSandbox(page: Page, baseURL: string) {
       }),
     })
   })
-  // The resource-limits card renders for everyone who reaches the page (its own
-  // section gate aside), so it's a stable readiness signal independent of the
-  // rootfs section's per-perm rendering.
-  const ready = byTestId(page, 'sandbox-resource-limits-card')
+  // The page is a two-tab layout (Rootfs [default] | Resource). The tabs shell
+  // renders for everyone who reaches the page — including a resource-limits-only
+  // admin whose rootfs SECTION shows a denial instead of the version cards — so
+  // it's the readiness signal that holds across every permission state (each
+  // test then asserts its own Rootfs-tab content). The resource-limits card is
+  // no good here: it now lives behind the non-active Resource tab that shadcn
+  // Tabs keeps unmounted.
+  const ready = byTestId(page, 'sandbox-tabs')
   for (let attempt = 1; attempt <= 3; attempt++) {
     await page.goto(`${baseURL}/settings/sandbox`)
     await page.waitForLoadState('load').catch(() => {})

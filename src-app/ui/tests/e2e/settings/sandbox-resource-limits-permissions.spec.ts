@@ -20,9 +20,15 @@ import { byTestId } from '../testid.ts'
 
 async function gotoSandbox(page: import('@playwright/test').Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/sandbox`)
-  await expect(
-    byTestId(page, 'sandbox-resource-limits-card'),
-  ).toBeVisible({ timeout: 30000 })
+  // The page is a two-tab layout (Rootfs | Resource); the resource-limits
+  // surface lives under the "Resource" tab, which shadcn Tabs keeps unmounted
+  // until selected. Switch to it and wait for it to be selected — a stable
+  // signal across all permission states (the card, read-only alert, and no-perm
+  // alert are each a different per-perm rendering of the mounted panel, so the
+  // per-test assertion below is what discriminates them).
+  const resourceTab = page.getByRole('tab', { name: 'Resource' })
+  await resourceTab.click()
+  await expect(resourceTab).toHaveAttribute('aria-selected', 'true', { timeout: 30000 })
 }
 
 test.describe('Code Sandbox — resource-limits permission states', () => {
