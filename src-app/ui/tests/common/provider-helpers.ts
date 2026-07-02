@@ -116,7 +116,14 @@ export async function createModelViaAPI(
   }
 
   const defaultModel = defaultModels[providerType]
-  const finalModelName = modelName || defaultModel.name
+  // Model-name seam (mirrors the base_url seam in createProviderViaAPI): when a
+  // local OpenAI/Anthropic-compatible bridge is used (e.g. vLLM serving
+  // qwen3.6-35b-a3b on :8000), the SaaS default model name (gpt-4o-mini) 404s.
+  // ZIEE_TEST_LLM_MODEL (global) or <PROVIDER>_MODEL overrides it so real-LLM
+  // specs run against the bridge without paid keys. Explicit modelName still wins.
+  const modelOverride =
+    process.env[`${providerType.toUpperCase()}_MODEL`] || process.env.ZIEE_TEST_LLM_MODEL
+  const finalModelName = modelName || modelOverride || defaultModel.name
   const finalDisplayName = displayName || defaultModel.display
 
   const response = await fetch(`${apiURL}/api/llm-models`, {
