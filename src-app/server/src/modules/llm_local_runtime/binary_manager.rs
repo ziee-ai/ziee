@@ -22,17 +22,6 @@ pub struct BinaryManager {
 }
 
 impl BinaryManager {
-    /// Create a new binary manager with default cache directory
-    ///
-    /// NOTE: dead_code allowed — only `with_cache_dir` is used in
-    /// production (the config-driven path). `new()` exists for
-    /// convenience in tests / future callers that want the default.
-    #[allow(dead_code)]
-    pub fn new(pool: PgPool) -> Result<Self, Box<dyn std::error::Error>> {
-        let downloader = BinaryDownloader::new()?;
-        Ok(Self { downloader, pool })
-    }
-
     /// Create a binary manager with custom cache directory
     pub fn with_cache_dir(
         pool: PgPool,
@@ -40,32 +29,6 @@ impl BinaryManager {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let downloader = BinaryDownloader::with_binaries_dir(cache_dir)?;
         Ok(Self { downloader, pool })
-    }
-
-    /// Download and register a new runtime version (no progress
-    /// reporting). Thin wrapper around
-    /// [`Self::download_and_register_with_progress`].
-    ///
-    /// NOTE: dead_code allowed — production callers use
-    /// `download_and_register_with_progress` directly for progress.
-    #[allow(dead_code)]
-    pub async fn download_and_register(
-        &self,
-        engine: EngineType,
-        version: &str,
-        platform: &str,
-        arch: &str,
-        backend: &str,
-    ) -> Result<RuntimeVersion, Box<dyn std::error::Error + Send + Sync>> {
-        self.download_and_register_with_progress(
-            engine,
-            version,
-            platform,
-            arch,
-            backend,
-            |_, _| {},
-        )
-        .await
     }
 
     /// Download and register a new runtime version, calling `progress`
@@ -160,23 +123,6 @@ impl BinaryManager {
         }
 
         Ok(binary_path)
-    }
-
-    /// Get binary path by engine and version string
-    ///
-    /// NOTE: dead_code allowed — callers use `get_binary_path(version_id)`
-    /// after resolving the version through other means.
-    #[allow(dead_code)]
-    pub async fn get_binary_path_by_version(
-        &self,
-        engine: &str,
-        version: &str,
-    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let runtime_version = version_repo::get_by_engine_and_version(&self.pool, engine, version)
-            .await?
-            .ok_or(format!("Runtime version not found: {} {}", engine, version))?;
-
-        self.get_binary_path(runtime_version.id).await
     }
 
     /// List all registered runtime versions from database (paginated).
@@ -409,6 +355,7 @@ impl BinaryManager {
     ///
     /// NOTE: dead_code allowed — the downloader owns the cache dir;
     /// callers that need it coordinate via config, not this accessor.
+    /// (Kept: sole reader of `downloader.binaries_dir()`.)
     #[allow(dead_code)]
     pub fn cache_dir(&self) -> &std::path::Path {
         self.downloader.binaries_dir()

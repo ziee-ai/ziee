@@ -30,12 +30,3 @@ pub struct Project {
     pub updated_at: DateTime<Utc>,
 }
 
-/// project_files membership row. The `file` field itself is fetched via
-/// a JOIN in the file-list endpoint; this struct is mainly internal.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, FromRow)]
-#[allow(dead_code)]
-pub struct ProjectFile {
-    pub project_id: Uuid,
-    pub file_id: Uuid,
-    pub added_at: DateTime<Utc>,
-}

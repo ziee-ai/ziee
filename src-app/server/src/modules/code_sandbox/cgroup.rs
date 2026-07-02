@@ -71,10 +71,6 @@ impl CgroupScope {
         })
     }
 
-    #[allow(dead_code)]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
 }
 
 impl Drop for CgroupScope {
