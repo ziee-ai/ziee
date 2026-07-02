@@ -269,6 +269,34 @@ export default defineConfig({
     console.log('✅ UI build ready for preview\n')
   }
 
+  // 8b. Warm the server binary ONCE so no per-test `cargo run` pays compilation.
+  // Each test spawns `cargo run --bin ziee` behind a 120s readiness budget; on
+  // the FIRST spawn of a run (or after a merge/rebase that touched server code)
+  // that cargo invocation compiles the whole crate, which under concurrent-test
+  // load blows the 120s budget → the "Backend server failed to start on port
+  // 91xx" flake that bites every session. Building here serializes the compile
+  // OUT of the per-test budget so every spawn is a warm, fast start. build.rs
+  // provisions the per-worktree build DB, so no DATABASE_URL is needed. Opt out
+  // with E2E_SKIP_SERVER_WARMUP=1. Non-fatal: a failed warmup just falls back to
+  // the old per-test (re)build within its own budget.
+  if (process.env.E2E_SKIP_SERVER_WARMUP !== '1') {
+    console.log('🏗️  Warming the server binary (cargo build --bin ziee)...')
+    const serverRoot = resolve(uiRoot, '../server')
+    const cargoBin =
+      process.platform === 'win32'
+        ? `${process.env.USERPROFILE}\\.cargo\\bin\\cargo`
+        : `${process.env.HOME}/.cargo/bin/cargo`
+    try {
+      execSync(`"${cargoBin}" build --bin ziee`, {
+        cwd: serverRoot,
+        stdio: 'inherit',
+      })
+      console.log('✅ Server binary warm\n')
+    } catch (e) {
+      console.warn('⚠️  Server warmup build failed (continuing; per-test cargo run will build):', e)
+    }
+  }
+
   console.log('   Test infrastructure:')
   console.log(`   - PostgreSQL: port ${postgresPort} (container: ziee-tailtest-postgres-${runId})`)
   console.log('   - Each worker: 2 dynamic ports (vite preview + backend)')
