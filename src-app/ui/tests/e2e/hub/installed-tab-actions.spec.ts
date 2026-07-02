@@ -33,19 +33,16 @@ test.describe('Hub — Installed tab actions', () => {
     const hubAssistantId = testId?.replace('hub-assistant-card-', '') ?? ''
     expect(hubAssistantId).toBeTruthy()
 
-    const installedName = `Installed E2E ${Date.now()}`
-    await createAssistantFromHub(page, hubAssistantId, { name: installedName })
+    // The one-click "Use Assistant" hub flow installs with the manifest name
+    // (no name-customization UI), so identify the row by position: a fresh
+    // per-test DB has exactly one hub-installed entity (this one).
+    await createAssistantFromHub(page, hubAssistantId)
 
     // --- Go to the Installed tab; the new install shows in Assistants ---
     await page.goto(`${baseURL}/hub/installed`)
     await expect(page).toHaveURL(/\/hub\/installed/)
 
-    // Locate the tracked row by the name this test created (dynamic data,
-    // so a hasText filter is allowed). The Remove button lives in the row.
-    const rowContainer = page
-      .getByTestId(/^hub-installed-row-/)
-      .filter({ hasText: installedName })
-      .first()
+    const rowContainer = page.getByTestId(/^hub-installed-row-/).first()
     await expect(rowContainer).toBeVisible({ timeout: 15000 })
 
     const removeBtn = rowContainer.getByTestId(/^hub-installed-remove-btn-/)
@@ -53,7 +50,11 @@ test.describe('Hub — Installed tab actions', () => {
 
     // --- Drive the real Remove action: Confirm dialog → confirm ---
     await removeBtn.click()
-    const confirm = page.getByTestId(/^hub-installed-remove-confirm-/)
+    // Target the Confirm OK button specifically — the prefix regex also
+    // matches the dialog content + cancel button (3 nodes → strict-mode).
+    const confirm = page.locator(
+      '[data-testid^="hub-installed-remove-confirm-"][data-testid$="-confirm"]',
+    )
     await expect(confirm).toBeVisible({ timeout: 5000 })
 
     const deleteResp = page.waitForResponse(
@@ -76,7 +77,7 @@ test.describe('Hub — Installed tab actions', () => {
       page.locator('[data-sonner-toast][data-type="success"]').first(),
     ).toBeVisible({ timeout: 10000 })
     await expect(
-      page.getByTestId(/^hub-installed-row-/).filter({ hasText: installedName }),
+      page.getByTestId(/^hub-installed-row-/),
     ).toHaveCount(0, { timeout: 15000 })
   })
 })
