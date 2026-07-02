@@ -251,7 +251,7 @@ export function UsersSettings() {
                             </Flex>
                           </div>
                           <div
-                            className={'flex gap-1 items-center justify-end'}
+                            className={'flex flex-wrap gap-1 items-center justify-end'}
                           >
                             {getUserActions(user)}
                           </div>
