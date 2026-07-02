@@ -188,6 +188,17 @@ export const useHardwareStore = create<HardwareState>()(
           // Reset connecting flag on error
           isCurrentlyConnecting = false
 
+          // Also clear the AbortController handle. The API core fires the
+          // `__init` SSE callback (which stashes `sseAbortController`) as soon as
+          // the fetch resolves — BEFORE it checks `response.ok` — so a failed
+          // connection (e.g. HTTP 500) can leave `sseAbortController` non-null
+          // even though no stream is live. If we don't null it here, the
+          // `sseAbortController !== null` guard at the top of
+          // subscribeToHardwareUsage permanently blocks every later reconnect
+          // attempt (incl. the manual "Connect" button). There is nothing live
+          // to abort on the error path, so dropping the handle is safe.
+          sseAbortController = null
+
           // Ignore AbortErrors as they are expected during cleanup/disconnection
           if (error instanceof Error && error.name === 'AbortError') {
             if (isIntentionallyDisconnecting) {
