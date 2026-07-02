@@ -85,7 +85,7 @@ export function WorkflowWorkspaceRunCard(props: ContentRendererProps) {
       {canGraduate && (
         <div className="my-2 flex gap-2" data-testid="workflow-workspace-run-actions">
           <Button
-            size="sm"
+            size="default"
             variant="outline"
             icon={<Save />}
             loading={saving}
@@ -96,7 +96,7 @@ export function WorkflowWorkspaceRunCard(props: ContentRendererProps) {
             {saved ? 'Saved' : 'Save to my workflows'}
           </Button>
           <Button
-            size="sm"
+            size="default"
             variant="outline"
             icon={<Download />}
             loading={downloading}
