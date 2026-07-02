@@ -150,14 +150,15 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     await expect(dialog).toBeVisible({ timeout: 10000 })
 
     // Open the combobox + pick the project by its derived option testid.
-    // Open the combobox and dispatch the click straight to the option: the
-    // Base-UI list virtualizes + the option's hover transition keeps it "not
-    // stable", so the actionability path never fires the selecting onClick.
+    // Open the combobox, type to filter so the target option renders (the list
+    // virtualizes — an off-screen option never attaches), then dispatch the
+    // click straight to it (its hover transition keeps it "not stable", so the
+    // actionability path never fires the selecting onClick).
     await byTestId(dialog, 'project-add-to-project-combobox').click()
-    await byTestId(
-      page,
-      `project-add-to-project-combobox-opt-${projectId}`,
-    ).dispatchEvent('click')
+    await page.keyboard.type('Sidebar Add Target')
+    const opt = byTestId(page, `project-add-to-project-combobox-opt-${projectId}`)
+    await opt.waitFor({ state: 'attached', timeout: 10000 })
+    await opt.dispatchEvent('click')
 
     // Confirm via the dialog's Add button.
     await byTestId(dialog, 'project-add-to-project-confirm-button').click()
