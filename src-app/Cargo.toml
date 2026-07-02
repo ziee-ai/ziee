@@ -37,6 +37,35 @@ authors = ["Ziee Team"]
 license = ""
 repository = ""
 
+# Workspace-wide lint policy. Members opt in with `[lints] workspace = true`.
+#   - `unused_imports` / `unused_mut` = "deny" — the two cheap-to-fix
+#     suppression classes this audit cleared; denying them means they can
+#     never silently regrow. Any genuinely cross-target-only-used import
+#     (lib-unused / bin-used) keeps a narrow per-item `#[allow(unused_imports)]`
+#     (see modules/mcp/client/mod.rs, core/mod.rs); the two release-only
+#     `#[allow(unused_mut)]` router builders (debug_assertions-gated
+#     reassignment) likewise stay.
+#
+#     NOTE: deliberately NOT `unused = "deny"` (the whole group). That group
+#     also pulls in `unused_variables`, which fires on ~135 idiomatic axum
+#     permission-extractor params (`auth: RequirePermissions<..>`, used only
+#     for their FromRequest side-effect) — all previously warning-free.
+#     Denying the group would hard-break the build and force a 135-site
+#     `_auth` rename across ~25 handler files (out of scope here). Scoping to
+#     imports+mut delivers the stated goal without that blast radius.
+#   - `dead_code = "warn"` — stays a warning, NOT deny: the ~90 module-level
+#     `#![allow(dead_code)]` blankets (Tier-C worklist in WARNING_AUDIT.md §6)
+#     remain non-breaking while they're paid down incrementally.
+#   - `too_many_arguments = "allow"` — style-only; existing live functions
+#     legitimately exceed the threshold.
+[workspace.lints.rust]
+unused_imports = "deny"
+unused_mut = "deny"
+dead_code = "warn"
+
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+
 # Shared dependency catalog. Members write `tokio.workspace = true` to
 # inherit; to add EXTRA features beyond the baseline declared here,
 # write `tokio = { workspace = true, features = ["test-util"] }` and

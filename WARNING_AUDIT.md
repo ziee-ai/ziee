@@ -48,6 +48,32 @@ warnings** (`cargo check -p ziee -p ziee-desktop --all-targets`). Summary:
   `#[allow(dead_code)]` with a `FIXME(mount-leak)` at the site. Fix = wire it into the
   flavor-eviction handler (or delete both if that path is genuinely gone).
 
+## 0b. Actions taken (batch 2 — B + GATE)
+
+- **B (unused_imports/mut cleanup):** removed the 5 spurious `#[allow(unused_imports)]`
+  in the module `permissions.rs` files (the `PermissionInfo` import was genuinely unused;
+  `cargo fix` dropped it). **Kept** the other 5 as load-bearing: `core/mod.rs`,
+  `mcp/client/mod.rs` (×3), `auth/mod.rs` are lib-target-unused but consumed by the
+  **binary** target / re-exported at crate root for the **desktop crate + tests**
+  (`ziee::hash_password`) — `cargo fix --lib` wrongly stripped them (E0425/E0433), so they
+  were restored. **Kept** both `#[allow(unused_mut)]` router builders: their `router = …`
+  reassignment is `#[cfg(debug_assertions)]`, so `mut` is unused in `--release` and the
+  gate would break release without the allow.
+- **GATE:** `[workspace.lints]` in `src-app/Cargo.toml` + `[lints] workspace = true` in
+  all 9 members. Scoped to `unused_imports = "deny"` + `unused_mut = "deny"` +
+  `dead_code = "warn"` + `clippy::too_many_arguments = "allow"`. **Deliberately NOT the
+  whole `unused` group** — `unused = "deny"` pulls in `unused_variables`, which fires on
+  **135 idiomatic axum permission-extractor params** (`auth: RequirePermissions<…>`, used
+  only for their FromRequest side-effect; all previously warning-free). Denying the group
+  would hard-break the build and force a 135-site `_auth` rename across ~25 handler files —
+  out of scope. Scoping to imports+mut delivers the stated goal (those suppressions can't
+  regrow) with zero blast radius. **Verified:** `cargo check --workspace --all-targets` =
+  0 errors; ziee + ziee-desktop = 0 warnings. (2 pre-existing `dead_code` warnings remain
+  in `sandbox-vm-launcher` + `ai-providers` test — non-breaking, Tier-C candidates.)
+- **CI guard:** `scripts/check-deadcode-blankets.sh` + baseline
+  `scripts/deadcode-blanket-baseline.txt` (the 90 files below), wired into `just check`.
+  Denies NEW `#![allow(dead_code)]` module blankets; removals (Tier-C paydown) always pass.
+
 ---
 
 ## 1. Bottom line
@@ -160,3 +186,45 @@ also flags. These need the allow removed + one `cargo check`:
 **Nothing here should be mass-`cargo fix`'d.** The safe unit of work is one file → remove allow →
 compile → keep-or-narrow, with the Windows/macOS hosts consulted for anything under `code_sandbox`,
 `llm_local_runtime/gpu`, `auth/providers/apple`, or `desktop/`.
+
+---
+
+## 6. Tier C worklist — the 90 module-level `#![allow(dead_code)]` blankets
+
+These whole-file suppressions are the backlog to pay down incrementally (convert
+each to per-item `#[allow(dead_code)]`-with-reason or delete the dead item; a
+compile after removing each blanket surfaces the real per-item warnings). The
+workspace gate keeps `dead_code = "warn"` so this stays non-breaking, and
+`scripts/check-deadcode-blankets.sh` (baseline `scripts/deadcode-blanket-baseline.txt`)
+denies NEW blankets while allowing removals. Grouped by module for grind-fleet
+partitioning (counts in parens):
+
+| Module | # | Files |
+|---|---|---|
+| assistant | 2 | assistant/chat_extension/extension.rs assistant/events.rs  |
+| auth | 4 | auth/events.rs auth/jwt_extractor.rs auth/providers/ldap.rs auth/providers/local.rs  |
+| chat | 9 | chat/core/extension/registry.rs chat/core/extension/request.rs chat/core/models/content.rs chat/core/models/message.rs chat/core/services/streaming.rs chat/core/types/conversation.rs chat/core/types/message.rs chat/core/types/streaming.rs chat/extensions/title/extension.rs  |
+| citations | 1 | citations/chat_extension/extension.rs  |
+| code_sandbox | 1 | code_sandbox/mount_context_extension.rs  |
+| control_mcp | 1 | control_mcp/chat_extension/extension.rs  |
+| file | 1 | file/project_extension/events.rs  |
+| hub | 4 | hub/events.rs hub/models.rs hub/repository.rs hub/types.rs  |
+| lit_search | 1 | lit_search/chat_extension/extension.rs  |
+| llm_local_runtime | 1 | llm_local_runtime/events.rs  |
+| llm_model | 4 | llm_model/events.rs llm_model/models.rs llm_model/repository.rs llm_model/storage.rs  |
+| llm_provider | 3 | llm_provider/events.rs llm_provider/repositories/admin.rs llm_provider/user_extension/repository.rs  |
+| llm_repository | 1 | llm_repository/events.rs  |
+| mcp | 4 | mcp/chat_extension/content.rs mcp/events.rs mcp/repository.rs mcp/types.rs  |
+| memory | 1 | memory/chat_extension/extension.rs  |
+| permissions | 2 | permissions/extractors.rs permissions/types.rs  |
+| project | 3 | project/chat_extension/extension.rs project/core/extension/registry.rs project/events.rs  |
+| skill | 6 | skill/chat_extension/extension.rs skill/dev_handlers.rs skill/events.rs skill/models.rs skill/repository.rs skill/types.rs  |
+| skill_mcp | 3 | skill_mcp/file_cache.rs skill_mcp/handlers.rs skill_mcp/tools.rs  |
+| summarization | 1 | summarization/chat_extension/extension.rs  |
+| user | 5 | user/events.rs user/models.rs user/permissions.rs user/repository.rs user/service.rs  |
+| web_search | 1 | web_search/chat_extension/extension.rs  |
+| workflow | 27 | workflow/artifact_io.rs workflow/artifact_stream.rs workflow/compiled.rs workflow/cost.rs workflow/dispatch.rs workflow/elicit.rs workflow/events.rs workflow/file_io.rs workflow/handlers/dev.rs workflow/handlers/mod.rs workflow/handlers/system.rs workflow/log_io.rs workflow/log_stream.rs workflow/models.rs workflow/output_stream.rs workflow/progress_sse.rs workflow/ref_check.rs workflow/registry.rs workflow/repository.rs workflow/routes.rs workflow/runner.rs workflow/startup_sweep.rs workflow/template.rs workflow/test_runner.rs workflow/type_infer.rs workflow/types.rs workflow/validate.rs  |
+| workflow_mcp | 3 | workflow_mcp/handlers.rs workflow_mcp/resources.rs workflow_mcp/tools.rs  |
+| server/src (core) | 1 | core/events.rs  |
+
+Full authoritative list: `scripts/deadcode-blanket-baseline.txt` (90 paths).

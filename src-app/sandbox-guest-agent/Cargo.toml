@@ -9,6 +9,9 @@ publish = false
 name = "ziee-sandbox-agent"
 path = "src/main.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 # Same seccomp policy crate the Linux host uses — the guest applies an
