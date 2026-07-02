@@ -110,9 +110,14 @@ export async function clickCardAction(
     Duplicate: 'project-card-duplicate-button-',
     Delete: 'project-card-delete-button-',
   }[action]
-  // These action buttons are hover-revealed (opacity transition), so the
-  // default stability gate can time out mid-animation — force the click.
-  await card.locator(`[data-testid^="${prefix}"]`).click({ force: true })
+  // The card itself is a click target (navigates to the detail page); the
+  // action buttons live in its header. Hover to surface them, then do a real
+  // (non-force) click so the button's React onClick actually fires instead of
+  // a coordinate-level force click that can land on the card/tooltip overlay.
+  const btn = card.locator(`[data-testid^="${prefix}"]`)
+  await card.hover()
+  await btn.scrollIntoViewIfNeeded()
+  await btn.click()
 }
 
 /**
