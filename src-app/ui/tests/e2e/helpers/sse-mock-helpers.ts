@@ -228,64 +228,34 @@ export interface ChatStreamMock {
 }
 
 /**
- * Mock /api/conversations/*\/messages/stream with a queue of event scripts.
+ * Mock the chat send + stream with a queue of event scripts (one per send).
  *
- * ⚠️ STALE — TARGETS A REMOVED ROUTE. The fire-and-forget refactor split send
- * into `POST /api/conversations/:id/messages` (returns `{userMessageId,
- * assistantMessageId}` JSON) + a long-lived per-user `GET /api/chat/stream`
- * that PUSHES enveloped frames `{conversationId, event:{type,…}}`. This regex
- * (`…/messages/stream`) now matches NOTHING, so consumers of this helper are
- * "false green": the real POST falls through, no tokens arrive, and the spec
- * passes only because it asserts optimistic pre-token UI.
+ * Thin adapter over {@link mockChatTokenStream} — the fire-and-forget refactor
+ * removed the old direct-SSE `POST …/messages/stream` route this helper used to
+ * target, replacing it with `POST …/messages` (returns `{user_message_id,
+ * assistant_message_id}`) + a long-lived `GET /api/chat/stream` that pushes
+ * enveloped frames `{conversationId, event:{type,…}}`. `mockChatTokenStream`
+ * models that path and consumes the SAME `ScriptedSseEvent[][]`, so this helper
+ * now delegates to it: callers keep their existing scripts (+ `mockGetMessages`
+ * for the post-`complete` reload) but the assistant frames actually arrive.
  *
- * Migrating it is non-trivial: Playwright's one-shot `route.fulfill` cannot
- * model a stream that pushes frames AFTER a later POST. The faithful options
- * are (a) wire a stub-engine-backed `custom` provider into global setup and use
- * the REAL stream, or (b) a CDP-level pushable SSE mock. Tracked in
- * `.plans/feat-realtime-sync-chat-test-coverage.md`. Until then the affected
- * chat specs need a Playwright run-loop to migrate.
- *
- * Call BEFORE the first send. Unregister via `page.unroute()` if a test needs
- * to swap behavior mid-flight (rare).
+ * Call BEFORE the first send. The producer/consumer queue couples each POST to
+ * the next `GET /api/chat/stream` reconnect (see mockChatTokenStream).
  */
 export async function mockChatStream(
   page: Page,
   scripts: ScriptedSseEvent[][],
 ): Promise<ChatStreamMock> {
-  let callIndex = 0
-  const captured: Array<{ url: string; body: unknown }> = []
-
-  await page.route(
-    /\/api\/conversations\/[^/]+\/messages\/stream(\?|$)/,
-    async (route, request) => {
-      // Defensive: only intercept POST. Some Playwright versions may route GETs
-      // here transiently during route-handler reordering; falling through avoids
-      // returning SSE bytes to a JSON-expecting GET /messages call.
-      if (request.method() !== 'POST') {
-        return route.fallback()
-      }
-      let body: unknown = null
-      try {
-        body = JSON.parse(request.postData() || '{}')
-      } catch {
-        /* leave as null */
-      }
-      captured.push({ url: request.url(), body })
-
-      const script = scripts[callIndex] ?? scripts[scripts.length - 1]
-      callIndex++
-
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        body: serializeSseScript(script),
-      })
-    },
-  )
-
+  // The old direct-SSE-over-POST route (`…/messages/stream`) was removed by the
+  // fire-and-forget refactor. `mockChatTokenStream` models the current path
+  // (POST `…/messages` → frames over the long-lived `GET /api/chat/stream`) and
+  // consumes the SAME `ScriptedSseEvent[][]`, so `mockChatStream` is now a thin
+  // adapter over it — existing callers (explicit-messageId scripts paired with
+  // `mockGetMessages`) keep working unchanged, but now actually stream.
+  const mock = await mockChatTokenStream(page, scripts)
   return {
-    callCount: () => callIndex,
-    capturedRequests: () => [...captured],
+    callCount: () => mock.sendCount(),
+    capturedRequests: () => mock.capturedSends(),
   }
 }
 

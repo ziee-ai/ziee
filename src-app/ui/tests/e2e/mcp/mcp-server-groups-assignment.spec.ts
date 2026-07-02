@@ -523,6 +523,14 @@ test.describe('User Group Assignment in MCP Servers', () => {
       .locator('[data-card-type="user-groups-assignment"]')
     const header = widget.getByRole('button').first()
 
+    // assignGroupToServer saves, and the shared UserGroupAssignment auto-expands
+    // the panel on save (setOpen(true)) — so collapse it first to actually
+    // exercise the expand path this test asserts.
+    if ((await header.getAttribute('aria-expanded')) === 'true') {
+      await header.click()
+      await page.waitForTimeout(300)
+    }
+
     // Click the panel label "User Groups" (NOT the edit button — that has stopPropagation)
     await header.click()
     await page.waitForTimeout(300)

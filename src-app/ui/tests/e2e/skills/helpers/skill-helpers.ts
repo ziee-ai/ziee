@@ -7,7 +7,7 @@ import { byTestId } from '../../testid.ts'
  * the projects tests can read these at a glance.
  *
  * Routes (from `src/modules/skill/module.tsx`):
- *   - user list:  `/skills`                  (perm: skills::read)
+ *   - user page:  `/settings/skills`                  (perm: skills::read)
  *   - admin page: `/settings/skills-admin`   (perm: skills::manage_system)
  *
  * Both pages render their title via `SettingsPageContainer`, which emits
@@ -21,7 +21,7 @@ import { byTestId } from '../../testid.ts'
 // component has mounted and the store hydration the next assertions
 // need is already in flight.
 export async function goToSkillsPage(page: Page, baseURL: string) {
-  await page.goto(`${baseURL}/skills`)
+  await page.goto(`${baseURL}/settings/skills`)
   await byTestId(page, 'skills-page').waitFor({ timeout: 15000 })
 }
 

@@ -27,12 +27,16 @@ function PopoverContent({
   >) {
   return (
     <PopoverPrimitive.Portal>
+      {/* z-[70] + pointer-events-auto so a Popover (e.g. MultiSelect/Combobox
+          list) opened INSIDE a modal Dialog (z-[60]) / Drawer (z-50) renders
+          above it and stays clickable — the modal sets body{pointer-events:none}
+          and this Base-UI popup is a separate body portal. */}
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        className="isolate z-50"
+        className="isolate z-[70] pointer-events-auto"
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"

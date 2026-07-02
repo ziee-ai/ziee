@@ -1,4 +1,4 @@
-import { Bot, Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import {
   Button,
   Card,
@@ -143,7 +143,6 @@ export function AssistantsSettings() {
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <div className="flex-1 min-w-48">
                           <div className="flex gap-2 items-center">
-                            <Bot />
                             <Text className="font-medium">
                               {assistant.name}
                             </Text>
@@ -155,7 +154,7 @@ export function AssistantsSettings() {
                             )}
                           </div>
                         </div>
-                        <div className="flex gap-1 items-center justify-end">
+                        <div className="flex flex-wrap gap-1 items-center justify-end">
                           {getAssistantActions(assistant)}
                         </div>
                       </div>

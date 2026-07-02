@@ -52,7 +52,7 @@ test.describe('Workflows - detail drawer steps', () => {
 
     // Both step messages render in the Steps list (dynamic data from the
     // seeded workflow), and the dependent step shows its dependency line.
-    const dialog = byTestId(page, 'wf-detail-dialog')
+    const dialog = byTestId(page, 'wf-detail-drawer')
     await expect(dialog).toContainText('Gather sources', { timeout: 15000 })
     await expect(dialog).toContainText('Synthesize answer')
     await expect(dialog).toContainText('depends on: gather', { timeout: 10000 })

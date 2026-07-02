@@ -142,6 +142,7 @@ test.describe('Workflows - elicit rich editable table (real LLM snapshot)', () =
     await openWorkflowCard(page, 'e2e-elicit-table')
 
     // The running run shows in the Runs list; open it.
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
@@ -231,6 +232,7 @@ test.describe('Workflows - elicit rich editable table (real LLM snapshot)', () =
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-elicit-table-rows')
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
     await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({ timeout: 15000 })

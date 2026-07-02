@@ -15,7 +15,7 @@ test.describe('Skills — import dialog validate flow', () => {
     testInfra,
   }) => {
     await loginAsAdmin(page, testInfra.baseURL)
-    await page.goto(`${testInfra.baseURL}/skills`)
+    await page.goto(`${testInfra.baseURL}/settings/skills`)
 
     // Open the Import dialog.
     await byTestId(page, 'skill-list-import-button').click()

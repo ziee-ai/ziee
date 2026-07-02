@@ -128,7 +128,12 @@ export const Drawer: React.FC<DrawerProps> = ({
           <DialogPrimitive.Overlay
             // Standard shadcn overlay (matches Dialog/Sheet): a faint tint + blur,
             // not a custom mask color.
-            className="fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+            // z-40: keep the backdrop BELOW the drawer content (z-50). Radix
+            // mounts the Overlay + Content as separate presence portals, and the
+            // overlay can mount after the content — at equal z-index it would
+            // then paint on top and swallow clicks on the drawer's own controls
+            // (e.g. the Save button). A backdrop belongs under its content.
+            className="fixed inset-0 z-40 bg-black/10 supports-backdrop-filter:backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
           />
         )}
         <DialogPrimitive.Content

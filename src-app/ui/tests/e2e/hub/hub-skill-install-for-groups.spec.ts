@@ -30,11 +30,9 @@ test.describe('Hub Skills — install for groups', () => {
       'hub-skill-card-'.length,
     )
 
-    // Open the admin install dropdown (the split button is also the menu trigger).
-    await page.getByTestId(`hub-skill-install-dropdown-btn-${name}`).click()
-
-    // Pick "Install for groups…" from the menu (kit Dropdown item key 'groups').
-    await page.getByTestId(`hub-skill-admin-dropdown-${name}-item-groups`).click()
+    // Click the admin "Groups…" install button (separate from Install-for-me
+    // and Install-as-system).
+    await page.getByTestId(`hub-skill-install-groups-btn-${name}`).click()
 
     // The dialog opens with the group multi-select.
     const dialog = page.getByTestId(`hub-skill-groups-dialog-${name}`)

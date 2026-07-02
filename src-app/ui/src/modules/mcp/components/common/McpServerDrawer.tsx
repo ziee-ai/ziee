@@ -798,6 +798,20 @@ export function McpServerDrawer() {
     }
   }, [transportType, prefillTransportSwapped])
 
+  // Toggling run_in_sandbox (system mode) flips whether the host command
+  // allowlist applies — sandbox lifts it, so a host-disallowed command becomes
+  // valid (and vice-versa). RHF won't re-check `command` on its own when a
+  // *different* field changes, so re-validate it here to clear/raise the error.
+  useEffect(() => {
+    if (
+      form.getFieldState('command').isTouched ||
+      form.formState.isSubmitted
+    ) {
+      void form.trigger('command')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSandboxed])
+
   // Local mirror for the title's Enabled Switch + a "currently
   // toggling" flag that disables the Switch (with a loading
   // spinner) while a save+probe round-trip is in flight.

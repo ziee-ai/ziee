@@ -36,6 +36,7 @@ export const ALL_ACCENTS = [
   'violet',
   'rose',
   'amber',
+  'black',
 ] as const
 export type Accent = (typeof ALL_ACCENTS)[number]
 

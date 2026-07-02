@@ -10,6 +10,7 @@ use super::session::McpSession;
 use crate::common::AppError;
 use crate::core::{config::Config, Repos};
 use crate::modules::auth::jwt::Claims;
+use crate::modules::mcp::models::McpServer;
 use crate::modules::mcp::tool_calls::models::{McpCallContext, McpToolCallSource};
 
 /// Process-wide handle to the session manager constructed in
@@ -128,47 +129,12 @@ impl McpSessionManager {
         // For built-in servers: create ephemeral session with dynamic headers
         if server.is_built_in {
             let mut server_with_ctx = server.clone();
-
-            let mut headers = server.headers
-                .as_object()
-                .cloned()
-                .unwrap_or_default();
-
-            if let Some(cid) = conversation_id {
-                headers.insert(
-                    "x-conversation-id".to_string(),
-                    Value::String(cid.to_string()),
-                );
-            }
-            if let Some(msg_id) = message_id {
-                headers.insert(
-                    "x-message-id".to_string(),
-                    Value::String(msg_id.to_string()),
-                );
-            }
-
-            // Inject Authorization header with a short-lived JWT if not already set.
-            // TTL is 60s (not 5s): a built-in tool call can chain multiple hops
-            // (e.g. control's `invoke_capability` re-dispatches to a REST route
-            // over loopback, forwarding this same token) and, under a slow model
-            // or a loaded host, a 5s window expired mid-chain → spurious 401s.
-            // 60s stays short-lived (loopback-only, per-user) while giving ample
-            // headroom for the multi-hop built-ins.
-            if !headers.contains_key("authorization") && !headers.contains_key("Authorization") {
-                let token = Self::generate_short_lived_jwt(
-                    user_id,
-                    &self.config.jwt.secret,
-                    &self.config.jwt.issuer,
-                    &self.config.jwt.audience,
-                    60,
-                )?;
-                headers.insert(
-                    "Authorization".to_string(),
-                    Value::String(format!("Bearer {}", token)),
-                );
-            }
-
-            server_with_ctx.headers = Value::Object(headers);
+            self.inject_builtin_context_headers(
+                &mut server_with_ctx,
+                user_id,
+                conversation_id,
+                message_id,
+            )?;
 
             // Ephemeral session — not stored in the pool
             let mut session = McpSession::new(server_with_ctx).await?;
@@ -180,6 +146,59 @@ impl McpSessionManager {
         let mut session = McpSession::new(server).await?;
         session.set_call_context(call_ctx);
         Ok(Arc::new(RwLock::new(session)))
+    }
+
+    /// Inject the loopback auth + context headers a **built-in** server needs
+    /// onto `server.headers`: a short-lived per-user JWT (satisfying the
+    /// built-in route's `RequirePermissions` gate) plus optional
+    /// `X-Conversation-Id` / `X-Message-Id` context.
+    ///
+    /// This is the SINGLE place a built-in server is authenticated. Both the
+    /// live session path (`get_or_create_with_context`) AND the connection-test
+    /// probe (`handlers::test_connection`) call it, so ANY built-in server —
+    /// including ones added in the future — authenticates identically and
+    /// passes its "Test connection" with no extra per-server wiring. Do not
+    /// re-implement the JWT minting elsewhere; route new built-in call sites
+    /// through this helper.
+    ///
+    /// TTL is 60s (not 5s): a built-in tool call can chain multiple hops (e.g.
+    /// control's `invoke_capability` re-dispatches to a REST route over
+    /// loopback, forwarding this same token) and, under a slow model or loaded
+    /// host, a 5s window could expire mid-chain → spurious 401s. 60s stays
+    /// short-lived (loopback-only, per-user) with headroom for multi-hop.
+    pub fn inject_builtin_context_headers(
+        &self,
+        server: &mut McpServer,
+        user_id: Uuid,
+        conversation_id: Option<Uuid>,
+        message_id: Option<Uuid>,
+    ) -> Result<(), AppError> {
+        let mut headers = server.headers.as_object().cloned().unwrap_or_default();
+
+        if let Some(cid) = conversation_id {
+            headers.insert("x-conversation-id".to_string(), Value::String(cid.to_string()));
+        }
+        if let Some(msg_id) = message_id {
+            headers.insert("x-message-id".to_string(), Value::String(msg_id.to_string()));
+        }
+
+        // Only mint if the row didn't already carry an Authorization header.
+        if !headers.contains_key("authorization") && !headers.contains_key("Authorization") {
+            let token = Self::generate_short_lived_jwt(
+                user_id,
+                &self.config.jwt.secret,
+                &self.config.jwt.issuer,
+                &self.config.jwt.audience,
+                60,
+            )?;
+            headers.insert(
+                "Authorization".to_string(),
+                Value::String(format!("Bearer {}", token)),
+            );
+        }
+
+        server.headers = Value::Object(headers);
+        Ok(())
     }
 
     /// The deployment JWT secret. Used by the workflow `ToolDispatcher` (E9) so

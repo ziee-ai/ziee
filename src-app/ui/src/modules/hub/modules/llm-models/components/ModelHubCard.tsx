@@ -282,10 +282,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
-                <Flex className="gap-2 items-center">
-                  <LayoutGrid />
+                <Flex className="gap-2 items-center flex-wrap">
                   <Text
-                    className="font-medium cursor-pointer"
+                    className="font-medium cursor-pointer whitespace-nowrap"
                     data-testid={`hub-model-name-${model.name}`}
                   >
                     {model.display_name}
@@ -335,7 +334,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   )}
                 </Flex>
               </div>
-              <div className="flex gap-1 items-center justify-end">
+              <div className="flex flex-wrap gap-1 items-center justify-end">
                 {/* v2 Phase 7: link out to the source repository's
                     homepage. Prefer the per-source identifier under
                     huggingface.co; fall back to the model-level
