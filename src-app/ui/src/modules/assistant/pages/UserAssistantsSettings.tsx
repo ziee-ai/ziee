@@ -1,4 +1,4 @@
-import { Trash2, Pencil, Bot } from 'lucide-react'
+import { Trash2, Pencil } from 'lucide-react'
 import {
   Button,
   Card,
@@ -11,8 +11,9 @@ import {
   Text,
   message,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { AddButton } from '@/modules/settings/components/AddButton'
@@ -22,12 +23,14 @@ import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFor
 
 export function UserAssistantsSettings() {
   // Store state
-  const { assistants: assistantsMap, loading, error } = Stores.UserAssistants
-
-  const assistants = useMemo(
-    () => Array.from(assistantsMap.values()),
-    [assistantsMap],
-  )
+  const {
+    assistants,
+    total: totalAssistants,
+    currentPage: storePage,
+    pageSize: storePageSize,
+    loading,
+    error,
+  } = Stores.UserAssistants
 
   const canEdit = usePermission(Permissions.AssistantsEdit)
   const canDelete = usePermission(Permissions.AssistantsDelete)
@@ -55,6 +58,13 @@ export function UserAssistantsSettings() {
 
   const handleCreate = () => {
     Stores.AssistantDrawer.openAssistantDrawer(null, false)
+  }
+
+  const handlePageChange = (page: number, size?: number) => {
+    const newPageSize = size || storePageSize
+    const newPage = size && size !== storePageSize ? 1 : page // reset to page 1 when the page size changes
+
+    Stores.UserAssistants.loadUserAssistants(newPage, newPageSize)
   }
 
   const getAssistantActions = (assistant: Assistant) => {
@@ -133,7 +143,6 @@ export function UserAssistantsSettings() {
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <div className="flex-1 min-w-48">
                           <Flex className="gap-2 items-center">
-                            <Bot />
                             <Text className="font-medium">{assistant.name}</Text>
                             {assistant.is_default && (
                               <Tag variant="outline" data-testid={`user-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
@@ -172,6 +181,18 @@ export function UserAssistantsSettings() {
                 </div>
               ))}
             </div>
+          )}
+
+          {assistants.length > 0 && (
+            <ListPagination
+              data-testid="user-assistants-pagination"
+              current={storePage}
+              total={totalAssistants}
+              pageSize={storePageSize}
+              onChange={(page) => handlePageChange(page, storePageSize)}
+              onPageSizeChange={(size) => handlePageChange(1, size)}
+              aria-label="Assistants pagination"
+            />
           )}
         </Card>
 
