@@ -78,10 +78,13 @@ test.describe('Memory — admin extraction model save', () => {
       { timeout: 10000 },
     )
 
-    // Reload → the saved selection is reflected (persisted, not transient).
+    // Reload → the saved selection is reflected (persisted, not transient). The
+    // kit Combobox trigger is an <input role="combobox"> whose selected label
+    // lives in its `value` attribute, so assert with toHaveValue (not
+    // toContainText, which reads text content an <input> never has).
     await page.reload()
     await expect(
       byTestId(page, 'memory-extraction-model-combobox'),
-    ).toContainText(chatName, { timeout: 30000 })
+    ).toHaveValue(chatName, { timeout: 30000 })
   })
 })
