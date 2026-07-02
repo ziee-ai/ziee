@@ -72,23 +72,24 @@ export async function loginAsAdmin(
   // ERR_INCOMPLETE_CHUNKED_ENCODING), so `networkidle` never settles and hangs.
   await page.goto(`${baseURL}/setup`, { waitUntil: 'domcontentloaded' })
 
-  // Wait for React to initialize and check if setup form appears or page redirects
-  // The setup page will redirect to /auth if admin already exists
+  // Decide setup-vs-login from the AUTHORITATIVE API, not a redirect-timing race.
+  // The old code raced a 5s window over {setup-form-appears, /auth redirect, /
+  // redirect} then read `page.url()`. Under concurrent-test load the client-side
+  // /setup → /auth redirect (admin already exists) can lag past that window, so a
+  // SECOND-device login read the URL while still on /setup, wrongly took the
+  // setup branch, re-submitted the setup form (rejected — admin exists), and then
+  // hung at the token-persist waitForFunction. GET /api/app/setup/status →
+  // { needs_setup } is deterministic regardless of client redirect timing. Fall
+  // back to the URL heuristic only if the (unauthenticated) status call fails.
+  let needsSetup: boolean
   try {
-    // Wait for either the setup form to appear OR a redirect to happen
-    await Promise.race([
-      page.waitForSelector('[data-testid="app-setup-username-input"]', { timeout: 5000 }),
-      page.waitForURL(/\/auth/, { timeout: 5000 }),
-      page.waitForURL(/\/$/, { timeout: 5000 }), // Sometimes redirects to home
-    ])
+    const statusResp = await page.request.get(`${baseURL}/api/app/setup/status`)
+    needsSetup = statusResp.ok()
+      ? Boolean((await statusResp.json()).needs_setup)
+      : page.url().includes('/setup')
   } catch {
-    // If both timeout, wait a bit more and check URL
-    await page.waitForTimeout(1000)
+    needsSetup = page.url().includes('/setup')
   }
-
-  // Check if we're still on setup page (admin doesn't exist) or redirected (admin exists)
-  const currentURL = page.url()
-  const needsSetup = currentURL.includes('/setup')
 
   if (needsSetup) {
     // Admin doesn't exist - create it via setup form (form name: setup-form)
