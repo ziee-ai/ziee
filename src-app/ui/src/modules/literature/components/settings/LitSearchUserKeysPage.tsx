@@ -134,21 +134,30 @@ export function LitSearchUserKeysPage() {
                     <Text className="text-sm">{entry.display_name}</Text>
                   </Separator>
 
-                  <Flex align="center" gap="small" className="mb-2">
-                    {entry.user_key ? (
-                      <Tag tone="success" data-testid={`litsearch-user-key-${entry.connector}-status`}>
-                        Using your key ({entry.user_key})
-                      </Tag>
-                    ) : entry.system_key_set ? (
-                      <Tag data-testid={`litsearch-user-key-${entry.connector}-status`}>
-                        Using shared key
-                      </Tag>
-                    ) : (
-                      <Tag data-testid={`litsearch-user-key-${entry.connector}-status`}>
-                        Keyless (or add your own)
-                      </Tag>
-                    )}
-                  </Flex>
+                  <div className="mb-2">
+                    <Flex align="center" gap="small" className="mb-1">
+                      {entry.user_key ? (
+                        <Tag tone="success" data-testid={`litsearch-user-key-${entry.connector}-status`}>
+                          Using your key ({entry.user_key})
+                        </Tag>
+                      ) : entry.system_key_set ? (
+                        <Tag tone="info" data-testid={`litsearch-user-key-${entry.connector}-status`}>
+                          Shared key set by admin
+                        </Tag>
+                      ) : (
+                        <Tag tone="warning" data-testid={`litsearch-user-key-${entry.connector}-status`}>
+                          No key set
+                        </Tag>
+                      )}
+                    </Flex>
+                    <Text type="secondary" className="text-xs">
+                      {entry.user_key
+                        ? 'Your key is used before the shared deployment key and draws on your own quota — usually higher rate limits.'
+                        : entry.system_key_set
+                          ? 'Your administrator has set a shared key, so this source works now. Add your own key below to use your personal quota and higher rate limits instead of the shared one.'
+                          : 'Your administrator has not set a key. This source is queried keyless — subject to strict public rate limits, and some sources are unavailable without a key. Add your own key below for higher rate limits and full access.'}
+                    </Text>
+                  </div>
 
                   <FormField
                     name={entry.connector}

@@ -10,6 +10,7 @@ import {
   Input,
   PasswordInput,
   Spin,
+  Tag,
   Text,
   Paragraph,
   message,
@@ -127,6 +128,33 @@ export function WebSearchProvidersSection() {
             <Separator titlePlacement="left" className="mt-5 mb-3">
               <Text className="text-sm">{entry.display_name}</Text>
             </Separator>
+
+            <div className="mb-3">
+              <Flex align="center" gap="small" className="mb-1">
+                <Tag
+                  tone={entry.configured ? 'success' : 'warning'}
+                  data-testid={`websearch-provider-${entry.key}-status`}
+                  data-configured={String(entry.configured)}
+                >
+                  {entry.configured
+                    ? entry.needs_api_key
+                      ? 'Shared key set'
+                      : 'Configured'
+                    : entry.needs_api_key
+                      ? 'No key set'
+                      : 'Not configured'}
+                </Tag>
+              </Flex>
+              <Text type="secondary" className="text-xs">
+                {entry.configured
+                  ? entry.needs_api_key
+                    ? 'A shared deployment key is set — every user without their own key searches through it. Users can still add a personal key to use their own quota and higher rate limits.'
+                    : 'This provider is configured and available to all users.'
+                  : entry.needs_api_key
+                    ? 'No shared key is set, so this provider is unavailable to users who have not added their own key. Set a deployment key below to enable it for everyone; a paid plan raises the shared rate limit.'
+                    : 'Complete this provider’s configuration below before it can be used.'}
+              </Text>
+            </div>
 
             {entry.config_fields.map((f) => (
               <FormField key={f.key} name={`${entry.key}.${f.key}`} label={f.label} required={f.required}>

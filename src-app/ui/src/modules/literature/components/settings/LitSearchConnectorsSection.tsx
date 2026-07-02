@@ -127,16 +127,36 @@ export function LitSearchConnectorsSection() {
         data-testid="lit-connectors-form"
       >
         {connectors.map((entry) => {
-          const needsKey = entry.key_field?.required && !entry.api_key_set
           return (
             <div key={entry.key}>
               <Separator titlePlacement="left" className="mt-5 mb-3">
                 <Text className="text-sm">{entry.display_name}</Text>
               </Separator>
-              {needsKey && (
-                <Paragraph type="secondary" className="!mb-1">
-                  <Tag variant="outline" tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>Needs key</Tag>
-                </Paragraph>
+              {entry.key_field && (
+                <div className="mb-2">
+                  <Flex align="center" gap="small" className="mb-1">
+                    {entry.api_key_set ? (
+                      <Tag tone="success" data-testid={`lit-connector-key-status-${entry.key}`}>
+                        Shared key set
+                      </Tag>
+                    ) : entry.key_field.required ? (
+                      <Tag variant="outline" tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>
+                        Needs key
+                      </Tag>
+                    ) : (
+                      <Tag tone="info" data-testid={`lit-connector-key-status-${entry.key}`}>
+                        No key — keyless
+                      </Tag>
+                    )}
+                  </Flex>
+                  <Text type="secondary" className="text-xs">
+                    {entry.api_key_set
+                      ? 'This shared key is used for every user who hasn’t set their own. Users can override it with a personal key to use their own quota and higher rate limits.'
+                      : entry.key_field.required
+                        ? 'This source requires a key and stays unavailable until you set one here (or a user adds their own).'
+                        : 'This source works without a key, subject to public rate limits. Set a key here to raise limits for all users; individual users can also add their own.'}
+                  </Text>
+                </div>
               )}
               {entry.keyless_note && (
                 <Paragraph type="secondary" className="!mb-2">
