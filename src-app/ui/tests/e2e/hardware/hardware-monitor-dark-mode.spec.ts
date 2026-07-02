@@ -21,8 +21,12 @@ test.describe('Hardware monitor popup — dark mode', () => {
     await setTheme(page, 'dark')
     await page.goto(`${baseURL}/hardware-monitor`)
 
-    // The monitor card renders its real-time status.
-    await expect(byTestId(page, 'hardware-connection-card')).toBeVisible({
+    // The monitor renders its real-time status. Key off the CPU-usage card
+    // (always present when hardware is available) rather than the connection
+    // card — the latter is `className={sseConnected ? 'hidden' : 'block'}`, so
+    // it DISAPPEARS once the real hardware SSE connects (which it does on a
+    // real host), which would make this a flaky, connection-state-dependent gate.
+    await expect(byTestId(page, 'hardware-cpu-card')).toBeVisible({
       timeout: 30000,
     })
 
