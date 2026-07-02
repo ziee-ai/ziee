@@ -200,6 +200,7 @@ export function DownloadItem({
         <div
           className="mb-2 cursor-pointer"
           onClick={handleNavigateToProvider}
+          data-testid="llm-download-item-card"
         >
           <div
             className="flex justify-between mb-0.5"

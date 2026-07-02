@@ -62,7 +62,11 @@ async function submitDownloadAndWait(page: Page) {
 }
 
 async function cancelDownloadForm(page: Page) {
-  await byTestId(page, 'llm-download-drawer-cancel-btn').click()
+  // A kit Select popup opened earlier in the drawer can leave a closing
+  // animation that keeps the footer button reporting "not stable"; dismiss any
+  // open popup first, then force past the stability wait for this teardown click.
+  await page.keyboard.press('Escape')
+  await byTestId(page, 'llm-download-drawer-cancel-btn').click({ force: true })
   await byTestId(page, 'llm-model-download-form').waitFor({ state: 'hidden', timeout: 5000 })
 }
 

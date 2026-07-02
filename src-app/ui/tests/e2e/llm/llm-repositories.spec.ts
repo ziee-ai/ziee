@@ -311,7 +311,9 @@ test.describe('LLM Repositories - Edit Repository', () => {
     const { baseURL } = testInfra
     const repositoryName = `test-prefill-${Date.now()}`
     const username = 'prefilluser123'
-    const endpoint = 'https://prefill.example.com/whoami'
+    // A resolvable host: the backend DNS-validates auth_test_api_endpoint on
+    // create (a non-resolving host → 400). The value just needs to round-trip.
+    const endpoint = 'https://example.com/whoami'
 
     await loginAsAdmin(page, baseURL)
     await createRepository(page, baseURL, {

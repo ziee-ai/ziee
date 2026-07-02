@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { assignProviderToAdministratorsGroup } from '../../common/provider-helpers'
 import { byTestId } from '../testid'
 
 /**
@@ -49,6 +50,11 @@ test.describe('User LLM Providers — empty state', () => {
     })
     expect(res.ok, `create provider: ${res.status}`).toBeTruthy()
     const created = await res.json()
+
+    // The user-facing list only surfaces providers assigned to a group the
+    // user belongs to (INNER JOIN user_group_llm_providers), so assign the new
+    // provider to the admin's Administrators group before it can appear.
+    await assignProviderToAdministratorsGroup(apiURL, adminToken, created.id)
 
     await page.reload()
     // The provider now appears as a menu item and the empty state is gone.

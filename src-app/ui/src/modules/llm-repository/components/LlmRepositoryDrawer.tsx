@@ -44,6 +44,11 @@ export function LlmRepositoryDrawer() {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
+      // Default the required strings to '' so an empty submit surfaces the
+      // helpful `.min(1, …)` message rather than a bare zod "Invalid input"
+      // type error (undefined → z.string() type failure).
+      name: '',
+      url: '',
       auth_type: 'none',
       enabled: true,
     },
