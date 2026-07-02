@@ -4493,7 +4493,12 @@ export interface SSERunStartedData {
 
 export interface SSESnapshotData {
   current_step?: string
-  error?: string | null
+  /**
+   * The run's terminal error, if any. Carried on the snapshot so a client
+   *  that subscribes AFTER the run already failed (never receiving the live
+   *  `RunFailed` event) still renders the run-level error alert.
+   */
+  error?: string
   final_output_json?: unknown
   pending_elicitation_json?: unknown
   run_id: string
@@ -5828,11 +5833,23 @@ export interface Workflow {
    *  validator's compile pass runs (B4). See plan §4.1 pattern (d).
    */
   compiled_ir_json?: unknown
+  /**
+   * The owning conversation for an `ephemeral` row (else NULL). Set so the
+   *  row (and its runs) GC when the conversation is deleted.
+   */
+  conversation_id?: string
   created_at: string
   created_by?: string
   display_name?: string
   enabled: boolean
   entry_point: string
+  /**
+   * An LLM-authored, conversation-scoped throwaway workflow materialized by
+   *  the `run_from_workspace` verb. Excluded from every listing (never a
+   *  `wf_<slug>` tool nor on the workflows page) — it only runs via the
+   *  generic verb. CASCADE-cleaned with `conversation_id`.
+   */
+  ephemeral: boolean
   extracted_path: string
   file_count: number
   id: string
@@ -5959,6 +5976,31 @@ export interface WorkflowRunSummary {
   status: string
   total_tokens: number
   workflow_id: string
+}
+
+/** Query for `GET /api/workflows/workspace-export`. */
+export interface WorkspaceExportQuery {
+  conversation_id: string
+  dir: string
+}
+
+/**
+ * Promote a workflow the model authored in its sandbox workspace into the
+ *  user's permanent library. `scope="system"` is admin-only (re-checked by
+ *  `resolve_import_scope` inside `install_workflow_from_bytes`).
+ */
+export interface WorkspaceSaveRequest {
+  /** The conversation whose sandbox workspace holds the bundle. */
+  conversation_id: string
+  /**
+   * The workspace subdir (relative to the conversation workspace) with
+   *  `workflow.yaml` (+ any `scripts/`).
+   */
+  dir: string
+  /** Optional slug/name for the saved workflow. */
+  name?: string
+  /** `user` (default) or `system` (admin-only). */
+  scope?: string
 }
 
 // =============================================================================
@@ -6563,6 +6605,8 @@ export const ApiEndpoints = {
   'Workflow.test': 'POST /api/workflows/{id}/test',
   'Workflow.update': 'PUT /api/workflows/{id}',
   'Workflow.validate': 'POST /api/workflows/validate',
+  'Workflow.workspaceExport': 'GET /api/workflows/workspace-export',
+  'Workflow.workspaceSave': 'POST /api/workflows/workspace-save',
   'WorkflowSystem.getGroups': 'GET /api/workflows/system/{id}/groups',
   'WorkflowSystem.removeFromGroup': 'DELETE /api/workflows/system/{id}/groups/{group_id}',
   'WorkflowSystem.setGroups': 'POST /api/workflows/system/{id}/groups'
@@ -6904,6 +6948,8 @@ export type ApiEndpointParameters = {
   'Workflow.test': { id: string } & TestWorkflowRequest
   'Workflow.update': { id: string } & UpdateWorkflow
   'Workflow.validate': ValidateWorkflowRequest
+  'Workflow.workspaceExport': { conversation_id: string; dir: string }
+  'Workflow.workspaceSave': WorkspaceSaveRequest
   'WorkflowSystem.getGroups': { id: string }
   'WorkflowSystem.removeFromGroup': { id: string; group_id: string }
   'WorkflowSystem.setGroups': { id: string } & WorkflowGroupsRequest
@@ -7245,6 +7291,8 @@ export type ApiEndpointResponses = {
   'Workflow.test': TestRunResponse
   'Workflow.update': Workflow
   'Workflow.validate': ValidateWorkflowResponse
+  'Workflow.workspaceExport': void
+  'Workflow.workspaceSave': Workflow
   'WorkflowSystem.getGroups': string[]
   'WorkflowSystem.removeFromGroup': void
   'WorkflowSystem.setGroups': void

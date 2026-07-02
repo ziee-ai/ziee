@@ -32,6 +32,14 @@ pub struct Workflow {
     pub created_by: Option<Uuid>,
     pub enabled: bool,
     pub is_dev: bool,
+    /// An LLM-authored, conversation-scoped throwaway workflow materialized by
+    /// the `run_from_workspace` verb. Excluded from every listing (never a
+    /// `wf_<slug>` tool nor on the workflows page) — it only runs via the
+    /// generic verb. CASCADE-cleaned with `conversation_id`.
+    pub ephemeral: bool,
+    /// The owning conversation for an `ephemeral` row (else NULL). Set so the
+    /// row (and its runs) GC when the conversation is deleted.
+    pub conversation_id: Option<Uuid>,
     /// Pre-resolved templates + typed step metadata. NULL until the
     /// validator's compile pass runs (B4). See plan §4.1 pattern (d).
     pub compiled_ir_json: Option<serde_json::Value>,
@@ -56,6 +64,8 @@ pub struct CreateWorkflow {
     pub created_by: Option<Uuid>,
     pub enabled: bool,
     pub is_dev: bool,
+    pub ephemeral: bool,
+    pub conversation_id: Option<Uuid>,
     pub compiled_ir_json: Option<serde_json::Value>,
 }
 

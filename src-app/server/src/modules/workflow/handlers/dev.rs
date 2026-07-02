@@ -181,7 +181,22 @@ async fn import_workflow_inner(
         name: q.name.or(upload.name),
         scope: q.scope.or(upload.scope),
     };
+    install_workflow_from_bytes(user, groups, q, origin, bytes).await
+}
 
+/// Install a workflow from an in-memory tar.gz bundle — the shared
+/// extract→validate→install core behind BOTH the multipart `import` handler
+/// and the `workspace-save` promote path (which packs a conversation-workspace
+/// dir into bytes). `q` must already carry the merged name/scope.
+/// `resolve_import_scope` re-checks `manage_system`, so a user-scope caller
+/// can never escalate to `system`.
+pub(crate) async fn install_workflow_from_bytes(
+    user: &crate::modules::user::models::User,
+    groups: &[crate::modules::user::models::Group],
+    q: ImportQuery,
+    origin: SyncOrigin,
+    bytes: Vec<u8>,
+) -> ApiResult<Json<Workflow>> {
     // Scope resolution. `system` is admin-only.
     let scope = resolve_import_scope(user, groups, q.scope.as_deref(), "workflows")?;
 
@@ -293,6 +308,9 @@ async fn import_workflow_inner(
         created_by: Some(user.id),
         enabled: true,
         is_dev: true,
+        // A promoted/imported workflow is permanent + listed, never ephemeral.
+        ephemeral: false,
+        conversation_id: None,
         // Pattern (d): compile the validated def into the typed IR so the
         // column is non-NULL + available to the runner (matches the hub
         // install path). See compiled.rs.
@@ -883,4 +901,121 @@ async fn run_one_fixture(
         duration_ms: started.elapsed().as_millis() as u64,
         failure: None,
     }
+}
+
+// ============================================================
+// POST /api/workflows/workspace-save   (promote an LLM-authored bundle)
+// GET  /api/workflows/workspace-export  (download it as tar.gz)
+// ============================================================
+
+/// Promote a workflow the model authored in its sandbox workspace into the
+/// user's permanent library. `scope="system"` is admin-only (re-checked by
+/// `resolve_import_scope` inside `install_workflow_from_bytes`).
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct WorkspaceSaveRequest {
+    /// The conversation whose sandbox workspace holds the bundle.
+    pub conversation_id: Uuid,
+    /// The workspace subdir (relative to the conversation workspace) with
+    /// `workflow.yaml` (+ any `scripts/`).
+    pub dir: String,
+    /// Optional slug/name for the saved workflow.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// `user` (default) or `system` (admin-only).
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+pub async fn workspace_save(
+    auth: RequirePermissions<(WorkflowsInstall,)>,
+    origin: SyncOrigin,
+    Json(req): Json<WorkspaceSaveRequest>,
+) -> ApiResult<Json<Workflow>> {
+    // Ownership gate: the conversation must belong to the caller (else this
+    // could pack + install another user's workspace files).
+    crate::modules::workflow::workspace::require_conversation_owner(
+        Some(req.conversation_id),
+        auth.user.id,
+    )
+    .await?;
+    let root = crate::modules::workflow::workspace::resolve_conversation_workspace_dir(
+        Some(req.conversation_id),
+        &req.dir,
+    )?;
+    let bytes = crate::modules::hub::bundle::pack_workspace_dir(&root)?;
+    let q = ImportQuery {
+        name: req.name,
+        scope: req.scope,
+    };
+    install_workflow_from_bytes(&auth.user, &auth.groups, q, origin, bytes).await
+}
+
+pub fn workspace_save_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsInstall,)>(op)
+        .id("Workflow.workspaceSave")
+        .tag("Workflows")
+        .summary("Save a sandbox-authored workflow into the library")
+        .description(
+            "Packs the conversation-workspace <dir> bundle and installs it as a \
+             permanent workflow (scope=user, or scope=system for admins).",
+        )
+        .response::<201, Json<Workflow>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Forbidden (system scope needs admin)"))
+        .response_with::<400, (), _>(|r| r.description("Invalid dir or bundle"))
+}
+
+/// Query for `GET /api/workflows/workspace-export`.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct WorkspaceExportQuery {
+    pub conversation_id: Uuid,
+    pub dir: String,
+}
+
+pub async fn workspace_export(
+    auth: RequirePermissions<(WorkflowsExecute,)>,
+    Query(q): Query<WorkspaceExportQuery>,
+) -> ApiResult<axum::response::Response> {
+    // Ownership gate: the conversation must belong to the caller (else this
+    // could export another user's workspace files).
+    crate::modules::workflow::workspace::require_conversation_owner(
+        Some(q.conversation_id),
+        auth.user.id,
+    )
+    .await?;
+    let root = crate::modules::workflow::workspace::resolve_conversation_workspace_dir(
+        Some(q.conversation_id),
+        &q.dir,
+    )?;
+    let bytes = crate::modules::hub::bundle::pack_workspace_dir(&root)?;
+    // Filename from the leaf dir component (sanitized), else a default.
+    let leaf = root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(sanitize_slug)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "workflow".to_string());
+    let filename = format!("{leaf}.tar.gz");
+    let len = bytes.len();
+    let resp = axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "application/gzip")
+        .header(axum::http::header::CONTENT_LENGTH, len.to_string())
+        .header(
+            axum::http::header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .body(axum::body::Body::from(bytes))
+        .map_err(|e| AppError::internal_error(format!("response: {e}")))?;
+    Ok((StatusCode::OK, resp))
+}
+
+pub fn workspace_export_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsExecute,)>(op)
+        .id("Workflow.workspaceExport")
+        .tag("Workflows")
+        .summary("Download a sandbox-authored workflow bundle as tar.gz")
+        .response_with::<200, (), _>(|r| r.description("The workflow bundle (application/gzip)"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<400, (), _>(|r| r.description("Invalid dir or bundle"))
 }

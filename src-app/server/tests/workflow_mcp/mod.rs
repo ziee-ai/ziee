@@ -32,6 +32,25 @@ use crate::workflow::poll_run;
 
 mod resources_test;
 mod upsert_test;
+mod workspace_test;
+
+/// Filter a `tools/list` result to just the PER-WORKFLOW `wf_<slug>` tools,
+/// excluding the always-present static workspace verbs (`run_from_workspace` /
+/// `validate_from_workspace` / `save_workflow`).
+fn wf_slug_tools(list_body: &Json) -> Vec<Json> {
+    list_body["result"]["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .filter(|t| {
+            t["name"]
+                .as_str()
+                .map(|n| n.contains("wf_"))
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect()
+}
 
 /// A single-step `llm` workflow whose step is mock-short-circuited via a
 /// baked-in YAML `mock:` (no real provider call). `inputs.topic` feeds the
@@ -363,12 +382,11 @@ async fn tools_list_is_empty_when_user_has_no_workflows() {
     let list = jsonrpc(&server, &user.token, None, "tools/list", json!({})).await;
     assert_eq!(list.status(), 200);
     let body: Json = list.json().await.unwrap();
-    let tools = body["result"]["tools"]
-        .as_array()
-        .expect("tools array present even when empty");
+    // The always-present static workspace verbs are excluded; a user with no
+    // installed workflows has zero PER-WORKFLOW `wf_<slug>` tools.
     assert!(
-        tools.is_empty(),
-        "a user with no accessible workflows must get an empty tools list, got: {body}"
+        wf_slug_tools(&body).is_empty(),
+        "a user with no accessible workflows must get no wf_<slug> tools, got: {body}"
     );
 }
 
@@ -391,13 +409,21 @@ async fn tools_list_with_zero_accessible_workflows_returns_empty_array() {
         body.get("error").is_none(),
         "tools/list must be a success result, not a JSON-RPC error: {body}"
     );
-    let tools = body["result"]["tools"]
+    let all = body["result"]["tools"]
         .as_array()
         .unwrap_or_else(|| panic!("result.tools must be an array (not null/missing): {body}"));
+    // The three static workspace verbs are always present; there must be no
+    // per-workflow `wf_<slug>` tools for a user who installed none.
     assert!(
-        tools.is_empty(),
-        "a user with zero accessible workflows must get an empty tools array, got: {tools:?}"
+        wf_slug_tools(&body).is_empty(),
+        "zero accessible workflows → no wf_<slug> tools, got: {all:?}"
     );
+    for verb in ["run_from_workspace", "validate_from_workspace", "save_workflow"] {
+        assert!(
+            all.iter().any(|t| t["name"] == json!(verb)),
+            "static verb '{verb}' must always be listed: {all:?}"
+        );
+    }
 }
 
 /// tools/list returns an EMPTY tools array for a user with no accessible
@@ -413,7 +439,9 @@ async fn tools_list_is_empty_with_no_accessible_workflows() {
     let list = jsonrpc(&server, &user.token, None, "tools/list", json!({})).await;
     assert_eq!(list.status(), 200);
     let body: Json = list.json().await.unwrap();
-    let tools = body["result"]["tools"].as_array().expect("tools array");
-    assert!(tools.is_empty(), "no workflows → empty tools list, got: {body}");
+    assert!(
+        wf_slug_tools(&body).is_empty(),
+        "no workflows → no wf_<slug> tools, got: {body}"
+    );
 }
 

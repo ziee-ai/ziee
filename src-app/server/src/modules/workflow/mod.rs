@@ -40,6 +40,7 @@ pub mod test_runner;
 pub mod type_infer;
 pub mod types;
 pub mod validate;
+pub mod workspace;
 
 pub use repository::WorkflowRepository;
 
