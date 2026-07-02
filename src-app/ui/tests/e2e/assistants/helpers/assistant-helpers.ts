@@ -95,7 +95,15 @@ export async function setAssistantSwitch(page: Page, testid: string, target: boo
 }
 
 export async function submitAssistantForm(page: Page) {
-  await byTestId(page, 'assistant-form-submit').click()
+  const submit = byTestId(page, 'assistant-form-submit')
+  await submit.waitFor({ state: 'visible', timeout: 10000 })
+  await submit.scrollIntoViewIfNeeded()
+  // `force` bypasses Playwright's stability check: the authenticated app's SSE
+  // streams (/api/sync, /api/chat/stream) reconnect on a loop under the vite 8
+  // preview proxy, so the drawer re-renders continuously and the (genuinely
+  // clickable) submit button never settles as "stable". It's a real submit
+  // button (type=submit form=assistant-form); force-click it.
+  await submit.click({ force: true })
   // Don't wait for the drawer here — let the test verify the success message
   // first. The drawer closes automatically after a successful submission.
 }

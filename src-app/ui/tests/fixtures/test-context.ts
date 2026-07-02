@@ -462,6 +462,18 @@ export default defineConfig({
           delete req.headers['accept-encoding']
           next()
         })
+        // Harden the node preview server against cutting long-lived SSE streams
+        // (/api/sync, /api/chat/stream) under load: node's default keepAlive
+        // (5s), headers (60s) and request (300s) timeouts can abort an otherwise
+        // healthy proxied SSE response, forcing the app into a reconnect storm.
+        // 0 = disabled. (SSE stays open on a settled page already; this removes
+        // the timeout-driven cuts that appear under concurrent-test load.)
+        const s = server.httpServer
+        if (s) {
+          s.keepAliveTimeout = 0
+          s.headersTimeout = 0
+          s.requestTimeout = 0
+        }
       },
     },
   ],

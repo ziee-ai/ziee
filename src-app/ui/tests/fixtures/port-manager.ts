@@ -442,7 +442,15 @@ function acquirePostgresPortLock(port: number, runId: string): boolean {
  * Returns the allocated port number
  */
 export async function allocatePostgresPort(runId: string): Promise<number> {
-  const BASE_PORT = 54331
+  // Env-overridable base (mirrors ZIEE_E2E_BASE_VITE_PORT / _BACKEND_PORT). The
+  // per-run lock only coordinates allocations that SHARE a lock dir; a concurrent
+  // e2e session on the same box using a different lock dir doesn't see our
+  // postgres lock, so both race to bind the same base port (the OS-bindable check
+  // is TOCTOU — both see it free before either `docker compose up` binds it) and
+  // one run's postgres dies with "port already allocated" → ECONNREFUSED. Give a
+  // concurrent session its OWN base (e.g. ZIEE_E2E_BASE_PG_PORT=54600) so it can
+  // never collide with the default-54331 sessions.
+  const BASE_PORT = parseInt(process.env.ZIEE_E2E_BASE_PG_PORT || '54331', 10)
   const MAX_ATTEMPTS = 100
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {

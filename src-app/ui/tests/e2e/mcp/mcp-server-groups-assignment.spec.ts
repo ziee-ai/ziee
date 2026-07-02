@@ -74,7 +74,7 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await expect(widget.getByRole('button').first()).toBeVisible()
 
     // Verify edit button exists in the Collapse "extra" slot
-    const editButton = widget.getByTestId(/^mcp-groups-assign-btn-/)
+    const editButton = widget.getByTestId(/^mcp-groups-.+-assign$/)
     await expect(editButton).toBeVisible()
 
     // Cleanup
@@ -126,18 +126,18 @@ test.describe('User Group Assignment in MCP Servers', () => {
 
     // Verify drawer is open with correct title
     await expect(
-      page.getByTestId('mcp-groups-drawer-save-btn')
+      page.getByTestId(/^mcp-groups-.+-save$/)
     ).toBeVisible()
 
     // Verify group appears in the drawer
-    await expect(page.getByTestId(/^mcp-groups-drawer-card-/).filter({ hasText: `${groupName}` })).toBeVisible()
+    await expect(page.getByTestId(/^mcp-groups-.+-drawer-card-/).filter({ hasText: `${groupName}` })).toBeVisible()
 
     // Verify switch exists
     const groupCard = page
-      .getByTestId(/^mcp-groups-drawer-card-/)
+      .getByTestId(/^mcp-groups-.+-drawer-card-/)
       .filter({ hasText: `${groupName}` })
       .first()
-    const switchElement = groupCard.getByTestId(/^mcp-groups-drawer-switch-/)
+    const switchElement = groupCard.getByTestId(/^mcp-groups-.+-drawer-switch-/)
     await expect(switchElement).toBeVisible()
 
     // Close drawer
@@ -273,14 +273,14 @@ test.describe('User Group Assignment in MCP Servers', () => {
 
     // Look for "All Users" (which is a default group)
     const allUsersCard = page
-      .getByTestId(/^mcp-groups-drawer-card-/)
+      .getByTestId(/^mcp-groups-.+-drawer-card-/)
       .filter({ hasText: `All Users` })
       .first()
 
     // If All Users exists, verify it has Default tag
     const allUsersCount = await allUsersCard.count()
     if (allUsersCount > 0) {
-      await expect(allUsersCard.getByTestId(/^mcp-groups-drawer-default-tag-/)).toBeVisible()
+      await expect(allUsersCard.getByTestId(/^mcp-groups-.+-drawer-default-tag-/)).toBeVisible()
     }
 
     // Close drawer
@@ -395,10 +395,10 @@ test.describe('User Group Assignment in MCP Servers', () => {
 
     // Get the group card and switch
     const groupCard = page
-      .getByTestId(/^mcp-groups-drawer-card-/)
+      .getByTestId(/^mcp-groups-.+-drawer-card-/)
       .filter({ hasText: `${groupName}` })
       .first()
-    const switchElement = groupCard.getByTestId(/^mcp-groups-drawer-switch-/)
+    const switchElement = groupCard.getByTestId(/^mcp-groups-.+-drawer-switch-/)
 
     // Verify initially unchecked
     await expect(switchElement).toHaveAttribute('aria-checked', 'false')
@@ -449,7 +449,7 @@ test.describe('User Group Assignment in MCP Servers', () => {
 
     // Find the group card
     const groupCard = page
-      .getByTestId(/^mcp-groups-drawer-card-/)
+      .getByTestId(/^mcp-groups-.+-drawer-card-/)
       .filter({ hasText: `${groupName}` })
       .first()
     await expect(groupCard).toBeVisible()
@@ -491,7 +491,7 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await expect(header).toHaveAttribute('aria-expanded', 'false')
 
     // Empty state must NOT be visible while collapsed
-    await expect(widget.getByTestId(/^mcp-groups-empty-/)).not.toBeVisible()
+    await expect(widget.getByTestId(/^mcp-groups-.+-empty$/)).not.toBeVisible()
 
     // Cleanup
     await goToMcpAdminPage(page, baseURL)
@@ -528,7 +528,7 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await page.waitForTimeout(300)
 
     await expect(header).toHaveAttribute('aria-expanded', 'true')
-    await expect(widget.getByTestId(/^mcp-group-tag-/).filter({ hasText: `${groupName}` })).toBeVisible()
+    await expect(widget.getByTestId(/^mcp-groups-.+-tag-/).filter({ hasText: `${groupName}` })).toBeVisible()
 
     // Cleanup
     await goToMcpAdminPage(page, baseURL)
@@ -560,8 +560,8 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await expect(header).toHaveAttribute('aria-expanded', 'false')
 
     // Click edit → opens the drawer
-    await widget.getByTestId(/^mcp-groups-assign-btn-/).click()
-    await page.getByTestId('mcp-groups-drawer-save-btn').waitFor({ state: 'visible', timeout: 5000 })
+    await widget.getByTestId(/^mcp-groups-.+-assign$/).click()
+    await page.getByTestId(/^mcp-groups-.+-save$/).waitFor({ state: 'visible', timeout: 5000 })
 
     // Close drawer
     await cancelGroupAssignment(page)
