@@ -179,7 +179,7 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
     await input.fill(updatedName)
     const [resp] = await Promise.all([
       page.waitForResponse(
-        r => r.url().includes('/api/llm-providers') && r.request().method() === 'PUT',
+        r => r.url().includes('/api/llm-providers') && r.request().method() === 'POST',
         { timeout: 15000 }
       ),
       byTestId(page, 'llm-provider-header-save-name-btn').click(),

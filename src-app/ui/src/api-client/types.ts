@@ -529,6 +529,16 @@ export interface Conversation {
   user_id: string
 }
 
+/**
+ * Paginated list of conversations. `total` is the full server-side count
+ *  (not the page size), so the client can render "Showing N of TOTAL" and
+ *  gate its Load-More affordance. Mirrors `ProjectListResponse`.
+ */
+export interface ConversationListResponse {
+  conversations: ConversationResponse[]
+  total: number
+}
+
 /** Conversation MCP settings (API response - properly typed) */
 export interface ConversationMcpSettingsResponse {
   /** Approval mode */
@@ -7060,7 +7070,7 @@ export type ApiEndpointResponses = {
   'Conversation.getMcpSettings': McpSettingsResponse
   'Conversation.getMemoryMode': ConversationMemoryModeResponse
   'Conversation.getSummarizationMode': ConversationSummarizationModeResponse
-  'Conversation.list': ConversationResponse[]
+  'Conversation.list': ConversationListResponse
   'Conversation.setMemoryMode': ConversationMemoryModeResponse
   'Conversation.setSummarizationMode': ConversationSummarizationModeResponse
   'Conversation.update': Conversation

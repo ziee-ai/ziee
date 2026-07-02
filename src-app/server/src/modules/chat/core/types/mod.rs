@@ -9,7 +9,8 @@ pub mod streaming;
 // Re-export API types
 pub use branch::CreateBranchRequest;
 pub use conversation::{
-    ConversationResponse, CreateConversationRequest, UpdateConversationRequest,
+    ConversationListResponse, ConversationResponse, CreateConversationRequest,
+    UpdateConversationRequest,
 };
 pub use message::{EditMessageRequest, EditMessageResponse, MessageWithContent};
 pub use providers::{GetUserProvidersResponse, ProviderWithModels};

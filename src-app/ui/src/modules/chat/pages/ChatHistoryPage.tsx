@@ -37,7 +37,7 @@ export default function ChatHistoryPage() {
   const [searchOpenInNarrow, setSearchOpenInNarrow] = useState(false)
 
   // Chat history store for empty state detection
-  const { conversations, loading } = Stores.ChatHistory
+  const { conversations, loading, error } = Stores.ChatHistory
 
   // Refetch on mount. The sidebar's RecentConversationsWidget may have
   // eager-primed the store with an empty list at login (before any
@@ -118,8 +118,11 @@ export default function ChatHistoryPage() {
             <div ref={bodySearchRef} />
           </div>
         )}
-        {/* Show ConversationList if there are conversations or loading */}
-        {(conversations.length > 0 || loading) && (
+        {/* Show ConversationList if there are conversations, loading, or a
+         * load error to surface — ConversationList owns the error Alert, so it
+         * must mount on error even when the list is empty (otherwise a failed
+         * load silently falls through to the empty state). */}
+        {(conversations.length > 0 || loading || error) && (
           <div className="flex flex-1 flex-col w-full justify-center overflow-hidden">
             <DivScrollY className="h-full flex flex-col">
               <ConversationList
@@ -129,8 +132,9 @@ export default function ChatHistoryPage() {
           </div>
         )}
 
-        {/* Empty State */}
-        {!loading && conversations.length === 0 && (
+        {/* Empty State — suppressed on error so the error Alert (rendered by
+         * ConversationList above) isn't shadowed by a duplicate empty panel. */}
+        {!loading && conversations.length === 0 && !error && (
           <div className="text-center py-12 m-auto">
             <MessageSquare className="text-6xl mb-4" />
             <Title level={3}>

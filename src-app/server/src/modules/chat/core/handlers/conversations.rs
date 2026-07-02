@@ -17,7 +17,7 @@ use crate::{
             models::Conversation,
             permissions::*,
 
-            types::{ConversationResponse, CreateConversationRequest, UpdateConversationRequest},
+            types::{ConversationListResponse, CreateConversationRequest, UpdateConversationRequest},
         },
         permissions::{extractors::RequirePermissions, with_permission},
         sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
@@ -121,7 +121,7 @@ pub async fn list_conversations(
     auth: RequirePermissions<(ConversationsRead,)>,
 
     Query(params): Query<PaginationQuery>,
-) -> ApiResult<Json<Vec<ConversationResponse>>> {
+) -> ApiResult<Json<ConversationListResponse>> {
     let limit = params.limit.min(100).max(1);
     let page = params.page.max(1);
     let offset = (page - 1) * limit;
@@ -132,7 +132,9 @@ pub async fn list_conversations(
         .list_conversations(auth.user.id, limit, offset)
         .await?;
 
-    Ok((StatusCode::OK, Json(conversations)))
+    let total = Repos.chat.core.count_conversations(auth.user.id).await?;
+
+    Ok((StatusCode::OK, Json(ConversationListResponse { conversations, total })))
 }
 
 pub fn list_conversations_docs(op: TransformOperation) -> TransformOperation {
@@ -141,7 +143,7 @@ pub fn list_conversations_docs(op: TransformOperation) -> TransformOperation {
         .tag("Chat")
         .summary("List conversations")
         .description("List all conversations for the authenticated user with pagination")
-        .response::<200, Json<Vec<ConversationResponse>>>()
+        .response::<200, Json<ConversationListResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 

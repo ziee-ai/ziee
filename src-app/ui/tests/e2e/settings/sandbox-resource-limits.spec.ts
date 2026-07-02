@@ -93,7 +93,10 @@ async function gotoResourceLimits(page: Page, baseURL: string) {
     try {
       // Merged single-page route (was /settings/sandbox-resource-limits).
       await page.goto(`${baseURL}/settings/sandbox`)
-      // The limits surface lives in the "Resource limits" Card section.
+      // The page is a two-tab layout (Rootfs | Resource); the limits surface
+      // lives under the "Resource" tab, which shadcn Tabs keeps unmounted until
+      // selected. Switch to it, then wait for the form.
+      await page.getByRole('tab', { name: 'Resource' }).click()
       await expect(byTestId(page, 'sandbox-resource-limits-form')).toBeVisible({
         timeout: 10000,
       })

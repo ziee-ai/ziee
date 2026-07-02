@@ -56,9 +56,12 @@ export async function isAssistantCreated(
   page: Page,
   assistantId: string,
 ): Promise<boolean> {
+  // The View button's testid carries the assistant-name suffix
+  // (`hub-assistant-view-btn-<name>`); getByTestId is an exact match, so the
+  // bare id never resolved. assistantId IS that name suffix here.
   const viewButton = page
     .getByTestId(`hub-assistant-card-${assistantId}`)
-    .getByTestId('hub-assistant-view-btn')
+    .getByTestId(`hub-assistant-view-btn-${assistantId}`)
   return await viewButton.isVisible({ timeout: 10000 }).catch(() => false)
 }
 
@@ -66,5 +69,9 @@ export async function isAssistantCreated(
  * Get all assistant cards
  */
 export async function getAssistantCards(page: Page) {
-  return page.getByTestId(/^hub-assistant-card-/)
+  // The card testid is `hub-assistant-card-<name>`, but the card ALSO contains
+  // `hub-assistant-card-tag-<name>-<tag>` and `hub-assistant-card-dep-tag-...`
+  // sub-elements that share the prefix. Exclude those so `.nth(i)` lands on a
+  // real card, not a tag chip.
+  return page.getByTestId(/^hub-assistant-card-(?!tag-|dep-tag-)/)
 }
