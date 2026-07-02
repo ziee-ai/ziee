@@ -111,7 +111,8 @@ export async function updateProvider(
   }
   const [resp] = await Promise.all([
     page.waitForResponse(
-      r => r.url().includes('/api/llm-providers') && r.request().method() === 'PUT',
+      // Provider update is POST /api/llm-providers/{id} (not PUT).
+      r => /\/api\/llm-providers\/[0-9a-f-]+/.test(r.url()) && r.request().method() === 'POST',
       { timeout: 15000 }
     ),
     byTestId(page, 'llm-provider-header-save-name-btn').click(),

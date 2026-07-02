@@ -96,7 +96,7 @@ test.describe('LLM Repository drawer — extras', () => {
     // The auth-only update round-trips (no enabled-transition probe).
     const [resp] = await Promise.all([
       page.waitForResponse(
-        r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+        r => /\/api\/llm-repositories\/[0-9a-f-]+/.test(r.url()) && r.request().method() === 'POST',
         { timeout: 15000 }
       ),
       byTestId(page, 'llmrepo-form-submit-btn').click(),

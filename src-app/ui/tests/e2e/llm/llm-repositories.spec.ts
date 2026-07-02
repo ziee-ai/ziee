@@ -90,7 +90,7 @@ test.describe('LLM Repositories - Create Repository', () => {
     await loginAsAdmin(page, baseURL)
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://huggingface.co',
+      url: `https://huggingface.co/${repositoryName}`,
       authType: 'none',
       enabled: true,
     })
@@ -238,7 +238,7 @@ test.describe('LLM Repositories - Edit Repository', () => {
 
     const [resp] = await Promise.all([
       page.waitForResponse(
-        r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+        r => /\/api\/llm-repositories\/[0-9a-f-]+/.test(r.url()) && r.request().method() === 'POST',
         { timeout: 15000 }
       ),
       byTestId(page, 'llmrepo-form-submit-btn').click(),
@@ -273,7 +273,7 @@ test.describe('LLM Repositories - Edit Repository', () => {
 
     const [resp] = await Promise.all([
       page.waitForResponse(
-        r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+        r => /\/api\/llm-repositories\/[0-9a-f-]+/.test(r.url()) && r.request().method() === 'POST',
         { timeout: 15000 }
       ),
       byTestId(page, 'llmrepo-form-submit-btn').click(),
@@ -355,7 +355,7 @@ test.describe('LLM Repositories - Edit Repository', () => {
     await expect(enableSwitch).toBeChecked()
     const [resp] = await Promise.all([
       page.waitForResponse(
-        r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+        r => /\/api\/llm-repositories\/[0-9a-f-]+/.test(r.url()) && r.request().method() === 'POST',
         { timeout: 10000 }
       ),
       enableSwitch.click(),
@@ -548,7 +548,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://huggingface.co',
+      url: `https://huggingface.co/${repositoryName}`,
       authType: 'none',
       enabled: true,
     })
@@ -566,7 +566,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://huggingface.co',
+      url: `https://huggingface.co/${repositoryName}`,
       authType: 'bearer_token',
       bearerToken: HF_API_KEY,
       authTestEndpoint: 'https://huggingface.co/api/whoami-v2',
@@ -587,7 +587,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://huggingface.co',
+      url: `https://huggingface.co/${repositoryName}`,
       authType: 'bearer_token',
       bearerToken: 'hf_invalid_key_12345',
       authTestEndpoint: 'https://huggingface.co/api/whoami-v2',

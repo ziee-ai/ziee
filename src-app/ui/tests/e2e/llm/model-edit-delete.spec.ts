@@ -61,7 +61,8 @@ test.describe('LLM Models - edit + delete from provider detail', () => {
     await byTestId(page, 'llm-param-display_name').fill('Renamed Model')
     const [editResp] = await Promise.all([
       page.waitForResponse(
-        r => /\/api\/.*models/.test(r.url()) && r.request().method() === 'PUT',
+        // Model update is POST /api/llm-models/{model_id} (not PUT).
+        r => /\/api\/llm-models\/[0-9a-f-]+$/.test(r.url()) && r.request().method() === 'POST',
         { timeout: 15000 },
       ),
       byTestId(page, 'llm-edit-model-save-btn').click(),
