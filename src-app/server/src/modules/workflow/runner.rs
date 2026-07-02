@@ -708,6 +708,10 @@ async fn run_inner(
             description: description_rendered,
         }));
 
+        // Record the in-progress step so a failure (incl. a FIRST-step failure)
+        // names it in `build_error_result.failed_step` — the debug-loop signal.
+        let _ = repository::set_current_step(pool, ctx.run_id, &step.id).await;
+
         // Mock short-circuit. Honor a per-run `mocks[step.id]` from the
         // /run body OR a `StepDef.mock` baked into the workflow. Skips real
         // dispatch entirely — no LLM tokens, no sandbox spawn.

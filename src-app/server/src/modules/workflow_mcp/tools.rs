@@ -9,19 +9,35 @@
 
 #![allow(dead_code)]
 
+use std::path::Path;
 use std::time::Duration;
 
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::workflow::models::{Workflow, WorkflowRun};
+use crate::core::Repos;
+use crate::modules::sync::SyncOrigin;
+use crate::modules::workflow::handlers::dev::{ImportQuery, install_workflow_from_bytes};
+use crate::modules::workflow::models::{CreateWorkflow, Workflow, WorkflowRun};
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::runner;
-use crate::modules::workflow::validate::{ExposeMode, OutputDef, WorkflowDef, parse_workflow_yaml};
+use crate::modules::workflow::validate::{
+    ExposeMode, OutputDef, Severity, WorkflowDef, parse_workflow_yaml, validate_collecting,
+    validate_for_install,
+};
+use crate::modules::workflow::{compiled, cost};
 
 use super::workflow_mcp_server_id;
+
+// ── reserved generic verb names ───────────────────────────────────────
+/// Ingest + run a conversation-scoped ephemeral workflow from a workspace dir.
+pub const RUN_FROM_WORKSPACE: &str = "run_from_workspace";
+/// Parse + validate a workspace workflow.yaml without running it.
+pub const VALIDATE_FROM_WORKSPACE: &str = "validate_from_workspace";
+/// Promote a workspace workflow into the user's permanent personal library.
+pub const SAVE_WORKFLOW: &str = "save_workflow";
 
 // ── size caps (plan §4.7) ─────────────────────────────────────────────
 /// `expose: full` outputs at or below this size are inlined as JSON; above
@@ -207,7 +223,68 @@ pub async fn tool_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value, AppE
         }));
     }
 
+    // Static generic verbs — author + run + save a conversation-scoped
+    // EPHEMERAL workflow from files the model wrote into its sandbox workspace.
+    tools.extend(workspace_verb_tools());
+
     Ok(json!({ "tools": tools }))
+}
+
+/// The three static workspace verbs surfaced in `tools/list`. The model writes
+/// `workflow.yaml` (+ any `scripts/`) into `/home/sandboxuser/<dir>/` using the
+/// code_sandbox tools first, then calls these with the same `<dir>`.
+fn workspace_verb_tools() -> Vec<Value> {
+    let dir_prop = json!({
+        "type": "string",
+        "description": "The workspace subdir (relative to /home/sandboxuser) \
+            holding workflow.yaml + any scripts/ you wrote with the code_sandbox tools.",
+    });
+    vec![
+        json!({
+            "name": RUN_FROM_WORKSPACE,
+            "description": "Run a workflow you authored in the sandbox workspace. Write \
+                workflow.yaml (+ scripts/) into /home/sandboxuser/<dir>/ first, then call \
+                this with that <dir>. On failure the result names the failed step and its \
+                stderr so you can fix the files and re-run.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "dir": dir_prop.clone(),
+                    "inputs": {
+                        "type": "object",
+                        "description": "Optional inputs object matching the workflow's inputs[].",
+                    },
+                },
+                "required": ["dir"],
+            },
+        }),
+        json!({
+            "name": VALIDATE_FROM_WORKSPACE,
+            "description": "Validate a workflow.yaml in the sandbox workspace WITHOUT running \
+                it. Returns errors, warnings, and a static cost estimate.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "dir": dir_prop.clone() },
+                "required": ["dir"],
+            },
+        }),
+        json!({
+            "name": SAVE_WORKFLOW,
+            "description": "Save a workspace workflow into the user's permanent personal \
+                workflow library (only do this when the user asks to keep it).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "dir": dir_prop.clone(),
+                    "name": {
+                        "type": "string",
+                        "description": "Optional short name/slug for the saved workflow.",
+                    },
+                },
+                "required": ["dir"],
+            },
+        }),
+    ]
 }
 
 async fn read_workflow_def(wf: &Workflow) -> Result<WorkflowDef, AppError> {
@@ -258,6 +335,22 @@ pub async fn call_tool(
     tool_leaf: &str,
     arguments: &Value,
 ) -> Result<Value, AppError> {
+    // Reserved generic verbs — author/run/validate/save a conversation-scoped
+    // EPHEMERAL workflow straight from files the model wrote into its sandbox
+    // workspace. Dispatched BEFORE the per-workflow `wf_<slug>` path.
+    match tool_leaf {
+        RUN_FROM_WORKSPACE => {
+            return run_from_workspace(pool, user_id, conversation_id, arguments).await;
+        }
+        VALIDATE_FROM_WORKSPACE => {
+            return validate_from_workspace(user_id, conversation_id, arguments).await;
+        }
+        SAVE_WORKFLOW => {
+            return save_workflow(pool, user_id, conversation_id, arguments).await;
+        }
+        _ => {}
+    }
+
     if !tool_leaf.starts_with("wf_") {
         return Err(AppError::bad_request(
             "WORKFLOW_TOOL_UNKNOWN",
@@ -266,28 +359,13 @@ pub async fn call_tool(
     }
 
     let wf = resolve_workflow_by_slug(pool, user_id, tool_leaf).await?;
-
-    // Inputs arrive as the tool's `arguments` object.
-    let inputs = match arguments {
-        Value::Object(_) | Value::Null => arguments.clone(),
-        _ => {
-            return Err(AppError::bad_request(
-                "WORKFLOW_INPUTS_NOT_OBJECT",
-                "tool arguments must be a JSON object",
-            ));
-        }
-    };
-
-    // Spawn via the shared run path (validates yaml + snapshots model +
-    // inserts the workflow_runs row + spawns the runner task). mocks are
-    // never accepted on the MCP path (always production-shaped).
-    let run_id = runner::spawn_run(
+    let inputs = coerce_inputs(arguments)?;
+    run_and_format(
         pool,
         &wf,
         user_id,
         conversation_id,
         inputs,
-        Default::default(),
         runner::SpawnRunOpts {
             model_id: None,
             invocation_source: "conversation",
@@ -296,6 +374,44 @@ pub async fn call_tool(
             persist_artifacts: false,
             force_log_capture: false,
         },
+    )
+    .await
+}
+
+/// Parse a workflow inputs object; NULL is tolerated (no inputs).
+fn coerce_inputs(arguments: &Value) -> Result<Value, AppError> {
+    match arguments {
+        Value::Object(_) | Value::Null => Ok(arguments.clone()),
+        _ => Err(AppError::bad_request(
+            "WORKFLOW_INPUTS_NOT_OBJECT",
+            "tool arguments must be a JSON object",
+        )),
+    }
+}
+
+/// Spawn a run for `wf`, block until terminal (cancel-on-drop so chat-Stop
+/// aborts it), then format the outputs — or the structured error — for MCP.
+/// Shared by the per-workflow `wf_<slug>` path and the ephemeral
+/// `run_from_workspace` verb.
+async fn run_and_format(
+    pool: &sqlx::PgPool,
+    wf: &Workflow,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    inputs: Value,
+    opts: runner::SpawnRunOpts,
+) -> Result<Value, AppError> {
+    // Spawn via the shared run path (validates yaml + snapshots model +
+    // inserts the workflow_runs row + spawns the runner task). mocks are
+    // never accepted on the MCP path (always production-shaped).
+    let run_id = runner::spawn_run(
+        pool,
+        wf,
+        user_id,
+        conversation_id,
+        inputs,
+        Default::default(),
+        opts,
     )
     .await?;
 
@@ -353,7 +469,7 @@ pub async fn call_tool(
     cancel_guard.disarm();
 
     // Read the workflow def again for the outputs[] expose modes.
-    let def = read_workflow_def(&wf).await?;
+    let def = read_workflow_def(wf).await?;
 
     match run.status.as_str() {
         "completed" => {
@@ -366,6 +482,285 @@ pub async fn call_tool(
             Ok(err)
         }
     }
+}
+
+// ── run/validate/save from the sandbox workspace ──────────────────────
+
+/// An `isError` tool result carrying a code + message so the model reliably
+/// SEES the failure (as opposed to a JSON-RPC protocol error, which a client
+/// may swallow) and can self-correct. Mirrors `build_error_result`'s shape.
+fn error_tool_result(code: &str, message: impl Into<String>) -> Value {
+    let message = message.into();
+    json!({
+        "content": [{ "type": "text", "text": format!("{code}: {message}") }],
+        "isError": true,
+        "structuredContent": { "error": message, "code": code },
+    })
+}
+
+/// Pull `dir` (required) + `inputs` (optional object) out of the verb args.
+fn parse_workspace_args(arguments: &Value) -> Result<(String, Value), AppError> {
+    let obj = arguments.as_object().ok_or_else(|| {
+        AppError::bad_request("WORKFLOW_ARGS_NOT_OBJECT", "arguments must be a JSON object")
+    })?;
+    let dir = obj
+        .get("dir")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            AppError::bad_request("WORKFLOW_DIR_REQUIRED", "'dir' (a workspace subdir) is required")
+        })?
+        .to_string();
+    let inputs = obj.get("inputs").cloned().unwrap_or(Value::Null);
+    Ok((dir, inputs))
+}
+
+/// Read + hard-validate `<root>/workflow.yaml` for a real (non-mock) run.
+/// `is_dev = false` so `mock:` fields are rejected — this executes for real.
+async fn load_and_validate_workspace(root: &Path) -> Result<WorkflowDef, AppError> {
+    let wf_path = root.join("workflow.yaml");
+    let content = tokio::fs::read_to_string(&wf_path).await.map_err(|e| {
+        AppError::bad_request(
+            "WORKFLOW_NO_ENTRY_POINT",
+            format!("missing or unreadable workflow.yaml: {e}"),
+        )
+    })?;
+    let def = parse_workflow_yaml(&content)?;
+    validate_for_install(&def, root, false)?;
+    Ok(def)
+}
+
+/// Insert the throwaway `workflows` row for a `run_from_workspace` run. Points
+/// `extracted_path` at the LIVE workspace dir (re-runs pick up edits with no
+/// copy), flags `ephemeral = true` + `conversation_id` so it's excluded from
+/// every listing and CASCADE-cleaned with the conversation.
+/// Build a unique, listing-hidden name for an ephemeral workflow row. Kept
+/// short so it never trips `check_install_slug_len` (defensive — it never
+/// becomes a tool). Unique per call via a fresh UUID.
+fn ephemeral_workflow_name(conversation_id: Uuid) -> String {
+    format!(
+        "ephemeral.{}/{}",
+        conversation_id.simple(),
+        Uuid::new_v4().simple()
+    )
+}
+
+async fn insert_ephemeral_workflow(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    conversation_id: Uuid,
+    root: &Path,
+    def: &WorkflowDef,
+) -> Result<Workflow, AppError> {
+    let name = ephemeral_workflow_name(conversation_id);
+    let create = CreateWorkflow {
+        name,
+        version: Some("0.0.0-ephemeral".into()),
+        display_name: None,
+        description: None,
+        extracted_path: root.display().to_string(),
+        bundle_sha256: String::new(),
+        bundle_size_bytes: 0,
+        file_count: 0,
+        entry_point: "workflow.yaml".into(),
+        tags: Value::Array(vec![]),
+        scope: "user".into(),
+        owner_user_id: Some(user_id),
+        created_by: Some(user_id),
+        enabled: true,
+        is_dev: false,
+        ephemeral: true,
+        conversation_id: Some(conversation_id),
+        compiled_ir_json: compiled::compile_to_json(def),
+    };
+    repository::insert(pool, create).await
+}
+
+/// `run_from_workspace(dir, inputs?)` — materialize + run an ephemeral workflow
+/// from files the model wrote into `/home/sandboxuser/<dir>/`. Forces full log
+/// capture so the model always gets stderr on failure (the debug loop).
+async fn run_from_workspace(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    arguments: &Value,
+) -> Result<Value, AppError> {
+    let (dir, inputs) = parse_workspace_args(arguments)?;
+    // Ownership gate: the client-supplied conversation_id must belong to the
+    // caller (else this could ingest + run another user's workspace files).
+    let conv = match crate::modules::workflow::workspace::require_conversation_owner(
+        conversation_id,
+        user_id,
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
+    };
+    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(conversation_id, &dir) {
+        Ok(r) => r,
+        Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
+    };
+    let def = match load_and_validate_workspace(&root).await {
+        Ok(d) => d,
+        Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
+    };
+    let wf = insert_ephemeral_workflow(pool, user_id, conv, &root, &def).await?;
+    let inputs = coerce_inputs(&inputs)?;
+    let mut result = run_and_format(
+        pool,
+        &wf,
+        user_id,
+        conversation_id,
+        inputs,
+        runner::SpawnRunOpts {
+            model_id: None,
+            invocation_source: "conversation",
+            persist_artifacts: false,
+            // Always capture logs so the model can read a failed step's stderr.
+            force_log_capture: true,
+        },
+    )
+    .await?;
+    // Surface the authored `dir` so the chat UI can offer Save / Download on the
+    // finished ephemeral run (the card reads `structuredContent.workspace_dir`).
+    if let Some(obj) = result.as_object_mut() {
+        let sc = obj
+            .entry("structuredContent")
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(sc_obj) = sc.as_object_mut() {
+            sc_obj.insert("workspace_dir".into(), Value::String(dir));
+        }
+    }
+    Ok(result)
+}
+
+/// `validate_from_workspace(dir)` — parse + validate without running. Returns
+/// all errors + warnings + a static cost estimate. No run row is created.
+async fn validate_from_workspace(
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    arguments: &Value,
+) -> Result<Value, AppError> {
+    let (dir, _inputs) = parse_workspace_args(arguments)?;
+    if let Err(e) = crate::modules::workflow::workspace::require_conversation_owner(
+        conversation_id,
+        user_id,
+    )
+    .await
+    {
+        return Ok(error_tool_result(e.error_code(), e.to_string()));
+    }
+    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(conversation_id, &dir) {
+        Ok(r) => r,
+        Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
+    };
+    let wf_path = root.join("workflow.yaml");
+    let content = match tokio::fs::read_to_string(&wf_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(error_tool_result(
+                "WORKFLOW_NO_ENTRY_POINT",
+                format!("missing or unreadable workflow.yaml: {e}"),
+            ));
+        }
+    };
+    let def = match parse_workflow_yaml(&content) {
+        Ok(d) => d,
+        Err(e) => return Ok(error_tool_result("WORKFLOW_INVALID_YAML", e.to_string())),
+    };
+    // Real gate: is_dev=false so mocks would be flagged.
+    let findings = validate_collecting(&def, &root, false);
+    let mut errors: Vec<Value> = Vec::new();
+    let mut warnings: Vec<Value> = Vec::new();
+    for f in findings {
+        let entry = json!({ "code": f.code, "location": f.location, "message": f.message });
+        match f.severity {
+            Severity::Error => errors.push(entry),
+            Severity::Warning => warnings.push(entry),
+        }
+    }
+    let (steps, est_max_calls, est_max_tokens) = cost::estimate_static(&def);
+    let valid = errors.is_empty();
+    let body = json!({
+        "valid": valid,
+        "errors": errors,
+        "warnings": warnings,
+        "steps": steps,
+        "est_max_calls": est_max_calls,
+        "est_max_tokens": est_max_tokens,
+    });
+    Ok(json!({
+        "content": [{
+            "type": "text",
+            "text": if valid { "workflow.yaml is valid".to_string() }
+                    else { format!("workflow.yaml has {} error(s)", body["errors"].as_array().map(|a| a.len()).unwrap_or(0)) },
+        }],
+        "isError": !valid,
+        "structuredContent": body,
+    }))
+}
+
+/// `save_workflow(dir, name?)` — promote a workspace workflow into the user's
+/// PERMANENT personal library (user scope only from the MCP surface). Reuses
+/// the shared install pipeline via a packed bundle.
+async fn save_workflow(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    arguments: &Value,
+) -> Result<Value, AppError> {
+    let _ = pool;
+    let obj = arguments.as_object().ok_or_else(|| {
+        AppError::bad_request("WORKFLOW_ARGS_NOT_OBJECT", "arguments must be a JSON object")
+    })?;
+    let dir = obj
+        .get("dir")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::bad_request("WORKFLOW_DIR_REQUIRED", "'dir' is required"))?;
+    let name = obj.get("name").and_then(|v| v.as_str()).map(str::to_string);
+
+    if let Err(e) = crate::modules::workflow::workspace::require_conversation_owner(
+        conversation_id,
+        user_id,
+    )
+    .await
+    {
+        return Ok(error_tool_result(e.error_code(), e.to_string()));
+    }
+    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(conversation_id, dir) {
+        Ok(r) => r,
+        Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
+    };
+    // Validate before persisting so a broken bundle never lands in the library.
+    if let Err(e) = load_and_validate_workspace(&root).await {
+        return Ok(error_tool_result(e.error_code(), e.to_string()));
+    }
+    let bytes = crate::modules::hub::bundle::pack_workspace_dir(&root)?;
+
+    let user = Repos
+        .user
+        .get_by_id(user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("user"))?;
+    let groups = Repos.user.get_user_groups(user_id).await?;
+    let q = ImportQuery {
+        name,
+        // MCP save is always user-scope; system promotion is admin-only via REST.
+        scope: Some("user".into()),
+    };
+    let (_status, axum::Json(wf)) =
+        install_workflow_from_bytes(&user, &groups, q, SyncOrigin(None), bytes)
+            .await
+            .map_err(|(_, e)| e)?;
+    Ok(json!({
+        "content": [{
+            "type": "text",
+            "text": format!("Saved workflow '{}' to your personal workflows.", wf.name),
+        }],
+        "structuredContent": { "workflow_id": wf.id, "name": wf.name },
+    }))
 }
 
 /// H2: cancel-on-drop guard for the MCP tool-call path. While the tool call
@@ -970,6 +1365,70 @@ mod tests {
         // A short, ordinary name installs fine.
         check_install_slug_len("io.github.phibya/research-summarize-write")
             .expect("short name accepted");
+    }
+
+    // ── run/validate/save from the sandbox workspace ──────────────────
+
+    #[test]
+    fn t1_ephemeral_name_is_unique_and_slug_safe() {
+        let conv = Uuid::new_v4();
+        let a = ephemeral_workflow_name(conv);
+        let b = ephemeral_workflow_name(conv);
+        assert_ne!(a, b, "two ephemeral names for the same conv must differ");
+        assert!(a.starts_with("ephemeral."), "name is namespaced: {a}");
+        // Even though it never becomes a tool, the name must survive the
+        // composed-slug-length guard (defensive).
+        check_install_slug_len(&a).expect("ephemeral name must pass the slug-len guard");
+    }
+
+    #[test]
+    fn t1_workspace_verb_tools_shape() {
+        let tools = workspace_verb_tools();
+        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert!(names.contains(&RUN_FROM_WORKSPACE));
+        assert!(names.contains(&VALIDATE_FROM_WORKSPACE));
+        assert!(names.contains(&SAVE_WORKFLOW));
+        for t in &tools {
+            let required = t["inputSchema"]["required"].as_array().expect("required[]");
+            assert!(
+                required.iter().any(|v| v == "dir"),
+                "every workspace verb requires 'dir': {t}"
+            );
+            assert_eq!(t["inputSchema"]["type"], json!("object"));
+        }
+    }
+
+    #[test]
+    fn t1_coerce_inputs_accepts_object_and_null_rejects_scalar() {
+        assert!(coerce_inputs(&json!({"a": 1})).is_ok());
+        assert!(coerce_inputs(&Value::Null).is_ok());
+        let err = coerce_inputs(&json!("nope")).unwrap_err();
+        assert_eq!(err.error_code(), "WORKFLOW_INPUTS_NOT_OBJECT");
+    }
+
+    #[test]
+    fn t1_parse_workspace_args_requires_dir() {
+        let (dir, inputs) =
+            parse_workspace_args(&json!({ "dir": "flow", "inputs": {"x": 1} })).unwrap();
+        assert_eq!(dir, "flow");
+        assert_eq!(inputs, json!({"x": 1}));
+        // Missing/empty dir → error.
+        assert_eq!(
+            parse_workspace_args(&json!({})).unwrap_err().error_code(),
+            "WORKFLOW_DIR_REQUIRED"
+        );
+        assert_eq!(
+            parse_workspace_args(&json!({ "dir": "" })).unwrap_err().error_code(),
+            "WORKFLOW_DIR_REQUIRED"
+        );
+    }
+
+    #[test]
+    fn t1_error_tool_result_is_iserror_with_code() {
+        let r = error_tool_result("SOME_CODE", "human message");
+        assert_eq!(r["isError"], json!(true));
+        assert_eq!(r["structuredContent"]["code"], json!("SOME_CODE"));
+        assert!(r["content"][0]["text"].as_str().unwrap().contains("SOME_CODE"));
     }
 
     fn run_with_final(final_json: Value, step_outputs: Value) -> WorkflowRun {

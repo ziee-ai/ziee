@@ -2086,6 +2086,9 @@ async fn build_workflow_create_from_hub(
         created_by,
         enabled: true,
         is_dev: false,
+        // Hub-installed workflows are permanent + listed, never ephemeral.
+        ephemeral: false,
+        conversation_id: None,
         // Pattern (d): compile the validated def into the typed IR and
         // persist it so the column is non-NULL + available to the runner.
         compiled_ir_json: workflow::compiled::compile_to_json(&workflow_def),
@@ -2289,6 +2292,7 @@ async fn install_system_workflow_tx(
             entry_point,
             tags as "tags: _",
             scope, owner_user_id, created_by, enabled, is_dev,
+            ephemeral, conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"

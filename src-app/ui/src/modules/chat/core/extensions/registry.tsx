@@ -800,8 +800,18 @@ export class ChatExtensionRegistry {
       })
       .sort((a, b) => (a.extension.priority ?? 100) - (b.extension.priority ?? 100))
 
-    // Return first successful renderer (early exit pattern)
+    // Return the first renderer that claims this block. A renderer MAY declare
+    // an optional static `contentMatch(content) => boolean` to claim only its
+    // own blocks (e.g. a specific tool_result `name`); a renderer without one
+    // is a catch-all (the historical first-wins behavior). This lets several
+    // extensions co-own a content type (`tool_result`) without an internal
+    // delegation chain — each claims its own, the catch-all handles the rest.
     for (const { extension, Component } of enabledRegistered) {
+      const match = (Component as { contentMatch?: (c: ContentRendererProps['content']) => boolean })
+        .contentMatch
+      if (match && !match(props.content)) {
+        continue
+      }
       try {
         return <Component {...props} />
       } catch (error) {
