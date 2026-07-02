@@ -45,7 +45,7 @@ export function TextInput() {
         autoSize={{ minRows: 2, maxRows: 8 }}
         disabled={sending}
         defaultValue=""
-        className="resize-none !border-none focus:!border-none focus:!outline-none focus:!shadow-none !pt-1 bg-transparent text-base"
+        className="resize-none !border-none bg-transparent dark:bg-transparent text-base !pt-1 outline-none focus-visible:ring-0 focus-visible:border-transparent focus-visible:shadow-none"
       />
     </div>
   )

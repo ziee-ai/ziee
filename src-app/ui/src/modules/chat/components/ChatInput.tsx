@@ -93,7 +93,7 @@ export function ChatInput({
                 data-testid="chat-input-add-btn"
                 icon={<Plus className="size-4" />}
                 variant="ghost"
-                size="lg"
+                size="default"
                 aria-label="Add attachment"
               />
             </Popover>
@@ -105,7 +105,7 @@ export function ChatInput({
             <ExtensionSlot name="toolbar_model" />
             <Button
               data-testid="chat-input-send-btn"
-              size="lg"
+              size="default"
               icon={<SendIcon className="rotate-[270deg]" />}
               onClick={handleSend}
               disabled={sending || isStreaming || disabled || isBlockedByExtension}

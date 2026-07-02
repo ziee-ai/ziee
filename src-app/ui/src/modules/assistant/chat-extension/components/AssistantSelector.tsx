@@ -36,7 +36,7 @@ export function AssistantSelector({
           disabled
           placeholder="No assistants"
           className="min-w-[120px]"
-          size="sm"
+          size="default"
           emptyText="No assistants available"
           searchPlaceholder="Search assistant"
         />
@@ -55,7 +55,7 @@ export function AssistantSelector({
         disabled={disabled}
         placeholder="Assistant"
         className="min-w-[120px]"
-        size="sm"
+        size="default"
         emptyText="No assistants available"
         searchPlaceholder="Search assistant"
       />
