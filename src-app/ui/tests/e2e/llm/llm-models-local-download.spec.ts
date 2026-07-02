@@ -644,7 +644,9 @@ test.describe('LLM Models - Local Download - Auto-detect files', () => {
     // Detect click lands immediately instead of racing the closing popup.
     await expect(byTestId(page, 'llm-download-repository-select')).toContainText('Hugging Face Hub')
 
-    // Leave the repository path EMPTY and click Detect.
+    // Clear the repository path (the add form pre-fills a TinyLlama default),
+    // then click Detect to exercise the empty-path validation branch.
+    await byTestId(page, 'llm-download-repository-path-input').fill('')
     await byTestId(page, 'llm-download-detect-files-btn').click()
 
     await expect(
