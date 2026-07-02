@@ -71,6 +71,7 @@ mod permission_revocation_test;
 mod tool_call_history_test;
 mod group_cascade_test;
 // group-cascade system-MCP assignment grant/revoke via real endpoints
+mod builtin_test_connection_test;
 mod project_mcp_group_combined_test;
 // HTTP transport tests (12 tests)
 mod stdio_transport_test;

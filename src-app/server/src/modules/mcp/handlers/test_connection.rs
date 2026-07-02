@@ -8,8 +8,9 @@
 // added or edited.
 
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, http::StatusCode};
+use axum::{Extension, Json, debug_handler, http::StatusCode};
 use chrono::Utc;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -17,7 +18,8 @@ use crate::{
     core::Repos,
     modules::{
         mcp::client::{
-            auth::OAuthClientConfig, http::HttpMcpClient, stdio::StdioMcpClient, traits::McpClient,
+            auth::OAuthClientConfig, http::HttpMcpClient, manager::McpSessionManager,
+            stdio::StdioMcpClient, traits::McpClient,
         },
         permissions::{RequirePermissions, with_permission},
     },
@@ -240,6 +242,26 @@ pub(crate) async fn run_connection_test(
     }
 }
 
+/// Probe a **built-in** loopback server (Skills / Workflows / memory / files /
+/// web-search / …). Its URL + config are system-owned (not user-editable), so
+/// we test the STORED row with an injected short-lived JWT — mirroring the live
+/// session path via the shared `McpSessionManager::inject_builtin_context_headers`
+/// — instead of the request-derived ephemeral server. Without the JWT the
+/// built-in route's `RequirePermissions` gate rejects the probe with
+/// 401 MISSING_TOKEN. Routing through the shared helper means EVERY built-in
+/// server, including ones added later, is covered automatically.
+async fn probe_builtin_server(
+    manager: &McpSessionManager,
+    existing: &McpServer,
+    user_id: Uuid,
+) -> TestMcpConnectionResponse {
+    let mut probe = existing.clone();
+    if let Err(e) = manager.inject_builtin_context_headers(&mut probe, user_id, None, None) {
+        return failure(e);
+    }
+    run_connection_test(probe, None).await
+}
+
 /// Resolve the OAuth config for the test.
 ///
 /// 1. Credentials typed into the form (`req.oauth` with a non-empty secret) win.
@@ -284,6 +306,7 @@ async fn resolve_oauth(
 #[debug_handler]
 pub async fn test_user_connection(
     auth: RequirePermissions<(McpServersCreate,)>,
+    Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Json(request): Json<TestMcpConnectionRequest>,
 ) -> ApiResult<Json<TestMcpConnectionResponse>> {
     validate(&request)?;
@@ -294,9 +317,15 @@ pub async fn test_user_connection(
     };
     let oauth = resolve_oauth(&request, existing.as_ref()).await?;
 
-    let server =
-        build_ephemeral_server(&request, Some(auth.user.id), false, existing.as_ref());
-    let response = run_connection_test(server, oauth).await;
+    // A built-in loopback server authenticates with an internally-minted JWT,
+    // not user-supplied headers/OAuth — probe it through the shared helper.
+    let response = if let Some(builtin) = existing.as_ref().filter(|s| s.is_built_in) {
+        probe_builtin_server(&session_manager, builtin, auth.user.id).await
+    } else {
+        let server =
+            build_ephemeral_server(&request, Some(auth.user.id), false, existing.as_ref());
+        run_connection_test(server, oauth).await
+    };
     // Record the outcome on the persisted server (if `request.id`
     // pointed at one). Lets the UI surface "last tested: …" outside
     // the enable flow too. Non-fatal — log on failure.
@@ -331,7 +360,8 @@ pub fn test_user_connection_docs(op: TransformOperation) -> TransformOperation {
 /// gated on a matching URL, same as the user variant.
 #[debug_handler]
 pub async fn test_system_connection(
-    _auth: RequirePermissions<(McpServersAdminCreate,)>,
+    auth: RequirePermissions<(McpServersAdminCreate,)>,
+    Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Json(request): Json<TestMcpConnectionRequest>,
 ) -> ApiResult<Json<TestMcpConnectionResponse>> {
     validate(&request)?;
@@ -342,8 +372,15 @@ pub async fn test_system_connection(
     };
     let oauth = resolve_oauth(&request, existing.as_ref()).await?;
 
-    let server = build_ephemeral_server(&request, None, true, existing.as_ref());
-    let response = run_connection_test(server, oauth).await;
+    // Built-in system servers (Skills/Workflows/…) authenticate via an
+    // internally-minted JWT — probe the stored row through the shared helper so
+    // the loopback route's RequirePermissions gate is satisfied.
+    let response = if let Some(builtin) = existing.as_ref().filter(|s| s.is_built_in) {
+        probe_builtin_server(&session_manager, builtin, auth.user.id).await
+    } else {
+        let server = build_ephemeral_server(&request, None, true, existing.as_ref());
+        run_connection_test(server, oauth).await
+    };
     if let Some(server_id) = request.id {
         let (status, reason) = if response.success {
             ("healthy", None)
