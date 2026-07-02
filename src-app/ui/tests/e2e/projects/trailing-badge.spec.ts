@@ -122,12 +122,14 @@ test.describe('ConversationCard trailing badge — add-to-project', () => {
 
     // Open the combobox + pick the project by its derived option testid.
     await byTestId(dialog, 'project-add-to-project-combobox').click()
-    // The Base-UI combobox popup item animates in ("not stable"); force past the
-    // stability wait — the item's onClick still fires and selects it.
+    // Type to filter: the unfiltered Base-UI combobox list virtualizes/animates,
+    // leaving options "not stable" to click. Filtering to the one match lets the
+    // option settle so a normal click registers the selection.
+    await byTestId(dialog, 'project-add-to-project-combobox').fill('Badge Add Target')
     await byTestId(
       page,
       `project-add-to-project-combobox-opt-${projectId}`,
-    ).click({ force: true })
+    ).click()
 
     await byTestId(dialog, 'project-add-to-project-confirm-button').click()
 
