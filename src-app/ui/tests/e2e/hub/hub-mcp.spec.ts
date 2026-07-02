@@ -13,7 +13,10 @@ import { Permissions } from '../../../src/api-client/types'
 // A seeded hub MCP server with HTTP transport. User-scope ("install for me")
 // stdio installs are gated by code_sandbox (disabled in the test env), so the
 // install/View/badge flows target an HTTP server whose user install works.
-const HTTP_HUB_MCP_ID = 'brave-search-mcp'
+// The seeded hub MCP catalog uses reverse-DNS namespaced ids
+// (`server.name`), and the card testid is `hub-mcp-card-${server.name}`.
+// brave's streamable-http server is `com.brave/search-mcp` in the seed.
+const HTTP_HUB_MCP_ID = 'com.brave/search-mcp'
 
 test.describe('Hub MCP Servers', () => {
   test.beforeEach(async ({ page, testInfra }) => {
