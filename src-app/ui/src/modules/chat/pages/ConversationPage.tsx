@@ -99,19 +99,19 @@ export default function ConversationPage() {
   // Error state
   if (!loading && !conversation) {
     return (
-      <main className="flex flex-col items-center justify-center h-full p-8">
+      <div className="flex flex-col items-center justify-center h-full p-8">
         <Alert
           data-testid="chat-conversation-not-found-alert"
           tone="error"
           title="Conversation not found"
           description="This conversation may have been deleted or you don't have access to it."
         />
-      </main>
+      </div>
     )
   }
 
   return (
-    <main className="flex flex-col h-full">
+    <div className="flex flex-col h-full">
       {/* Header — full width, matches the rest of the app's header bars
           (project page, settings, etc.). TitleEditor at the left,
           slot consumers at the right. */}
@@ -154,7 +154,7 @@ export default function ConversationPage() {
         {/* Right sidebar panel */}
         <ChatRightPanel />
       </div>
-    </main>
+    </div>
   )
 }
 

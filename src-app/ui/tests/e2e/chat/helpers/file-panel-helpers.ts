@@ -109,16 +109,19 @@ export async function isPanelOpen(page: Page): Promise<boolean> {
   return attr === 'true'
 }
 
+// The panel now uses the kit <Tabs> (shadcn/base-ui), not AntD: each tab is a
+// [data-slot="tabs-trigger"] (role=tab) with data-state="active|inactive", and
+// the per-tab × is a following-sibling <button> of the trigger.
 export async function getPanelTabCount(page: Page): Promise<number> {
   return await page
-    .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab')
+    .locator('[data-testid="chat-right-panel-tabs"] [data-slot="tabs-trigger"]')
     .count()
 }
 
 export async function getActivePanelTabTitle(page: Page): Promise<string> {
   return (
     (await page
-      .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab-active')
+      .locator('[data-testid="chat-right-panel-tabs"] [data-slot="tabs-trigger"][data-state="active"]')
       .innerText()) ?? ''
   )
 }
@@ -127,25 +130,28 @@ export async function getActivePanelTabTitle(page: Page): Promise<string> {
 
 export async function activatePanelTab(page: Page, title: string): Promise<void> {
   await page
-    .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab')
+    .locator('[data-testid="chat-right-panel-tabs"] [data-slot="tabs-trigger"]')
     .filter({ hasText: title })
     .first()
     .click()
   await expect(
     page
-      .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab-active')
+      .locator('[data-testid="chat-right-panel-tabs"] [data-slot="tabs-trigger"][data-state="active"]')
       .filter({ hasText: title }),
   ).toBeVisible({ timeout: 5000 })
 }
 
 /**
- * Close a tab via its built-in × button (AntD `.ant-tabs-tab-remove`).
+ * Close a tab via its built-in × button (the kit Tabs renders it as a
+ * following-sibling <button> of the tab trigger).
  */
 export async function closePanelTab(page: Page, title: string): Promise<void> {
   await page
-    .locator('[data-testid="chat-right-panel-tabs"] .ant-tabs-tab')
+    .locator('[data-testid="chat-right-panel-tabs"] [data-slot="tabs-trigger"]')
     .filter({ hasText: title })
-    .locator('.ant-tabs-tab-remove')
+    .first()
+    .locator('xpath=following-sibling::button')
+    .first()
     .click()
 }
 

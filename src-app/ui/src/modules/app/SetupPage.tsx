@@ -140,13 +140,13 @@ export default function SetupPage() {
         data-testid="app-setup-card"
         footer={
           <Button
-            type="button"
+            type="submit"
+            form="setup-form"
             data-testid="app-setup-submit-button"
             block
             loading={isSettingUpAdmin}
             size="lg"
             className="w-full"
-            onClick={form.handleSubmit(onSubmit)}
           >
             Create Admin Account
           </Button>
