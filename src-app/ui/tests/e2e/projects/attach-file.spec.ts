@@ -248,7 +248,8 @@ test.describe('Projects - Knowledge / file attach', () => {
     // Reopen + confirm via the Confirm's primary (Delete) button.
     await deleteBtn().dispatchEvent('click')
     await expect(confirm).toBeVisible()
-    await confirm.locator('[data-testid$="-confirm"]').click()
+    // The dialog's Delete button animates in ("not stable"); dispatch the click.
+    await confirm.locator('[data-testid$="-confirm"]').dispatchEvent('click')
 
     // File disappears after confirmed delete.
     await expect(row()).toHaveCount(0, { timeout: 5000 })
