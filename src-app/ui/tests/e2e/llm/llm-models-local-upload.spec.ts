@@ -36,7 +36,11 @@ async function selectUploadFormat(page: Page, value: string) {
 }
 
 async function cancelUploadForm(page: Page) {
-  await byTestId(page, 'llm-upload-drawer-cancel-btn').click()
+  // A kit Select popup opened earlier in the drawer can leave a closing
+  // animation that keeps the footer button reporting "not stable"; dismiss any
+  // open popup first, then force past the stability wait for this teardown click.
+  await page.keyboard.press('Escape')
+  await byTestId(page, 'llm-upload-drawer-cancel-btn').click({ force: true })
 }
 
 async function expectUploadSucceeded(page: Page) {

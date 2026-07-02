@@ -39,7 +39,7 @@ test.describe('Admin workflow: configure repository → hub', () => {
     // Step 1 — configure a repository (enabled).
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://huggingface.co',
+      url: `https://huggingface.co/${repositoryName}`,
       authType: 'none',
       enabled: true,
     })

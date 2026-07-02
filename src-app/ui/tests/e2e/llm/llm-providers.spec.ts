@@ -350,9 +350,13 @@ test.describe('LLM Providers - Remote Provider CRUD', () => {
       await expect(byTestId(page, `llm-provider-type-select-opt-${value}`)).toBeVisible()
     }
 
-    // Close dropdown and drawer
+    // Close the Select popup, then the drawer. Escape may close only the popup
+    // or also the drawer (Base-UI bubbles it), so cancel only if still present.
     await page.keyboard.press('Escape')
-    await byTestId(page, 'llm-provider-cancel-btn').click()
+    const cancelBtn = byTestId(page, 'llm-provider-cancel-btn')
+    if (await cancelBtn.isVisible().catch(() => false)) {
+      await cancelBtn.click().catch(() => {})
+    }
   })
 
   // The visibility test above only proves the 9 types render in the dropdown.
@@ -387,7 +391,7 @@ test.describe('LLM Providers - Remote Provider CRUD', () => {
         page,
         baseURL,
         type === 'custom'
-          ? { name: providerName, baseUrl: 'https://api.example.com/v1', apiKey: 'sk-e2e-test' }
+          ? { name: providerName, baseUrl: 'https://example.com/v1', apiKey: 'sk-e2e-test' }
           : { name: providerName, apiKey: 'sk-e2e-test' },
         type,
       )

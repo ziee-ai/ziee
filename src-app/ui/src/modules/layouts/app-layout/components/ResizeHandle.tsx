@@ -1,4 +1,4 @@
-import { CSSProperties, useLayoutEffect, useRef } from 'react'
+import { CSSProperties, useLayoutEffect, useRef, useState } from 'react'
 
 export const ResizeHandle = ({
   placement,
@@ -36,6 +36,10 @@ export const ResizeHandle = ({
 }) => {
   const ref = useRef<HTMLDivElement>(null)
   const parentRefs = useRef<HTMLElement[]>([])
+  // Current resized dimension (px) of the primary parent — surfaced as
+  // `aria-valuenow` so this focusable role="separator" (a window-splitter)
+  // carries the ARIA attributes the pattern requires (axe: aria-required-attr).
+  const [valueNow, setValueNow] = useState(0)
   // Teardown for an in-flight drag (set on mousedown, cleared on mouseup). Lets
   // the unmount effect below detach the window mousemove/mouseup listeners if
   // the handle unmounts mid-drag — otherwise those closures would leak.
@@ -65,6 +69,14 @@ export const ResizeHandle = ({
       refs.push(parent)
     }
     parentRefs.current = refs
+    const primary = refs[0]
+    if (primary) {
+      setValueNow(
+        placement === 'left' || placement === 'right'
+          ? primary.offsetWidth
+          : primary.offsetHeight
+      )
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -95,6 +107,11 @@ export const ResizeHandle = ({
         role="separator"
         aria-orientation={isHorizontal ? 'vertical' : 'horizontal'}
         aria-label="Resize"
+        aria-valuenow={Math.round(valueNow)}
+        aria-valuemin={isHorizontal ? minWidth : minHeight}
+        {...(Number.isFinite(isHorizontal ? maxWidth : maxHeight)
+          ? { 'aria-valuemax': isHorizontal ? maxWidth : maxHeight }
+          : {})}
         tabIndex={0}
         onKeyDown={event => {
           // Keyboard actuation: nudge the parent dimension in the same
@@ -119,10 +136,12 @@ export const ResizeHandle = ({
               let w = target.offsetWidth + grow * step
               w = Math.min(Math.max(w, minWidth), maxWidth)
               target.style.width = `${w}px`
+              setValueNow(w)
             } else {
               let h = target.offsetHeight + grow * step
               h = Math.min(Math.max(h, minHeight), maxHeight)
               target.style.height = `${h}px`
+              setValueNow(h)
             }
           }
           if (onEnd) onEnd()
@@ -197,8 +216,10 @@ export const ResizeHandle = ({
 
               if (['top', 'bottom'].includes(placement)) {
                 target.style.height = `${newDim.height}px`
+                setValueNow(newDim.height)
               } else {
                 target.style.width = `${newDim.width}px`
+                setValueNow(newDim.width)
               }
 
               const newScreenPos = {

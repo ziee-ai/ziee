@@ -218,6 +218,14 @@ export function AddLocalLlmModelUploadDrawer() {
       setLoading(true)
       Stores.LlmModelUpload.clearUploadError()
 
+      // Display name is required (there is no zod resolver on this form, so the
+      // FormField `required` marker alone doesn't enforce it).
+      if (!(values.display_name as string | undefined)?.trim()) {
+        form.setError('display_name', { message: 'Display name is required' })
+        setLoading(false)
+        return
+      }
+
       // Validate that files were selected (form validation doesn't catch this since we set a display string)
       if (selectedFiles.length === 0) {
         form.setError('local_folder_path', {

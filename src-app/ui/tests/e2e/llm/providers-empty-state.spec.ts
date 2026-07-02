@@ -8,19 +8,28 @@ import { createLocalProvider } from './helpers/provider-helpers'
 import { byTestId } from '../testid'
 
 /**
- * E2E — the zero-providers empty state on the LLM Providers settings page
- * (audit gap all-f2e47017e178).
+ * E2E — the LLM Providers settings sidebar with only the seeded built-in
+ * providers present.
  *
- * The existing `LLM Providers - Empty States` test only asserts the "Add
- * Provider" menu item exists; it never deletes all providers and verifies
- * what the page renders with ZERO providers. This test drives the real
- * transition: it ensures at least one provider exists (created through the
- * UI), then deletes EVERY provider via the real REST API, reloads, and
- * asserts the empty state — the provider sidebar collapses to just the
- * "Add Provider" item and the main pane shows the "No provider selected"
- * Empty (LlmProviderSettings.tsx:124-129). Only the teardown delete uses
- * the API (the setup boundary); the assertion is on the real rendered UI.
+ * BY DESIGN the deployment always ships 7 undeletable built-in providers
+ * (OpenAI/Anthropic/Groq/Gemini/Mistral/DeepSeek/Local) — they back the
+ * per-user-keys model, so the DELETE API rejects them (400) and the admin
+ * sidebar is never empty. This test drives the real transition: it creates a
+ * user provider through the UI, deletes it via the REST API (which succeeds),
+ * confirms a built-in delete is refused, then reloads and asserts the sidebar
+ * has collapsed back to exactly the built-ins + "Add Provider" — the
+ * user-created row is gone but the built-ins remain.
  */
+
+const BUILT_IN_NAMES = [
+  'OpenAI',
+  'Anthropic',
+  'Groq',
+  'Google Gemini',
+  'Mistral AI',
+  'DeepSeek',
+  'Local',
+]
 
 async function tokenFromPage(page: import('@playwright/test').Page): Promise<string> {
   return page.evaluate(
@@ -28,36 +37,29 @@ async function tokenFromPage(page: import('@playwright/test').Page): Promise<str
   )
 }
 
-async function deleteAllProviders(
+async function listProviders(
   page: import('@playwright/test').Page,
   apiURL: string,
   token: string,
-): Promise<void> {
-  const listRes = await page.request.get(`${apiURL}/api/llm-providers`, {
+): Promise<Array<{ id: string; name: string; built_in: boolean }>> {
+  const res = await page.request.get(`${apiURL}/api/llm-providers?page=1&per_page=100`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  expect(listRes.ok(), `list providers: ${listRes.status()}`).toBeTruthy()
-  const body = await listRes.json()
-  const providers: Array<{ id: string }> = body.providers ?? []
-  for (const p of providers) {
-    const del = await page.request.delete(
-      `${apiURL}/api/llm-providers/${p.id}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    expect(del.ok(), `delete ${p.id}: ${del.status()}`).toBeTruthy()
-  }
+  expect(res.ok(), `list providers: ${res.status()}`).toBeTruthy()
+  const body = await res.json()
+  return body.providers ?? []
 }
 
-test.describe('LLM Providers - Empty State (all deleted)', () => {
-  test('deleting every provider renders the empty state, Add Provider still available', async ({
+test.describe('LLM Providers - built-ins always present', () => {
+  test('a user provider can be deleted; the built-ins remain and are undeletable', async ({
     page,
     testInfra,
   }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
 
-    // Ensure ≥1 provider exists so the deletion is a real transition, and
-    // confirm it renders as a provider menu item in the sidebar.
+    // Create a user provider through the UI and confirm it renders in the
+    // sidebar alongside the always-present built-ins.
     const providerName = `EmptyState_${Date.now().toString(36)}`
     await createLocalProvider(page, baseURL, providerName, 'empty-state probe')
     await goToProvidersPage(page, baseURL)
@@ -65,23 +67,50 @@ test.describe('LLM Providers - Empty State (all deleted)', () => {
     await expect(
       page.locator('[data-testid^="llm-provider-nav-"]').filter({ hasText: providerName }),
     ).toBeVisible()
+    // The seeded built-ins render too (sample two of them).
+    await expect(
+      page.locator('[data-testid^="llm-provider-nav-"]').filter({ hasText: 'OpenAI' }),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid^="llm-provider-nav-"]').filter({ hasText: 'Anthropic' }),
+    ).toBeVisible()
 
-    // Delete EVERY provider via the real API, then reload the page.
     const token = await tokenFromPage(page)
-    await deleteAllProviders(page, apiURL, token)
+    const providers = await listProviders(page, apiURL, token)
+    const builtIns = providers.filter(p => p.built_in)
+    const userProviders = providers.filter(p => !p.built_in)
+
+    // A built-in delete is refused by design (400); the row survives.
+    expect(builtIns.length).toBeGreaterThan(0)
+    const builtInDel = await page.request.delete(
+      `${apiURL}/api/llm-providers/${builtIns[0].id}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    expect(builtInDel.status(), 'built-in delete must be rejected').toBe(400)
+
+    // User-created providers delete successfully.
+    for (const p of userProviders) {
+      const del = await page.request.delete(
+        `${apiURL}/api/llm-providers/${p.id}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      expect(del.ok(), `delete ${p.id}: ${del.status()}`).toBeTruthy()
+    }
+
     await goToProvidersPage(page, baseURL)
     await waitForProvidersPageLoad(page)
 
-    // Empty state: no provider rows remain in the sidebar, but the
-    // "Add Provider" affordance is still present (the only nav button left)...
+    // The user-created row is gone...
     await expect(
       page.locator('[data-testid^="llm-provider-nav-"]').filter({ hasText: providerName }),
     ).toHaveCount(0)
-    const navButtons = page.locator('[data-testid^="llm-provider-nav-"]')
-    await expect(navButtons).toHaveCount(1)
-    await expect(byTestId(page, 'llm-provider-nav-add-provider')).toBeVisible()
 
-    // ...and the main pane shows the "No provider selected" Empty.
-    await expect(byTestId(page, 'llm-provider-settings-empty')).toBeVisible()
+    // ...but every built-in still renders, plus the "Add Provider" affordance.
+    for (const name of BUILT_IN_NAMES) {
+      await expect(
+        page.locator('[data-testid^="llm-provider-nav-"]').filter({ hasText: name }),
+      ).toBeVisible()
+    }
+    await expect(byTestId(page, 'llm-provider-nav-add-provider')).toBeVisible()
   })
 })
