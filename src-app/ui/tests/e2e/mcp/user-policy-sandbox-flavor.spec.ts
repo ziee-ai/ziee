@@ -16,6 +16,10 @@ test.describe('MCP user policy — stdio sandbox flavor', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     await loginAsAdmin(page, testInfra.baseURL)
     await page.goto(`${testInfra.baseURL}/settings/mcp-admin`)
+    // The User-Policy card lives in the (non-default) "Policy" tab. The kit Tabs
+    // lazy-render only the active panel, so the card isn't in the DOM until the
+    // Policy tab is activated — activate it before waiting for the card.
+    await page.getByTestId('mcp-system-tabs-tab-policy').click()
     await expect(
       page.getByTestId('mcp-user-policy-card'),
     ).toBeVisible({ timeout: 30000 })
