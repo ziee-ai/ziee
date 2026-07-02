@@ -204,10 +204,12 @@ async function gotoSandbox(page: Page, baseURL: string) {
       }),
     })
   })
-  // The resource-limits card renders for everyone who reaches the page (its own
-  // section gate aside), so it's a stable readiness signal independent of the
-  // rootfs section's per-perm rendering.
-  const ready = byTestId(page, 'sandbox-resource-limits-card')
+  // The page is a two-tab layout (Rootfs | Resource); "Rootfs" is selected by
+  // default and its "Downloaded versions" card always renders (empty state
+  // included), so it's the stable readiness signal for this rootfs-focused spec.
+  // (The resource-limits card now lives behind the non-active "Resource" tab,
+  // which shadcn Tabs keeps unmounted — it can't gate rootfs readiness anymore.)
+  const ready = byTestId(page, 'downloaded-versions-card')
   for (let attempt = 1; attempt <= 3; attempt++) {
     await page.goto(`${baseURL}/settings/sandbox`)
     await page.waitForLoadState('load').catch(() => {})
