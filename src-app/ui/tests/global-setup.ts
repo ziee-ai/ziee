@@ -37,6 +37,18 @@ export default async function globalSetup(_config: FullConfig) {
   const configDir = resolve(__dirname, '.test-configs')
   cleanupStaleConfigFiles(configDir)
 
+  // Per-session container namespace. Concurrent e2e sessions (separate git
+  // worktrees) share ONE docker daemon, so their containers must live in
+  // disjoint name-spaces or a starting session reaps a sibling's live one.
+  // Each session is handed a distinct ZIEE_E2E_BASE_PG_PORT (see port-manager),
+  // so derive the namespace from it: container names become
+  // `ziee-tailtest-postgres-pg<base>-<rand>` and the cleanup filter below is
+  // scoped to THIS session's prefix — a session can only ever see (and thus
+  // reap) its OWN containers. The shared-lock liveness check is the second
+  // belt: even within one session it keeps the live current run and only reaps
+  // this session's crashed leftovers.
+  const sessionNs = `pg${process.env.ZIEE_E2E_BASE_PG_PORT || '54331'}`
+
   // Clean up any stale PostgreSQL test containers.
   //
   // CROSS-SESSION SAFETY: multiple concurrent e2e sessions (separate git
@@ -50,9 +62,10 @@ export default async function globalSetup(_config: FullConfig) {
   // is all we need to map a container back to a live owning process.
   console.log('🧹 Cleaning up stale PostgreSQL containers...')
   try {
-    const containers = execSync('docker ps -a --filter "name=ziee-tailtest-postgres-" --format "{{.Names}}"', {
-      encoding: 'utf-8',
-    }).trim()
+    const containers = execSync(
+      `docker ps -a --filter "name=ziee-tailtest-postgres-${sessionNs}-" --format "{{.Names}}"`,
+      { encoding: 'utf-8' },
+    ).trim()
 
     if (containers) {
       const containerList = containers.split('\n')
@@ -111,7 +124,7 @@ export default async function globalSetup(_config: FullConfig) {
   }
 
   // 1. Get or generate unique test run ID (config may have already set it)
-  const runId = process.env.TEST_RUN_ID || crypto.randomBytes(4).toString('hex')
+  const runId = process.env.TEST_RUN_ID || `${sessionNs}-${crypto.randomBytes(4).toString('hex')}`
   console.log(`🆔 Test run ID: ${runId}`)
 
   // Store runId in environment for teardown and test-context
