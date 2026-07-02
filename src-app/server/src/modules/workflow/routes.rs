@@ -184,4 +184,19 @@ pub fn admin_routes() -> ApiRouter {
                 system::remove_workflow_group_docs,
             ),
         )
+        // Group-centric assignment (User Groups page widget)
+        .api_route(
+            "/groups/{group_id}/system-workflows",
+            get_with(
+                system::get_group_system_workflows,
+                system::get_group_system_workflows_docs,
+            ),
+        )
+        .api_route(
+            "/groups/{group_id}/system-workflows",
+            put_with(
+                system::update_group_system_workflows,
+                system::update_group_system_workflows_docs,
+            ),
+        )
 }

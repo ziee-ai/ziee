@@ -1,6 +1,8 @@
 import { BookOpen } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
+import { Stores } from '@/core/stores'
+import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
@@ -10,6 +12,8 @@ import {
   useSkillStore,
   useSystemSkillStore,
 } from '@/modules/skill/stores'
+import { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/GroupSystemSkillsWidget.store'
+import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/GroupSystemSkillsAssignmentDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/skill/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
@@ -21,6 +25,18 @@ const SkillsList = lazyWithPreload(() =>
 const AdminSkillsPage = lazyWithPreload(() =>
   import('./components/admin/AdminSkillsPage').then(m => ({
     default: m.AdminSkillsPage,
+  })),
+)
+
+const GroupSystemSkillsWidget = lazyWithPreload(() =>
+  import('./widgets/GroupSystemSkillsWidget').then(m => ({
+    default: m.GroupSystemSkillsWidget,
+  })),
+)
+
+const GroupSystemSkillsAssignmentDrawer = lazyWithPreload(() =>
+  import('./widgets/GroupSystemSkillsAssignmentDrawer').then(m => ({
+    default: m.GroupSystemSkillsAssignmentDrawer,
   })),
 )
 
@@ -39,6 +55,23 @@ export default createModule({
     {
       name: 'SkillConversationDrawer',
       store: useSkillConversationDrawerStore,
+    },
+    {
+      name: 'GroupSystemSkillsWidget',
+      store: useGroupSystemSkillsWidgetStore,
+    },
+    {
+      name: 'GroupSystemSkillsAssignment',
+      store: useGroupSystemSkillsAssignmentStore,
+    },
+  ],
+  components: [
+    {
+      id: 'group-system-skills-assignment-drawer',
+      component: GroupSystemSkillsAssignmentDrawer,
+      shouldMount: () =>
+        useDelayedFalse(() => Stores.GroupSystemSkillsAssignment.isOpen),
+      order: 100,
     },
   ],
   routes: [
@@ -76,6 +109,12 @@ export default createModule({
         path: 'skills-admin',
         order: 27,
         permission: Permissions.SkillsManageSystem,
+      },
+    ],
+    userGroup: [
+      {
+        order: 30,
+        component: GroupSystemSkillsWidget,
       },
     ],
   },

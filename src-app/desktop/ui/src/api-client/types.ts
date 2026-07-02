@@ -1646,6 +1646,24 @@ export interface GroupSystemServersResponse {
   servers: McpServer[]
 }
 
+/**
+ * `GET/PUT /api/groups/{group_id}/system-skills` response — the system
+ *  skills assigned to a group (group → skills direction, for the User
+ *  Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.
+ */
+export interface GroupSystemSkillsResponse {
+  skills: Skill[]
+}
+
+/**
+ * `GET/PUT /api/groups/{group_id}/system-workflows` response — the system
+ *  workflows assigned to a group (group → workflows direction, for the User
+ *  Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.
+ */
+export interface GroupSystemWorkflowsResponse {
+  workflows: Workflow[]
+}
+
 export interface HardwareInfo {
   cpu: CPUInfo
   gpu_devices: GPUDevice[]
@@ -5407,6 +5425,24 @@ export interface UpdateGroupSystemServersRequest {
   server_ids: string[]
 }
 
+/**
+ * `PUT /api/groups/{group_id}/system-skills` body — the full desired set
+ *  of system-skill ids for the group. Mirrors MCP's
+ *  `UpdateGroupSystemServersRequest`.
+ */
+export interface UpdateGroupSystemSkillsRequest {
+  skill_ids: string[]
+}
+
+/**
+ * `PUT /api/groups/{group_id}/system-workflows` body — the full desired set
+ *  of system-workflow ids for the group. Mirrors MCP's
+ *  `UpdateGroupSystemServersRequest`.
+ */
+export interface UpdateGroupSystemWorkflowsRequest {
+  workflow_ids: string[]
+}
+
 /** Deployment policy — PUT body (tri-state-free: omitted field = unchanged). */
 export interface UpdateHostMountPolicyRequest {
   allow_readwrite?: boolean
@@ -6595,8 +6631,12 @@ export const ApiEndpoints = {
   'FileRagAdmin.update': 'PUT /api/file-rag/admin-settings',
   'Group.getProviders': 'GET /api/groups/{group_id}/providers',
   'Group.getSystemServers': 'GET /api/groups/{group_id}/system-servers',
+  'Group.getSystemSkills': 'GET /api/groups/{group_id}/system-skills',
+  'Group.getSystemWorkflows': 'GET /api/groups/{group_id}/system-workflows',
   'Group.updateProviders': 'PUT /api/groups/{group_id}/providers',
   'Group.updateSystemServers': 'PUT /api/groups/{group_id}/system-servers',
+  'Group.updateSystemSkills': 'PUT /api/groups/{group_id}/system-skills',
+  'Group.updateSystemWorkflows': 'PUT /api/groups/{group_id}/system-workflows',
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
@@ -6964,8 +7004,12 @@ export type ApiEndpointParameters = {
   'FileRagAdmin.update': UpdateFileRagAdminSettingsRequest
   'Group.getProviders': { group_id: string } & PaginationQuery
   'Group.getSystemServers': { group_id: string }
+  'Group.getSystemSkills': { group_id: string }
+  'Group.getSystemWorkflows': { group_id: string }
   'Group.updateProviders': { group_id: string } & UpdateGroupProvidersRequest
   'Group.updateSystemServers': { group_id: string } & UpdateGroupSystemServersRequest
+  'Group.updateSystemSkills': { group_id: string } & UpdateGroupSystemSkillsRequest
+  'Group.updateSystemWorkflows': { group_id: string } & UpdateGroupSystemWorkflowsRequest
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
@@ -7333,8 +7377,12 @@ export type ApiEndpointResponses = {
   'FileRagAdmin.update': FileRagAdminSettings
   'Group.getProviders': GroupProvidersResponse
   'Group.getSystemServers': GroupSystemServersResponse
+  'Group.getSystemSkills': GroupSystemSkillsResponse
+  'Group.getSystemWorkflows': GroupSystemWorkflowsResponse
   'Group.updateProviders': GroupProvidersResponse
   'Group.updateSystemServers': GroupSystemServersResponse
+  'Group.updateSystemSkills': GroupSystemSkillsResponse
+  'Group.updateSystemWorkflows': GroupSystemWorkflowsResponse
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse

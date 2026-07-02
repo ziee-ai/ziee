@@ -19,22 +19,22 @@ use crate::modules::sync::{SyncAction, SyncOrigin};
 use crate::modules::workflow::models::Workflow;
 use crate::modules::workflow::permissions::{WorkflowsAssignToGroups, WorkflowsManageSystem};
 use crate::modules::workflow::repository;
-use crate::modules::workflow::types::{WorkflowGroupsRequest, WorkflowListResponse};
+use crate::modules::workflow::types::{
+    GroupSystemWorkflowsResponse, UpdateGroupSystemWorkflowsRequest, WorkflowGroupsRequest,
+    WorkflowListResponse,
+};
 
 pub async fn list_system_workflows(
     _auth: RequirePermissions<(WorkflowsManageSystem,)>,
 ) -> ApiResult<Json<WorkflowListResponse>> {
-    // System workflows are visible to everyone; admin list is the
-    // moderation surface (delete-only here).
-    let workflows = repository::list_for_user(
-        Repos.pool(),
-        Uuid::nil(),
-        crate::common::DEFAULT_PAGE_SIZE as i64,
-        0,
-    )
-    .await?;
-    let only_system: Vec<_> = workflows.into_iter().filter(|w| w.scope == "system").collect();
-    Ok((StatusCode::OK, Json(WorkflowListResponse { workflows: only_system })))
+    // Admin moderation + group-assignment picker surface: ALL system
+    // workflows, unconditionally. Must NOT use the group-access-filtered
+    // `list_for_user` (with nil user that hides any system workflow already
+    // assigned to a group). Mirrors skill's `list_system`.
+    let workflows =
+        repository::list_system(Repos.pool(), crate::common::PAGINATION_MAX_PER_PAGE as i64, 0)
+            .await?;
+    Ok((StatusCode::OK, Json(WorkflowListResponse { workflows })))
 }
 
 pub fn list_system_workflows_docs(op: TransformOperation) -> TransformOperation {
@@ -177,5 +177,100 @@ pub fn remove_workflow_group_docs(op: TransformOperation) -> TransformOperation 
         .tag("Workflows - Admin")
         .summary("Remove a workflow from one group")
         .response_with::<204, (), _>(|r| r.description("Removed"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+// ============================================================
+// Group-centric assignment (User Groups page widget)
+// The reverse of get/set_workflow_groups: given a group, list/replace the
+// system workflows assigned to it. Mirrors MCP's get/update_group_system_servers.
+// ============================================================
+
+/// Get all system workflows assigned to a group (for the User Groups widget).
+pub async fn get_group_system_workflows(
+    _auth: RequirePermissions<(WorkflowsAssignToGroups,)>,
+    AxumPath(group_id): AxumPath<Uuid>,
+) -> ApiResult<Json<GroupSystemWorkflowsResponse>> {
+    if Repos.group.get_by_id(group_id).await?.is_none() {
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Group").into());
+    }
+    let workflows = repository::get_system_workflows_for_group(Repos.pool(), group_id).await?;
+    Ok((StatusCode::OK, Json(GroupSystemWorkflowsResponse { workflows })))
+}
+
+pub fn get_group_system_workflows_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsAssignToGroups,)>(op)
+        .id("Group.getSystemWorkflows")
+        .tag("Admin - Groups")
+        .summary("Get all system workflows assigned to a group")
+        .description("Get all system workflows assigned to a group (for the User Groups assignment widget)")
+        .response::<200, Json<GroupSystemWorkflowsResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+/// Atomically replace the set of system workflows assigned to a group. Rejects
+/// non-system / unknown workflow ids with a 400 BEFORE writing (the
+/// `group_workflows` trigger would otherwise surface as a 500).
+pub async fn update_group_system_workflows(
+    _auth: RequirePermissions<(WorkflowsAssignToGroups,)>,
+    AxumPath(group_id): AxumPath<Uuid>,
+    origin: SyncOrigin,
+    Json(request): Json<UpdateGroupSystemWorkflowsRequest>,
+) -> ApiResult<Json<GroupSystemWorkflowsResponse>> {
+    use std::collections::HashSet;
+
+    if Repos.group.get_by_id(group_id).await?.is_none() {
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Group").into());
+    }
+
+    let new_ids: HashSet<Uuid> = request.workflow_ids.iter().copied().collect();
+    let desired: Vec<Uuid> = new_ids.iter().copied().collect();
+
+    // Guard: every requested id must be an existing system-scope workflow. This
+    // fires BEFORE any write, so the group_workflows scope trigger stays a
+    // backstop and never surfaces as a 500.
+    if !new_ids.is_empty() {
+        let system_count =
+            repository::count_system_workflows_in(Repos.pool(), &desired).await?;
+        if system_count as usize != new_ids.len() {
+            return Err::<_, (StatusCode, AppError)>(
+                AppError::bad_request(
+                    "INVALID_SCOPE",
+                    "only existing system-scope workflows can be assigned to groups",
+                )
+                .into(),
+            );
+        }
+    }
+
+    // Diff current vs desired so we emit sync events only for the workflows
+    // whose group membership actually changed.
+    let current = repository::get_system_workflows_for_group(Repos.pool(), group_id).await?;
+    let current_ids: HashSet<Uuid> = current.iter().map(|w| w.id).collect();
+    let affected: HashSet<Uuid> = new_ids.symmetric_difference(&current_ids).copied().collect();
+
+    // Apply the full replace atomically (no partial-write access-loss window).
+    Repos.workflow.set_group_system_workflows(group_id, &desired).await?;
+
+    for workflow_id in affected {
+        crate::modules::workflow::events::emit_system_workflow(
+            SyncAction::Update,
+            workflow_id,
+            origin.0,
+        );
+    }
+
+    let workflows = repository::get_system_workflows_for_group(Repos.pool(), group_id).await?;
+    Ok((StatusCode::OK, Json(GroupSystemWorkflowsResponse { workflows })))
+}
+
+pub fn update_group_system_workflows_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsAssignToGroups,)>(op)
+        .id("Group.updateSystemWorkflows")
+        .tag("Admin - Groups")
+        .summary("Update system workflows assigned to a group")
+        .description("Atomically updates system-workflow assignments. Adds new workflows and removes unspecified ones.")
+        .response::<200, Json<GroupSystemWorkflowsResponse>>()
+        .response_with::<400, (), _>(|r| r.description("Bad request — non-system or unknown workflow id"))
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }

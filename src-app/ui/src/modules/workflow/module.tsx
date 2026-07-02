@@ -1,6 +1,8 @@
 import { Workflow as WorkflowIcon } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
+import { Stores } from '@/core/stores'
+import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useSystemWorkflowStore,
@@ -9,6 +11,8 @@ import {
   useWorkflowRunStore,
   useWorkflowStore,
 } from '@/modules/workflow/stores'
+import { useGroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsWidget.store'
+import { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/workflow/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
@@ -25,6 +29,18 @@ const AdminWorkflowsPage = lazyWithPreload(() =>
   })),
 )
 
+const GroupSystemWorkflowsWidget = lazyWithPreload(() =>
+  import('./widgets/GroupSystemWorkflowsWidget').then(m => ({
+    default: m.GroupSystemWorkflowsWidget,
+  })),
+)
+
+const GroupSystemWorkflowsAssignmentDrawer = lazyWithPreload(() =>
+  import('./widgets/GroupSystemWorkflowsAssignmentDrawer').then(m => ({
+    default: m.GroupSystemWorkflowsAssignmentDrawer,
+  })),
+)
+
 export default createModule({
   metadata: {
     name: 'workflow',
@@ -38,6 +54,23 @@ export default createModule({
     { name: 'WorkflowRun', store: useWorkflowRunStore },
     { name: 'WorkflowRuns', store: useWorkflowRunsStore },
     { name: 'WorkflowDrawer', store: useWorkflowDrawerStore },
+    {
+      name: 'GroupSystemWorkflowsWidget',
+      store: useGroupSystemWorkflowsWidgetStore,
+    },
+    {
+      name: 'GroupSystemWorkflowsAssignment',
+      store: useGroupSystemWorkflowsAssignmentStore,
+    },
+  ],
+  components: [
+    {
+      id: 'group-system-workflows-assignment-drawer',
+      component: GroupSystemWorkflowsAssignmentDrawer,
+      shouldMount: () =>
+        useDelayedFalse(() => Stores.GroupSystemWorkflowsAssignment.isOpen),
+      order: 100,
+    },
   ],
   routes: [
     {
@@ -76,6 +109,12 @@ export default createModule({
         path: 'workflows-admin',
         order: 28,
         permission: Permissions.WorkflowsManageSystem,
+      },
+    ],
+    userGroup: [
+      {
+        order: 40,
+        component: GroupSystemWorkflowsWidget,
       },
     ],
   },

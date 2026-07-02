@@ -97,6 +97,36 @@ impl WorkflowRepository {
     ) -> Result<(), AppError> {
         remove_workflow_group(&self.pool, workflow_id, group_id).await
     }
+
+    /// All system workflows assigned to a group (group → workflows direction,
+    /// for the User Groups page assignment widget). Mirrors the MCP
+    /// `get_system_servers_for_group`.
+    pub async fn get_system_workflows_for_group(
+        &self,
+        group_id: Uuid,
+    ) -> Result<Vec<Workflow>, AppError> {
+        get_system_workflows_for_group(&self.pool, group_id).await
+    }
+
+    /// How many of the given ids are existing `scope = 'system'` workflows.
+    /// The group-assignment update handler compares this to the requested
+    /// count to reject non-system / unknown ids with a 400 before writing.
+    pub async fn count_system_workflows_in(&self, ids: &[Uuid]) -> Result<i64, AppError> {
+        count_system_workflows_in(&self.pool, ids).await
+    }
+
+    /// Replace the full set of system workflows assigned to a group in ONE
+    /// transaction (group → workflows direction). Removing-then-adding as N
+    /// separate pool calls left a partial-write window that could strip a
+    /// group's access on a mid-loop failure; the tx removes that window.
+    /// Callers MUST have validated `desired` are all system-scope.
+    pub async fn set_group_system_workflows(
+        &self,
+        group_id: Uuid,
+        desired: &[Uuid],
+    ) -> Result<(), AppError> {
+        set_group_system_workflows(&self.pool, group_id, desired).await
+    }
 }
 
 pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, AppError> {
@@ -1067,6 +1097,138 @@ pub async fn remove_workflow_group(
     .await
     .map_err(AppError::database_error)?;
     Ok(())
+}
+
+/// All `scope = 'system'` workflows, unconditionally (NOT access-filtered by
+/// group membership — mirrors skill's `list_system`). This is the admin
+/// moderation / assignment-picker surface: a system workflow already assigned
+/// to a group must still appear here, which the group-filtered `list_for_user`
+/// would hide.
+pub async fn list_system(pool: &PgPool, limit: i64, offset: i64) -> Result<Vec<Workflow>, AppError> {
+    let rows = sqlx::query_as!(
+        Workflow,
+        r#"
+        SELECT
+            id,
+            name,
+            version,
+            display_name,
+            description,
+            extracted_path,
+            bundle_sha256,
+            bundle_size_bytes,
+            file_count,
+            entry_point,
+            tags as "tags: _",
+            scope,
+            owner_user_id,
+            created_by,
+            enabled,
+            is_dev,
+            ephemeral,
+            conversation_id,
+            compiled_ir_json as "compiled_ir_json: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflows
+        WHERE scope = 'system' AND ephemeral = FALSE
+        ORDER BY name ASC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit,
+        offset,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
+pub async fn get_system_workflows_for_group(
+    pool: &PgPool,
+    group_id: Uuid,
+) -> Result<Vec<Workflow>, AppError> {
+    let rows = sqlx::query_as!(
+        Workflow,
+        r#"
+        SELECT
+            w.id,
+            w.name,
+            w.version,
+            w.display_name,
+            w.description,
+            w.extracted_path,
+            w.bundle_sha256,
+            w.bundle_size_bytes,
+            w.file_count,
+            w.entry_point,
+            w.tags as "tags: _",
+            w.scope,
+            w.owner_user_id,
+            w.created_by,
+            w.enabled,
+            w.is_dev,
+            w.ephemeral,
+            w.conversation_id,
+            w.compiled_ir_json as "compiled_ir_json: _",
+            w.created_at as "created_at: _",
+            w.updated_at as "updated_at: _"
+        FROM workflows w
+        INNER JOIN group_workflows gw ON w.id = gw.workflow_id
+        WHERE gw.group_id = $1 AND w.scope = 'system'
+        ORDER BY w.name ASC
+        "#,
+        group_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
+pub async fn set_group_system_workflows(
+    pool: &PgPool,
+    group_id: Uuid,
+    desired: &[Uuid],
+) -> Result<(), AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+    // group_workflows only ever holds system workflows (scope trigger), so
+    // dropping every row for this group not in `desired` is a safe replace.
+    sqlx::query!(
+        "DELETE FROM group_workflows WHERE group_id = $1 AND NOT (workflow_id = ANY($2))",
+        group_id,
+        desired,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+    for workflow_id in desired {
+        sqlx::query!(
+            "INSERT INTO group_workflows (group_id, workflow_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            group_id,
+            workflow_id,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(())
+}
+
+pub async fn count_system_workflows_in(pool: &PgPool, ids: &[Uuid]) -> Result<i64, AppError> {
+    let count = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM workflows
+        WHERE scope = 'system' AND id = ANY($1)
+        "#,
+        ids,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(count)
 }
 
 /// Recent runs owned by `user_id`, newest first, capped at `limit`.

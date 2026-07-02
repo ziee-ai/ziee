@@ -115,6 +115,22 @@ pub struct WorkflowGroupsRequest {
     pub group_ids: Vec<Uuid>,
 }
 
+/// `GET/PUT /api/groups/{group_id}/system-workflows` response — the system
+/// workflows assigned to a group (group → workflows direction, for the User
+/// Groups page widget). Mirrors MCP's `GroupSystemServersResponse`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct GroupSystemWorkflowsResponse {
+    pub workflows: Vec<Workflow>,
+}
+
+/// `PUT /api/groups/{group_id}/system-workflows` body — the full desired set
+/// of system-workflow ids for the group. Mirrors MCP's
+/// `UpdateGroupSystemServersRequest`.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct UpdateGroupSystemWorkflowsRequest {
+    pub workflow_ids: Vec<Uuid>,
+}
+
 // ============================================================
 // Runner-side types (B4)
 // ============================================================

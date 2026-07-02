@@ -105,6 +105,8 @@ export async function loginAsAdmin(
     await page.fill('[data-testid="app-setup-email-input"]', email)
     await page.fill('[data-testid="app-setup-password-input"]', password)
     await page.fill('[data-testid="app-setup-confirm-password-input"]', password)
+    // The setup submit is a kit Button (onClick=handleSubmit), not a native
+    // type=submit, post-shadcn — key off its stable testid.
     // The setup Button submits via onClick (type="button"), not a native
     // submit — click it by its stable testid rather than a `type="submit"`
     // selector that the migrated kit Button no longer matches.

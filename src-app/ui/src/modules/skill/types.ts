@@ -6,6 +6,8 @@ import type {
   useSkillStore,
   useSystemSkillStore,
 } from '@/modules/skill/stores'
+import type { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/GroupSystemSkillsWidget.store'
+import type { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/GroupSystemSkillsAssignmentDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -17,6 +19,12 @@ declare module '@/core/stores' {
     SkillDrawer: StoreProxy<ReturnType<typeof useSkillDrawerStore.getState>>
     SkillConversationDrawer: StoreProxy<
       ReturnType<typeof useSkillConversationDrawerStore.getState>
+    >
+    GroupSystemSkillsWidget: StoreProxy<
+      ReturnType<typeof useGroupSystemSkillsWidgetStore.getState>
+    >
+    GroupSystemSkillsAssignment: StoreProxy<
+      ReturnType<typeof useGroupSystemSkillsAssignmentStore.getState>
     >
   }
 }

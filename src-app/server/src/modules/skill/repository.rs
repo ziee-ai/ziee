@@ -192,6 +192,59 @@ impl SkillRepository {
         remove_skill_from_group(&self.pool, skill_id, group_id).await
     }
 
+    /// All system skills assigned to a group (group → skills direction,
+    /// for the User Groups page assignment widget). Mirrors the MCP
+    /// `get_system_servers_for_group`.
+    pub async fn get_system_skills_for_group(
+        &self,
+        group_id: Uuid,
+    ) -> Result<Vec<Skill>, AppError> {
+        get_system_skills_for_group(&self.pool, group_id).await
+    }
+
+    /// How many of the given ids are existing `scope = 'system'` skills.
+    /// The group-assignment update handler compares this to the requested
+    /// count to reject non-system / unknown ids with a 400 before writing.
+    pub async fn count_system_skills_in(&self, ids: &[Uuid]) -> Result<i64, AppError> {
+        count_system_skills_in(&self.pool, ids).await
+    }
+
+    /// Replace the full set of system skills assigned to a group in ONE
+    /// transaction (the group → skills direction of `set_skill_groups`).
+    /// Removing-then-adding as N separate pool calls left a partial-write
+    /// window that could strip a group's access on a mid-loop failure; the
+    /// tx removes that window. Callers MUST have validated `desired` are all
+    /// system-scope (the `group_skills` scope trigger is the backstop).
+    pub async fn set_group_system_skills(
+        &self,
+        group_id: Uuid,
+        desired: &[Uuid],
+    ) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+        // group_skills only ever holds system skills, so dropping every row for
+        // this group not in `desired` is a safe full-replace.
+        sqlx::query!(
+            "DELETE FROM group_skills WHERE group_id = $1 AND NOT (skill_id = ANY($2))",
+            group_id,
+            desired,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+        for skill_id in desired {
+            sqlx::query!(
+                "INSERT INTO group_skills (group_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                group_id,
+                skill_id,
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(())
+    }
+
     /// Replace the full set of groups assigned to a skill in ONE
     /// transaction. The previous read-diff-then-N-writes flow left the
     /// assignment set partially updated if any write failed midway; doing
@@ -963,4 +1016,48 @@ pub async fn remove_skill_from_group(
     .await
     .map_err(AppError::database_error)?;
     Ok(())
+}
+
+pub async fn get_system_skills_for_group(
+    pool: &PgPool,
+    group_id: Uuid,
+) -> Result<Vec<Skill>, AppError> {
+    let rows = sqlx::query_as!(
+        Skill,
+        r#"
+        SELECT
+            s.id, s.name, s.version, s.display_name, s.description, s.when_to_use,
+            s.extracted_path, s.bundle_sha256, s.bundle_size_bytes, s.file_count,
+            s.entry_point,
+            s.frontmatter_json as "frontmatter_json: _",
+            s.tags as "tags: _", s.scope, s.owner_user_id, s.created_by,
+            s.enabled, s.is_dev,
+            s.created_at as "created_at: _",
+            s.updated_at as "updated_at: _"
+        FROM skills s
+        INNER JOIN group_skills gs ON s.id = gs.skill_id
+        WHERE gs.group_id = $1 AND s.scope = 'system'
+        ORDER BY s.name ASC
+        "#,
+        group_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
+pub async fn count_system_skills_in(pool: &PgPool, ids: &[Uuid]) -> Result<i64, AppError> {
+    let count = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM skills
+        WHERE scope = 'system' AND id = ANY($1)
+        "#,
+        ids,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(count)
 }
