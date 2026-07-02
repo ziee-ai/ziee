@@ -65,7 +65,7 @@ export function Progress({ value, tone = 'primary', size = 'default', shape = 'l
         </svg>
         {showCenter && (
           <span className="absolute text-sm font-medium tabular-nums">
-            {format ? format(Math.round(v)) : `${Math.round(v)}%`}
+            {format ? format(v) : `${Math.round(v)}%`}
           </span>
         )}
       </div>
@@ -85,7 +85,7 @@ export function Progress({ value, tone = 'primary', size = 'default', shape = 'l
     <div className={cn('flex items-center gap-2', className)} data-testid={testid}>
       <div className="flex-1">{bar}</div>
       <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-        {format ? format(Math.round(v)) : `${Math.round(v)}%`}
+        {format ? format(v) : `${Math.round(v)}%`}
       </span>
     </div>
   )
