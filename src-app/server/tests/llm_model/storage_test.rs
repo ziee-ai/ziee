@@ -2,7 +2,7 @@
 ///
 /// These tests verify that file operations (storage, cleanup, validation)
 /// work correctly for model uploads and downloads.
-use crate::common::{TestServer, shared_test_app_data_dir, test_helpers};
+use crate::common::{TestServer, test_helpers};
 use std::fs;
 
 #[tokio::test]
