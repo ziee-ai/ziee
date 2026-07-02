@@ -297,6 +297,8 @@ function ProjectTagWithRemove({
         data-testid="project-trailing-remove-confirm"
         title="Remove from project?"
         description="The conversation becomes unfiled. It is NOT deleted."
+        open={removeOpen}
+        onOpenChange={setRemoveOpen}
         onConfirm={handleRemove}
         onCancel={() => setRemoveOpen(false)}
         okText="Remove"

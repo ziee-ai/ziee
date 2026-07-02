@@ -80,7 +80,9 @@ export async function isModelDownloaded(
  * Get all model cards
  */
 export async function getModelCards(page: Page) {
-  return page.getByTestId(/^hub-model-card-/)
+  // Exclude `hub-model-card-tag-<name>-<tag>` chips that share the prefix,
+  // so counts/nth() land on real cards not tag chips.
+  return page.getByTestId(/^hub-model-card-(?!tag-)/)
 }
 
 /**
@@ -99,7 +101,7 @@ export async function hasAuthRequiredBadge(
  * Returns the card locator, or null if none. Avoids depending on catalog order.
  */
 export async function findAuthRequiredCard(page: Page): Promise<Locator | null> {
-  const cards = page.getByTestId(/^hub-model-card-/)
+  const cards = page.getByTestId(/^hub-model-card-(?!tag-)/)
   const n = await cards.count()
   for (let i = 0; i < n; i++) {
     const card = cards.nth(i)

@@ -43,7 +43,7 @@ test.describe('LLM Providers - Proxy Settings card', () => {
       page.waitForResponse(
         r =>
           r.url().includes('/api/llm-providers') &&
-          r.request().method() === 'PUT',
+          r.request().method() === 'POST',
         { timeout: 10000 },
       ),
       byTestId(page, 'llm-proxy-save-btn').click(),
