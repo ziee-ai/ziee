@@ -228,15 +228,15 @@ test.describe('Projects - Knowledge / file attach', () => {
     const row = () =>
       drawer.locator('[data-testid="file-card"][data-filename="doomed.txt"]')
     // The delete trigger is a tooltip-wrapped Base-UI alert-dialog trigger that
-    // can sit below the fold and animate ("not stable"); scroll it in + force.
+    // sits below the fold, animates ("not stable"), and re-renders/detaches with
+    // the row — so dispatch the click directly instead of the actionability path.
     const deleteBtn = () =>
       row().locator('[data-testid^="file-project-delete-btn-"]')
     await expect(row()).toBeVisible()
 
     // Click the row's delete button — should open the Confirm
     // (AlertDialog), NOT delete immediately.
-    await deleteBtn().scrollIntoViewIfNeeded()
-    await deleteBtn().click({ force: true })
+    await deleteBtn().dispatchEvent('click')
     const confirm = page.getByRole('alertdialog')
     await expect(confirm).toBeVisible({ timeout: 5000 })
 
@@ -246,8 +246,7 @@ test.describe('Projects - Knowledge / file attach', () => {
     await expect(row()).toBeVisible()
 
     // Reopen + confirm via the Confirm's primary (Delete) button.
-    await deleteBtn().scrollIntoViewIfNeeded()
-    await deleteBtn().click({ force: true })
+    await deleteBtn().dispatchEvent('click')
     await expect(confirm).toBeVisible()
     await confirm.locator('[data-testid$="-confirm"]').click()
 
