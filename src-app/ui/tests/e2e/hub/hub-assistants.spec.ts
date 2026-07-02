@@ -128,7 +128,9 @@ test.describe('Hub Assistants', () => {
 
     // Should have "View" button instead of "Use"
     const card = page.getByTestId(`hub-assistant-card-${assistantId}`)
-    await expect(card.getByTestId('hub-assistant-view-btn')).toBeVisible()
+    await expect(
+      card.getByTestId(`hub-assistant-view-btn-${assistantId}`),
+    ).toBeVisible()
 
     // "Use Assistant" is replaced by View once the assistant exists. But
     // "Use as Template" is a separate admin affordance gated on permissions
@@ -198,7 +200,7 @@ test.describe('Hub Assistants', () => {
 
     // Click "View" button
     const card = page.getByTestId(`hub-assistant-card-${createdAssistantId}`)
-    await card.getByTestId('hub-assistant-view-btn').click()
+    await card.getByTestId(`hub-assistant-view-btn-${createdAssistantId}`).click()
 
     // View navigates to /settings/assistants (the user's own assistants
     // list) per AssistantHubCard. Sanity-check by URL after navigation
