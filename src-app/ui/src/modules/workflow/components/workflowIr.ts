@@ -15,7 +15,10 @@ export interface ParsedStep {
   id: string
   kind?: string
   dependsOn?: string[]
-  message?: string
+  /** Author-facing step label. The compiled IR carries it as `description`
+   *  (IrStep.description); `message` is the elicit-prompt/status line, not the
+   *  static label, so the drawer shows `description`. */
+  description?: string
 }
 
 export interface ParsedWorkflowIr {
@@ -54,7 +57,8 @@ export function parseWorkflowIr(workflow: Workflow): ParsedWorkflowIr {
           dependsOn: Array.isArray(s.depends_on)
             ? (s.depends_on as string[])
             : undefined,
-          message: typeof s.message === 'string' ? s.message : undefined,
+          description:
+            typeof s.description === 'string' ? s.description : undefined,
         }))
     : []
 

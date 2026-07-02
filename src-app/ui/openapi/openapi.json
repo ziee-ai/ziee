@@ -16312,162 +16312,6 @@
         ]
       }
     },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/workflows": {
       "get": {
         "tags": [
@@ -18084,6 +17928,162 @@
         ]
       }
     },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -18701,6 +18701,170 @@
         ]
       }
     },
+    "/api/web-search/user-keys": {
+      "get": {
+        "tags": [
+          "WebSearch"
+        ],
+        "summary": "List the caller's own web-search provider keys (masked) + catalog",
+        "description": "Returns each key-accepting provider with the caller's own key in masked form (or null) and whether a shared deployment key exists. The raw key value is never returned.",
+        "operationId": "WebSearch.listUserKeys",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the web search + page-fetch tools.",
+                        "name": "WebSearchUse",
+                        "value": "web_search::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: web_search::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProviderKeyCatalogResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/web-search/user-keys/{provider}": {
+      "put": {
+        "tags": [
+          "WebSearch"
+        ],
+        "summary": "Save the caller's own API key for a web-search provider",
+        "description": "Stores the caller's own key (encrypted). The key is never echoed back.",
+        "operationId": "WebSearch.saveUserKey",
+        "requestBody": {
+          "description": "PUT body to set the calling user's own key for a provider.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveUserProviderKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the web search + page-fetch tools.",
+                        "name": "WebSearchUse",
+                        "value": "web_search::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: web_search::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProviderKeyCatalogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error / unknown provider"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "WebSearch"
+        ],
+        "summary": "Delete the caller's own API key for a web-search provider",
+        "description": "\n\n**Required Permission:** `web_search::use`\n\nUse the web search + page-fetch tools.",
+        "operationId": "WebSearch.deleteUserKey",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the web search + page-fetch tools.",
+                        "name": "WebSearchUse",
+                        "value": "web_search::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: web_search::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/lit-search/settings": {
       "get": {
         "tags": [
@@ -18912,6 +19076,170 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/lit-search/user-keys": {
+      "get": {
+        "tags": [
+          "LitSearch"
+        ],
+        "summary": "List the caller's own lit-search connector keys (masked) + catalog",
+        "description": "Returns each key-accepting connector with the caller's own key in masked form (or null) and whether a shared deployment key exists. The raw key value is never returned.",
+        "operationId": "LitSearch.listUserKeys",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the literature search + screening tools.",
+                        "name": "LitSearchUse",
+                        "value": "lit_search::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: lit_search::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserConnectorKeyCatalogResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/lit-search/user-keys/{connector}": {
+      "put": {
+        "tags": [
+          "LitSearch"
+        ],
+        "summary": "Save the caller's own API key for a lit-search connector",
+        "description": "Stores the caller's own key (encrypted). The key is never echoed back.",
+        "operationId": "LitSearch.saveUserKey",
+        "requestBody": {
+          "description": "PUT body to set the calling user's own key for a connector.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveUserConnectorKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the literature search + screening tools.",
+                        "name": "LitSearchUse",
+                        "value": "lit_search::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: lit_search::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserConnectorKeyCatalogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error / unknown connector"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "LitSearch"
+        ],
+        "summary": "Delete the caller's own API key for a lit-search connector",
+        "description": "\n\n**Required Permission:** `lit_search::use`\n\nUse the literature search + screening tools.",
+        "operationId": "LitSearch.deleteUserKey",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the literature search + screening tools.",
+                        "name": "LitSearchUse",
+                        "value": "lit_search::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: lit_search::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
@@ -31963,6 +32291,30 @@
           "api_key"
         ]
       },
+      "SaveUserConnectorKeyRequest": {
+        "description": "PUT body to set the calling user's own key for a connector.",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key"
+        ]
+      },
+      "SaveUserProviderKeyRequest": {
+        "description": "PUT body to set the calling user's own key for a provider.",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key"
+        ]
+      },
       "SendMessageRequest": {
         "description": "Request to send a message in a conversation\n\n Extensions contribute fields by creating an extension.rs file with a RequestFields struct.\n The build script automatically discovers and registers these extensions.",
         "type": "object",
@@ -32634,6 +32986,16 @@
             "description": "A user's saved LLM-provider API key (`id` is the provider id; only\n masked state is ever exposed, and only via refetch).",
             "type": "string",
             "const": "api_key"
+          },
+          {
+            "description": "A user's saved web_search provider key changed (set/clear). Owner-scoped;\n notify-only — the client refetches `GET /api/web-search/user-keys` (masked\n state only). `id` is `Uuid::nil()` (the key is addressed by provider name,\n not a uuid; the refetch reloads the whole per-user catalog).",
+            "type": "string",
+            "const": "web_search_user_key"
+          },
+          {
+            "description": "A user's saved lit_search connector key changed (set/clear). Owner-scoped;\n notify-only — the client refetches `GET /api/lit-search/user-keys`.",
+            "type": "string",
+            "const": "lit_search_user_key"
           },
           {
             "description": "A chat conversation owned by the user. `id` is the conversation id.\n Emitted on create/rename/delete, on each completed message turn, and on\n branch/message edits — the recipient refetches the list and (if open)\n the conversation's messages. Live assistant TOKENS do NOT ride this\n stream; they go over the dedicated `chat/stream` token channel.",
@@ -34913,6 +35275,59 @@
           "keys"
         ]
       },
+      "UserConnectorKeyCatalogEntry": {
+        "description": "One row in the user-facing key catalog: a key-accepting connector joined with\n the calling user's own key state + whether a deployment (shared) key exists.\n Neither the user key nor the deployment key value is ever exposed.",
+        "type": "object",
+        "properties": {
+          "connector": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "key_field": {
+            "description": "The connector's key-field descriptor (label / help / docs / required),\n so the user form renders the same guidance as the admin surface.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeyFieldInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "system_key_set": {
+            "description": "True when the deployment/admin has a shared key for this connector — the\n fallback used when the user sets none. Boolean only, never the value.",
+            "type": "boolean"
+          },
+          "user_key": {
+            "description": "The user's own key in masked form, or `null` when they've set none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "connector",
+          "display_name",
+          "system_key_set"
+        ]
+      },
+      "UserConnectorKeyCatalogResponse": {
+        "type": "object",
+        "properties": {
+          "connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserConnectorKeyCatalogEntry"
+            }
+          }
+        },
+        "required": [
+          "connectors"
+        ]
+      },
       "UserListResponse": {
         "type": "object",
         "properties": {
@@ -35153,6 +35568,52 @@
           "max_memories",
           "created_at",
           "updated_at"
+        ]
+      },
+      "UserProviderKeyCatalogEntry": {
+        "description": "One row in the user-facing key catalog: a key-accepting provider joined with\n the calling user's own key state + whether a deployment (shared) key exists.\n Neither the user key nor the deployment key value is ever exposed.",
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "needs_api_key": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "system_key_set": {
+            "description": "True when the deployment/admin has a shared key for this provider — the\n fallback used when the user sets none. Boolean only, never the value.",
+            "type": "boolean"
+          },
+          "user_key": {
+            "description": "The user's own key in masked form, or `null` when they've set none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "provider",
+          "display_name",
+          "needs_api_key",
+          "system_key_set"
+        ]
+      },
+      "UserProviderKeyCatalogResponse": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserProviderKeyCatalogEntry"
+            }
+          }
+        },
+        "required": [
+          "providers"
         ]
       },
       "UserProvidersQuery": {

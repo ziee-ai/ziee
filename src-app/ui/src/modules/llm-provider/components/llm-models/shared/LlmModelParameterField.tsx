@@ -43,7 +43,7 @@ function StringArrayInput({
     <div className={className}>
       <div className="mb-2">
         {value?.map(tag => (
-          <Tag
+          <Tag variant="outline"
             key={tag}
             onClose={() => {
               const newValue = value.filter(t => t !== tag)

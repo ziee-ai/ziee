@@ -1,31 +1,17 @@
-import { Pencil } from 'lucide-react'
-import {
-  Button,
-  Accordion,
-  Empty,
-  Flex,
-  MultiSelect,
-  Space,
-  Spin,
-  Tag,
-  Text,
-} from '@/components/ui'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { ApiClient } from '@/api-client'
-import type { Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
+import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
 
 interface AdminWorkflowGroupAssignmentProps {
   workflowId: string
 }
 
 /**
- * Group-assignment card for a system workflow. Empty assignment = the
- * workflow is available to ALL users; adding groups restricts it.
- * Mirrors AdminSkillGroupAssignment — load current groups via
- * `WorkflowSystem.getGroups`, edit + save via `WorkflowSystem.setGroups`.
+ * Group-assignment section for a system workflow (empty assignment = available
+ * to ALL users). Thin wrapper over the shared UserGroupAssignment component.
  */
 export function AdminWorkflowGroupAssignment({
   workflowId,
@@ -35,114 +21,28 @@ export function AdminWorkflowGroupAssignment({
   const loading = entry?.loading ?? false
   const canAssign = usePermission(Permissions.WorkflowsAssignToGroups)
 
-  const [editing, setEditing] = useState(false)
-  const [allGroups, setAllGroups] = useState<Group[]>([])
-  const [draft, setDraft] = useState<string[]>([])
-  const [saving, setSaving] = useState(false)
-
   useEffect(() => {
     void Stores.SystemWorkflow.__state.loadGroups(workflowId)
   }, [workflowId])
 
-  const startEdit = async () => {
-    setDraft(assignedIds)
-    try {
-      const res = await ApiClient.UserGroup.list({ page: 1, per_page: 100 })
-      setAllGroups(res.groups)
-      setEditing(true)
-    } catch {
-      // Error handled silently
-    }
-  }
-
-  const save = async () => {
-    setSaving(true)
-    try {
-      await Stores.SystemWorkflow.setGroups(workflowId, draft)
-      setEditing(false)
-    } catch {
-      // Error handled silently
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const nameFor = (id: string) => allGroups.find(g => g.id === id)?.name ?? id
-
   return (
-    <div className="pb-3" data-workflow-id={workflowId}>
-      <Accordion
-        data-testid="wf-group-assign-accordion"
-        collapsible
-        items={[
-          {
-            key: 'groups',
-            label: <Text className="font-medium text-sm">User Groups</Text>,
-            children: loading ? (
-              <Spin size="sm" label="Loading groups" />
-            ) : editing ? (
-              <Space direction="vertical" className="w-full">
-                <MultiSelect
-                  data-testid="wf-group-assign-multiselect"
-                  className="w-full"
-                  aria-label="Restrict to groups"
-                  placeholder="Restrict to specific groups (empty = all users)"
-                  searchPlaceholder="Search groups…"
-                  value={draft}
-                  onChange={setDraft}
-                  options={allGroups.map(g => ({
-                    label: g.name,
-                    value: g.id,
-                  }))}
-                  removeLabel={(label) => `Remove ${label}`}
-                  emptyText="No groups found"
-                />
-                <Flex gap="sm" justify="end">
-                  <Button data-testid="wf-group-assign-cancel-btn" size="sm" variant="outline" onClick={() => setEditing(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    data-testid="wf-group-assign-save-btn"
-                    size="sm"
-                    loading={saving}
-                    onClick={save}
-                  >
-                    Save
-                  </Button>
-                </Flex>
-              </Space>
-            ) : assignedIds.length === 0 ? (
-              <Empty
-                data-testid="wf-group-assign-empty"
-                description="Available to all users"
-                className="!my-2"
-              />
-            ) : (
-              <Space wrap size="middle">
-                {assignedIds.map(id => (
-                  <Tag key={id} data-testid={`wf-group-assign-tag-${id}`} tone="info">
-                    {nameFor(id)}
-                  </Tag>
-                ))}
-              </Space>
-            ),
+    // px-3 aligns the section with the card's p-3 header (the card is a plain
+    // bordered div with no content padding of its own).
+    <div data-workflow-id={workflowId} className="px-3">
+      <UserGroupAssignment
+        data-testid="wf-group"
+        assignedGroups={assignedIds.map(id => ({ id, name: id }))}
+        loading={loading}
+        canAssign={canAssign}
+        emptyText="Available to all users"
+        editor={{
+          loadAllGroups: async () => {
+            const res = await ApiClient.UserGroup.list({ page: 1, per_page: 100 })
+            return res.groups.map(g => ({ id: g.id, name: g.name, description: g.description, is_default: g.is_default }))
           },
-        ]}
+          save: ids => Stores.SystemWorkflow.setGroups(workflowId, ids),
+        }}
       />
-      {canAssign && !editing && assignedIds.length > 0 && (
-        <div className="flex justify-end px-4 pb-2">
-          <Button
-            data-testid="wf-group-assign-edit-btn"
-            variant="ghost"
-            size="sm"
-            icon={<Pencil aria-hidden="true" />}
-            onClick={() => void startEdit()}
-            aria-label="Manage user groups"
-          >
-            Assign
-          </Button>
-        </div>
-      )}
     </div>
   )
 }

@@ -146,7 +146,7 @@ export function ModelsHubTab() {
                 .join(', ')}
             </Text>
             <Button
-              size="sm"
+              size="default"
               variant="ghost"
               icon={<Eraser />}
               onClick={clearAllFilters}
@@ -161,7 +161,7 @@ export function ModelsHubTab() {
 
       {/* Models List — incompatible items (min_ziee_version > server)
           are hidden entirely; the backend also rejects installing them. */}
-      <div className="flex-1 overflow-auto px-3 pb-3">
+      <div className="flex-1 overflow-auto p-3">
         {(() => {
           const indexById = new Map(
             (catalog?.items ?? [])

@@ -39,7 +39,7 @@ export function SettingsPageContainer({
           {subtitle && (
             <Text
               type="secondary"
-              className=" !m-0 !p-0 text-base !leading-tight"
+              className=" !m-0 !p-0 text-sm !leading-tight"
             >
               {subtitle}
             </Text>

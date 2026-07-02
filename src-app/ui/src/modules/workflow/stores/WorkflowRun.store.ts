@@ -157,6 +157,10 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
               set(draft => {
                 const v = draft.runs[runId] ?? blankView(runId)
                 v.status = d.status
+                // Carry the terminal error so a view that subscribes AFTER the
+                // run already failed (missing the live RunFailed event) still
+                // renders the run-level error alert.
+                v.error = d.error ?? undefined
                 v.totalTokens = d.total_tokens
                 v.currentStep = d.current_step ?? undefined
                 v.pendingElicitation =

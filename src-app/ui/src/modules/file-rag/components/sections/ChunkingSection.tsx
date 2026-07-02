@@ -1,10 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Alert,
-  Button,
   Card,
-  Separator,
-  Flex,
   Form,
   FormField,
   useForm,
@@ -16,6 +13,7 @@ import {
 import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
@@ -40,6 +38,9 @@ export function ChunkingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, saving, error } = Stores.FileRagAdmin
+  // Client-side cross-field validation (overlap < chunk) surfaced as a persistent
+  // alert, alongside the toast + field errors.
+  const [validationError, setValidationError] = useState<string | null>(null)
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -82,6 +83,7 @@ export function ChunkingSection() {
 
   const handleSubmit = async (values: FormValues) => {
     if (values.chunk_overlap_chars >= values.chunk_chars) {
+      setValidationError('Overlap must be smaller than the chunk size.')
       message.error('Overlap must be smaller than the chunk size.')
       form.setError('chunk_chars', {
         type: 'manual',
@@ -93,6 +95,7 @@ export function ChunkingSection() {
       })
       return
     }
+    setValidationError(null)
     try {
       await Stores.FileRagAdmin.update({
         chunk_chars: values.chunk_chars,
@@ -108,9 +111,21 @@ export function ChunkingSection() {
   }
 
   return (
-    <Card data-testid="filerag-chunking-card" title="Chunking">
-      {error && (
-        <Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error} />
+    <Card
+      data-testid="filerag-chunking-card"
+      title="Chunking"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSubmit)}
+          onCancel={() => form.reset()}
+          saving={saving}
+          saveTestid="filerag-chunking-save"
+          cancelTestid="filerag-chunking-cancel"
+        />
+      ) : undefined}
+    >
+      {(error || validationError) && (
+        <Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error || validationError} />
       )}
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Applies to files indexed after saving; existing files keep their current
@@ -121,7 +136,6 @@ export function ChunkingSection() {
         name="file-rag-admin-chunking-form"
         form={form}
         layout="horizontal"
-        labelWidth="10rem"
         onSubmit={handleSubmit}
         disabled={!canManage}
       >
@@ -149,16 +163,6 @@ export function ChunkingSection() {
           <InputNumber data-testid="filerag-chunking-max-chunks" min={1} max={100000} step={100} className="w-40" />
         </FormField>
 
-        {canManage && (
-          <>
-            <Separator className="my-3" />
-            <Flex justify="end">
-              <Button data-testid="filerag-chunking-save" type="submit" loading={saving}>
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
     </Card>
   )

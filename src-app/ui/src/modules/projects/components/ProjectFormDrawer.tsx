@@ -208,7 +208,7 @@ export function ProjectFormDrawer() {
             <Button
               data-testid="project-form-discard-edits-button"
               variant="link"
-              size="sm"
+              size="default"
               onClick={handleDiscardLocalEdits}
               className="!p-0"
             >

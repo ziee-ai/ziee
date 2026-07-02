@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Alert, Button, Card, Confirm, Tag, Text, Tooltip, Switch, Flex } from '@/components/ui'
-import { Pencil, Wrench, Trash2, Plug } from 'lucide-react'
+import { Pencil, Trash2, Plug } from 'lucide-react'
 import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -33,6 +33,7 @@ interface McpServerCardProps {
 export function McpServerCard({
   server,
   isEditable = true,
+  bordered = true,
 }: McpServerCardProps) {
   const [enableLoading, setEnableLoading] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -133,10 +134,7 @@ export function McpServerCard({
     }
   }
 
-  return (
-    <Card
-      data-testid={`mcp-server-card-${server.id}`}
-    >
+  const cardBody = (
       <div className="flex items-start gap-3 flex-wrap">
         {/* Server Info */}
         <div className="flex-1">
@@ -148,12 +146,11 @@ export function McpServerCard({
           <div className="mb-3 flex items-center gap-2 flex-wrap">
             <div className="flex-1 min-w-48">
               <Flex className="gap-2 items-center">
-                <Wrench aria-hidden="true" className="text-base" />
                 <Text className="font-semibold text-base">{server.display_name}</Text>
                 {!isEditable && server.is_system && (
-                  <Tag tone="info" data-testid="mcp-server-system-tag">System</Tag>
+                  <Tag variant="outline" tone="info" data-testid="mcp-server-system-tag">System</Tag>
                 )}
-                <Tag
+                <Tag variant="outline"
                   data-testid="mcp-server-transport-tag"
                   tone={
                     server.transport_type === 'stdio'
@@ -167,11 +164,11 @@ export function McpServerCard({
                 </Tag>
                 {server.supports_sampling && (
                   <Tooltip title={`Sampling enabled · ${server.usage_mode === 'always' ? 'Always mode' : 'Auto mode'}`}>
-                    <Tag tone="info" data-testid="mcp-sampling-badge">Sampling</Tag>
+                    <Tag variant="outline" tone="info" data-testid="mcp-sampling-badge">Sampling</Tag>
                   </Tooltip>
                 )}
                 {server.usage_mode === 'always' && (
-                  <Tag tone="warning" data-testid="mcp-always-badge">Always</Tag>
+                  <Tag variant="outline" tone="warning" data-testid="mcp-always-badge">Always</Tag>
                 )}
                 {/* Health status from the last probe — surfaces
                     boot-time auto-disable reasons + Test Connection
@@ -199,7 +196,7 @@ export function McpServerCard({
                           </span>
                         }
                       >
-                        <Tag tone="error" data-testid="mcp-health-unhealthy">
+                        <Tag variant="outline" tone="error" data-testid="mcp-health-unhealthy">
                           Unhealthy
                         </Tag>
                       </Tooltip>
@@ -214,7 +211,7 @@ export function McpServerCard({
                             : ''
                         }`}
                       >
-                        <Tag tone="success" data-testid="mcp-health-healthy">
+                        <Tag variant="outline" tone="success" data-testid="mcp-health-healthy">
                           Healthy
                         </Tag>
                       </Tooltip>
@@ -222,7 +219,7 @@ export function McpServerCard({
                   }
                   return (
                     <Tooltip title="Connection has not been tested yet. Click Test Connection or toggle Enabled to run a probe.">
-                      <Tag data-testid="mcp-health-untested">Untested</Tag>
+                      <Tag variant="outline" data-testid="mcp-health-untested">Untested</Tag>
                     </Tooltip>
                   )
                 })()}
@@ -239,14 +236,14 @@ export function McpServerCard({
                         checked={server.enabled}
                         onChange={handleToggleEnable}
                         loading={enableLoading}
-                        aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
+                        tooltip={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
                         data-testid="mcp-server-enable-switch"
                       />
                     </Tooltip>
                   )}
                   {canTest && (
                     <Tooltip title="Test the connection to this server">
-                      <Button
+                      <Button variant="ghost"
                         icon={<Plug />}
                         loading={testing}
                         onClick={e => {
@@ -261,7 +258,7 @@ export function McpServerCard({
                     </Tooltip>
                   )}
                   {canEdit && (
-                    <Button
+                    <Button variant="ghost"
                       icon={<Pencil />}
                       onClick={e => {
                         e.stopPropagation()
@@ -295,7 +292,7 @@ export function McpServerCard({
                       >
                         <Button
                           icon={<Trash2 />}
-                          variant="destructive"
+                          variant="ghost"
                           disabled={server.enabled}
                           onClick={e => e.stopPropagation()}
                           aria-label={`Delete ${server.display_name}`}
@@ -364,6 +361,14 @@ export function McpServerCard({
           </div>
         </div>
       </div>
-    </Card>
+  )
+
+  // The System MCP page renders this card INSIDE an outer Card (SettingsPage
+  // section). Drop the border + padding there so it doesn't read as a card-in-
+  // card. The User MCP page renders it standalone → keep the bordered Card.
+  return bordered ? (
+    <Card data-testid={`mcp-server-card-${server.id}`}>{cardBody}</Card>
+  ) : (
+    <div data-testid={`mcp-server-card-${server.id}`}>{cardBody}</div>
   )
 }

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, Button, Flex, Spin, Tag, Text, message } from '@/components/ui'
+import { Alert, Button, dialog, Flex, Spin, Tag, Text, message } from '@/components/ui'
 import { RotateCw, Star } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -16,7 +16,6 @@ import {
 } from './_rootfsShared'
 
 export function SandboxRootfsVersionsSection() {
-  const { dialog } = require('@/components/ui')
   // Hook-safety: every `Stores.X.field` read is a `useStore` hook under the
   // hood, so ALL needed fields are read at the TOP before any early return.
   // `conversationCount` / `mcpServerWorkspaceCount` are only consumed inside
@@ -111,11 +110,11 @@ export function SandboxRootfsVersionsSection() {
     else message.error(`Failed to set default rootfs to v${version}`)
   }
 
-  const handleSetPin = (version: string) => {
+  const handleSetPin = async (version: string) => {
     if (isMajorBump(pinnedVersion, version)) {
       const convCount = conversationCount ?? 0
       const mcpCount = mcpServerWorkspaceCount ?? 0
-      dialog.confirm({
+      void dialog.confirm({
         title: `Set v${version} as default (major version bump)`,
         description: (
           <div>
@@ -161,7 +160,11 @@ export function SandboxRootfsVersionsSection() {
         okText: 'Set as default and wipe caches',
         cancelText: 'Cancel',
         testid: 'sandbox-major-bump-confirm',
-        onConfirm: () => doSetPin(version),
+      }).then(ok => {
+        // `dialog.confirm` resolves a boolean (there is no `onConfirm`
+        // callback option — it was silently ignored, so confirming did
+        // nothing). Run the pin only when the admin confirms.
+        if (ok) void doSetPin(version)
       })
     } else {
       void doSetPin(version)
@@ -207,11 +210,11 @@ export function SandboxRootfsVersionsSection() {
         <div>
           <Text strong>Currently default: </Text>
           {pinnedVersion ? (
-            <Tag tone="info" icon={<Star />} data-testid="default-chip">
+            <Tag variant="outline" tone="info" icon={<Star />} data-testid="default-chip">
               v{pinnedVersion}
             </Tag>
           ) : (
-            <Tag data-testid="default-chip">
+            <Tag variant="outline" data-testid="default-chip">
               Not yet set (defaults on first reachable GitHub call)
             </Tag>
           )}

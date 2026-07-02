@@ -54,7 +54,7 @@ function toOptions(flavors: EnvironmentInfo[]): {
   value: string
 }[] {
   return flavors.map(e => ({
-    label: `${e.flavor} — ${e.description} (~${e.approximate_size_mb} MB)`,
+    label: `${e.flavor} — ${e.description}`,
     value: e.flavor,
   }))
 }

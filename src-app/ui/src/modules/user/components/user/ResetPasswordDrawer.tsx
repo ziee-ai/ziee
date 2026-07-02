@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Button, Flex, Form, FormField, useForm, zodResolver, PasswordInput, message } from '@/components/ui'
+import { Button, Form, FormField, useForm, zodResolver, PasswordInput, message } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -52,10 +52,29 @@ export function ResetPasswordDrawer() {
         Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
         form.reset()
       }}
-      footer={null}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
+              form.reset()
+            }}
+            data-testid="user-reset-password-cancel-button"
+          >
+            {canReset ? 'Cancel' : 'Close'}
+          </Button>
+          {canReset && (
+            <Button type="submit" form="reset-password-form" data-testid="user-reset-password-submit-button">
+              Reset
+            </Button>
+          )}
+        </div>
+      }
       mask={{ closable: false }}
     >
       <Form
+        name="reset-password-form"
         form={form}
         layout="vertical"
         onSubmit={handleResetPassword}
@@ -74,25 +93,6 @@ export function ResetPasswordDrawer() {
         >
           <PasswordInput placeholder="Confirm new password" showLabel="Show password" hideLabel="Hide password" data-testid="user-reset-confirm-password-input" />
         </FormField>
-        <div className="mb-0">
-          <Flex className="justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
-                form.reset()
-              }}
-              data-testid="user-reset-password-cancel-button"
-            >
-              {canReset ? 'Cancel' : 'Close'}
-            </Button>
-            {canReset && (
-              <Button type="submit" data-testid="user-reset-password-submit-button">
-                Reset
-              </Button>
-            )}
-          </Flex>
-        </div>
       </Form>
     </Drawer>
   )

@@ -1,14 +1,13 @@
-import { CloudDownload, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CloudDownload, Pencil, Trash2 } from 'lucide-react'
 import {
   Alert,
   Button,
   Card,
   Empty,
   Flex,
-  Pagination,
   Switch,
-  Tooltip,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import {
   Text,
   message,
@@ -16,6 +15,7 @@ import {
   Confirm,
 } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type LlmRepository } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
@@ -142,7 +142,7 @@ export function LlmRepositorySettings() {
           className="!mr-2"
           checked={repository.enabled}
           onChange={checked => handleToggleRepository(repository.id, checked)}
-          aria-label={`Toggle ${repository.name} repository`}
+          tooltip={`Toggle ${repository.name} repository`}
         />,
       )
     }
@@ -155,7 +155,7 @@ export function LlmRepositorySettings() {
         <Button
           key="test"
           data-testid={`llmrepo-test-btn-${repository.id}`}
-          variant="outline"
+          variant="ghost"
           icon={<CloudDownload />}
           loading={testing}
           onClick={() => testRepositoryConnection(repository)}
@@ -170,7 +170,7 @@ export function LlmRepositorySettings() {
         <Button
           key="edit"
           data-testid={`llmrepo-edit-btn-${repository.id}`}
-          variant="outline"
+          variant="ghost"
           icon={<Pencil />}
           onClick={() => handleEditRepository(repository)}
         >
@@ -190,7 +190,7 @@ export function LlmRepositorySettings() {
           cancelText="Cancel"
           okButtonProps={{ danger: true }}
         >
-          <Button data-testid={`llmrepo-delete-btn-${repository.id}`} variant="destructive" icon={<Trash2 />}>
+          <Button data-testid={`llmrepo-delete-btn-${repository.id}`} variant="ghost" icon={<Trash2 />}>
             Delete
           </Button>
         </Confirm>,
@@ -211,17 +211,11 @@ export function LlmRepositorySettings() {
         data-testid="llmrepo-card"
         extra={
           <Can permission={Permissions.LlmRepositoriesCreate}>
-            <Tooltip title="Add repository">
-              <Button
-                data-testid="llmrepo-add-btn"
-                variant="outline"
-                size="icon"
-                icon={<Plus />}
-                onClick={handleAddRepository}
-                aria-label="Add repository"
-                tooltip="Add repository"
-              />
-            </Tooltip>
+            <AddButton
+              label="Add repository"
+              onClick={handleAddRepository}
+              data-testid="llmrepo-add-btn"
+            />
           </Can>
         }
       >
@@ -324,26 +318,16 @@ export function LlmRepositorySettings() {
 
           {totalRepositories > 0 && (
             <>
-              <Separator className="!my-3" />
-              <Flex justify="end">
-                <Pagination
-              data-testid="llmrepo-pagination"
-              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
-                  current={storePage}
-                  total={totalRepositories}
-                  pageSize={storePageSize}
-                  showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size: number) => handlePageChange(1, size)}
-                  showQuickJumper
-              jumpLabel="Go to page"
-                  showTotal={(total: number, range: [number, number]) =>
-                    `${range[0]}-${range[1]} of ${total} repositories`
-                  }
-                  onChange={handlePageChange}
-                  pageSizeOptions={[5, 10, 20, 50]}
-                />
-              </Flex>
+              <ListPagination
+          data-testid="llmrepo-pagination"
+          current={storePage}
+          total={totalRepositories}
+          pageSize={storePageSize}
+          onChange={handlePageChange}
+          onPageSizeChange={(size: number) => handlePageChange(1, size)}
+          itemNoun="repositories"
+          aria-label="Pagination"
+        />
             </>
           )}
         </Flex>

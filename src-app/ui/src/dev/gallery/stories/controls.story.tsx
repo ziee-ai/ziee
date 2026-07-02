@@ -23,7 +23,7 @@ import type { GalleryStory } from '../story'
 
 const noop = () => undefined
 
-const sizes = ['sm', 'default', 'lg'] as const
+const sizes = ['default', 'lg'] as const
 
 const opts = [
   { value: 'a', label: 'Option A' },

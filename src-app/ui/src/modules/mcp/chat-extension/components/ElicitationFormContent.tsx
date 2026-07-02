@@ -577,7 +577,7 @@ export function ElicitationFormContent({
                 <Button
                   type="submit"
                   loading={isSubmitting}
-                  size="sm"
+                  size="default"
                   data-testid="elicitation-submit"
                 >
                   Submit
@@ -587,7 +587,7 @@ export function ElicitationFormContent({
                   variant="outline"
                   onClick={handleDecline}
                   loading={isSubmitting}
-                  size="sm"
+                  size="default"
                   data-testid="elicitation-decline"
                 >
                   Decline

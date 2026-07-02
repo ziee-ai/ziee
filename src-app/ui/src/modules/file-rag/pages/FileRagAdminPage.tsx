@@ -25,7 +25,7 @@ export function FileRagAdminPage() {
   const { settings, loading, error } = Stores.FileRagAdmin
   return (
     <SettingsPageContainer
-      title="Document RAG (admin)"
+      title="Document RAG"
       subtitle="Deployment-wide document retrieval: master toggle, embedding model, chunking, full-text tuning, and backfill. On by default — full-text search works immediately; semantic search activates when you set an embedding model."
     >
       {/* Surface load failures (the per-section cards render nothing

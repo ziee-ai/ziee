@@ -303,7 +303,7 @@ const emptyStory: GalleryStory = {
           title="No results"
           description="Try adjusting your filters."
         >
-          <Button data-testid="g-empty-action" size="sm">
+          <Button data-testid="g-empty-action" size="default">
             Create
           </Button>
         </Empty>
@@ -326,7 +326,7 @@ const resultStory: GalleryStory = {
           title="Submitted successfully"
           subtitle="Your changes are saved."
           extra={
-            <Button data-testid="g-result-action" size="sm">
+            <Button data-testid="g-result-action" size="default">
               Continue
             </Button>
           }
@@ -389,7 +389,7 @@ const cardStory: GalleryStory = {
             data-testid="g-card-basic"
             title="Card title"
             extra={
-              <Button data-testid="g-card-extra" size="sm" variant="ghost">
+              <Button data-testid="g-card-extra" size="default" variant="ghost">
                 More
               </Button>
             }
@@ -404,7 +404,7 @@ const cardStory: GalleryStory = {
             title="With footer"
             size="sm"
             footer={
-              <Button data-testid="g-card-ok" size="sm">
+              <Button data-testid="g-card-ok" size="default">
                 Action
               </Button>
             }

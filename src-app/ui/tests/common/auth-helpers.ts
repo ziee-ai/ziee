@@ -65,9 +65,12 @@ export async function loginAsAdmin(
     password = 'password123',
   } = credentials
 
-  // Navigate to setup page to check if admin exists
-  await page.goto(`${baseURL}/setup`)
-  await page.waitForLoadState('networkidle')
+  // Navigate to setup page to check if admin exists. Use domcontentloaded, NOT
+  // networkidle: once authenticated the app opens long-lived SSE streams
+  // (/api/sync/subscribe, /api/chat/stream) that keep the network perpetually
+  // active (and under vite 8's preview proxy they cut + reconnect —
+  // ERR_INCOMPLETE_CHUNKED_ENCODING), so `networkidle` never settles and hangs.
+  await page.goto(`${baseURL}/setup`, { waitUntil: 'domcontentloaded' })
 
   // Wait for React to initialize and check if setup form appears or page redirects
   // The setup page will redirect to /auth if admin already exists
@@ -95,14 +98,17 @@ export async function loginAsAdmin(
     try {
       await page.waitForSelector('[data-testid="app-setup-username-input"]', { timeout: 8000 })
     } catch {
-      await page.reload({ waitUntil: 'networkidle' })
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForSelector('[data-testid="app-setup-username-input"]', { timeout: 30000 })
     }
     await page.fill('[data-testid="app-setup-username-input"]', username)
     await page.fill('[data-testid="app-setup-email-input"]', email)
     await page.fill('[data-testid="app-setup-password-input"]', password)
     await page.fill('[data-testid="app-setup-confirm-password-input"]', password)
-    await page.click('button[type="submit"]')
+    // The setup Button submits via onClick (type="button"), not a native
+    // submit — click it by its stable testid rather than a `type="submit"`
+    // selector that the migrated kit Button no longer matches.
+    await page.click('[data-testid="app-setup-submit-button"]')
 
     // Wait for the persisted token. authenticateUser's catch block
     // preserves the token across an aborted /me (see Auth.store.ts) —
@@ -125,12 +131,13 @@ export async function loginAsAdmin(
     )
   } else {
     // Admin already exists - login instead. Same Vite 504 reload-retry
-    // pattern as the setup branch.
-    await page.goto(`${baseURL}/auth`)
+    // pattern as the setup branch. domcontentloaded (not the default 'load'):
+    // the authenticated app's SSE streams keep the page from settling.
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'domcontentloaded' })
     try {
       await page.waitForSelector('[data-testid="auth-login-username"]', { timeout: 8000 })
     } catch {
-      await page.reload({ waitUntil: 'networkidle' })
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForSelector('[data-testid="auth-login-username"]', { timeout: 30000 })
     }
     await page.fill('[data-testid="auth-login-username"]', username)

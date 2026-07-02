@@ -2,17 +2,16 @@ import { Plus } from 'lucide-react'
 import {
   Button,
   Empty,
-  Flex,
   Form,
   FormField,
   useForm,
   zodResolver,
   Input,
   Textarea,
-  Pagination,
   Tooltip,
   message,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { z } from 'zod'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
@@ -115,7 +114,8 @@ export function UserGroupsSettings() {
       <Can permission={Permissions.GroupsCreate}>
         <Tooltip title="Create group">
           <Button
-            variant="ghost"
+            variant="default"
+            size="icon"
             icon={<Plus aria-hidden="true" />}
             onClick={() => setCreateModalVisible(true)}
             aria-label="Create group"
@@ -147,28 +147,16 @@ export function UserGroupsSettings() {
               onViewMembers={handleViewMembers}
             />
           ))}
-          <div className="flex justify-end">
-            <Pagination
-              data-testid="user-groups-pagination"
-              aria-label="Groups pagination"
-              previousLabel="Previous page"
-              nextLabel="Next page"
-              pageLabel={(page) => `Page ${page}`}
-              current={storePage}
-              total={totalGroups}
-              pageSize={storePageSize}
-              showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size) => handlePageChange(1, size)}
-              showQuickJumper
-              jumpLabel="Go to page"
-              showTotal={(total, range) =>
-                `${range[0]}-${range[1]} of ${total} groups`
-              }
-              onChange={(page) => handlePageChange(page)}
-              pageSizeOptions={[5, 10, 20, 50]}
-            />
-          </div>
+          <ListPagination
+          data-testid="user-groups-pagination"
+          current={storePage}
+          total={totalGroups}
+          pageSize={storePageSize}
+          onChange={(page) => handlePageChange(page)}
+          onPageSizeChange={(size) => handlePageChange(1, size)}
+          itemNoun="groups"
+          aria-label="Groups pagination"
+        />
         </>
       )}
 
@@ -180,11 +168,30 @@ export function UserGroupsSettings() {
           setCreateModalVisible(false)
           createForm.reset()
         }}
-        footer={null}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateModalVisible(false)
+                createForm.reset()
+              }}
+              data-testid="user-create-group-cancel-button"
+            >
+              {canCreate ? 'Cancel' : 'Close'}
+            </Button>
+            {canCreate && (
+              <Button type="submit" form="create-group-form" data-testid="user-create-group-submit-button">
+                Create
+              </Button>
+            )}
+          </div>
+        }
         size={600}
         mask={{ closable: false }}
       >
         <Form
+          name="create-group-form"
           form={createForm}
           layout="vertical"
           onSubmit={handleCreateGroup}
@@ -200,24 +207,6 @@ export function UserGroupsSettings() {
           <FormField name="permissions" label="Permissions">
             <PermissionsField disabled={!canCreate} />
           </FormField>
-
-          <Flex className="justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCreateModalVisible(false)
-                createForm.reset()
-              }}
-              data-testid="user-create-group-cancel-button"
-            >
-              {canCreate ? 'Cancel' : 'Close'}
-            </Button>
-            {canCreate && (
-              <Button type="submit" data-testid="user-create-group-submit-button">
-                Create
-              </Button>
-            )}
-          </Flex>
         </Form>
       </Drawer>
 

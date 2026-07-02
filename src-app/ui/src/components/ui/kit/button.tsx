@@ -1,11 +1,16 @@
 import * as React from 'react'
 import { Loader2 } from 'lucide-react'
-import { Button as ButtonBase, type ButtonProps as BaseButtonProps } from '../shadcn/button'
+import { Button as ButtonBase } from '../shadcn/button'
 import { Skeleton } from '../shadcn/skeleton'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../shadcn/tooltip'
 import { useSurface } from './surface'
 import { cn } from '@/lib/utils'
 import { safeHref } from './safe-href'
+
+// v4 shadcn no longer exports a `ButtonProps` type (Button is a plain function
+// component). Derive the base prop type from the component so it tracks the
+// vendored primitive (variant/size/asChild + native button attrs).
+type BaseButtonProps = React.ComponentProps<typeof ButtonBase>
 
 type ButtonCommon = Omit<BaseButtonProps, 'size'> & {
   loading?: boolean
@@ -28,10 +33,10 @@ export type ButtonProps =
   // icon-only has no text → force a name: a string tooltip, or an explicit aria-label.
   | (ButtonCommon & { size: 'icon'; tooltip: string })
   | (ButtonCommon & { size: 'icon'; 'aria-label': string; tooltip?: React.ReactNode })
-  | (ButtonCommon & { size?: 'sm' | 'default' | 'lg' })
+  | (ButtonCommon & { size?: 'default' | 'lg' })
 
 const skeletonH = (size?: BaseButtonProps['size']) =>
-  size === 'sm' ? 'h-8' : size === 'lg' ? 'h-10' : 'h-9'
+  size === 'lg' ? 'h-9' : 'h-8'
 
 export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
   ({ loading, disabled, href, target, size: ownSize, type = 'button', tooltip, icon, block, children, className: classNameProp, onClick, ...props }, ref) => {
@@ -48,8 +53,18 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
     const nativeDisabled = surfaceDisabled
     const isDisabled = surfaceDisabled || loading
     // a string tooltip becomes the accessible name (unless an explicit aria-label is given).
-    const ariaLabel =
-      (props as { 'aria-label'?: string })['aria-label'] ?? (typeof tooltip === 'string' ? tooltip : undefined)
+    const ariaLabelProp = (props as { 'aria-label'?: string })['aria-label']
+    const ariaLabel = ariaLabelProp ?? (typeof tooltip === 'string' ? tooltip : undefined)
+    // Icon-only buttons (an icon, no visible text) should surface their accessible
+    // name as a hover/focus tooltip too. If the caller gave an aria-label but no
+    // explicit tooltip, reuse it — so every icon button has a tooltip without
+    // per-call-site wiring.
+    // Suppressed when an outer kit <Tooltip> already wraps this button (it injects
+    // data-tooltip-wrapped via Slot) — avoids a double tooltip popup.
+    const tooltipWrapped = (props as Record<string, unknown>)['data-tooltip-wrapped'] != null
+    const iconOnly = icon != null && children == null
+    const effectiveTooltip =
+      tooltip ?? (iconOnly && !tooltipWrapped && typeof ariaLabelProp === 'string' ? ariaLabelProp : undefined)
     const inner = (
       <>
         {loading ? <Loader2 className="animate-spin" aria-hidden /> : (icon != null && <span aria-hidden className="[&_svg]:size-4">{icon}</span>)}
@@ -60,17 +75,27 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
     const linkHref = href ? safeHref(href) : undefined
     const node =
       linkHref && !isDisabled ? (
-        <ButtonBase asChild size={size} className={className} onClick={onClick as React.MouseEventHandler} {...props}>
-          <a
-            ref={ref as React.Ref<HTMLAnchorElement>}
-            href={linkHref}
-            target={target}
-            rel={target === '_blank' ? 'noopener noreferrer' : undefined}
-            aria-label={ariaLabel}
-          >
-            {inner}
-          </a>
-        </ButtonBase>
+        <ButtonBase
+          size={size}
+          className={className}
+          onClick={onClick as React.MouseEventHandler}
+          // Rendering as an <a> (href): tell Base UI this is not a native
+          // <button> so it doesn't warn/attach button-only semantics. Mirrors
+          // shadcn/pagination.tsx's anchor case.
+          nativeButton={false}
+          {...props}
+          render={
+            <a
+              ref={ref as React.Ref<HTMLAnchorElement>}
+              href={linkHref}
+              target={target}
+              rel={target === '_blank' ? 'noopener noreferrer' : undefined}
+              aria-label={ariaLabel}
+            >
+              {inner}
+            </a>
+          }
+        />
       ) : (
         <ButtonBase
           ref={ref as React.Ref<HTMLButtonElement>}
@@ -89,12 +114,12 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
         </ButtonBase>
       )
 
-    if (tooltip == null) return node
+    if (effectiveTooltip == null) return node
     return (
-      <TooltipProvider delayDuration={300}>
+      <TooltipProvider delay={300}>
         <Tooltip>
-          <TooltipTrigger asChild>{node}</TooltipTrigger>
-          <TooltipContent>{tooltip}</TooltipContent>
+          <TooltipTrigger render={node} />
+          <TooltipContent>{effectiveTooltip}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     )

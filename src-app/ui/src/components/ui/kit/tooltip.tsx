@@ -2,7 +2,14 @@ import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { Tooltip as TT, TooltipTrigger, TooltipContent, TooltipProvider } from '../shadcn/tooltip'
 
-export interface TooltipProps {
+/** Extends `HTMLAttributes` (NOT a `[key: string]: unknown` index signature):
+ *  any DOM prop/event a parent `asChild` slot injects (onClick/ref/… from a
+ *  DropdownMenuTrigger, PopoverTrigger, …) is accepted and forwarded onto the
+ *  child via Slot, so <Tooltip> composes directly inside a trigger. A string
+ *  index signature here would collapse `keyof` to `string` and make
+ *  `forwardRef`'s mapped props type widen EVERY named prop to `unknown`. */
+export interface TooltipProps
+  extends Omit<React.HTMLAttributes<HTMLElement>, 'title' | 'content'> {
   /** Tooltip body. `title` is an accepted alias (legacy uses `title`). */
   content?: React.ReactNode
   title?: React.ReactNode
@@ -10,12 +17,6 @@ export interface TooltipProps {
   delay?: number
   className?: string
   children: React.ReactElement
-  /** Any other props (and the ref) are forwarded onto the child element. This
-   *  lets <Tooltip> sit directly inside an `asChild` slot (DropdownMenuTrigger,
-   *  PopoverTrigger, …): the parent injects onClick/ref onto <Tooltip>, which a
-   *  plain function component would silently drop — breaking the trigger. Slot
-   *  merges them onto the child instead. */
-  [key: string]: unknown
 }
 
 export const Tooltip = React.forwardRef<HTMLElement, TooltipProps>(function Tooltip(
@@ -26,15 +27,17 @@ export const Tooltip = React.forwardRef<HTMLElement, TooltipProps>(function Tool
   // Merge any parent-injected props (e.g. an asChild trigger's onClick/ref)
   // onto the child so composition works regardless of nesting order.
   const child = (
-    <Slot ref={ref as React.Ref<HTMLElement>} {...rest}>
+    // Mark the child so a wrapped kit <Button> suppresses its own aria-label
+    // auto-tooltip — this <Tooltip> already owns the tooltip (no double popup).
+    <Slot data-tooltip-wrapped="" ref={ref as React.Ref<HTMLElement>} {...rest}>
       {children}
     </Slot>
   )
   if (body == null) return child
   return (
-    <TooltipProvider delayDuration={delay}>
+    <TooltipProvider delay={delay}>
       <TT>
-        <TooltipTrigger asChild>{child}</TooltipTrigger>
+        <TooltipTrigger render={child} />
         <TooltipContent side={side} className={className}>{body}</TooltipContent>
       </TT>
     </TooltipProvider>

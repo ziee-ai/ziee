@@ -36,6 +36,11 @@ export function WorkflowDetailDrawer() {
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [dryRunOpen, setDryRunOpen] = useState(false)
   const [testsOpen, setTestsOpen] = useState(false)
+  // Must live above the `if (!workflow) return` early return below — a hook
+  // after a conditional return changes the hook count between renders (workflow
+  // null while the drawer's data loads, then non-null), tripping React #310 and
+  // blanking the whole route via the error boundary.
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
 
   // FE LOW-1: the drawer is a singleton bound to Stores.WorkflowDrawer; when
@@ -79,8 +84,6 @@ export function WorkflowDetailDrawer() {
     }
   }
 
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-
   return (
     <Dialog
       data-testid="wf-detail-dialog"
@@ -103,7 +106,7 @@ export function WorkflowDetailDrawer() {
       footer={
         editable ? (
           <>
-            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="destructive" size="sm" icon={<Trash2 />}>
+            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="ghost" size="default" icon={<Trash2 />}>
               Delete
             </Button>
             <Dialog
@@ -191,8 +194,8 @@ export function WorkflowDetailDrawer() {
               {steps.map((s, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <Space size={8}>
-                    <Text>{s.message || s.id}</Text>
-                    {s.kind && <Tag data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
+                    <Text>{s.description || s.id}</Text>
+                    {s.kind && <Tag variant="outline" data-testid={`wf-detail-step-kind-tag-${i}`} className="text-xs !m-0" tone="info">{s.kind}</Tag>}
                   </Space>
                   {s.dependsOn && s.dependsOn.length > 0 && (
                     <Text type="secondary" className="text-xs">

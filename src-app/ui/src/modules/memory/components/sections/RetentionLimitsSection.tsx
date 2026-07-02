@@ -1,10 +1,7 @@
 import { useEffect } from 'react'
 import {
   Alert,
-  Button,
   Card,
-  Separator,
-  Flex,
   Form,
   FormField,
   useForm,
@@ -17,6 +14,7 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { Permissions } from '@/api-client/types'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -89,12 +87,23 @@ export function RetentionLimitsSection() {
   }
 
   return (
-    <Card title="Retention & extraction limits" data-testid="memory-retention-card">
+    <Card
+      title="Retention & extraction limits"
+      data-testid="memory-retention-card"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(handleSubmit)}
+          onCancel={() => form.reset()}
+          saving={saving}
+          saveTestid="memory-retention-save-btn"
+          cancelTestid="memory-retention-cancel-btn"
+        />
+      ) : undefined}
+    >
       <Form
         name="memory-admin-retention-form"
         form={form}
         layout="horizontal"
-        labelWidth="10rem"
         onSubmit={handleSubmit}
         disabled={!canManage}
         data-testid="memory-retention-form"
@@ -114,16 +123,6 @@ export function RetentionLimitsSection() {
           <InputNumber min={1} max={10000} className="w-40" data-testid="memory-retention-quota-input" />
         </FormField>
 
-        {canManage && (
-          <>
-            <Separator className="!my-3" />
-            <Flex justify="end">
-              <Button type="submit" loading={saving} data-testid="memory-retention-save-btn">
-                Save
-              </Button>
-            </Flex>
-          </>
-        )}
       </Form>
     </Card>
   )

@@ -157,7 +157,7 @@ export default function UserLlmProvidersPage() {
           <Title level={4} className="!mb-0" data-testid="ullm-provider-title">
             {currentProvider.name}
           </Title>
-          <Tag data-testid="ullm-key-status-tag" tone={hasUserKey ? 'success' : currentProvider.api_key_configured ? 'info' : 'warning'}>
+          <Tag variant="outline" data-testid="ullm-key-status-tag" tone={hasUserKey ? 'success' : currentProvider.api_key_configured ? 'info' : 'warning'}>
             {hasUserKey ? (
               <><CircleCheck /> Your key configured</>
             ) : currentProvider.api_key_configured ? (

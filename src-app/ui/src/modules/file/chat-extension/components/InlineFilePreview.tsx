@@ -140,7 +140,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
         {canInline && Body && (
           <Button
             variant="ghost"
-            size="sm"
+            size="default"
             aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
             aria-expanded={!collapsed}
             icon={collapsed ? <ChevronRight /> : <ChevronDown />}
@@ -173,7 +173,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
           <Tooltip content="Open in side panel">
             <Button
               variant="ghost"
-              size="sm"
+              size="default"
               icon={<PanelRight />}
               onClick={handleOpenInPanel}
               aria-label="Open file in side panel"
@@ -187,7 +187,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             // <a target=_blank> can't carry the bearer header).
             <Button
               variant="ghost"
-              size="sm"
+              size="default"
               icon={<FileOutput />}
               onClick={handleOpenInNewTab}
               aria-label="Open file in new tab"
@@ -197,7 +197,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             // External MCP link: open the URL directly.
             <Button
               variant="ghost"
-              size="sm"
+              size="default"
               href={source.url}
               target="_blank"
               rel="noopener noreferrer"

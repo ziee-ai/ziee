@@ -11,7 +11,6 @@ import {
   FormField,
   Input,
   InputNumber,
-  Pagination,
   Select,
   Separator,
   Spin,
@@ -23,6 +22,7 @@ import {
   useForm,
   zodResolver,
 } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
@@ -36,9 +36,9 @@ import {
   Trash2,
   Download,
   Pencil,
-  Plus,
 } from 'lucide-react'
 import { Stores } from '@/core/stores'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { UserMemory } from '@/api-client/types'
@@ -108,28 +108,44 @@ export function MyMemoriesSection() {
       data-testid="memory-my-card"
       extra={
         canWrite ? (
-          <Tooltip title="Add memory">
-            <Button
-              variant="ghost"
-              icon={<Plus />}
-              onClick={() => setCreating(true)}
-              aria-label="Add memory"
-              data-testid="memory-add-btn"
-            />
-          </Tooltip>
+          <AddButton
+            label="Add memory"
+            onClick={() => setCreating(true)}
+            data-testid="memory-add-btn"
+          />
         ) : null
       }
+      footer={
+        <Flex justify="end" gap="small" className="w-full">
+          <Dropdown items={exportMenu.items} data-testid="memory-export-dropdown">
+            <Button icon={<Download />} data-testid="memory-export-btn">Export</Button>
+          </Dropdown>
+          {canWrite && (
+            <Confirm
+              title="Delete all memories?"
+              data-testid="memory-delete-all-confirm"
+              description="This is permanent and cannot be undone."
+              okText="Delete"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
+              onConfirm={async () => {
+                try {
+                  const n = await Stores.Memories.removeAll()
+                  message.success(`Deleted ${n} memories`)
+                } catch (error) {
+                  message.error(
+                    error instanceof Error ? error.message : 'Delete-all failed.',
+                  )
+                }
+              }}
+            >
+              <Button variant="ghost" icon={<Trash2 />} data-testid="memory-delete-all-btn">Delete all</Button>
+            </Confirm>
+          )}
+        </Flex>
+      }
     >
-      {/*
-        Filter + action toolbar — responsive. Search grows to fill,
-        Kind/Source selects keep a sensible min-width, Export and
-        Delete-all hug the right edge. `flex-wrap` lets controls
-        stack on narrow widths (≤sm) instead of overflowing.
-      */}
-      {/* mb-3 (12px) below the toolbar. Inline style as a belt-and-
-        * suspenders in case Tailwind doesn't pick the class up for
-        * some reason — antd Flex doesn't reset margins, but visual
-        * verification showed the class wasn't applying. */}
+      {/* Filter toolbar — search grows to fill; kind/source keep a min-width. */}
       <Flex
         wrap
         gap="small"
@@ -140,7 +156,7 @@ export function MyMemoriesSection() {
           placeholder="Search content"
           allowClear
           onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
-          className="min-w-[200px] flex-[1_1_240px] max-w-[360px]"
+          className="min-w-[200px] flex-1"
           data-testid="memory-search-input"
         />
         <Select
@@ -171,37 +187,6 @@ export function MyMemoriesSection() {
             { value: 'mcp_tool', label: 'Assistant tool' },
           ]}
         />
-        {/* Spacer pushes Export/Delete to the right when there's
-          * room; on narrow viewports they wrap to the next line
-          * naturally. */}
-        <div className="flex-1" />
-        <Dropdown items={exportMenu.items} data-testid="memory-export-dropdown">
-          <Button icon={<Download />} data-testid="memory-export-btn">Export</Button>
-        </Dropdown>
-        {canWrite && (
-          <Confirm
-            title="Delete all memories?"
-            data-testid="memory-delete-all-confirm"
-            description="This is permanent and cannot be undone."
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-            onConfirm={async () => {
-              try {
-                const n = await Stores.Memories.removeAll()
-                message.success(`Deleted ${n} memories`)
-              } catch (error) {
-                message.error(
-                  error instanceof Error
-                    ? error.message
-                    : 'Delete-all failed.',
-                )
-              }
-            }}
-          >
-            <Button variant="destructive" data-testid="memory-delete-all-btn">Delete all</Button>
-          </Confirm>
-        )}
       </Flex>
 
       {loading && filtered.length === 0 ? (
@@ -225,8 +210,8 @@ export function MyMemoriesSection() {
                         <div className="flex gap-1 items-center justify-end">
                           <Tooltip title="Edit memory">
                             <Button
-                              variant="ghost"
-                              size="sm"
+                              variant="outline"
+                              size="default"
                               icon={<Pencil />}
                               onClick={() => setEditing(row)}
                               aria-label="Edit memory"
@@ -254,8 +239,8 @@ export function MyMemoriesSection() {
                           >
                             <Tooltip title="Delete memory">
                               <Button
-                                variant="destructive"
-                                size="sm"
+                                variant="outline"
+                                size="default"
                                 icon={<Trash2 />}
                                 aria-label={`Delete memory ${row.id}`}
                                 data-testid={`memory-row-delete-btn-${row.id}`}
@@ -274,13 +259,13 @@ export function MyMemoriesSection() {
                         {
                           key: 'kind',
                           label: 'Kind',
-                          children: <Tag className="!m-0" data-testid={`memory-row-kind-tag-${row.id}`}>{row.kind}</Tag>,
+                          children: <Tag variant="outline" className="!m-0" data-testid={`memory-row-kind-tag-${row.id}`}>{row.kind}</Tag>,
                         },
                         {
                           key: 'source',
                           label: 'Source',
                           children: (
-                            <Tag
+                            <Tag variant="outline"
                               className="!m-0"
                               data-testid={`memory-row-source-tag-${row.id}`}
                               tone={
@@ -326,29 +311,16 @@ export function MyMemoriesSection() {
 
       {totalMemories > 0 && (
         <>
-          <Separator className="!my-3" />
-          <Flex justify="end">
-            <Pagination
-              data-testid="memory-pagination"
-              current={storePage}
-              total={totalMemories}
-              pageSize={storePageSize}
-              showSizeChanger
-              pageSizeLabel="Memories per page"
-              pageSizeOptions={[5, 10, 20, 50]}
-              onPageSizeChange={(size) => Stores.Memories.load(1, size)}
-              showQuickJumper
-              jumpLabel="Jump to page"
-              showTotal={(total, range) =>
-                `${range[0]}-${range[1]} of ${total} memories`
-              }
-              onChange={(page) => Stores.Memories.load(page, storePageSize)}
-              aria-label="Memory pagination"
-              previousLabel="Previous page"
-              nextLabel="Next page"
-              pageLabel={(p) => `Page ${p}`}
-            />
-          </Flex>
+          <ListPagination
+          data-testid="memory-pagination"
+          current={storePage}
+          total={totalMemories}
+          pageSize={storePageSize}
+          onChange={(page) => Stores.Memories.load(page, storePageSize)}
+          onPageSizeChange={(size) => Stores.Memories.load(1, size)}
+          itemNoun="memories"
+          aria-label="Memory pagination"
+        />
         </>
       )}
 
@@ -467,10 +439,15 @@ function CreateMemoryDrawer({
       title="Add memory"
       onClose={onClose}
       size={600}
-      extra={
-        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-create-submit-btn">
-          Add
-        </Button>
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saving} data-testid="memory-create-cancel-btn">
+            Cancel
+          </Button>
+          <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-create-submit-btn">
+            Add
+          </Button>
+        </div>
       }
     >
       <Form
@@ -556,10 +533,15 @@ function EditMemoryDrawer({
       title="Edit memory"
       onClose={onClose}
       size={600}
-      extra={
-        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-edit-submit-btn">
-          Save
-        </Button>
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saving} data-testid="memory-edit-cancel-btn">
+            Cancel
+          </Button>
+          <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-edit-submit-btn">
+            Save
+          </Button>
+        </div>
       }
     >
       <Form form={form} layout="vertical" onSubmit={handleSubmit} data-testid="memory-edit-form">

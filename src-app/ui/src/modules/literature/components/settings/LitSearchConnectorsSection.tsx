@@ -1,37 +1,97 @@
-import type { Resolver } from 'react-hook-form'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Button,
   Card,
+  Separator,
   Flex,
   Form,
   FormField,
+  useForm,
   Input,
   PasswordInput,
-  Paragraph,
-  Separator,
   Spin,
+  Text,
+  Paragraph,
   Switch,
   Tag,
-  Text,
   message,
-  useForm,
-  zodResolver,
 } from '@/components/ui'
-import { z } from 'zod'
-import { Permissions, type ConnectorCatalogEntry } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 
 /**
  * Per-connector configuration, rendered GENERICALLY from the `GET /connectors`
- * catalog. Each connector: an enable toggle (membership in `enabled_connectors`),
- * its `config_fields` (e.g. Crossref mailto), and an optional/required API key.
- * Framing is "optional — raises limits" (all default sources work keyless),
- * except CORE whose key is required.
+ * catalog. All sources share ONE form (values namespaced by connector key) and
+ * ONE Save button in the card footer that persists every source at once —
+ * enable toggles, config fields and API keys.
  */
 export function LitSearchConnectorsSection() {
-  const { connectors, loading } = Stores.LitSearchAdmin
+  const { connectors, loading, settings } = Stores.LitSearchAdmin
+  const canManage = usePermission(Permissions.LitSearchAdminManage)
+  const [saving, setSaving] = useState(false)
+
+  const buildDefaults = () => {
+    const enabled = new Set(settings?.enabled_connectors ?? [])
+    const out: Record<string, Record<string, string | boolean>> = {}
+    for (const c of connectors) {
+      const one: Record<string, string | boolean> = { enabled: enabled.has(c.key), api_key: '' }
+      const cfg = (c.config ?? {}) as Record<string, unknown>
+      for (const f of c.config_fields) one[f.key] = typeof cfg[f.key] === 'string' ? (cfg[f.key] as string) : ''
+      out[c.key] = one
+    }
+    return out
+  }
+
+  const form = useForm<Record<string, Record<string, string | boolean>>>({ defaultValues: buildDefaults() })
+
+  const sig = JSON.stringify([
+    settings?.enabled_connectors,
+    connectors.map((c) => [c.key, c.config, c.api_key_set]),
+  ])
+  const lastSig = useRef(sig)
+  useEffect(() => {
+    if (sig !== lastSig.current || !form.formState.isDirty) {
+      lastSig.current = sig
+      form.reset(buildDefaults())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig])
+
+  const onSaveAll = async (values: Record<string, Record<string, string | boolean>>) => {
+    setSaving(true)
+    try {
+      const enabled = connectors.filter((c) => values[c.key]?.enabled).map((c) => c.key)
+      await Stores.LitSearchAdmin.updateSettings({ enabled_connectors: enabled })
+      for (const c of connectors) {
+        if (c.config_fields.length === 0 && !c.key_field) continue
+        const v = values[c.key] ?? {}
+        const config: Record<string, string> = {}
+        for (const f of c.config_fields) config[f.key] = String(v[f.key] ?? '').trim()
+        const body: { api_key?: string; config?: Record<string, string> } = { config }
+        const apiKey = String(v.api_key ?? '').trim()
+        if (c.key_field && apiKey) body.api_key = apiKey
+        await Stores.LitSearchAdmin.updateConnector(c.key, body)
+      }
+      message.success('Sources saved')
+      form.reset(buildDefaults())
+    } catch (e: any) {
+      message.error(e?.message ?? 'Failed to save sources')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const clearKey = async (key: string, name: string) => {
+    try {
+      await Stores.LitSearchAdmin.updateConnector(key, { api_key: '' })
+      message.success(`${name} key cleared`)
+    } catch (e: any) {
+      message.error(e?.message ?? 'Failed to clear key')
+    }
+  }
+
   if (loading && connectors.length === 0) {
     return (
       <Card title="Sources" data-testid="lit-connectors-card">
@@ -39,217 +99,114 @@ export function LitSearchConnectorsSection() {
       </Card>
     )
   }
+
   return (
-    <Card title="Sources" data-testid="lit-connectors-card">
-      <Paragraph type="secondary" className="text-xs">
+    <Card
+      title="Sources"
+      data-testid="lit-connectors-card"
+      footer={canManage ? (
+        <SettingsFormActions
+          onSave={form.handleSubmit(onSaveAll)}
+          onCancel={() => form.reset(buildDefaults())}
+          saving={saving}
+          saveTestid="lit-connectors-save"
+          cancelTestid="lit-connectors-cancel"
+        />
+      ) : undefined}
+    >
+      <Paragraph type="secondary" className="text-sm">
         Every default source works without a key. Optional keys only raise rate
         limits; CORE requires a free key. Keys are stored encrypted and never shown.
       </Paragraph>
-      {connectors.map(c => (
-        <ConnectorConfigForm key={c.key} entry={c} />
-      ))}
+
+      <Form
+        form={form}
+        layout="horizontal"
+        onSubmit={onSaveAll}
+        disabled={!canManage}
+        data-testid="lit-connectors-form"
+      >
+        {connectors.map((entry) => {
+          const needsKey = entry.key_field?.required && !entry.api_key_set
+          return (
+            <div key={entry.key}>
+              <Separator titlePlacement="left" className="mt-5 mb-3">
+                <Text className="text-sm">{entry.display_name}</Text>
+              </Separator>
+              {needsKey && (
+                <Paragraph type="secondary" className="!mb-1">
+                  <Tag variant="outline" tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>Needs key</Tag>
+                </Paragraph>
+              )}
+              {entry.keyless_note && (
+                <Paragraph type="secondary" className="!mb-2">
+                  {entry.keyless_note}
+                </Paragraph>
+              )}
+
+              <div className="flex flex-col gap-5">
+                <FormField name={`${entry.key}.enabled`} label="Enable" valuePropName="checked">
+                  <Switch tooltip={`Enable ${entry.display_name}`} data-testid={`lit-connector-enable-switch-${entry.key}`} />
+                </FormField>
+
+                {entry.config_fields.map((f) => (
+                  <FormField
+                    key={f.key}
+                    name={`${entry.key}.${f.key}`}
+                    label={f.label}
+                    description={f.help ?? undefined}
+                    required={f.required}
+                  >
+                    <Input placeholder={f.placeholder} data-testid={`lit-connector-config-input-${entry.key}-${f.key}`} />
+                  </FormField>
+                ))}
+
+                {entry.key_field && (
+                  <FormField
+                    name={`${entry.key}.api_key`}
+                    label={entry.key_field.label}
+                    description={
+                      <>
+                        {entry.api_key_set
+                          ? 'A key is stored. Leave blank to keep it, or type a new one.'
+                          : (entry.key_field.help ?? 'No key stored yet.')}
+                        {entry.key_field.docs_url && (
+                          <>
+                            {' '}
+                            <a href={entry.key_field.docs_url} target="_blank" rel="noreferrer">
+                              Get a key →
+                            </a>
+                          </>
+                        )}
+                      </>
+                    }
+                  >
+                    <PasswordInput
+                      showLabel="Show key"
+                      hideLabel="Hide key"
+                      placeholder={entry.api_key_set ? '•••••••• (stored)' : 'Enter API key'}
+                      data-testid={`lit-connector-api-key-input-${entry.key}`}
+                    />
+                  </FormField>
+                )}
+              </div>
+
+              {entry.key_field && entry.api_key_set && (
+                <Flex justify="end" className="mb-2">
+                  <Button
+                    variant="destructive"
+                    onClick={() => clearKey(entry.key, entry.display_name)}
+                    disabled={!canManage || saving}
+                    data-testid={`lit-connector-clear-key-button-${entry.key}`}
+                  >
+                    Clear key
+                  </Button>
+                </Flex>
+              )}
+            </div>
+          )
+        })}
+      </Form>
     </Card>
-  )
-}
-
-type FormValues = Record<string, string>
-
-function ConnectorConfigForm({ entry }: { entry: ConnectorCatalogEntry }) {
-  const canManage = usePermission(Permissions.LitSearchAdminManage)
-  const { savingConnector, savingSettings, settings } = Stores.LitSearchAdmin
-  const isSaving = savingConnector === entry.key
-
-  // Re-seed when the stored config changes too (e.g. after a sibling save), so a
-  // value the server returns is reflected and round-trips on the next save.
-  const storedConfig = (entry.config ?? {}) as Record<string, unknown>
-  const configKey = JSON.stringify({
-    keys: entry.config_fields.map(f => f.key).sort(),
-    vals: storedConfig,
-  })
-
-  // Pre-fill config fields from the STORED values (api_key stays blank — it's
-  // write-only). Submitting empty fields would otherwise WIPE the stored
-  // mailto/config on every save.
-  const buildInit = (): FormValues => {
-    const init: FormValues = { api_key: '' }
-    for (const f of entry.config_fields) {
-      const v = storedConfig[f.key]
-      init[f.key] = typeof v === 'string' ? v : ''
-    }
-    return init
-  }
-
-  const schema = useMemo(() => {
-    const shape: Record<string, z.ZodTypeAny> = { api_key: z.string().optional() }
-    for (const f of entry.config_fields) {
-      shape[f.key] = f.required
-        ? z.string().min(1, `${f.label} is required`)
-        : z.string().optional()
-    }
-    if (entry.key_field?.required && !entry.api_key_set) {
-      shape.api_key = z.string().min(1, `${entry.key_field.label} is required`)
-    }
-    return z.object(shape)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.key, entry.api_key_set, configKey])
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema) as Resolver<FormValues>,
-    defaultValues: buildInit(),
-  })
-  const dirty = form.formState.isDirty
-  const apiKeyValue = form.watch('api_key')
-
-  useEffect(() => {
-    if (!form.formState.isDirty) {
-      form.reset(buildInit())
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.key, entry.api_key_set, configKey, form])
-
-  const toggleEnabled = async (on: boolean) => {
-    const current = settings?.enabled_connectors ?? []
-    const next = on
-      ? Array.from(new Set([...current, entry.key]))
-      : current.filter(k => k !== entry.key)
-    try {
-      await Stores.LitSearchAdmin.updateSettings({ enabled_connectors: next })
-    } catch (e: any) {
-      message.error(e?.message ?? 'Failed to toggle source')
-    }
-  }
-
-  const onSubmit = async (v: FormValues) => {
-    const config: Record<string, string> = {}
-    for (const f of entry.config_fields) config[f.key] = (v[f.key] ?? '').trim()
-    const body: { api_key?: string; config?: Record<string, string> } = { config }
-    if (entry.key_field && v.api_key && v.api_key.trim().length > 0) {
-      body.api_key = v.api_key.trim()
-    }
-    try {
-      await Stores.LitSearchAdmin.updateConnector(entry.key, body)
-      message.success(`${entry.display_name} saved`)
-      form.reset({ ...v, api_key: '' })
-    } catch (e: any) {
-      message.error(e?.message ?? 'Failed to save source')
-    }
-  }
-
-  const clearKey = async () => {
-    try {
-      await Stores.LitSearchAdmin.updateConnector(entry.key, { api_key: '' })
-      message.success(`${entry.display_name} key cleared`)
-    } catch (e: any) {
-      message.error(e?.message ?? 'Failed to clear key')
-    }
-  }
-
-  const needsKey = entry.key_field?.required && !entry.api_key_set
-  const hasFields = entry.config_fields.length > 0 || entry.key_field != null
-  // Read the SAME field the toggle writes (`enabled_connectors`) so display and
-  // mutation can't drift — `entry.enabled` (the catalog snapshot) is not
-  // refreshed by `updateSettings`. Falls back to false until settings load.
-  const isEnabled = settings?.enabled_connectors?.includes(entry.key) ?? false
-
-  return (
-    <>
-      <Separator titlePlacement="left">
-        <Text className="text-sm">{entry.display_name}</Text>
-      </Separator>
-      <Paragraph type="secondary" className="text-xs !mb-1">
-        {isEnabled && <Tag tone="success" data-testid={`lit-connector-active-tag-${entry.key}`}>Active</Tag>}
-        {needsKey && <Tag tone="warning" data-testid={`lit-connector-needs-key-tag-${entry.key}`}>Needs key</Tag>}
-      </Paragraph>
-      <Paragraph type="secondary" className="text-xs !mb-2">
-        {entry.keyless_note}
-      </Paragraph>
-
-      <Flex align="center" gap="small" className="mb-2">
-        <Switch
-          aria-label={`Enable ${entry.display_name}`}
-          checked={isEnabled}
-          onChange={toggleEnabled}
-          loading={savingSettings}
-          // Disabled while a settings save is in flight → no double-toggle race.
-          disabled={!canManage || !settings || savingSettings}
-          data-testid={`lit-connector-enable-switch-${entry.key}`}
-        />
-        <Text className="text-xs">{isEnabled ? 'Enabled' : 'Disabled'}</Text>
-      </Flex>
-
-      {hasFields && (
-        <Form
-          form={form}
-          name={`lit-connector-${entry.key}`}
-          layout="horizontal"
-          onSubmit={onSubmit}
-          disabled={!canManage}
-          data-testid={`lit-connector-form-${entry.key}`}
-        >
-          {entry.config_fields.map(f => (
-            <FormField
-              key={f.key}
-              name={f.key}
-              label={f.label}
-              description={f.help ?? undefined}
-              required={f.required}
-            >
-              <Input placeholder={f.placeholder} data-testid={`lit-connector-config-input-${entry.key}-${f.key}`} />
-            </FormField>
-          ))}
-
-          {entry.key_field && (
-            <FormField
-              name="api_key"
-              label={entry.key_field.label}
-              required={entry.key_field.required && !entry.api_key_set}
-              description={
-                <>
-                  {entry.api_key_set
-                    ? 'A key is stored. Leave blank to keep it, or type a new one.'
-                    : (entry.key_field.help ?? 'No key stored yet.')}
-                  {entry.key_field.docs_url && (
-                    <>
-                      {' '}
-                      <a href={entry.key_field.docs_url} target="_blank" rel="noreferrer">
-                        Get a key →
-                      </a>
-                    </>
-                  )}
-                </>
-              }
-            >
-              <PasswordInput
-                showLabel="Show key"
-                hideLabel="Hide key"
-                placeholder={entry.api_key_set ? '•••••••• (stored)' : 'Enter API key'}
-                data-testid={`lit-connector-api-key-input-${entry.key}`}
-              />
-            </FormField>
-          )}
-
-          <Flex justify="end" gap="small">
-            {entry.key_field && entry.api_key_set && (
-              <Button
-                variant="destructive"
-                onClick={clearKey}
-                disabled={!canManage || isSaving}
-                data-testid={`lit-connector-clear-key-button-${entry.key}`}
-              >
-                Clear key
-              </Button>
-            )}
-            <Button
-              type="submit"
-              loading={isSaving}
-              disabled={!canManage || !dirty || (needsKey && !apiKeyValue?.trim())}
-              data-testid={`lit-connector-save-button-${entry.key}`}
-            >
-              Save
-            </Button>
-          </Flex>
-        </Form>
-      )}
-    </>
   )
 }

@@ -41,7 +41,7 @@ export function BranchNavigator() {
       <Button
         data-testid="chat-branch-prev-btn"
         variant="ghost"
-        size="sm"
+        size="default"
         aria-label="Previous branch"
         icon={<ChevronLeft />}
         disabled={displayIndex === 0}
@@ -53,7 +53,7 @@ export function BranchNavigator() {
       <Button
         data-testid="chat-branch-next-btn"
         variant="ghost"
-        size="sm"
+        size="default"
         aria-label="Next branch"
         icon={<ChevronRight />}
         disabled={displayIndex === total - 1}

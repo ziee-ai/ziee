@@ -42,6 +42,14 @@ pub enum SyncEntity {
     /// A user's saved LLM-provider API key (`id` is the provider id; only
     /// masked state is ever exposed, and only via refetch).
     ApiKey,
+    /// A user's saved web_search provider key changed (set/clear). Owner-scoped;
+    /// notify-only — the client refetches `GET /api/web-search/user-keys` (masked
+    /// state only). `id` is `Uuid::nil()` (the key is addressed by provider name,
+    /// not a uuid; the refetch reloads the whole per-user catalog).
+    WebSearchUserKey,
+    /// A user's saved lit_search connector key changed (set/clear). Owner-scoped;
+    /// notify-only — the client refetches `GET /api/lit-search/user-keys`.
+    LitSearchUserKey,
     /// A chat conversation owned by the user. `id` is the conversation id.
     /// Emitted on create/rename/delete, on each completed message turn, and on
     /// branch/message edits — the recipient refetches the list and (if open)

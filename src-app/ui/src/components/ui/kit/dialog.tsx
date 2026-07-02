@@ -24,7 +24,7 @@ export interface DialogProps {
 export function Dialog({ open, onOpenChange, title, description, footer, size = 'default', trigger, className, children, 'data-testid': testid }: DialogProps) {
   return (
     <Root open={open} onOpenChange={onOpenChange}>
-      {trigger != null && <DialogTrigger asChild>{trigger}</DialogTrigger>}
+      {trigger != null && <DialogTrigger render={trigger} />}
       {/* When no description, tell Radix the omission is intentional (suppresses its dev warning);
           when a description exists, let Radix auto-wire aria-describedby to it. */}
       <DialogContent className={cn(widths[size], className)} data-testid={testid} {...(description == null ? { 'aria-describedby': undefined } : {})}>

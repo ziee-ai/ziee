@@ -63,12 +63,12 @@ export function UpdateBanner() {
           </div>
         ) : (
           <Space size="small" className="w-full">
-            <Button data-testid="desktop-updater-banner-remind-btn" size="sm" onClick={() => Stores.Updater.remindLater()}>
+            <Button data-testid="desktop-updater-banner-remind-btn" size="default" onClick={() => Stores.Updater.remindLater()}>
               Remind later
             </Button>
             <Button
               data-testid="desktop-updater-banner-install-btn"
-              size="sm"
+              size="default"
               onClick={() => Stores.Updater.installAndRestart()}
             >
               Install &amp; restart

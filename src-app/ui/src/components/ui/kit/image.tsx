@@ -107,9 +107,7 @@ export function Image({ src, alt, width, height, fallback, className, style, ...
   if (!preview) return img
   return (
     <Root open={previewOpen} onOpenChange={onPreviewOpenChange}>
-      <DialogTrigger asChild>
-        <button type="button" aria-label={previewLabel} className="inline-block">{img}</button>
-      </DialogTrigger>
+      <DialogTrigger render={<button type="button" aria-label={previewLabel} className="inline-block">{img}</button>} />
       <DialogContent className="max-w-4xl" aria-describedby={undefined}>
         <DialogTitle className="sr-only">{previewLabel}</DialogTitle>
         <PreviewViewer src={safe} alt={alt} labels={previewLabels!} />

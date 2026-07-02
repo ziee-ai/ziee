@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Button, Flex, Form, FormField, Input, PasswordInput, message, useForm, zodResolver } from '@/components/ui'
+import { Button, Form, FormField, Input, PasswordInput, message, useForm, zodResolver } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -63,7 +63,26 @@ export function CreateUserDrawer() {
         Stores.CreateUserDrawer.closeCreateUserDrawer()
         createForm.reset()
       }}
-      footer={null}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              Stores.CreateUserDrawer.closeCreateUserDrawer()
+              createForm.reset()
+            }}
+            disabled={creatingUser}
+            data-testid="user-create-cancel-button"
+          >
+            {canCreate ? 'Cancel' : 'Close'}
+          </Button>
+          {canCreate && (
+            <Button type="submit" form="create-user" loading={creatingUser} data-testid="user-create-submit-button">
+              Create
+            </Button>
+          )}
+        </div>
+      }
       size={600}
       mask={{ closable: false }}
     >
@@ -102,26 +121,6 @@ export function CreateUserDrawer() {
         <FormField name="permissions" label="Permissions">
           <PermissionsField disabled={!canCreate} />
         </FormField>
-        <div className="mb-0">
-          <Flex className="justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                Stores.CreateUserDrawer.closeCreateUserDrawer()
-                createForm.reset()
-              }}
-              disabled={creatingUser}
-              data-testid="user-create-cancel-button"
-            >
-              {canCreate ? 'Cancel' : 'Close'}
-            </Button>
-            {canCreate && (
-              <Button type="submit" loading={creatingUser} data-testid="user-create-submit-button">
-                Create
-              </Button>
-            )}
-          </Flex>
-        </div>
       </Form>
     </Drawer>
   )

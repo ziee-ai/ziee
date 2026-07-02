@@ -221,7 +221,7 @@ export function FileCard({
                 <Tooltip content="Retry upload">
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="default"
                     icon={<RotateCw />}
                     onClick={() => onRetry()}
                     aria-label={`Retry upload ${uploadProgress.filename}`}
@@ -241,7 +241,7 @@ export function FileCard({
             >
               <Button
                 variant="ghost"
-                size="sm"
+                size="default"
                 icon={<X />}
                 onClick={() => onRemove()}
                 className="!absolute top-1 right-1"
@@ -453,8 +453,8 @@ export function FileCard({
             >
               <Tooltip content="Remove">
                 <Button
-                  variant="destructive"
-                  size="sm"
+                  variant="outline"
+                  size="default"
                   icon={<Trash2 />}
                   aria-label="Remove file"
                   className="bg-transparent"

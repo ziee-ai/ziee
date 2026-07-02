@@ -9,6 +9,13 @@ interface ToolCallPendingApprovalContentProps {
 }
 
 /**
+ * Deterministic id of the built-in App Control MCP server
+ * (`Uuid::new_v5(NAMESPACE_URL, "control.ziee.internal")`). Stable across
+ * deployments; mirrors the backend `control_mcp_server_id()`.
+ */
+const CONTROL_MCP_SERVER_ID = 'd878787e-aa48-5f16-a31f-673052083f34'
+
+/**
  * ToolCallPendingApprovalContent
  *
  * Renders inline approval UI for MCP tool calls requiring approval.
@@ -22,6 +29,17 @@ export function ToolCallPendingApprovalContent({
   toolCall,
 }: ToolCallPendingApprovalContentProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // The built-in App Control server (`invoke_capability`) ALWAYS re-prompts on a
+  // state-changing action — the backend deliberately ignores any persisted
+  // per-conversation auto-approval for it (mutations to the app are always
+  // confirmed). So the "Approve for this conversation" affordance would be a
+  // silent no-op here; hide it to avoid misleading the user. Gate on the control
+  // server's deterministic id (Uuid v5 of "control.ziee.internal") — NOT the tool
+  // name alone, which a third-party server could also expose.
+  const isControlWrite =
+    toolCall.server_id === CONTROL_MCP_SERVER_ID &&
+    toolCall.tool_name === 'invoke_capability'
 
   const handleApproveOnce = async () => {
     setIsSubmitting(true)
@@ -176,26 +194,28 @@ export function ToolCallPendingApprovalContent({
                   icon={<Check />}
                   onClick={handleApproveOnce}
                   loading={isSubmitting}
-                  size="sm"
+                  size="default"
                   data-testid="tool-approval-approve-once"
                 >
                   Approve once
                 </Button>
-                <Button
-                  icon={<Check />}
-                  onClick={handleApproveForConversation}
-                  loading={isSubmitting}
-                  size="sm"
-                  data-testid="tool-approval-approve-conv"
-                >
-                  Approve for this conversation
-                </Button>
+                {!isControlWrite && (
+                  <Button
+                    icon={<Check />}
+                    onClick={handleApproveForConversation}
+                    loading={isSubmitting}
+                    size="default"
+                    data-testid="tool-approval-approve-conv"
+                  >
+                    Approve for this conversation
+                  </Button>
+                )}
                 <Button
                   variant="destructive"
                   icon={<X />}
                   onClick={handleDeny}
                   loading={isSubmitting}
-                  size="sm"
+                  size="default"
                   data-testid="tool-approval-deny"
                 >
                   Deny

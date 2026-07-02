@@ -1,7 +1,8 @@
 import * as React from 'react'
 import {
-  DropdownMenu as Root, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
+  DropdownMenu as Root, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuGroup,
 } from '../shadcn/dropdown-menu'
+import { ScrollArea } from './scroll-area'
 import { cn } from '@/lib/utils'
 
 export type DropdownItem =
@@ -37,15 +38,35 @@ export interface DropdownProps {
 }
 
 export function Dropdown({ items, children, side, align = 'end', disabled, onSelect, open, onOpenChange, defaultOpen, 'data-testid': testid }: DropdownProps) {
+  // Base UI's trigger defaults to `nativeButton: true` and warns if the rendered
+  // element isn't a real <button>. Our trigger is a caller-supplied element that
+  // may be a native <button>, a component (e.g. kit <Button>, which renders one),
+  // or a bare <div role="button"> (legacy Radix pattern). Only a literal
+  // intrinsic that isn't 'button' needs nativeButton=false — then Base UI supplies
+  // the button ARIA/keyboard semantics on the non-button element.
+  const childType = (children as React.ReactElement)?.type
+  const nativeButton = typeof childType === 'string' ? childType === 'button' : true
   return (
     <Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
-      <DropdownMenuTrigger asChild disabled={disabled}>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent side={side} align={align} data-testid={testid}>
+      <DropdownMenuTrigger render={children} disabled={disabled} nativeButton={nativeButton} />
+      {/* w-fit: size the menu to its widest item, not the trigger width (the
+          vendored content defaults to w-(--anchor-width)).
+          overflow-y-hidden max-h-none p-0: hand scrolling off to the ScrollArea
+          (OverlayScrollbars) below, so a long menu uses the app's overlay
+          scrollbar instead of the native one. The ScrollArea owns the
+          available-height cap + the p-1 item padding. */}
+      <DropdownMenuContent side={side} align={align} className="w-fit overflow-y-hidden max-h-none p-0" data-testid={testid}>
+        <ScrollArea axis="y" autoHide="leave" className="max-h-(--available-height) p-1">
         {items.map((it, i) =>
           'type' in it && it.type === 'divider' ? (
             <DropdownMenuSeparator key={`d${i}`} />
           ) : 'type' in it && it.type === 'label' ? (
-            <DropdownMenuLabel key={`l${i}`}>{it.label}</DropdownMenuLabel>
+            // Base UI's GroupLabel requires a Group ancestor (throws
+            // "MenuGroupContext is missing" otherwise), so wrap the section
+            // label in its own group.
+            <DropdownMenuGroup key={`l${i}`}>
+              <DropdownMenuLabel>{it.label}</DropdownMenuLabel>
+            </DropdownMenuGroup>
           ) : (
             <DropdownMenuItem
               key={(it as { key: string }).key}
@@ -64,6 +85,7 @@ export function Dropdown({ items, children, side, align = 'end', disabled, onSel
             </DropdownMenuItem>
           ),
         )}
+        </ScrollArea>
       </DropdownMenuContent>
     </Root>
   )

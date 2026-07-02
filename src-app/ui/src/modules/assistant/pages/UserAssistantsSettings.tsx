@@ -1,4 +1,4 @@
-import { Trash2, Pencil, Plus, Bot } from 'lucide-react'
+import { Trash2, Pencil, Bot } from 'lucide-react'
 import {
   Button,
   Card,
@@ -8,7 +8,6 @@ import {
   Flex,
   Confirm,
   Tag,
-  Tooltip,
   Text,
   message,
 } from '@/components/ui'
@@ -16,6 +15,7 @@ import { Loading } from '@/core/components/Loading'
 import { useEffect, useMemo } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
+import { AddButton } from '@/modules/settings/components/AddButton'
 import { Permissions, type Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
@@ -106,15 +106,11 @@ export function UserAssistantsSettings() {
           title="My Assistants"
           extra={
             <Can permission={Permissions.AssistantsCreate}>
-              <Tooltip content="Create assistant">
-                <Button
-                  data-testid="user-assistants-create-btn"
-                  variant="ghost"
-                  icon={<Plus aria-hidden="true" />}
-                  onClick={handleCreate}
-                  aria-label="Create assistant"
-                />
-              </Tooltip>
+              <AddButton
+                label="Create assistant"
+                onClick={handleCreate}
+                data-testid="user-assistants-create-btn"
+              />
             </Can>
           }
         >
@@ -140,10 +136,10 @@ export function UserAssistantsSettings() {
                             <Bot />
                             <Text className="font-medium">{assistant.name}</Text>
                             {assistant.is_default && (
-                              <Tag data-testid={`user-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
+                              <Tag variant="outline" data-testid={`user-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag data-testid={`user-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
+                              <Tag variant="outline" data-testid={`user-assistant-${assistant.id}-inactive-tag`} tone="error">Inactive</Tag>
                             )}
                           </Flex>
                         </div>

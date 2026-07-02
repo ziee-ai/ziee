@@ -6,7 +6,6 @@ import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { useMcpUserPolicyStore } from '@/modules/mcp/stores/McpUserPolicy.store'
 import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
 import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard.store'
-import { useMcpServerGroupsAssignmentStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.store'
 import { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
 import {
   useMcpComposerStore,
@@ -49,11 +48,6 @@ const GroupSystemMcpServersAssignmentDrawer = lazyWithPreload(() =>
   ),
 )
 
-const McpServerGroupsAssignmentDrawer = lazyWithPreload(() =>
-  import('./components/system/McpServerGroupsAssignmentDrawer').then(m => ({
-    default: m.McpServerGroupsAssignmentDrawer,
-  })),
-)
 
 export default createModule({
   metadata: {
@@ -103,10 +97,6 @@ export default createModule({
       store: useSystemMcpServerGroupCardStore,
     },
     {
-      name: 'McpServerGroupsAssignment',
-      store: useMcpServerGroupsAssignmentStore,
-    },
-    {
       name: 'McpComposer',
       store: useMcpComposerStore,
     },
@@ -136,13 +126,6 @@ export default createModule({
       shouldMount: () =>
         useDelayedFalse(() => Stores.GroupSystemMcpServersAssignment.isOpen),
       order: 100,
-    },
-    {
-      id: 'mcp-server-groups-assignment-drawer',
-      component: McpServerGroupsAssignmentDrawer,
-      shouldMount: () =>
-        useDelayedFalse(() => Stores.McpServerGroupsAssignment.isOpen),
-      order: 101,
     },
   ],
   slots: {

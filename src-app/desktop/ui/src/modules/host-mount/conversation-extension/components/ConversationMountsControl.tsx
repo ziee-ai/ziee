@@ -92,7 +92,7 @@ export function ConversationMountsControl() {
                 />
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="default"
                   icon={<Trash2 />}
                   onClick={() => setDraft(draft.filter((_, idx) => idx !== i))}
                   data-testid={`desktop-hostmount-conv-remove-${i}`}
@@ -104,10 +104,10 @@ export function ConversationMountsControl() {
         />
       )}
       <div className="mt-2 flex justify-between">
-        <Button size="sm" variant="outline" icon={<FolderPlus />} onClick={addFolder} data-testid="desktop-hostmount-conv-add-btn">
+        <Button size="default" variant="outline" icon={<FolderPlus />} onClick={addFolder} data-testid="desktop-hostmount-conv-add-btn">
           Add folder
         </Button>
-        <Button size="sm" onClick={save} loading={saving} data-testid="desktop-hostmount-conv-save-btn">
+        <Button size="default" onClick={save} loading={saving} data-testid="desktop-hostmount-conv-save-btn">
           Save
         </Button>
       </div>

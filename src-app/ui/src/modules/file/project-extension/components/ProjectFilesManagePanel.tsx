@@ -183,7 +183,7 @@ export function ProjectFilesManagePanel() {
   if (!project) return null
 
   const counterChip = (
-    <Tag
+    <Tag variant="outline"
       tone={atCap ? 'error' : nearCap ? 'warning' : undefined}
       aria-label={`Project file count: ${count} of ${PROJECT_FILE_CAP}`}
       data-testid="file-project-count-tag"
@@ -232,12 +232,12 @@ export function ProjectFilesManagePanel() {
         {selectedFileIds.size} selected
       </Text>
       <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => Stores.ProjectFiles.deselectAll()} data-testid="file-project-clear-selection-btn">
+        <Button size="default" variant="outline" onClick={() => Stores.ProjectFiles.deselectAll()} data-testid="file-project-clear-selection-btn">
           Clear
         </Button>
         <Button
-          size="sm"
-          variant="destructive"
+          size="default"
+          variant="ghost"
           icon={<Trash2 />}
           onClick={handleBatchDelete}
           data-testid="file-project-delete-selected-btn"
@@ -313,7 +313,7 @@ export function ProjectFilesManagePanel() {
                   >
                     <Tooltip title="Delete">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         icon={<Trash2 />}
                         aria-label={`Delete ${file.filename}`}
                         data-testid={`file-project-delete-btn-${file.id}`}

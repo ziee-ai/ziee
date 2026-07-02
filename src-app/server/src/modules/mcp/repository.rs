@@ -1802,6 +1802,10 @@ pub async fn update_system_mcp_server(
         // citations is config-elsewhere too (per-user library on Settings →
         // Citations); its mcp row has no editable surface, so it's immutable.
         || existing.id == crate::modules::citations::citations_server_id();
+    // NOTE: control is intentionally NOT in this immutable set (like bio_mcp) —
+    // it is shown on the System MCP page so admins can toggle `enabled` (and the
+    // runtime auto-attach honors that column immediately). The boot upsert
+    // re-asserts its identity columns (url/transport) on the next restart.
     if is_zero_config_builtin {
         return Err(AppError::bad_request(
             "BUILT_IN_SERVER",

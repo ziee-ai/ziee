@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Separator,
   Flex,
   Form,
   FormField,
@@ -20,6 +19,7 @@ import { z } from 'zod'
 import { RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
@@ -160,7 +160,19 @@ export function SemanticSearchSection() {
 
   return (
     <>
-      <Card title="Semantic search" data-testid="memory-semantic-card">
+      <Card
+        title="Semantic search"
+        data-testid="memory-semantic-card"
+        footer={canManage ? (
+          <SettingsFormActions
+            onSave={form.handleSubmit(handleSubmit)}
+            onCancel={() => form.reset()}
+            saving={saving}
+            saveTestid="memory-semantic-save-btn"
+            cancelTestid="memory-semantic-cancel-btn"
+          />
+        ) : undefined}
+      >
         {noModelsAvailable && (
           <Alert
             tone="info"
@@ -246,16 +258,6 @@ export function SemanticSearchSection() {
             </span>
           </div>
 
-          {canManage && (
-            <>
-              <Separator className="!my-3" />
-              <Flex justify="end">
-                <Button type="submit" loading={saving} data-testid="memory-semantic-save-btn">
-                  Save
-                </Button>
-              </Flex>
-            </>
-          )}
         </Form>
       </Card>
 

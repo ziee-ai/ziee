@@ -7,7 +7,8 @@ import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
 import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
-import { Button, Card, Flex, Text, Input, Select, Pagination } from '@/components/ui'
+import { Button, Card, Flex, Text, Input, Select, Tabs } from '@/components/ui'
+import { ListPagination } from '@/components/common/ListPagination'
 
 export function SystemMcpServersPage() {
   const {
@@ -69,11 +70,15 @@ export function SystemMcpServersPage() {
       }
     >
       <div className="flex flex-col gap-3 h-full">
-        {/* Admin-only user policy card. Hidden on single-admin desktop
-            (where the policy has no meaningful audience) via its own
-            multiUserMode check. */}
-        <McpUserPolicyCard />
-
+        <Tabs
+          defaultValue="servers"
+          data-testid="mcp-system-tabs"
+          items={[
+            {
+              key: 'servers',
+              label: 'Servers',
+              children: (
+                <div className="flex flex-col gap-3">
         {systemServersLoading && (
           <Text type="secondary">Loading system servers...</Text>
         )}
@@ -128,7 +133,7 @@ export function SystemMcpServersPage() {
                 .join(', ')}
             </Text>
             <Button
-              size="sm"
+              size="default"
               variant="ghost"
               icon={<Eraser />}
               onClick={clearAllFilters}
@@ -172,29 +177,28 @@ export function SystemMcpServersPage() {
         )}
 
         {systemServersTotal > 0 && (
-          <Flex justify="end">
-            <Pagination
-              data-testid="mcp-system-pagination"
-              aria-label="System MCP servers pagination"
-              previousLabel="Previous page"
-              nextLabel="Next page"
-              pageLabel={(p: number) => `Page ${p}`}
-              current={systemServersPage}
-              total={systemServersTotal}
-              pageSize={systemServersPageSize as number}
-              showSizeChanger
-              pageSizeLabel="Page size"
-              onPageSizeChange={(size: number) => handlePageChange(1, size)}
-              showQuickJumper
-              jumpLabel="Go to page"
-              showTotal={(total: number, range: [number, number]) =>
-                `${range[0]}-${range[1]} of ${total} servers`
-              }
-              onChange={(page: number) => handlePageChange(page)}
-              pageSizeOptions={[5, 10, 20, 50]}
-            />
-          </Flex>
+          <ListPagination
+          data-testid="mcp-system-pagination"
+          current={systemServersPage}
+          total={systemServersTotal}
+          pageSize={systemServersPageSize as number}
+          onChange={(page: number) => handlePageChange(page)}
+          onPageSizeChange={(size: number) => handlePageChange(1, size)}
+          itemNoun="servers"
+          aria-label="System MCP servers pagination"
+        />
         )}
+                </div>
+              ),
+            },
+            {
+              key: 'policy',
+              label: 'Policy',
+              // Admin-only user policy card (self-hides on single-admin desktop).
+              children: <McpUserPolicyCard />,
+            },
+          ]}
+        />
 
         {/* Drawer */}
         <McpServerDrawer />

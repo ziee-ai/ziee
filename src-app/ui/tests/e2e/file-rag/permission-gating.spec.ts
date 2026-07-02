@@ -43,8 +43,11 @@ test.describe('Document RAG — read-only permission gating', () => {
     const enableSwitch = byTestId(page, 'filerag-enable-switch')
     await expect(enableSwitch).toBeVisible({ timeout: 30000 })
 
-    // ...but management controls are disabled (form `disabled={!canManage}`).
+    // ...but management controls are disabled (form `disabled={!canManage}`),
+    // and the save/cancel actions are hidden entirely for non-managers — the
+    // SettingsFormActions footer renders only when `canManage` (footer={canManage
+    // ? <actions/> : undefined}), consistent across every settings card.
     await expect(enableSwitch).toBeDisabled()
-    await expect(byTestId(page, 'filerag-enable-save')).toBeDisabled()
+    await expect(byTestId(page, 'filerag-enable-save')).toHaveCount(0)
   })
 })

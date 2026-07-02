@@ -98,10 +98,29 @@ export function AssignGroupDrawer() {
         Stores.AssignGroupDrawer.closeAssignGroupDrawer()
         assignGroupForm.reset()
       }}
-      footer={null}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              Stores.AssignGroupDrawer.closeAssignGroupDrawer()
+              assignGroupForm.reset()
+            }}
+            data-testid="user-assign-group-cancel-button"
+          >
+            {canAssign ? 'Cancel' : 'Close'}
+          </Button>
+          {canAssign && (
+            <Button type="submit" form="assign-group-form" data-testid="user-assign-group-submit-button">
+              Assign
+            </Button>
+          )}
+        </div>
+      }
       mask={{ closable: false }}
     >
       <Form
+        name="assign-group-form"
         form={assignGroupForm}
         layout="vertical"
         onSubmit={handleAssignGroup}
@@ -114,23 +133,6 @@ export function AssignGroupDrawer() {
             data-testid="user-assign-group-checkboxes"
           />
         </FormField>
-        <Flex className="justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              Stores.AssignGroupDrawer.closeAssignGroupDrawer()
-              assignGroupForm.reset()
-            }}
-            data-testid="user-assign-group-cancel-button"
-          >
-            {canAssign ? 'Cancel' : 'Close'}
-          </Button>
-          {canAssign && (
-            <Button type="submit" data-testid="user-assign-group-submit-button">
-              Assign
-            </Button>
-          )}
-        </Flex>
       </Form>
     </Drawer>
   )

@@ -21,7 +21,24 @@ import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/mcp/stores
  * - Individual tool toggles
  * - Visibility controlled via store (Stores.McpComposer.openConfigModal/closeConfigModal)
  */
+// The modal is a global-store-driven singleton, but it is mounted from more
+// than one host (the chat composer's `input_area_suffix` slot AND the project
+// MCP settings panel). On a page that renders both — e.g. the project detail
+// page, which has an inline ChatInput *and* the project MCP panel — two
+// instances would both open on the same global flag, duplicating the dialog.
+// A module-level mount guard ensures only the first-mounted instance renders.
+let mcpConfigModalMounts = 0
+
 export function McpConfigModal() {
+  const [isPrimaryModal, setIsPrimaryModal] = useState(false)
+  useEffect(() => {
+    mcpConfigModalMounts += 1
+    if (mcpConfigModalMounts === 1) setIsPrimaryModal(true)
+    return () => {
+      mcpConfigModalMounts -= 1
+    }
+  }, [])
+
   const { servers } = Stores.McpServer  // Reactive access to MCP module store
   const mcpStore = Stores.McpComposer
   // Extract all store properties unconditionally at the top (store proxy uses hooks).
@@ -287,13 +304,14 @@ export function McpConfigModal() {
         <div className="flex items-center justify-between w-full" data-testid={`mcp-config-server-row-${server.id}`} onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2">
             <Switch
+              tooltip="Enable this server for the conversation"
               checked={!!selection}
               onChange={(checked) => handleServerToggle(server.id, checked)}
               size="sm"
               data-testid={`mcp-config-server-switch-${server.id}`}
             />
             <Text strong>{server.display_name}</Text>
-            <Tag tone={server.user_id ? 'info' : 'success'} className="text-xs" data-testid={`mcp-config-server-tag-${server.id}`}>
+            <Tag variant="outline" tone={server.user_id ? 'info' : 'success'} className="text-xs" data-testid={`mcp-config-server-tag-${server.id}`}>
               {server.user_id ? 'User' : 'System'}
             </Tag>
           </div>
@@ -321,6 +339,7 @@ export function McpConfigModal() {
                     <div className="flex items-center gap-1">
                       <Text type="secondary" className="text-xs">Auto Approve</Text>
                       <Switch
+                        tooltip="Auto-approve this tool"
                         size="sm"
                         checked={isToolAutoApproved(server.id, tool.name)}
                         onChange={() => handleAutoApproveToggle(server.id, tool.name)}
@@ -340,6 +359,10 @@ export function McpConfigModal() {
       ),
     }
   })
+
+  // Only the first-mounted instance renders the (singleton) dialog; any extra
+  // mount points no-op so the same global open-flag can't show two dialogs.
+  if (!isPrimaryModal) return null
 
   return (
     <Dialog
@@ -419,6 +442,7 @@ export function McpConfigModal() {
             <div className="flex items-center justify-between">
               <Text>Stop when AI doesn't call any tools</Text>
               <Switch
+                tooltip="Stop when the AI calls no tools"
                 checked={loopSettings.stop_when_no_tool_calling ?? true}
                 onChange={(checked) => mcpStore.setLoopSettings(currentConversationId, { stop_when_no_tool_calling: checked })}
                 data-testid="mcp-config-stop-no-tools-switch"
@@ -427,6 +451,7 @@ export function McpConfigModal() {
             <div className="flex items-center justify-between">
               <Text>Force final answer when limits reached</Text>
               <Switch
+                tooltip="Force a final answer when limits are reached"
                 checked={loopSettings.force_final_answer ?? false}
                 onChange={(checked) => mcpStore.setLoopSettings(currentConversationId, { force_final_answer: checked })}
                 data-testid="mcp-config-force-final-switch"
@@ -452,7 +477,7 @@ export function McpConfigModal() {
             <Text strong>Stop When These Tools Are Called:</Text>
             <div className="mt-2 flex flex-wrap gap-1">
               {(loopSettings.stop_when_tools_called || []).map((tool) => (
-                <Tag
+                <Tag variant="outline"
                   key={`${tool.server_id}-${tool.tool_name}`}
                   onClose={() => mcpStore.removeStopWhenToolCalled(currentConversationId, tool.server_id, tool.tool_name)}
                   closeLabel="Remove"
@@ -496,7 +521,7 @@ export function McpConfigModal() {
                     data-testid={`mcp-config-pertool-input-${limit.server_id}-${limit.tool_name}`}
                   />
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     icon={<Trash2 />}
                     onClick={() => mcpStore.removePerToolLimit(currentConversationId, limit.server_id, limit.tool_name)}
                     data-testid={`mcp-config-pertool-remove-${limit.server_id}-${limit.tool_name}`}

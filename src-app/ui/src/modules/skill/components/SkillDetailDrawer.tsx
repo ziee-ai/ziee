@@ -3,13 +3,13 @@ import {
   Button,
   Checkbox,
   Descriptions,
-  Sheet,
   Confirm,
   Space,
   Text,
   Title,
   message,
 } from '@/components/ui'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useMemo, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { ApiClient } from '@/api-client'
@@ -111,14 +111,11 @@ export function SkillDetailDrawer() {
 
   if (!skill) {
     return (
-      <Sheet
+      <Drawer
         open={isOpen}
         data-testid="skill-detail-sheet"
-        onOpenChange={open => {
-          if (!open) Stores.SkillDrawer.close()
-        }}
+        onClose={() => Stores.SkillDrawer.close()}
         title="Skill details"
-        aria-label="Skill details"
       />
     )
   }
@@ -161,13 +158,10 @@ export function SkillDetailDrawer() {
   }
 
   return (
-    <Sheet
+    <Drawer
       open={isOpen}
       data-testid="skill-detail-sheet-loaded"
-      onOpenChange={open => {
-        if (!open) Stores.SkillDrawer.close()
-      }}
-      aria-label="Skill details"
+      onClose={() => Stores.SkillDrawer.close()}
       title={
         <Space>
           <Title level={5} className="!m-0">
@@ -178,19 +172,21 @@ export function SkillDetailDrawer() {
       }
       footer={
         editable ? (
-          <Confirm
-            data-testid="skill-delete-confirm"
-            title="Delete this skill?"
-            description="This removes the skill and its extracted files."
-            onConfirm={handleDelete}
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-          >
-            <Button variant="destructive" size="sm" data-testid="skill-delete-button" icon={<Trash2 />}>
-              Delete
-            </Button>
-          </Confirm>
+          <div className="flex justify-end">
+            <Confirm
+              data-testid="skill-delete-confirm"
+              title="Delete this skill?"
+              description="This removes the skill and its extracted files."
+              onConfirm={handleDelete}
+              okText="Delete"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
+            >
+              <Button variant="ghost" size="default" data-testid="skill-delete-button" icon={<Trash2 />}>
+                Delete
+              </Button>
+            </Confirm>
+          </div>
         ) : null
       }
     >
@@ -263,6 +259,6 @@ export function SkillDetailDrawer() {
           </Text>
         </div>
       </div>
-    </Sheet>
+    </Drawer>
   )
 }

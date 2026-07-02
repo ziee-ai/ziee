@@ -44,8 +44,8 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
             )}
           </Space>
           <Button
-            size="sm"
-            variant="link"
+            size="default"
+            variant="ghost"
             icon={<Pencil aria-hidden="true" />}
             onClick={handleEdit}
             aria-label={`Edit LLM Providers for ${group.name}`}
@@ -71,7 +71,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
         ) : (
           <Space wrap size="small" data-testid="provider-tags-container">
             {providers.map(provider => (
-              <Tag
+              <Tag variant="outline"
                 key={provider.id}
                 tone={provider.enabled ? 'info' : undefined}
                 className="text-xs"
