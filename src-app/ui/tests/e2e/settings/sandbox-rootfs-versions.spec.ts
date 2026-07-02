@@ -204,12 +204,14 @@ async function gotoSandbox(page: Page, baseURL: string) {
       }),
     })
   })
-  // The page is a two-tab layout (Rootfs | Resource); "Rootfs" is selected by
-  // default and its "Downloaded versions" card always renders (empty state
-  // included), so it's the stable readiness signal for this rootfs-focused spec.
-  // (The resource-limits card now lives behind the non-active "Resource" tab,
-  // which shadcn Tabs keeps unmounted — it can't gate rootfs readiness anymore.)
-  const ready = byTestId(page, 'downloaded-versions-card')
+  // The page is a two-tab layout (Rootfs [default] | Resource). The tabs shell
+  // renders for everyone who reaches the page — including a resource-limits-only
+  // admin whose rootfs SECTION shows a denial instead of the version cards — so
+  // it's the readiness signal that holds across every permission state (each
+  // test then asserts its own Rootfs-tab content). The resource-limits card is
+  // no good here: it now lives behind the non-active Resource tab that shadcn
+  // Tabs keeps unmounted.
+  const ready = byTestId(page, 'sandbox-tabs')
   for (let attempt = 1; attempt <= 3; attempt++) {
     await page.goto(`${baseURL}/settings/sandbox`)
     await page.waitForLoadState('load').catch(() => {})
