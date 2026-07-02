@@ -151,10 +151,12 @@ test.describe('Sidebar conversation menu — project contributions', () => {
 
     // Open the combobox + pick the project by its derived option testid.
     await byTestId(dialog, 'project-add-to-project-combobox').click()
+    // The Base-UI combobox popup item animates in ("not stable"); force past the
+    // stability wait — the item's onClick still fires and selects it.
     await byTestId(
       page,
       `project-add-to-project-combobox-opt-${projectId}`,
-    ).click()
+    ).click({ force: true })
 
     // Confirm via the dialog's Add button.
     await byTestId(dialog, 'project-add-to-project-confirm-button').click()

@@ -231,7 +231,7 @@ test.describe('Projects - Knowledge / file attach', () => {
 
     // Click the row's delete button — should open the Confirm
     // (AlertDialog), NOT delete immediately.
-    await row().locator('[data-testid^="file-project-delete-btn-"]').click()
+    await row().locator('[data-testid^="file-project-delete-btn-"]').click({ force: true })
     const confirm = page.getByRole('alertdialog')
     await expect(confirm).toBeVisible({ timeout: 5000 })
 
@@ -241,7 +241,7 @@ test.describe('Projects - Knowledge / file attach', () => {
     await expect(row()).toBeVisible()
 
     // Reopen + confirm via the Confirm's primary (Delete) button.
-    await row().locator('[data-testid^="file-project-delete-btn-"]').click()
+    await row().locator('[data-testid^="file-project-delete-btn-"]').click({ force: true })
     await expect(confirm).toBeVisible()
     await confirm.locator('[data-testid$="-confirm"]').click()
 

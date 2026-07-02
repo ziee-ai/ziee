@@ -3,6 +3,7 @@ import {
   loginAsAdmin,
   login,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   clearAuthState,
 } from '../../common/auth-helpers'
@@ -50,7 +51,6 @@ test.describe('Projects — non-admin permission gating on ProjectCard', () => {
 
     const tag = Date.now().toString(36)
     const projectName = `ReadOnly Target ${tag}`
-    await seedProject(apiURL, adminToken, projectName)
 
     // A non-admin who can READ projects but cannot create/edit/delete.
     const uname = `proj_ro_${tag}`
@@ -62,6 +62,11 @@ test.describe('Projects — non-admin permission gating on ProjectCard', () => {
 
     await clearAuthState(page)
     await login(page, baseURL, uname, 'password123')
+
+    // Projects are owner-scoped (list_for_user), so the project must be owned by
+    // THIS user to appear in their list — seed it with the user's own token.
+    const userToken = await getCurrentUserToken(page)
+    await seedProject(apiURL, userToken, projectName)
     await goToProjectsPage(page, baseURL)
 
     // READ works: the seeded project's card renders for this user.
