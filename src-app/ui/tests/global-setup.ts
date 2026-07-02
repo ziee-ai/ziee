@@ -95,41 +95,6 @@ export default async function globalSetup(_config: FullConfig) {
         }
       }
 
-        // Cross-worktree safety net: containers live in the ONE shared docker
-        // daemon, but the per-worktree `configPath` above only proves liveness
-        // for THIS worktree's runs. A concurrent e2e session in a sibling
-        // worktree writes its config into ITS OWN .test-configs dir, invisible
-        // here — so without this check we'd force-remove a sibling's healthy,
-        // in-use postgres container (→ mid-run ECONNREFUSED in the other
-        // session). Before removing, consult the SHARED port-lock dir (keyed by
-        // the container's published host port): if that lock's PID is still
-        // alive, the container belongs to a live run — keep it.
-        try {
-          const portMap = execSync(`docker port ${container} 5432/tcp`, {
-            encoding: 'utf-8',
-          }).trim()
-          // e.g. "0.0.0.0:9400\n[::]:9400" — take the first host port.
-          const hostPort = portMap.split('\n')[0]?.split(':').pop()?.trim()
-          if (hostPort) {
-            const lockDir = process.env.ZIEE_E2E_LOCK_DIR || resolve(tmpdir(), 'ziee-test-locks')
-            const sharedLock = resolve(lockDir, `postgres-${hostPort}.lock`)
-            if (existsSync(sharedLock)) {
-              const lock = JSON.parse(readFileSync(sharedLock, 'utf-8'))
-              try {
-                process.kill(lock.pid, 0)
-                console.log(`   ✅ Kept sibling-worktree container: ${container} (shared lock PID ${lock.pid})`)
-                kept++
-                continue
-              } catch {
-                // shared lock's PID is dead — genuinely stale, fall through
-              }
-            }
-          }
-        } catch {
-          // docker port failed (container gone/racing) — fall through to remove
-        }
-
-        // If we get here, container is stale (no config, no lock, or process dead)
       for (const container of containerList) {
         // Extract run ID from container name: ziee-tailtest-postgres-{runId}
         const runId = container.replace('ziee-tailtest-postgres-', '')
