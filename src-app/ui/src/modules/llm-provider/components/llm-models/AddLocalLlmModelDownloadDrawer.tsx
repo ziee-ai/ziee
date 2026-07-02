@@ -293,16 +293,11 @@ export function AddLocalLlmModelDownloadDrawer() {
             engine_type: ((values.engine_type as string) || 'mistralrs') as EngineType,
             engine_settings: (values.engine_settings as Record<string, unknown>) || {},
           },
-          // `onStart` fires as soon as the download is registered (before the
-          // store's await settles on monitoring). Open the View Download Details
-          // drawer AND close the FORM drawer here, so the form dismisses
-          // immediately on a successful start rather than waiting for the (much
-          // later) monitoring resolution.
-          (downloadId: string) => {
-            Stores.ViewDownloadDrawer.openViewDownloadDrawer(downloadId)
-            Stores.AddLocalLlmModelDownloadDrawer.closeAddLocalLlmModelDownloadDrawer()
-            form.reset()
-          },
+          // `onStart` fires as soon as the download is registered: it switches
+          // this shared drawer from add-mode to View-Download-Details mode
+          // (`open = viewMode || addMode`), so the editable form (its submit
+          // button) is replaced by the read-only view.
+          Stores.ViewDownloadDrawer.openViewDownloadDrawer,
         )
 
         message.success('Download started successfully')

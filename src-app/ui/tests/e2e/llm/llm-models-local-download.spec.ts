@@ -240,7 +240,7 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     await submitDownloadAndWait(page)
 
     // Form drawer closes; the View Download Details drawer auto-opens.
-    await byTestId(page, 'llm-model-download-form').waitFor({ state: 'hidden', timeout: 5000 })
+    await byTestId(page, 'llm-download-drawer-submit-btn').waitFor({ state: 'hidden', timeout: 5000 })
     await closeViewDetails(page)
   })
 
@@ -257,7 +257,7 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
 
     // Download is accepted; validation happens asynchronously.
     await submitDownloadAndWait(page)
-    await byTestId(page, 'llm-model-download-form').waitFor({ state: 'hidden', timeout: 5000 })
+    await byTestId(page, 'llm-download-drawer-submit-btn').waitFor({ state: 'hidden', timeout: 5000 })
 
     // Download appears in the "Downloading Models" section with the model name.
     await expect(byTestId(page, 'llm-downloads-section-card')).toBeVisible({ timeout: 5000 })
