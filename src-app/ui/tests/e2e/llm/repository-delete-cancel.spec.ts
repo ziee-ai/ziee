@@ -24,7 +24,7 @@ test.describe('LLM Repositories — delete cancel', () => {
     const repositoryName = `cancel-del-repo-${Date.now()}`
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'none',
       enabled: true,
     })

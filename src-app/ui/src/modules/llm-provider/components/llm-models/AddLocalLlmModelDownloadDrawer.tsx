@@ -223,13 +223,26 @@ export function AddLocalLlmModelDownloadDrawer() {
       // Auto-generate model ID from display name
       const modelId = generateModelId((values.display_name as string) || 'model')
 
+      // Required-field validation (this form has no zod resolver). Surface
+      // errors as inline FieldErrors (role="alert") rather than toasts.
+      let hasFieldError = false
       if (!values.repository_id) {
-        message.error('Repository is required')
-        return
+        form.setError('repository_id', { message: 'Repository is required' })
+        hasFieldError = true
       }
-
-      if (!values.repository_path) {
-        message.error('Repository path is required')
+      if (!(values.repository_path as string | undefined)?.trim()) {
+        form.setError('repository_path', { message: 'Repository path is required' })
+        hasFieldError = true
+      }
+      if (!(values.display_name as string | undefined)?.trim()) {
+        form.setError('display_name', { message: 'Display name is required' })
+        hasFieldError = true
+      }
+      if (!(values.main_filename as string | undefined)?.trim()) {
+        form.setError('main_filename', { message: 'Main filename is required' })
+        hasFieldError = true
+      }
+      if (hasFieldError) {
         return
       }
 
@@ -284,6 +297,10 @@ export function AddLocalLlmModelDownloadDrawer() {
         )
 
         message.success('Download started successfully')
+        // Close the download FORM drawer on success (the View Download Details
+        // drawer was just opened by the callback above and must stay open).
+        Stores.AddLocalLlmModelDownloadDrawer.closeAddLocalLlmModelDownloadDrawer()
+        form.reset()
       } catch (error) {
         console.error('Failed to start download:', error)
         message.error('Failed to start download')

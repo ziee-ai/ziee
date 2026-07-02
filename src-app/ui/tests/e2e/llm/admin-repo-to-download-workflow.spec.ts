@@ -45,7 +45,7 @@ test.describe('LLM — admin repo→provider→download multi-step workflow', ()
     const repoName = `wf-repo-${Date.now()}`
     await createRepository(page, baseURL, {
       name: repoName,
-      url: `https://huggingface.co/${repoName}`,
+      url: `https://huggingface.co/?r=${repoName}`,
       authType: 'none',
       enabled: true,
     })

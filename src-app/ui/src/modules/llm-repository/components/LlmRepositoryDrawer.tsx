@@ -101,6 +101,11 @@ export function LlmRepositoryDrawer() {
       setEnabledValue(repository.enabled)
     } else if (!repository && open) {
       form.reset({
+        // Keep the required strings as '' (not undefined) so an empty submit
+        // surfaces the helpful `.min(1, …)` message rather than zod's bare
+        // "Invalid input" type error.
+        name: '',
+        url: '',
         auth_type: 'none',
         enabled: true,
       })

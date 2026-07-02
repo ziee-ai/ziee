@@ -90,7 +90,7 @@ test.describe('LLM Repositories - Create Repository', () => {
     await loginAsAdmin(page, baseURL)
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'none',
       enabled: true,
     })
@@ -550,7 +550,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'none',
       enabled: true,
     })
@@ -568,7 +568,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'bearer_token',
       bearerToken: HF_API_KEY,
       authTestEndpoint: 'https://huggingface.co/api/whoami-v2',
@@ -589,7 +589,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'bearer_token',
       bearerToken: 'hf_invalid_key_12345',
       authTestEndpoint: 'https://huggingface.co/api/whoami-v2',
