@@ -122,8 +122,8 @@ for new users.`,
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
-                <Flex className="gap-2 items-center">
-                  <Text className="font-medium cursor-pointer">
+                <Flex className="gap-2 items-center flex-wrap">
+                  <Text className="font-medium cursor-pointer whitespace-nowrap">
                     {assistant.display_name}
                   </Text>
                   {/* v2 per-entry version. Surfaced so admins can spot a

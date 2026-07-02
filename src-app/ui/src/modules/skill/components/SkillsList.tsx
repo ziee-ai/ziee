@@ -74,8 +74,8 @@ export function SkillsList() {
             >
               <Flex justify="between" align="start" className="gap-3">
                 <Space direction="vertical" className="min-w-0" size="small">
-                  <Space size={8}>
-                    <Text strong>{skill.display_name || skill.name}</Text>
+                  <Space size={8} wrap>
+                    <Text strong className="whitespace-nowrap">{skill.display_name || skill.name}</Text>
                     <SkillScopeBadge scope={skill.scope} isDev={skill.is_dev} />
                   </Space>
                   {skill.description && (

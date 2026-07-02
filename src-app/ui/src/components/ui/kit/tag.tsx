@@ -72,9 +72,10 @@ const TagInner = React.forwardRef<HTMLSpanElement, TagProps>(function Tag(
       ref={ref}
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium',
-        // Contain long unbroken content: cap at the parent width, allow shrink,
-        // and break anywhere so a long token wraps instead of overflowing.
-        'max-w-full min-w-0 [overflow-wrap:anywhere]',
+        // Keep tag content on a single line; when the row is narrow the whole
+        // tag wraps to the next line via the parent's flex-wrap, rather than
+        // breaking the tag's own text.
+        'whitespace-nowrap',
         variantTones[variant][tone],
         className,
       )}

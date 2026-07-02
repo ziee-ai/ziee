@@ -188,8 +188,8 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
-                <Flex className="gap-2 items-center">
-                  <Text className="font-medium cursor-pointer">{displayTitle}</Text>
+                <Flex className="gap-2 items-center flex-wrap">
+                  <Text className="font-medium cursor-pointer whitespace-nowrap">{displayTitle}</Text>
                   {server.version && (
                     <Tag className="text-xs !m-0" data-testid={`hub-mcp-version-tag-${server.name}`}>v{server.version}</Tag>
                   )}

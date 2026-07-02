@@ -282,9 +282,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
-                <Flex className="gap-2 items-center">
+                <Flex className="gap-2 items-center flex-wrap">
                   <Text
-                    className="font-medium cursor-pointer"
+                    className="font-medium cursor-pointer whitespace-nowrap"
                     data-testid={`hub-model-name-${model.name}`}
                   >
                     {model.display_name}
