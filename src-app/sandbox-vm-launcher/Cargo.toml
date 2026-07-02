@@ -12,6 +12,9 @@ publish = false
 name = "ziee-sandbox-vm-launcher"
 path = "src/main.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

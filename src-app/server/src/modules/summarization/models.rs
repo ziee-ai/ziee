@@ -49,16 +49,6 @@ pub struct UpdateSummarizationAdminSettingsRequest {
     pub incremental_summary_prompt: Option<Option<String>>,
 }
 
-/// Per-conversation override row (mirrors `conversation_memory_settings`
-/// from migration 76).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct ConversationSummarizationSettings {
-    pub conversation_id: Uuid,
-    pub summarization_mode: String,
-    pub updated_at: DateTime<Utc>,
-}
-
 /// Response for `GET /api/conversations/{id}/summarization-mode`.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ConversationSummarizationModeResponse {

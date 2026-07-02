@@ -6,6 +6,9 @@ authors = ["Ziee Team"]
 description = "Unified interface for multiple AI provider APIs (OpenAI, Anthropic, Gemini)"
 license = ""
 
+[lints]
+workspace = true
+
 [dependencies]
 # All providers now use custom HTTP implementations (no external provider libraries)
 # Versions are inherited from the workspace `[workspace.dependencies]` catalog

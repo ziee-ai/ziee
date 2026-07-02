@@ -84,21 +84,3 @@ pub async fn upsert_user_defaults(
     Ok(defaults)
 }
 
-/// Delete MCP defaults for a user
-#[allow(dead_code)]
-pub async fn delete_user_defaults(
-    pool: &PgPool,
-    user_id: Uuid,
-) -> Result<bool, AppError> {
-    let result = sqlx::query!(
-        r#"
-        DELETE FROM user_mcp_defaults
-        WHERE user_id = $1
-        "#,
-        user_id
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(result.rows_affected() > 0)
-}

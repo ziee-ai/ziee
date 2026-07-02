@@ -769,6 +769,7 @@ secrets:
     /// SAME directory the spawned server wrote the HTTP-uploaded bytes to:
     /// `init_file_storage(server.data_dir().join("files"))`. The file store's
     /// base path is `<app_data_dir>/files` (see `file::mod` init).
+    #[allow(dead_code)] // used by server integration tests; dead in the desktop test binary that reincludes this harness
     pub fn data_dir(&self) -> &std::path::Path {
         self._data_tempdir.path()
     }

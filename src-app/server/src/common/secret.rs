@@ -35,6 +35,11 @@ pub struct SecretView<T> {
 }
 
 impl<T> SecretView<T> {
+    // Intended secret-wrapper API: constructed + read only at outbound
+    // boundaries + in this module's tests today (no production caller wired
+    // yet), so the lib build sees these as dead. Kept (not deleted) — this is
+    // the deliberate primitive documented at the top of the module.
+    #[allow(dead_code)]
     pub fn new(value: T) -> Self {
         Self { inner: value }
     }
@@ -42,6 +47,7 @@ impl<T> SecretView<T> {
     /// Return a reference to the plaintext. Use sparingly — only at the
     /// boundary where the secret needs to leave the process (outbound
     /// HTTP header, subprocess argv, etc.).
+    #[allow(dead_code)]
     pub fn expose_secret(&self) -> &T {
         &self.inner
     }

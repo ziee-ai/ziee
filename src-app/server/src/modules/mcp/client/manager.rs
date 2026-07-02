@@ -291,19 +291,6 @@ impl McpSessionManager {
         self.sessions.read().await.contains_key(&server_id)
     }
 
-    /// Forcibly insert a placeholder session, bypassing the
-    /// `get_or_create` path. Test-only — lets the cleanup test seed
-    /// the pool without standing up a real subprocess / HTTP server.
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub async fn insert_for_test(
-        &self,
-        server_id: Uuid,
-        session: Arc<RwLock<McpSession>>,
-    ) {
-        self.sessions.write().await.insert(server_id, session);
-    }
-
     #[allow(dead_code)] // Phase 3 feature: background task to cleanup idle sessions
     pub async fn cleanup_idle(&self, max_idle_seconds: u64) -> Result<usize, AppError> {
         let to_remove = {
