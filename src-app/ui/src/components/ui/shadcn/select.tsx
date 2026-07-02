@@ -63,7 +63,13 @@ function SelectContent({
   sideOffset = 4,
   align = "center",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Render a conventional dropdown BELOW the trigger. Base UI defaults this to
+  // `true` (native-select-style: the popup overlaps the trigger and scrolls so
+  // the selected item aligns with it) — but that positions non-selected options
+  // outside the visible/clickable popup area (badly so inside Drawers), which
+  // breaks click-the-option interactions (Playwright sees them as not visible).
+  // A normal anchored dropdown renders every option in view + clickable.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
@@ -78,7 +84,14 @@ function SelectContent({
         align={align}
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
-        className="isolate z-50"
+        // z-[60] so a Select opened inside a Dialog/Drawer (z-50) renders above
+        // it. `pointer-events-auto` is the critical bit: our Drawer is a modal
+        // Radix Dialog, which sets `body { pointer-events: none }` and only
+        // re-enables it inside the dialog content. This Base UI popup is a
+        // SEPARATE body portal, so it inherits `pointer-events: none` and option
+        // clicks fall through to the drawer behind it — restore pointer events
+        // on the popup subtree so options are clickable inside drawers.
+        className="isolate z-[60] pointer-events-auto"
       >
         <SelectPrimitive.Popup
           data-slot="select-content"

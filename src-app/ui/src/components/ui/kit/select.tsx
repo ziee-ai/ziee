@@ -194,7 +194,10 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           (ungrouped) items would sit flush against the popup edge — restore it
           on the popup. match=false → let the popup grow past the trigger width
           (Base UI defaults the popup to the trigger's `--anchor-width`). */}
-      <SelectContent className={cn('p-1', !popupMatchSelectWidth && 'w-auto min-w-(--anchor-width)')}>
+      <SelectContent
+        data-testid={testid ? `${testid}-popup` : undefined}
+        className={cn('p-1', !popupMatchSelectWidth && 'w-auto min-w-(--anchor-width)')}
+      >
         {items}
       </SelectContent>
     </SelectRoot>
