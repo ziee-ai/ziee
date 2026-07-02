@@ -3,7 +3,6 @@ import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
-import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useConversationSkillsStore,
@@ -76,11 +75,13 @@ export default createModule({
   ],
   routes: [
     {
-      path: '/skills',
+      // User Skills now live under Settings (like Workflows / MCP Servers)
+      // rather than a top-level sidebar nav item.
+      path: '/settings/skills',
       element: SkillsList,
       requiresAuth: true,
       permission: Permissions.SkillsRead,
-      layout: AppLayoutDef,
+      layout: SettingsLayoutDef,
     },
     {
       path: '/settings/skills-admin',
@@ -91,13 +92,13 @@ export default createModule({
     },
   ],
   slots: {
-    sidebarNavigation: [
+    settingsUserPages: [
       {
         id: 'skills',
         icon: <BookOpen />,
         label: 'Skills',
-        path: '/skills',
-        order: 80,
+        path: 'skills',
+        order: 24,
         permission: Permissions.SkillsRead,
       },
     ],
