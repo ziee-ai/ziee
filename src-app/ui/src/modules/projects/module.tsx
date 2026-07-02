@@ -1,3 +1,4 @@
+import { Folder } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
@@ -77,9 +78,20 @@ export default createModule({
       layout: AppLayoutDef,
     },
   ],
-  // Projects intentionally contribute NO left-sidebar entries (removed the
-  // sidebarNavigation link + the ProjectsNavWidget). The routes stay valid so
-  // project-scoped chat URLs + in-chat project affordances keep working.
+  slots: {
+    // Keep the top-level "Projects" nav link; the recent-projects sidebar
+    // widget (ProjectsNavWidget, formerly in sidebarContent) was removed.
+    sidebarNavigation: [
+      {
+        id: 'projects',
+        icon: <Folder />,
+        label: 'Projects',
+        path: '/projects',
+        order: 20,
+        permission: Permissions.ProjectsRead,
+      },
+    ],
+  },
   initialize: () => {
     // No imperative init — stores self-bootstrap on first access via __init__.
   },
