@@ -26,12 +26,10 @@ test.describe('Hardware settings loading state', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           hardware: {
-            os_name: 'Linux',
-            os_version: 'test',
-            cpu_brand: 'Test CPU',
-            cpu_cores: 8,
-            total_memory: 16 * 1024 * 1024 * 1024,
-            gpus: [],
+            operating_system: { name: 'Linux', version: 'test', architecture: 'x86_64', kernel_version: '6.0-test' },
+            cpu: { model: 'Test CPU', architecture: 'x86_64', cores: 8, threads: 16 },
+            memory: { total_ram: 16 * 1024 * 1024 * 1024 },
+            gpu_devices: [],
           },
         }),
       })
