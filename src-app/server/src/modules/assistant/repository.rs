@@ -438,8 +438,13 @@ pub async fn list_assistants(
                     id, name, description, instructions, parameters, created_by,
                     is_template, is_default, enabled, created_at, updated_at,
                     COUNT(*) OVER() as "total_count!"
+                 -- Management list: return the owner's assistants regardless of
+                 -- `enabled` (mirrors the template branch above). Filtering to
+                 -- enabled-only made a soft-disabled assistant vanish from the
+                 -- settings page — the user could no longer see or re-enable it,
+                 -- even though the UI renders an "Inactive" tag for disabled rows.
                  FROM assistants
-                 WHERE created_by = $1 AND is_template = false AND enabled = true
+                 WHERE created_by = $1 AND is_template = false
                  ORDER BY created_at DESC
                  LIMIT $2 OFFSET $3"#,
                 uid,
