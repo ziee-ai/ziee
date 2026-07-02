@@ -205,7 +205,10 @@ export function FileCard({
 
   if (uploadProgress) {
     return (
-      <div className="relative flex flex-col w-full h-full">
+      <div
+        className="relative flex flex-col w-full h-full"
+        data-testid="file-card-uploading"
+      >
         <div
           className="group relative rounded min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full flex items-center justify-center border border-border"
         >

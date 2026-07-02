@@ -61,3 +61,12 @@ pub struct ConversationResponse {
     pub conversation: Conversation,
     pub message_count: i64,
 }
+
+/// Paginated list of conversations. `total` is the full server-side count
+/// (not the page size), so the client can render "Showing N of TOTAL" and
+/// gate its Load-More affordance. Mirrors `ProjectListResponse`.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ConversationListResponse {
+    pub conversations: Vec<ConversationResponse>,
+    pub total: i64,
+}

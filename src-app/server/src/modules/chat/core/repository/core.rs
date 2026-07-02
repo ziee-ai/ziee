@@ -70,6 +70,11 @@ impl ChatCoreRepository {
         conversations::list_conversations(&self.pool, user_id, limit, offset).await
     }
 
+    /// Count the user's conversations (full server-side total, for pagination).
+    pub async fn count_conversations(&self, user_id: Uuid) -> Result<i64, AppError> {
+        conversations::count_conversations(&self.pool, user_id).await
+    }
+
     /// Update a conversation's metadata (title only).
     pub async fn update_conversation(
         &self,

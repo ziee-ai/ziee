@@ -168,6 +168,20 @@ pub async fn list_conversations(
         .collect())
 }
 
+/// Count the user's conversations (for paginated list responses).
+pub async fn count_conversations(pool: &PgPool, user_id: Uuid) -> Result<i64, AppError> {
+    let total = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM conversations WHERE user_id = $1",
+        user_id
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?
+    .unwrap_or(0);
+
+    Ok(total)
+}
+
 /// Update conversation metadata (title only).
 pub async fn update_conversation(
     pool: &PgPool,
