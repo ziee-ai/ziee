@@ -1,4 +1,4 @@
-import { Book } from 'lucide-react'
+import { Brain } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -61,7 +61,7 @@ export default createModule({
     settingsUserPages: [
       {
         id: 'memory',
-        icon: <Book />,
+        icon: <Brain />,
         label: 'Memory',
         path: 'memory',
         order: 30,
@@ -71,7 +71,7 @@ export default createModule({
     settingsAdminPages: [
       {
         id: 'memory-admin',
-        icon: <Book />,
+        icon: <Brain />,
         label: 'Memory',
         // Single-segment path (`memory-admin`, not `admin/memory`) so
         // SettingsPage's currentSection regex
