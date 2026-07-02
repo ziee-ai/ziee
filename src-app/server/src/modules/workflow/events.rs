@@ -95,6 +95,10 @@ pub struct SSEStepManifestItem {
 pub struct SSESnapshotData {
     pub run_id: Uuid,
     pub status: String,
+    /// The run's terminal error, if any. Carried on the snapshot so a client
+    /// that subscribes AFTER the run already failed (never receiving the live
+    /// `RunFailed` event) still renders the run-level error alert.
+    pub error: Option<String>,
     pub current_step: Option<String>,
     pub total_tokens: u64,
     pub step_outputs_json: serde_json::Value,

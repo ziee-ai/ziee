@@ -17,12 +17,13 @@ pub mod europepmc;
 pub mod pubmed;
 pub mod semanticscholar;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Datelike;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::core::Repos;
@@ -290,12 +291,17 @@ pub fn build(
     match key {
         "europepmc" => Ok(Box::new(europepmc::EuropePmcConnector::new()?)),
         "crossref" => Ok(Box::new(crossref::CrossrefConnector::new(mailto, api_key)?)),
-        "semanticscholar" => Ok(Box::new(semanticscholar::SemanticScholarConnector::new(api_key)?)),
+        "semanticscholar" => Ok(Box::new(semanticscholar::SemanticScholarConnector::new(
+            api_key,
+        )?)),
         "pubmed" => Ok(Box::new(pubmed::PubmedConnector::new(mailto, api_key)?)),
         "arxiv" => Ok(Box::new(arxiv::ArxivConnector::new()?)),
         "core" => {
             let key = api_key.filter(|k| !k.trim().is_empty()).ok_or_else(|| {
-                AppError::bad_request("LIT_SEARCH_CONNECTOR_UNCONFIGURED", "core requires an API key")
+                AppError::bad_request(
+                    "LIT_SEARCH_CONNECTOR_UNCONFIGURED",
+                    "core requires an API key",
+                )
             })?;
             Ok(Box::new(core::CoreConnector::new(key)?))
         }
@@ -306,13 +312,31 @@ pub fn build(
     }
 }
 
+/// Resolve the effective API key for a connector: the calling user's own key
+/// takes precedence; a blank/whitespace user key falls back to the
+/// deployment/admin key (`user_key.or(system_key)`, mirroring
+/// `resolve_api_key_for_user`). Pure, so the precedence is unit-testable.
+pub(crate) fn effective_api_key(
+    user_keys: &HashMap<String, String>,
+    connector: &str,
+    deployment_key: Option<String>,
+) -> Option<String> {
+    match user_keys.get(connector) {
+        Some(k) if !k.trim().is_empty() => Some(k.clone()),
+        _ => deployment_key,
+    }
+}
+
 /// Run a query across all enabled+configured connectors concurrently (UNION),
-/// then dedup → rank → (optionally) estimate completeness.
+/// then dedup → rank → (optionally) estimate completeness. `user_id` is the
+/// calling user, whose own per-connector keys take precedence over deployment
+/// keys.
 pub async fn aggregate_search(
     query: &str,
     year_from: Option<i32>,
     year_to: Option<i32>,
     settings: &LitSearchSettings,
+    user_id: Uuid,
 ) -> Result<AggregateResult, AppError> {
     let timeout = Duration::from_secs(settings.request_timeout_secs.max(1) as u64);
     // 100 = the per-connector page-size ceiling (every connector clamps to 100);
@@ -327,6 +351,9 @@ pub async fn aggregate_search(
     };
 
     let rows = Repos.lit_search.list_connectors().await?;
+    // The calling user's own keys (one query) — resolved FIRST, deployment key
+    // is the fallback.
+    let user_keys = Repos.lit_search.list_user_keys_raw(user_id).await?;
 
     // Resolve enabled connectors into built instances (skip unknown/unconfigured;
     // an enabled-but-unconfigured source — e.g. CORE without a key — is recorded
@@ -340,10 +367,14 @@ pub async fn aggregate_search(
         if !seen_keys.insert(key.as_str()) {
             continue;
         }
-        let Some(desc) = descriptor(key) else { continue };
+        let Some(desc) = descriptor(key) else {
+            continue;
+        };
         let row = rows.iter().find(|r| &r.connector == key);
-        let api_key = row.and_then(|r| r.api_key.clone());
-        let config = row.map(|r| r.config.clone()).unwrap_or_else(|| serde_json::json!({}));
+        let api_key = effective_api_key(&user_keys, key, row.and_then(|r| r.api_key.clone()));
+        let config = row
+            .map(|r| r.config.clone())
+            .unwrap_or_else(|| serde_json::json!({}));
         if !is_configured(&desc, api_key.as_deref(), &config) {
             degraded.push(key.clone());
             continue;
@@ -422,9 +453,52 @@ mod tests {
     }
 
     #[test]
+    fn effective_api_key_user_beats_deployment_and_falls_back() {
+        let mut user_keys = HashMap::new();
+        user_keys.insert("core".to_string(), "USER-KEY".to_string());
+        assert_eq!(
+            effective_api_key(&user_keys, "core", Some("DEPLOY".into())).as_deref(),
+            Some("USER-KEY")
+        );
+        assert_eq!(
+            effective_api_key(&user_keys, "pubmed", Some("DEPLOY".into())).as_deref(),
+            Some("DEPLOY")
+        );
+        assert_eq!(effective_api_key(&user_keys, "pubmed", None), None);
+    }
+
+    #[test]
+    fn effective_api_key_blank_user_key_falls_back() {
+        let mut user_keys = HashMap::new();
+        user_keys.insert("core".to_string(), "  ".to_string());
+        assert_eq!(
+            effective_api_key(&user_keys, "core", Some("DEPLOY".into())).as_deref(),
+            Some("DEPLOY")
+        );
+    }
+
+    #[test]
+    fn user_key_catalog_is_exactly_the_connectors_with_a_key_field() {
+        let keyed: Vec<&str> = catalog()
+            .into_iter()
+            .filter(|d| d.key_field.is_some())
+            .map(|d| d.key)
+            .collect();
+        // crossref / semanticscholar / pubmed / core accept a key; europepmc + arxiv don't.
+        assert_eq!(keyed, vec!["crossref", "semanticscholar", "pubmed", "core"]);
+    }
+
+    #[test]
     fn catalog_has_all_six_sources() {
         let keys: Vec<_> = catalog().into_iter().map(|d| d.key).collect();
-        for k in ["europepmc", "crossref", "semanticscholar", "pubmed", "arxiv", "core"] {
+        for k in [
+            "europepmc",
+            "crossref",
+            "semanticscholar",
+            "pubmed",
+            "arxiv",
+            "core",
+        ] {
             assert!(keys.contains(&k), "missing connector {k}");
         }
     }
@@ -465,7 +539,13 @@ mod tests {
     #[test]
     fn all_six_connectors_reach_a_configured_state() {
         let empty = serde_json::json!({});
-        for key in ["europepmc", "crossref", "semanticscholar", "pubmed", "arxiv"] {
+        for key in [
+            "europepmc",
+            "crossref",
+            "semanticscholar",
+            "pubmed",
+            "arxiv",
+        ] {
             let d = descriptor(key).unwrap_or_else(|| panic!("missing descriptor {key}"));
             assert!(
                 is_configured(&d, None, &empty),
@@ -484,10 +564,17 @@ mod tests {
         let configured_count = catalog()
             .iter()
             .filter(|d| {
-                let key = if d.key == "core" { Some("CORE_KEY") } else { None };
+                let key = if d.key == "core" {
+                    Some("CORE_KEY")
+                } else {
+                    None
+                };
                 is_configured(d, key, &empty)
             })
             .count();
-        assert_eq!(configured_count, 6, "all six connectors configurable together");
+        assert_eq!(
+            configured_count, 6,
+            "all six connectors configurable together"
+        );
     }
 }

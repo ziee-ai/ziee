@@ -122,6 +122,15 @@ pub fn user_routes() -> ApiRouter {
             "/workflows/import",
             post_with(dev::import_workflow, dev::import_workflow_docs),
         )
+        // Promote / download an LLM-authored bundle from the sandbox workspace.
+        .api_route(
+            "/workflows/workspace-save",
+            post_with(dev::workspace_save, dev::workspace_save_docs),
+        )
+        .api_route(
+            "/workflows/workspace-export",
+            get_with(dev::workspace_export, dev::workspace_export_docs),
+        )
         .api_route(
             "/workflows/{id}/dry-run",
             post_with(dev::dry_run, dev::dry_run_docs),

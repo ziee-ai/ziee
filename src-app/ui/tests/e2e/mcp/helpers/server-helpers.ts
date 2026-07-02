@@ -52,6 +52,19 @@ export async function deleteSystemServer(
     .first()
   await serverCard.waitFor({ state: 'visible', timeout: 10000 })
 
+  // A server must be DISABLED before it can be deleted — the delete Button is
+  // `disabled={server.enabled}` (with a "Disable the server before deleting it"
+  // tooltip). Turn the enable switch off first if it's on; the toggle's API
+  // call flips `enabled` false and re-enables the delete button (the `.click()`
+  // below auto-waits for that).
+  const enableSwitch = byTestId(serverCard, 'mcp-server-enable-switch')
+  if (
+    (await enableSwitch.count()) > 0 &&
+    (await enableSwitch.getAttribute('aria-checked')) === 'true'
+  ) {
+    await enableSwitch.click()
+  }
+
   // Click delete (scoped to the card) → confirm in the dialog.
   const deleteButton = byTestId(serverCard, 'mcp-server-delete-btn')
   if (await deleteButton.count() > 0) {

@@ -30,9 +30,11 @@ use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
+use flate2::Compression;
 use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
 use sha2::{Digest, Sha256};
-use tar::Archive;
+use tar::{Archive, Builder, Header};
 use uuid::Uuid;
 
 use crate::common::AppError;
@@ -443,6 +445,132 @@ pub async fn extract_tarball_bytes(
         total_bytes: extraction.total_bytes,
         sha256_hex: sha_actual,
     })
+}
+
+/// Pack an LLM-authored workspace directory (a workflow bundle:
+/// `workflow.yaml` + optional `scripts/` / `references/` …) into a
+/// gzip-compressed tar — the packing counterpart to
+/// [`extract_tarball_bytes`], so a promoted bundle round-trips cleanly.
+///
+/// `root` must already be confined to the per-conversation workspace by the
+/// caller (`workflow_mcp::tools`); this function additionally refuses symlinks
+/// / non-regular entries (defense in depth, mirroring the extractor's reject
+/// policy) and enforces the same file-count / size caps. Entries are written
+/// with paths relative to `root`, in a deterministic (sorted) order.
+pub fn pack_workspace_dir(root: &Path) -> Result<Vec<u8>, AppError> {
+    if !root.is_dir() {
+        return Err(AppError::bad_request(
+            "WORKFLOW_WORKSPACE_NOT_DIR",
+            format!("workspace path {} is not a directory", root.display()),
+        ));
+    }
+    // A bundle without workflow.yaml can never install — reject before packing.
+    if !root.join("workflow.yaml").is_file() {
+        return Err(AppError::bad_request(
+            "WORKFLOW_NO_ENTRY_POINT",
+            format!("workspace {} is missing workflow.yaml", root.display()),
+        ));
+    }
+
+    let enc = GzEncoder::new(Vec::new(), Compression::default());
+    let mut builder = Builder::new(enc);
+    let mut file_count: u32 = 0;
+    let mut total_bytes: u64 = 0;
+    append_dir_to_tar(&mut builder, root, root, &mut file_count, &mut total_bytes)?;
+
+    let enc = builder
+        .into_inner()
+        .map_err(|e| AppError::internal_error(format!("pack: tar finish: {e}")))?;
+    let bytes = enc
+        .finish()
+        .map_err(|e| AppError::internal_error(format!("pack: gzip finish: {e}")))?;
+    Ok(bytes)
+}
+
+/// Recursively append the regular files under `cur` to `builder`, with paths
+/// relative to `root`. Symlinks / non-regular entries are rejected; the
+/// extractor's caps are enforced.
+fn append_dir_to_tar(
+    builder: &mut Builder<GzEncoder<Vec<u8>>>,
+    root: &Path,
+    cur: &Path,
+    file_count: &mut u32,
+    total_bytes: &mut u64,
+) -> Result<(), AppError> {
+    let mut entries: Vec<PathBuf> = fs::read_dir(cur)
+        .map_err(|e| AppError::internal_error(format!("pack: read_dir {}: {e}", cur.display())))?
+        .map(|r| r.map(|e| e.path()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| AppError::internal_error(format!("pack: dir entry: {e}")))?;
+    // Deterministic ordering so identical trees pack to identical archives.
+    entries.sort();
+
+    for path in entries {
+        let meta = fs::symlink_metadata(&path).map_err(|e| {
+            AppError::internal_error(format!("pack: stat {}: {e}", path.display()))
+        })?;
+        let ft = meta.file_type();
+        if ft.is_symlink() {
+            return Err(AppError::bad_request(
+                "WORKFLOW_WORKSPACE_SYMLINK",
+                format!("symlinks are not packable ({})", path.display()),
+            ));
+        }
+        let rel = path.strip_prefix(root).map_err(|e| {
+            AppError::internal_error(format!("pack: strip_prefix {}: {e}", path.display()))
+        })?;
+        if ft.is_dir() {
+            append_dir_to_tar(builder, root, &path, file_count, total_bytes)?;
+        } else if ft.is_file() {
+            *file_count += 1;
+            if *file_count > MAX_BUNDLE_FILE_COUNT {
+                return Err(AppError::unprocessable_entity(
+                    "BUNDLE_TOO_MANY_FILES",
+                    format!("workspace exceeds {MAX_BUNDLE_FILE_COUNT} files"),
+                ));
+            }
+            let len = meta.len();
+            if len > MAX_BUNDLE_SINGLE_FILE_BYTES {
+                return Err(AppError::unprocessable_entity(
+                    "BUNDLE_FILE_TOO_LARGE",
+                    format!(
+                        "workspace file {} exceeds {} bytes",
+                        rel.display(),
+                        MAX_BUNDLE_SINGLE_FILE_BYTES
+                    ),
+                ));
+            }
+            *total_bytes += len;
+            if *total_bytes > MAX_BUNDLE_DECOMPRESSED_BYTES {
+                return Err(AppError::unprocessable_entity(
+                    "BUNDLE_TOO_LARGE",
+                    format!("workspace exceeds {MAX_BUNDLE_DECOMPRESSED_BYTES} bytes"),
+                ));
+            }
+            let data = fs::read(&path).map_err(|e| {
+                AppError::internal_error(format!("pack: read {}: {e}", path.display()))
+            })?;
+            let mut header = Header::new_gnu();
+            header.set_size(len);
+            // Preserve the source mode so the extractor's per-kind exec policy
+            // (workflows keep +x on scripts/) round-trips.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                header.set_mode(meta.permissions().mode());
+            }
+            #[cfg(not(unix))]
+            header.set_mode(0o644);
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_cksum();
+            builder.append_data(&mut header, rel, &data[..]).map_err(|e| {
+                AppError::internal_error(format!("pack: append {}: {e}", rel.display()))
+            })?;
+        }
+        // Anything else (devices/FIFOs/sockets) can't appear in a normal
+        // workspace and is silently skipped.
+    }
+    Ok(())
 }
 
 // ============================================================
@@ -1194,5 +1322,100 @@ mod tests {
         let res =
             extract_from_seed_bytes(&bundle, &garbage, &target, BundleKind::Skill).await;
         assert!(res.is_err(), "a corrupt (non-tar.gz) archive must fail to extract");
+    }
+
+    // ── pack_workspace_dir (workspace → tar.gz) ───────────────────────
+
+    fn write_file(path: &Path, contents: &[u8], mode: u32) {
+        if let Some(p) = path.parent() {
+            fs::create_dir_all(p).unwrap();
+        }
+        fs::write(path, contents).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+        }
+        #[cfg(not(unix))]
+        let _ = mode;
+    }
+
+    #[tokio::test]
+    async fn t1_pack_roundtrips_through_extract() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("myflow");
+        write_file(&root.join("workflow.yaml"), b"name: local.dev/x\nsteps: []\n", 0o644);
+        write_file(&root.join("scripts/run.py"), b"print('hi')\n", 0o644);
+        write_file(&root.join("references/note.txt"), b"note\n", 0o644);
+
+        let bytes = pack_workspace_dir(&root).expect("pack");
+        let out = tmp.path().join("out");
+        let extraction =
+            extract_tarball_bytes(&bytes, &out, BundleKind::Workflow).await.expect("extract");
+        assert_eq!(extraction.file_count, 3);
+        assert_eq!(
+            fs::read(out.join("workflow.yaml")).unwrap(),
+            b"name: local.dev/x\nsteps: []\n"
+        );
+        assert_eq!(fs::read(out.join("scripts/run.py")).unwrap(), b"print('hi')\n");
+        assert_eq!(fs::read(out.join("references/note.txt")).unwrap(), b"note\n");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn t1_pack_preserves_exec_bits() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("f");
+        write_file(&root.join("workflow.yaml"), b"name: x\n", 0o644);
+        write_file(&root.join("scripts/x.sh"), b"#!/bin/sh\necho hi\n", 0o755);
+
+        let bytes = pack_workspace_dir(&root).expect("pack");
+        let out = tmp.path().join("out");
+        extract_tarball_bytes(&bytes, &out, BundleKind::Workflow).await.expect("extract");
+        let mode = fs::metadata(out.join("scripts/x.sh")).unwrap().permissions().mode();
+        assert!(mode & 0o111 != 0, "exec bit must survive the round-trip, got {mode:o}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn t1_pack_rejects_symlinks() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("f");
+        write_file(&root.join("workflow.yaml"), b"name: x\n", 0o644);
+        std::os::unix::fs::symlink("/etc/passwd", root.join("evil")).unwrap();
+        let err = pack_workspace_dir(&root).expect_err("symlink must be rejected");
+        assert!(
+            format!("{err:?}").contains("SYMLINK"),
+            "error must name the symlink rejection: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn t1_pack_confined_to_dir() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("flow");
+        write_file(&root.join("workflow.yaml"), b"name: x\n", 0o644);
+        // A sibling OUTSIDE the packed dir must never appear in the archive.
+        write_file(&tmp.path().join("secret.txt"), b"secret\n", 0o644);
+
+        let bytes = pack_workspace_dir(&root).expect("pack");
+        let out = tmp.path().join("out");
+        extract_tarball_bytes(&bytes, &out, BundleKind::Workflow).await.expect("extract");
+        assert!(out.join("workflow.yaml").exists());
+        assert!(!out.join("secret.txt").exists());
+    }
+
+    #[test]
+    fn t1_pack_empty_dir_errors() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("empty");
+        fs::create_dir_all(&root).unwrap();
+        // No workflow.yaml → reject before producing bytes.
+        let err = pack_workspace_dir(&root).expect_err("no workflow.yaml must error");
+        assert!(
+            format!("{err:?}").contains("WORKFLOW_NO_ENTRY_POINT"),
+            "error must name the missing entry point: {err:?}"
+        );
     }
 }

@@ -1,6 +1,6 @@
 import type { Page, Route } from '@playwright/test'
 import {
-  mockChatStream,
+  mockChatTokenStream,
   startedEvent,
   mcpToolStartEvent,
   mcpToolCompleteEvent,
@@ -141,7 +141,7 @@ export async function seedAssistantWithToolResult(
     ...(opts.text ? [textDeltaEvent({ delta: opts.text, messageId: assistantMessageId })] : []),
     completeEvent(),
   ]
-  await mockChatStream(page, [events])
+  await mockChatTokenStream(page, [events])
 
   const assistantContents: MockMessageContent[] = [
     mockToolUseContent({ toolUseId, toolName, serverId }),
@@ -207,7 +207,7 @@ export async function seedAssistantWithMultipleToolResults(
   const userMessageId = `umsg_multi_${Math.random().toString(36).slice(2, 9)}`
 
   // Build events. Each tool_use generates a fresh tool_use_id.
-  const events: Parameters<typeof mockChatStream>[1][number] = [
+  const events: Parameters<typeof mockChatTokenStream>[1][number] = [
     startedEvent({ userMessageId }),
   ]
   const contents: MockMessageContent[] = []
@@ -237,7 +237,7 @@ export async function seedAssistantWithMultipleToolResults(
   }
   events.push(completeEvent())
 
-  await mockChatStream(page, [events])
+  await mockChatTokenStream(page, [events])
   await mockGetMessages(page, [
     mockUserMessage({ id: userMessageId, text: 'do multiple things' }),
     { id: assistantMessageId, role: 'assistant', contents },

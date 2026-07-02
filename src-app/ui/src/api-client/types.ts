@@ -4511,6 +4511,12 @@ export interface SSERunStartedData {
 
 export interface SSESnapshotData {
   current_step?: string
+  /**
+   * The run's terminal error, if any. Carried on the snapshot so a client
+   *  that subscribes AFTER the run already failed (never receiving the live
+   *  `RunFailed` event) still renders the run-level error alert.
+   */
+  error?: string
   final_output_json?: unknown
   pending_elicitation_json?: unknown
   run_id: string
@@ -4621,6 +4627,16 @@ export interface SandboxFlavorsResponse {
 export interface SaveUserApiKeyRequest {
   api_key: string
   provider_id: string
+}
+
+/** PUT body to set the calling user's own key for a connector. */
+export interface SaveUserConnectorKeyRequest {
+  api_key: string
+}
+
+/** PUT body to set the calling user's own key for a provider. */
+export interface SaveUserProviderKeyRequest {
+  api_key: string
 }
 
 /**
@@ -4923,7 +4939,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5596,6 +5612,32 @@ export interface UserApiKeyListResponse {
   keys: UserApiKeyEntry[]
 }
 
+/**
+ * One row in the user-facing key catalog: a key-accepting connector joined with
+ *  the calling user's own key state + whether a deployment (shared) key exists.
+ *  Neither the user key nor the deployment key value is ever exposed.
+ */
+export interface UserConnectorKeyCatalogEntry {
+  connector: string
+  display_name: string
+  /**
+   * The connector's key-field descriptor (label / help / docs / required),
+   *  so the user form renders the same guidance as the admin surface.
+   */
+  key_field?: KeyFieldInfo
+  /**
+   * True when the deployment/admin has a shared key for this connector — the
+   *  fallback used when the user sets none. Boolean only, never the value.
+   */
+  system_key_set: boolean
+  /** The user's own key in masked form, or `null` when they've set none. */
+  user_key?: string
+}
+
+export interface UserConnectorKeyCatalogResponse {
+  connectors: UserConnectorKeyCatalogEntry[]
+}
+
 export interface UserListResponse {
   page: number
   per_page: number
@@ -5657,6 +5699,28 @@ export interface UserMemorySettings {
   retrieval_enabled: boolean
   updated_at: string
   user_id: string
+}
+
+/**
+ * One row in the user-facing key catalog: a key-accepting provider joined with
+ *  the calling user's own key state + whether a deployment (shared) key exists.
+ *  Neither the user key nor the deployment key value is ever exposed.
+ */
+export interface UserProviderKeyCatalogEntry {
+  display_name: string
+  needs_api_key: boolean
+  provider: string
+  /**
+   * True when the deployment/admin has a shared key for this provider — the
+   *  fallback used when the user sets none. Boolean only, never the value.
+   */
+  system_key_set: boolean
+  /** The user's own key in masked form, or `null` when they've set none. */
+  user_key?: string
+}
+
+export interface UserProviderKeyCatalogResponse {
+  providers: UserProviderKeyCatalogEntry[]
 }
 
 /**
@@ -5805,11 +5869,23 @@ export interface Workflow {
    *  validator's compile pass runs (B4). See plan §4.1 pattern (d).
    */
   compiled_ir_json?: unknown
+  /**
+   * The owning conversation for an `ephemeral` row (else NULL). Set so the
+   *  row (and its runs) GC when the conversation is deleted.
+   */
+  conversation_id?: string
   created_at: string
   created_by?: string
   display_name?: string
   enabled: boolean
   entry_point: string
+  /**
+   * An LLM-authored, conversation-scoped throwaway workflow materialized by
+   *  the `run_from_workspace` verb. Excluded from every listing (never a
+   *  `wf_<slug>` tool nor on the workflows page) — it only runs via the
+   *  generic verb. CASCADE-cleaned with `conversation_id`.
+   */
+  ephemeral: boolean
   extracted_path: string
   file_count: number
   id: string
@@ -5938,6 +6014,31 @@ export interface WorkflowRunSummary {
   workflow_id: string
 }
 
+/** Query for `GET /api/workflows/workspace-export`. */
+export interface WorkspaceExportQuery {
+  conversation_id: string
+  dir: string
+}
+
+/**
+ * Promote a workflow the model authored in its sandbox workspace into the
+ *  user's permanent library. `scope="system"` is admin-only (re-checked by
+ *  `resolve_import_scope` inside `install_workflow_from_bytes`).
+ */
+export interface WorkspaceSaveRequest {
+  /** The conversation whose sandbox workspace holds the bundle. */
+  conversation_id: string
+  /**
+   * The workspace subdir (relative to the conversation workspace) with
+   *  `workflow.yaml` (+ any `scripts/`).
+   */
+  dir: string
+  /** Optional slug/name for the saved workflow. */
+  name?: string
+  /** `user` (default) or `system` (admin-only). */
+  scope?: string
+}
+
 // =============================================================================
 // PERMISSIONS
 // =============================================================================
@@ -5998,6 +6099,7 @@ export enum Permissions {
   HubModelsVersionRead = 'hub::models::read_version',
   LitSearchAdminManage = 'lit_search::admin::manage',
   LitSearchAdminRead = 'lit_search::admin::read',
+  LitSearchUse = 'lit_search::use',
   LlmModelsCreate = 'llm_models::create',
   LlmModelsDelete = 'llm_models::delete',
   LlmModelsDownloadsCancel = 'llm_models::downloads_cancel',
@@ -6061,6 +6163,7 @@ export enum Permissions {
   UsersToggleStatus = 'users::toggle_status',
   WebSearchAdminManage = 'web_search::admin::manage',
   WebSearchAdminRead = 'web_search::admin::read',
+  WebSearchUse = 'web_search::use',
   WorkflowsAssignToGroups = 'workflows::assign_to_groups',
   WorkflowsExecute = 'workflows::execute',
   WorkflowsInstall = 'workflows::install',
@@ -6125,6 +6228,7 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsVersionRead: 'View hub models version information',
   LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
   LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
+  LitSearchUse: 'Use the literature search + screening tools.',
   LlmModelsCreate: 'Create new LLM models',
   LlmModelsDelete: 'Delete LLM models',
   LlmModelsDownloadsCancel: 'Cancel active downloads',
@@ -6188,6 +6292,7 @@ export const PermissionDescriptions: Record<string, string> = {
   UsersToggleStatus: 'Enable or disable user accounts',
   WebSearchAdminManage: 'Update web search settings, provider chain, and provider API keys.',
   WebSearchAdminRead: 'Read web search settings (enable, provider chain, caps).',
+  WebSearchUse: 'Use the web search + page-fetch tools.',
   WorkflowsAssignToGroups: 'Manage group assignments for system-scope workflows',
   WorkflowsExecute: 'Kick off a workflow run',
   WorkflowsInstall: 'Install user-scope workflows',
@@ -6325,8 +6430,11 @@ export const ApiEndpoints = {
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
+  'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
+  'LitSearch.listUserKeys': 'GET /api/lit-search/user-keys',
+  'LitSearch.saveUserKey': 'PUT /api/lit-search/user-keys/{connector}',
   'LitSearch.updateConnector': 'PUT /api/lit-search/connectors/{connector}',
   'LitSearch.updateSettings': 'PUT /api/lit-search/settings',
   'LlmModel.cancelDownload': 'POST /api/llm-models/downloads/{download_id}/cancel',
@@ -6507,8 +6615,11 @@ export const ApiEndpoints = {
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
   'UserGroup.update': 'POST /api/groups/{group_id}',
+  'WebSearch.deleteUserKey': 'DELETE /api/web-search/user-keys/{provider}',
   'WebSearch.getProviders': 'GET /api/web-search/providers',
   'WebSearch.getSettings': 'GET /api/web-search/settings',
+  'WebSearch.listUserKeys': 'GET /api/web-search/user-keys',
+  'WebSearch.saveUserKey': 'PUT /api/web-search/user-keys/{provider}',
   'WebSearch.updateProvider': 'PUT /api/web-search/providers/{provider}',
   'WebSearch.updateSettings': 'PUT /api/web-search/settings',
   'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
@@ -6534,6 +6645,8 @@ export const ApiEndpoints = {
   'Workflow.test': 'POST /api/workflows/{id}/test',
   'Workflow.update': 'PUT /api/workflows/{id}',
   'Workflow.validate': 'POST /api/workflows/validate',
+  'Workflow.workspaceExport': 'GET /api/workflows/workspace-export',
+  'Workflow.workspaceSave': 'POST /api/workflows/workspace-save',
   'WorkflowSystem.getGroups': 'GET /api/workflows/system/{id}/groups',
   'WorkflowSystem.removeFromGroup': 'DELETE /api/workflows/system/{id}/groups/{group_id}',
   'WorkflowSystem.setGroups': 'POST /api/workflows/system/{id}/groups'
@@ -6664,8 +6777,11 @@ export type ApiEndpointParameters = {
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
+  'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
+  'LitSearch.listUserKeys': void
+  'LitSearch.saveUserKey': { connector: string } & SaveUserConnectorKeyRequest
   'LitSearch.updateConnector': { connector: string } & UpdateConnectorRequest
   'LitSearch.updateSettings': UpdateLitSearchSettingsRequest
   'LlmModel.cancelDownload': { download_id: string }
@@ -6846,8 +6962,11 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'WebSearch.deleteUserKey': { provider: string }
   'WebSearch.getProviders': void
   'WebSearch.getSettings': void
+  'WebSearch.listUserKeys': void
+  'WebSearch.saveUserKey': { provider: string } & SaveUserProviderKeyRequest
   'WebSearch.updateProvider': { provider: string } & UpdateProviderRequest
   'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
@@ -6873,6 +6992,8 @@ export type ApiEndpointParameters = {
   'Workflow.test': { id: string } & TestWorkflowRequest
   'Workflow.update': { id: string } & UpdateWorkflow
   'Workflow.validate': ValidateWorkflowRequest
+  'Workflow.workspaceExport': { conversation_id: string; dir: string }
+  'Workflow.workspaceSave': WorkspaceSaveRequest
   'WorkflowSystem.getGroups': { id: string }
   'WorkflowSystem.removeFromGroup': { id: string; group_id: string }
   'WorkflowSystem.setGroups': { id: string } & WorkflowGroupsRequest
@@ -7003,8 +7124,11 @@ export type ApiEndpointResponses = {
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
+  'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings
+  'LitSearch.listUserKeys': UserConnectorKeyCatalogResponse
+  'LitSearch.saveUserKey': UserConnectorKeyCatalogResponse
   'LitSearch.updateConnector': ConnectorCatalogResponse
   'LitSearch.updateSettings': LitSearchSettings
   'LlmModel.cancelDownload': void
@@ -7185,8 +7309,11 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'WebSearch.deleteUserKey': void
   'WebSearch.getProviders': ProviderCatalogResponse
   'WebSearch.getSettings': WebSearchSettings
+  'WebSearch.listUserKeys': UserProviderKeyCatalogResponse
+  'WebSearch.saveUserKey': UserProviderKeyCatalogResponse
   'WebSearch.updateProvider': ProviderCatalogResponse
   'WebSearch.updateSettings': WebSearchSettings
   'Workflow.cancelRun': RunActionAck
@@ -7212,6 +7339,8 @@ export type ApiEndpointResponses = {
   'Workflow.test': TestRunResponse
   'Workflow.update': Workflow
   'Workflow.validate': ValidateWorkflowResponse
+  'Workflow.workspaceExport': void
+  'Workflow.workspaceSave': Workflow
   'WorkflowSystem.getGroups': string[]
   'WorkflowSystem.removeFromGroup': void
   'WorkflowSystem.setGroups': void

@@ -138,6 +138,7 @@ pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, 
             extracted_path, bundle_sha256, bundle_size_bytes, file_count,
             entry_point, tags,
             scope, owner_user_id, created_by, enabled, is_dev,
+            ephemeral, conversation_id,
             compiled_ir_json
         )
         VALUES (
@@ -145,7 +146,8 @@ pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, 
             $5, $6, $7, $8,
             $9, $10,
             $11, $12, $13, $14, $15,
-            $16
+            $16, $17,
+            $18
         )
         RETURNING
             id,
@@ -164,6 +166,8 @@ pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, 
             created_by,
             enabled,
             is_dev,
+            ephemeral,
+            conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
@@ -183,6 +187,8 @@ pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, 
         request.created_by,
         request.enabled,
         request.is_dev,
+        request.ephemeral,
+        request.conversation_id,
         request.compiled_ir_json,
     )
     .fetch_one(pool)
@@ -216,6 +222,8 @@ pub async fn find_by_name_version(
             created_by,
             enabled,
             is_dev,
+            ephemeral,
+            conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
@@ -250,6 +258,7 @@ pub async fn find_by_name_version_owner(
             entry_point,
             tags as "tags: _",
             scope, owner_user_id, created_by, enabled, is_dev,
+            ephemeral, conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
@@ -290,6 +299,8 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Workflow>, App
             created_by,
             enabled,
             is_dev,
+            ephemeral,
+            conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
@@ -333,11 +344,14 @@ pub async fn list_for_user(
             created_by,
             enabled,
             is_dev,
+            ephemeral,
+            conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
         FROM workflows w
-        WHERE (w.scope = 'user' AND w.owner_user_id = $1)
+        WHERE w.ephemeral = FALSE
+          AND ((w.scope = 'user' AND w.owner_user_id = $1)
            OR (w.scope = 'system' AND (
                 NOT EXISTS (SELECT 1 FROM group_workflows WHERE workflow_id = w.id)
                 OR EXISTS (
@@ -345,7 +359,7 @@ pub async fn list_for_user(
                   JOIN user_groups ug ON gw.group_id = ug.group_id
                   WHERE gw.workflow_id = w.id AND ug.user_id = $1
                 )
-           ))
+           )))
         ORDER BY name ASC
         LIMIT $2 OFFSET $3
         "#,
@@ -512,6 +526,26 @@ pub async fn mark_status(
         status.as_str(),
         error_message,
         allow_cancelled_self,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Record the step currently in progress so a FAILURE (incl. a first-step
+/// failure) can name it. `build_error_result` reads `current_step`; without
+/// this, `current_step` was only set on step COMPLETION, so a run that failed
+/// on its first step reported a null `failed_step`.
+pub async fn set_current_step(
+    pool: &PgPool,
+    run_id: Uuid,
+    step_id: &str,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        "UPDATE workflow_runs SET current_step = $2, updated_at = NOW() WHERE id = $1",
+        run_id,
+        step_id,
     )
     .execute(pool)
     .await
@@ -925,6 +959,8 @@ pub async fn find_by_name(pool: &PgPool, name: &str) -> Result<Option<Workflow>,
             created_by,
             enabled,
             is_dev,
+            ephemeral,
+            conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
@@ -975,6 +1011,8 @@ pub async fn update(
             created_by,
             enabled,
             is_dev,
+            ephemeral,
+            conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
@@ -1087,11 +1125,13 @@ pub async fn list_system(pool: &PgPool, limit: i64, offset: i64) -> Result<Vec<W
             created_by,
             enabled,
             is_dev,
+            ephemeral,
+            conversation_id,
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
         FROM workflows
-        WHERE scope = 'system'
+        WHERE scope = 'system' AND ephemeral = FALSE
         ORDER BY name ASC
         LIMIT $1 OFFSET $2
         "#,
@@ -1128,6 +1168,8 @@ pub async fn get_system_workflows_for_group(
             w.created_by,
             w.enabled,
             w.is_dev,
+            w.ephemeral,
+            w.conversation_id,
             w.compiled_ir_json as "compiled_ir_json: _",
             w.created_at as "created_at: _",
             w.updated_at as "updated_at: _"

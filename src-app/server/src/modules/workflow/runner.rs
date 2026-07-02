@@ -379,7 +379,9 @@ pub async fn run_workflow(
     pool: PgPool,
     mut ctx: RunContext,
     workflow_def: WorkflowDef,
-    provider: Arc<ai_providers::Provider>,
+    // `None` for a tool-only workflow (no llm/llm_map step). The llm dispatch
+    // arms below are unreachable in that case, so they unwrap it safely.
+    provider: Option<Arc<ai_providers::Provider>>,
 ) {
     let run_id = ctx.run_id;
     let user_id = ctx.user_id;
@@ -602,7 +604,7 @@ async fn run_inner(
     pool: &PgPool,
     ctx: &mut RunContext,
     workflow: &WorkflowDef,
-    provider: Arc<ai_providers::Provider>,
+    provider: Option<Arc<ai_providers::Provider>>,
     handle: Arc<registry::RunHandle>,
     emit: Arc<dyn ProgressEmitter>,
 ) -> RunInnerOutcome {
@@ -708,6 +710,10 @@ async fn run_inner(
             description: description_rendered,
         }));
 
+        // Record the in-progress step so a failure (incl. a FIRST-step failure)
+        // names it in `build_error_result.failed_step` — the debug-loop signal.
+        let _ = repository::set_current_step(pool, ctx.run_id, &step.id).await;
+
         // Mock short-circuit. Honor a per-run `mocks[step.id]` from the
         // /run body OR a `StepDef.mock` baked into the workflow. Skips real
         // dispatch entirely — no LLM tokens, no sandbox spawn.
@@ -729,8 +735,16 @@ async fn run_inner(
             run_mock_step(ctx, &step.id, mv).await
         } else {
             let dispatcher: Box<dyn StepDispatcher> = match &step.config {
-                StepConfig::Llm { .. } => Box::new(LlmDispatcher::new(provider.clone())),
-                StepConfig::LlmMap { .. } => Box::new(LlmMapDispatcher::new(provider.clone())),
+                StepConfig::Llm { .. } => Box::new(LlmDispatcher::new(
+                    provider
+                        .clone()
+                        .expect("llm step requires a resolved model + provider"),
+                )),
+                StepConfig::LlmMap { .. } => Box::new(LlmMapDispatcher::new(
+                    provider
+                        .clone()
+                        .expect("llm_map step requires a resolved model + provider"),
+                )),
                 StepConfig::Sandbox { .. } => Box::new(SandboxDispatcher::new()),
                 StepConfig::Elicit { .. } => Box::new(ElicitDispatcher::new()),
                 StepConfig::Tool { .. } => Box::new(ToolDispatcher::new()),
@@ -1071,7 +1085,7 @@ pub async fn run_for_test(
     // intentionally ignored here.
     let outcome = tokio::time::timeout(
         RUN_WALL_CLOCK,
-        run_inner(pool, &mut ctx, workflow_def, provider, handle.clone(), emit.clone()),
+        run_inner(pool, &mut ctx, workflow_def, Some(provider), handle.clone(), emit.clone()),
     )
     .await;
 
@@ -1199,8 +1213,12 @@ pub async fn spawn_run(
     // (fallback 8192) is used for llm requests — same as the chat path's
     // apply_model_params (the per-call cost cap is enforced post-call, NOT here:
     // hardcoding 50k exceeds many models' output limits and the provider rejects).
+    let require_model = workflow_def
+        .steps
+        .iter()
+        .any(|s| matches!(s.config, StepConfig::Llm { .. } | StepConfig::LlmMap { .. }));
     let (model_id, model_name, model_max_tokens) =
-        resolve_run_model(user_id, opts.model_id, conversation_id).await?;
+        resolve_run_model(user_id, opts.model_id, conversation_id, require_model).await?;
 
     let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
 
@@ -1210,7 +1228,7 @@ pub async fn spawn_run(
             workflow_id: workflow.id,
             conversation_id,
             user_id,
-            model_id: Some(model_id),
+            model_id,
             sandbox_flavor: sandbox_flavor.clone(),
             run_kind: "normal".into(),
             invocation_source: opts.invocation_source.to_string(),
@@ -1232,7 +1250,7 @@ pub async fn spawn_run(
         &workflow_def,
         PathBuf::from(&workflow.extracted_path),
         workspace_root,
-        model_id,
+        model_id.unwrap_or_else(Uuid::nil),
         model_name,
         model_max_tokens,
         sandbox_flavor,
@@ -1250,9 +1268,16 @@ pub async fn spawn_run(
     // original /run request body. No-op when empty (the normal published path).
     let _ = file_io::write_mocks(&ctx).await;
 
-    let (provider, _name, _mid, _pid, _params) =
-        crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
-            .await?;
+    // Only resolve an LLM provider when the run actually has a model. A
+    // tool-only workflow runs with no provider (its dispatchers never touch one).
+    let provider = if let Some(mid) = model_id {
+        let (provider, _name, _mid, _pid, _params) =
+            crate::modules::chat::core::ai_provider::create_provider_from_model_id(mid, user_id)
+                .await?;
+        Some(provider)
+    } else {
+        None
+    };
 
     let pool_for_task = pool.clone();
     tokio::spawn(async move {
@@ -1312,11 +1337,12 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
 
     // The run's model was chosen at launch; re-resolve it (re-checks provider
     // access — a model that became inaccessible can't be resumed).
-    let model_id = run.model_id.ok_or_else(|| {
-        AppError::internal_error("workflow resume: run row has no model_id")
-    })?;
+    let require_model = workflow_def
+        .steps
+        .iter()
+        .any(|s| matches!(s.config, StepConfig::Llm { .. } | StepConfig::LlmMap { .. }));
     let (model_id, model_name, model_max_tokens) =
-        resolve_run_model(run.user_id, Some(model_id), run.conversation_id).await?;
+        resolve_run_model(run.user_id, run.model_id, run.conversation_id, require_model).await?;
 
     let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
 
@@ -1333,7 +1359,7 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
         &workflow_def,
         PathBuf::from(&workflow.extracted_path),
         workspace_root,
-        model_id,
+        model_id.unwrap_or_else(Uuid::nil),
         model_name,
         model_max_tokens,
         sandbox_flavor,
@@ -1352,12 +1378,17 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
     // resolves and the per-run token/byte caps stay enforced across resume.
     rehydrate_ctx(&mut ctx, &run);
 
-    let (provider, _name, _mid, _pid, _params) =
-        crate::modules::chat::core::ai_provider::create_provider_from_model_id(
-            model_id,
-            run.user_id,
-        )
-        .await?;
+    let provider = if let Some(mid) = model_id {
+        let (provider, _name, _mid, _pid, _params) =
+            crate::modules::chat::core::ai_provider::create_provider_from_model_id(
+                mid,
+                run.user_id,
+            )
+            .await?;
+        Some(provider)
+    } else {
+        None
+    };
 
     let pool_for_task = pool.clone();
     tokio::spawn(async move {
@@ -1411,7 +1442,10 @@ async fn resolve_run_model(
     user_id: Uuid,
     model_id: Option<Uuid>,
     conversation_id: Option<Uuid>,
-) -> Result<(Uuid, String, u32), AppError> {
+    // Whether the workflow has at least one llm/llm_map step. A tool-only
+    // workflow needs no model, so a missing model source is not an error for it.
+    require_model: bool,
+) -> Result<(Option<Uuid>, String, u32), AppError> {
     // SECURITY: whenever a conversation_id is supplied, verify the caller OWNS
     // it BEFORE it's used as a workspace key. The conversation-model branch
     // below re-fetches it, but the explicit-`model_id` path would otherwise
@@ -1452,7 +1486,7 @@ async fn resolve_run_model(
                 "you do not have access to this model",
             ));
         }
-        model
+        Some(model)
     } else if let Some(conv_id) = conversation_id {
         let conv = crate::core::Repos
             .chat
@@ -1485,21 +1519,32 @@ async fn resolve_run_model(
                 "you do not have access to this model",
             ));
         }
-        model
+        Some(model)
+    } else if !require_model {
+        // Tool-only / non-LLM workflows have no model to snapshot and issue no
+        // LLM request, so a missing model source is legitimate: run with none.
+        None
     } else {
         return Err(AppError::bad_request(
             "WORKFLOW_NO_MODEL_SOURCE",
             "provide a model_id or a conversation_id to run a workflow",
         ));
     };
-    let model_name = model.name.clone();
-    let model_max_tokens = model
-        .parameters
-        .max_tokens
-        .and_then(|n| u32::try_from(n).ok())
-        .filter(|n| *n > 0)
-        .unwrap_or(8192);
-    Ok((model.id, model_name, model_max_tokens))
+    match model {
+        Some(model) => {
+            let model_name = model.name.clone();
+            let model_max_tokens = model
+                .parameters
+                .max_tokens
+                .and_then(|n| u32::try_from(n).ok())
+                .filter(|n| *n > 0)
+                .unwrap_or(8192);
+            Ok((Some(model.id), model_name, model_max_tokens))
+        }
+        // No model: placeholder name + the same 8192 fallback. Never read,
+        // because a workflow with no llm/llm_map step issues no LLM request.
+        None => Ok((None, String::new(), 8192)),
+    }
 }
 
 /// Convenience: lookup the workspace root from the configured

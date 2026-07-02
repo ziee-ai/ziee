@@ -11,6 +11,46 @@ mod mcp_test;
 mod real_llm_test;
 mod restart_test;
 mod settings_test;
+mod user_keys_test;
+
+/// Spawn a loopback mock Brave that RECORDS every inbound `X-Subscription-Token`
+/// so a test can prove WHICH key (the user's vs the deployment's) reached the
+/// upstream. Returns the full `/search` endpoint URL (for
+/// `WEB_SEARCH_BRAVE_ENDPOINT`) + a shared vec of the tokens it received.
+pub async fn start_capturing_brave() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    use axum::{
+        Json, Router, extract::State, http::HeaderMap, response::IntoResponse, routing::get,
+    };
+    use std::sync::{Arc, Mutex};
+    let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new()
+        .route(
+            "/search",
+            get(
+                |State(seen): State<Arc<Mutex<Vec<String>>>>, headers: HeaderMap| async move {
+                    let token = headers
+                        .get("X-Subscription-Token")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    seen.lock().unwrap().push(token);
+                    Json(json!({
+                        "web": { "results": [
+                            { "title": "Cap", "url": "https://brave.example/c", "description": "s" }
+                        ] }
+                    }))
+                    .into_response()
+                },
+            ),
+        )
+        .with_state(seen.clone());
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app.into_make_service()).await;
+    });
+    (format!("http://127.0.0.1:{port}/search"), seen)
+}
 
 /// Build a JSON-RPC request to the web_search MCP endpoint.
 pub fn jsonrpc(
@@ -91,7 +131,8 @@ pub async fn start_failing_searxng() -> (String, std::sync::Arc<std::sync::atomi
 /// Spawn a loopback SearXNG that always returns HTTP 429 (rate-limited) — used
 /// to exercise the chain's fallback on a rate-limit response (distinct from a
 /// 500). Returns the base url + a hit counter.
-pub async fn start_rate_limited_searxng() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+pub async fn start_rate_limited_searxng() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>)
+{
     use axum::{Router, http::StatusCode, routing::get};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -263,4 +304,3 @@ pub async fn start_mock_html() -> String {
     });
     format!("http://127.0.0.1:{port}")
 }
-

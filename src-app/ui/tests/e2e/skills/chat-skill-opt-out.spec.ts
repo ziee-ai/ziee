@@ -42,7 +42,16 @@ test.describe('Skills — in-chat per-conversation opt-out', () => {
     ])
     await mockGetMessages(page, [
       mockUserMessage({ id: userMessageId, text: 'hello' }),
-      { id: 'amsg_skill_1', role: 'assistant', contents: [] },
+      // Give the assistant turn actual text content — an empty-contents message
+      // renders no bubble (nothing to show), so the wait below would never see
+      // the `amsg_skill_1` chat-message element.
+      {
+        id: 'amsg_skill_1',
+        role: 'assistant',
+        contents: [
+          { content_type: 'text', content: { type: 'text', text: 'Hi there!' } },
+        ],
+      },
     ])
 
     // Send a message → a real conversation is created (the "Skills in this chat"

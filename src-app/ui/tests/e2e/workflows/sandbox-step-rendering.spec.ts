@@ -28,7 +28,7 @@ steps:
   - id: process
     kind: sandbox
     stdin: "{{ plan.output }}"
-    command: ["bash", "-lc", "tr a-z A-Z"]
+    run: "tr a-z A-Z"
     depends_on: [plan]
 outputs:
   - name: out
