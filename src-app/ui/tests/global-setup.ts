@@ -2,7 +2,7 @@ import { FullConfig } from '@playwright/test'
 import { execSync } from 'child_process'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs'
 import { tmpdir } from 'os'
 import crypto from 'crypto'
 import pg from 'pg'
@@ -37,49 +37,75 @@ export default async function globalSetup(_config: FullConfig) {
   const configDir = resolve(__dirname, '.test-configs')
   cleanupStaleConfigFiles(configDir)
 
-  // Clean up any stale PostgreSQL test containers
-  // Only remove containers whose lock files are missing or stale
+  // Per-session container namespace. Concurrent e2e sessions (separate git
+  // worktrees) share ONE docker daemon, so their containers must live in
+  // disjoint name-spaces or a starting session reaps a sibling's live one.
+  // Each session is handed a distinct ZIEE_E2E_BASE_PG_PORT (see port-manager),
+  // so derive the namespace from it: container names become
+  // `ziee-tailtest-postgres-pg<base>-<rand>` and the cleanup filter below is
+  // scoped to THIS session's prefix — a session can only ever see (and thus
+  // reap) its OWN containers. The shared-lock liveness check is the second
+  // belt: even within one session it keeps the live current run and only reaps
+  // this session's crashed leftovers.
+  const sessionNs = `pg${process.env.ZIEE_E2E_BASE_PG_PORT || '54331'}`
+
+  // Clean up any stale PostgreSQL test containers.
+  //
+  // CROSS-SESSION SAFETY: multiple concurrent e2e sessions (separate git
+  // worktrees) share ONE docker daemon, so `docker ps` lists EVERY session's
+  // containers. Liveness must therefore be judged from the SHARED lock dir
+  // (tmpdir/ziee-test-locks, keyed by pid+runId), NOT the per-worktree
+  // `.test-configs/` dir — a sibling session's config lives in ITS worktree and
+  // is invisible here, so keying off it wrongly classifies a sibling's LIVE
+  // container as stale and `docker rm -f`s it mid-run (→ ECONNREFUSED storms in
+  // the victim run). The shared postgres-*.lock files carry {pid, runId}, which
+  // is all we need to map a container back to a live owning process.
   console.log('🧹 Cleaning up stale PostgreSQL containers...')
   try {
-    const containers = execSync('docker ps -a --filter "name=ziee-tailtest-postgres-" --format "{{.Names}}"', {
-      encoding: 'utf-8',
-    }).trim()
+    const containers = execSync(
+      `docker ps -a --filter "name=ziee-tailtest-postgres-${sessionNs}-" --format "{{.Names}}"`,
+      { encoding: 'utf-8' },
+    ).trim()
 
     if (containers) {
       const containerList = containers.split('\n')
       let removed = 0
       let kept = 0
 
-      for (const container of containerList) {
-        // Extract run ID from container name: ziee-test-postgres-{runId}
-        const runId = container.replace('ziee-tailtest-postgres-', '')
-        const configPath = resolve(__dirname, `.test-configs/postgres-${runId}.json`)
-
-        // Check if config file exists
-        if (existsSync(configPath)) {
-          // Config exists - check if lock is valid by reading the PID
+      // Build runId → live-pid map from the SHARED lock dir (same location
+      // port-manager writes to). Any lock whose owning PID is still alive marks
+      // that runId's container as in-use by SOME session on this box.
+      const lockDir = process.env.ZIEE_E2E_LOCK_DIR || resolve(tmpdir(), 'ziee-test-locks')
+      const liveRunIds = new Set<string>()
+      if (existsSync(lockDir)) {
+        for (const f of readdirSync(lockDir)) {
+          if (!f.startsWith('postgres-') || !f.endsWith('.lock')) continue
           try {
-            const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-            const lockFile = resolve(tmpdir(), 'ziee-test-locks', `postgres-${config.port}.lock`)
-
-            if (existsSync(lockFile)) {
-              const lock = JSON.parse(readFileSync(lockFile, 'utf-8'))
-              // Check if process is still running
-              try {
-                process.kill(lock.pid, 0) // Signal 0 just checks if process exists
-                console.log(`   ✅ Kept active container: ${container} (PID ${lock.pid})`)
-                kept++
-                continue
-              } catch {
-                // Process not running - lock is stale
-              }
+            const lock = JSON.parse(readFileSync(resolve(lockDir, f), 'utf-8'))
+            if (!lock.runId) continue
+            try {
+              process.kill(lock.pid, 0) // Signal 0 just checks the process exists
+              liveRunIds.add(lock.runId)
+            } catch {
+              // Owning process is gone — lock is stale, container is reapable.
             }
           } catch {
-            // Error reading config/lock - treat as stale
+            // Corrupted lock file — ignore.
           }
         }
+      }
 
-        // If we get here, container is stale (no config, no lock, or process dead)
+      for (const container of containerList) {
+        // Extract run ID from container name: ziee-tailtest-postgres-{runId}
+        const runId = container.replace('ziee-tailtest-postgres-', '')
+
+        if (liveRunIds.has(runId)) {
+          console.log(`   ✅ Kept active container: ${container} (live lock)`)
+          kept++
+          continue
+        }
+
+        // No live lock owns this runId — safe to reap.
         console.log(`   🗑️  Removing stale container: ${container}`)
         execSync(`docker rm -f ${container}`, { stdio: 'ignore' })
         removed++
@@ -98,7 +124,7 @@ export default async function globalSetup(_config: FullConfig) {
   }
 
   // 1. Get or generate unique test run ID (config may have already set it)
-  const runId = process.env.TEST_RUN_ID || crypto.randomBytes(4).toString('hex')
+  const runId = process.env.TEST_RUN_ID || `${sessionNs}-${crypto.randomBytes(4).toString('hex')}`
   console.log(`🆔 Test run ID: ${runId}`)
 
   // Store runId in environment for teardown and test-context
