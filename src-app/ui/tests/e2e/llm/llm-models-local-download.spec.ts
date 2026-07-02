@@ -640,6 +640,9 @@ test.describe('LLM Models - Local Download - Auto-detect files', () => {
     await openDownloadDrawer(page)
 
     await selectRepo(page, 'Hugging Face Hub')
+    // Wait for the selection to register (and the Select popup to close) so the
+    // Detect click lands immediately instead of racing the closing popup.
+    await expect(byTestId(page, 'llm-download-repository-select')).toContainText('Hugging Face Hub')
 
     // Leave the repository path EMPTY and click Detect.
     await byTestId(page, 'llm-download-detect-files-btn').click()
