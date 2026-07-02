@@ -111,6 +111,7 @@ test.describe('Workflows - run cancellation (real LLM snapshot)', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-cancel-run')
 
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 

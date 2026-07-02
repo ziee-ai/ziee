@@ -116,6 +116,7 @@ test.describe('Workflows - run history (Runs tab) (real LLM)', () => {
     )
 
     // The Runs section lists the run with the "Workflow page" source badge.
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     const sourceTag = page.locator('[data-testid^="wf-run-source-tag-"]')
     await expect(sourceTag.first()).toBeVisible({ timeout: 15000 })
@@ -188,6 +189,7 @@ test.describe('Workflows - run history (Runs tab) (real LLM)', () => {
     await openWorkflowCard(page, 'e2e-history-cancel-wf')
 
     // The run lists in the Runs tab.
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     const sourceTag = page.locator('[data-testid^="wf-run-source-tag-"]')
     await expect(sourceTag.first()).toBeVisible({ timeout: 15000 })

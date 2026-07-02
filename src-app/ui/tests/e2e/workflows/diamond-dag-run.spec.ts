@@ -101,6 +101,7 @@ test.describe('Workflows - diamond DAG run (real LLM snapshot)', () => {
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-diamond')
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 

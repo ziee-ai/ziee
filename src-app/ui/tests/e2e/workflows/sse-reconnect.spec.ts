@@ -87,6 +87,7 @@ test.describe('Workflows - run-progress SSE reconnect', () => {
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-sse-reconnect')
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
@@ -109,6 +110,7 @@ test.describe('Workflows - run-progress SSE reconnect', () => {
     // SSE stream.
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-sse-reconnect')
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
     await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
 
