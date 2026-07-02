@@ -269,7 +269,7 @@ export function UsersSettings() {
                         />
                       </div>
                     </div>
-                    {index < users.length - 1 && <Separator className="my-0" />}
+                    {index < users.length - 1 && <Separator className="my-4" />}
                   </div>
                 ))}
               </div>
