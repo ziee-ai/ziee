@@ -99,20 +99,21 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
             page: targetPage,
             limit: state.limit,
           })
+          const pageItems = response.conversations
 
           set(draft => {
             if (targetPage === 1) {
               // First page - replace all conversations
-              draft.conversations = response
-              draft.recentConversations = response.slice(0, 20)
+              draft.conversations = pageItems
+              draft.recentConversations = pageItems.slice(0, 20)
             } else {
               // Subsequent pages - append conversations
-              draft.conversations = [...draft.conversations, ...response]
+              draft.conversations = [...draft.conversations, ...pageItems]
             }
 
             draft.page = targetPage
-            draft.hasMore = response.length === state.limit
-            draft.total = draft.conversations.length
+            draft.hasMore = draft.conversations.length < response.total
+            draft.total = response.total
             draft.loading = false
             draft.loadingMore = false
             draft.isInitialized = true
