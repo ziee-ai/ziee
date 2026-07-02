@@ -207,7 +207,7 @@ export function MyMemoriesSection() {
                         <Text className="block">{row.content}</Text>
                       </div>
                       {canWrite && (
-                        <div className="flex gap-1 items-center justify-end">
+                        <div className="flex flex-wrap gap-1 items-center justify-end">
                           <Tooltip title="Edit memory">
                             <Button
                               variant="outline"

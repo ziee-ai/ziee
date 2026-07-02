@@ -160,7 +160,7 @@ export function RuntimeVersionCard({ version }: Props) {
             )}
           </Flex>
         </div>
-        <div className="flex gap-1 items-center justify-end">{actions}</div>
+        <div className="flex flex-wrap gap-1 items-center justify-end">{actions}</div>
       </div>
 
       <Descriptions

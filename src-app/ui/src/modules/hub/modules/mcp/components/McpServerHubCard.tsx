@@ -215,7 +215,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   )}
                 </Flex>
               </div>
-              <div className="flex gap-1 items-center justify-end">
+              <div className="flex flex-wrap gap-1 items-center justify-end">
                 {homepageUrl && (
                   <Button
                     icon={<Globe />}

@@ -320,7 +320,7 @@ export function InstalledHubTab() {
                             </Tooltip>
                           </Flex>
                         </div>
-                        <div className="flex gap-2 items-center justify-end">
+                        <div className="flex flex-wrap gap-2 items-center justify-end">
                           {row.hub_category === 'model' ||
                           ((row.hub_category === 'skill' ||
                             row.hub_category === 'workflow') &&

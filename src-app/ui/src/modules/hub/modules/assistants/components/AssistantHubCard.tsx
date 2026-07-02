@@ -145,7 +145,7 @@ for new users.`,
                   )}
                 </Flex>
               </div>
-              <div className="flex gap-1 items-center justify-end">
+              <div className="flex flex-wrap gap-1 items-center justify-end">
                 <Button
                   icon={<Info />}
                   onClick={e => {

@@ -335,7 +335,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   )}
                 </Flex>
               </div>
-              <div className="flex gap-1 items-center justify-end">
+              <div className="flex flex-wrap gap-1 items-center justify-end">
                 {/* v2 Phase 7: link out to the source repository's
                     homepage. Prefer the per-source identifier under
                     huggingface.co; fall back to the model-level
