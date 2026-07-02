@@ -1,8 +1,7 @@
-import { Download } from 'lucide-react'
+import { Download, Users } from 'lucide-react'
 import {
   Button,
   Card,
-  Dropdown,
   Flex,
   Dialog,
   Tag,
@@ -21,12 +20,6 @@ import { WorkflowDetailsDrawer } from './WorkflowDetailsDrawer'
 interface WorkflowHubCardProps {
   item: IndexItem
 }
-
-const adminMenuItems = [
-  { key: 'me', label: 'Install for me' },
-  { key: 'everyone', label: 'Install for everyone' },
-  { key: 'groups', label: 'Install for groups…' },
-]
 
 export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
   const [showDetails, setShowDetails] = useState(false)
@@ -96,12 +89,6 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
     }
   }
 
-  const handleInstallAction = (key: string) => {
-    if (key === 'me') void handleInstallForMe()
-    else if (key === 'everyone') void handleInstallForEveryone()
-    else if (key === 'groups') void openGroupPicker()
-  }
-
   return (
     <>
       <Card
@@ -126,32 +113,43 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
               </Text>
             )}
           </div>
-          <div onClick={e => e.stopPropagation()}>
-            {canManageSystem ? (
-              <Dropdown data-testid={`hub-workflow-admin-dropdown-${item.name}`} items={adminMenuItems} onSelect={handleInstallAction}>
-                <Button
-                  variant="default"
-                  icon={<Download />}
-                  loading={installing}
-                  disabled={installing}
-                  onClick={handleInstallForMe}
-                  data-testid={`hub-workflow-install-dropdown-btn-${item.name}`}
-                >
-                  Install
-                </Button>
-              </Dropdown>
-            ) : canInstall ? (
+          <div
+            onClick={e => e.stopPropagation()}
+            className="flex flex-wrap gap-1 items-center justify-end"
+          >
+            {canInstall && (
               <Button
                 variant="default"
                 icon={<Download />}
                 loading={installing}
-                disabled={state !== 'none'}
+                disabled={installing || state !== 'none'}
                 onClick={handleInstallForMe}
                 data-testid={`hub-workflow-install-btn-${item.name}`}
               >
                 Install for me
               </Button>
-            ) : null}
+            )}
+            {canManageSystem && (
+              <>
+                <Button
+                  icon={<Download />}
+                  loading={installing}
+                  disabled={installing || state === 'system'}
+                  onClick={handleInstallForEveryone}
+                  data-testid={`hub-workflow-install-as-system-btn-${item.name}`}
+                >
+                  {state === 'system' ? 'System installed' : 'Install as system'}
+                </Button>
+                <Button
+                  icon={<Users />}
+                  disabled={installing}
+                  onClick={openGroupPicker}
+                  data-testid={`hub-workflow-install-groups-btn-${item.name}`}
+                >
+                  Groups…
+                </Button>
+              </>
+            )}
           </div>
         </Flex>
       </Card>

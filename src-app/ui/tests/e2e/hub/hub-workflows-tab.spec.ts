@@ -122,7 +122,7 @@ test.describe('Hub — Workflows tab', () => {
     await expect(card).toBeVisible({ timeout: 30000 })
 
     // Admin sees the split "Install" button — its main segment installs-for-me.
-    await page.getByTestId('hub-workflow-install-dropdown-btn-demo-workflow').click()
+    await page.getByTestId('hub-workflow-install-btn-demo-workflow').click()
     await page.keyboard.press('Escape')
 
     await expect(
