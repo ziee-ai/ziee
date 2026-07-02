@@ -632,6 +632,9 @@ pub async fn get_group_system_skills(
     _auth: RequirePermissions<(SkillsAssignToGroups,)>,
     Path(group_id): Path<Uuid>,
 ) -> ApiResult<Json<GroupSystemSkillsResponse>> {
+    if Repos.group.get_by_id(group_id).await?.is_none() {
+        return Err(AppError::not_found("Group").into());
+    }
     let skills = Repos.skill.get_system_skills_for_group(group_id).await?;
     Ok((StatusCode::OK, Json(GroupSystemSkillsResponse { skills })))
 }
@@ -657,14 +660,16 @@ pub async fn update_group_system_skills(
 ) -> ApiResult<Json<GroupSystemSkillsResponse>> {
     use std::collections::HashSet;
 
+    if Repos.group.get_by_id(group_id).await?.is_none() {
+        return Err(AppError::not_found("Group").into());
+    }
+
     let new_ids: HashSet<Uuid> = request.skill_ids.iter().copied().collect();
+    let desired: Vec<Uuid> = new_ids.iter().copied().collect();
 
     // Guard: every requested id must be an existing system-scope skill.
     if !new_ids.is_empty() {
-        let system_count = Repos
-            .skill
-            .count_system_skills_in(&new_ids.iter().copied().collect::<Vec<_>>())
-            .await?;
+        let system_count = Repos.skill.count_system_skills_in(&desired).await?;
         if system_count as usize != new_ids.len() {
             return Err(AppError::bad_request(
                 "INVALID_SCOPE",
@@ -674,22 +679,15 @@ pub async fn update_group_system_skills(
         }
     }
 
+    // Diff the current vs desired set so we emit sync events only for the
+    // skills whose group membership actually changed.
     let current = Repos.skill.get_system_skills_for_group(group_id).await?;
     let current_ids: HashSet<Uuid> = current.iter().map(|s| s.id).collect();
+    let affected: HashSet<Uuid> = new_ids.symmetric_difference(&current_ids).copied().collect();
 
-    let to_add: Vec<Uuid> = new_ids.difference(&current_ids).copied().collect();
-    let to_remove: Vec<Uuid> = current_ids.difference(&new_ids).copied().collect();
-
-    let mut affected: HashSet<Uuid> = HashSet::new();
-    affected.extend(to_add.iter().copied());
-    affected.extend(to_remove.iter().copied());
-
-    for skill_id in to_remove {
-        Repos.skill.remove_skill_from_group(skill_id, group_id).await?;
-    }
-    for skill_id in to_add {
-        Repos.skill.assign_skill_to_group(skill_id, group_id).await?;
-    }
+    // Apply the full replace atomically (avoids a partial-write window that
+    // could strip the group's access on a mid-update failure).
+    Repos.skill.set_group_system_skills(group_id, &desired).await?;
 
     for skill_id in affected {
         events::emit_system_skill(SyncAction::Update, skill_id, origin.0);

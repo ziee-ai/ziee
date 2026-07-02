@@ -191,6 +191,9 @@ pub async fn get_group_system_workflows(
     _auth: RequirePermissions<(WorkflowsAssignToGroups,)>,
     AxumPath(group_id): AxumPath<Uuid>,
 ) -> ApiResult<Json<GroupSystemWorkflowsResponse>> {
+    if Repos.group.get_by_id(group_id).await?.is_none() {
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Group").into());
+    }
     let workflows = repository::get_system_workflows_for_group(Repos.pool(), group_id).await?;
     Ok((StatusCode::OK, Json(GroupSystemWorkflowsResponse { workflows })))
 }
@@ -216,15 +219,19 @@ pub async fn update_group_system_workflows(
 ) -> ApiResult<Json<GroupSystemWorkflowsResponse>> {
     use std::collections::HashSet;
 
-    let new_ids: HashSet<Uuid> = request.workflow_ids.iter().copied().collect();
+    if Repos.group.get_by_id(group_id).await?.is_none() {
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Group").into());
+    }
 
-    // Guard: every requested id must be an existing system-scope workflow.
+    let new_ids: HashSet<Uuid> = request.workflow_ids.iter().copied().collect();
+    let desired: Vec<Uuid> = new_ids.iter().copied().collect();
+
+    // Guard: every requested id must be an existing system-scope workflow. This
+    // fires BEFORE any write, so the group_workflows scope trigger stays a
+    // backstop and never surfaces as a 500.
     if !new_ids.is_empty() {
-        let system_count = repository::count_system_workflows_in(
-            Repos.pool(),
-            &new_ids.iter().copied().collect::<Vec<_>>(),
-        )
-        .await?;
+        let system_count =
+            repository::count_system_workflows_in(Repos.pool(), &desired).await?;
         if system_count as usize != new_ids.len() {
             return Err::<_, (StatusCode, AppError)>(
                 AppError::bad_request(
@@ -236,22 +243,14 @@ pub async fn update_group_system_workflows(
         }
     }
 
+    // Diff current vs desired so we emit sync events only for the workflows
+    // whose group membership actually changed.
     let current = repository::get_system_workflows_for_group(Repos.pool(), group_id).await?;
     let current_ids: HashSet<Uuid> = current.iter().map(|w| w.id).collect();
+    let affected: HashSet<Uuid> = new_ids.symmetric_difference(&current_ids).copied().collect();
 
-    let to_add: Vec<Uuid> = new_ids.difference(&current_ids).copied().collect();
-    let to_remove: Vec<Uuid> = current_ids.difference(&new_ids).copied().collect();
-
-    let mut affected: HashSet<Uuid> = HashSet::new();
-    affected.extend(to_add.iter().copied());
-    affected.extend(to_remove.iter().copied());
-
-    for workflow_id in to_remove {
-        repository::remove_workflow_group(Repos.pool(), workflow_id, group_id).await?;
-    }
-    for workflow_id in to_add {
-        repository::assign_workflow_to_group(Repos.pool(), workflow_id, group_id).await?;
-    }
+    // Apply the full replace atomically (no partial-write access-loss window).
+    Repos.workflow.set_group_system_workflows(group_id, &desired).await?;
 
     for workflow_id in affected {
         crate::modules::workflow::events::emit_system_workflow(

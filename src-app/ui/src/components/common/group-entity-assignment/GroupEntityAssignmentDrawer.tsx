@@ -152,7 +152,7 @@ export function GroupEntityAssignmentDrawer<E extends { id: string }>({
               <Text type="secondary">{emptyText}</Text>
             </div>
           ) : (
-            <Flex direction="column" className="w-full gap-4">
+            <Flex direction="column" className="w-full gap-4" role="list">
               {allEntities.map(entity => {
                 const isChecked = assignedIds.includes(entity.id)
                 return (
@@ -169,6 +169,7 @@ export function GroupEntityAssignmentDrawer<E extends { id: string }>({
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
                           tooltip="Assign to this group"
+                          aria-label={`Assign ${entityLabel(entity)} to this group`}
                           checked={isChecked}
                           onChange={checked => handleToggle(entity.id, checked)}
                           disabled={!canManage}

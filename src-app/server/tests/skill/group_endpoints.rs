@@ -311,8 +311,15 @@ async fn system_skill_group_403_get() {
     refresh(&server, &admin.token).await;
     let gid = create_group(&server, &admin.token, "sk-403g-grp").await;
 
-    // Caller lacking skills::assign_to_groups.
-    let weak = create_user_with_permissions(&server, "sk_403g_weak", &["skills::read"]).await;
+    // Caller has groups::read + skills::read but NOT skills::assign_to_groups,
+    // so a 403 unambiguously comes from the assign_to_groups gate (not a
+    // missing groups perm).
+    let weak = create_user_with_permissions(
+        &server,
+        "sk_403g_weak",
+        &["skills::read", "groups::read"],
+    )
+    .await;
     let got = get_group_skills(&server, &weak.token, &gid).await;
     assert_eq!(got.status(), 403);
 }
@@ -325,7 +332,12 @@ async fn system_skill_group_403_put() {
     let sid = install_system_skill(&server, &admin.token, &ids[0]).await;
     let gid = create_group(&server, &admin.token, "sk-403p-grp").await;
 
-    let weak = create_user_with_permissions(&server, "sk_403p_weak", &["skills::read"]).await;
+    let weak = create_user_with_permissions(
+        &server,
+        "sk_403p_weak",
+        &["skills::read", "groups::read"],
+    )
+    .await;
     let put = put_group_skills(&server, &weak.token, &gid, &[&sid]).await;
     assert_eq!(put.status(), 403);
 
@@ -386,6 +398,37 @@ async fn system_skill_group_bidirectional_consistency() {
             .any(|g| g == &Json::String(gid.clone())),
         "entity-side skill groups must include gid: {entity_groups}"
     );
+
+    // Removal direction also agrees: after clearing via the group endpoint,
+    // the entity-side list no longer contains gid.
+    put_group_skills(&server, &admin.token, &gid, &[]).await;
+    let after: Json = reqwest::Client::new()
+        .get(server.api_url(&format!("/skills/system/{sid}/groups")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("get skill groups")
+        .json()
+        .await
+        .expect("parse");
+    assert!(
+        !after.as_array().unwrap().iter().any(|g| g == &Json::String(gid.clone())),
+        "entity-side skill groups must DROP gid after removal: {after}"
+    );
+}
+
+#[tokio::test]
+async fn system_skill_group_unknown_group_404() {
+    let (server, _mock, _ids) = server_with_n_skills(0).await;
+    let admin = admin(&server, "sk_grp_404").await;
+    refresh(&server, &admin.token).await;
+    let bogus = uuid::Uuid::new_v4().to_string();
+
+    let got = get_group_skills(&server, &admin.token, &bogus).await;
+    assert_eq!(got.status(), 404, "GET on a nonexistent group should 404");
+
+    let put = put_group_skills(&server, &admin.token, &bogus, &[]).await;
+    assert_eq!(put.status(), 404, "PUT on a nonexistent group should 404");
 }
 
 #[tokio::test]

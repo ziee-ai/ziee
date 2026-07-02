@@ -108,21 +108,24 @@ impl WorkflowRepository {
         get_system_workflows_for_group(&self.pool, group_id).await
     }
 
-    /// Assign one system workflow to a group. The `group_workflows` trigger
-    /// rejects non-system workflows, so callers MUST pre-validate scope.
-    pub async fn assign_workflow_to_group(
-        &self,
-        workflow_id: Uuid,
-        group_id: Uuid,
-    ) -> Result<(), AppError> {
-        assign_workflow_to_group(&self.pool, workflow_id, group_id).await
-    }
-
     /// How many of the given ids are existing `scope = 'system'` workflows.
     /// The group-assignment update handler compares this to the requested
     /// count to reject non-system / unknown ids with a 400 before writing.
     pub async fn count_system_workflows_in(&self, ids: &[Uuid]) -> Result<i64, AppError> {
         count_system_workflows_in(&self.pool, ids).await
+    }
+
+    /// Replace the full set of system workflows assigned to a group in ONE
+    /// transaction (group → workflows direction). Removing-then-adding as N
+    /// separate pool calls left a partial-write window that could strip a
+    /// group's access on a mid-loop failure; the tx removes that window.
+    /// Callers MUST have validated `desired` are all system-scope.
+    pub async fn set_group_system_workflows(
+        &self,
+        group_id: Uuid,
+        desired: &[Uuid],
+    ) -> Result<(), AppError> {
+        set_group_system_workflows(&self.pool, group_id, desired).await
     }
 }
 
@@ -1141,23 +1144,33 @@ pub async fn get_system_workflows_for_group(
     Ok(rows)
 }
 
-pub async fn assign_workflow_to_group(
+pub async fn set_group_system_workflows(
     pool: &PgPool,
-    workflow_id: Uuid,
     group_id: Uuid,
+    desired: &[Uuid],
 ) -> Result<(), AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+    // group_workflows only ever holds system workflows (scope trigger), so
+    // dropping every row for this group not in `desired` is a safe replace.
     sqlx::query!(
-        r#"
-        INSERT INTO group_workflows (group_id, workflow_id)
-        VALUES ($1, $2)
-        ON CONFLICT DO NOTHING
-        "#,
+        "DELETE FROM group_workflows WHERE group_id = $1 AND NOT (workflow_id = ANY($2))",
         group_id,
-        workflow_id,
+        desired,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(AppError::database_error)?;
+    for workflow_id in desired {
+        sqlx::query!(
+            "INSERT INTO group_workflows (group_id, workflow_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            group_id,
+            workflow_id,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+    tx.commit().await.map_err(AppError::database_error)?;
     Ok(())
 }
 

@@ -17,6 +17,7 @@ import {
   assertWorkflowInGroupWidget,
   assertWorkflowNotInGroupWidget,
   assertGroupWidgetShowsWorkflowCount,
+  assertWorkflowWidgetCountBadge,
 } from './helpers/group-workflow-helpers'
 
 /**
@@ -37,6 +38,7 @@ test.describe('System Workflows assignment in User Groups', () => {
     const card = page.getByTestId(/^user-group-card-/).filter({ hasText: group }).first()
     await expect(card.getByTestId(/^workflow-group-widget-card-/)).toBeVisible({ timeout: 15000 })
     await expect(card.getByText('System Workflows', { exact: true })).toBeVisible()
+    await assertWorkflowWidgetCountBadge(page, group, 0)
     await deleteUserGroup(page, group)
   })
 
@@ -133,6 +135,7 @@ test.describe('System Workflows assignment in User Groups', () => {
     await clickGroupItem(page, group)
     await assertWorkflowInGroupWidget(page, group, wf)
     await assertGroupWidgetShowsWorkflowCount(page, group, 1)
+    await assertWorkflowWidgetCountBadge(page, group, 1)
     await deleteUserGroup(page, group)
   })
 

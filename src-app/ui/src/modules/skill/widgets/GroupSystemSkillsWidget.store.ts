@@ -18,7 +18,6 @@ interface GroupSystemSkillsWidgetState {
 
   loadSkillsForGroup: (groupId: string, force?: boolean) => Promise<void>
   updateGroupSkills: (groupId: string, skillIds: string[]) => Promise<void>
-  getGroupSkillsData: (groupId: string) => GroupSkills | undefined
 }
 
 /**
@@ -97,10 +96,6 @@ export const useGroupSystemSkillsWidgetStore =
               lastFetched: Date.now(),
             })
           })
-        },
-
-        getGroupSkillsData: (groupId): GroupSkills | undefined => {
-          return get().groupSkills.get(groupId)
         },
       })),
     ),

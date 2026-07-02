@@ -17,6 +17,7 @@ import {
   assertSkillInGroupWidget,
   assertSkillNotInGroupWidget,
   assertGroupWidgetShowsSkillCount,
+  assertSkillWidgetCountBadge,
 } from './helpers/group-skill-helpers'
 
 /**
@@ -37,6 +38,8 @@ test.describe('System Skills assignment in User Groups', () => {
     const card = page.getByTestId(/^user-group-card-/).filter({ hasText: group }).first()
     await expect(card.getByTestId(/^skill-group-widget-card-/)).toBeVisible({ timeout: 15000 })
     await expect(card.getByText('System Skills', { exact: true })).toBeVisible()
+    // Fresh group → nothing assigned → the count badge reads (0).
+    await assertSkillWidgetCountBadge(page, group, 0)
     await deleteUserGroup(page, group)
   })
 
@@ -135,6 +138,7 @@ test.describe('System Skills assignment in User Groups', () => {
     await clickGroupItem(page, group)
     await assertSkillInGroupWidget(page, group, skill)
     await assertGroupWidgetShowsSkillCount(page, group, 1)
+    await assertSkillWidgetCountBadge(page, group, 1)
     await deleteUserGroup(page, group)
   })
 

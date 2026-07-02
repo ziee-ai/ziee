@@ -209,6 +209,42 @@ impl SkillRepository {
         count_system_skills_in(&self.pool, ids).await
     }
 
+    /// Replace the full set of system skills assigned to a group in ONE
+    /// transaction (the group → skills direction of `set_skill_groups`).
+    /// Removing-then-adding as N separate pool calls left a partial-write
+    /// window that could strip a group's access on a mid-loop failure; the
+    /// tx removes that window. Callers MUST have validated `desired` are all
+    /// system-scope (the `group_skills` scope trigger is the backstop).
+    pub async fn set_group_system_skills(
+        &self,
+        group_id: Uuid,
+        desired: &[Uuid],
+    ) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+        // group_skills only ever holds system skills, so dropping every row for
+        // this group not in `desired` is a safe full-replace.
+        sqlx::query!(
+            "DELETE FROM group_skills WHERE group_id = $1 AND NOT (skill_id = ANY($2))",
+            group_id,
+            desired,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+        for skill_id in desired {
+            sqlx::query!(
+                "INSERT INTO group_skills (group_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                group_id,
+                skill_id,
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(())
+    }
+
     /// Replace the full set of groups assigned to a skill in ONE
     /// transaction. The previous read-diff-then-N-writes flow left the
     /// assignment set partially updated if any write failed midway; doing

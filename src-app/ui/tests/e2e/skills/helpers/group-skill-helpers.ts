@@ -138,3 +138,14 @@ export async function assertGroupWidgetShowsSkillCount(
   const card = groupCardByName(page, groupName)
   await expect(card.getByTestId(/^skill-group-widget-tag-/)).toHaveCount(expectedCount)
 }
+
+/** Assert the "(N)" count badge the widget header displays (scoped to the
+ * System Skills widget card so it can't match a sibling widget's badge). */
+export async function assertSkillWidgetCountBadge(
+  page: Page,
+  groupName: string,
+  expectedCount: number,
+) {
+  const widgetCard = groupCardByName(page, groupName).getByTestId(/^skill-group-widget-card-/)
+  await expect(widgetCard.getByText(`(${expectedCount})`, { exact: true })).toBeVisible()
+}

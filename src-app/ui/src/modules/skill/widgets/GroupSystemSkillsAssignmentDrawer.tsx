@@ -20,10 +20,15 @@ export function GroupSystemSkillsAssignmentDrawer() {
   const [allSkills, setAllSkills] = useState<Skill[]>([])
 
   useEffect(() => {
-    if (isOpen) {
-      ApiClient.SkillSystem.list({ limit: 1000, offset: 0 })
-        .then(res => setAllSkills(res.skills))
-        .catch(err => console.error('Failed to load system skills:', err))
+    if (!isOpen) return
+    let cancelled = false
+    ApiClient.SkillSystem.list({ limit: 1000, offset: 0 })
+      .then(res => {
+        if (!cancelled) setAllSkills(res.skills)
+      })
+      .catch(err => console.error('Failed to load system skills:', err))
+    return () => {
+      cancelled = true
     }
   }, [isOpen])
 

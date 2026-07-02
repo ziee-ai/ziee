@@ -91,7 +91,7 @@ export function GroupEntityAssignmentWidget<E extends { id: string }>({
                 key={entity.id}
                 tone={entityActive?.(entity) ? 'info' : undefined}
                 variant="outline"
-                data-testid={`${testidPrefix}-tag-${entity.id}`}
+                data-testid={`${testidPrefix}-tag-${group.id}-${entity.id}`}
               >
                 {entityLabel(entity)}
               </Tag>

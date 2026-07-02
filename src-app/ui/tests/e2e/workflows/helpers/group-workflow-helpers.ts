@@ -117,3 +117,14 @@ export async function assertGroupWidgetShowsWorkflowCount(
   const card = groupCardByName(page, groupName)
   await expect(card.getByTestId(/^workflow-group-widget-tag-/)).toHaveCount(expectedCount)
 }
+
+/** Assert the "(N)" count badge the widget header displays (scoped to the
+ * System Workflows widget card so it can't match a sibling widget's badge). */
+export async function assertWorkflowWidgetCountBadge(
+  page: Page,
+  groupName: string,
+  expectedCount: number,
+) {
+  const widgetCard = groupCardByName(page, groupName).getByTestId(/^workflow-group-widget-card-/)
+  await expect(widgetCard.getByText(`(${expectedCount})`, { exact: true })).toBeVisible()
+}

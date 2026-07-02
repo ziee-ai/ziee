@@ -199,7 +199,14 @@ async fn system_workflow_group_403_get() {
     let admin = admin(&server, "wf_grp_403g_admin").await;
     let gid = create_group(&server, &admin.token, "wf-403g-grp").await;
 
-    let weak = create_user_with_permissions(&server, "wf_403g_weak", &["workflows::read"]).await;
+    // groups::read granted so the 403 is unambiguously from the
+    // workflows::assign_to_groups gate.
+    let weak = create_user_with_permissions(
+        &server,
+        "wf_403g_weak",
+        &["workflows::read", "groups::read"],
+    )
+    .await;
     let got = get_group_workflows(&server, &weak.token, &gid).await;
     assert_eq!(got.status(), 403);
 }
@@ -211,7 +218,12 @@ async fn system_workflow_group_403_put() {
     let wid = install_system_wf(&server, &admin.token, "wf-403p").await;
     let gid = create_group(&server, &admin.token, "wf-403p-grp").await;
 
-    let weak = create_user_with_permissions(&server, "wf_403p_weak", &["workflows::read"]).await;
+    let weak = create_user_with_permissions(
+        &server,
+        "wf_403p_weak",
+        &["workflows::read", "groups::read"],
+    )
+    .await;
     let put = put_group_workflows(&server, &weak.token, &gid, &[&wid]).await;
     assert_eq!(put.status(), 403);
 
@@ -267,6 +279,35 @@ async fn system_workflow_group_bidirectional_consistency() {
             .any(|g| g == &Json::String(gid.clone())),
         "entity-side workflow groups must include gid: {entity_groups}"
     );
+
+    // Removal direction also agrees.
+    put_group_workflows(&server, &admin.token, &gid, &[]).await;
+    let after: Json = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflows/system/{wid}/groups")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("get workflow groups")
+        .json()
+        .await
+        .expect("parse");
+    assert!(
+        !after.as_array().unwrap().iter().any(|g| g == &Json::String(gid.clone())),
+        "entity-side workflow groups must DROP gid after removal: {after}"
+    );
+}
+
+#[tokio::test]
+async fn system_workflow_group_unknown_group_404() {
+    let server = plain_server().await;
+    let admin = admin(&server, "wf_grp_404").await;
+    let bogus = uuid::Uuid::new_v4().to_string();
+
+    let got = get_group_workflows(&server, &admin.token, &bogus).await;
+    assert_eq!(got.status(), 404, "GET on a nonexistent group should 404");
+
+    let put = put_group_workflows(&server, &admin.token, &bogus, &[]).await;
+    assert_eq!(put.status(), 404, "PUT on a nonexistent group should 404");
 }
 
 #[tokio::test]

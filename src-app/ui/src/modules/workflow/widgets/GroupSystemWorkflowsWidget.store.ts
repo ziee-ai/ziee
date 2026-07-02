@@ -18,7 +18,6 @@ interface GroupSystemWorkflowsWidgetState {
 
   loadWorkflowsForGroup: (groupId: string, force?: boolean) => Promise<void>
   updateGroupWorkflows: (groupId: string, workflowIds: string[]) => Promise<void>
-  getGroupWorkflowsData: (groupId: string) => GroupWorkflows | undefined
 }
 
 /**
@@ -102,10 +101,6 @@ export const useGroupSystemWorkflowsWidgetStore =
               lastFetched: Date.now(),
             })
           })
-        },
-
-        getGroupWorkflowsData: (groupId): GroupWorkflows | undefined => {
-          return get().groupWorkflows.get(groupId)
         },
       })),
     ),

@@ -20,10 +20,15 @@ export function GroupSystemWorkflowsAssignmentDrawer() {
   const [allWorkflows, setAllWorkflows] = useState<Workflow[]>([])
 
   useEffect(() => {
-    if (isOpen) {
-      ApiClient.Workflow.listSystem()
-        .then(res => setAllWorkflows(res.workflows))
-        .catch(err => console.error('Failed to load system workflows:', err))
+    if (!isOpen) return
+    let cancelled = false
+    ApiClient.Workflow.listSystem()
+      .then(res => {
+        if (!cancelled) setAllWorkflows(res.workflows)
+      })
+      .catch(err => console.error('Failed to load system workflows:', err))
+    return () => {
+      cancelled = true
     }
   }, [isOpen])
 
