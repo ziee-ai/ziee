@@ -137,7 +137,11 @@ test.describe('Sidebar conversation menu — project contributions', () => {
       }
     })
 
-    await page.goto(`${baseURL}/settings`)
+    // Land on /chats: the sidebar (recent-conversations widget + its row menu) is
+    // global, and this route pre-loads the projects store so the AddToProject
+    // combobox is populated + actionable (on /settings it lazy-loads on modal
+    // open, leaving the combobox briefly non-interactive).
+    await page.goto(`${baseURL}/chats`)
     await page.waitForLoadState('load')
 
     await openSidebarMenuForRow(page, conversationId)
@@ -154,11 +158,14 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     // virtualizes — an off-screen option never attaches), then dispatch the
     // click straight to it (its hover transition keeps it "not stable", so the
     // actionability path never fires the selecting onClick).
+    // Open the combobox and dispatch the click straight to the option: the
+    // Base-UI list virtualizes + the option's hover transition keeps it "not
+    // stable", so the actionability path never fires the selecting onClick.
     await byTestId(dialog, 'project-add-to-project-combobox').click()
-    await page.keyboard.type('Sidebar Add Target')
-    const opt = byTestId(page, `project-add-to-project-combobox-opt-${projectId}`)
-    await opt.waitFor({ state: 'attached', timeout: 10000 })
-    await opt.dispatchEvent('click')
+    await byTestId(
+      page,
+      `project-add-to-project-combobox-opt-${projectId}`,
+    ).dispatchEvent('click')
 
     // Confirm via the dialog's Add button.
     await byTestId(dialog, 'project-add-to-project-confirm-button').click()
