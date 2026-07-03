@@ -26,19 +26,21 @@ export const HeaderBarContainer = ({
   // the content. This gives BOTH content-under-notch (on the down-scroll, where
   // it matters) AND reappear-on-scroll-up — without a fixed header (which the
   // shell traps) or a portal (which wrecks tab order). Default mode = static.
-  const [pinned, setPinned] = useState(true)
+  // Default RELATIVE (false): on a fresh page the header is just content that
+  // wipes away on the first swipe-up. It only becomes sticky to REAPPEAR on a
+  // swipe-down (scroll up).
+  const [pinned, setPinned] = useState(false)
   const lastY = useRef(0)
   useEffect(() => {
     if (!nativeScroll) {
-      setPinned(true)
+      setPinned(false)
       return
     }
     lastY.current = window.scrollY
     const onScroll = () => {
       const y = window.scrollY
-      if (y <= HIDE_THRESHOLD) setPinned(true) // near the top → always shown
-      else if (y > lastY.current) setPinned(false) // scrolling down → relative (away)
-      else if (y < lastY.current) setPinned(true) // scrolling up → sticky (appears)
+      if (y > lastY.current && y > HIDE_THRESHOLD) setPinned(false) // down → relative (wipes away)
+      else if (y < lastY.current) setPinned(true) // up → sticky (reappears)
       lastY.current = y
     }
     window.addEventListener('scroll', onScroll, { passive: true })
