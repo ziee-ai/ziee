@@ -97,15 +97,25 @@ export function WorkflowRunDialog({
 
   // Reset the form + JSON editor each time the dialog opens (or the
   // target workflow changes) so reopening for a different workflow
-  // doesn't surface the prior run's values.
+  // doesn't surface the prior run's values. Keyed on open/workflow ONLY:
+  // `selectedModelId` resolves asynchronously (models load after the dialog
+  // opens), and including it here re-ran this reset mid-session, wiping the
+  // user's in-progress JSON/form inputs back to defaults.
   useEffect(() => {
     if (!open) return
     form.reset(Object.fromEntries(inputs.map(i => [i.name, i.default ?? ''])))
     setJsonInputs('{}')
     setJsonError(null)
-    setModelId(selectedModelId ?? undefined)
     setCaptureLogs(false)
-  }, [open, workflow.id, form, selectedModelId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, workflow.id])
+
+  // Apply the incoming default model separately — models can resolve after the
+  // dialog is already open, and this must NOT reset the user's typed inputs.
+  useEffect(() => {
+    if (!open) return
+    setModelId(selectedModelId ?? undefined)
+  }, [open, selectedModelId])
 
   const runWith = async (inputValues: Record<string, unknown>) => {
     if (!conversationId && !modelId) {
