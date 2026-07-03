@@ -37,6 +37,18 @@ test.describe('App layout — drawer resize handle', () => {
     ).toBeVisible({ timeout: 15000 })
 
     const wrapper = page.getByTestId('layout-drawer-content').last()
+
+    // Wait for the drawer's slide-in animation to fully settle before measuring
+    // or dragging. Mid-animation the Content still carries a `translateX(...)`
+    // transform, so the (position:absolute) resize handle is off-screen — a
+    // drag started then lands on empty space and the width never changes.
+    // The enter animation ends at `transform: none`.
+    await expect
+      .poll(async () =>
+        wrapper.evaluate(el => getComputedStyle(el as HTMLElement).transform),
+      )
+      .toBe('none')
+
     const before = (await wrapper.boundingBox())!.width
 
     // Drag the resize handle leftward to widen the (right-side) drawer.
