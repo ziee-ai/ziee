@@ -114,30 +114,41 @@ test.describe('Social login — navikt end-to-end parity', () => {
           '{"email":"navikt-e2e-user@example.com","email_verified":true}',
         )
       // Navikt's mock login page is external (not our kit) — submit its form.
-      await page.locator('button[type="submit"]').first().click()
+      // The 2.1.x template renders the submit control as an `<input
+      // type="submit" value="Sign-in">` (role=button, name "Sign-in"), which a
+      // `button[...]` CSS selector misses — target it by ARIA role instead.
+      await page.getByRole('button', { name: /sign-?in/i }).first().click()
 
       // Bounce: navikt → our /callback (with code) → AuthCallbackPage
-      // (#token=...&return_to=...) → AuthCallbackPage scrubs + navigates
-      // to "/" (the default return_to since we hit /login without one).
-      await page.waitForURL(`${baseURL}/`, { timeout: 30_000 })
+      // (#token=...&return_to=...) → AuthCallbackPage scrubs + navigates in.
+      // The exact landing route varies (a freshly provisioned user is routed
+      // to the onboarding wizard, not "/"), so gate on the durable signal —
+      // the JWT landing in the persisted auth store — rather than a URL.
+      const readToken = () =>
+        page.evaluate(() => {
+          const raw = localStorage.getItem('auth-storage')
+          return raw ? JSON.parse(raw).state?.token : null
+        })
+      await expect.poll(readToken, { timeout: 30_000 }).toBeTruthy()
 
       // Logged-in landing: the auth store has a token + a user. Verify
       // localStorage carries the JWT (proves Auth.store hydrated).
-      const tokenInStore = await page.evaluate(() => {
-        const raw = localStorage.getItem('auth-storage')
-        return raw ? JSON.parse(raw).state?.token : null
-      })
+      const tokenInStore = await readToken()
       expect(tokenInStore).toBeTruthy()
       expect(tokenInStore).not.toBe('')
 
-      // Cross-subsystem: the OAuth-derived session must be FUNCTIONAL for chat.
-      // The existing social-login coverage stops at the logged-in landing; here
-      // we navigate to the chat surface (the '/chat' new-chat page) and assert
-      // the composer's send affordance renders for the OAuth-authenticated user.
-      await page.goto(`${baseURL}/chat`, { waitUntil: 'domcontentloaded' })
-      await expect(byTestId(page, 'chat-input-send-btn')).toBeVisible({
-        timeout: 30_000,
+      // Cross-subsystem: the OAuth-derived session must be FUNCTIONAL, not just
+      // present. A freshly provisioned user is hard-gated into the onboarding
+      // wizard (chat is unreachable until setup completes — orthogonal to
+      // auth), so exercise the session where it's owned: an authenticated API
+      // call. `/api/auth/me` echoing the provisioned identity proves the JWT
+      // minted by the OIDC callback is accepted by the API.
+      const meRes = await fetch(`${apiURL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${tokenInStore}` },
       })
+      expect(meRes.status).toBe(200)
+      const me = await meRes.json()
+      expect(me.user?.username).toBe('e2e-navikt-user')
     } finally {
       await mock!.stop()
     }
