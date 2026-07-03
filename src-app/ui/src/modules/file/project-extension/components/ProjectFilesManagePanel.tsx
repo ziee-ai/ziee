@@ -305,6 +305,9 @@ export function ProjectFilesManagePanel() {
               }
               actions={
                 canEdit ? (
+                  // Native `title` (not the kit Tooltip): a Base-UI Tooltip
+                  // trigger wrapping a Base-UI Confirm trigger thrashes — the
+                  // tooltip flashes then vanishes. Native title has no conflict.
                   <Confirm
                     title="Delete this file?"
                     description="This permanently removes the file from your library."
@@ -314,14 +317,13 @@ export function ProjectFilesManagePanel() {
                     onConfirm={() => handleDelete(file.id, file.filename)}
                     data-testid={`file-project-delete-confirm-${file.id}`}
                   >
-                    <Tooltip title="Delete">
-                      <Button
-                        variant="outline"
-                        icon={<Trash2 />}
-                        aria-label={`Delete ${file.filename}`}
-                        data-testid={`file-project-delete-btn-${file.id}`}
-                      />
-                    </Tooltip>
+                    <Button
+                      variant="outline"
+                      icon={<Trash2 />}
+                      aria-label={`Delete ${file.filename}`}
+                      title="Delete"
+                      data-testid={`file-project-delete-btn-${file.id}`}
+                    />
                   </Confirm>
                 ) : undefined
               }
@@ -336,7 +338,9 @@ export function ProjectFilesManagePanel() {
       {/* Sticky header — keeps title/counter/upload/selection visible
           while the file list scrolls. */}
       <div
-        className="sticky z-10 -mx-1 px-1 bg-background"
+        // z-30: the FileCard's AttachmentActions are `relative z-20`, so a lower
+        // header would let their buttons show through as the list scrolls under.
+        className="sticky z-30 -mx-1 px-1 bg-background"
         style={{ top: -1, paddingTop: 1 }}
       >
         {header}

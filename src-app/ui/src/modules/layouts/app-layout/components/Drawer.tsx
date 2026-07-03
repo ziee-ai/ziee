@@ -98,6 +98,20 @@ export const Drawer: React.FC<DrawerProps> = ({
   const closeDir = placement === 'right' ? 1 : placement === 'left' ? -1 : 0
   const onTouchStart = (e: React.TouchEvent) => {
     if (closeDir === 0 || e.touches.length !== 1) return
+    // Don't hijack a horizontal scroller inside the drawer (e.g. an xlsx sheet-
+    // tab strip): if the touch starts in one, let it scroll instead of closing.
+    for (
+      let el = e.target as HTMLElement | null;
+      el && el !== e.currentTarget;
+      el = el.parentElement
+    ) {
+      const cs = getComputedStyle(el)
+      const scrollableX =
+        cs.overflowX === 'auto' ||
+        cs.overflowX === 'scroll' ||
+        el.hasAttribute('data-overlayscrollbars-viewport')
+      if (scrollableX && el.scrollWidth > el.clientWidth + 1) return
+    }
     const t = e.touches[0]
     swipe.current = { x: t.clientX, y: t.clientY, active: false, dx: 0 }
   }

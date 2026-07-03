@@ -28,6 +28,8 @@ interface TabsBase {
    *  row, and the active panel gets the remaining height (so its content can
    *  scroll). Use for a tabbed viewer that must fit a bounded box. */
   fill?: boolean
+  /** Extra classes on the tab strip row (e.g. `justify-center px-3`). */
+  tabStripClassName?: string
   /** Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. */
   'data-testid': string
 }
@@ -60,6 +62,7 @@ export type TabsProps = TabsBase & (TabsEditable | TabsStatic)
 
 export function Tabs({
   items, value, defaultValue, onValueChange, onTabClick, disabled, size, className, fill,
+  tabStripClassName,
   editable, hideAdd, onEdit, onClose, addLabel, closeLabel, 'data-testid': testid,
 }: TabsProps) {
   // React to an ambient disabled surface (e.g. inside a disabled Form/Card).
@@ -92,7 +95,7 @@ export function Tabs({
           children to be role=tab (aria-required-children), and a plain add button
           inside it violates that. overflow-x-auto lets a long tab strip scroll
           horizontally instead of wrapping/clipping. */}
-      <div className={cn('flex items-center overflow-x-auto', fill && 'shrink-0')}>
+      <div className={cn('flex items-center overflow-x-auto', fill && 'shrink-0', tabStripClassName)}>
       <TabsList>
         {items.map((t) => {
           const showClose = (t.closable ?? editable) && !s.disabled && !t.disabled

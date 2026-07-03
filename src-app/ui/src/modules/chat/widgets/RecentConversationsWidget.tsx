@@ -213,6 +213,9 @@ function ConversationRowLabel({
         }
         onClick={e => e.stopPropagation()}
       >
+        {/* Native `title` (not the kit Tooltip): a Base-UI Tooltip trigger on
+            or around a Base-UI Dropdown trigger thrashes — the tooltip flashes
+            then vanishes. A native title has no floating-tree conflict. */}
         <Dropdown
           data-testid={`chat-recent-row-menu-${conversation.id}`}
           items={menuItems}
@@ -232,7 +235,7 @@ function ConversationRowLabel({
             loading={deleting}
             className="w-[22px] h-[22px] p-0"
             aria-label="Conversation options"
-            tooltip="Conversation options"
+            title="Conversation options"
           />
         </Dropdown>
       </div>
