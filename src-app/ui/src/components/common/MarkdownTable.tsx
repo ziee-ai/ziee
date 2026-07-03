@@ -93,7 +93,10 @@ export const MarkdownTable = memo(function MarkdownTable({
       {fullscreen &&
         createPortal(
           <div
-            className="fixed inset-0 z-[1000] flex flex-col bg-background"
+            // pointer-events-auto: a modal Radix Dialog (the file drawer) sets
+            // body { pointer-events: none }, which this body-portal sibling would
+            // otherwise inherit — making the overlay + Exit button unclickable.
+            className="pointer-events-auto fixed inset-0 z-[1000] flex flex-col bg-background"
             role="dialog"
             aria-modal="true"
             data-testid="markdown-table-fullscreen"

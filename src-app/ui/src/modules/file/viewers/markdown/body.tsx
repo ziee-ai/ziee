@@ -1,4 +1,5 @@
 import { ScrollArea, Spin } from '@/components/ui'
+import { MarkdownTable } from '@/components/common/MarkdownTable'
 import { Streamdown } from 'streamdown'
 import { Component, createElement, type ComponentProps, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
@@ -92,7 +93,10 @@ export class StreamdownErrorBoundary extends Component<StreamdownErrorBoundaryPr
 }
 
 // Stable identity so Streamdown's prop-equality avoids re-renders.
-const SAFE_IMG_COMPONENTS = { img: SafeImg }
+// `table` uses our wrapper too, so tables in the file viewer get OverlayScrollbars
+// + an in-page fullscreen at z-[1000] (above the file drawer) instead of
+// Streamdown's native scroller + z-50 fullscreen (which hid behind the drawer).
+const SAFE_IMG_COMPONENTS = { img: SafeImg, table: MarkdownTable }
 
 // Hoisted to module scope — a literal `[...]` in the JSX below would create a
 // fresh array reference on every render, defeating any prop-equality check

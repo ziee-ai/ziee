@@ -1,5 +1,5 @@
 import { useMemo, type JSX } from 'react'
-import { MarkdownTable } from './MarkdownTable'
+import { MarkdownTable } from '@/components/common/MarkdownTable'
 
 /**
  * Returns Streamdown component overrides shared by all markdown renderers in the chat module.
