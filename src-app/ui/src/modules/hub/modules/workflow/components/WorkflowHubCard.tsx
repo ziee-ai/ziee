@@ -51,6 +51,36 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
     }
   }
 
+  // Same install actions as the card, rendered in the detail drawer's footer.
+  const drawerFooter =
+    canInstall || canManageSystem ? (
+      <Flex justify="end" gap="small">
+        {canInstall && (
+          <Button
+            variant="default"
+            icon={<Download />}
+            loading={installing}
+            disabled={installing || state !== 'none'}
+            onClick={handleInstallForMe}
+            data-testid={`hub-workflow-drawer-install-btn-${item.name}`}
+          >
+            Install for me
+          </Button>
+        )}
+        {canManageSystem && (
+          <Button
+            icon={<Download />}
+            loading={installing}
+            disabled={installing || state === 'system'}
+            onClick={handleInstallForEveryone}
+            data-testid={`hub-workflow-drawer-install-as-system-btn-${item.name}`}
+          >
+            {state === 'system' ? 'System installed' : 'Install as system'}
+          </Button>
+        )}
+      </Flex>
+    ) : undefined
+
   return (
     <>
       <Card
@@ -110,6 +140,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
         item={item}
         open={showDetails}
         onClose={() => setShowDetails(false)}
+        footer={drawerFooter}
       />
     </>
   )

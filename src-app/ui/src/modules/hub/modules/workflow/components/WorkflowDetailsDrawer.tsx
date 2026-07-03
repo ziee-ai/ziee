@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Descriptions, Space, Tag, Paragraph, Title } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import type { IndexItem } from '@/api-client/types'
@@ -6,6 +7,8 @@ interface WorkflowDetailsDrawerProps {
   item: IndexItem
   open: boolean
   onClose: () => void
+  /** Install actions (mirrors the card) rendered in the drawer footer. */
+  footer?: ReactNode
 }
 
 /**
@@ -17,6 +20,7 @@ export function WorkflowDetailsDrawer({
   item,
   open,
   onClose,
+  footer,
 }: WorkflowDetailsDrawerProps) {
   return (
     <Drawer
@@ -24,6 +28,7 @@ export function WorkflowDetailsDrawer({
       open={open}
       onClose={onClose}
       size={720}
+      footer={footer}
       title={
         <Space>
           <Title level={5} className="!m-0">
