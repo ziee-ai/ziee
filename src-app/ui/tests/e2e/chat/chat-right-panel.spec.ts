@@ -484,10 +484,13 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     await expect(page.locator('[data-testid="cannot-preview"]')).toHaveCount(0)
     // Body either succeeds (a per-sheet table renders) OR fails gracefully
     // (error UI shows). Asserting on the union pins the contract: XlsxBody
-    // never hangs silently in spinner state. NB: assert on the per-sheet
-    // `file-xlsx-table-<sheet>` div, not the `file-xlsx-tabs` wrapper — the
-    // kit <Tabs> currently drops `data-testid` on its root (see live6 note),
-    // so the table testid is the reliable success signal.
+    // never hangs silently in spinner state. We assert on the per-sheet
+    // `file-xlsx-table-<sheet>` div (present in BOTH the single- and
+    // multi-sheet success paths) rather than the `file-xlsx-tabs` root,
+    // because the root is absent in the graceful-error branch — the table
+    // testid is the reliable success signal that also excludes the error UI.
+    // (The kit <Tabs> root DOES forward `data-testid`; the `file-xlsx-tabs`
+    // hook is now present on the viewer root in both sheet-count paths.)
     await expect(
       panelBody
         .locator('[data-testid^="file-xlsx-table-"], [data-testid="file-xlsx-error"]')
