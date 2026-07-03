@@ -290,7 +290,7 @@ function ProjectTagWithRemove({
   return (
     <div
       className={`inline-flex items-center transition-opacity ${
-        removeOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        removeOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 hover-none:opacity-100'
       }`}
     >
       <Confirm
@@ -455,7 +455,7 @@ function ProjectMembershipTrailing({
         className={`inline-flex items-center transition-opacity ${
           modalOpen
             ? 'opacity-100'
-            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
         }`}
       >
         <Tooltip title="Add to project">

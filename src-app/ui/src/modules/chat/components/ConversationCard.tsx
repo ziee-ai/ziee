@@ -110,7 +110,7 @@ export function ConversationCard({
     >
       <div className="flex flex-col gap-2 pb-6">
         {/* Title and metadata */}
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           <Text strong className="text-base flex-1 min-w-0" ellipsis>
             {conversation.title || 'Untitled Conversation'}
           </Text>
@@ -166,7 +166,7 @@ export function ConversationCard({
                 className={`transition-opacity bg-card ${
                   popconfirmOpen
                     ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100'
+                    : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
                 }`}
                 variant="outline"
                 size="default"
@@ -200,7 +200,7 @@ export function ConversationCard({
             className={`transition-opacity ${
               isSelected
                 ? 'opacity-100'
-                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
             }`}
             onClick={e => e.stopPropagation()}
           >

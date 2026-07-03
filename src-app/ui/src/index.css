@@ -4,6 +4,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Touch devices have no hover, so `group-hover`-revealed controls (card action
+ * buttons, checkboxes) would never appear. Use `hover-none:` to force them
+ * visible on coarse/no-hover pointers. Targets the device, not the viewport
+ * width, so a narrow desktop window still uses hover. */
+@custom-variant hover-none (@media (hover: none));
+
 /* Tailwind v4 only auto-scans the package root; streamdown lives in node_modules
  * so its utility classes must be pointed at explicitly. */
 @source "../node_modules/streamdown/dist/*.js";
