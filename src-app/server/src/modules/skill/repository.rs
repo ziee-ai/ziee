@@ -44,16 +44,6 @@ impl SkillRepository {
         insert(&self.pool, request).await
     }
 
-    // Repository query surface not yet called by a handler/test; kept as API.
-    #[allow(dead_code)]
-    pub async fn find_by_name_version(
-        &self,
-        name: &str,
-        version: Option<&str>,
-    ) -> Result<Option<Skill>, AppError> {
-        find_by_name_version(&self.pool, name, version).await
-    }
-
     /// H1: find the row for one (name, version) within a SPECIFIC owner
     /// scope. `owner_user_id = Some(uid)` matches that user's user-scope
     /// row; `None` matches the system-scope row. Used by the re-install
@@ -70,14 +60,6 @@ impl SkillRepository {
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Skill>, AppError> {
         find_by_id(&self.pool, id).await
-    }
-
-    /// Look up a skill by reverse-DNS name (any version). Used by
-    /// `skill_mcp::load_skill` + `read_skill_file` to resolve a name
-    /// the LLM passed.
-    #[allow(dead_code)] // repository query surface not yet called by a handler/test; kept as API
-    pub async fn find_by_name(&self, name: &str) -> Result<Option<Skill>, AppError> {
-        find_by_name(&self.pool, name).await
     }
 
     /// M5: resolve a skill by name to the row the CALLER can actually read,
@@ -176,16 +158,6 @@ impl SkillRepository {
     /// Group assignment management for system-scope skills.
     pub async fn get_skill_groups(&self, skill_id: Uuid) -> Result<Vec<Uuid>, AppError> {
         get_skill_groups(&self.pool, skill_id).await
-    }
-
-    // Repository query surface not yet called by a handler/test; kept as API.
-    #[allow(dead_code)]
-    pub async fn assign_skill_to_group(
-        &self,
-        skill_id: Uuid,
-        group_id: Uuid,
-    ) -> Result<(), AppError> {
-        assign_skill_to_group(&self.pool, skill_id, group_id).await
     }
 
     pub async fn remove_skill_from_group(
@@ -444,50 +416,6 @@ pub async fn upsert_builtin(pool: &PgPool, request: CreateSkill) -> Result<Skill
     Ok(row)
 }
 
-// Repository query surface not yet called by a handler/test; kept as API.
-#[allow(dead_code)]
-pub async fn find_by_name_version(
-    pool: &PgPool,
-    name: &str,
-    version: Option<&str>,
-) -> Result<Option<Skill>, AppError> {
-    let row = sqlx::query_as!(
-        Skill,
-        r#"
-        SELECT
-            id,
-            name,
-            version,
-            display_name,
-            description,
-            when_to_use,
-            extracted_path,
-            bundle_sha256,
-            bundle_size_bytes,
-            file_count,
-            entry_point,
-            frontmatter_json as "frontmatter_json: _",
-            tags as "tags: _",
-            scope,
-            owner_user_id,
-            created_by,
-            enabled,
-            is_dev,
-            created_at as "created_at: _",
-            updated_at as "updated_at: _"
-        FROM skills
-        WHERE name = $1
-          AND (($2::text IS NULL AND version IS NULL) OR version = $2)
-        LIMIT 1
-        "#,
-        name,
-        version,
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::database_error)?;
-    Ok(row)
-}
 
 /// H1: owner-scoped (name, version) lookup. NULL `owner_user_id` matches
 /// the system row; a non-NULL value matches that user's row only.
@@ -587,45 +515,6 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Skill>, AppErr
     Ok(row)
 }
 
-// Repository query surface not yet called by a handler/test; kept as API.
-#[allow(dead_code)]
-pub async fn find_by_name(pool: &PgPool, name: &str) -> Result<Option<Skill>, AppError> {
-    let row = sqlx::query_as!(
-        Skill,
-        r#"
-        SELECT
-            id,
-            name,
-            version,
-            display_name,
-            description,
-            when_to_use,
-            extracted_path,
-            bundle_sha256,
-            bundle_size_bytes,
-            file_count,
-            entry_point,
-            frontmatter_json as "frontmatter_json: _",
-            tags as "tags: _",
-            scope,
-            owner_user_id,
-            created_by,
-            enabled,
-            is_dev,
-            created_at as "created_at: _",
-            updated_at as "updated_at: _"
-        FROM skills
-        WHERE name = $1
-        ORDER BY version DESC NULLS LAST
-        LIMIT 1
-        "#,
-        name,
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::database_error)?;
-    Ok(row)
-}
 
 /// M5: name → the row the caller can read, preferring the user's own copy.
 /// Same access predicate as `user_can_read` (user-owned OR accessible
@@ -988,27 +877,6 @@ pub async fn get_skill_groups(pool: &PgPool, skill_id: Uuid) -> Result<Vec<Uuid>
     Ok(rows)
 }
 
-// Repository query surface not yet called by a handler/test; kept as API.
-#[allow(dead_code)]
-pub async fn assign_skill_to_group(
-    pool: &PgPool,
-    skill_id: Uuid,
-    group_id: Uuid,
-) -> Result<(), AppError> {
-    sqlx::query!(
-        r#"
-        INSERT INTO group_skills (group_id, skill_id)
-        VALUES ($1, $2)
-        ON CONFLICT DO NOTHING
-        "#,
-        group_id,
-        skill_id,
-    )
-    .execute(pool)
-    .await
-    .map_err(AppError::database_error)?;
-    Ok(())
-}
 
 pub async fn remove_skill_from_group(
     pool: &PgPool,
