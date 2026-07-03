@@ -48,7 +48,12 @@ export function ConversationCard({
   // that need a network round-trip (e.g., project membership lookup)
   // don't fire N requests per page load. Sticky once true — the
   // user has already paid for the lookup, no point hiding again.
-  const [hoveredOnce, setHoveredOnce] = useState(false)
+  // Touch devices have no hover, so seed it true there (guarded by the
+  // `hover: none` media) — otherwise the trailing (Add-to-project) would
+  // never mount at all. Desktop keeps the lazy-on-hover behaviour.
+  const [hoveredOnce, setHoveredOnce] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches,
+  )
 
   const handleCardClick = () => {
     if (isInSelectionMode && onSelect) {
