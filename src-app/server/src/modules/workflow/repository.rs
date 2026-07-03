@@ -28,14 +28,6 @@ impl WorkflowRepository {
         insert(&self.pool, request).await
     }
 
-    pub async fn find_by_name_version(
-        &self,
-        name: &str,
-        version: Option<&str>,
-    ) -> Result<Option<Workflow>, AppError> {
-        find_by_name_version(&self.pool, name, version).await
-    }
-
     /// H1: owner-scoped (name, version) lookup (see skill repo twin).
     pub async fn find_by_name_version_owner(
         &self,
@@ -195,53 +187,6 @@ pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, 
         request.compiled_ir_json,
     )
     .fetch_one(pool)
-    .await
-    .map_err(AppError::database_error)?;
-    Ok(row)
-}
-
-// Non-owner-scoped lookup; the owner-scoped `find_by_name_version_owner` twin
-// is what handlers call today. Kept as the B4 query surface.
-#[allow(dead_code)]
-pub async fn find_by_name_version(
-    pool: &PgPool,
-    name: &str,
-    version: Option<&str>,
-) -> Result<Option<Workflow>, AppError> {
-    let row = sqlx::query_as!(
-        Workflow,
-        r#"
-        SELECT
-            id,
-            name,
-            version,
-            display_name,
-            description,
-            extracted_path,
-            bundle_sha256,
-            bundle_size_bytes,
-            file_count,
-            entry_point,
-            tags as "tags: _",
-            scope,
-            owner_user_id,
-            created_by,
-            enabled,
-            is_dev,
-            ephemeral,
-            conversation_id,
-            compiled_ir_json as "compiled_ir_json: _",
-            created_at as "created_at: _",
-            updated_at as "updated_at: _"
-        FROM workflows
-        WHERE name = $1
-          AND (($2::text IS NULL AND version IS NULL) OR version = $2)
-        LIMIT 1
-        "#,
-        name,
-        version,
-    )
-    .fetch_optional(pool)
     .await
     .map_err(AppError::database_error)?;
     Ok(row)
@@ -934,49 +879,6 @@ pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>
         WHERE id = $1
         "#,
         run_id,
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::database_error)?;
-    Ok(row)
-}
-
-/// Look up an installed workflow by its reverse-DNS name (latest by
-/// `updated_at`). Intended for `workflow_mcp::tools::call_tool` to reverse
-/// the `wf_<slug>` → workflow mapping (B5, not wired yet).
-#[allow(dead_code)]
-pub async fn find_by_name(pool: &PgPool, name: &str) -> Result<Option<Workflow>, AppError> {
-    let row = sqlx::query_as!(
-        Workflow,
-        r#"
-        SELECT
-            id,
-            name,
-            version,
-            display_name,
-            description,
-            extracted_path,
-            bundle_sha256,
-            bundle_size_bytes,
-            file_count,
-            entry_point,
-            tags as "tags: _",
-            scope,
-            owner_user_id,
-            created_by,
-            enabled,
-            is_dev,
-            ephemeral,
-            conversation_id,
-            compiled_ir_json as "compiled_ir_json: _",
-            created_at as "created_at: _",
-            updated_at as "updated_at: _"
-        FROM workflows
-        WHERE name = $1
-        ORDER BY updated_at DESC
-        LIMIT 1
-        "#,
-        name,
     )
     .fetch_optional(pool)
     .await
