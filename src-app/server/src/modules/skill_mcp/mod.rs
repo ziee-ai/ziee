@@ -54,7 +54,6 @@ static SKILL_MCP_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
 };
 
 pub struct SkillMcpModule {
-    #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
 }
 
