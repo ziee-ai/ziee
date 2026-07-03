@@ -1,12 +1,35 @@
 # Chat rendering showcase seed
 
-A single, deterministic chat conversation that exercises **every renderable
-block type** in the chat UI — for eyeball QA of markdown, code, tool calls,
-files, thinking, and elicitation rendering.
+Deterministic chat data for eyeball QA of the chat UI — markdown, code, tool
+calls, files, thinking, elicitation, and the stateful "waiting" surfaces.
+
+It seeds **several conversations** (all in a "UI Showcase" project):
+
+| Conversation | Purpose |
+|---|---|
+| **Rendering Showcase — every block type** (`11111111-…-111111111111`) | The exhaustive scroll-through reference: all markdown + every tool-result case + all file types. |
+| **Scenario · Tool call — awaiting approval** | The **pending approval panel**, re-hydrated on load from a `tool_use_approvals` row (`status='pending'`). |
+| **Scenario · Tool call — completed** | One clean completed tool call in isolation. |
+| **Scenario · Elicitation — waiting for input** | The **pending elicitation form** (`status='pending'`). |
+| **Scenario · Elicitation — resolved** | Accepted + declined elicitations side by side. |
+
+The scenario conversations isolate ONE state each so it's obvious in the sidebar
+— particularly the two **seedable "waiting" states**:
+
+- **Tool call awaiting approval** — a `tool_use` block with no result + a
+  `tool_use_approvals` row (`status='pending'`). On conversation open the MCP
+  chat-extension fetches `GET /branches/{id}/pending-approvals` and re-hydrates
+  the approval panel. *(This is the only way a "waiting for approval" state
+  survives a reload.)*
+- **Elicitation waiting** — an `elicitation_request` content block, `status='pending'`.
+
+> **Not seedable:** a *"Running…"* (started) tool call. That status lives only
+> in the live SSE stream and is never persisted; on reload it renders as a
+> result-less `tool_use`. So the only reload-stable "in progress" states are the
+> two above.
 
 Import is **idempotent** (fixed UUIDs + `ON CONFLICT DO NOTHING`), so re-running
-just no-ops. The conversation id is always
-`11111111-1111-1111-1111-111111111111`.
+just no-ops.
 
 ## Files in this directory
 

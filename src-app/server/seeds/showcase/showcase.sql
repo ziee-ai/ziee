@@ -1149,4 +1149,153 @@ ON CONFLICT (id) DO NOTHING;
 -- -- add more mcp_tool_calls rows here --
 COMMIT;
 
--- Done. Load bytes with load.sh, then open the conversation in the UI.
+-- ===========================================================================
+-- 4. SCENARIO CONVERSATIONS (stateful surfaces shown in ISOLATION)
+-- ===========================================================================
+-- The conversation above is the exhaustive scroll-through reference. These
+-- extra, small conversations each isolate ONE state so it's obvious in the
+-- sidebar — especially the two seedable "waiting" states:
+--
+--   * Tool call AWAITING APPROVAL — a `tool_use_approvals` row with
+--     status='pending' + a tool_use block with no result. On conversation open
+--     the MCP chat-extension fetches GET /branches/{id}/pending-approvals and
+--     re-hydrates the approval panel (McpToolCallUI → ToolCallPendingApprovalContent).
+--   * Elicitation WAITING — an `elicitation_request` content block, status='pending'.
+--
+-- NOT seedable: a "Running…" (started) tool call — that status lives only in the
+-- live SSE stream, never persisted; on reload it shows as a result-less tool_use.
+--
+-- All share the "UI Showcase" project + the same built-in server rows.
+-- ===========================================================================
+BEGIN;
+
+-- conv(): conversation + branch + active-branch link + project membership.
+-- owner is passed in (a temp-function body can't see the :owner psql var).
+CREATE OR REPLACE FUNCTION pg_temp.conv(cid uuid, bid uuid, ctitle text, owner uuid) RETURNS void AS $fn$
+BEGIN
+  INSERT INTO conversations (id, user_id, title, created_at)
+    VALUES (cid, owner, ctitle, TIMESTAMPTZ '2026-07-02 09:00:00+00')
+    ON CONFLICT (id) DO NOTHING;
+  INSERT INTO branches (id, conversation_id, created_at)
+    VALUES (bid, cid, TIMESTAMPTZ '2026-07-02 09:00:00+00')
+    ON CONFLICT (id) DO NOTHING;
+  UPDATE conversations SET active_branch_id = bid WHERE id = cid;
+  INSERT INTO project_conversations (conversation_id, project_id)
+    VALUES (cid, '90000000-0000-0000-0000-000000000001')
+    ON CONFLICT (conversation_id) DO NOTHING;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- cmsg(): like pg_temp.msg() but targets an arbitrary branch.
+CREATE OR REPLACE FUNCTION pg_temp.cmsg(mid uuid, bid uuid, mrole text, n numeric) RETURNS void AS $fn$
+BEGIN
+  INSERT INTO messages (id, role, originated_from_id, edit_count, created_at)
+    VALUES (mid, mrole, mid, 0, TIMESTAMPTZ '2026-07-02 09:00:00+00' + (n || ' seconds')::interval)
+    ON CONFLICT (id) DO NOTHING;
+  INSERT INTO branch_messages (branch_id, message_id, is_clone, created_at)
+    VALUES (bid, mid, false, TIMESTAMPTZ '2026-07-02 09:00:00+00' + (n || ' seconds')::interval)
+    ON CONFLICT (branch_id, message_id) DO NOTHING;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- ---- Scenario 1: TOOL CALL — AWAITING APPROVAL (the pending approval panel) --
+SELECT pg_temp.conv('10000000-0000-0000-0000-0000000000c1','20000000-0000-0000-0000-0000000000c1',
+                    'Scenario · Tool call — awaiting approval', :'owner');
+SELECT pg_temp.cmsg('3c100000-0000-0000-0000-000000000001','20000000-0000-0000-0000-0000000000c1','user',1);
+SELECT pg_temp.blk('3c100000-0000-0000-0000-000000000001',0,'text',
+  jsonb_build_object('type','text','text', $u$Delete the temp build directory.$u$));
+SELECT pg_temp.cmsg('3c100000-0000-0000-0000-000000000002','20000000-0000-0000-0000-0000000000c1','assistant',2);
+SELECT pg_temp.blk('3c100000-0000-0000-0000-000000000002',0,'text',
+  jsonb_build_object('type','text','text', $md$This needs your approval before running:$md$));
+-- tool_use block WITH NO tool_result → paired with the pending approval row below.
+SELECT pg_temp.blk('3c100000-0000-0000-0000-000000000002',1,'tool_use',
+  jsonb_build_object('type','tool_use','id','toolu_await_approval','name','execute_command',
+    'server_id','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd',
+    'input', jsonb_build_object('command','rm -rf ./build/tmp')));
+
+-- The row the frontend re-hydrates into the approval panel on conversation open.
+INSERT INTO tool_use_approvals
+  (id, conversation_id, branch_id, message_id, user_id, tool_use_id, tool_name, tool_input, server_id, server_name, status)
+VALUES
+  ('a9900000-0000-0000-0000-000000000001',
+   '10000000-0000-0000-0000-0000000000c1','20000000-0000-0000-0000-0000000000c1','3c100000-0000-0000-0000-000000000002',
+   :'owner','toolu_await_approval','execute_command',
+   jsonb_build_object('command','rm -rf ./build/tmp'),
+   'b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd','Code Sandbox','pending')
+ON CONFLICT (message_id, tool_use_id) DO NOTHING;
+
+-- ---- Scenario 2: TOOL CALL — COMPLETED (one clean done call, in isolation) --
+SELECT pg_temp.conv('10000000-0000-0000-0000-0000000000c2','20000000-0000-0000-0000-0000000000c2',
+                    'Scenario · Tool call — completed', :'owner');
+SELECT pg_temp.cmsg('3c200000-0000-0000-0000-000000000001','20000000-0000-0000-0000-0000000000c2','user',1);
+SELECT pg_temp.blk('3c200000-0000-0000-0000-000000000001',0,'text',
+  jsonb_build_object('type','text','text', $u$Search for "vector index recall".$u$));
+SELECT pg_temp.cmsg('3c200000-0000-0000-0000-000000000002','20000000-0000-0000-0000-0000000000c2','assistant',2);
+SELECT pg_temp.blk('3c200000-0000-0000-0000-000000000002',0,'tool_use',
+  jsonb_build_object('type','tool_use','id','toolu_done_1','name','web_search',
+    'server_id','d1a783dc-631e-570b-aba6-fee5497728b2',
+    'input', jsonb_build_object('query','vector index recall','max_results',2)));
+SELECT pg_temp.blk('3c200000-0000-0000-0000-000000000002',1,'tool_result',
+  jsonb_build_object('type','tool_result','tool_use_id','toolu_done_1','name','web_search',
+    'server_id','d1a783dc-631e-570b-aba6-fee5497728b2',
+    'content','2 results found.','is_error',false,
+    'structured_content', jsonb_build_object('provider','searxng','results', jsonb_build_array(
+      jsonb_build_object('title','Recall@k explained','url','https://example.com/recall','snippet','recall measures...')))));
+SELECT pg_temp.blk('3c200000-0000-0000-0000-000000000002',2,'text',
+  jsonb_build_object('type','text','text', $md$Found 2 results — recall@k measures retrieved relevance.$md$));
+
+INSERT INTO mcp_tool_calls
+  (id, server_id, server_name, is_built_in, user_id, conversation_id, branch_id, message_id,
+   tool_use_id, tool_name, arguments_json, source, status, is_error, result_json, content_kinds, result_bytes,
+   started_at, finished_at, duration_ms)
+VALUES
+  ('7c100000-0000-0000-0000-000000000001','d1a783dc-631e-570b-aba6-fee5497728b2','web_search',true,:'owner',
+   '10000000-0000-0000-0000-0000000000c2','20000000-0000-0000-0000-0000000000c2','3c200000-0000-0000-0000-000000000002',
+   'toolu_done_1','web_search','{"query":"vector index recall"}','chat','completed',false,
+   '{"content":"2 results"}','{text}',80, TIMESTAMPTZ '2026-07-02 09:00:02+00', TIMESTAMPTZ '2026-07-02 09:00:02+00', 250)
+ON CONFLICT (id) DO NOTHING;
+
+-- ---- Scenario 3: ELICITATION — WAITING for input (pending form) --------------
+SELECT pg_temp.conv('10000000-0000-0000-0000-0000000000c3','20000000-0000-0000-0000-0000000000c3',
+                    'Scenario · Elicitation — waiting for input', :'owner');
+SELECT pg_temp.cmsg('3c300000-0000-0000-0000-000000000001','20000000-0000-0000-0000-0000000000c3','user',1);
+SELECT pg_temp.blk('3c300000-0000-0000-0000-000000000001',0,'text',
+  jsonb_build_object('type','text','text', $u$Export the results.$u$));
+SELECT pg_temp.cmsg('3c300000-0000-0000-0000-000000000002','20000000-0000-0000-0000-0000000000c3','assistant',2);
+SELECT pg_temp.blk('3c300000-0000-0000-0000-000000000002',0,'elicitation_request',
+  jsonb_build_object('type','elicitation_request',
+    'elicitation_id','elic-scn-01',
+    'message','Choose an export format and filename:',
+    'server','Code Sandbox',
+    'status','pending',
+    'requested_schema', jsonb_build_object('type','object',
+      'required', jsonb_build_array('format','filename'),
+      'properties', jsonb_build_object(
+        'format', jsonb_build_object('type','string','enum', jsonb_build_array('csv','json','xlsx')),
+        'filename', jsonb_build_object('type','string','minLength',1)))));
+
+-- ---- Scenario 4: ELICITATION — RESOLVED (accepted + declined side by side) ---
+SELECT pg_temp.conv('10000000-0000-0000-0000-0000000000c4','20000000-0000-0000-0000-0000000000c4',
+                    'Scenario · Elicitation — resolved', :'owner');
+SELECT pg_temp.cmsg('3c400000-0000-0000-0000-000000000001','20000000-0000-0000-0000-0000000000c4','assistant',1);
+SELECT pg_temp.blk('3c400000-0000-0000-0000-000000000001',0,'elicitation_request',
+  jsonb_build_object('type','elicitation_request','elicitation_id','elic-scn-02',
+    'message','Which output format?','server','Code Sandbox','status','accepted',
+    'requested_schema', jsonb_build_object('type','object','properties', jsonb_build_object(
+      'format', jsonb_build_object('type','string','enum', jsonb_build_array('csv','xlsx')))),
+    'response_content', jsonb_build_object('format','xlsx')));
+SELECT pg_temp.cmsg('3c400000-0000-0000-0000-000000000002','20000000-0000-0000-0000-0000000000c4','assistant',2);
+SELECT pg_temp.blk('3c400000-0000-0000-0000-000000000002',0,'elicitation_request',
+  jsonb_build_object('type','elicitation_request','elicitation_id','elic-scn-03',
+    'message','Allow deleting temporary files?','server','Code Sandbox','status','declined',
+    'requested_schema', jsonb_build_object('type','object','properties', jsonb_build_object(
+      'confirm', jsonb_build_object('type','boolean')))));
+-- -- add more scenario conversations here --
+
+COMMIT;
+
+-- Done. Load bytes with load.sh, then open the conversations in the UI:
+--   * "Rendering Showcase — every block type"  (the exhaustive reference)
+--   * "Scenario · …"                            (one state each, incl. the two
+--                                                seedable "waiting" states)
+
