@@ -8,7 +8,7 @@ import {
   dialog,
 } from '@/components/ui'
 import type { DropdownItem } from '@/components/ui'
-import { MessageSquare, Trash2, MoreHorizontal } from 'lucide-react'
+import { MessageSquare, Trash2, MoreVertical } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
@@ -200,7 +200,7 @@ function ConversationRowLabel({
       </span>
       <div
         className={
-          'row-actions flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 ' +
+          'row-actions flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100 ' +
           'transition-opacity duration-150'
         }
         // Keep the button visible while its dropdown is open OR while
@@ -227,7 +227,7 @@ function ConversationRowLabel({
             data-testid={`chat-recent-row-actions-btn-${conversation.id}`}
             variant="ghost"
             size="icon"
-            icon={<MoreHorizontal />}
+            icon={<MoreVertical />}
             loading={deleting}
             className="w-[22px] h-[22px] p-0"
             aria-label="Conversation options"

@@ -169,7 +169,7 @@ function RemoveFromProjectButton({
         <Button
           data-testid="project-conv-remove-trigger-button"
           className={`transition-opacity bg-card ${
-            open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 hover-none:opacity-100'
           }`}
           variant="ghost"
           size="default"
