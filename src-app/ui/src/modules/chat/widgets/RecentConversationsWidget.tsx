@@ -5,6 +5,7 @@ import {
   Empty,
   Spin,
   Text,
+  Tooltip,
   dialog,
 } from '@/components/ui'
 import type { DropdownItem } from '@/components/ui'
@@ -213,34 +214,37 @@ function ConversationRowLabel({
         }
         onClick={e => e.stopPropagation()}
       >
-        {/* Native `title` (not the kit Tooltip): a Base-UI Tooltip trigger on
-            or around a Base-UI Dropdown trigger thrashes — the tooltip flashes
-            then vanishes. `data-tooltip-wrapped` suppresses the kit Button's
-            OWN auto-tooltip (icon-only + aria-label) which is the real culprit;
-            the native title stands in with no floating-tree conflict. */}
-        <Dropdown
-          data-testid={`chat-recent-row-menu-${conversation.id}`}
-          items={menuItems}
-          side="bottom"
-          align="end"
-          open={menuOpen || keepMenuOpen}
-          onOpenChange={open => {
-            if (!open && keepMenuOpen) return
-            setMenuOpen(open)
-          }}
-        >
-          <Button
-            data-testid={`chat-recent-row-actions-btn-${conversation.id}`}
-            variant="ghost"
-            size="icon"
-            icon={<MoreVertical />}
-            loading={deleting}
-            className="w-[22px] h-[22px] p-0"
-            aria-label="Conversation options"
-            title="Conversation options"
-            data-tooltip-wrapped=""
-          />
-        </Dropdown>
+        {/* One styled tooltip only: put the kit Tooltip on the span (not the
+            Button) so its trigger is a DIFFERENT node from the Dropdown trigger,
+            AND set data-tooltip-wrapped on the Button to kill its own auto-tooltip
+            (icon-only + aria-label). Two overlapping Base-UI tooltips is what
+            thrashed; a single one on a sibling node coexists with the menu. */}
+        <Tooltip title="Conversation options">
+          <span className="inline-flex">
+            <Dropdown
+              data-testid={`chat-recent-row-menu-${conversation.id}`}
+              items={menuItems}
+              side="bottom"
+              align="end"
+              open={menuOpen || keepMenuOpen}
+              onOpenChange={open => {
+                if (!open && keepMenuOpen) return
+                setMenuOpen(open)
+              }}
+            >
+              <Button
+                data-testid={`chat-recent-row-actions-btn-${conversation.id}`}
+                variant="ghost"
+                size="icon"
+                icon={<MoreVertical />}
+                loading={deleting}
+                className="w-[22px] h-[22px] p-0"
+                aria-label="Conversation options"
+                data-tooltip-wrapped=""
+              />
+            </Dropdown>
+          </span>
+        </Tooltip>
       </div>
       {/* Extension overlays (modals, popconfirms). Render alongside
           the row trigger; menu items above toggle their state. */}

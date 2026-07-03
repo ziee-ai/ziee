@@ -305,29 +305,32 @@ export function ProjectFilesManagePanel() {
               }
               actions={
                 canEdit ? (
-                  // Native `title` (not the kit Tooltip): a Base-UI Tooltip
-                  // trigger around a Base-UI Confirm trigger thrashes — the
-                  // tooltip flashes then vanishes. `data-tooltip-wrapped` kills
-                  // the kit Button's own auto-tooltip (icon-only + aria-label,
-                  // the real culprit); native title stands in, no conflict.
-                  <Confirm
-                    title="Delete this file?"
-                    description="This permanently removes the file from your library."
-                    okText="Delete"
-                    cancelText="Cancel"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => handleDelete(file.id, file.filename)}
-                    data-testid={`file-project-delete-confirm-${file.id}`}
-                  >
-                    <Button
-                      variant="outline"
-                      icon={<Trash2 />}
-                      aria-label={`Delete ${file.filename}`}
-                      title="Delete"
-                      data-tooltip-wrapped=""
-                      data-testid={`file-project-delete-btn-${file.id}`}
-                    />
-                  </Confirm>
+                  // One styled tooltip only: kit Tooltip on the span (a sibling
+                  // node of the Confirm trigger) + data-tooltip-wrapped on the
+                  // Button to kill its own auto-tooltip. Two overlapping Base-UI
+                  // tooltips thrash (flash-then-vanish); a single one on a sibling
+                  // coexists with the Confirm popover.
+                  <Tooltip title="Delete">
+                    <span className="inline-flex">
+                      <Confirm
+                        title="Delete this file?"
+                        description="This permanently removes the file from your library."
+                        okText="Delete"
+                        cancelText="Cancel"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => handleDelete(file.id, file.filename)}
+                        data-testid={`file-project-delete-confirm-${file.id}`}
+                      >
+                        <Button
+                          variant="outline"
+                          icon={<Trash2 />}
+                          aria-label={`Delete ${file.filename}`}
+                          data-tooltip-wrapped=""
+                          data-testid={`file-project-delete-btn-${file.id}`}
+                        />
+                      </Confirm>
+                    </span>
+                  </Tooltip>
                 ) : undefined
               }
             />
