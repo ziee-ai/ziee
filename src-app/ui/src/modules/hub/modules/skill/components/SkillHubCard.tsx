@@ -1,17 +1,7 @@
-import { Download, Users } from 'lucide-react'
-import {
-  Button,
-  Card,
-  Flex,
-  MultiSelect,
-  Tag,
-  Text,
-  message,
-  Dialog,
-} from '@/components/ui'
+import { Download } from 'lucide-react'
+import { Button, Card, Flex, Tag, Text, message } from '@/components/ui'
 import { useState } from 'react'
-import { ApiClient } from '@/api-client'
-import type { Group, IndexItem } from '@/api-client/types'
+import type { IndexItem } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
@@ -23,10 +13,6 @@ interface SkillHubCardProps {
 
 export function SkillHubCard({ item }: SkillHubCardProps) {
   const [showDetails, setShowDetails] = useState(false)
-  const [groupsOpen, setGroupsOpen] = useState(false)
-  const [allGroups, setAllGroups] = useState<Group[]>([])
-  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
-  const [submittingGroups, setSubmittingGroups] = useState(false)
 
   const canInstall = usePermission(Permissions.SkillsInstall)
   const canManageSystem = usePermission(Permissions.SkillsManageSystem)
@@ -58,30 +44,6 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
       message.success(`Installed "${title}" for everyone`)
     } catch {
       message.error('Install failed')
-    }
-  }
-
-  const openGroupPicker = async () => {
-    try {
-      const res = await ApiClient.UserGroup.list({ page: 1, per_page: 100 })
-      setAllGroups(res.groups)
-      setSelectedGroups([])
-      setGroupsOpen(true)
-    } catch {
-      message.error('Failed to load groups')
-    }
-  }
-
-  const handleInstallForGroups = async () => {
-    setSubmittingGroups(true)
-    try {
-      await Stores.HubSkills.installForGroups(item.name, selectedGroups)
-      message.success(`Installed "${title}" for selected groups`)
-      setGroupsOpen(false)
-    } catch {
-      message.error('Install failed')
-    } finally {
-      setSubmittingGroups(false)
     }
   }
 
@@ -135,25 +97,15 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
               </Button>
             )}
             {canManageSystem && (
-              <>
-                <Button
-                  icon={<Download />}
-                  loading={installing}
-                  disabled={installing || state === 'system'}
-                  onClick={handleInstallForEveryone}
-                  data-testid={`hub-skill-install-as-system-btn-${item.name}`}
-                >
-                  {state === 'system' ? 'System installed' : 'Install as system'}
-                </Button>
-                <Button
-                  icon={<Users />}
-                  disabled={installing}
-                  onClick={openGroupPicker}
-                  data-testid={`hub-skill-install-groups-btn-${item.name}`}
-                >
-                  Groups…
-                </Button>
-              </>
+              <Button
+                icon={<Download />}
+                loading={installing}
+                disabled={installing || state === 'system'}
+                onClick={handleInstallForEveryone}
+                data-testid={`hub-skill-install-as-system-btn-${item.name}`}
+              >
+                {state === 'system' ? 'System installed' : 'Install as system'}
+              </Button>
             )}
           </div>
         </Flex>
@@ -164,39 +116,6 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
         open={showDetails}
         onClose={() => setShowDetails(false)}
       />
-
-      <Dialog
-        data-testid={`hub-skill-groups-dialog-${item.name}`}
-        open={groupsOpen}
-        onOpenChange={(open) => { if (!open) setGroupsOpen(false) }}
-        title="Install for groups"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setGroupsOpen(false)} data-testid={`hub-skill-groups-cancel-btn-${item.name}`}>Cancel</Button>
-            <Button
-              variant="default"
-              loading={submittingGroups}
-              onClick={handleInstallForGroups}
-              data-testid={`hub-skill-groups-install-btn-${item.name}`}
-            >
-              Install
-            </Button>
-          </>
-        }
-      >
-        <MultiSelect
-          data-testid={`hub-skill-groups-multiselect-${item.name}`}
-          className="w-full"
-          aria-label="Restrict to groups"
-          placeholder="Select groups (empty = all users)"
-          searchPlaceholder="Search groups…"
-          value={selectedGroups}
-          onChange={(value: string[]) => setSelectedGroups(value)}
-          options={allGroups.map(g => ({ label: g.name, value: g.id }))}
-          removeLabel={(label) => `Remove ${label}`}
-          emptyText="No groups found"
-        />
-      </Dialog>
     </>
   )
 }
