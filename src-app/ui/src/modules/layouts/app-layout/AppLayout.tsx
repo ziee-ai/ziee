@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { LeftSidebar } from '@/modules/layouts/app-layout/components/LeftSidebar'
 import { SidebarToggleButton } from '@/modules/layouts/app-layout/components/SidebarToggleButton'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
@@ -179,6 +180,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       Stores.AppLayout.setSidebarCollapsed(true)
     }
   }, [windowMinSize.xs])
+
+  // On mobile the sidebar is a full-screen Sheet (overlay = fixed inset-0).
+  // Navigation is triggered from inside that Sheet, but a route change alone
+  // doesn't close it — so its transparent scrim would stay over the new page
+  // and swallow every tap. Collapse on each pathname change so the Sheet closes
+  // when the user picks a destination. No-op on desktop (persistent sidebar).
+  const location = useLocation()
+  useEffect(() => {
+    if (windowMinSize.xs) {
+      Stores.AppLayout.setSidebarCollapsed(true)
+    }
+  }, [location.pathname])
 
   // When the xs threshold flips, the sidebar's `width` and
   // `transform` both change in the same commit. With our unified

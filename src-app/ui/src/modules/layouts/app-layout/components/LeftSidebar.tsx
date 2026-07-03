@@ -126,21 +126,31 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
       .map(a => ({ id: a.id, path: a.to })),
   )
 
+  // On mobile the sidebar is a full-screen Sheet and AppLayout remounts on each
+  // route change — so navigating away while the Sheet is open unmounts it mid-
+  // open and orphans its portaled overlay in <body>, which then swallows every
+  // tap on the new page. Collapse first (closing the Sheet cleanly) before we
+  // navigate. No-op on desktop where the sidebar is persistent.
+  const navTo = (path: string) => {
+    if (windowMinSize.xs) Stores.AppLayout.setSidebarCollapsed(true)
+    navigate(path)
+  }
+
   const handleNavMenuClick = (key: string) => {
     const item = sortedNavigation.find(n => n.id === key)
-    if (item) navigate(item.path)
+    if (item) navTo(item.path)
   }
 
   const handleToolsMenuClick = (key: string) => {
     const item = sortedTools.find(t => t.id === key)
-    if (item) navigate(item.path)
+    if (item) navTo(item.path)
   }
 
   const handlePrimaryMenuClick = (key: string) => {
     const item = sortedPrimaryActions.find(a => a.id === key)
     if (!item) return
     if (item.onClick) item.onClick()
-    if (item.to) navigate(item.to)
+    if (item.to) navTo(item.to)
   }
 
   return (
