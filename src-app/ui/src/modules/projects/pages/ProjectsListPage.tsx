@@ -17,6 +17,12 @@ export function ProjectsListPage() {
   const { nativeScroll } = Stores.AppLayout
   const { projects: projectsMap, loading, error } = Stores.Projects
   const projects = Array.from(projectsMap.values())
+  // Client-side "Load More" paging (the store loads the full set): reveal a
+  // page at a time, like the chat history page.
+  const PAGE_SIZE = 12
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const visibleProjects = projects.slice(0, visibleCount)
+  const hasMore = visibleCount < projects.length
   // Per-card mutation state so the duplicate/delete buttons can show a
   // spinner on the exact card being acted on (the store single-flights
   // globally, but feedback should be card-local).
@@ -88,11 +94,8 @@ export function ProjectsListPage() {
         {projects.length > 0 ? (
           <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
             <div className={cn('flex flex-col', nativeScroll ? '' : 'h-full overflow-y-auto')}>
-              <div
-                className="max-w-4xl grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 w-full self-center px-3"
-                style={nativeScroll ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' } : undefined}
-              >
-                {projects.map(project => (
+              <div className="max-w-4xl grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 w-full self-center px-3">
+                {visibleProjects.map(project => (
                   <div key={project.id} className="min-w-0">
                     <ProjectCard
                       project={project}
@@ -108,6 +111,25 @@ export function ProjectsListPage() {
                     />
                   </div>
                 ))}
+              </div>
+
+              {/* Paging — "Showing N of M" + Load More (mirrors the chat page). */}
+              <div
+                data-testid="project-list-paging"
+                className="text-center px-3 py-3 flex flex-col items-center gap-2"
+                style={nativeScroll ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' } : undefined}
+              >
+                <Text type="secondary" aria-live="polite" role="status">
+                  Showing {visibleProjects.length} of {projects.length} projects
+                </Text>
+                {hasMore && (
+                  <Button
+                    data-testid="project-list-load-more-btn"
+                    onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                  >
+                    Load More
+                  </Button>
+                )}
               </div>
             </div>
           </div>
