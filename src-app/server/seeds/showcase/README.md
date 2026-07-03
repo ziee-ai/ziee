@@ -47,23 +47,51 @@ recorded calls, including the failed + cancelled ones.
 
 ## What it covers
 
-- **Markdown:** all 6 heading levels, bold/italic/strike/inline-code, ordered /
-  unordered / nested / task lists, simple + wide tables, nested blockquotes,
-  `hr`, links, footnotes, inline image, LaTeX inline + block math, two Mermaid
-  diagrams, fenced code in rust/python/typescript/sql/bash/json/yaml/diff/html,
-  a deliberately long code block + long prose block (scroll tests).
+- **Markdown (base):** all 6 heading levels, bold/italic/strike/inline-code,
+  ordered / unordered / nested / task lists, simple + wide tables, nested
+  blockquotes, `hr`, links, footnotes, inline image, LaTeX inline + block math,
+  two Mermaid diagrams, fenced code in rust/python/typescript/sql/bash/json/yaml/
+  diff/html, a deliberately long code block + long prose block (scroll tests).
+- **Markdown (edge cases — the exhaustive pass, "Turn 3b"):** reference /
+  collapsed / autolink / bare-URL / email links, link + image titles,
+  image-as-link; table **column alignment** + in-cell formatting + empty cells +
+  escaped pipes; ordered-list-starting-at-N, `*`/`+`/`-` markers, tight vs loose
+  lists, list items containing a nested code block + blockquote; hard line breaks
+  (trailing-space **and** backslash), escaped chars, HTML entities, `<sub>`/
+  `<sup>`/`<kbd>`/`<mark>`/`<abbr>`/`<br>`; **GFM alerts** (NOTE/TIP/IMPORTANT/
+  WARNING/CAUTION); raw-HTML `<details>`/`<summary>` + an HTML table; setext
+  headings, indented (4-space) code, `~~~` fences, backticks-in-code-span, `***`/
+  `___` thematic breaks; emoji (unicode + shortcode), long-unbroken-token +
+  long-URL overflow, consecutive code blocks; math `aligned`/matrix/`\text{}`,
+  and a blockquote containing a heading + list + code.
 - **Thinking** block (with `metadata.token_count`).
-- **Tool calls** (built-in MCP servers, realistic args + results):
+- **Tool calls** (realistic args + results):
   `code_sandbox.execute_command` (stdout/stderr/exit + resource_link chart),
-  `web_search` + `fetch_url` (typed `structured_content`), `lit_search`,
-  `memory` remember+recall, `citations.format_citations`, `control.call_api`,
-  `get_tool_result`, plus a **failed**, a **cancelled**, a **large/truncated**,
-  and a **mixed** (text + tool_use + tool_result + resource_link file) turn.
+  `web_search` + `fetch_url` (typed `structured_content`), `lit_search`
+  (full `LiteratureResult` shape → screening card), `memory` remember+recall,
+  `citations.format_citations`, `control.call_api`, `get_tool_result`. Plus the
+  full state matrix: **failed** (`is_error`), **cancelled**, **timeout**,
+  **large/truncated**, **mixed** (text+tool_use+tool_result+file), **multiple
+  resource_links** of different mime types in one result (image/PDF/CSV/XLSX
+  viewers at once), an **external (non-built-in)** MCP server call, an
+  **in-flight** tool_use with no result yet, and **empty `{}` input**. The
+  `mcp_tool_calls` rows cover every `status` (completed/failed/cancelled/timeout)
+  and every `source` (chat/always/rest/sampling/approval) for the Calls tab.
 - **Files:** PNG + JPG (as `image` blocks), PDF / CSV / multi-sheet XLSX / .py /
-  .md / large .txt (as `file_attachment` blocks), a tool-returned `resource_link`
-  file, and 2 project files. On-disk bytes land at
+  .md / large .txt (as `file_attachment` blocks), tool-returned `resource_link`
+  files, and 2 project files. On-disk bytes land at
   `<FILES_DIR>/originals/<owner>/<file_id>.<ext>`.
-- **Elicitation** request block, and a long streaming-style assistant message.
+- **Elicitation** request blocks in **accepted / pending / declined** states,
+  and a long streaming-style assistant message.
+
+### Known non-rendering cases (deliberate signal)
+
+- A `tool_result`'s inline base64 `attachment` / `images` fields are **not**
+  rendered by the current UI (only `resource_links` with a `file_id` produce an
+  inline preview via `MessageFilesView`) — so the seed uses `resource_links`, not
+  base64 inline files. If inline-file rendering is added later, seed those too.
+- `hidden_content` on a tool_result is intentionally never shown (stripped
+  server-side); not seeded as a visible case.
 
 ## How to add a new case
 

@@ -101,6 +101,13 @@ INSERT INTO project_files (project_id, file_id) VALUES
   ('90000000-0000-0000-0000-000000000001', 'f1000000-0000-0000-0000-000000000004')
 ON CONFLICT DO NOTHING;
 
+-- An EXTERNAL (user-added, non-built-in) MCP server so the tool_use card for an
+-- external tool resolves a display name (the renderer falls back to the raw
+-- server_id if absent — this exercises the resolved path + is_built_in=false).
+INSERT INTO mcp_servers (id, user_id, name, display_name, is_built_in, is_system, transport_type, url) VALUES
+  ('e0000000-0000-0000-0000-0000000000e1', :'owner', 'weather-api', 'Weather API (external)', false, false, 'http', 'https://example.com/mcp')
+ON CONFLICT (id) DO NOTHING;
+
 -- ===========================================================================
 -- 2. CONVERSATION + BRANCH (circular FK: conv, then branch, then set active)
 -- ===========================================================================
@@ -138,7 +145,7 @@ BEGIN;
 
 -- ---- tiny inline helpers via a temp function (dropped at COMMIT) ----------
 -- msg(): insert a message + its branch link at ordinal `n`.
-CREATE OR REPLACE FUNCTION pg_temp.msg(mid uuid, mrole text, n int) RETURNS void AS $fn$
+CREATE OR REPLACE FUNCTION pg_temp.msg(mid uuid, mrole text, n numeric) RETURNS void AS $fn$
 BEGIN
   INSERT INTO messages (id, role, originated_from_id, edit_count, created_at)
     VALUES (mid, mrole, mid, 0, TIMESTAMPTZ '2026-07-01 12:00:00+00' + (n || ' seconds')::interval)
@@ -393,6 +400,201 @@ Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium dolor
 
 Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur.$md$));
 
+-- Turn 3b: MARKDOWN EDGE CASES — the exhaustive pass. Fractional ordinals slot
+-- these right after the markdown section above. Grouped into labelled blocks so
+-- a reviewer can see, per group, exactly which constructs render.
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000040', 'user', 6.1);
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000040', 0, 'text',
+  jsonb_build_object('type','text','text', $u$Now the edge cases — cover every markdown construct you can.$u$));
+
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000041', 'assistant', 6.2);
+-- Group 1: links + images (reference, autolink, bare, titles, image-as-link)
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000041', 0, 'text',
+  jsonb_build_object('type','text','text', $md$### Links & images
+
+Inline link with title: [hover me](https://example.com "Link title").
+Reference-style link: [ref link][ref1] and collapsed [ref1][].
+Autolink: <https://example.com/auto>. Bare URL (GFM autolink): https://example.com/bare.
+Email autolink: <hello@example.com>.
+Image with title: ![alt](https://example.com/x.png "Image title").
+Image as a link: [![alt](https://example.com/thumb.png)](https://example.com).
+
+[ref1]: https://example.com/reference
+$md$));
+-- Group 2: tables — alignment, in-cell formatting, empty cells, escaped pipes
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000041', 1, 'text',
+  jsonb_build_object('type','text','text', $md$### Table alignment & cell formatting
+
+| Left | Center | Right |
+|:-----|:------:|------:|
+| a    | **b**  | 1     |
+| `c`  |        | 22    |
+| ~~d~~| [e](https://example.com) | a \| b |
+
+An empty cell is above (row 2, center). The last cell has an escaped pipe.
+$md$));
+-- Group 3: list variants (start-at-N, markers, tight/loose, nested blocks)
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000041', 2, 'text',
+  jsonb_build_object('type','text','text', $md$### List variants
+
+Ordered starting at 5:
+5. five
+6. six
+
+Marker variants:
+* star item
++ plus item
+- dash item
+
+Loose list (blank lines → wrapped in `<p>`):
+
+- first
+
+- second
+
+List item containing a nested code block and a blockquote:
+
+- item with code:
+  ```
+  nested fenced code inside a list item
+  ```
+  > and a blockquote inside the same item
+$md$));
+-- Group 4: inline breaks, escapes, entities, sub/sup, kbd, br
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000041', 3, 'text',
+  jsonb_build_object('type','text','text', $md$### Inline breaks, escapes, entities, raw inline HTML
+
+Hard line break (two trailing spaces) →
+this is on a new line.
+Backslash line break →\
+also a new line.
+
+Escaped characters: \*not italic\*, \# not a heading, \`not code\`, 1\. not a list.
+
+HTML entities: &copy; &amp; &lt; &gt; &mdash; &hearts; &#8734;
+
+Sub/super: H<sub>2</sub>O and E = mc<sup>2</sup>. Key: press <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+Highlight: <mark>marked text</mark>. Abbrev: <abbr title="HyperText Markup Language">HTML</abbr>.
+Forced break next<br>and after the br.
+$md$));
+-- Group 5: GFM alerts / admonitions
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000041', 4, 'text',
+  jsonb_build_object('type','text','text', $md$### GFM alerts (callouts)
+
+> [!NOTE]
+> Useful information the user should know.
+
+> [!TIP]
+> Helpful advice for doing things better.
+
+> [!IMPORTANT]
+> Key information the user needs.
+
+> [!WARNING]
+> Urgent info needing immediate attention.
+
+> [!CAUTION]
+> Advises about risks or negative outcomes.
+$md$));
+-- Group 6: raw HTML blocks (details/summary, html table)
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000041', 5, 'text',
+  jsonb_build_object('type','text','text', $md$### Raw HTML blocks
+
+<details>
+<summary>Click to expand</summary>
+
+Hidden content revealed on expand — including **markdown** inside.
+
+</details>
+
+<table>
+  <tr><th>HTML th</th><th>Col 2</th></tr>
+  <tr><td>cell</td><td>cell</td></tr>
+</table>
+$md$));
+
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000042', 'assistant', 6.3);
+-- Group 7: heading styles, code edge cases, hr variants
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000042', 0, 'text',
+  jsonb_build_object('type','text','text', $md$Setext heading level 1
+======================
+
+Setext heading level 2
+----------------------
+
+Indented (4-space) code block:
+
+    def indented():
+        return "code via 4-space indent"
+
+Fenced with `~~~` (so the body can contain triple backticks):
+
+~~~markdown
+Here is ```inline triple backtick``` inside a tilde fence.
+~~~
+
+Code span with backticks inside: `` a ` b ``.
+
+Thematic break variants:
+
+***
+
+___
+$md$));
+-- Group 8: emoji, overflow/stress, consecutive code blocks
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000042', 1, 'text',
+  jsonb_build_object('type','text','text', $md$### Emoji, overflow, consecutive blocks
+
+Unicode emoji: 🎉 ✅ 🚀 — and shortcode form (if supported): :tada: :rocket:.
+
+Very long unbroken token (horizontal-overflow test):
+supercalifragilisticexpialidocioussupercalifragilisticexpialidocioussupercalifragilisticexpialidocious
+
+Very long URL (wrap/overflow test):
+https://example.com/very/long/path/that/keeps/going/and/going/segment/segment/segment/segment/segment/segment/segment?with=query&and=more&params=here
+
+Two fenced blocks back-to-back:
+
+```json
+{"first": true}
+```
+```json
+{"second": true}
+```
+$md$));
+-- Group 9: math edge cases (aligned, matrix, text) + empty/mixed blockquote
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000042', 2, 'text',
+  jsonb_build_object('type','text','text', $md$### Math edge cases & blockquote content
+
+Aligned environment:
+
+$$
+\begin{aligned}
+a &= b + c \\
+  &= d + e + f
+\end{aligned}
+$$
+
+Matrix:
+
+$$
+M = \begin{bmatrix} 1 & 0 \\ 0 & 1 \end{bmatrix}
+$$
+
+Inline with text macro: $f(x) = \text{sinc}(x) = \frac{\sin \pi x}{\pi x}$.
+
+A blockquote containing a heading, a list, and code:
+
+> #### Quoted heading
+> - quoted list item
+> - second item
+>
+> ```python
+> print("code inside a blockquote")
+> ```
+$md$));
+-- -- add more markdown edge-case blocks here --
+
 -- ###########################################################################
 -- SECTION B — THINKING BLOCKS
 -- ###########################################################################
@@ -507,11 +709,18 @@ SELECT pg_temp.blk('30000000-0000-0000-0000-00000000000f', 1, 'tool_result',
     'server_id','5bf27612-ac1b-5141-985b-e2e8ac36ca2d',
     'content', $tr$2 records (europepmc, crossref). Completeness ~ moderate.$tr$,
     'is_error', false,
+    -- Shape MUST match ui LiteratureResult / LiteratureRecord (types.ts) so the
+    -- LiteratureToolResultCard screening card + "Open in screening" panel work:
+    -- required per record: title, authors[], source, source_ids[], is_preprint, relevance.
     'structured_content', jsonb_build_object(
+      'query','CRISPR base editing off-target',
+      'identified', jsonb_build_object('europepmc',1,'crossref',1),
+      'after_dedup', 2,
       'degraded_sources', jsonb_build_array(),
+      'completeness', jsonb_build_object('estimate','moderate','method','source-overlap','caveat','adjunct to systematic search'),
       'records', jsonb_build_array(
-        jsonb_build_object('doi','10.1000/beditor.2024','title','Base editing off-target profiling','year',2024,'authors', jsonb_build_array('Lee','Gomez'),'source','europepmc'),
-        jsonb_build_object('doi','10.1000/crispr.2023','title','Genome-wide specificity of adenine base editors','year',2023,'authors', jsonb_build_array('Ng'),'source','crossref')))));
+        jsonb_build_object('doi','10.1000/beditor.2024','title','Base editing off-target profiling','abstract_text','We profile genome-wide off-target activity of adenine and cytosine base editors...','year',2024,'venue','Nature Methods','authors', jsonb_build_array('Lee','Gomez'),'source','europepmc','source_ids', jsonb_build_array('PMC123'),'is_preprint',false,'relevance',0.94,'cited_by_count',12),
+        jsonb_build_object('doi','10.1000/crispr.2023','title','Genome-wide specificity of adenine base editors','year',2023,'venue','Cell','authors', jsonb_build_array('Ng'),'source','crossref','source_ids', jsonb_build_array('doi:10.1000/crispr.2023'),'is_preprint',false,'relevance',0.88,'cited_by_count',44)))));
 
 -- C5: memory remember + recall (two calls in one assistant turn)
 SELECT pg_temp.msg('30000000-0000-0000-0000-000000000010', 'user', 16);
@@ -624,6 +833,62 @@ SELECT pg_temp.blk('30000000-0000-0000-0000-000000000019', 1, 'tool_result',
 Full result available via get_tool_result(tool_use_id="toolu_big").$tr$,
     'is_error', false,
     'structured_content', jsonb_build_object('truncated', true, 'total_lines', 100000)));
+-- C12: MULTIPLE resource_links of different mime types in ONE tool_result —
+-- exercises every inline file viewer (image / PDF / CSV / multi-sheet XLSX) at once.
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000043', 'user', 25.1);
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000043', 0, 'text',
+  jsonb_build_object('type','text','text', $u$Export the analysis as several files.$u$));
+
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000044', 'assistant', 25.2);
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000044', 0, 'tool_use',
+  jsonb_build_object('type','tool_use','id','toolu_multi','name','execute_command',
+    'server_id','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd',
+    'input', jsonb_build_object('command','python export_all.py')));
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000044', 1, 'tool_result',
+  jsonb_build_object('type','tool_result','tool_use_id','toolu_multi','name','execute_command',
+    'server_id','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd',
+    'content','Wrote 4 artifacts: chart.png, report.pdf, data.csv, workbook.xlsx','is_error',false,
+    'resource_links', jsonb_build_array(
+      jsonb_build_object('uri','/api/files/f1000000-0000-0000-0000-000000000001','name','chart.png','mime_type','image/png','size',6381,'is_saved',true,'file_id','f1000000-0000-0000-0000-000000000001'),
+      jsonb_build_object('uri','/api/files/f1000000-0000-0000-0000-000000000005','name','report.pdf','mime_type','application/pdf','size',631,'is_saved',true,'file_id','f1000000-0000-0000-0000-000000000005'),
+      jsonb_build_object('uri','/api/files/f1000000-0000-0000-0000-000000000004','name','data.csv','mime_type','text/csv','size',133,'is_saved',true,'file_id','f1000000-0000-0000-0000-000000000004'),
+      jsonb_build_object('uri','/api/files/f1000000-0000-0000-0000-000000000003','name','workbook.xlsx','mime_type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','size',6641,'is_saved',true,'file_id','f1000000-0000-0000-0000-000000000003'))));
+
+-- C13: EXTERNAL (non-built-in) MCP server tool call
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000045', 'user', 25.3);
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000045', 0, 'text',
+  jsonb_build_object('type','text','text', $u$What is the weather in Tokyo?$u$));
+
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000046', 'assistant', 25.4);
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000046', 0, 'tool_use',
+  jsonb_build_object('type','tool_use','id','toolu_ext','name','get_weather',
+    'server_id','e0000000-0000-0000-0000-0000000000e1',
+    'input', jsonb_build_object('city','Tokyo','units','metric')));
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000046', 1, 'tool_result',
+  jsonb_build_object('type','tool_result','tool_use_id','toolu_ext','name','get_weather',
+    'server_id','e0000000-0000-0000-0000-0000000000e1',
+    'content','Tokyo: 24°C, partly cloudy.','is_error',false,
+    'structured_content', jsonb_build_object('temp_c',24,'condition','partly cloudy')));
+
+-- C14: IN-FLIGHT tool_use with NO tool_result yet (renders the wrench/pending state)
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000047', 'assistant', 25.5);
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000047', 0, 'text',
+  jsonb_build_object('type','text','text', $md$Kicking off a long-running job (no result block — pending state):$md$));
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000047', 1, 'tool_use',
+  jsonb_build_object('type','tool_use','id','toolu_pending','name','execute_command',
+    'server_id','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd',
+    'input', jsonb_build_object('command','python train.py')));
+
+-- C15: EMPTY input {} + TIMEOUT-status result
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000048', 'assistant', 25.6);
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000048', 0, 'tool_use',
+  jsonb_build_object('type','tool_use','id','toolu_timeout','name','list_workspace',
+    'server_id','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd',
+    'input', jsonb_build_object()));
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000048', 1, 'tool_result',
+  jsonb_build_object('type','tool_result','tool_use_id','toolu_timeout','name','list_workspace',
+    'server_id','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd',
+    'content','Tool call timed out after 30s.','is_error',true));
 -- -- add more tool-call turns here (remember to add an mcp_tool_calls row) --
 
 -- ###########################################################################
@@ -706,6 +971,31 @@ SELECT pg_temp.blk('30000000-0000-0000-0000-000000000020', 0, 'elicitation_reque
       'type','object',
       'properties', jsonb_build_object('format', jsonb_build_object('type','string','enum', jsonb_build_array('csv','json','xlsx')))),
     'response_content', jsonb_build_object('format','xlsx')));
+
+-- E1b: elicitation in PENDING state (renders the input form, not an outcome)
+SELECT pg_temp.msg('30000000-0000-0000-0000-000000000049', 'assistant', 32.1);
+SELECT pg_temp.blk('30000000-0000-0000-0000-000000000049', 0, 'elicitation_request',
+  jsonb_build_object('type','elicitation_request',
+    'elicitation_id','elic-0002',
+    'message','Enter a filename for the export:',
+    'server','Code Sandbox',
+    'status','pending',
+    'requested_schema', jsonb_build_object(
+      'type','object',
+      'required', jsonb_build_array('filename'),
+      'properties', jsonb_build_object('filename', jsonb_build_object('type','string','minLength',1)))));
+
+-- E1c: elicitation DECLINED by the user
+SELECT pg_temp.msg('30000000-0000-0000-0000-00000000004a', 'assistant', 32.2);
+SELECT pg_temp.blk('30000000-0000-0000-0000-00000000004a', 0, 'elicitation_request',
+  jsonb_build_object('type','elicitation_request',
+    'elicitation_id','elic-0003',
+    'message','Allow the tool to delete temporary files?',
+    'server','Code Sandbox',
+    'status','declined',
+    'requested_schema', jsonb_build_object(
+      'type','object',
+      'properties', jsonb_build_object('confirm', jsonb_build_object('type','boolean')))));
 
 -- E2: streaming-style long single text block
 SELECT pg_temp.msg('30000000-0000-0000-0000-000000000021', 'user', 33);
@@ -819,7 +1109,42 @@ VALUES
   ('7c000000-0000-0000-0000-00000000000d','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd','code-sandbox',true,:'owner',
    '11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222','30000000-0000-0000-0000-00000000001f',
    'toolu_mixed','execute_command','{"command":"python summarize.py"}','chat','completed',false,
-   '{"content":"5 genes"}','{text,resource_link}',140, TIMESTAMPTZ '2026-07-01 12:00:31+00', TIMESTAMPTZ '2026-07-01 12:00:31+00', 300)
+   '{"content":"5 genes"}','{text,resource_link}',140, TIMESTAMPTZ '2026-07-01 12:00:31+00', TIMESTAMPTZ '2026-07-01 12:00:31+00', 300),
+
+  -- MULTI-file resource_links
+  ('7c000000-0000-0000-0000-00000000000e','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd','code-sandbox',true,:'owner',
+   '11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222','30000000-0000-0000-0000-000000000044',
+   'toolu_multi','execute_command','{"command":"python export_all.py"}','chat','completed',false,
+   '{"content":"4 artifacts"}','{text,resource_link}',260, TIMESTAMPTZ '2026-07-01 12:00:26+00', TIMESTAMPTZ '2026-07-01 12:00:27+00', 640),
+
+  -- EXTERNAL (non-built-in) server; triggered "always" (auto-approved) path
+  ('7c000000-0000-0000-0000-00000000000f','e0000000-0000-0000-0000-0000000000e1','weather-api',false,:'owner',
+   '11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222','30000000-0000-0000-0000-000000000046',
+   'toolu_ext','get_weather','{"city":"Tokyo"}','always','completed',false,
+   '{"content":"24C"}','{text}',60, TIMESTAMPTZ '2026-07-01 12:00:28+00', TIMESTAMPTZ '2026-07-01 12:00:28+00', 210),
+
+  -- IN-FLIGHT tool_use has no result row (nothing recorded until it returns) —
+  -- intentionally omitted here to mirror reality.
+
+  -- TIMEOUT status
+  ('7c000000-0000-0000-0000-000000000010','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd','code-sandbox',true,:'owner',
+   '11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222','30000000-0000-0000-0000-000000000048',
+   'toolu_timeout','list_workspace','{}','chat','timeout',true,
+   '{"content":"timed out"}','{text}',20, TIMESTAMPTZ '2026-07-01 12:00:29+00', TIMESTAMPTZ '2026-07-01 12:00:59+00', 30000),
+
+  -- STANDALONE calls (no conversation) exercising the remaining `source` values
+  -- so the Calls-tab source filter has every variant (chat/always above; rest/sampling/approval here).
+  ('7c000000-0000-0000-0000-000000000011','16e2eeb0-46ed-5588-af8a-e973349f99a1','memory',true,:'owner',
+   NULL,NULL,NULL,NULL,'recall','{"query":"units"}','rest','completed',false,
+   '{"content":"1 memory"}','{text}',60, TIMESTAMPTZ '2026-07-01 12:01:00+00', TIMESTAMPTZ '2026-07-01 12:01:00+00', 44),
+  ('7c000000-0000-0000-0000-000000000012','d1a783dc-631e-570b-aba6-fee5497728b2','web_search',true,:'owner',
+   '11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222',NULL,
+   'toolu_samp_1','web_search','{"query":"embeddings"}','sampling','completed',false,
+   '{"content":"results"}','{text}',90, TIMESTAMPTZ '2026-07-01 12:01:01+00', TIMESTAMPTZ '2026-07-01 12:01:01+00', 130),
+  ('7c000000-0000-0000-0000-000000000013','b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd','code-sandbox',true,:'owner',
+   '11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222',NULL,
+   'toolu_appr_1','execute_command','{"command":"whoami"}','approval','completed',false,
+   '{"content":"ok"}','{text}',30, TIMESTAMPTZ '2026-07-01 12:01:02+00', TIMESTAMPTZ '2026-07-01 12:01:02+00', 25)
 ON CONFLICT (id) DO NOTHING;
 -- -- add more mcp_tool_calls rows here --
 COMMIT;
