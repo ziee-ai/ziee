@@ -47,6 +47,7 @@ export function ProjectKnowledgeSection() {
           <ProjectExtensionSlot
             name="knowledge_kinds"
             view="inlinePreview"
+            className="flex flex-col gap-4"
           />
         )}
       </div>
