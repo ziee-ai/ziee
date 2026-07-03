@@ -19,6 +19,18 @@ function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 }
 
+/**
+ * The nearest enclosing focus-trapping modal layer that base-ui's Dialog does
+ * NOT participate in — today only the vaul Drawer (`[data-slot="drawer-content"]`,
+ * built on Radix). When a base-ui Dialog is opened from inside such a layer, the
+ * layer's focus scope yanks focus back out of our `<body>`-portaled popup, so its
+ * inputs can't be typed into and React `onChange` never fires. Portaling the
+ * popup INTO that layer's subtree keeps it inside the focus scope. Base-ui Sheets
+ * are themselves base-ui Dialogs, so they nest cleanly and are intentionally not
+ * matched here.
+ */
+const HOST_FOCUS_TRAP_SELECTOR = '[data-slot="drawer-content"]'
+
 function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
@@ -43,12 +55,17 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  container,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  /** Portal target for the popup. Defaults to `<body>`; the kit Dialog sets
+      this to a host focus-trap (e.g. an enclosing vaul Drawer) so inputs stay
+      typable — see kit/dialog.tsx. */
+  container?: DialogPrimitive.Portal.Props["container"]
 }) {
   return (
-    <DialogPortal>
+    <DialogPortal container={container}>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
@@ -152,6 +169,7 @@ function DialogDescription({
 }
 
 export {
+  HOST_FOCUS_TRAP_SELECTOR,
   Dialog,
   DialogClose,
   DialogContent,
