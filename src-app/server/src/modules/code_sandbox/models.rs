@@ -18,7 +18,6 @@ pub struct ConversationFile {
     pub version_id: Uuid,
     pub filename: String,
     pub user_id: Uuid,
-    #[allow(dead_code)]
     pub mime_type: Option<String>,
     #[allow(dead_code)]
     pub created_at: DateTime<Utc>,

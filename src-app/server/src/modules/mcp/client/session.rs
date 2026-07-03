@@ -105,7 +105,6 @@ impl McpSession {
         })
     }
 
-    #[allow(dead_code)] // For future monitoring/debugging features
     pub fn server_id(&self) -> Uuid {
         self.server_id
     }

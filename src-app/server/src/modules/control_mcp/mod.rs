@@ -62,7 +62,6 @@ static CONTROL_MCP_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
 };
 
 pub struct ControlMcpModule {
-    #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
     /// Deploy kill-switch snapshot, set in `init`. Gates `register_routes` so a
     /// disabled deployment doesn't even expose the endpoint (§16).
