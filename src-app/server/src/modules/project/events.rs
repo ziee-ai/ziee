@@ -1,7 +1,6 @@
 // Project module events
 // Currently emitted-only (no in-module handlers) — other modules can
 // subscribe in future to react to project lifecycle changes.
-#![allow(dead_code)]
 
 use uuid::Uuid;
 
@@ -13,8 +12,14 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub enum ProjectEvent {
+    // Emit-only: these lifecycle variants are published but no subscriber reads
+    // their payloads yet (see the module header). ConversationAttached/Detached
+    // below ARE consumed, so the allow is scoped to these three.
+    #[allow(dead_code)]
     Created { project_id: Uuid, user_id: Uuid },
+    #[allow(dead_code)]
     Updated { project_id: Uuid, user_id: Uuid },
+    #[allow(dead_code)]
     Deleted { project_id: Uuid, user_id: Uuid },
     /// A conversation has been attached to (or re-attached across) a
     /// project. Emitted by `POST /projects/{id}/conversations/{conv_id}`.

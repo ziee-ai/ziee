@@ -1,6 +1,5 @@
 // LLM Model events for inter-module communication
 // Event infrastructure for future use
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -50,6 +49,9 @@ impl LlmModelEvent {
     }
 
     /// Create a DownloadStarted event
+    // Scaffolding: download-progress events aren't emitted via these helpers
+    // yet (download state is surfaced through the sync/SSE path instead).
+    #[allow(dead_code)]
     pub fn download_started(instance_id: Uuid, model_id: Uuid) -> Self {
         Self::DownloadStarted {
             instance_id,
@@ -58,6 +60,7 @@ impl LlmModelEvent {
     }
 
     /// Create a DownloadCompleted event
+    #[allow(dead_code)]
     pub fn download_completed(instance_id: Uuid, model_id: Uuid) -> Self {
         Self::DownloadCompleted {
             instance_id,
@@ -66,6 +69,7 @@ impl LlmModelEvent {
     }
 
     /// Create a DownloadFailed event
+    #[allow(dead_code)]
     pub fn download_failed(instance_id: Uuid, model_id: Uuid, error: String) -> Self {
         Self::DownloadFailed {
             instance_id,

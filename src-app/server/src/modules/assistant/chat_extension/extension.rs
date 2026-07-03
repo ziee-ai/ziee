@@ -1,5 +1,4 @@
 // Extension implementation
-#![allow(dead_code)]
 
 // Assistant extension types for chat module
 //
@@ -21,6 +20,10 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
 };
 
 /// Request fields contributed by the assistant extension
+// Convention: every chat extension declares a `SendMessageRequestFields`
+// (Deserialize + JsonSchema) documenting its per-send request params. Not yet
+// aggregated into a single schema, so it reads as unconstructed here.
+#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema, Default)]
 pub struct SendMessageRequestFields {
     /// Optional assistant ID to use for this message.

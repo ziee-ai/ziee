@@ -1,12 +1,15 @@
 // Assistant module events
 // Event infrastructure for future use
-#![allow(dead_code)]
 
 // Events related to assistant lifecycle
 
 use uuid::Uuid;
 
 /// Events emitted by the assistant module
+// Emit-only lifecycle events: created/updated/deleted are published but no
+// subscriber reads their payloads yet, and Enabled/Disabled aren't emitted
+// yet — retained as the module's event vocabulary for future subscribers.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum AssistantEvent {
     /// A new assistant was created
@@ -40,6 +43,9 @@ pub enum AssistantEvent {
     },
 }
 
+// Emit helpers: created/updated/deleted are wired; enabled/disabled retained
+// for the (not-yet-emitted) enable/disable lifecycle transitions.
+#[allow(dead_code)]
 impl AssistantEvent {
     /// Helper to create an AssistantCreated event wrapped in AppEvent
     pub fn created(assistant_id: Uuid, user_id: Option<Uuid>) -> crate::core::AppEvent {

@@ -586,10 +586,7 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
     }
 
     // Get effective permissions (union of user permissions + group permissions)
-    let user_service = UserService::new(
-        (**Repos.user).clone(),
-        (**Repos.group).clone(),
-    );
+    let user_service = UserService::new((**Repos.user).clone());
     let permissions = user_service
         .get_effective_permissions(user_id)
         .await

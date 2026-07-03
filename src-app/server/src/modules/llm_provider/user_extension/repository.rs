@@ -11,7 +11,6 @@
 //   - chat/core/handlers/providers.rs   → get_for_user
 // In-bridge callers: handlers.rs (5 HTTP handlers).
 
-#![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
