@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { File } from 'lucide-react'
 import { Alert, Spin, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
@@ -31,6 +32,32 @@ export function PdfBody(props: FileViewerSlotProps) {
   const truncated =
     typeof totalPages === 'number' && totalPages > file.preview_page_count
 
+  // Load pages on demand: as a page slot scrolls into view (with a prefetch
+  // margin), request that page + the next 2. The store dedupes and fetches
+  // sequentially, so pages load one-by-one, only around the viewport.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root || file.preview_page_count === 0) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const idx = Number((entry.target as HTMLElement).dataset.pageIndex)
+          if (Number.isNaN(idx)) continue
+          // visible page (idx+1) + the next 2
+          Stores.File.requestPreviewPage(file, idx + 1)
+          Stores.File.requestPreviewPage(file, idx + 2)
+          Stores.File.requestPreviewPage(file, idx + 3)
+        }
+      },
+      { root, rootMargin: '400px 0px' },
+    )
+    root.querySelectorAll('[data-page-index]').forEach((el) => io.observe(el))
+    return () => io.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.id, file.preview_page_count])
+
   if (file.preview_page_count === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
@@ -41,7 +68,7 @@ export function PdfBody(props: FileViewerSlotProps) {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 overflow-auto h-full">
+    <div ref={scrollRef} className="flex flex-col gap-6 p-4 overflow-auto h-full">
       {truncated && (
         <Alert
           tone="info"
@@ -56,6 +83,7 @@ export function PdfBody(props: FileViewerSlotProps) {
       {pageUrls.map((url, i) => (
         <div
           key={i}
+          data-page-index={i}
           className="flex flex-col items-center gap-1"
           // Browser-native virtualization: skip painting / image
           // decode for pages that are offscreen. Each page is
