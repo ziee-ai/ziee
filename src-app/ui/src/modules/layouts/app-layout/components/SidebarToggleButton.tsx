@@ -1,9 +1,10 @@
 import { Tooltip, Button } from '@/components/ui'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import { Stores } from '@/core/stores'
+import { cn } from '@/lib/utils'
 
 export function SidebarToggleButton() {
-  const { isSidebarCollapsed } = Stores.AppLayout
+  const { isSidebarCollapsed, nativeScroll, headerHidden } = Stores.AppLayout
 
   // Single compact size at every breakpoint. The previous
   // responsive flip (44px on xs viewports for WCAG 2.5.5 touch
@@ -16,10 +17,27 @@ export function SidebarToggleButton() {
 
   return (
     <div
-      className="flex items-center gap-6 mr-4 fixed z-10 h-[50px]"
+      className={cn(
+        'flex items-center gap-6 mr-4 fixed',
+        // Above the mobile sidebar Sheet (z-50) so the toggle stays on top of
+        // the open sidebar (and above the z-30 header); below Dialog (z-60).
+        nativeScroll ? 'h-[40px] z-[55]' : 'h-[50px] z-10',
+      )}
       style={{
         left: 12,
-        top: 0,
+        // Native (mobile Settings): match the header exactly — safe-area (clear
+        // the notch) + the header's 5px offset — so the button's center lines up
+        // with the header text and the top band stays 50px.
+        top: nativeScroll ? 'calc(env(safe-area-inset-top, 0px) + 5px)' : 0,
+        // Disappear/reappear together with the auto-hiding header.
+        ...(nativeScroll
+          ? {
+              transform: headerHidden ? 'translateY(-150%)' : 'translateY(0)',
+              opacity: headerHidden ? 0 : 1,
+              pointerEvents: headerHidden ? 'none' : 'auto',
+              transition: 'transform 0.3s ease, opacity 0.3s ease',
+            }
+          : null),
       }}
     >
       <Tooltip

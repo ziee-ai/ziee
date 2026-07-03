@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
 import { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
@@ -19,7 +19,7 @@ export function useNativeScroll(enabled: boolean): void {
   const { xs } = useWindowMinSize()
   const active = enabled && xs
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active) return
     const setNativeScroll = useAppLayoutStore.getState().setNativeScroll
     setNativeScroll(true)

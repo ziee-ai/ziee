@@ -59,6 +59,13 @@ interface AppLayoutState {
    */
   nativeScroll: boolean
 
+  /**
+   * In native scroll mode, whether the auto-hiding header is currently hidden
+   * (scrolled away on swipe-up). Shared so the fixed sidebar-toggle button can
+   * disappear/reappear together with the header. Ephemeral.
+   */
+  headerHidden: boolean
+
   // Actions
   setIsMobile: (isMobile: boolean) => void
   setMobileOverlayOpen: (open: boolean) => void
@@ -69,6 +76,7 @@ interface AppLayoutState {
   setMainContentWidth: (width: number) => void
   setIsFullscreen: (isFullscreen: boolean) => void
   setNativeScroll: (nativeScroll: boolean) => void
+  setHeaderHidden: (headerHidden: boolean) => void
 }
 
 export const useAppLayoutStore = create<AppLayoutState>()(
@@ -84,6 +92,7 @@ export const useAppLayoutStore = create<AppLayoutState>()(
         sidebarWidth: 240,
         mainContentWidth: 1000,
         nativeScroll: false,
+        headerHidden: false,
 
         // Actions
         setIsMobile: (isMobile: boolean) => {
@@ -121,6 +130,10 @@ export const useAppLayoutStore = create<AppLayoutState>()(
 
         setNativeScroll: (nativeScroll: boolean) => {
           set({ nativeScroll })
+        },
+
+        setHeaderHidden: (headerHidden: boolean) => {
+          set({ headerHidden })
         },
         }),
       ),
