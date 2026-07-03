@@ -252,10 +252,11 @@ export function FileCard({
 
   if (!file) return null
 
-  const isImage = file.mime_type?.startsWith('image/')
   const ext = file.filename.split('.').pop()?.toUpperCase() || 'FILE'
   const viewerLabel = getViewer(file.filename, file.mime_type ?? undefined)?.label ?? ext
-  const hasImage = !!(isImage && thumbnailUrl)
+  // Show whatever thumbnail the backend generated (images, PDFs, docs,
+  // spreadsheets all get one), not just image mime types.
+  const hasImage = !!thumbnailUrl
 
   // ── Row variant (assistant artifacts + knowledge management) ───────────────
   if (variant === 'row') {
