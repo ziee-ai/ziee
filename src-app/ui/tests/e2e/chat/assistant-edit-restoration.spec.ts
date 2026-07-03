@@ -60,26 +60,34 @@ test.describe('Chat — edit restores assistant attribution', () => {
     await goToNewChatPage(page, baseURL)
     await selectModelInDropdown(page, 'GPT-4o Mini')
 
+    // The picker is now the "+" composer dropdown → assistant submenu; the
+    // current selection surfaces as the `assistant-status-chip` Tag.
+    const selectAssistant = async (id: string) => {
+      await byTestId(page, 'chat-input-add-btn').click()
+      await byTestId(page, 'assistant-menu-trigger').click()
+      await byTestId(page, `assistant-option-${id}`).click()
+    }
+    const chip = byTestId(page, 'assistant-status-chip')
+
     // Select Assistant A, then send a message → the message is attributed to A.
-    const picker = byTestId(page, 'assistant-selector')
-    await picker.click()
-    await byTestId(page, `assistant-selector-opt-${idByName[nameA]}`).click()
+    await selectAssistant(idByName[nameA])
+    await expect(chip).toContainText(nameA)
     await byTestId(page, 'chat-message-textarea').fill('Hello there')
     await byTestId(page, 'chat-input-send-btn').click()
     await waitForAssistantResponse(page)
 
     // Switch the picker to Assistant B (so the current selection differs from
     // the sent message's attribution).
-    await picker.click()
-    await byTestId(page, `assistant-selector-opt-${idByName[nameB]}`).click()
-    await expect(picker).toContainText(nameB)
+    await selectAssistant(idByName[nameB])
+    await expect(chip).toContainText(nameB)
 
-    // Edit the original user message → the picker restores Assistant A.
+    // Edit the original user message → the picker restores Assistant A →
+    // the status chip snaps back to A.
     const userMsg = page
       .locator('[data-testid="chat-message"][data-role="user"]')
       .first()
     await hoverAndClickAction(page, userMsg, 'edit-message-button')
 
-    await expect(picker).toContainText(nameA, { timeout: 10000 })
+    await expect(chip).toContainText(nameA, { timeout: 10000 })
   })
 })
