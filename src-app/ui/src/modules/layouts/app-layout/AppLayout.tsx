@@ -281,6 +281,45 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Touch swipe-RIGHT anywhere on the page opens the (collapsed) mobile sidebar.
+  // Skipped while a drawer / dialog / sheet is open (their own gestures own the
+  // touch) and on desktop, where the sidebar is persistent.
+  const pageSwipe = useRef<{ x: number; y: number; active: boolean } | null>(null)
+  const onPageTouchStart = (e: React.TouchEvent) => {
+    if (!windowMinSize.xs || !isSidebarCollapsed || e.touches.length !== 1) return
+    if (
+      document.querySelector(
+        '[data-testid="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]',
+      )
+    )
+      return
+    const t = e.touches[0]
+    pageSwipe.current = { x: t.clientX, y: t.clientY, active: false }
+  }
+  const onPageTouchMove = (e: React.TouchEvent) => {
+    const s = pageSwipe.current
+    if (!s) return
+    const t = e.touches[0]
+    const dx = t.clientX - s.x
+    const dy = t.clientY - s.y
+    if (!s.active) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+      // Vertical-dominant or leftward → not an open gesture.
+      if (Math.abs(dy) > Math.abs(dx) || dx < 0) {
+        pageSwipe.current = null
+        return
+      }
+      s.active = true
+    }
+    if (dx > 70) {
+      pageSwipe.current = null
+      Stores.AppLayout.setSidebarCollapsed(false)
+    }
+  }
+  const onPageTouchEnd = () => {
+    pageSwipe.current = null
+  }
+
   // ResizeObserver to listen to main content width changes
   useEffect(() => {
     const mainContentElement = mainContentRef.current
@@ -461,6 +500,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             ref={mainContentRef}
             id="main-content"
             tabIndex={-1}
+            onTouchStart={onPageTouchStart}
+            onTouchMove={onPageTouchMove}
+            onTouchEnd={onPageTouchEnd}
             className={cn(
               'w-full relative',
               // overflow-x-clip: clip horizontal overflow (no x-scroll / no
