@@ -89,11 +89,11 @@ export function ProjectsListPage() {
           <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
             <div className={cn('flex flex-col', nativeScroll ? '' : 'h-full overflow-y-auto')}>
               <div
-                className="max-w-4xl flex flex-wrap gap-3 pt-3 w-full self-center px-3"
+                className="max-w-4xl grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 w-full self-center px-3"
                 style={nativeScroll ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' } : undefined}
               >
                 {projects.map(project => (
-                  <div key={project.id} className="min-w-70 flex-1">
+                  <div key={project.id} className="min-w-0">
                     <ProjectCard
                       project={project}
                       onEdit={handleEdit}
@@ -108,9 +108,6 @@ export function ProjectsListPage() {
                     />
                   </div>
                 ))}
-                <div className="min-w-70 flex-1" />
-                <div className="min-w-70 flex-1" />
-                <div className="min-w-70 flex-1" />
               </div>
             </div>
           </div>

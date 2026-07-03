@@ -211,7 +211,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                 />
               </Card>
             ) : (
-              <DivScrollY nativeFlow className="space-y-3 overflow-x-visible">
+              <div className="space-y-3 overflow-x-visible">
                 {loading && !isInitialized ? (
                   <div className="flex justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2"></div>
@@ -236,9 +236,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                       </div>
                     ))}
 
-                    {/* Pagination info */}
+                    {/* Pagination info — plain text (no card). */}
                     {visibleConversations.length > 0 && (
-                      <Card data-testid="chat-history-pagination-card" className="text-center !mx-3 [&_[data-part='body']]:!p-2">
+                      <div
+                        data-testid="chat-history-pagination-card"
+                        className="text-center px-3 py-2 flex flex-col items-center gap-2"
+                      >
                         <Text type="secondary" aria-live="polite" role="status">
                           Showing {visibleConversations.length} of {total} conversations
                         </Text>
@@ -247,11 +250,11 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                             Load More
                           </Button>
                         )}
-                      </Card>
+                      </div>
                     )}
                   </div>
                 )}
-              </DivScrollY>
+              </div>
             )}
           </div>
         </DivScrollY>
