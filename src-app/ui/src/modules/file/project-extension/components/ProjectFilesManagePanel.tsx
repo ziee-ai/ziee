@@ -269,8 +269,17 @@ export function ProjectFilesManagePanel() {
       </div>
     )
 
+  // Only the FIRST load (no files yet) shows the full spinner. A background
+  // refresh (e.g. after an upload completes) keeps `files` on screen so the
+  // list stays mounted and React reconciles by key — existing cards stay put
+  // and the new file just appends, instead of the whole list blinking out.
+  const initialLoading = filesLoading && files.length === 0
   const emptyOrList =
-    !filesLoading && files.length === 0 ? (
+    initialLoading ? (
+      <div className="flex justify-center py-6">
+        <Spin label="Loading" />
+      </div>
+    ) : files.length === 0 ? (
       <Empty
         description="No knowledge files yet"
         data-testid="file-project-empty"
@@ -281,10 +290,6 @@ export function ProjectFilesManagePanel() {
             : 'Attach files from your library to share their contents with every conversation in this project.'}
         </Text>
       </Empty>
-    ) : filesLoading ? (
-      <div className="flex justify-center py-6">
-        <Spin label="Loading" />
-      </div>
     ) : (
       <div className="flex flex-col gap-2">
         {files.map(file => {
