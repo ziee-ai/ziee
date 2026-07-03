@@ -1,6 +1,7 @@
 import { Text, Title } from '@/components/ui'
 import { ReactNode, useId } from 'react'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { Stores } from '@/core/stores'
 
 interface SettingsPageContainerProps {
   title: string | ReactNode
@@ -16,16 +17,17 @@ export function SettingsPageContainer({
   'data-testid': testid,
 }: SettingsPageContainerProps) {
   const titleId = useId()
-  return (
-    // Vertical spacing notes:
-    //   pt-3 keeps the title close to the top header bar.
-    //   mt-6 on the body section is the gap between title and body
-    //   — done as a margin (not flex gap on the DivScrollY) because
-    //   DivScrollY wraps its children in an internal
-    //   `<div class="flex flex-col">`, so any `gap-*` on DivScrollY
-    //   itself lands on the OverlayScrollbars wrapper and never
-    //   reaches the title/body siblings.
-    <DivScrollY className="h-full" role="region" aria-labelledby={titleId}>
+  // In native document-scroll mode (mobile Settings) the WINDOW scrolls, so the
+  // inner DivScrollY must NOT create its own scroller — render the same content
+  // in normal flow instead, with a bottom inset so the last card clears the iOS
+  // home indicator.
+  const nativeScroll = Stores.AppLayout.nativeScroll
+
+  // Vertical spacing notes:
+  //   pt-3 keeps the title close to the top header bar.
+  //   mt-3 on the body section is the gap between title and body.
+  const inner = (
+    <>
       <div className="w-full flex justify-center pt-3">
         <div className={'max-w-4xl w-full flex flex-col gap-2 px-3'}>
           <Title
@@ -37,10 +39,7 @@ export function SettingsPageContainer({
             {title}
           </Title>
           {subtitle && (
-            <Text
-              type="secondary"
-              className=" !m-0 !p-0 text-sm !leading-tight"
-            >
+            <Text type="secondary" className=" !m-0 !p-0 text-sm !leading-tight">
               {subtitle}
             </Text>
           )}
@@ -48,13 +47,30 @@ export function SettingsPageContainer({
       </div>
       <div className={'flex w-full flex-1 justify-center pb-3 mt-3'}>
         <div
-          className={
-            'max-w-4xl w-full h-full flex flex-col gap-3 px-3 self-center'
-          }
+          className={'max-w-4xl w-full h-full flex flex-col gap-3 px-3 self-center'}
         >
           {children}
         </div>
       </div>
+    </>
+  )
+
+  if (nativeScroll) {
+    return (
+      <div
+        className="flex flex-col w-full"
+        role="region"
+        aria-labelledby={titleId}
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+      >
+        {inner}
+      </div>
+    )
+  }
+
+  return (
+    <DivScrollY className="h-full" role="region" aria-labelledby={titleId}>
+      {inner}
     </DivScrollY>
   )
 }

@@ -36,7 +36,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [])
   useMetaThemeColor('--card')
-  const { isSidebarCollapsed } = Stores.AppLayout
+  const { isSidebarCollapsed, nativeScroll } = Stores.AppLayout
   const { slots } = Stores.ModuleSystem
   const appBanners = [...(slots.get('appBanners') || [])].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
@@ -342,7 +342,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="h-full w-screen flex overflow-hidden bg-card">
+    <div className={cn(
+      'w-screen flex bg-card',
+      // Native document-scroll (opt-in): relax the fixed-height/overflow clamp
+      // so the window scrolls. Default path is byte-identical to before.
+      nativeScroll ? 'min-h-dvh overflow-visible' : 'h-full overflow-hidden',
+    )}>
       {/* Keyboard skip link — first focusable element; jumps past the
           sidebar nav straight to the main content landmark. */}
       <a
@@ -480,7 +485,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative overflow-hidden bg-card">
+      <main className={cn(
+        'flex-1 flex flex-col relative bg-card',
+        nativeScroll ? 'overflow-visible' : 'overflow-hidden',
+      )}>
         {/* App-wide banners (e.g. the admin "update available" notice).
             Contributed via the `appBanners` slot, so bundles that don't load a
             contributor (e.g. desktop drops server-update) render nothing. */}
@@ -488,12 +496,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <LazyComponentRenderer key={b.id} component={b.component} />
         ))}
         {/* Content */}
-        <div className="flex-1 overflow-hidden relative">
+        <div className={cn('flex-1 relative', nativeScroll ? 'overflow-visible' : 'overflow-hidden')}>
           <section
             ref={mainContentRef}
             id="main-content"
             tabIndex={-1}
-            className="w-full h-full overflow-hidden relative"
+            className={cn(
+              'w-full relative',
+              nativeScroll ? 'overflow-visible' : 'h-full overflow-hidden',
+            )}
           >
             {children}
           </section>

@@ -161,6 +161,19 @@
     height: 100dvh;
     width: 100dvw;
   }
+  /* Native document-scroll mode (opt-in via useNativeScroll, mobile Settings).
+     Relax the fixed-height clamp so the WINDOW scrolls — the condition iOS
+     Safari needs to collapse its toolbar. Scoped to the class so nothing
+     changes by default. */
+  html.scroll-native,
+  html.scroll-native body {
+    height: auto;
+    overflow: visible;
+  }
+  html.scroll-native #root {
+    height: auto;
+    min-height: 100dvh;
+  }
 }
 
 /* OverlayScrollbars default-theme handle colors. The library applies
