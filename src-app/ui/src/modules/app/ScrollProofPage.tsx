@@ -1,69 +1,45 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 
 /**
- * Document-scroll proof (public, /scroll-proof).
- *
- * Confirmed: with document scroll + viewport-fit=cover, content already extends
- * under the notch / home indicator. The only reason the rows weren't visible up
- * there is the opaque header covering that area. This demonstrates the two
- * native patterns:
- *  - translucent header whose background fills the safe area (content shows
- *    through, blurred, as it scrolls under), and
- *  - hide-on-scroll: the header slides away scrolling down (content fully under
- *    the notch), returns scrolling up — like Safari's own toolbar.
- * Toggle between them to compare.
+ * Document-scroll proof (public, /scroll-proof) — mirrors asurascans.com:
+ *  - the DOCUMENT (body/window) is the scroller (tall page, normal flow),
+ *  - the header is position: relative (real content that scrolls UP under the
+ *    notch), NOT fixed,
+ *  - theme-color is a valid hex matching the header, so the iOS status-bar strip
+ *    blends with the header.
+ * No viewport-fit=cover (asura doesn't use it either). Load on-device and
+ * compare to asura: does the header scroll up under the notch, with the status
+ * bar matching?
  */
+const HEADER = '#913FE2' // asura's purple, so the effect is unmistakable
+
 export default function ScrollProofPage() {
   const rows = Array.from({ length: 60 }, (_, i) => i + 1)
-  const [hideOnScroll, setHideOnScroll] = useState(true)
-  const [hidden, setHidden] = useState(false)
-  const lastY = useRef(0)
 
   useEffect(() => {
-    const onScroll = () => {
-      const y = window.scrollY
-      if (hideOnScroll) {
-        // hide when scrolling down past a threshold, show when scrolling up
-        if (y > lastY.current && y > 60) setHidden(true)
-        else if (y < lastY.current) setHidden(false)
-      } else {
-        setHidden(false)
-      }
-      lastY.current = y
+    const meta = document.querySelector('meta[name="theme-color"]')
+    const prev = meta?.getAttribute('content') ?? null
+    meta?.setAttribute('content', HEADER)
+    return () => {
+      if (meta && prev != null) meta.setAttribute('content', prev)
     }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [hideOnScroll])
+  }, [])
 
   return (
     <div className="min-h-dvh w-full bg-background text-foreground">
-      {/* Translucent header. padding-top = safe-area inset so its background
-          fills the notch strip; content scrolls under it (blurred). Slides up
-          out of view when `hidden` (hide-on-scroll mode). */}
+      {/* RELATIVE header (asura pattern) — scrolls away with the document. */}
       <header
-        className="fixed inset-x-0 top-0 z-20 border-b border-border bg-card/75 backdrop-blur-md px-4 pb-3 transition-transform duration-300"
-        style={{
-          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-          transform: hidden ? 'translateY(-100%)' : 'translateY(0)',
-        }}
+        data-allow-custom-color
+        className="relative z-10 flex flex-col justify-center h-14 px-4 text-white"
+        style={{ background: HEADER }}
       >
-        <h1 className="text-base font-semibold">Scroll proof</h1>
-        <p className="text-xs text-muted-foreground">
-          Content flows under this header (and the notch). Scroll to feel it.
+        <h1 className="text-base font-semibold">Scroll proof (asura-style)</h1>
+        <p className="text-[11px] opacity-90">
+          Header is relative; theme-color = this purple. Scroll up/down.
         </p>
-        <button
-          className="mt-2 rounded-md border border-border px-3 py-1 text-xs"
-          onClick={() => setHideOnScroll((v) => !v)}
-        >
-          Header mode: {hideOnScroll ? 'hide-on-scroll' : 'always translucent'} (tap to toggle)
-        </button>
       </header>
 
-      {/* Spacer so the first rows aren't hidden behind the fixed header at rest.
-          ~safe-area + header height. */}
-      <div style={{ height: 'calc(env(safe-area-inset-top, 0px) + 116px)' }} />
-
-      <main className="mx-auto w-full max-w-md px-4 pb-4 flex flex-col gap-3">
+      <main className="mx-auto w-full max-w-md px-4 py-4 flex flex-col gap-3">
         {rows.map((n) => (
           <div key={n} className="rounded-lg border border-border bg-card px-4 py-6 text-sm">
             Row {n} of {rows.length}
@@ -71,10 +47,7 @@ export default function ScrollProofPage() {
         ))}
       </main>
 
-      <footer
-        className="px-4 pt-8 text-center text-xs text-muted-foreground"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)' }}
-      >
+      <footer className="px-4 py-10 text-center text-xs text-muted-foreground">
         End of list.
       </footer>
     </div>
