@@ -20,8 +20,21 @@ import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
  * - sidebarFooter: Footer section (e.g., user profile)
  */
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  // The app shell is bg-card → tint the iOS status/nav bars to --card (in dark
-  // mode --card is lighter than --background, which the login layout uses).
+  // The app shell is bg-card, but the iOS status/nav bars sample the CANVAS —
+  // the <body> background — which is --background app-wide. The shell covers the
+  // body, so painting the body --card changes nothing visible; it only makes the
+  // safe-area bands / overscroll gutter (and the sampled bar color) match the
+  // shell instead of showing the darker --background. Restored on teardown so
+  // the blank/login layout keeps its --background body. (theme-color is set too,
+  // for the Safari-chrome path.)
+  useLayoutEffect(() => {
+    const body = document.body
+    const prev = body.style.backgroundColor
+    body.style.backgroundColor = 'var(--card)'
+    return () => {
+      body.style.backgroundColor = prev
+    }
+  }, [])
   useMetaThemeColor('--card')
   const { isSidebarCollapsed } = Stores.AppLayout
   const { slots } = Stores.ModuleSystem
