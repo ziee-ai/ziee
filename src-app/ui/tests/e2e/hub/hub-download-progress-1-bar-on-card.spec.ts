@@ -170,16 +170,22 @@ test('hub card renders a full-width Progress bar at the bottom with percent + sp
   await configureHfWithDummyKey(baseURL, token)
 
   await mockRepoProbePass(page)
-  // The download POST carries hub_id; the card matches downloads by
-  // repository_path, so give the mock a hub_id → repository_path map.
+  // The download POST carries hub_id (== model.name); the card matches
+  // downloads by repository_path, which — as of v2 Phase 7 — is a
+  // source's `identifier` (there is no model-wide repository_path).
+  // Build a hub_id(name) → sources[0].identifier map for the mock.
   const hubModels = await fetch(`${baseURL}/api/hub/models?lang=en`, {
     headers: { Authorization: `Bearer ${token}` },
   }).then(r => r.json())
   const pathByHubId = new Map<string, string>(
-    (hubModels as Array<{ id: string; repository_path: string }>).map(m => [
-      m.id,
-      m.repository_path,
-    ]),
+    (
+      hubModels as Array<{
+        name: string
+        sources?: Array<{ identifier: string }>
+      }>
+    )
+      .filter(m => m.sources?.[0]?.identifier)
+      .map(m => [m.name, m.sources![0].identifier]),
   )
   await mockDownloadStartWithProgress(page, pathByHubId)
 
