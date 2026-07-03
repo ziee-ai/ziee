@@ -85,6 +85,59 @@ export const Drawer: React.FC<DrawerProps> = ({
   const windowMinSize = useWindowMinSize()
   const horizontal = placement === 'left' || placement === 'right'
 
+  // Touch swipe-to-close: drag the panel toward the edge it's docked to (a right
+  // drawer → swipe right) and release past a threshold to close; otherwise it
+  // snaps back. Follows the finger live. Horizontal placements only.
+  const contentRef = React.useRef<HTMLDivElement>(null)
+  const swipe = React.useRef<{
+    x: number
+    y: number
+    active: boolean
+    dx: number
+  } | null>(null)
+  const closeDir = placement === 'right' ? 1 : placement === 'left' ? -1 : 0
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (closeDir === 0 || e.touches.length !== 1) return
+    const t = e.touches[0]
+    swipe.current = { x: t.clientX, y: t.clientY, active: false, dx: 0 }
+  }
+  const onTouchMove = (e: React.TouchEvent) => {
+    const s = swipe.current
+    if (!s) return
+    const t = e.touches[0]
+    const dx = t.clientX - s.x
+    const dy = t.clientY - s.y
+    if (!s.active) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      // Vertical-dominant → let the body scroll; abandon the swipe.
+      if (Math.abs(dy) > Math.abs(dx)) {
+        swipe.current = null
+        return
+      }
+      s.active = true
+    }
+    s.dx = dx
+    const el = contentRef.current
+    if (!el) return
+    // Only follow in the close direction (don't over-drag inward).
+    const translate = Math.max(0, dx * closeDir) * closeDir
+    el.style.transition = 'none'
+    el.style.transform = `translateX(${translate}px)`
+  }
+  const onTouchEnd = () => {
+    const s = swipe.current
+    swipe.current = null
+    const el = contentRef.current
+    if (!s || !s.active || !el) return
+    el.style.transition = ''
+    const width = el.getBoundingClientRect().width
+    const moved = s.dx * closeDir
+    el.style.transform = ''
+    if (moved > Math.min(width * 0.35, 120)) {
+      onClose?.()
+    }
+  }
+
   const maskClosable =
     maskClosableProp ?? (typeof mask === 'object' ? mask.closable !== false : mask !== false)
   const showOverlay = mask !== false
@@ -141,10 +194,14 @@ export const Drawer: React.FC<DrawerProps> = ({
           />
         )}
         <DialogPrimitive.Content
+          ref={contentRef}
           data-testid={testid ?? 'layout-drawer-content'}
           // maskClosable=false → backdrop/outside click doesn't dismiss (Escape still does).
           onPointerDownOutside={maskClosable ? undefined : e => e.preventDefault()}
           onInteractOutside={maskClosable ? undefined : e => e.preventDefault()}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
           style={{ ...sizeStyle, zIndex }}
           className={cn(
             'fixed z-50 flex flex-col gap-0 bg-background shadow-none transition duration-200 ease-in-out',
