@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Import } from 'lucide-react'
-import { Button, Empty, message, Space, Spin, Text } from '@/components/ui'
+import { Button, Empty, message, Spin, Tag, Text } from '@/components/ui'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import type { BibliographyEntry } from '@/api-client/types'
@@ -48,8 +48,16 @@ export function ProjectBibliographyManagePanel() {
   if (!projectId) return <Empty description="Open a project to manage its references." data-testid="cite-bib-panel-no-project-empty" />
 
   return (
-    <Space direction="vertical" className="w-full">
-      <Space>
+    <div className="flex flex-col w-full">
+      {/* Header mirrors the Knowledge-files panel: title + count chip on the
+          left, the primary action on the right. */}
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Text strong>References</Text>
+          <Tag variant="outline" data-testid="cite-bib-panel-count-tag">
+            {entries.length} reference{entries.length === 1 ? '' : 's'}
+          </Tag>
+        </div>
         {canManage && (
           <Button
             variant="default"
@@ -57,11 +65,10 @@ export function ProjectBibliographyManagePanel() {
             onClick={() => setImportOpen(true)}
             data-testid="cite-bib-panel-import-button"
           >
-            Import into project
+            Import
           </Button>
         )}
-        <Text type="secondary">{entries.length} reference(s)</Text>
-      </Space>
+      </div>
 
       {loading ? (
         <Spin label="Loading" />
@@ -83,6 +90,6 @@ export function ProjectBibliographyManagePanel() {
           void reload()
         }}
       />
-    </Space>
+    </div>
   )
 }

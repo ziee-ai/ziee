@@ -193,6 +193,8 @@ export function ProjectFilesManagePanel() {
   )
 
   const uploadButton = canUpload ? (
+    // No dashed dropzone (border-0 p-0) — drag-and-drop is already handled by
+    // the drawer-body drag listeners above; this is just the click affordance.
     <Upload
       multiple
       onFiles={(files) => dispatchFiles(files)}
@@ -200,6 +202,7 @@ export function ProjectFilesManagePanel() {
       disabled={atCap}
       label="Upload files"
       data-testid="file-project-upload-area"
+      className="!border-0 !p-0 !gap-0 !rounded-none"
     >
       <Tooltip title={atCap ? `At ${PROJECT_FILE_CAP}-file cap` : 'Upload files'}>
         <Button
