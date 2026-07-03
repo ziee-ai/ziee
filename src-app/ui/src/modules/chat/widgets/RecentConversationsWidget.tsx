@@ -215,7 +215,9 @@ function ConversationRowLabel({
       >
         {/* Native `title` (not the kit Tooltip): a Base-UI Tooltip trigger on
             or around a Base-UI Dropdown trigger thrashes — the tooltip flashes
-            then vanishes. A native title has no floating-tree conflict. */}
+            then vanishes. `data-tooltip-wrapped` suppresses the kit Button's
+            OWN auto-tooltip (icon-only + aria-label) which is the real culprit;
+            the native title stands in with no floating-tree conflict. */}
         <Dropdown
           data-testid={`chat-recent-row-menu-${conversation.id}`}
           items={menuItems}
@@ -236,6 +238,7 @@ function ConversationRowLabel({
             className="w-[22px] h-[22px] p-0"
             aria-label="Conversation options"
             title="Conversation options"
+            data-tooltip-wrapped=""
           />
         </Dropdown>
       </div>

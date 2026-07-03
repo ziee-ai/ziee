@@ -174,7 +174,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
         data-testid="file-xlsx-tabs"
         fill
         className="flex-1 min-h-0"
-        tabStripClassName="justify-center px-3 gap-1"
+        tabStripClassName="[justify-content:safe_center] px-3 gap-1"
         items={sheets.map(sheet => ({
           key: sheet.name,
           label: sheet.name,

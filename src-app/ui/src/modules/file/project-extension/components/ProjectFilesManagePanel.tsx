@@ -306,8 +306,10 @@ export function ProjectFilesManagePanel() {
               actions={
                 canEdit ? (
                   // Native `title` (not the kit Tooltip): a Base-UI Tooltip
-                  // trigger wrapping a Base-UI Confirm trigger thrashes — the
-                  // tooltip flashes then vanishes. Native title has no conflict.
+                  // trigger around a Base-UI Confirm trigger thrashes — the
+                  // tooltip flashes then vanishes. `data-tooltip-wrapped` kills
+                  // the kit Button's own auto-tooltip (icon-only + aria-label,
+                  // the real culprit); native title stands in, no conflict.
                   <Confirm
                     title="Delete this file?"
                     description="This permanently removes the file from your library."
@@ -322,6 +324,7 @@ export function ProjectFilesManagePanel() {
                       icon={<Trash2 />}
                       aria-label={`Delete ${file.filename}`}
                       title="Delete"
+                      data-tooltip-wrapped=""
                       data-testid={`file-project-delete-btn-${file.id}`}
                     />
                   </Confirm>
