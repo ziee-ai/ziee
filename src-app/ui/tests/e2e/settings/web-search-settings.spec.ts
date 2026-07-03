@@ -134,7 +134,8 @@ async function gotoWebSearch(page: Page, baseURL: string) {
 }
 
 const globalSave = (page: Page) => byTestId(page, 'websearch-global-save')
-const braveSave = (page: Page) => byTestId(page, 'websearch-provider-brave-save')
+// Providers now share ONE form-level save (was a per-provider button).
+const braveSave = (page: Page) => byTestId(page, 'websearch-providers-save')
 const enabledSwitch = (page: Page) => byTestId(page, 'websearch-global-enabled')
 const savedToast = (page: Page) =>
   page.locator('[data-sonner-toast][data-type="success"]')
