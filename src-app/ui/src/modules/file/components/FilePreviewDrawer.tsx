@@ -20,29 +20,9 @@ export function FilePreviewDrawer() {
   const file = Stores.FilePreviewDrawer.file
 
   const titleNode = file ? (
-    // CSS grid `minmax(0, 1fr) auto` is the canonical pattern for
-    // "first column fills + can shrink to zero; second column at
-    // intrinsic width". Flex with `flex-1 min-w-0` works in
-    // isolation but is brittle when the chain of parent wrappers
-    // doesn't all set min-width: 0 (the Drawer's title row and
-    // the custom Drawer's `flex w-full` outer div together don't
-    // propagate the shrink constraint reliably — the filename's
-    // intrinsic width was pushing the actions past the drawer edge).
-    // Grid sidesteps the chain by declaring the column shrinkability
-    // explicitly on this element.
-    <div
-      className="grid items-center gap-2 pr-2 w-full overflow-hidden"
-      style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}
-    >
-      <Title
-        level={5}
-        className="!m-0 truncate"
-        title={file.filename}
-      >
-        {file.filename}
-      </Title>
-      <FilePanelHeaderActions file={file} />
-    </div>
+    <Title level={5} className="!m-0 truncate w-full" title={file.filename}>
+      {file.filename}
+    </Title>
   ) : (
     // Truthy placeholder so the wrapper keeps rendering the back
     // arrow during the exit animation when `file` may briefly be null.
@@ -55,6 +35,15 @@ export function FilePreviewDrawer() {
       onClose={() => Stores.FilePreviewDrawer.closePreview()}
       placement="right"
       title={titleNode}
+      // All viewer actions (rendered/raw toggle, copy, download, …) live in the
+      // footer now — outline icon buttons, out of the title row.
+      footer={
+        file ? (
+          <div className="flex items-center justify-end gap-2">
+            <FilePanelHeaderActions file={file} />
+          </div>
+        ) : undefined
+      }
       styles={{ body: { padding: 0 } }}
       destroyOnHidden={false}
       // Stack above the knowledge drawer (which uses antd's default
