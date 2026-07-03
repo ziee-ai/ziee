@@ -221,6 +221,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     })
   }, [windowMinSize.xs])
 
+  // While the viewport is CROSSING from desktop into xs, `isSidebarCollapsed`
+  // still holds the desktop "expanded" (false) value for one render — feeding
+  // that as open=true would mount the mobile Sheet OPEN and orphan its overlay
+  // (an invisible fixed inset-0 scrim that then eats every click on the page).
+  // `prevXsRef` still reads the previous (desktop) value during this render, so
+  // force the Sheet closed on that frame; the collapse effect above settles the
+  // flag immediately after.
+  const mobileSidebarOpen =
+    !isSidebarCollapsed && !(windowMinSize.xs && !prevXsRef.current)
+
   // ResizeObserver to listen to main content width changes
   useEffect(() => {
     const mainContentElement = mainContentRef.current
@@ -314,7 +324,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           focus-trap effect that used to live here. */}
       {windowMinSize.xs && (
         <Sheet
-          open={!isSidebarCollapsed}
+          open={mobileSidebarOpen}
           onOpenChange={(o) => Stores.AppLayout.setSidebarCollapsed(!o)}
         >
           <SheetContent
