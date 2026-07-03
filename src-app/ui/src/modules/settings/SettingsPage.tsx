@@ -2,7 +2,7 @@ import { Button, Dropdown, Flex, Link, Result, ScrollArea, Title, Text } from '@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
-import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
+import { HeaderBarContainer, NATIVE_HEADER_OFFSET } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { cn } from '@/lib/utils'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { BookOpen, Compass, ExternalLink } from 'lucide-react'
@@ -277,8 +277,12 @@ export default function SettingsPage() {
         </div>
       </HeaderBarContainer>
 
-      {/* Page Content */}
-      <div className={cn('flex flex-1', nativeScroll ? '' : 'overflow-hidden')}>
+      {/* Page Content — offset below the FIXED native header (out of flow) so
+          the first item isn't hidden behind it at rest. */}
+      <div
+        className={cn('flex flex-1', nativeScroll ? '' : 'overflow-hidden')}
+        style={nativeScroll ? { paddingTop: NATIVE_HEADER_OFFSET } : undefined}
+      >
         {/* Desktop Sidebar — top padding gives the menu a 16px gap
             from the HeaderBarContainer above. Without it the menu's
             first item sits flush against the bottom of the header,
