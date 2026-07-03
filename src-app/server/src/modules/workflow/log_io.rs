@@ -16,7 +16,6 @@
 //! threshold — the previously-declared (and unused) 64 KiB
 //! `SPILL_THRESHOLD_BYTES` has been removed to match actual behavior.
 
-#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 
@@ -134,6 +133,8 @@ pub async fn write_text_log(
 
 /// Per-item log for `llm_map`. Always captured at `log: full`; omitted
 /// otherwise. Stored as JSON for round-trip with the FE renderer.
+// Future-API: the per-item `llm_map` logging path is not wired to a caller yet.
+#[allow(dead_code)]
 pub async fn write_item_log(
     ctx: &RunContext,
     step_id: &str,

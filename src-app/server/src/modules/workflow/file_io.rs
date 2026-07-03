@@ -13,7 +13,6 @@
 //! output file with it. (The sweep removes orphan run DIRECTORIES, not
 //! individual files.)
 
-#![allow(dead_code)]
 
 use std::path::PathBuf;
 
@@ -166,6 +165,9 @@ pub fn read_output_value(meta: &OutputMeta) -> Result<Value, AppError> {
 
 /// REST `GET /api/workflow-runs/{id}/output/{step_id}` streaming
 /// reader. Returns an AsyncRead the handler pipes back as a Body.
+// Future-API: the streaming output handler that consumes these three helpers
+// (open/size/drain) is not wired yet.
+#[allow(dead_code)]
 pub async fn open_output_stream(host_path: &PathBuf) -> Result<tokio::fs::File, AppError> {
     tokio::fs::File::open(host_path).await.map_err(|e| {
         AppError::new(
@@ -176,8 +178,9 @@ pub async fn open_output_stream(host_path: &PathBuf) -> Result<tokio::fs::File, 
     })
 }
 
-/// Async size check (used by the REST handler before opening the
-/// stream so we can short-circuit oversized outputs).
+/// Async size check (for the REST handler to short-circuit oversized
+/// outputs before opening the stream).
+#[allow(dead_code)]
 pub async fn file_size(host_path: &PathBuf) -> Result<u64, AppError> {
     let md = tokio::fs::metadata(host_path).await.map_err(|e| {
         AppError::new(
@@ -190,6 +193,7 @@ pub async fn file_size(host_path: &PathBuf) -> Result<u64, AppError> {
 }
 
 /// Drain an open AsyncRead into a Vec, capped at STEP_OUTPUT_CAP_BYTES.
+#[allow(dead_code)]
 pub async fn drain_to_string(file: &mut tokio::fs::File) -> Result<String, AppError> {
     let mut buf = Vec::with_capacity(STEP_OUTPUT_CAP_BYTES.min(8192) as usize);
     file.take(STEP_OUTPUT_CAP_BYTES as u64)

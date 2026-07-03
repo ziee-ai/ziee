@@ -25,7 +25,6 @@
 //!       step's `schema:` JSON Schema (object-with-properties →
 //!       Object(...), else ObjectUnknown)
 
-#![allow(dead_code)]
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -69,13 +68,16 @@ impl InferredType {
         }
     }
 
-    /// True for `Array` / `ArrayUnknown` — used by `ref_check` to decide
-    /// whether `[N]` indexing is type-valid.
+    /// True for `Array` / `ArrayUnknown` — intended for `ref_check` to decide
+    /// whether `[N]` indexing is type-valid (not yet consumed there).
+    #[allow(dead_code)]
     pub fn is_array(&self) -> bool {
         matches!(self, InferredType::Array(_) | InferredType::ArrayUnknown)
     }
 
-    /// True for `Object` / `ObjectUnknown`.
+    /// True for `Object` / `ObjectUnknown`. Type-predicate companion to
+    /// `is_array`; no caller yet.
+    #[allow(dead_code)]
     pub fn is_object(&self) -> bool {
         matches!(self, InferredType::Object(_) | InferredType::ObjectUnknown)
     }

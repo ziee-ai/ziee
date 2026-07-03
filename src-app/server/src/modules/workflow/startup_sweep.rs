@@ -5,7 +5,6 @@
 //! and removes staged `workspace/<conv>/workflow/<run>/` dirs for
 //! runs that are no longer non-terminal.
 
-#![allow(dead_code)]
 
 use sqlx::PgPool;
 

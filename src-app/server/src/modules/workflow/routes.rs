@@ -13,7 +13,6 @@
 //! mirrors the skills surface, which also omits a plain create. (An
 //! intentional impl-differs vs. the plan's endpoint list — see plan §3.)
 
-#![allow(dead_code)]
 
 use aide::axum::{
     ApiRouter,

@@ -5,7 +5,6 @@
 // This core file aggregates all module events into a single AppEvent enum
 //
 // Event infrastructure - currently unused but part of the core architecture
-#![allow(dead_code)]
 
 use async_trait::async_trait;
 use sqlx::PgPool;
@@ -15,6 +14,9 @@ use crate::common::AppError;
 
 /// Main application event enum
 /// Each module contributes a variant containing its module-specific events
+// Variant payloads are constructed at emit sites but not yet destructured by
+// any handler — core event-bus scaffolding wired ahead of consumers.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum AppEvent {
     /// User module events (user lifecycle, authentication)

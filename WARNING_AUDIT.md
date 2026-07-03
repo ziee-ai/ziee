@@ -191,6 +191,17 @@ compile → keep-or-narrow, with the Windows/macOS hosts consulted for anything 
 
 ## 6. Tier C worklist — the 90 module-level `#![allow(dead_code)]` blankets
 
+### Paydown progress (90 → 62 remaining)
+
+- ✅ **workflow (27) + server/src core (1)** — CLEARED on `batchfix/tierc-live5`.
+  Blankets removed; `cargo check -p ziee --tests` clean. One genuinely-dead item
+  DELETED (`validate::cycle_check`, zero callers, superseded by `topo_sort_steps`);
+  the rest were legit future/test/scaffolding API and kept under narrow, commented
+  per-item `#[allow(dead_code)]` (repository facade, SSE/event emitters, REST-stream
+  file/log/artifact helpers, type predicates, the core `AppEvent` aggregator enum,
+  serde default fn, reserved `ConversationWorkflowOverride`, `PER_CALL_TOKEN_CAP`
+  FIXME).
+
 These whole-file suppressions are the backlog to pay down incrementally (convert
 each to per-item `#[allow(dead_code)]`-with-reason or delete the dead item; a
 compile after removing each blanket surfaces the real per-item warnings). The
@@ -223,8 +234,8 @@ partitioning (counts in parens):
 | summarization | 1 | summarization/chat_extension/extension.rs  |
 | user | 5 | user/events.rs user/models.rs user/permissions.rs user/repository.rs user/service.rs  |
 | web_search | 1 | web_search/chat_extension/extension.rs  |
-| workflow | 27 | workflow/artifact_io.rs workflow/artifact_stream.rs workflow/compiled.rs workflow/cost.rs workflow/dispatch.rs workflow/elicit.rs workflow/events.rs workflow/file_io.rs workflow/handlers/dev.rs workflow/handlers/mod.rs workflow/handlers/system.rs workflow/log_io.rs workflow/log_stream.rs workflow/models.rs workflow/output_stream.rs workflow/progress_sse.rs workflow/ref_check.rs workflow/registry.rs workflow/repository.rs workflow/routes.rs workflow/runner.rs workflow/startup_sweep.rs workflow/template.rs workflow/test_runner.rs workflow/type_infer.rs workflow/types.rs workflow/validate.rs  |
+| workflow ✅ | 27 | workflow/artifact_io.rs workflow/artifact_stream.rs workflow/compiled.rs workflow/cost.rs workflow/dispatch.rs workflow/elicit.rs workflow/events.rs workflow/file_io.rs workflow/handlers/dev.rs workflow/handlers/mod.rs workflow/handlers/system.rs workflow/log_io.rs workflow/log_stream.rs workflow/models.rs workflow/output_stream.rs workflow/progress_sse.rs workflow/ref_check.rs workflow/registry.rs workflow/repository.rs workflow/routes.rs workflow/runner.rs workflow/startup_sweep.rs workflow/template.rs workflow/test_runner.rs workflow/type_infer.rs workflow/types.rs workflow/validate.rs  |
 | workflow_mcp | 3 | workflow_mcp/handlers.rs workflow_mcp/resources.rs workflow_mcp/tools.rs  |
-| server/src (core) | 1 | core/events.rs  |
+| server/src (core) ✅ | 1 | core/events.rs  |
 
 Full authoritative list: `scripts/deadcode-blanket-baseline.txt` (90 paths).
