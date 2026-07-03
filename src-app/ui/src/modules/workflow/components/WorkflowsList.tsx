@@ -24,7 +24,7 @@ export function WorkflowsList() {
       title="Workflows"
       subtitle="Declarative multi-step LLM chains you can run on demand"
     >
-      <div className="flex flex-col gap-3 h-full">
+      <div className="flex flex-col gap-3">
         <Flex justify="end">
           <Can permission={Permissions.WorkflowsInstall}>
             <Button

@@ -38,7 +38,7 @@ export function AdminWorkflowsPage() {
       title="System Workflows"
       subtitle="Workflows installed for the whole deployment"
     >
-      <div className="flex flex-col gap-3 h-full">
+      <div className="flex flex-col gap-3">
         <Flex justify="end">
           <Can permission={Permissions.WorkflowsManageSystem}>
             <Button

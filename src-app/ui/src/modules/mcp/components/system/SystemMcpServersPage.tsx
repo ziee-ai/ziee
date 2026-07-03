@@ -69,7 +69,7 @@ export function SystemMcpServersPage() {
           : undefined
       }
     >
-      <div className="flex flex-col gap-3 h-full">
+      <div className="flex flex-col gap-3">
         <Tabs
           defaultValue="servers"
           data-testid="mcp-system-tabs"
