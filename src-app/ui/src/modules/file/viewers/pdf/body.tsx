@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { File } from 'lucide-react'
-import { Alert, Spin, Text } from '@/components/ui'
+import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
+import { Alert, ScrollArea, Spin, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 
@@ -35,9 +36,11 @@ export function PdfBody(props: FileViewerSlotProps) {
   // Load pages on demand: as a page slot scrolls into view (with a prefetch
   // margin), request that page + the next 2. The store dedupes and fetches
   // sequentially, so pages load one-by-one, only around the viewport.
-  const scrollRef = useRef<HTMLDivElement>(null)
+  // ScrollArea is OverlayScrollbars, so the element that actually scrolls (and
+  // must be the IntersectionObserver root) is the OS *viewport*, not the host.
+  const osRef = useRef<OverlayScrollbarsComponentRef>(null)
   useEffect(() => {
-    const root = scrollRef.current
+    const root = osRef.current?.osInstance()?.elements().viewport
     if (!root || file.preview_page_count === 0) return
     // Always load the first page(s) up front. Until page 1 renders, every empty
     // slot is short, so relying only on visibility would flag them all as
@@ -75,7 +78,8 @@ export function PdfBody(props: FileViewerSlotProps) {
   }
 
   return (
-    <div ref={scrollRef} className="flex flex-col gap-6 p-4 overflow-auto h-full">
+    <ScrollArea ref={osRef} axis="both" className="h-full">
+    <div className="flex flex-col gap-6 p-4">
       {truncated && (
         <Alert
           tone="info"
@@ -127,5 +131,6 @@ export function PdfBody(props: FileViewerSlotProps) {
         </div>
       ))}
     </div>
+    </ScrollArea>
   )
 }

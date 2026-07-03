@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert } from '@/components/ui'
+import { Alert, ScrollArea } from '@/components/ui'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
 
@@ -100,14 +100,14 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           data-testid="file-delimited-truncated-alert"
         />
       )}
-      <div className="flex-1 min-h-0 overflow-auto w-full">
+      <ScrollArea axis="both" className="flex-1 min-h-0 w-full">
         <Table
           columns={columns}
           dataSource={dataSource}
           rowKey="key"
           data-testid="file-delimited-table"
         />
-      </div>
+      </ScrollArea>
     </div>
   )
 }

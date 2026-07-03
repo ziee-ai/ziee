@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Spin, Alert, Text } from '@/components/ui'
+import { Spin, Alert, ScrollArea, Text } from '@/components/ui'
 import { Tabs } from '@/components/ui/kit/tabs'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
@@ -148,21 +148,21 @@ export function XlsxBody(props: FileViewerSlotProps) {
             data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
           />
         )}
-        <div className="flex-1 min-h-0 overflow-auto w-full">
+        <ScrollArea axis="both" className="flex-1 min-h-0 w-full">
           <Table
             columns={columns}
             dataSource={dataSource}
             rowKey="key"
             data-testid={`file-xlsx-table-${sheet.name}`}
           />
-        </div>
+        </ScrollArea>
       </div>
     )
   }
 
   if (sheets.length === 1) {
     return (
-      <div className="flex flex-col h-full w-full overflow-auto">
+      <div className="flex flex-col h-full w-full">
         {renderSheet(sheets[0])}
       </div>
     )

@@ -1,4 +1,5 @@
 import { useMemo, type JSX } from 'react'
+import { MarkdownTable } from './MarkdownTable'
 
 /**
  * Returns Streamdown component overrides shared by all markdown renderers in the chat module.
@@ -8,6 +9,9 @@ import { useMemo, type JSX } from 'react'
 export function useStreamdownComponents(contentId: string) {
   return useMemo(
     () => ({
+      // Replace Streamdown's native-scroller + in-page-fullscreen table wrapper
+      // with our OverlayScrollbars + open-in-popup-window version.
+      table: MarkdownTable,
       h2(props: JSX.IntrinsicElements['h2']) {
         if (
           props.id === 'footnote-label' ||

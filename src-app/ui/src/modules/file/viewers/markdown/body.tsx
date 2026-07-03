@@ -1,4 +1,4 @@
-import { Spin } from '@/components/ui'
+import { ScrollArea, Spin } from '@/components/ui'
 import { Streamdown } from 'streamdown'
 import { Component, createElement, type ComponentProps, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
@@ -128,16 +128,18 @@ export function MarkdownBody(props: FileViewerSlotProps) {
     return <RawCodeView text={content} filename={file.filename} />
   }
   return (
-    <div className="p-4 overflow-auto h-full">
-      <StreamdownErrorBoundary fallbackText={content}>
-        <Streamdown
-          shikiTheme={SHIKI_THEME}
-          urlTransform={streamdownUrlTransform}
-          components={SAFE_IMG_COMPONENTS}
-        >
-          {content}
-        </Streamdown>
-      </StreamdownErrorBoundary>
-    </div>
+    <ScrollArea axis="both" className="h-full">
+      <div className="p-4">
+        <StreamdownErrorBoundary fallbackText={content}>
+          <Streamdown
+            shikiTheme={SHIKI_THEME}
+            urlTransform={streamdownUrlTransform}
+            components={SAFE_IMG_COMPONENTS}
+          >
+            {content}
+          </Streamdown>
+        </StreamdownErrorBoundary>
+      </div>
+    </ScrollArea>
   )
 }
