@@ -332,7 +332,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             showCloseButton={false}
             id="app-sidebar"
             data-testid="app-sidebar"
-            className="w-[250px] max-w-[calc(100vw-24px)] gap-0 p-0 bg-background shadow-none"
+            className="w-[250px] max-w-[calc(100vw-24px)] gap-0 p-0 bg-background shadow-none border-foreground/10"
           >
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
             <LeftSidebar />
