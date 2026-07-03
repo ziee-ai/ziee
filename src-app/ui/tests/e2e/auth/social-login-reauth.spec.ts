@@ -44,8 +44,33 @@ async function naviktLogin(
     .locator('textarea[name="claims"], #claims')
     .first()
     .fill(JSON.stringify({ email, email_verified: true }))
-  await page.locator('button[type="submit"]').first().click()
-  await page.waitForURL(`${baseURL}/`, { timeout: 30_000 })
+  // The navikt 2.1.x template renders the submit control as an `<input
+  // type="submit" value="Sign-in">` (role=button, name "Sign-in") which a
+  // `button[...]` CSS selector misses — target it by ARIA role instead.
+  await page.getByRole('button', { name: /sign-?in/i }).first().click()
+  // The exact landing route varies (a freshly provisioned user is routed to the
+  // onboarding wizard, not "/"), so gate on the durable signal — the JWT
+  // landing in the persisted auth store — rather than a specific URL.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const raw = localStorage.getItem('auth-storage')
+          return raw ? JSON.parse(raw).state?.token : null
+        }),
+      { timeout: 30_000 },
+    )
+    .toBeTruthy()
+  // AuthCallbackPage (/auth/callback) hydrates the token FIRST, then
+  // client-navigates to the app's post-login landing. Wait for it to redirect
+  // away from the callback route so a caller's subsequent goto() isn't clobbered
+  // by the late redirect. (Precise on '/auth/callback' — the login page is
+  // '/auth', which we must NOT wait to leave.)
+  await page.waitForFunction(
+    () => !window.location.pathname.startsWith('/auth/callback'),
+    null,
+    { timeout: 30_000 },
+  )
 }
 
 test.describe('Social login — re-auth after profile rename', () => {
@@ -103,6 +128,20 @@ test.describe('Social login — re-auth after profile rename', () => {
 
       // First login → provisions the account (username = sub).
       await naviktLogin(page, baseURL, mock.baseUrl, providerName, sub, email)
+
+      // A fresh non-admin user is force-redirected to the onboarding wizard on
+      // EVERY route until the getting-started guide is finished
+      // (OnboardingRedirect). Mark it complete via the API — as a real user
+      // does by finishing the wizard — so /settings/profile becomes reachable.
+      const userToken = await page.evaluate(() => {
+        const raw = localStorage.getItem('auth-storage')
+        return raw ? JSON.parse(raw).state?.token : null
+      })
+      const doneRes = await fetch(
+        `${apiURL}/api/onboarding/getting-started/complete`,
+        { method: 'POST', headers: { Authorization: `Bearer ${userToken}` } },
+      )
+      expect(doneRes.ok).toBeTruthy()
 
       // Rename the username on the profile page.
       await page.goto(`${baseURL}/settings/profile`)
