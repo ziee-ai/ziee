@@ -68,27 +68,25 @@ pub enum RuntimeError {
     Internal(String),
 }
 
+// Constructor API for the error taxonomy above; not every variant is built yet.
+#[allow(dead_code)]
 impl RuntimeError {
     /// Create a config error
-    #[allow(dead_code)]
     pub fn config(msg: impl fmt::Display) -> Self {
         Self::Config(msg.to_string())
     }
 
     /// Create a startup failed error
-    #[allow(dead_code)]
     pub fn startup_failed(msg: impl fmt::Display) -> Self {
         Self::StartupFailed(msg.to_string())
     }
 
     /// Create a health check failed error
-    #[allow(dead_code)]
     pub fn health_check_failed(msg: impl fmt::Display) -> Self {
         Self::HealthCheckFailed(msg.to_string())
     }
 
     /// Create a shutdown failed error
-    #[allow(dead_code)]
     pub fn shutdown_failed(msg: impl fmt::Display) -> Self {
         Self::ShutdownFailed(msg.to_string())
     }
@@ -99,7 +97,6 @@ impl RuntimeError {
     }
 
     /// Create a timeout error
-    #[allow(dead_code)]
     pub fn timeout(msg: impl fmt::Display) -> Self {
         Self::Timeout(msg.to_string())
     }

@@ -190,6 +190,7 @@ pub struct BinaryInfo {
     pub path: PathBuf,
 
     /// File size in bytes
+    // Recorded during download; not read by callers today.
     #[allow(dead_code)]
     pub size_bytes: u64,
 }
@@ -847,10 +848,6 @@ impl BinaryDownloader {
         Ok(binaries)
     }
 
-    /// Get the binaries directory path
-    pub fn binaries_dir(&self) -> &Path {
-        &self.binaries_dir
-    }
 }
 
 /// Accept a symlink target only when it names a single entry in the SAME

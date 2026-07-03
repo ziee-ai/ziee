@@ -44,6 +44,8 @@ use crate::modules::llm_local_runtime::BinaryManager;
 pub enum EngineDownloadStatus {
     Pending,
     Downloading,
+    // Intermediate phases serialized for the SSE contract but not set as a
+    // task's terminal status in Rust today; retained for API completeness.
     #[allow(dead_code)]
     Verifying,
     #[allow(dead_code)]
@@ -151,7 +153,8 @@ static SHUTDOWN: Lazy<tokio::sync::Notify> = Lazy::new(tokio::sync::Notify::new)
 
 /// Signal every in-flight engine download to interrupt and tear down. Returns
 /// the number of non-terminal tasks that were still running.
-#[allow(dead_code)] // called from main.rs (binary crate); invisible to the lib's dead-code analysis
+// Called from main.rs (binary crate); invisible to the lib's dead-code analysis.
+#[allow(dead_code)]
 pub async fn shutdown_all() -> usize {
     let mut count = 0usize;
     for entry in DOWNLOAD_TASKS.iter() {
