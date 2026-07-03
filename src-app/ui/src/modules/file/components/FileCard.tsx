@@ -367,7 +367,7 @@ export function FileCard({
           {/* Remove — solid button; a plain tooltip'd Button that opens the
               controlled Confirm (decoupled so the tooltip doesn't flicker). */}
           {(canDelete || canRemove) && onRemove && (
-            <AttachmentActions className="!top-1 !right-1 opacity-0 group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100 transition-opacity">
+            <AttachmentActions className="!top-1 !right-1 opacity-0 group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100 hover-none:opacity-100 transition-opacity">
               <Tooltip content="Remove">
                 <Button
                   variant="secondary"
