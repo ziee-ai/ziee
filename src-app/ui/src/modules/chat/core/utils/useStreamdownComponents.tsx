@@ -1,46 +1,10 @@
-import {
-  createElement,
-  isValidElement,
-  useMemo,
-  type JSX,
-  type ReactNode,
-} from 'react'
+import { createElement, useMemo, type JSX, type ReactNode } from 'react'
 import { MarkdownTable } from '@/components/common/MarkdownTable'
-
-/** Flatten a React node tree to its text content (for deriving a heading slug). */
-function nodeToText(node: ReactNode): string {
-  if (node == null || typeof node === 'boolean') return ''
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(nodeToText).join('')
-  if (isValidElement(node)) {
-    return nodeToText((node.props as { children?: ReactNode }).children)
-  }
-  return ''
-}
-
-/**
- * GitHub-style heading slug (approximation): lowercase, drop punctuation except
- * word chars / spaces / hyphens, spaces→hyphens, collapse + trim hyphens. Used
- * for BOTH the heading `id` and the hash-link target so `[Foo](#foo)` resolves.
- */
-function slugifyHeading(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
-
-/** decodeURIComponent that never throws on a malformed `%` sequence. */
-function safeDecode(s: string): string {
-  try {
-    return decodeURIComponent(s)
-  } catch {
-    return s
-  }
-}
+import {
+  nodeToText,
+  slugifyHeading,
+  safeDecode,
+} from '@/components/common/markdownHeadings'
 
 /**
  * Returns Streamdown component overrides shared by all markdown renderers in the chat module.
