@@ -231,6 +231,52 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const mobileSidebarOpen =
     !isSidebarCollapsed && !(windowMinSize.xs && !prevXsRef.current)
 
+  // Touch swipe-left to collapse the mobile sidebar Sheet: the panel follows the
+  // finger and, released past ~35%/120px, closes; otherwise it snaps back.
+  // Vertical-dominant gestures are ignored so the nav list still scrolls.
+  const sheetSwipe = useRef<{
+    x: number
+    y: number
+    active: boolean
+    dx: number
+    el: HTMLElement
+  } | null>(null)
+  const onSheetTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) return
+    const t = e.touches[0]
+    sheetSwipe.current = { x: t.clientX, y: t.clientY, active: false, dx: 0, el: e.currentTarget }
+  }
+  const onSheetTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const s = sheetSwipe.current
+    if (!s) return
+    const t = e.touches[0]
+    const dx = t.clientX - s.x
+    const dy = t.clientY - s.y
+    if (!s.active) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      if (Math.abs(dy) > Math.abs(dx)) {
+        sheetSwipe.current = null
+        return
+      }
+      s.active = true
+    }
+    s.dx = dx
+    // Left sheet closes on a leftward swipe → only follow negative dx.
+    s.el.style.transition = 'none'
+    s.el.style.transform = `translateX(${Math.min(0, dx)}px)`
+  }
+  const onSheetTouchEnd = () => {
+    const s = sheetSwipe.current
+    sheetSwipe.current = null
+    if (!s || !s.active) return
+    s.el.style.transition = ''
+    const width = s.el.getBoundingClientRect().width
+    s.el.style.transform = ''
+    if (-s.dx > Math.min(width * 0.35, 120)) {
+      Stores.AppLayout.setSidebarCollapsed(true)
+    }
+  }
+
   // ResizeObserver to listen to main content width changes
   useEffect(() => {
     const mainContentElement = mainContentRef.current
@@ -333,6 +379,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             id="app-sidebar"
             data-testid="app-sidebar"
             className="w-[250px] max-w-[calc(100vw-24px)] gap-0 p-0 bg-background shadow-none border-foreground/10"
+            onTouchStart={onSheetTouchStart}
+            onTouchMove={onSheetTouchMove}
+            onTouchEnd={onSheetTouchEnd}
           >
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
             <LeftSidebar />
