@@ -1,4 +1,4 @@
-import { X, FolderOpen, CircleMinus, CirclePlus } from 'lucide-react'
+import { FolderOpen, CircleMinus, CirclePlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, Confirm, Spin, Tag, Tooltip, message, dialog } from '@/components/ui'
 import type { DropdownItem } from '@/components/ui'
@@ -263,11 +263,9 @@ const projectExtension: ChatExtension = createExtension({
 function ProjectTagWithRemove({
   conversationId,
   project,
-  navigate,
 }: {
   conversationId: string
   project: Project
-  navigate: (path: string) => void
 }) {
   const [removeOpen, setRemoveOpen] = useState(false)
   const [, setRemoving] = useState(false)
@@ -287,12 +285,33 @@ function ProjectTagWithRemove({
     }
   }
 
+  // Mirrors the "Add to project" button: same reveal wrapper + outline button
+  // (with a minus icon), opening a controlled Confirm instead of the modal.
   return (
-    <div
-      className={`inline-flex items-center transition-opacity ${
-        removeOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 hover-none:opacity-100'
-      }`}
-    >
+    <>
+      <div
+        className={`inline-flex items-center transition-opacity ${
+          removeOpen
+            ? 'opacity-100'
+            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
+        }`}
+      >
+        <Tooltip title={project.name ? `Remove from ${project.name}` : 'Remove from project'}>
+          <Button
+            data-testid="project-trailing-remove-button"
+            variant="outline"
+            size="default"
+            icon={<CircleMinus />}
+            aria-label="Remove from project"
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation()
+              setRemoveOpen(true)
+            }}
+          >
+            Remove from project
+          </Button>
+        </Tooltip>
+      </div>
       <Confirm
         data-testid="project-trailing-remove-confirm"
         title="Remove from project?"
@@ -303,48 +322,8 @@ function ProjectTagWithRemove({
         onCancel={() => setRemoveOpen(false)}
         okText="Remove"
         cancelText="Cancel"
-      >
-        <span
-          className="inline-flex items-center cursor-pointer"
-          role="button"
-          tabIndex={0}
-          aria-label={`Open project ${project.name || ''}`}
-          onClick={(e: React.MouseEvent) => {
-            e.stopPropagation()
-            navigate(`/projects/${project.id}`)
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              navigate(`/projects/${project.id}`)
-            }
-          }}
-        >
-          <Tag variant="outline"
-            data-testid="project-trailing-membership-tag"
-            tone="info"
-            icon={<FolderOpen />}
-            className="!mr-0"
-          >
-            {project.name ? `In project: ${project.name}` : 'In project'}
-          </Tag>
-          <Tooltip title="Remove from project">
-            <Button
-              data-testid="project-trailing-remove-button"
-              variant="ghost"
-              size="icon"
-              aria-label="Remove from project"
-              className="ml-1 size-5 rounded-full text-muted-foreground hover:text-foreground"
-              icon={<X className="h-3 w-3" />}
-              onClick={(e: React.MouseEvent) => {
-                e.stopPropagation()
-                setRemoveOpen(true)
-              }}
-            />
-          </Tooltip>
-        </span>
-      </Confirm>
-    </div>
+      />
+    </>
   )
 }
 
@@ -367,7 +346,6 @@ function ProjectMembershipTrailing({
 }: {
   conversationId: string
 }) {
-  const navigate = useNavigate()
   const [state, setState] = useState<
     { kind: 'loading' } | { kind: 'in_project'; project: Project } | { kind: 'unfiled' }
   >(() => {
@@ -442,7 +420,6 @@ function ProjectMembershipTrailing({
       <ProjectTagWithRemove
         conversationId={conversationId}
         project={project}
-        navigate={navigate}
       />
     )
   }
