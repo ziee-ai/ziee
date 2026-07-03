@@ -365,8 +365,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       />
 
       {/* Main Content Area */}
+      {/* min-w-0: as a flex-1 item in the row shell, `main` defaults to
+          min-width:auto and would refuse to shrink below its content's
+          intrinsic width (long unbreakable card text → horizontal overflow).
+          min-w-0 lets it track the viewport so inner content truncates. */}
       <main className={cn(
-        'flex-1 flex flex-col relative bg-card',
+        'flex-1 min-w-0 flex flex-col relative bg-card',
         nativeScroll ? 'overflow-x-clip' : 'overflow-hidden',
       )}>
         {/* App-wide banners (e.g. the admin "update available" notice).
@@ -376,7 +380,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <LazyComponentRenderer key={b.id} component={b.component} />
         ))}
         {/* Content */}
-        <div className={cn('flex-1 relative', nativeScroll ? 'overflow-x-clip' : 'overflow-hidden')}>
+        <div className={cn('flex-1 min-w-0 relative', nativeScroll ? 'overflow-x-clip' : 'overflow-hidden')}>
           <section
             ref={mainContentRef}
             id="main-content"

@@ -45,9 +45,11 @@ export function SettingsPageContainer({
           )}
         </div>
       </div>
-      <div className={'flex w-full flex-1 justify-center pb-3 mt-3'}>
+      <div className={'flex w-full min-w-0 flex-1 justify-center pb-3 mt-3'}>
+        {/* min-w-0 lets this shrink below its content's intrinsic width so long
+            unbreakable card text truncates instead of widening the page. */}
         <div
-          className={'max-w-4xl w-full h-full flex flex-col gap-3 px-3 self-center'}
+          className={'max-w-4xl w-full min-w-0 h-full flex flex-col gap-3 px-3 self-center'}
         >
           {children}
         </div>
