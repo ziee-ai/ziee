@@ -190,6 +190,11 @@ export const Drawer: React.FC<DrawerProps> = ({
             // ON TOP of another drawer), the backdrop rides one below it so it
             // still covers the drawer underneath.
             style={zIndex != null ? { zIndex: zIndex - 1 } : undefined}
+            // Swipe-to-close also works when the gesture starts on the mask (the
+            // same handlers translate the panel via contentRef).
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
             className="fixed inset-0 z-40 bg-black/10 supports-backdrop-filter:backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
           />
         )}

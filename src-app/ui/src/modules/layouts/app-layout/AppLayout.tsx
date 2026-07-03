@@ -243,8 +243,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   } | null>(null)
   const onSheetTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length !== 1) return
+    // Translate the panel itself (not e.currentTarget) so the gesture works
+    // whether it starts on the panel OR the mask overlay.
+    const panel = document.getElementById('app-sidebar')
+    if (!panel) return
     const t = e.touches[0]
-    sheetSwipe.current = { x: t.clientX, y: t.clientY, active: false, dx: 0, el: e.currentTarget }
+    sheetSwipe.current = { x: t.clientX, y: t.clientY, active: false, dx: 0, el: panel }
   }
   const onSheetTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     const s = sheetSwipe.current
