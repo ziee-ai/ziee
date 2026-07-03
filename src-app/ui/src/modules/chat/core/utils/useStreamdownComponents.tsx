@@ -1,17 +1,80 @@
-import { useMemo, type JSX } from 'react'
+import {
+  createElement,
+  isValidElement,
+  useMemo,
+  type JSX,
+  type ReactNode,
+} from 'react'
 import { MarkdownTable } from '@/components/common/MarkdownTable'
+
+/** Flatten a React node tree to its text content (for deriving a heading slug). */
+function nodeToText(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(nodeToText).join('')
+  if (isValidElement(node)) {
+    return nodeToText((node.props as { children?: ReactNode }).children)
+  }
+  return ''
+}
+
+/**
+ * GitHub-style heading slug (approximation): lowercase, drop punctuation except
+ * word chars / spaces / hyphens, spaces→hyphens, collapse + trim hyphens. Used
+ * for BOTH the heading `id` and the hash-link target so `[Foo](#foo)` resolves.
+ */
+function slugifyHeading(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+/** decodeURIComponent that never throws on a malformed `%` sequence. */
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s)
+  } catch {
+    return s
+  }
+}
 
 /**
  * Returns Streamdown component overrides shared by all markdown renderers in the chat module.
- * Pass a unique `contentId` to scope footnote DOM IDs — prevents cross-message ID collisions
- * when multiple messages contain footnotes with the same numbers.
+ * Pass a unique `contentId` to scope footnote + heading DOM IDs — prevents cross-message ID
+ * collisions when multiple messages contain the same footnote numbers / heading text, and lets
+ * in-markdown hash links (`[Section](#section)`) scroll to THIS message's heading.
  */
 export function useStreamdownComponents(contentId: string) {
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    // A slugged, message-scoped `id` on each heading so in-markdown hash links
+    // resolve to THIS message's heading (never a same-slug heading in another
+    // message). Respects an id the source already set (e.g. footnote anchors).
+    const headingId = (children: ReactNode, existing?: string) => {
+      if (existing) return existing
+      const slug = slugifyHeading(nodeToText(children))
+      return slug ? `${contentId}-h-${slug}` : undefined
+    }
+    const makeHeading =
+      (level: 1 | 2 | 3 | 4 | 5 | 6) =>
+      (props: JSX.IntrinsicElements['h1']) =>
+        createElement(`h${level}`, {
+          ...props,
+          id: headingId(props.children, props.id),
+        })
+
+    return {
       // Replace Streamdown's native-scroller + in-page-fullscreen table wrapper
       // with our OverlayScrollbars + open-in-popup-window version.
       table: MarkdownTable,
+      h1: makeHeading(1),
+      h3: makeHeading(3),
+      h4: makeHeading(4),
+      h5: makeHeading(5),
+      h6: makeHeading(6),
       h2(props: JSX.IntrinsicElements['h2']) {
         if (
           props.id === 'footnote-label' ||
@@ -20,7 +83,7 @@ export function useStreamdownComponents(contentId: string) {
           // Suppressed — the section override renders "References" via <summary>
           return null
         }
-        return <h2 {...props} />
+        return <h2 {...props} id={headingId(props.children, props.id)} />
       },
       section(props: JSX.IntrinsicElements['section']) {
         const { children, ...rest } = props
@@ -55,6 +118,10 @@ export function useStreamdownComponents(contentId: string) {
           ? `#${contentId}-fn-${href.slice('#user-content-fn-'.length)}`
           : href?.startsWith('#user-content-fnref-')
           ? `#${contentId}-fnref-${href.slice('#user-content-fnref-'.length)}`
+          : href?.startsWith('#')
+          ? // A plain in-markdown hash link (`[Section](#section)`): re-target it
+            // at this message's slugged heading id (same slugify as the heading).
+            `#${contentId}-h-${slugifyHeading(safeDecode(href.slice(1)))}`
           : href
         // All hash links — scroll within the current page
         if (scopedHref?.startsWith('#')) {
@@ -119,7 +186,6 @@ export function useStreamdownComponents(contentId: string) {
         const mergedClassName = ['py-1', '[&>p]:inline', className].filter(Boolean).join(' ')
         return <li id={scopedId} className={mergedClassName} {...rest} />
       },
-    }),
-    [contentId],
-  )
+    }
+  }, [contentId])
 }
