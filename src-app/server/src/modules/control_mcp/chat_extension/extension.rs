@@ -1,5 +1,4 @@
 //! control extension registration for the chat module.
-#![allow(dead_code)]
 
 use std::sync::Arc;
 

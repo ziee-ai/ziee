@@ -1,12 +1,15 @@
 // MCP server events
 // Event infrastructure for future use
-#![allow(dead_code)]
 
 // Events emitted during MCP server lifecycle for inter-module communication
 
 use uuid::Uuid;
 
 /// Events for MCP server operations
+// Future event-infrastructure: the MCP lifecycle event vocabulary, not yet
+// emitted/consumed. Narrow allow (was a module-level blanket) so new dead
+// code in this file is still flagged.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum McpServerEvent {
     /// System MCP server was created

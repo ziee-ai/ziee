@@ -20,7 +20,6 @@
 //! base64 for binary). 404 when cleaned up or `expose_logs: never`
 //! excludes a log.
 
-#![allow(dead_code)]
 
 use base64::Engine as _;
 use serde_json::{Value, json};

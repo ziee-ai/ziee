@@ -1,11 +1,14 @@
 // Auth module events
 // Events related to authentication and authorization
 // These are part of the event system infrastructure for future use
-#![allow(dead_code)]
 
 use uuid::Uuid;
 
 /// Events emitted by the auth module
+// Future event-infrastructure: no emitter/subscriber wired yet (kept as the
+// intended auth-event vocabulary). Narrow allow instead of the old
+// module-level blanket so new dead code in this file is still caught.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum AuthEvent {
     /// User successfully authenticated
@@ -21,6 +24,7 @@ pub enum AuthEvent {
     SessionExpired { user_id: Uuid },
 }
 
+#[allow(dead_code)] // future event-infrastructure constructors; see enum above
 impl AuthEvent {
     /// Helper to create a UserAuthenticated event wrapped in AppEvent
     pub fn user_authenticated(user_id: Uuid, provider: String) -> crate::core::AppEvent {

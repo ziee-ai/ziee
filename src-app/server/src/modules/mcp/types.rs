@@ -1,5 +1,4 @@
 // MCP types
-#![allow(dead_code)]
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -197,11 +196,6 @@ pub struct McpServerListResponse {
     pub page: i64,
     pub per_page: i64,
     pub total_pages: i64,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct GroupMcpServersRequest {
-    pub server_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
