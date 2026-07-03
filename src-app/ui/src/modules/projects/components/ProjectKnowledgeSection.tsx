@@ -67,6 +67,7 @@ export function ProjectKnowledgeSection() {
           <ProjectExtensionSlot
             name="knowledge_kinds"
             view="managePanel"
+            className="flex flex-col gap-8"
           />
         </div>
       </Drawer>
