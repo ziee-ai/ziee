@@ -48,7 +48,7 @@ export const HeaderBarContainer = ({
       className={cn(
         'w-full flex px-3 border-b border-border box-border py-0',
         nativeScroll
-          ? cn('bg-card', pinned ? 'fixed top-0 inset-x-0' : 'relative')
+          ? cn('bg-card', pinned ? 'fixed inset-x-0' : 'relative')
           : 'h-[50px] relative transition-all duration-200 ease-in-out',
         className,
       )}
@@ -61,6 +61,10 @@ export const HeaderBarContainer = ({
               // fill the notch strip; keep the 50px control row below it
               paddingTop: 'env(safe-area-inset-top, 0px)',
               height: 'calc(env(safe-area-inset-top, 0px) + 50px)',
+              // DIAGNOSTIC: top:20 on the fixed state — if the header anchors
+              // 20px from the VIEWPORT top it's free; if from lower down, a
+              // containing-block ancestor is trapping it.
+              ...(pinned ? { top: 20 } : null),
             }
           : null),
         ...style,
