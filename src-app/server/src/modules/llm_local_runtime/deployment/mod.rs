@@ -60,6 +60,7 @@ pub struct DeploymentResult {
 #[derive(Debug, Clone)]
 pub struct InstanceStatus {
     pub running: bool,
+    // Populated for status completeness; not read by callers today.
     #[allow(dead_code)]
     pub pid: Option<i32>,
     #[allow(dead_code)]

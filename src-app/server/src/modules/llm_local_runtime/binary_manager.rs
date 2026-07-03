@@ -351,16 +351,6 @@ impl BinaryManager {
         Ok(synced_count)
     }
 
-    /// Get the cache directory path
-    ///
-    /// NOTE: dead_code allowed — the downloader owns the cache dir;
-    /// callers that need it coordinate via config, not this accessor.
-    /// (Kept: sole reader of `downloader.binaries_dir()`.)
-    #[allow(dead_code)]
-    pub fn cache_dir(&self) -> &std::path::Path {
-        self.downloader.binaries_dir()
-    }
-
     /// Select appropriate runtime version using fallback chain:
     /// 1. Model's required_runtime_version_id (if model_id provided)
     /// 2. Provider's default_runtime_version_id (if provider_id provided)

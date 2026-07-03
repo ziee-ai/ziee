@@ -102,7 +102,7 @@ pub async fn remove_token(token: &str) {
 }
 
 /// Wipe the cache. Called only by tests + boot-time reseeding.
-#[allow(dead_code)] // test-only caller today (proxy tests); kept as a lib helper
+#[allow(dead_code)] // test-only + boot-reseed caller; invisible to lib dead-code analysis
 pub async fn clear_cache() {
     PROXY_TOKEN_CACHE.write().await.clear();
 }

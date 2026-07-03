@@ -68,6 +68,7 @@ static LIT_SEARCH_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
 };
 
 pub struct LitSearchModule {
+    // Module handle retained for parity with other modules; not read yet.
     #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
 }

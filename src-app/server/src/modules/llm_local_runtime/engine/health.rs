@@ -377,6 +377,7 @@ impl HealthStateMachine {
     }
 
     /// Manual reset for a Failed instance.
+    // Exercised by the health state-machine tests; no production caller yet.
     #[allow(dead_code)]
     pub fn clear_failed(&mut self) {
         if matches!(self.state, InstanceState::Failed { .. }) {
