@@ -146,6 +146,23 @@ export const Drawer: React.FC<DrawerProps> = ({
   const axisPx = width ?? (windowMinSize.xs && horizontal ? '100%' : sizePx(size))
   const sizeStyle: React.CSSProperties = horizontal ? { width: axisPx } : { height: axisPx }
 
+  // A drawer must NOT dismiss (Escape / click-outside) while another drawer or
+  // dialog is stacked ABOVE it — e.g. a file preview opened from inside this
+  // drawer. Radix fires this lower layer's dismiss handlers too; guard them so
+  // closing the top layer doesn't also close this one.
+  const thisZ = zIndex ?? 50
+  const higherLayerOpen = () => {
+    const layers = document.querySelectorAll(
+      '[data-testid="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]',
+    )
+    for (const el of layers) {
+      if (el === contentRef.current) continue
+      const z = parseInt(getComputedStyle(el).zIndex, 10)
+      if (Number.isFinite(z) && z > thisZ) return true
+    }
+    return false
+  }
+
   const footerNode = Array.isArray(footer) ? (
     // Array footers (e.g. [Cancel, Save]) right-align by convention.
     <div className="flex justify-end gap-2">
@@ -202,8 +219,11 @@ export const Drawer: React.FC<DrawerProps> = ({
           ref={contentRef}
           data-testid={testid ?? 'layout-drawer-content'}
           // maskClosable=false → backdrop/outside click doesn't dismiss (Escape still does).
-          onPointerDownOutside={maskClosable ? undefined : e => e.preventDefault()}
-          onInteractOutside={maskClosable ? undefined : e => e.preventDefault()}
+          // A higher-stacked drawer/dialog (e.g. a file preview opened from here)
+          // being closed must not also dismiss THIS drawer.
+          onEscapeKeyDown={e => { if (higherLayerOpen()) e.preventDefault() }}
+          onPointerDownOutside={e => { if (!maskClosable || higherLayerOpen()) e.preventDefault() }}
+          onInteractOutside={e => { if (!maskClosable || higherLayerOpen()) e.preventDefault() }}
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
