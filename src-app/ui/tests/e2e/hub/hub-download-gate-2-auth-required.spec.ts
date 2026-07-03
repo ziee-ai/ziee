@@ -55,25 +55,37 @@ async function trackDownloadStartCount(page: Page): Promise<() => number> {
 }
 
 /** The HF seed repo is enabled by default + has no credential. Find an
- *  `auth_required` hub model whose card is actually RENDERED (some catalog
+ *  auth-required hub model whose card is actually RENDERED (some catalog
  *  entries — e.g. very large models with no downloadable variant — aren't
- *  shown on the hub page) so we can click its Download button. The hub
- *  page must already be open. */
+ *  shown on the hub page) so we can click its Download button.
+ *
+ *  v2 Phase 7: there is no model-wide `auth_required` flag anymore; the
+ *  need for auth is derived from a source's `environmentVariables[]`
+ *  entry that is `isRequired && isSecret` (see ModelHubCard.tsx). The
+ *  card testid is keyed on `model.name` (reverse-DNS), not an `id`.
+ *  The hub page must already be open. */
 async function firstAuthRequiredHubModel(
   page: import('@playwright/test').Page,
   apiURL: string,
   token: string,
-): Promise<{ id: string; display_name: string }> {
+): Promise<{ name: string; display_name: string }> {
   const body = await fetch(`${apiURL}/api/hub/models?lang=en`, {
     headers: { Authorization: `Bearer ${token}` },
   }).then(r => r.json())
-  for (const m of (body as any[]).filter(m => m.auth_required === true)) {
-    const card = page.locator(`[data-testid="hub-model-card-${m.id}"]`)
+  const needsAuth = (m: any): boolean =>
+    Array.isArray(m.sources) &&
+    m.sources.some((s: any) =>
+      (s.environmentVariables ?? []).some(
+        (e: any) => e.isRequired === true && e.isSecret === true,
+      ),
+    )
+  for (const m of (body as any[]).filter(needsAuth)) {
+    const card = page.locator(`[data-testid="hub-model-card-${m.name}"]`)
     if (await card.isVisible().catch(() => false)) {
-      return { id: m.id, display_name: m.display_name }
+      return { name: m.name, display_name: m.display_name }
     }
   }
-  throw new Error('no rendered auth_required hub model in catalog')
+  throw new Error('no rendered auth-required hub model in catalog')
 }
 
 test('Download on an auth-required model with no credential shows the auth-required modal + opens the drawer', async ({
@@ -96,11 +108,11 @@ test('Download on an auth-required model with no credential shows the auth-requi
   const targetModel = await firstAuthRequiredHubModel(page, baseURL, token)
 
   // Find that specific model's card. The card uses
-  // data-testid="hub-model-card-<id>" (per ModelHubCard.tsx) so we can
+  // data-testid="hub-model-card-<name>" (per ModelHubCard.tsx) so we can
   // target it directly even if the catalog has many entries.
-  const card = page.getByTestId(`hub-model-card-${targetModel.id}`)
+  const card = page.getByTestId(`hub-model-card-${targetModel.name}`)
   await expect(card).toBeVisible({ timeout: 10_000 })
-  await card.getByTestId(`hub-model-download-btn-${targetModel.id}`).click()
+  await card.getByTestId(`hub-model-download-btn-${targetModel.name}`).click()
 
   // The probe runs (mock returns failure). Auth-required branch fires.
   const modal = page.getByTestId('hub-download-gate-auth-required')
