@@ -154,35 +154,44 @@ export function ConversationCard({
         {/* Delete button — hidden in selection mode (bulk-delete in
             the toolbar replaces per-row deletes). */}
         {canDelete && !isInSelectionMode && (
-          <Confirm
-            data-testid={`chat-conversation-delete-confirm-${conversation.id}`}
-            title="Delete conversation?"
-            description="This will permanently delete the conversation and all its messages."
-            onConfirm={async () => {
-              await handleDeleteConversation()
-              setPopconfirmOpen(false)
-            }}
-            onCancel={() => setPopconfirmOpen(false)}
-            okText="Delete"
-            cancelText="Cancel"
-          >
-            <Button
-              data-testid={`chat-conversation-delete-btn-${conversation.id}`}
-              tooltip="Delete conversation"
-              className={`transition-opacity bg-card ${
-                popconfirmOpen
-                  ? 'opacity-100'
-                  : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100'
-              }`}
-              variant="outline"
-              size="default"
-              icon={<Trash2 />}
-              onClick={(e: React.MouseEvent) => {
-                e.stopPropagation()
-                setPopconfirmOpen(true)
+          <>
+            {/* Tooltip wraps the button as its ONLY trigger. The Confirm is
+                driven by `open`/`onOpenChange` (trigger-less) rather than
+                wrapping the button — stacking an AlertDialog trigger and a
+                Tooltip trigger on the same node makes the tooltip thrash. */}
+            <Tooltip title="Delete conversation">
+              <Button
+                data-testid={`chat-conversation-delete-btn-${conversation.id}`}
+                aria-label="Delete conversation"
+                className={`transition-opacity bg-card ${
+                  popconfirmOpen
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100'
+                }`}
+                variant="outline"
+                size="default"
+                icon={<Trash2 />}
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation()
+                  setPopconfirmOpen(true)
+                }}
+              />
+            </Tooltip>
+            <Confirm
+              data-testid={`chat-conversation-delete-confirm-${conversation.id}`}
+              open={popconfirmOpen}
+              onOpenChange={setPopconfirmOpen}
+              title="Delete conversation?"
+              description="This will permanently delete the conversation and all its messages."
+              onConfirm={async () => {
+                await handleDeleteConversation()
+                setPopconfirmOpen(false)
               }}
+              onCancel={() => setPopconfirmOpen(false)}
+              okText="Delete"
+              cancelText="Cancel"
             />
-          </Confirm>
+          </>
         )}
 
         {/* Selection checkbox — visible on hover OR when selected. */}
@@ -195,13 +204,17 @@ export function ConversationCard({
             }`}
             onClick={e => e.stopPropagation()}
           >
+            {/* span trigger: the kit Checkbox doesn't forward the Tooltip's
+                hover handlers, so wrap it in a plain element that does. */}
             <Tooltip title={isSelected ? 'Deselect conversation' : 'Select conversation'}>
-              <Checkbox
-                data-testid={`chat-conversation-select-${conversation.id}`}
-                checked={isSelected}
-                onChange={handleSelectChange}
-                aria-label={isSelected ? 'Deselect conversation' : 'Select conversation'}
-              />
+              <span className="inline-flex">
+                <Checkbox
+                  data-testid={`chat-conversation-select-${conversation.id}`}
+                  checked={isSelected}
+                  onChange={handleSelectChange}
+                  aria-label={isSelected ? 'Deselect conversation' : 'Select conversation'}
+                />
+              </span>
             </Tooltip>
           </div>
         )}
