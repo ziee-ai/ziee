@@ -2,7 +2,6 @@ import * as React from 'react'
 import {
   Dialog as Root, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from '../shadcn/dialog'
-import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'
 
 const widths = { sm: 'sm:max-w-sm', default: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-4xl' } as const
@@ -28,29 +27,25 @@ export function Dialog({ open, onOpenChange, title, description, footer, size = 
       {trigger != null && <DialogTrigger render={trigger} />}
       {/* When no description, tell Radix the omission is intentional (suppresses its dev warning);
           when a description exists, let Radix auto-wire aria-describedby to it. */}
-      {/* Cap height to the viewport and give the body its own scroll region so a
-          tall dialog on a short screen scrolls instead of overflowing off-screen.
-          grid-rows keeps the header + footer pinned while the middle row scrolls. */}
+      {/* The DialogContent ITSELF is the scroll container (flex-col, capped at
+          the viewport). It's sized to its own content, so when content fits there
+          is genuinely no overflow — no phantom scrollbar. Only a dialog taller
+          than the viewport scrolls, with the header + footer sticky-pinned.
+          (An inner scroll box was ~2px short of its content due to flex/OS
+          rounding, so it always looked scrollable.) */}
       <DialogContent
-        className={cn('max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]', widths[size], className)}
+        className={cn('max-h-[calc(100dvh-2rem)] !flex flex-col overflow-y-auto overflow-x-hidden', widths[size], className)}
         data-testid={testid}
         {...(description == null ? { 'aria-describedby': undefined } : {})}
       >
-        <DialogHeader>
+        <DialogHeader className="sticky top-0 z-10 shrink-0 bg-popover">
           <DialogTitle>{title}</DialogTitle>
           {description != null && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        {/* -mx-4 px-4 breaks the scroll region out to the DialogContent's full
-            width so the overlay scrollbar sits flush at the body's right/bottom
-            edge (like the settings page), while inner content keeps the p-4
-            gutter. overflow.x hidden = never scroll horizontally. */}
-        <DivScrollY
-          className="min-h-0 -mx-4 px-4"
-          options={{ overflow: { x: 'hidden' } }}
-        >
-          {children}
-        </DivScrollY>
-        {footer != null && <DialogFooter>{footer}</DialogFooter>}
+        {children}
+        {footer != null && (
+          <DialogFooter className="sticky bottom-0 z-10 shrink-0 bg-popover">{footer}</DialogFooter>
+        )}
       </DialogContent>
     </Root>
   )
