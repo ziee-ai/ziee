@@ -1,5 +1,5 @@
 import { Import as ImportIcon, Workflow as WorkflowIcon } from 'lucide-react'
-import { Button, Card, Empty, Flex, Space, Text } from '@/components/ui'
+import { Button, Card, Empty, Flex, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
@@ -49,14 +49,14 @@ export function WorkflowsList() {
               onClick={() => Stores.WorkflowDrawer.open(workflow)}
               data-workflow-id={workflow.id}
               title={
-                <Space size={8} wrap>
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
                   <WorkflowIcon />
-                  <Text strong className="whitespace-nowrap">{workflow.display_name || workflow.name}</Text>
+                  <Text strong>{workflow.display_name || workflow.name}</Text>
                   <WorkflowScopeBadge
                     scope={workflow.scope}
                     isDev={workflow.is_dev}
                   />
-                </Space>
+                </div>
               }
             >
               {workflow.description && (

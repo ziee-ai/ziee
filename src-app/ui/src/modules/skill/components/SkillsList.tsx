@@ -1,6 +1,6 @@
 import { Import as ImportIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Button, Card, Empty, Flex, Space, Text } from '@/components/ui'
+import { Button, Card, Empty, Flex, Text } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
@@ -73,17 +73,19 @@ export function SkillsList() {
               className="cursor-pointer"
             >
               <Flex justify="between" align="start" className="gap-3">
-                <Space direction="vertical" className="min-w-0" size="small">
-                  <Space size={8} wrap>
-                    <Text strong className="whitespace-nowrap">{skill.display_name || skill.name}</Text>
+                {/* flex-1 min-w-0 (not an inline-flex Space, which is
+                    shrink-to-fit and grows the card past the viewport). */}
+                <div className="flex flex-col gap-1 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <Text strong>{skill.display_name || skill.name}</Text>
                     <SkillScopeBadge scope={skill.scope} isDev={skill.is_dev} />
-                  </Space>
+                  </div>
                   {skill.description && (
                     <Text type="secondary" className="text-xs" ellipsis>
                       {skill.description}
                     </Text>
                   )}
-                </Space>
+                </div>
               </Flex>
             </Card>
           ))}

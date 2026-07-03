@@ -283,7 +283,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       'w-screen flex bg-card',
       // Native document-scroll (opt-in): relax the fixed-height/overflow clamp
       // so the window scrolls. Default path is byte-identical to before.
-      nativeScroll ? 'min-h-dvh overflow-visible' : 'h-full overflow-hidden',
+      nativeScroll ? 'min-h-dvh overflow-x-clip' : 'h-full overflow-hidden',
     )}>
       {/* Keyboard skip link — first focusable element; jumps past the
           sidebar nav straight to the main content landmark. */}
@@ -367,7 +367,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main Content Area */}
       <main className={cn(
         'flex-1 flex flex-col relative bg-card',
-        nativeScroll ? 'overflow-visible' : 'overflow-hidden',
+        nativeScroll ? 'overflow-x-clip' : 'overflow-hidden',
       )}>
         {/* App-wide banners (e.g. the admin "update available" notice).
             Contributed via the `appBanners` slot, so bundles that don't load a
@@ -376,14 +376,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <LazyComponentRenderer key={b.id} component={b.component} />
         ))}
         {/* Content */}
-        <div className={cn('flex-1 relative', nativeScroll ? 'overflow-visible' : 'overflow-hidden')}>
+        <div className={cn('flex-1 relative', nativeScroll ? 'overflow-x-clip' : 'overflow-hidden')}>
           <section
             ref={mainContentRef}
             id="main-content"
             tabIndex={-1}
             className={cn(
               'w-full relative',
-              nativeScroll ? 'overflow-visible' : 'h-full overflow-hidden',
+              // overflow-x-clip: clip horizontal overflow (no x-scroll / no
+              // feedback into the settings two-pane) while keeping overflow-y
+              // visible for document scroll.
+              nativeScroll ? 'overflow-x-clip' : 'h-full overflow-hidden',
             )}
           >
             {children}
