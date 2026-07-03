@@ -111,6 +111,11 @@ export function RawCodeView({
   }, [text, filename])
 
   const [html, setHtml] = useState<string | null>(null)
+  // Shiki emits the theme background as an inline `background-color` on <pre>,
+  // NOT as a CSS var — so `var(--shiki-bg)` was undefined and the sticky
+  // line-number gutter was transparent (code scrolled visible underneath it on
+  // x-scroll). Extract it and expose it as the var so the gutter is opaque.
+  const [shikiBg, setShikiBg] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -129,6 +134,8 @@ export function RawCodeView({
       .then(out => {
         if (cancelled) return
         setHtml(out)
+        const bg = out.match(/background-color:\s*([^;"]+)/)?.[1]
+        setShikiBg(bg ?? null)
       })
       .catch(err => {
         if (cancelled) return
@@ -150,7 +157,11 @@ export function RawCodeView({
   }, [source, lang, isDarkMode])
 
   return (
-    <div className="flex flex-col w-full h-full" data-testid="raw-code-view">
+    <div
+      className="flex flex-col w-full h-full"
+      data-testid="raw-code-view"
+      style={{ ['--shiki-bg' as string]: shikiBg ?? 'var(--card)' }}
+    >
       {truncated && (
         <Alert
           title={`Showing first ${MAX_LINES.toLocaleString()} lines. Download the file to view all data.`}
@@ -233,7 +244,7 @@ export function RawCodeView({
         .raw-code-view pre.shiki .line-number {
           position: sticky;
           left: 0;
-          background: var(--shiki-bg);
+          background: var(--shiki-bg, var(--card));
           color: var(--shiki-gutter);
           text-align: right;
           padding-right: 4px;
