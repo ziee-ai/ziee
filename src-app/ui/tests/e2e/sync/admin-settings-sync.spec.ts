@@ -61,11 +61,14 @@ async function gotoSandboxSettings(
 ) {
   await page.goto(`${baseURL}/settings/sandbox`)
   await page.waitForLoadState('load')
-  // The combined "Code Sandbox" page heading. The route is admitted by
-  // code_sandbox::resource_limits::read and is reachable even when the
-  // sandbox runtime is DISABLED — the resource-limits row is a plain DB
-  // singleton (GET/PUT /api/code-sandbox/resource-limits), independent of
-  // whether bwrap/squashfuse is wired up.
+  // The Code Sandbox page is a two-tab layout (Rootfs [default] | Resource);
+  // the resource-limits surface lives under the "Resource" tab, which shadcn
+  // Tabs keeps unmounted until selected. Switch to it before waiting for the
+  // card. The route is admitted by code_sandbox::resource_limits::read and is
+  // reachable even when the sandbox runtime is DISABLED — the resource-limits
+  // row is a plain DB singleton (GET/PUT /api/code-sandbox/resource-limits),
+  // independent of whether bwrap/squashfuse is wired up.
+  await page.getByRole('tab', { name: 'Resource' }).click()
   await expect(
     byTestId(page, 'sandbox-resource-limits-card'),
   ).toBeVisible({ timeout: 30_000 })
