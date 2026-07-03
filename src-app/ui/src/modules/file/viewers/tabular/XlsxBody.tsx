@@ -172,7 +172,8 @@ export function XlsxBody(props: FileViewerSlotProps) {
     <div className="flex flex-col h-full w-full">
       <Tabs
         data-testid="file-xlsx-tabs"
-        className="flex-1 min-h-0 flex flex-col overflow-hidden"
+        fill
+        className="flex-1 min-h-0"
         items={sheets.map(sheet => ({
           key: sheet.name,
           label: sheet.name,

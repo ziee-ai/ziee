@@ -24,6 +24,10 @@ interface TabsBase {
   disabled?: boolean
   size?: 'sm' | 'default'
   className?: string
+  /** Fill the container: root becomes a flex column, the tab strip stays a fixed
+   *  row, and the active panel gets the remaining height (so its content can
+   *  scroll). Use for a tabbed viewer that must fit a bounded box. */
+  fill?: boolean
   /** Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. */
   'data-testid': string
 }
@@ -55,7 +59,7 @@ interface TabsStatic {
 export type TabsProps = TabsBase & (TabsEditable | TabsStatic)
 
 export function Tabs({
-  items, value, defaultValue, onValueChange, onTabClick, disabled, size, className,
+  items, value, defaultValue, onValueChange, onTabClick, disabled, size, className, fill,
   editable, hideAdd, onEdit, onClose, addLabel, closeLabel, 'data-testid': testid,
 }: TabsProps) {
   // React to an ambient disabled surface (e.g. inside a disabled Form/Card).
@@ -81,13 +85,14 @@ export function Tabs({
     <Root
       value={current}
       onValueChange={(v) => setCurrent(String(v ?? ''))}
-      className={cn('w-full', className)}
+      className={cn('w-full', fill && 'flex flex-col min-h-0', className)}
       data-testid={testid}
     >
       {/* The add button lives OUTSIDE TabsList: role=tablist requires its
           children to be role=tab (aria-required-children), and a plain add button
-          inside it violates that. */}
-      <div className="flex items-center">
+          inside it violates that. overflow-x-auto lets a long tab strip scroll
+          horizontally instead of wrapping/clipping. */}
+      <div className={cn('flex items-center overflow-x-auto', fill && 'shrink-0')}>
       <TabsList>
         {items.map((t) => {
           const showClose = (t.closable ?? editable) && !s.disabled && !t.disabled
@@ -135,7 +140,12 @@ export function Tabs({
       )}
       </div>
       {items.map((t) => (
-        <TabsContent key={t.key} value={t.key} data-testid={testid ? `${testid}-panel-${t.key}` : undefined}>
+        <TabsContent
+          key={t.key}
+          value={t.key}
+          data-testid={testid ? `${testid}-panel-${t.key}` : undefined}
+          className={fill ? 'flex-1 min-h-0 overflow-hidden' : undefined}
+        >
           {t.children}
         </TabsContent>
       ))}
