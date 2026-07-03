@@ -25,6 +25,8 @@ struct AccumulatedContent {
 /// Text Extension
 /// Handles plain text and thinking content for messages
 pub struct TextExtension {
+    // DB handle from the shared extension factory; plain-text/thinking streaming
+    // needs no DB, so this handle is retained (for factory-shape parity) but unread.
     #[allow(dead_code)]
     pool: PgPool,
     /// Store accumulated deltas during streaming (conversation_id -> Vec<AccumulatedContent>)

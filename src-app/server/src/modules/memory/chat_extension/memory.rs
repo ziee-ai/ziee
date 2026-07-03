@@ -30,6 +30,8 @@ use crate::modules::chat::core::models::content::MessageContent;
 use crate::modules::chat::core::types::MessageWithContent;
 
 pub struct MemoryExtension {
+    // DB handle from the shared extension factory; the current hooks operate via
+    // `context.pool`, so this owned handle is retained but unread today.
     #[allow(dead_code)]
     pool: PgPool,
 }

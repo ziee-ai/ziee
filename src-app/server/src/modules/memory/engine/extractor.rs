@@ -33,6 +33,8 @@ struct ExtractionOp {
     content: Option<String>,
     #[serde(default = "default_importance_op")]
     importance: i16,
+    // Parsed from the extractor LLM's op JSON to tolerate the field in output,
+    // but not consumed today (only `importance` drives behavior).
     #[serde(default = "default_confidence_op")]
     #[allow(dead_code)]
     confidence: i16,

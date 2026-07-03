@@ -55,7 +55,6 @@ static CITATIONS_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
 };
 
 pub struct CitationsModule {
-    #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
 }
 
