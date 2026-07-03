@@ -3,7 +3,6 @@
 //! query set (list_in_flight for startup sweep, mark_running, persist
 //! step metadata, etc.).
 
-#![allow(dead_code)]
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -16,6 +15,10 @@ pub struct WorkflowRepository {
     pool: PgPool,
 }
 
+// Repository facade: several wrapper methods aren't called yet (callers use the
+// free `repository::*` fns / owner-scoped variants directly). Kept as the B4
+// query surface per the module doc above.
+#[allow(dead_code)]
 impl WorkflowRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -197,6 +200,9 @@ pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, 
     Ok(row)
 }
 
+// Non-owner-scoped lookup; the owner-scoped `find_by_name_version_owner` twin
+// is what handlers call today. Kept as the B4 query surface.
+#[allow(dead_code)]
 pub async fn find_by_name_version(
     pool: &PgPool,
     name: &str,
@@ -936,8 +942,9 @@ pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>
 }
 
 /// Look up an installed workflow by its reverse-DNS name (latest by
-/// `updated_at`). Used by `workflow_mcp::tools::call_tool` to reverse
-/// the `wf_<slug>` → workflow mapping. B5.
+/// `updated_at`). Intended for `workflow_mcp::tools::call_tool` to reverse
+/// the `wf_<slug>` → workflow mapping (B5, not wired yet).
+#[allow(dead_code)]
 pub async fn find_by_name(pool: &PgPool, name: &str) -> Result<Option<Workflow>, AppError> {
     let row = sqlx::query_as!(
         Workflow,

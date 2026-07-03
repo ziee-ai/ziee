@@ -11,7 +11,6 @@
 //! shape) + the `ProgressEmitter` trait the runner + dispatchers emit
 //! into.
 
-#![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -292,6 +291,8 @@ crate::sse_event_enum! {
 }
 
 impl SSEWorkflowRunEvent {
+    // Convenience predicate over the terminal variants; no caller yet.
+    #[allow(dead_code)]
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
@@ -323,6 +324,8 @@ impl ProgressEmitter for PerRunEmitter {
 
 /// Test-only emitter (also used at the workflow_mcp progress bridge
 /// site in B5 — wraps an mpsc).
+// Not constructed yet (B5 bridge pending); a `ProgressEmitter` impl kept ready.
+#[allow(dead_code)]
 pub struct ChannelEmitter {
     pub tx: tokio::sync::mpsc::UnboundedSender<SSEWorkflowRunEvent>,
 }
@@ -333,12 +336,16 @@ impl ProgressEmitter for ChannelEmitter {
     }
 }
 
+// Test-only capturing emitter; kept as ready test infra even when no test in
+// the current build constructs it.
 #[cfg(test)]
+#[allow(dead_code)]
 pub struct CapturingEmitter {
     pub events: std::sync::Mutex<Vec<SSEWorkflowRunEvent>>,
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 impl CapturingEmitter {
     pub fn new() -> Self {
         Self {

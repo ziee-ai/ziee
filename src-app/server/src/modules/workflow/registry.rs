@@ -23,7 +23,6 @@
 //! the natural primitive for "wake every waiter when this fires", which
 //! is exactly the runner's per-step `select!` shape.
 
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

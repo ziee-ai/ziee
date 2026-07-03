@@ -3,7 +3,6 @@
 //! LIST + GET + UPDATE + DELETE + install-from-hub re-bind + multipart
 //! import + group assignment. Mirrors `skill::handlers` (system half).
 
-#![allow(dead_code)]
 
 use aide::transform::TransformOperation;
 use axum::extract::Path as AxumPath;

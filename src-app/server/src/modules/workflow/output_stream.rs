@@ -1,7 +1,6 @@
 //! `GET /api/workflow-runs/{run_id}/output/{step_id}` — stream a step
 //! output file's content as text.
 
-#![allow(dead_code)]
 
 use aide::transform::TransformOperation;
 use axum::body::Body;

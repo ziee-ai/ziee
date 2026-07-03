@@ -26,7 +26,6 @@
 //! Unknown variable / missing field / out-of-bounds index / field-on-
 //! non-object → the documented `TemplateError` (§4.5).
 
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 

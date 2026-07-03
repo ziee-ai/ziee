@@ -29,7 +29,6 @@
 //! purely on type compatibility. Unknown ids are skipped here (no double
 //! reporting).
 
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 

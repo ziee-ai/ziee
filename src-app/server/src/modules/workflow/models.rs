@@ -6,7 +6,6 @@
 //! disk under `extracted_path`; the runner's per-run staging is under
 //! `<workspace>/<conv>/workflow/<run>/`.
 
-#![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -81,6 +80,9 @@ pub struct UpdateWorkflow {
 /// Phase B6 may add this as its own table if workflows need
 /// conversation-scoped hides; for now the type is reserved for parity
 /// with skills.
+// Reserved for parity with `conversation_skill_overrides`; no consumer until
+// workflows need conversation-scoped hides (see doc above).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ConversationWorkflowOverride {
     pub conversation_id: Uuid,

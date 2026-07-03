@@ -6,7 +6,6 @@
 //! + pending_elicitation_json), so a freshly-mounted FE skips the
 //! separate `GET /api/workflow-runs/{id}` call.
 
-#![allow(dead_code)]
 
 use std::convert::Infallible;
 

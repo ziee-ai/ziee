@@ -16,7 +16,6 @@
 //! Result is a `Vec<ArtifactMeta>` persisted into
 //! `step_artifacts_json[step_id]`.
 
-#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 
@@ -249,7 +248,10 @@ fn detect_mime_from_extension(name: &str) -> &'static str {
     }
 }
 
-/// Stream an artifact file by name. Used by the REST handler.
+/// Resolve (path-safe) the host path of a named step artifact.
+// Exercised by unit tests in this module; the REST streaming wiring that will
+// consume it is not landed yet.
+#[allow(dead_code)]
 pub fn artifact_host_path(
     ctx: &RunContext,
     step_id: &str,

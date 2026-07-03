@@ -4,7 +4,6 @@
 //! Admin (`/system/*`): list / delete + group assignment.
 //! `/validate`, `/import`, `/dry-run`, `/test` (B6) live in `dev.rs`.
 
-#![allow(dead_code)]
 
 pub mod dev;
 pub mod system;

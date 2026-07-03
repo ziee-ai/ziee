@@ -8,7 +8,6 @@
 //! Validation: response is shape-checked against the persisted JSON
 //! Schema before forwarding to the dispatcher.
 
-#![allow(dead_code)]
 
 use aide::transform::TransformOperation;
 use axum::extract::Path as AxumPath;

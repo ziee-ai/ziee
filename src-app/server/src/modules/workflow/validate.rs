@@ -39,7 +39,6 @@
 //! - `sandbox.flavor` value in `code_sandbox::KNOWN_FLAVORS`,
 //! - reject `mock:` in non-dev workflows (called via `validate_for_install`).
 
-#![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -333,6 +332,9 @@ pub struct ValidationError {
     pub severity: Severity,
 }
 
+// serde `default = "default_severity"` fn: invoked only when a `ValidationError`
+// is deserialized (client-bound errors are usually only serialized).
+#[allow(dead_code)]
 fn default_severity() -> Severity {
     Severity::Error
 }
@@ -494,11 +496,6 @@ pub fn topo_sort_steps(workflow: &WorkflowDef) -> Result<Vec<usize>, AppError> {
         ));
     }
     Ok(order)
-}
-
-// Kept for backwards-compat with the B2 install handler.
-pub fn cycle_check(workflow: &WorkflowDef) -> Result<(), AppError> {
-    topo_sort_steps(workflow).map(|_| ())
 }
 
 // --- per-check helpers ---

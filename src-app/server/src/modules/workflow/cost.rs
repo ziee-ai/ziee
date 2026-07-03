@@ -16,7 +16,6 @@
 //!    common case), the count is "runtime-dependent" and we fall back to
 //!    the `max_parallel` cap.
 
-#![allow(dead_code)]
 
 use schemars::JsonSchema;
 use serde::Serialize;
