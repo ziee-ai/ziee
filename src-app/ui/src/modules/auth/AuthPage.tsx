@@ -25,7 +25,7 @@ export const AuthPage: React.FC = () => {
 
   return (
     <BlankLayoutComponent>
-      <Layout data-testid="auth-page-layout" className="min-h-screen">
+      <Layout data-testid="auth-page-layout" className="min-h-dvh">
         <Content data-testid="auth-page-content" className="flex items-center justify-center p-4">
           <div className="w-full max-w-md">
             <div className="text-center mb-8">

@@ -65,7 +65,7 @@ export const LinkAccountPage: React.FC = () => {
 
   return (
     <BlankLayoutComponent>
-      <div className="min-h-screen">
+      <div className="min-h-dvh">
         <div className="flex items-center justify-center p-4">
           <Card data-testid="auth-link-account-card" className="w-full max-w-md">
             <Title level={3}>Link your accounts</Title>

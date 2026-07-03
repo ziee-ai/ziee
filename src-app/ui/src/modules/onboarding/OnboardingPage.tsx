@@ -106,7 +106,7 @@ export default function OnboardingPage() {
     return (
       <div
         data-testid="onboarding-empty-state"
-        className="flex flex-col items-center justify-center h-screen gap-4 p-8 bg-background text-center"
+        className="flex flex-col items-center justify-center h-dvh gap-4 p-8 bg-background text-center"
       >
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
           <Book className="h-8 w-8 text-muted-foreground" />
@@ -142,7 +142,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen overflow-hidden bg-background">
+    <div className="flex flex-col md:flex-row h-dvh overflow-hidden bg-background">
       {/* Left pane: guide list. On small screens it collapses into a
           height-capped, scrollable strip above the step viewer (the
           two-pane row stacks vertically below the md breakpoint). */}

@@ -132,7 +132,7 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden p-4">
+    <div className="relative min-h-dvh flex items-center justify-center overflow-hidden p-4">
       <SetupBackdrop />
       <SetupThemeSwitcher />
       <Card
