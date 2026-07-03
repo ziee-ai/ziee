@@ -39,6 +39,13 @@ export function PdfBody(props: FileViewerSlotProps) {
   useEffect(() => {
     const root = scrollRef.current
     if (!root || file.preview_page_count === 0) return
+    // Always load the first page(s) up front. Until page 1 renders, every empty
+    // slot is short, so relying only on visibility would flag them all as
+    // visible and load everything — the reserved placeholder height (below)
+    // plus this eager first request keep the window small.
+    Stores.File.requestPreviewPage(file, 1)
+    Stores.File.requestPreviewPage(file, 2)
+    Stores.File.requestPreviewPage(file, 3)
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -51,7 +58,7 @@ export function PdfBody(props: FileViewerSlotProps) {
           Stores.File.requestPreviewPage(file, idx + 3)
         }
       },
-      { root, rootMargin: '400px 0px' },
+      { root, rootMargin: '200px 0px' },
     )
     root.querySelectorAll('[data-page-index]').forEach((el) => io.observe(el))
     return () => io.disconnect()
@@ -110,7 +117,10 @@ export function PdfBody(props: FileViewerSlotProps) {
               loading="lazy"
             />
           ) : (
-            <div className="w-full flex items-center justify-center py-16">
+            // Reserve a page-sized height so unloaded pages aren't tiny —
+            // otherwise every slot would fit the viewport at once and the
+            // visibility check would request all pages.
+            <div className="w-full flex items-center justify-center min-h-[800px]">
               <Spin label="Loading" />
             </div>
           )}
