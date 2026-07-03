@@ -386,7 +386,6 @@ fn fetch_error_message(e: &FetchError) -> String {
 
 // Touch the FetchPhase import so the compiler doesn't warn about
 // it being unused — the variant is referenced via debug-format only.
-#[allow(dead_code)]
 const _: Option<FetchPhase> = None;
 
 // =====================================================================

@@ -46,7 +46,6 @@ pub struct McpSessionManager {
 }
 
 impl McpSessionManager {
-    #[allow(dead_code)] // Used in main.rs (binary), not in library
     pub fn new(config: Arc<Config>) -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),

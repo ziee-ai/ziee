@@ -1376,7 +1376,6 @@ pub use std::os::fd::FromRawFd;
 // Trait imports used above but otherwise unused locally — keep the
 // imports honest in -Dwarnings builds.
 #[cfg(target_os = "linux")]
-#[allow(dead_code)]
 fn _force_fd_imports(f: std::fs::File) -> RawFd {
     let fd = f.as_raw_fd();
     let _: std::fs::File = unsafe { std::fs::File::from_raw_fd(fd) };
