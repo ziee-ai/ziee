@@ -667,6 +667,25 @@ export function McpServerDrawer() {
       } else {
         message.error(result.message || 'Connection failed')
       }
+
+      // The probe (sent with `id`) is recorded onto the persisted row's
+      // `last_health_check_*` by the backend. Re-fetch + re-bind the drawer to
+      // edit mode so `editingServer` reflects the fresh status — this is what
+      // makes the top-of-body health-error Alert appear after a failed probe
+      // (it renders only on `last_health_check_status === 'unhealthy'`).
+      try {
+        const fresh = saved.is_system
+          ? await Stores.SystemMcpServer.getSystemServerById(saved.id)
+          : await Stores.McpServer.getMcpServer(saved.id)
+        if (fresh) {
+          Stores.McpServerDrawer.openMcpServerDrawer(
+            fresh,
+            fresh.is_system ? 'edit-system' : 'edit',
+          )
+        }
+      } catch (e) {
+        console.warn('Failed to refresh MCP server after probe:', e)
+      }
     } catch (error) {
       message.error(
         error instanceof Error ? error.message : 'Connection test failed',

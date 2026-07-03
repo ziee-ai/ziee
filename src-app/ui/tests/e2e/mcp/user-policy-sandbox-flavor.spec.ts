@@ -50,6 +50,16 @@ test.describe('MCP user policy — stdio sandbox flavor', () => {
   test('picking a flavor from the SandboxFlavors catalog saves the policy', async ({
     page,
   }) => {
+    // Persisting a stdio user policy is rejected (422 MCP_SANDBOX_DISABLED) unless
+    // code_sandbox is enabled in the deployment. E2E boots with code_sandbox OFF
+    // by default (it needs bwrap + a mounted rootfs); the run opts in via
+    // ZIEE_E2E_SANDBOX=1. Without that, this save path can't succeed, so skip —
+    // matching the rootfs-gated sandbox specs. The sibling client-side test above
+    // exercises the picker without needing the backend feature.
+    test.skip(
+      process.env.ZIEE_E2E_SANDBOX !== '1',
+      'code_sandbox disabled in default E2E deployment — stdio policy save requires ZIEE_E2E_SANDBOX=1',
+    )
     const card = page.getByTestId('mcp-user-policy-card')
     await card.getByTestId('mcp-policy-transport-stdio').check()
 
