@@ -46,19 +46,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     }
     // Apply the user's brand accent for the resolved theme (overrides --primary/--ring).
     applyAccent(root, accentPreset, isDarkMode)
-    let meta = document.querySelector('meta[name="theme-color"]')
-    if (!meta) {
-      meta = document.createElement('meta')
-      meta.setAttribute('name', 'theme-color')
-      document.head.appendChild(meta)
-    }
-    const bg = getComputedStyle(root).getPropertyValue('--background').trim()
-    if (bg) {
-      meta.setAttribute(
-        'content',
-        /^(#|rgb|hsl|oklch)/.test(bg) ? bg : `hsl(${bg})`,
-      )
-    }
+    // NOTE: <meta name="theme-color"> (the iOS status/nav bar tint) is owned by
+    // the LAYOUTS via useMetaThemeColor — it must match the surface at the screen
+    // edges, which differs per layout (--card in the app shell, --background on
+    // the blank/login layout). The pre-paint script in index.html sets a valid
+    // (hex) initial value to avoid a flash; oklch is NOT valid for theme-color.
   }, [isDarkMode, accentPreset])
 
   return (

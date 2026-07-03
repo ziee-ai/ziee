@@ -3,6 +3,7 @@ import { LeftSidebar } from '@/modules/layouts/app-layout/components/LeftSidebar
 import { SidebarToggleButton } from '@/modules/layouts/app-layout/components/SidebarToggleButton'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { cn } from '@/lib/utils'
+import { useMetaThemeColor } from '@/components/ThemeProvider/themeColor'
 import 'overlayscrollbars/overlayscrollbars.css'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
@@ -19,6 +20,9 @@ import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
  * - sidebarFooter: Footer section (e.g., user profile)
  */
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  // The app shell is bg-card → tint the iOS status/nav bars to --card (in dark
+  // mode --card is lighter than --background, which the login layout uses).
+  useMetaThemeColor('--card')
   const { isSidebarCollapsed } = Stores.AppLayout
   const { slots } = Stores.ModuleSystem
   const appBanners = [...(slots.get('appBanners') || [])].sort(
