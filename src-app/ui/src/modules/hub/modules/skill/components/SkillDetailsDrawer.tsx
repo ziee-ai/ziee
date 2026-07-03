@@ -1,4 +1,5 @@
-import { Descriptions, Sheet, Space, Tag, Paragraph, Title } from '@/components/ui'
+import { Descriptions, Space, Tag, Paragraph, Title } from '@/components/ui'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import type { DescriptionsItem } from '@/components/ui'
 import type { IndexItem } from '@/api-client/types'
 
@@ -37,11 +38,11 @@ export function SkillDetailsDrawer({
       : []),
   ]
   return (
-    <Sheet
+    <Drawer
       data-testid="hub-skill-detail-sheet"
       open={open}
-      onOpenChange={(v) => { if (!v) onClose() }}
-      className="!max-w-[600px]"
+      onClose={onClose}
+      size={600}
       title={
         <Space>
           <Title level={5} className="!m-0">
@@ -55,6 +56,6 @@ export function SkillDetailsDrawer({
         {item.summary && <Paragraph>{item.summary}</Paragraph>}
         <Descriptions size="sm" column={1} bordered items={items} data-testid="hub-skill-detail-descriptions" />
       </div>
-    </Sheet>
+    </Drawer>
   )
 }

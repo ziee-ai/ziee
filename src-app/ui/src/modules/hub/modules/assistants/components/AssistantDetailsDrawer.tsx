@@ -1,5 +1,5 @@
 import { Copy, Bot } from 'lucide-react'
-import { Sheet } from '@/components/ui'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Button, Flex, Tag, Text, Title, Card } from '@/components/ui'
 import { Permissions, type HubAssistant } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
@@ -73,11 +73,12 @@ export function AssistantDetailsDrawer({
     ) : undefined
 
   return (
-    <Sheet
+    <Drawer
       data-testid="hub-assistant-detail-sheet"
       title={assistant.display_name}
       open={open}
-      onOpenChange={(v) => { if (!v) onClose() }}
+      onClose={onClose}
+      size={480}
       footer={footer}
     >
       <Flex direction="column" className="gap-4">
@@ -169,6 +170,6 @@ export function AssistantDetailsDrawer({
             </div>
           )}
       </Flex>
-    </Sheet>
+    </Drawer>
   )
 }

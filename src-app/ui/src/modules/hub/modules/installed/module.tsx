@@ -31,7 +31,7 @@ export default createModule({
         label: 'Installed',
         icon: <LayoutGrid />,
         component: InstalledHubTab,
-        order: 40, // after Models (10), Assistants (20), MCP Servers (30)
+        order: 100, // last — after Models(10)/Assistants(20)/MCP(30)/Skills(40)/Workflows(45)
         // Same loose gate as the parent Hub page — if the user can
         // see the Hub at all (any of the three hub-read perms), they
         // can see the Installed tab. The backend handler additionally
