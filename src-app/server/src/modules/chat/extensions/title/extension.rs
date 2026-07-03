@@ -1,5 +1,4 @@
 // Extension implementation
-#![allow(dead_code)]
 
 // Title extension types for chat module
 //
@@ -23,6 +22,10 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
 /// Request fields contributed by the title extension
 ///
 /// Title generation happens after LLM response, so no request fields are needed.
+// Reserved extension-contract placeholder: every chat extension declares the
+// request fields it contributes (see mcp/file for populated versions). Empty +
+// not yet aggregated, so keep it explicitly rather than deleting the convention.
+#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema, Default)]
 pub struct SendMessageRequestFields {
     // No fields - title generation is automatic and doesn't need configuration
@@ -38,6 +41,10 @@ pub struct SSEChatStreamTitleUpdatedData {
 /// SSE event variants contributed by the title extension
 ///
 /// These variants will be composed into the main SSEChatStreamEvent enum
+// Reserved extension-contract placeholder (the aggregation into the main
+// SSEChatStreamEvent enum isn't wired yet); the payload type
+// `SSEChatStreamTitleUpdatedData` above is the one actually emitted.
+#[allow(dead_code)]
 pub enum SSEChatStreamEventVariants {
     /// Title generation complete event
     TitleUpdated(SSEChatStreamTitleUpdatedData),

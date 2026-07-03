@@ -1,5 +1,4 @@
 // Chat type infrastructure
-#![allow(dead_code)]
 
 // Message API request/response types
 
@@ -16,6 +15,9 @@ pub struct MessageWithContent {
 }
 
 /// Request to create a new message (for system messages or manual creation)
+// Request DTO not yet wired to a handler; kept as part of the message type
+// surface (system/manual message creation) rather than deleted.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CreateMessageRequest {
     pub role: MessageRole,

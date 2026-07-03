@@ -7,7 +7,6 @@
 //! frontmatter parsing + the 1536-char cap (plan §2: "Skills are EXEMPT
 //! ... Skill validation stays at frontmatter parsing").
 
-#![allow(dead_code)]
 
 use aide::transform::TransformOperation;
 use axum::extract::{Multipart, Query};

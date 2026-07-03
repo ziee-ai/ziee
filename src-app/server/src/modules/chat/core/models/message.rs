@@ -1,5 +1,4 @@
 // Chat model infrastructure
-#![allow(dead_code)]
 
 // Message DB entities
 

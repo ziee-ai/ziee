@@ -1,5 +1,4 @@
 //! Memory extension registration for the chat module.
-#![allow(dead_code)]
 
 use linkme::distributed_slice;
 use sqlx::PgPool;
@@ -27,10 +26,14 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
 
 /// Request fields contributed by the memory extension. Phase 5 adds a
 /// per-conversation `memory_mode` override here.
+// Reserved extension-contract placeholder (empty until Phase 5); kept to
+// preserve the per-extension request-fields convention (see mcp/file populated).
+#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema, Default)]
 pub struct SendMessageRequestFields {}
 
 /// SSE event variants contributed by memory. None today; reserved.
+#[allow(dead_code)] // reserved extension-contract placeholder; no memory SSE events today
 pub enum SSEChatStreamEventVariants {}
 
 pub fn create(pool: PgPool, _config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
