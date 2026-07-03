@@ -94,7 +94,7 @@ export class StreamdownErrorBoundary extends Component<StreamdownErrorBoundaryPr
 
 // Stable identity so Streamdown's prop-equality avoids re-renders.
 // `table` uses our wrapper too, so tables in the file viewer get OverlayScrollbars
-// + an in-page fullscreen at z-[1000] (above the file drawer) instead of
+// + an in-page fullscreen at z-[1200] (above the file drawer's z-1050) instead of
 // Streamdown's native scroller + z-50 fullscreen (which hid behind the drawer).
 const SAFE_IMG_COMPONENTS = { img: SafeImg, table: MarkdownTable }
 

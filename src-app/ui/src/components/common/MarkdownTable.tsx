@@ -10,11 +10,12 @@ import { cn } from '@/lib/utils'
  *
  * Overriding `table` swaps out Streamdown's whole wrapper — which brought a
  * NATIVE `overflow-x-auto` scroller AND a fullscreen control that portals a
- * `fixed inset-0 z-50` overlay into document.body (too low to clear an open
- * drawer, which is also z-50 but portal-stacked after it). We rebuild it so:
+ * `fixed inset-0 z-50` overlay into document.body — far below the file-preview
+ * drawer, which opens elevated at z-1050. We rebuild it so:
  *   1. horizontal scrolling uses the app's OverlayScrollbars (auto-hide), and
- *   2. "fullscreen" portals an in-page overlay at z-[1000] — above the file
- *      drawer, below tooltips (z-[2000]) — instead of Streamdown's z-50 one.
+ *   2. "fullscreen" portals an in-page overlay at z-[1200] — above the file
+ *      drawer (z-1050) + chat right panel (z-1000), below tooltips (z-[2000]) —
+ *      instead of Streamdown's z-50 one.
  *
  * Copy / download are preserved by reusing Streamdown's own exported controls
  * (`TableCopyDropdown` / `TableDownloadDropdown`), which locate the table via
@@ -96,7 +97,7 @@ export const MarkdownTable = memo(function MarkdownTable({
             // pointer-events-auto: a modal Radix Dialog (the file drawer) sets
             // body { pointer-events: none }, which this body-portal sibling would
             // otherwise inherit — making the overlay + Exit button unclickable.
-            className="pointer-events-auto fixed inset-0 z-[1000] flex flex-col bg-background"
+            className="pointer-events-auto fixed inset-0 z-[1200] flex flex-col bg-background"
             role="dialog"
             aria-modal="true"
             data-testid="markdown-table-fullscreen"
