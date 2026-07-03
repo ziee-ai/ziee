@@ -7,6 +7,8 @@ import { ConversationList } from '@/modules/chat/components/ConversationList'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
+import { cn } from '@/lib/utils'
 
 /**
  * ChatHistoryPage
@@ -37,6 +39,9 @@ export default function ChatHistoryPage() {
   const [searchOpenInNarrow, setSearchOpenInNarrow] = useState(false)
 
   // Chat history store for empty state detection
+  // Native document-scroll on mobile (iOS toolbar collapse + under-notch flow).
+  useNativeScroll(true)
+  const { nativeScroll } = Stores.AppLayout
   const { conversations, loading, error } = Stores.ChatHistory
 
   // Refetch on mount. The sidebar's RecentConversationsWidget may have
@@ -67,7 +72,7 @@ export default function ChatHistoryPage() {
   return (
     <div
       ref={pageRef}
-      className="h-full w-full flex flex-col overflow-y-hidden"
+      className={cn('w-full flex flex-col', nativeScroll ? 'min-h-dvh' : 'h-full overflow-y-hidden')}
     >
       {/* Header */}
       <HeaderBarContainer>
@@ -110,7 +115,7 @@ export default function ChatHistoryPage() {
       </HeaderBarContainer>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col overflow-hidden items-center">
+      <div className={cn('flex-1 flex flex-col items-center', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Body search box — always rendered when narrow + opened via
          * header button, so it works even in the empty state. */}
         {isNarrow && searchOpenInNarrow && (
@@ -123,8 +128,8 @@ export default function ChatHistoryPage() {
          * must mount on error even when the list is empty (otherwise a failed
          * load silently falls through to the empty state). */}
         {(conversations.length > 0 || loading || error) && (
-          <div className="flex flex-1 flex-col w-full justify-center overflow-hidden">
-            <DivScrollY className="h-full flex flex-col">
+          <div className={cn('flex flex-1 flex-col w-full justify-center', nativeScroll ? '' : 'overflow-hidden')}>
+            <DivScrollY nativeFlow className={cn('flex flex-col', nativeScroll ? '' : 'h-full')}>
               <ConversationList
                 getSearchBoxContainer={getSearchBoxContainer}
               />

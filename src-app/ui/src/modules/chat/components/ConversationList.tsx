@@ -8,6 +8,7 @@ import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { cn } from '@/lib/utils'
 
 interface ConversationListProps {
   /**
@@ -25,6 +26,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const [errorDismissed, setErrorDismissed] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
+  const { nativeScroll } = Stores.AppLayout
 
   const {
     conversations,
@@ -128,7 +130,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
           return container ? createPortal(searchBox, container) : null
         })()}
 
-      <div className="w-full h-full flex flex-col gap-3 overflow-y-hidden overflow-x-visible flex-1">
+      <div className={cn('w-full flex flex-col gap-3 overflow-x-visible flex-1', nativeScroll ? '' : 'h-full overflow-y-hidden')}>
         {/* Search box - render inline if no container provided */}
         {!getSearchBoxContainer && (
           <div className="flex justify-end items-center w-full">{searchBox}</div>
@@ -195,7 +197,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
         )}
 
         {/* Conversation list */}
-        <DivScrollY className="flex-1 w-full flex-col !py-3 overflow-x-visible">
+        <DivScrollY nativeFlow className="flex-1 w-full flex-col !py-3 overflow-x-visible">
           <div className="gap-2 max-w-4xl w-full self-center overflow-x-visible">
             {visibleConversations.length === 0 && !loading ? (
               <Card data-testid="chat-history-empty-card" className="!mx-3">
@@ -209,7 +211,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                 />
               </Card>
             ) : (
-              <DivScrollY className="space-y-3 overflow-x-visible">
+              <DivScrollY nativeFlow className="space-y-3 overflow-x-visible">
                 {loading && !isInitialized ? (
                   <div className="flex justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2"></div>

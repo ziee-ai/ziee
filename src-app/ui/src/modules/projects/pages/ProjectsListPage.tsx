@@ -7,8 +7,14 @@ import { Permissions, type Project } from '@/api-client/types'
 import { ProjectCard } from '@/modules/projects/components/ProjectCard'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
+import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
+import { cn } from '@/lib/utils'
 
 export function ProjectsListPage() {
+  // Native document-scroll on mobile (iOS toolbar collapse + content under the
+  // notch); desktop keeps the fixed inner-scroll shell.
+  useNativeScroll(true)
+  const { nativeScroll } = Stores.AppLayout
   const { projects: projectsMap, loading, error } = Stores.Projects
   const projects = Array.from(projectsMap.values())
   // Per-card mutation state so the duplicate/delete buttons can show a
@@ -55,7 +61,7 @@ export function ProjectsListPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className={cn('flex flex-col', nativeScroll ? 'min-h-dvh' : 'h-full overflow-hidden')}>
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
           <Title
@@ -78,11 +84,14 @@ export function ProjectsListPage() {
         </div>
       </HeaderBarContainer>
 
-      <div className="flex-1 flex flex-col overflow-hidden items-center">
+      <div className={cn('flex-1 flex flex-col items-center', nativeScroll ? '' : 'overflow-hidden')}>
         {projects.length > 0 ? (
-          <div className="flex flex-1 flex-col w-full overflow-hidden">
-            <div className="h-full flex flex-col overflow-y-auto">
-              <div className="max-w-4xl flex flex-wrap gap-3 pt-3 w-full self-center px-3">
+          <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
+            <div className={cn('flex flex-col', nativeScroll ? '' : 'h-full overflow-y-auto')}>
+              <div
+                className="max-w-4xl flex flex-wrap gap-3 pt-3 w-full self-center px-3"
+                style={nativeScroll ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' } : undefined}
+              >
                 {projects.map(project => (
                   <div key={project.id} className="min-w-70 flex-1">
                     <ProjectCard

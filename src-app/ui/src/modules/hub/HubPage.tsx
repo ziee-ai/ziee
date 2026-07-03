@@ -18,6 +18,8 @@ import { evaluatePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
+import { cn } from '@/lib/utils'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { DivScrollY } from '@/components/common/DivScrollY'
 
@@ -32,6 +34,9 @@ export function HubPage() {
   // visibleTabs useMemo deps below is the load-bearing piece.
   const { policy: mcpPolicy } = Stores.McpUserPolicy
   const windowMinSize = useWindowMinSize()
+  // Native document-scroll on mobile (iOS toolbar collapse + under-notch flow).
+  useNativeScroll(true)
+  const { nativeScroll } = Stores.AppLayout
   const [refreshing, setRefreshing] = useState(false)
 
   // Get hub tabs from slot system, sorted
@@ -150,7 +155,7 @@ export function HubPage() {
   ) : null
 
   return (
-    <Flex className="flex flex-col w-full h-full overflow-hidden">
+    <Flex className={cn('flex flex-col w-full', nativeScroll ? 'min-h-dvh' : 'h-full overflow-hidden')}>
       <HeaderBarContainer>
         <div className="flex items-center justify-between w-full h-[50px]">
           <Text ellipsis className="!m-0 !leading-tight">
@@ -220,11 +225,14 @@ export function HubPage() {
         </div>
       </HeaderBarContainer>
 
-      <div className="flex flex-col w-full h-full overflow-hidden">
-        <DivScrollY className="flex flex-1 w-full flex-col overflow-y-auto">
+      <div className={cn('flex flex-col w-full', nativeScroll ? '' : 'h-full overflow-hidden')}>
+        <DivScrollY nativeFlow className={cn('flex flex-1 w-full flex-col', nativeScroll ? '' : 'overflow-y-auto')}>
           <div className="max-w-4xl w-full flex flex-col self-center">
-            <div className="flex-1 h-full w-full overflow-y-auto">
-              <div className="flex flex-col py-3 w-full">
+            <div className={cn('flex-1 w-full', nativeScroll ? '' : 'h-full overflow-y-auto')}>
+              <div
+                className="flex flex-col py-3 w-full"
+                style={nativeScroll ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' } : undefined}
+              >
                 {urlSegmentIsForbidden ? (
                   <Result
                     data-testid="hub-forbidden-result"
