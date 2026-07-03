@@ -30,6 +30,11 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
+      // forceRender: Base-UI skips a nested dialog's backdrop by default
+      // (enabled = forceRender || !nested). A Dialog opened from inside the
+      // mobile sidebar Sheet is "nested", so without this it renders no backdrop
+      // and the sidebar isn't dimmed/blurred behind it.
+      forceRender
       className={cn(
         "fixed inset-0 isolate z-[55] bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className

@@ -29,6 +29,9 @@ function AlertDialogOverlay({
   return (
     <AlertDialogPrimitive.Backdrop
       data-slot="alert-dialog-overlay"
+      // See dialog.tsx: render the backdrop even when nested (e.g. opened from
+      // inside the mobile sidebar Sheet) so it dims/blurs the sidebar too.
+      forceRender
       className={cn(
         "fixed inset-0 isolate z-[55] bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
