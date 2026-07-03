@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react'
-import { Button, Card, Checkbox, Confirm, Separator, Text } from '@/components/ui'
+import { Button, Card, Checkbox, Confirm, Separator, Text, Tooltip } from '@/components/ui'
 import { message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -168,6 +168,7 @@ export function ConversationCard({
           >
             <Button
               data-testid={`chat-conversation-delete-btn-${conversation.id}`}
+              tooltip="Delete conversation"
               className={`transition-opacity bg-card ${
                 popconfirmOpen
                   ? 'opacity-100'
@@ -194,11 +195,14 @@ export function ConversationCard({
             }`}
             onClick={e => e.stopPropagation()}
           >
-            <Checkbox
-              data-testid={`chat-conversation-select-${conversation.id}`}
-              checked={isSelected}
-              onChange={handleSelectChange}
-            />
+            <Tooltip title={isSelected ? 'Deselect conversation' : 'Select conversation'}>
+              <Checkbox
+                data-testid={`chat-conversation-select-${conversation.id}`}
+                checked={isSelected}
+                onChange={handleSelectChange}
+                aria-label={isSelected ? 'Deselect conversation' : 'Select conversation'}
+              />
+            </Tooltip>
           </div>
         )}
       </div>

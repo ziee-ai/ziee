@@ -453,13 +453,15 @@ function ProjectMembershipTrailing({
           while the modal is open. */}
       <div
         className={`inline-flex items-center transition-opacity ${
-          modalOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          modalOpen
+            ? 'opacity-100'
+            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
         }`}
       >
         <Tooltip title="Add to project">
           <Button
             data-testid="project-trailing-add-button"
-            variant="ghost"
+            variant="outline"
             size="default"
             icon={<CirclePlus />}
             aria-label="Add to project"
