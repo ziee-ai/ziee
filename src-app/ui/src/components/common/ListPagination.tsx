@@ -34,6 +34,8 @@ export function ListPagination({
         showSizeChanger
         pageSizeOptions={[5, 10, 20, 50]}
         pageSizeLabel="Page size"
+        showQuickJumper
+        jumpLabel="Go to page"
         showTotal={(t: number, range: [number, number]) =>
           itemNoun
             ? `${range[0]}-${range[1]} of ${t} ${itemNoun}`

@@ -66,16 +66,16 @@ test.describe('Memory — My memories pagination', () => {
     await expect(byTestId(page, 'memory-pagination')).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('[data-memory-id]')).toHaveCount(10)
 
-    // Go to page 2 via the page-2 button. The store fires a real
-    // GET /api/memories?page=2 server fetch.
-    // (The shared ListPagination no longer renders a quick-jumper input;
-    // the numbered page button drives the identical onChange → server fetch.)
+    // Jump to page 2 via the quick-jumper input. The store fires a real
+    // GET /api/memories?page=2 server fetch. (ListPagination renders the
+    // shared kit quick-jumper — `${testid}-jump` — on every list.)
     const pageTwoReq = page.waitForRequest(
       req =>
         req.url().includes('/api/memories') &&
         /[?&]page=2(?:&|$)/.test(decodeURIComponent(req.url())),
     )
-    await byTestId(page, 'memory-pagination-page-2').click()
+    await byTestId(page, 'memory-pagination-jump').fill('2')
+    await byTestId(page, 'memory-pagination-jump').press('Enter')
     await pageTwoReq
 
     // Page 2: only the remaining 2 rows render (the list content changed).
