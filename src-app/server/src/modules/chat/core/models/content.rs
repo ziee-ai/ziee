@@ -1,5 +1,4 @@
 // Chat content models
-#![allow(dead_code)]
 
 // Content models
 

@@ -1,5 +1,4 @@
 // Chat streaming types
-#![allow(dead_code)]
 
 // Streaming API types
 

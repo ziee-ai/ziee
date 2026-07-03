@@ -5,7 +5,6 @@
 //! lives on disk under `extracted_path`; the row only carries metadata
 //! + parsed SKILL.md frontmatter.
 
-#![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -91,6 +90,9 @@ pub struct UpdateSkill {
 /// Per-conversation OPT-OUT row. A row in
 /// `conversation_skill_overrides` with `hidden=true` removes the skill
 /// from the available-skills listing for that conversation only.
+// FromRow model for the `conversation_skill_overrides` table; the query that
+// maps into it isn't wired yet, so keep the model as scaffolding for that table.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
 pub struct ConversationSkillOverride {
     pub conversation_id: Uuid,

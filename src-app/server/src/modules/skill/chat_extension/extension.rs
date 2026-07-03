@@ -12,7 +12,6 @@
 //! unoccupied per plan §4.5: 5 (text), 8 (project), 10 (assistant),
 //! 20 (file), 24 (summarization), 25 (memory), 30 (mcp), 80 (title).
 
-#![allow(dead_code)]
 
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 use async_trait::async_trait;

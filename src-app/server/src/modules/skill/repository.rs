@@ -5,7 +5,6 @@
 //! both the chat extension's listing-only injection AND
 //! `skill_mcp::list_tools` — see plan §3 + §4.6 for the SQL.
 
-#![allow(dead_code)]
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -45,6 +44,8 @@ impl SkillRepository {
         insert(&self.pool, request).await
     }
 
+    // Repository query surface not yet called by a handler/test; kept as API.
+    #[allow(dead_code)]
     pub async fn find_by_name_version(
         &self,
         name: &str,
@@ -74,6 +75,7 @@ impl SkillRepository {
     /// Look up a skill by reverse-DNS name (any version). Used by
     /// `skill_mcp::load_skill` + `read_skill_file` to resolve a name
     /// the LLM passed.
+    #[allow(dead_code)] // repository query surface not yet called by a handler/test; kept as API
     pub async fn find_by_name(&self, name: &str) -> Result<Option<Skill>, AppError> {
         find_by_name(&self.pool, name).await
     }
@@ -176,6 +178,8 @@ impl SkillRepository {
         get_skill_groups(&self.pool, skill_id).await
     }
 
+    // Repository query surface not yet called by a handler/test; kept as API.
+    #[allow(dead_code)]
     pub async fn assign_skill_to_group(
         &self,
         skill_id: Uuid,
@@ -440,6 +444,8 @@ pub async fn upsert_builtin(pool: &PgPool, request: CreateSkill) -> Result<Skill
     Ok(row)
 }
 
+// Repository query surface not yet called by a handler/test; kept as API.
+#[allow(dead_code)]
 pub async fn find_by_name_version(
     pool: &PgPool,
     name: &str,
@@ -581,6 +587,8 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Skill>, AppErr
     Ok(row)
 }
 
+// Repository query surface not yet called by a handler/test; kept as API.
+#[allow(dead_code)]
 pub async fn find_by_name(pool: &PgPool, name: &str) -> Result<Option<Skill>, AppError> {
     let row = sqlx::query_as!(
         Skill,
@@ -980,6 +988,8 @@ pub async fn get_skill_groups(pool: &PgPool, skill_id: Uuid) -> Result<Vec<Uuid>
     Ok(rows)
 }
 
+// Repository query surface not yet called by a handler/test; kept as API.
+#[allow(dead_code)]
 pub async fn assign_skill_to_group(
     pool: &PgPool,
     skill_id: Uuid,

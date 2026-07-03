@@ -4,7 +4,6 @@
 //! create/list types defined here are the minimum to compile the
 //! install handlers (B2) + the chat extension + skill_mcp (B3).
 
-#![allow(dead_code)]
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -14,7 +14,6 @@
 //! that's acceptable for a read-only content cache (worst case is N
 //! cold reads instead of 1).
 
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
