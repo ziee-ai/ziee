@@ -136,8 +136,10 @@ export function McpServerCard({
 
   const cardBody = (
       <div className="flex items-start gap-3 flex-wrap">
-        {/* Server Info */}
-        <div className="flex-1">
+        {/* Server Info — min-w-0 so this flex column can shrink below its
+            content's intrinsic width, letting the command <pre>'s overflow-auto
+            scroll horizontally instead of widening the card. */}
+        <div className="flex-1 min-w-0">
           {/* Header row — transport type is already conveyed by the
             * Tag inside; the per-transport background band has been
             * removed so MCP cards match the visual rhythm of the

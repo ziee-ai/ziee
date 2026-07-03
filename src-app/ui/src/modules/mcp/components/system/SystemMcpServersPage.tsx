@@ -90,7 +90,11 @@ export function SystemMcpServersPage() {
             value={searchTerm}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
             allowClear
-            className="flex-1"
+            // The kit Input wrapper is `w-full`. Below sm keep that (search
+            // takes its own full row; Select + Add wrap beneath). From sm up,
+            // drop the width and become flex-1 (grow + basis-0) so search,
+            // filter and Add share one row with the search input flexing.
+            className="grow basis-full sm:basis-0 sm:w-auto min-w-0"
             aria-label="Search system MCP servers"
             data-testid="mcp-system-search-input"
           />
