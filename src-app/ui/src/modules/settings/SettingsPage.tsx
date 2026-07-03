@@ -232,7 +232,7 @@ export default function SettingsPage() {
             Settings
           </Title>
           {useMobileLayout && (
-            <div className="flex flex-1 items-center px-2">
+            <div className="flex items-center">
               <Dropdown
                 data-testid="settings-mobile-dropdown"
                 items={dropdownItems.map((item: any) => {
