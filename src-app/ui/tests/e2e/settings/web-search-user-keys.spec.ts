@@ -56,7 +56,7 @@ test.describe('Per-user web search keys', () => {
 
     // Before setting a personal key: the shared-key fallback tag shows.
     await expect(byTestId(page, 'websearch-user-key-brave-status')).toContainText(
-      'Using shared key',
+      'Shared key set by admin',
     )
 
     // Enter a personal key and save.
@@ -80,7 +80,7 @@ test.describe('Per-user web search keys', () => {
     // Clear it → falls back to the shared-key state.
     await byTestId(page, 'websearch-user-key-brave-clear').click()
     await expect(byTestId(page, 'websearch-user-key-brave-status')).toContainText(
-      'Using shared key',
+      'Shared key set by admin',
       { timeout: 10000 },
     )
   })
