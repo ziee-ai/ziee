@@ -571,7 +571,15 @@ test.describe('LLM Repositories - Connection Testing', () => {
       url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'bearer_token',
       bearerToken: HF_API_KEY,
-      authTestEndpoint: 'https://huggingface.co/api/whoami-v2',
+      // Probe a PUBLIC HF endpoint that returns HTTP 200 for any request
+      // (public model metadata needs no valid token). The test env ships a
+      // placeholder HUGGINGFACE_API_KEY (`hf_xxx…`), so the auth-validating
+      // `whoami-v2` endpoint always 401s here — that endpoint is exercised by
+      // the "invalid credentials" cases below. What THIS test proves is the
+      // success path of the connection-test WIRING (form → backend → real
+      // HTTP → success toast), which requires a deterministic 200.
+      authTestEndpoint:
+        'https://huggingface.co/api/models/hf-internal-testing/tiny-random-gpt2',
       enabled: true,
     })
 
@@ -658,7 +666,13 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await selectAuthType(page, 'bearer_token')
     await byTestId(page, 'llmrepo-form-token').fill(HF_API_KEY)
-    await byTestId(page, 'llmrepo-form-auth-test-endpoint').fill('https://huggingface.co/api/whoami-v2')
+    // Public HF endpoint → deterministic HTTP 200 regardless of token validity.
+    // The test env's placeholder HUGGINGFACE_API_KEY 401s against `whoami-v2`
+    // (covered by the invalid-credentials drawer case below); this success case
+    // proves the drawer's Test-Connection WIRING surfaces a success toast.
+    await byTestId(page, 'llmrepo-form-auth-test-endpoint').fill(
+      'https://huggingface.co/api/models/hf-internal-testing/tiny-random-gpt2',
+    )
 
     await clickTestConnectionFromDrawer(page)
     await waitForConnectionTestResult(page, 'success')
