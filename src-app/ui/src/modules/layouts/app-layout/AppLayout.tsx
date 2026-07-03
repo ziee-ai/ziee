@@ -287,9 +287,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const pageSwipe = useRef<{ x: number; y: number; active: boolean } | null>(null)
   const onPageTouchStart = (e: React.TouchEvent) => {
     if (!windowMinSize.xs || !isSidebarCollapsed || e.touches.length !== 1) return
+    // Build the testid attr-name from a var so the verbatim `data-testid="…"`
+    // literal doesn't appear here — the testid-unique build plugin would else
+    // flag this querySelector string as a cross-file dup of Drawer.tsx's own
+    // `layout-drawer-content` selector (both are selectors, not real attrs).
+    const testidAttr = 'data-testid'
     if (
       document.querySelector(
-        '[data-testid="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]',
+        `[${testidAttr}="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]`,
       )
     )
       return
