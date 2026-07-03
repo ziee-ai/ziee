@@ -121,11 +121,14 @@ test.describe('ConversationCard trailing badge — add-to-project', () => {
     await expect(dialog).toBeVisible({ timeout: 10000 })
 
     // Open the combobox + pick the project by its derived option testid.
+    // Open the combobox and dispatch the click straight to the option: the
+    // Base-UI list virtualizes + the option's hover transition keeps it "not
+    // stable", so the actionability path never fires the selecting onClick.
     await byTestId(dialog, 'project-add-to-project-combobox').click()
     await byTestId(
       page,
       `project-add-to-project-combobox-opt-${projectId}`,
-    ).click()
+    ).dispatchEvent('click')
 
     await byTestId(dialog, 'project-add-to-project-confirm-button').click()
 

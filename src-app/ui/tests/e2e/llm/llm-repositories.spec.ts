@@ -90,7 +90,7 @@ test.describe('LLM Repositories - Create Repository', () => {
     await loginAsAdmin(page, baseURL)
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'none',
       enabled: true,
     })
@@ -311,7 +311,9 @@ test.describe('LLM Repositories - Edit Repository', () => {
     const { baseURL } = testInfra
     const repositoryName = `test-prefill-${Date.now()}`
     const username = 'prefilluser123'
-    const endpoint = 'https://prefill.example.com/whoami'
+    // A resolvable host: the backend DNS-validates auth_test_api_endpoint on
+    // create (a non-resolving host → 400). The value just needs to round-trip.
+    const endpoint = 'https://example.com/whoami'
 
     await loginAsAdmin(page, baseURL)
     await createRepository(page, baseURL, {
@@ -548,7 +550,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'none',
       enabled: true,
     })
@@ -566,7 +568,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'bearer_token',
       bearerToken: HF_API_KEY,
       authTestEndpoint: 'https://huggingface.co/api/whoami-v2',
@@ -587,7 +589,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
 
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: `https://huggingface.co/${repositoryName}`,
+      url: `https://huggingface.co/?r=${repositoryName}`,
       authType: 'bearer_token',
       bearerToken: 'hf_invalid_key_12345',
       authTestEndpoint: 'https://huggingface.co/api/whoami-v2',

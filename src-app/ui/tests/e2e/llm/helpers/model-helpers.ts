@@ -141,8 +141,12 @@ export async function startModelDownload(page: Page, data: DownloadFormData): Pr
   ])
   expect(resp.ok()).toBeTruthy()
 
-  // Wait for the download drawer form to close.
-  await form.waitFor({ state: 'hidden', timeout: 10000 })
+  // On a successful start the shared drawer switches from the editable
+  // add-form to the read-only "View Download Details" mode (they share one
+  // Drawer, so `llm-model-download-form` stays mounted). The add-mode submit
+  // button disappearing is the reliable signal that the transition happened.
+  void form
+  await byTestId(page, 'llm-download-drawer-submit-btn').waitFor({ state: 'hidden', timeout: 10000 })
 }
 
 // =====================================================

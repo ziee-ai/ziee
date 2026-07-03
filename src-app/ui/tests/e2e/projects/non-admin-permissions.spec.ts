@@ -3,6 +3,7 @@ import {
   loginAsAdmin,
   login,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   clearAuthState,
 } from '../../common/auth-helpers'
@@ -41,7 +42,7 @@ async function seedProject(
 }
 
 test.describe('Projects — non-admin permission gating on ProjectCard', () => {
-  test('read-only user sees the project but none of the gated action buttons', async ({
+  test('user without edit/delete perms sees the project but not the Edit/Delete buttons', async ({
     page,
     testInfra,
   }) => {
@@ -50,31 +51,38 @@ test.describe('Projects — non-admin permission gating on ProjectCard', () => {
 
     const tag = Date.now().toString(36)
     const projectName = `ReadOnly Target ${tag}`
-    await seedProject(apiURL, adminToken, projectName)
 
-    // A non-admin who can READ projects but cannot create/edit/delete.
+    // A non-admin who can READ + CREATE projects (so they can own one — projects
+    // are owner-scoped) but CANNOT edit or delete. Duplicate follows create.
     const uname = `proj_ro_${tag}`
     await createTestUser(apiURL, adminToken, uname, `${uname}@ex.com`, 'password123', [
       'profile::read',
       'profile::edit',
       'projects::read',
+      'projects::create',
     ])
 
     await clearAuthState(page)
     await login(page, baseURL, uname, 'password123')
+
+    // Projects are owner-scoped (list_for_user), so the project must be owned by
+    // THIS user to appear in their list — seed it with the user's own token.
+    const userToken = await getCurrentUserToken(page)
+    await seedProject(apiURL, userToken, projectName)
     await goToProjectsPage(page, baseURL)
 
     // READ works: the seeded project's card renders for this user.
     const card = getProjectCard(page, projectName)
     await expect(card).toBeVisible({ timeout: 15000 })
 
-    // But every mutating action button is gated away — none render.
+    // Edit + Delete are gated away (no projects::edit / projects::delete)...
     await expect(
       card.locator('[data-testid^="project-card-edit-button-"]'),
     ).toHaveCount(0)
+    // ...while Duplicate is gated by projects::create, which this user HAS.
     await expect(
       card.locator('[data-testid^="project-card-duplicate-button-"]'),
-    ).toHaveCount(0)
+    ).toHaveCount(1)
     await expect(
       card.locator('[data-testid^="project-card-delete-button-"]'),
     ).toHaveCount(0)
