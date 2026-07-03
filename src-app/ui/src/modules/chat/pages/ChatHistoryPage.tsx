@@ -84,33 +84,45 @@ export default function ChatHistoryPage() {
             Chats
           </Title>
 
-          {/* Wide layout: inline search input portal target. */}
-          {!isNarrow && (
-            <div
-              ref={headerSearchRef}
-              className="flex-[0_1_320px] min-w-[200px]"
-            />
-          )}
-
-          {/* Narrow layout: search ICON button that toggles a body
-            * search box. Becomes `variant="default"` when the body search is
-            * open so the active state is visible. */}
-          {isNarrow && (
-            <Tooltip
-              content={searchOpenInNarrow ? 'Hide search' : 'Search'}
-            >
-              <Button
-                data-testid="chat-history-search-toggle-btn"
-                variant={searchOpenInNarrow ? 'default' : 'ghost'}
-                icon={<SearchIcon />}
-                onClick={() => setSearchOpenInNarrow(v => !v)}
-                aria-label={
-                  searchOpenInNarrow ? 'Hide search' : 'Open search'
-                }
-                aria-pressed={searchOpenInNarrow}
+          <div className="flex items-center gap-2 flex-1 justify-end min-w-0">
+            {/* Wide layout: inline search input portal target. */}
+            {!isNarrow && (
+              <div
+                ref={headerSearchRef}
+                className="flex-[0_1_320px] min-w-[200px]"
               />
-            </Tooltip>
-          )}
+            )}
+
+            {/* Narrow layout: search ICON button that toggles a body
+              * search box. Becomes `variant="default"` when the body search is
+              * open so the active state is visible. */}
+            {isNarrow && (
+              <Tooltip
+                content={searchOpenInNarrow ? 'Hide search' : 'Search'}
+              >
+                <Button
+                  data-testid="chat-history-search-toggle-btn"
+                  variant={searchOpenInNarrow ? 'default' : 'ghost'}
+                  icon={<SearchIcon />}
+                  onClick={() => setSearchOpenInNarrow(v => !v)}
+                  aria-label={
+                    searchOpenInNarrow ? 'Hide search' : 'Open search'
+                  }
+                  aria-pressed={searchOpenInNarrow}
+                />
+              </Tooltip>
+            )}
+
+            {/* New chat — filled action, navigates to the new-chat page. */}
+            <Button
+              data-testid="chat-history-header-new-chat-btn"
+              variant="default"
+              size="icon"
+              icon={<Plus />}
+              tooltip="New chat"
+              onClick={() => navigate('/chat')}
+            />
+          </div>
         </div>
       </HeaderBarContainer>
 
