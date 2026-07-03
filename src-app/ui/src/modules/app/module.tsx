@@ -7,6 +7,7 @@ import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 const SetupPage = lazyWithPreload(() => import('./SetupPage'))
+const ScrollProofPage = lazyWithPreload(() => import('./ScrollProofPage'))
 
 /**
  * SetupRedirect — routes to /setup when the app needs first-time admin
@@ -37,6 +38,13 @@ export default createModule({
     {
       path: '/setup',
       element: SetupPage,
+      requiresAuth: false,
+      layout: BlankLayout,
+    },
+    {
+      // Public document-scroll proof for the iOS Safari toolbar-collapse test.
+      path: '/scroll-proof',
+      element: ScrollProofPage,
       requiresAuth: false,
       layout: BlankLayout,
     },
