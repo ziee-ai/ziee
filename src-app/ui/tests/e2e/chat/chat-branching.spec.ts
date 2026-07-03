@@ -422,12 +422,13 @@ test.describe('Chat - Branching', () => {
     const userMsg = page.locator('[data-testid="chat-message"][data-role="user"]').last()
     const editButton = userMsg.locator('[data-testid="edit-message-button"]')
 
-    // The Space wrapping the action buttons must carry both Tailwind tokens
-    // — otherwise the hover-reveal pattern is silently broken. AntD wraps
-    // each child in an `ant-space-item`, so we need a word-boundary class
-    // match (`contains(@class, "ant-space")` would match `ant-space-item`).
+    // The kit <Space> wrapping the action buttons must carry both Tailwind
+    // tokens — otherwise the hover-reveal pattern is silently broken. Post
+    // shadcn migration it renders a plain <div> (no `ant-space` class), so
+    // target the nearest ancestor that actually carries the `opacity-0`
+    // toggle class — that div is the authoritative container.
     const actionsContainer = editButton.locator(
-      'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-space ")][1]',
+      'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " opacity-0 ")][1]',
     )
     const className = (await actionsContainer.getAttribute('class')) ?? ''
     expect(className).toContain('opacity-0')

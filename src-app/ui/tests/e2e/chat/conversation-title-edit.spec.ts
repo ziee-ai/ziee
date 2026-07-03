@@ -33,13 +33,19 @@ test.describe('Conversation title editing', () => {
     await input.fill('Renamed Via UI')
     await input.press('Enter')
 
-    // The header reflects the new title.
-    await expect(page.getByText('Renamed Via UI')).toBeVisible({ timeout: 10000 })
+    // The header reflects the new title. Scope to the header heading — the
+    // renamed title now also appears in the sidebar's recent-conversations
+    // list, so a bare getByText would be a strict-mode (2-element) violation.
+    await expect(
+      page.getByRole('heading', { name: 'Renamed Via UI' }),
+    ).toBeVisible({ timeout: 10000 })
 
     // Reload → the real backend persisted it (PUT /api/conversations/{id}).
     await page.goto(`${baseURL}/chat/${convId}`)
     await page.waitForLoadState('domcontentloaded')
-    await expect(page.getByText('Renamed Via UI')).toBeVisible({ timeout: 15000 })
+    await expect(
+      page.getByRole('heading', { name: 'Renamed Via UI' }),
+    ).toBeVisible({ timeout: 15000 })
     await expect(page.getByText('Original Title')).toHaveCount(0)
   })
 })
