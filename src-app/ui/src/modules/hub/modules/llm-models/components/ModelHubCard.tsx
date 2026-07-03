@@ -268,6 +268,44 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
     }
   }
 
+  // Same README + Download actions as the card, for the detail drawer footer.
+  const hasReadme = !!(model.repository?.url || primarySource)
+  const openReadme = () => {
+    const fallback =
+      primarySource?.registryType === 'huggingface'
+        ? `https://huggingface.co/${primarySource.identifier}/blob/main/README.md`
+        : model.repository?.url
+    const readmeUrl = fallback ?? model.websiteUrl ?? ''
+    if (readmeUrl) window.open(readmeUrl, '_blank')
+  }
+  const drawerFooter =
+    hasReadme || (canDownload && !failedDownload) ? (
+      <Flex justify="end" gap="small">
+        {hasReadme && (
+          <Button
+            variant="outline"
+            icon={<FileText />}
+            data-testid={`hub-model-drawer-readme-btn-${model.name}`}
+            onClick={openReadme}
+          >
+            README
+          </Button>
+        )}
+        {canDownload && !failedDownload && (
+          <Button
+            variant="default"
+            icon={<Download />}
+            data-testid={`hub-model-drawer-download-btn-${model.name}`}
+            onClick={() => handleDownload()}
+            disabled={isModelBeingDownloaded || probing}
+            loading={isModelBeingDownloaded || probing}
+          >
+            {probing ? 'Testing…' : 'Download'}
+          </Button>
+        )}
+      </Flex>
+    ) : undefined
+
   return (
     <>
       <Card
@@ -655,6 +693,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         model={showDetails ? model : null}
         open={showDetails}
         onClose={() => setShowDetails(false)}
+        footer={drawerFooter}
       />
     </>
   )

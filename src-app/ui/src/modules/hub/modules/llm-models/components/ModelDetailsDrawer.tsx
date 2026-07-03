@@ -1,4 +1,5 @@
 import { Eye, Wrench, MessageSquare } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Flex, Tag, Title, Text, Card } from '@/components/ui'
 import type { HubModel } from '@/api-client/types'
@@ -7,17 +8,20 @@ interface ModelDetailsDrawerProps {
   model: HubModel | null
   open: boolean
   onClose: () => void
+  /** README + Download actions (mirrors the card), in the drawer footer. */
+  footer?: ReactNode
 }
 
 export function ModelDetailsDrawer({
   model,
   open,
   onClose,
+  footer,
 }: ModelDetailsDrawerProps) {
   if (!model) return null
 
   return (
-    <Drawer title={model.display_name} open={open} onClose={onClose}>
+    <Drawer title={model.display_name} open={open} onClose={onClose} footer={footer}>
       <Flex direction="column" className="gap-4" data-testid="hub-model-detail-sheet">
         {/* Basic Info */}
         <div>
