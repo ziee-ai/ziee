@@ -43,9 +43,14 @@ export function Dialog({ open, onOpenChange, title, description, footer, size = 
         {/* -mx-4 px-4 breaks the scroll region out to the DialogContent's full
             width so the overlay scrollbar sits flush at the body's right/bottom
             edge (like the settings page), while inner content keeps the p-4
-            gutter. overflow.x hidden = never scroll horizontally. */}
+            gutter. overflow.x hidden = never scroll horizontally.
+            -my-1.5 py-1.5 does the same vertically: the scroll clip would
+            otherwise cut off the focus ring of an input flush at the body's
+            top/bottom edge. The negative margin cancels the padding, so no real
+            height is added (no new scroll); it just moves the clip edge out past
+            the ring. It stays within the 16px gap to the header/footer. */}
         <DivScrollY
-          className="min-h-0 -mx-4 px-4"
+          className="min-h-0 -mx-4 px-4 -my-1.5 py-1.5"
           options={{ overflow: { x: 'hidden' } }}
         >
           {children}
