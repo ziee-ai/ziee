@@ -1,4 +1,4 @@
-import { Info, Bot, Eye, Copy } from 'lucide-react'
+import { Bot, Eye, Copy } from 'lucide-react'
 import { Card, Tag, Button, Flex, Text, message } from '@/components/ui'
 import { Permissions, type HubAssistant } from '@/api-client/types'
 import { useState } from 'react'
@@ -145,16 +145,8 @@ for new users.`,
                 </Flex>
               </div>
               <div className="flex flex-wrap gap-1 items-center justify-end">
-                <Button
-                  icon={<Info />}
-                  onClick={e => {
-                    e.stopPropagation()
-                    setShowDetails(true)
-                  }}
-                  data-testid={`hub-assistant-details-btn-${assistant.name}`}
-                >
-                  Details
-                </Button>
+                {/* Details: the whole card is clickable (opens the drawer), so
+                    no separate Details button is needed. */}
                 {isAlreadyCreated && (
                   <Button
                     icon={<Eye />}

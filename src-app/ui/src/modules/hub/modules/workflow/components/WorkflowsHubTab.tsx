@@ -51,7 +51,7 @@ export function WorkflowsHubTab() {
   }
 
   return (
-    <div className="flex flex-col gap-3 h-full overflow-hidden">
+    <div className="flex flex-col gap-3 h-full overflow-hidden pt-1">
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
           <Input

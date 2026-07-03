@@ -102,7 +102,7 @@ export function McpServersHubTab() {
   }
 
   return (
-    <div className="mcp-servers-hub-tab flex flex-col gap-3 h-full overflow-hidden">
+    <div className="mcp-servers-hub-tab flex flex-col gap-3 h-full overflow-hidden pt-1">
       {/* Search and Filters */}
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">
