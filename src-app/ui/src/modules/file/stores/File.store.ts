@@ -824,7 +824,10 @@ export const useFileStore = create<FileExtensionStore>()(
         state.thumbnailLoadingSet = newSet
       })
       try {
-        const response = await ApiClient.File.getPreview({ file_id: fileId, page: 1 })
+        // Use the dedicated ~300px thumbnail (GET /files/{id}/thumbnail), not
+        // the full-size preview page 1 (~2000px) — the card image only needs a
+        // small image, so this is far lighter to fetch + decode.
+        const response = await ApiClient.File.getThumbnail({ file_id: fileId })
         const objectUrl = URL.createObjectURL(response)
         set((state) => {
           const newUrls = new Map(state.thumbnailUrls)
