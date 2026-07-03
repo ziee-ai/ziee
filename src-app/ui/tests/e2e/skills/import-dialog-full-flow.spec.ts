@@ -1,7 +1,7 @@
 import { gzipSync } from 'node:zlib'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { goToSkillsPage } from './helpers/skill-helpers'
+import { goToSkillsPage, showAllSkills } from './helpers/skill-helpers'
 import { byTestId } from '../testid.ts'
 
 /**
@@ -110,6 +110,11 @@ test.describe('Skills — Import dialog full flow', () => {
     // frontmatter). SKILL_NAME is dynamic data this test created, so a text
     // filter on the skill card is allowed.
     await goToSkillsPage(page, baseURL)
+    // The list is name-sorted + client-paginated at 10; with the built-in
+    // capability skills already present, the freshly imported skill sorts onto
+    // a later page. Show all on one page so the beacon card is asserted
+    // deterministically regardless of how many built-ins exist.
+    await showAllSkills(page)
     await expect(
       page
         .locator('[data-testid^="skill-list-card-"]')

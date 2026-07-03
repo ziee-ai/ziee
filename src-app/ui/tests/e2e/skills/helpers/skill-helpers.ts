@@ -31,6 +31,21 @@ export async function goToAdminSkillsPage(page: Page, baseURL: string) {
 }
 
 /**
+ * Bump the skills list to its largest page size so an item that would
+ * otherwise sort onto a later page (the list is `name ASC` + client-paginated
+ * at 10, and the built-in capability skills already fill the first page) is
+ * visible on a single page. No-op when the list is short enough that the
+ * paginator isn't rendered.
+ */
+export async function showAllSkills(page: Page) {
+  const sizeSelect = byTestId(page, 'skill-list-pagination-page-size')
+  if (await sizeSelect.isVisible().catch(() => false)) {
+    await sizeSelect.click()
+    await byTestId(page, 'skill-list-pagination-page-size-opt-50').click()
+  }
+}
+
+/**
  * Assert the user-facing skills list empty state. The empty-state copy
  * is rendered as an antd `<Empty>` description string (see
  * `SkillsList.tsx`).
