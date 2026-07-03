@@ -48,7 +48,7 @@ export const HeaderBarContainer = ({
       className={cn(
         'w-full flex px-3 border-b border-border box-border py-0',
         nativeScroll
-          ? cn('bg-card', pinned ? 'fixed inset-x-0' : 'relative')
+          ? cn('bg-card', pinned ? 'sticky' : 'relative')
           : 'h-[50px] relative transition-all duration-200 ease-in-out',
         className,
       )}
