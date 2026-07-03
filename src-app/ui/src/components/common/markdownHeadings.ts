@@ -1,5 +1,21 @@
 import { isValidElement, type ReactNode } from 'react'
 
+/**
+ * Streamdown's DEFAULT element classes. Overriding a component replaces its
+ * renderer, so these must be re-applied by hand or the markdown loses its
+ * styling (headings collapse to body text, links lose accent + underline).
+ * Kept in sync with `node_modules/streamdown/dist` (the jsx("hN"/"a", …) calls).
+ */
+export const HEADING_CLASS: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
+  1: 'mt-6 mb-2 font-semibold text-3xl',
+  2: 'mt-6 mb-2 font-semibold text-2xl',
+  3: 'mt-6 mb-2 font-semibold text-xl',
+  4: 'mt-6 mb-2 font-semibold text-lg',
+  5: 'mt-6 mb-2 font-semibold text-base',
+  6: 'mt-6 mb-2 font-semibold text-sm',
+}
+export const LINK_CLASS = 'wrap-anywhere font-medium text-primary underline'
+
 /** Flatten a React node tree to its text content (for deriving a heading slug). */
 export function nodeToText(node: ReactNode): string {
   if (node == null || typeof node === 'boolean') return ''

@@ -4,7 +4,10 @@ import {
   nodeToText,
   slugifyHeading,
   safeDecode,
+  HEADING_CLASS,
+  LINK_CLASS,
 } from '@/components/common/markdownHeadings'
+import { cn } from '@/lib/utils'
 
 /**
  * Returns Streamdown component overrides shared by all markdown renderers in the chat module.
@@ -28,6 +31,8 @@ export function useStreamdownComponents(contentId: string) {
         createElement(`h${level}`, {
           ...props,
           id: headingId(props.children, props.id),
+          // Re-apply Streamdown's default heading class (overriding drops it).
+          className: cn(HEADING_CLASS[level], props.className),
         })
 
     return {
@@ -47,7 +52,13 @@ export function useStreamdownComponents(contentId: string) {
           // Suppressed — the section override renders "References" via <summary>
           return null
         }
-        return <h2 {...props} id={headingId(props.children, props.id)} />
+        return (
+          <h2
+            {...props}
+            id={headingId(props.children, props.id)}
+            className={cn(HEADING_CLASS[2], props.className)}
+          />
+        )
       },
       section(props: JSX.IntrinsicElements['section']) {
         const { children, ...rest } = props
@@ -94,7 +105,8 @@ export function useStreamdownComponents(contentId: string) {
               {...rest}
               id={scopedId}
               href={scopedHref}
-              className={className}
+              // Re-apply Streamdown's default link class (overriding drops it).
+              className={cn(LINK_CLASS, className)}
               onClick={(e) => {
                 e.preventDefault()
                 const target = document.getElementById(scopedHref.slice(1))
@@ -110,7 +122,7 @@ export function useStreamdownComponents(contentId: string) {
           )
         }
         // External links — open in new tab
-        return <a id={scopedId} href={scopedHref} className={className} {...rest} target="_blank" rel="noreferrer" />
+        return <a id={scopedId} href={scopedHref} className={cn(LINK_CLASS, className)} {...rest} target="_blank" rel="noreferrer" />
       },
       blockquote(props: JSX.IntrinsicElements['blockquote']) {
         return (

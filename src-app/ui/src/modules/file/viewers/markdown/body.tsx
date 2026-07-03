@@ -4,7 +4,10 @@ import {
   nodeToText,
   slugifyHeading,
   safeDecode,
+  HEADING_CLASS,
+  LINK_CLASS,
 } from '@/components/common/markdownHeadings'
+import { cn } from '@/lib/utils'
 import { Streamdown } from 'streamdown'
 import { Component, createElement, type ComponentProps, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
@@ -45,6 +48,8 @@ function makeHeading(level: 1 | 2 | 3 | 4 | 5 | 6) {
     return createElement(`h${level}`, {
       ...props,
       id: props.id ?? (slug || undefined),
+      // Re-apply Streamdown's default heading class (overriding drops it).
+      className: cn(HEADING_CLASS[level], props.className),
     })
   }
 }
@@ -53,12 +58,15 @@ function makeHeading(level: 1 | 2 | 3 | 4 | 5 | 6) {
 // letting Streamdown's DEFAULT anchor pop its link-safety modal (which fires for
 // EVERY link, hash anchors included). External links open in a new tab.
 function MdAnchor(props: JSX.IntrinsicElements['a']) {
-  const { href, children, ...rest } = props
+  const { href, children, className, ...rest } = props
+  // Re-apply Streamdown's default link class (overriding drops accent + underline).
+  const cls = cn(LINK_CLASS, className)
   if (href?.startsWith('#')) {
     const targetId = slugifyHeading(safeDecode(href.slice(1)))
     return (
       <a
         {...rest}
+        className={cls}
         href={`#${targetId}`}
         onClick={(e) => {
           e.preventDefault()
@@ -72,7 +80,7 @@ function MdAnchor(props: JSX.IntrinsicElements['a']) {
     )
   }
   return (
-    <a {...rest} href={href} target="_blank" rel="noreferrer">
+    <a {...rest} className={cls} href={href} target="_blank" rel="noreferrer">
       {children}
     </a>
   )
