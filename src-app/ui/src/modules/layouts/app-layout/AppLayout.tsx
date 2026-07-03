@@ -441,7 +441,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           width: windowMinSize.xs ? 250 : currentWidth.current,
           maxWidth: windowMinSize.xs ? 'calc(100vw - 24px)' : undefined,
           transform: isSidebarCollapsed
-            ? 'translateX(-100%)'
+            // -100% lands the sidebar's right edge exactly at x=0, leaving its
+            // 1px border-r (desktop) / ring (mobile) visible as a hairline. The
+            // extra -1px pushes that edge fully off-screen when collapsed.
+            ? 'translateX(calc(-100% - 1px))'
             : 'translateX(0)',
           // No drop shadow on the mobile overlay — the Dialog-style border
           // (className above) provides the separation. (The border lives in
