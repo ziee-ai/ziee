@@ -114,6 +114,7 @@ export function RecentConversationsWidget() {
           data-testid="chat-recent-conversations-menu"
           mode="vertical"
           aria-label="Recent conversations"
+          className="px-2"
           items={items}
           selectedKey={selectedKey}
           onSelect={key => {
