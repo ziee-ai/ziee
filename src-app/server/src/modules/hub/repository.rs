@@ -1,5 +1,4 @@
 // Hub repository
-#![allow(dead_code)]
 
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
@@ -78,6 +77,9 @@ impl HubRepository {
 
     /// The admin-pinned catalog version (without leading `v`), or None
     /// when tracking latest. Reads the hub_settings singleton.
+    // Real DB-backed API (hub_settings.pinned_version) not yet wired to a
+    // route; kept as the repository surface. Narrow allow (was module blanket).
+    #[allow(dead_code)]
     pub async fn get_pinned_version(&self) -> Result<Option<String>, AppError> {
         get_pinned_version(&self.pool).await
     }
@@ -159,6 +161,7 @@ impl HubRepository {
     }
 
     /// Set (or clear, with None) the admin-pinned catalog version.
+    #[allow(dead_code)] // pairs with get_pinned_version; real API, not yet routed
     pub async fn set_pinned_version(
         &self,
         version: Option<&str>,
@@ -714,6 +717,9 @@ pub async fn find_system_mcp_install(
 }
 
 /// Read the pinned catalog version from the hub_settings singleton.
+// Only called by the (not-yet-routed) repo method of the same name; kept as the
+// real hub_settings query. Narrow allow (was module blanket).
+#[allow(dead_code)]
 pub async fn get_pinned_version(pool: &PgPool) -> Result<Option<String>, AppError> {
     let row = sqlx::query!("SELECT pinned_version FROM hub_settings WHERE id = TRUE")
         .fetch_optional(pool)
@@ -722,6 +728,7 @@ pub async fn get_pinned_version(pool: &PgPool) -> Result<Option<String>, AppErro
 }
 
 /// Set or clear the pinned catalog version on the hub_settings singleton.
+#[allow(dead_code)] // pairs with get_pinned_version free fn; real API, not yet routed
 pub async fn set_pinned_version(
     pool: &PgPool,
     version: Option<&str>,

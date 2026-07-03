@@ -8,10 +8,13 @@
 // Constructor helpers (`attached`, `detached`) build `AppEvent` directly
 // so file handlers can call `event_bus.emit_async(FileProjectEvent::attached(...))`
 // without importing the event-bus or AppEvent types.
-#![allow(dead_code)]
 
 use uuid::Uuid;
 
+// Constructed + emitted by the file handlers (attached/detached below), but the
+// payload fields are not yet read by any subscriber — kept as the event's
+// forward-compatible shape. Narrow allow replaces the old module blanket.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum FileProjectEvent {
     /// A file has been attached to a project. Emitted by the

@@ -1,5 +1,4 @@
 // JWT authentication infrastructure
-#![allow(dead_code)]
 
 use aide::OperationIo;
 use axum::{
@@ -66,6 +65,10 @@ where
 
 /// Optional JWT extractor - doesn't fail if token is missing/invalid
 /// Useful for endpoints that can work with or without authentication
+// Real axum `FromRequestParts` extractor API (impl below) for optional-auth
+// routes; no route consumes it yet. Narrow allow (was module blanket) rather
+// than delete a public extractor surface.
+#[allow(dead_code)]
 #[derive(Clone, OperationIo)]
 #[aide(input)]
 pub struct OptionalJwtAuth {

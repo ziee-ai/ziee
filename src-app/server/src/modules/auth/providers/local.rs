@@ -1,5 +1,4 @@
 // Auth provider infrastructure - part of future auth system
-#![allow(dead_code)]
 
 use async_trait::async_trait;
 use sqlx::PgPool;
@@ -13,6 +12,9 @@ use crate::modules::user::User;
 pub struct LocalAuthProvider {
     name: String,
     config: serde_json::Value,
+    // Held for construction-API symmetry with the other providers; queries
+    // currently go through the global `Repos`. Narrow allow (was module blanket).
+    #[allow(dead_code)]
     pool: PgPool,
 }
 

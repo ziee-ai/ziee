@@ -1,5 +1,4 @@
 // Permission extractors
-#![allow(dead_code)]
 
 use std::{marker::PhantomData, sync::Arc};
 
@@ -175,6 +174,10 @@ impl<Perms: PermissionList> FromRequestParts<()> for RequirePermissions<Perms> {
 
 /// Extractor that requires root admin (is_admin = true)
 /// Use this for operations that should ONLY be available to the root admin
+// Real axum extractor API (impl below) paralleling RequirePermissions; no route
+// uses root-admin-only gating yet. Narrow allow (was module blanket) rather
+// than delete a public extractor surface.
+#[allow(dead_code)]
 #[derive(Clone, OperationIo)]
 #[aide(input)]
 pub struct RequireAdmin {
