@@ -64,7 +64,7 @@ export const HeaderBarContainer = ({
               // DIAGNOSTIC: top:20 on the fixed state — if the header anchors
               // 20px from the VIEWPORT top it's free; if from lower down, a
               // containing-block ancestor is trapping it.
-              ...(pinned ? { top: 0.01 } : null),
+              ...(pinned ? { top: 0.5 } : null),
             }
           : null),
         ...style,
