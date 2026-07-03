@@ -1,15 +1,8 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useState,
-  type JSX,
-} from 'react'
+import { memo, useEffect, useState, type JSX } from 'react'
 import { createPortal } from 'react-dom'
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
-import { Maximize2 } from 'lucide-react'
+import { Maximize2, X } from 'lucide-react'
 import { TableCopyDropdown, TableDownloadDropdown } from 'streamdown'
-import { Button } from '@/components/ui'
+import { Button, ScrollArea } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 /**
@@ -17,12 +10,11 @@ import { cn } from '@/lib/utils'
  *
  * Overriding `table` swaps out Streamdown's whole wrapper — which brought a
  * NATIVE `overflow-x-auto` scroller AND a fullscreen control that portals a
- * `fixed inset-0` overlay into document.body. We rebuild it so that:
- *   1. horizontal scrolling uses the app's OverlayScrollbars (auto-hide),
- *      matching every other scroller in the app, and
- *   2. the "fullscreen" affordance instead opens a real blank popup WINDOW and
- *      React-portals the live table into it (a separate browser tab/window,
- *      not an in-page overlay).
+ * `fixed inset-0 z-50` overlay into document.body (too low to clear an open
+ * drawer, which is also z-50 but portal-stacked after it). We rebuild it so:
+ *   1. horizontal scrolling uses the app's OverlayScrollbars (auto-hide), and
+ *   2. "fullscreen" portals an in-page overlay at z-[1000] — above the file
+ *      drawer, below tooltips (z-[2000]) — instead of Streamdown's z-50 one.
  *
  * Copy / download are preserved by reusing Streamdown's own exported controls
  * (`TableCopyDropdown` / `TableDownloadDropdown`), which locate the table via
@@ -33,18 +25,6 @@ const CONTROL_BTN =
   'inline-flex items-center justify-center rounded-md size-7 text-muted-foreground ' +
   'hover:bg-muted hover:text-foreground transition-colors cursor-pointer'
 
-/** Clone the opener's stylesheets into a popup document so the portaled table
- *  renders with the same Tailwind/shadcn styling. Covers both dev (`<style>`
- *  injected by Vite) and prod (`<link rel=stylesheet>`). */
-function copyStylesInto(target: Document) {
-  const nodes = document.querySelectorAll(
-    'style, link[rel="stylesheet"]',
-  )
-  for (const node of Array.from(nodes)) {
-    target.head.appendChild(node.cloneNode(true))
-  }
-}
-
 type TableProps = JSX.IntrinsicElements['table'] & { node?: unknown }
 
 export const MarkdownTable = memo(function MarkdownTable({
@@ -53,43 +33,20 @@ export const MarkdownTable = memo(function MarkdownTable({
   node: _node,
   ...rest
 }: TableProps) {
-  const [popup, setPopup] = useState<{
-    win: Window
-    container: HTMLElement
-  } | null>(null)
+  const [fullscreen, setFullscreen] = useState(false)
 
-  const openPopout = useCallback(() => {
-    const win = window.open(
-      '',
-      '_blank',
-      'width=1024,height=720,scrollbars=yes',
-    )
-    // Popup blocked (should not happen on a direct click gesture) — no-op.
-    if (!win) return
-    win.document.title = 'Table'
-    copyStylesInto(win.document)
-    // Mirror the theme: the light/dark class + data-theme live on <html>.
-    win.document.documentElement.className =
-      document.documentElement.className
-    const theme = document.documentElement.getAttribute('data-theme')
-    if (theme) win.document.documentElement.setAttribute('data-theme', theme)
-    win.document.body.className = 'bg-background text-foreground'
-    const container = win.document.createElement('div')
-    container.className = 'p-6'
-    win.document.body.appendChild(container)
-    win.addEventListener('beforeunload', () => setPopup(null))
-    setPopup({ win, container })
-  }, [])
-
-  // Close the popup if this table unmounts (e.g. navigating away mid-view).
+  // Escape exits fullscreen (mirrors Streamdown's own fullscreen behavior).
   useEffect(() => {
-    return () => {
-      popup?.win.close()
+    if (!fullscreen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFullscreen(false)
     }
-  }, [popup])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fullscreen])
 
-  // A single element description rendered in BOTH the inline scroller and the
-  // popup portal — React mounts it independently in each target.
+  // One element description rendered in BOTH the inline scroller and the
+  // fullscreen overlay — React mounts it independently in each target.
   const table = (
     <table
       data-streamdown="table"
@@ -118,28 +75,44 @@ export const MarkdownTable = memo(function MarkdownTable({
           size="icon"
           variant="ghost"
           className="size-7"
-          tooltip="Open table in a new window"
+          tooltip="View fullscreen"
           icon={<Maximize2 className="size-3.5" />}
-          onClick={openPopout}
-          data-testid="markdown-table-popout-btn"
+          onClick={() => setFullscreen(true)}
+          data-testid="markdown-table-fullscreen-btn"
         />
       </div>
 
-      <OverlayScrollbarsComponent
-        options={{
-          scrollbars: { autoHide: 'leave' },
-          overflow: { y: 'hidden' },
-        }}
-        className="overflow-x-auto rounded-lg border border-border"
-        defer
+      <ScrollArea
+        axis="x"
+        autoHide="leave"
+        className="rounded-lg border border-border"
       >
         {table}
-      </OverlayScrollbarsComponent>
+      </ScrollArea>
 
-      {popup &&
+      {fullscreen &&
         createPortal(
-          <div className="w-full overflow-auto">{table}</div>,
-          popup.container,
+          <div
+            className="fixed inset-0 z-[1000] flex flex-col bg-background"
+            role="dialog"
+            aria-modal="true"
+            data-testid="markdown-table-fullscreen"
+          >
+            <div className="flex items-center justify-end border-b border-border p-2">
+              <Button
+                size="icon"
+                variant="ghost"
+                tooltip="Exit fullscreen"
+                icon={<X />}
+                onClick={() => setFullscreen(false)}
+                data-testid="markdown-table-fullscreen-exit"
+              />
+            </div>
+            <ScrollArea axis="both" className="flex-1 min-h-0">
+              <div className="p-4">{table}</div>
+            </ScrollArea>
+          </div>,
+          document.body,
         )}
     </div>
   )
