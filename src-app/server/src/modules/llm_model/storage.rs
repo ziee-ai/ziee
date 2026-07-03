@@ -1,5 +1,4 @@
 // Model storage
-#![allow(dead_code)]
 
 // Model storage utility for managing model files
 // Adapted from react-test/src-tauri/src/utils/model_storage.rs
@@ -207,7 +206,9 @@ impl ModelStorage {
     }
 
     /// Clear all temporary files from the temp directory
-    /// Called during app startup and shutdown to ensure clean state
+    // Intended for app startup/shutdown clean-state, but not wired into either
+    // lifecycle hook yet — retained ready to hook up.
+    #[allow(dead_code)]
     pub async fn clear_temp_directory() -> Result<(), ModelStorageError> {
         let temp_path = crate::core::get_app_data_dir().join("temp");
 

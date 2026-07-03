@@ -11,7 +11,6 @@
 // leave the project module compiling and running normally — the
 // distributed slice simply collects zero entries from that module.
 
-#![allow(dead_code)]
 
 use aide::axum::ApiRouter;
 use ai_providers::ContentBlock;
@@ -153,6 +152,9 @@ pub trait ProjectExtension: Send + Sync {
     }
 
     /// Initialize extension (called once at startup).
+    // Trait lifecycle hook (default no-op); driven by `initialize_all`, which
+    // isn't wired into startup yet. Retained as the designed extension API.
+    #[allow(dead_code)]
     async fn initialize(&self, _pool: &PgPool) -> Result<(), AppError> {
         Ok(())
     }
@@ -177,6 +179,9 @@ impl ProjectExtensionRegistry {
     }
 
     /// Initialize all registered extensions.
+    // Not yet invoked at startup (no project extension needs init today);
+    // retained for symmetry with chat's ExtensionRegistry lifecycle.
+    #[allow(dead_code)]
     pub async fn initialize_all(&self, pool: &PgPool) -> Result<(), AppError> {
         for ext in &self.extensions {
             ext.initialize(pool).await?;

@@ -1,6 +1,5 @@
 // LLM Repository events for inter-module communication
 // Event infrastructure for future use
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

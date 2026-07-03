@@ -1,5 +1,4 @@
 // LLM Model infrastructure
-#![allow(dead_code)]
 
 // LLM Model models - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/database/models/model.rs and download_instance.rs
@@ -87,6 +86,9 @@ impl DeviceType {
         }
     }
 
+    // Inverse of `as_str` for parsing a stored/config device string; serde
+    // handles the DB round-trip today, so this parser isn't called yet.
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "cpu" => Some(DeviceType::Cpu),
@@ -144,6 +146,9 @@ impl MistralRsCommand {
         }
     }
 
+    // Inverse of `as_str` for parsing a stored command string; serde handles
+    // the round-trip today, so this parser isn't called yet.
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "plain" => Some(MistralRsCommand::Plain),
@@ -240,6 +245,8 @@ pub struct ModelCapabilities {
 
 impl ModelCapabilities {
     /// Create new capabilities with all disabled
+    // Convenience constructor; callers use `::default()` / deserialization today.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -294,6 +301,10 @@ pub struct ModelParameters {
     pub stop: Option<Vec<String>>,
 }
 
+// Preset constructors for the typed generation-parameter vocabulary. Not
+// wired to a caller yet (params arrive via deserialization); retained as the
+// intended preset API (creative/precise tunings).
+#[allow(dead_code)]
 impl ModelParameters {
     /// Create new parameters with default values
     pub fn new() -> Self {
@@ -496,6 +507,8 @@ pub struct MistralRsSettings {
 }
 
 impl MistralRsSettings {
+    // Convenience constructor; settings arrive via deserialization today.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -607,6 +620,8 @@ pub struct LlamaCppSettings {
 }
 
 impl LlamaCppSettings {
+    // Convenience constructor; settings arrive via deserialization today.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -720,33 +735,6 @@ pub struct LlmModel {
     /// Required runtime version for this model
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required_runtime_version_id: Option<Uuid>,
-}
-
-/// Model file database entity
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ModelFile {
-    pub id: Uuid,
-    pub model_id: Uuid,
-    pub filename: String,
-    pub file_path: String,
-    pub file_size_bytes: i64,
-    pub file_type: String,
-    pub upload_status: String,
-    pub uploaded_at: DateTime<Utc>,
-}
-
-/// LLM Repository database entity
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct LlmRepository {
-    pub id: Uuid,
-    pub name: String,
-    pub url: String,
-    pub auth_type: String,
-    pub auth_config: serde_json::Value,
-    pub enabled: bool,
-    pub built_in: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 // =====================================================

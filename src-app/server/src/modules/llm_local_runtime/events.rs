@@ -1,6 +1,5 @@
 // LLM Local Runtime events for inter-module communication
 // Event infrastructure for cache invalidation and UI updates
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -84,6 +83,9 @@ impl LlmLocalRuntimeEvent {
     }
 
     /// Create an InstanceStatusChanged event
+    // Scaffolding: status transitions are surfaced via the sync/SSE path, not
+    // through this event helper yet.
+    #[allow(dead_code)]
     pub fn instance_status_changed(
         instance_id: Uuid,
         model_id: Uuid,
@@ -99,6 +101,8 @@ impl LlmLocalRuntimeEvent {
     }
 
     /// Create a RuntimeVersionDownloaded event
+    // Scaffolding: paired with the not-yet-emitted RuntimeVersionDownloaded flow.
+    #[allow(dead_code)]
     pub fn runtime_version_downloaded(version_id: Uuid, engine: String, version: String) -> Self {
         Self::RuntimeVersionDownloaded {
             version_id,

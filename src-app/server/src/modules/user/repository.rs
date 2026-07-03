@@ -1,5 +1,4 @@
 // User repository infrastructure
-#![allow(dead_code)]
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -177,33 +176,6 @@ impl UserRepository {
         Ok(result)
     }
 
-    /// Create an admin user (only for initial setup)
-    pub async fn create_admin(
-        &self,
-        username: &str,
-        email: &str,
-        password_hash: String,
-        display_name: Option<String>,
-    ) -> Result<User, AppError> {
-        sqlx::query_as!(
-            User,
-            r#"
-            INSERT INTO users (username, email, password_hash, display_name, is_active, is_admin)
-            VALUES ($1, $2, $3, $4, true, true)
-            RETURNING id, username, email, email_verified, password_hash, display_name,
-                      avatar_url, is_active, is_admin, permissions,
-                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
-            "#,
-            username,
-            email,
-            password_hash,
-            display_name
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(AppError::database_error)
-    }
-
     /// Update user
     pub async fn update(
         &self,
@@ -332,20 +304,6 @@ impl UserRepository {
         Ok(())
     }
 
-    /// Delete user
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        sqlx::query!(
-            r#"
-            DELETE FROM users WHERE id = $1
-            "#,
-            id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-        Ok(())
-    }
-
     /// Atomically delete a user only if they are NOT an admin. Returns `true`
     /// if a row was deleted, `false` if no matching non-admin row existed
     /// (either the user is gone, or it became admin since the caller's check).
@@ -466,22 +424,6 @@ impl GroupRepository {
             name
         )
         .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::database_error)
-    }
-
-    /// Get all groups
-    pub async fn get_all(&self) -> Result<Vec<Group>, AppError> {
-        sqlx::query_as!(
-            Group,
-            r#"
-            SELECT id, name, description, permissions, is_system, is_active, is_default,
-                   created_at as "created_at: _", updated_at as "updated_at: _"
-            FROM groups
-            ORDER BY name
-            "#
-        )
-        .fetch_all(&self.pool)
         .await
         .map_err(AppError::database_error)
     }

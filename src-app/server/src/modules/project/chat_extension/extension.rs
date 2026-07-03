@@ -1,5 +1,4 @@
 // Extension registration for the project chat extension.
-#![allow(dead_code)]
 
 use linkme::distributed_slice;
 use sqlx::PgPool;
@@ -20,6 +19,9 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
 /// `conversation.project_id`. Letting clients pass `project_id` on a
 /// per-send request would allow injecting project Y's context into
 /// conversation X — easy mistake; locked out by design.
+// Convention: every chat extension declares a `SendMessageRequestFields`
+// (Deserialize + JsonSchema); this one is intentionally empty (see above).
+#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema, Default)]
 pub struct SendMessageRequestFields {}
 

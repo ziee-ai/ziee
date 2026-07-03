@@ -1,5 +1,4 @@
 // User models
-#![allow(dead_code)]
 
 use axum_login::AuthUser as AuthUserTrait;
 use chrono::{DateTime, Utc};
@@ -51,14 +50,6 @@ impl AuthUserTrait for User {
             .as_ref()
             .map(|h| h.as_bytes())
             .unwrap_or_else(|| self.id.as_bytes())
-    }
-}
-
-impl User {
-    /// Create a sanitized version without sensitive data
-    pub fn sanitized(mut self) -> Self {
-        self.password_hash = None;
-        self
     }
 }
 

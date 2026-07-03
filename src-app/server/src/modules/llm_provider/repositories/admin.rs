@@ -1,5 +1,4 @@
 // Provider repository
-#![allow(dead_code)]
 
 // LLM Provider database queries - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/database/queries/providers.rs and user_group_providers.rs

@@ -1,5 +1,4 @@
 // LLM model repository
-#![allow(dead_code)]
 
 // LLM Model database queries - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/database/queries/models.rs
@@ -623,8 +622,10 @@ pub async fn get_download_instance_by_id(
 
 /// Prune terminal (completed / failed) download-instance rows whose last
 /// update is older than `cutoff`. Cancelled rows are intentionally left to the
-/// existing manual-clear path. Returns the number of rows deleted. Used by the
-/// boot-time retention loop (mirrors mcp tool-call pruning).
+/// existing manual-clear path. Returns the number of rows deleted.
+// Intended for a boot-time retention loop (mirroring mcp tool-call pruning),
+// but that loop is not wired for downloads yet — retained ready to hook up.
+#[allow(dead_code)]
 pub async fn prune_terminal_download_instances(
     pool: &PgPool,
     cutoff: time::OffsetDateTime,
@@ -984,6 +985,9 @@ pub async fn find_existing_in_progress_download(
 }
 
 /// Delete all download instances
+// Bulk-clear helper for a future admin "clear all downloads" action; no
+// handler calls it yet.
+#[allow(dead_code)]
 pub async fn delete_all_downloads(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query!("DELETE FROM download_instances")
         .execute(pool)
