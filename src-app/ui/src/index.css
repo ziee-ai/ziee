@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* Streamdown's streaming keyframes (sd-fadeIn / sd-blurIn / sd-slideUp), used
+ * by <Streamdown isAnimating>. Ships as a ready-made stylesheet in v2. */
+@import "streamdown/styles.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -10,8 +13,14 @@
  * width, so a narrow desktop window still uses hover. */
 @custom-variant hover-none (@media (hover: none));
 
-/* Tailwind v4 only auto-scans the package root; streamdown lives in node_modules
- * so its utility classes must be pointed at explicitly. */
+/* Tailwind v4 only auto-scans this package's own tree; Streamdown bakes all of
+ * its element styling into Tailwind utility classes inside its compiled dist,
+ * so that dist MUST be scanned or the rendered markdown comes out unstyled.
+ * In this monorepo npm hoists deps to the repo-root node_modules (three levels
+ * up from src/), not this workspace's own — the first path is the real one.
+ * The second is a fallback for a non-hoisted install; Tailwind silently ignores
+ * an @source glob that matches nothing, so listing both is safe. */
+@source "../../../node_modules/streamdown/dist/*.js";
 @source "../node_modules/streamdown/dist/*.js";
 
 @theme inline {
