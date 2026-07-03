@@ -21,15 +21,19 @@ function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
 
 /**
  * The nearest enclosing focus-trapping modal layer that base-ui's Dialog does
- * NOT participate in — today only the vaul Drawer (`[data-slot="drawer-content"]`,
- * built on Radix). When a base-ui Dialog is opened from inside such a layer, the
- * layer's focus scope yanks focus back out of our `<body>`-portaled popup, so its
- * inputs can't be typed into and React `onChange` never fires. Portaling the
- * popup INTO that layer's subtree keeps it inside the focus scope. Base-ui Sheets
- * are themselves base-ui Dialogs, so they nest cleanly and are intentionally not
- * matched here.
+ * NOT participate in — a Radix Dialog (the app-layout `Drawer`) or a vaul Drawer
+ * (also Radix-based). When a base-ui Dialog is opened from inside such a layer,
+ * the layer's focus scope yanks focus back out of our `<body>`-portaled popup, so
+ * its inputs can't be typed into and React `onChange` never fires. Portaling the
+ * popup INTO that layer's subtree keeps it inside the focus scope.
+ *
+ * Matches Radix Dialog/AlertDialog content (`role` + `data-state`, which vaul
+ * inherits). Base-ui popups (Sheet, nested kit Dialogs) use `data-open`/
+ * `data-closed` — never `data-state` — so they don't match and keep base-ui's
+ * native, already-working nesting via the default `<body>` portal.
  */
-const HOST_FOCUS_TRAP_SELECTOR = '[data-slot="drawer-content"]'
+const HOST_FOCUS_TRAP_SELECTOR =
+  '[role="dialog"][data-state], [role="alertdialog"][data-state], [data-slot="drawer-content"]'
 
 function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
