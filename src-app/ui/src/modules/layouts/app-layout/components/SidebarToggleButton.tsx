@@ -19,9 +19,18 @@ export function SidebarToggleButton() {
     <div
       className={cn(
         'flex items-center gap-6 mr-4 fixed',
-        // Above the mobile sidebar Sheet (z-50) so the toggle stays on top of
-        // the open sidebar (and above the z-30 header); below Dialog (z-60).
-        nativeScroll ? 'h-[40px] z-[55]' : 'h-[50px] z-10',
+        // z-index depends on whether the left sidebar Sheet is open:
+        //  • sidebar OPEN (!collapsed → Sheet showing, z-50): sit ABOVE it
+        //    (z-55) so the toggle stays reachable to close the sidebar.
+        //  • sidebar COLLAPSED (Sheet closed): drop to z-35 — still above the
+        //    z-30 header, but BELOW a right Drawer's z-40 scrim, so an open
+        //    right Drawer paints over the toggle. The two states are mutually
+        //    exclusive (a right Drawer only opens while the sidebar is
+        //    collapsed), so this single flag covers both without tracking
+        //    drawer state.
+        nativeScroll
+          ? cn('h-[40px]', isSidebarCollapsed ? 'z-[35]' : 'z-[55]')
+          : 'h-[50px] z-10',
       )}
       style={{
         left: 12,
