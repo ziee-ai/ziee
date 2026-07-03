@@ -293,6 +293,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       )
     )
       return
+    // Don't hijack a horizontal scroller (e.g. the chat-input file list): if the
+    // touch starts inside an element that can scroll horizontally, let it scroll.
+    for (
+      let el = e.target as HTMLElement | null;
+      el && el.id !== 'main-content';
+      el = el.parentElement
+    ) {
+      const cs = getComputedStyle(el)
+      const scrollableX =
+        cs.overflowX === 'auto' ||
+        cs.overflowX === 'scroll' ||
+        el.hasAttribute('data-overlayscrollbars-viewport')
+      if (scrollableX && el.scrollWidth > el.clientWidth + 1) return
+    }
     const t = e.touches[0]
     pageSwipe.current = { x: t.clientX, y: t.clientY, active: false }
   }
