@@ -7,6 +7,10 @@ use aide::axum::{
 use axum::routing::get;
 
 use super::handlers::*;
+use super::session_settings::{
+    get_session_settings, get_session_settings_docs, update_session_settings,
+    update_session_settings_docs,
+};
 
 /// Public + user auth routes — mounted at `/auth`.
 ///
@@ -38,6 +42,12 @@ pub fn auth_routes() -> ApiRouter {
         // First-Broker-Login confirmation: user proves ownership of
         // an existing local account by re-entering its password.
         .api_route("/link-account", post_with(link_account, link_account_docs))
+        // Deployment-wide JWT session settings (admin-gated singleton).
+        .api_route(
+            "/session-settings",
+            get_with(get_session_settings, get_session_settings_docs)
+                .put_with(update_session_settings, update_session_settings_docs),
+        )
         // OAuth redirects return raw HTTP redirects (not JSON), so they
         // skip aide. Apple uses POST (form_post); everything else uses GET.
         .route("/oauth/{provider_name}/authorize", get(oauth_authorize))

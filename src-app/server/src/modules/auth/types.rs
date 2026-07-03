@@ -29,7 +29,13 @@ pub struct LoginRequest {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RefreshTokenRequest {
-    pub refresh_token: String,
+    /// The refresh token. Optional: web clients omit it and the server
+    /// reads the httpOnly `ziee_refresh` cookie instead; desktop/tunnel
+    /// clients keep sending it in the body. An explicit body token wins
+    /// over the cookie, and the response mirrors the source (body-in→
+    /// body-out, cookie-in→cookie-out).
+    #[serde(default)]
+    pub refresh_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

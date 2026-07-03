@@ -94,6 +94,13 @@ server:
     allow_headers:
       - "Content-Type"
       - "Authorization"
+      # Only needed for CROSS-ORIGIN browser deployments (SPA served from a
+      # different origin than the API): the web client sends this to opt into
+      # httpOnly refresh-token cookies on the token-minting endpoints. Same-
+      # origin deployments (the default; SPA served by this server, or a
+      # same-origin reverse proxy) don't need it. Cross-origin cookie mode
+      # additionally requires allow_credentials + explicit (non-"*") origins.
+      - "X-Refresh-Cookie"
 
 # Logging settings
 logging:
@@ -105,8 +112,13 @@ jwt:
   secret: "dev-secret-change-in-production-min-32-chars-long"
   issuer: "ziee"
   audience: "ziee-api"
-  access_token_expiry_hours: 24  # Access token expires in 24 hours
-  refresh_token_expiry_days: 30  # Refresh token expires in 30 days
+  # NOTE (migration 129): the two lifetimes below are the INITIAL SEED for
+  # the DB-backed `session_settings` singleton, copied in exactly once at
+  # first boot. Thereafter admins manage them on /settings/sessions and
+  # edits here are ignored (they remain the fallback if the DB read fails
+  # at token-mint time).
+  access_token_expiry_hours: 24  # Access token TTL (clients silently refresh)
+  refresh_token_expiry_days: 30  # Max session length (idle bound; rolls on refresh)
 
 # Code sandbox (bwrap-isolated code execution exposed as a built-in MCP server).
 # Disabled by default; flip `enabled: true` after installing bubblewrap +

@@ -53,6 +53,9 @@ server:
   cors:
     allow_origins: ["https://chat.example.com"]
     allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    # Add "X-Refresh-Cookie" ONLY for cross-origin browser deployments (SPA on
+    # a different origin than the API) — the web client sends it to opt into
+    # httpOnly refresh-token cookies. Same-origin deployments don't need it.
     allow_headers: ["Content-Type", "Authorization"]
 
 # Logging
@@ -65,6 +68,9 @@ jwt:
   secret: "REPLACE_ME_WITH_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
   issuer: "ziee"
   audience: "ziee-api"
+  # Initial seed for the DB-backed session settings (migration 129):
+  # copied into the DB once at first boot; manage on /settings/sessions
+  # afterwards. Kept as the mint-time fallback if the DB read fails.
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
 

@@ -4051,7 +4051,14 @@ export interface RebuildStatus {
 }
 
 export interface RefreshTokenRequest {
-  refresh_token: string
+  /**
+   * The refresh token. Optional: web clients omit it and the server
+   *  reads the httpOnly `ziee_refresh` cookie instead; desktop/tunnel
+   *  clients keep sending it in the body. An explicit body token wins
+   *  over the cookie, and the response mirrors the source (body-in→
+   *  body-out, cookie-in→cookie-out).
+   */
+  refresh_token?: string
 }
 
 export interface RegisterRequest {
@@ -4829,6 +4836,18 @@ export interface ServerGroupsRequest {
   group_ids: string[]
 }
 
+/** Deployment-wide JWT session settings (singleton row). Returned by GET. */
+export interface SessionSettings {
+  /** Access-token TTL in hours (1..=8760). */
+  access_token_expiry_hours: number
+  /**
+   * Max session length in days (1..=3650) — the refresh-token TTL.
+   *  Active sessions roll on every refresh, so this is the idle bound.
+   */
+  refresh_token_expiry_days: number
+  updated_at: string
+}
+
 /**
  * POST /api/remote-access/admin-password request.
  *
@@ -5111,7 +5130,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5649,6 +5668,12 @@ export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
   idle_unload_secs?: number
+}
+
+/** PUT body for the session settings. Every field optional → absent = leave. */
+export interface UpdateSessionSettingsRequest {
+  access_token_expiry_hours?: number
+  refresh_token_expiry_days?: number
 }
 
 export interface UpdateSkill {
@@ -6379,6 +6404,8 @@ export enum Permissions {
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
   ServerUpdateRead = 'server_update::read',
+  SessionSettingsManage = 'auth::session_settings::manage',
+  SessionSettingsRead = 'auth::session_settings::read',
   SkillsAssignToGroups = 'skills::assign_to_groups',
   SkillsInstall = 'skills::install',
   SkillsManageSystem = 'skills::manage_system',
@@ -6512,6 +6539,8 @@ export const PermissionDescriptions: Record<string, string> = {
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
   ServerUpdateRead: 'View the cached server update-availability status.',
+  SessionSettingsManage: 'Update session settings (access-token TTL + max session length).',
+  SessionSettingsRead: 'Read session settings (access-token TTL + max session length).',
   SkillsAssignToGroups: 'Manage group assignments for system-scope skills',
   SkillsInstall: 'Install user-scope skills (from hub or local import)',
   SkillsManageSystem: 'Install / edit / delete system-scope skills (admin)',
@@ -6558,6 +6587,7 @@ export const ApiEndpoints = {
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
   'Auth.changePassword': 'POST /api/auth/password',
   'Auth.getConfig': 'GET /api/auth/config',
+  'Auth.getSessionSettings': 'GET /api/auth/session-settings',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
@@ -6569,6 +6599,7 @@ export const ApiEndpoints = {
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
   'Auth.updateProfile': 'POST /api/auth/profile',
+  'Auth.updateSessionSettings': 'PUT /api/auth/session-settings',
   'AuthProviders.create': 'POST /api/admin/auth-providers',
   'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
   'AuthProviders.list': 'GET /api/admin/auth-providers',
@@ -6931,6 +6962,7 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
   'Auth.changePassword': ChangePasswordRequest
   'Auth.getConfig': void
+  'Auth.getSessionSettings': void
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
@@ -6942,6 +6974,7 @@ export type ApiEndpointParameters = {
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
   'Auth.updateProfile': UpdateProfileRequest
+  'Auth.updateSessionSettings': UpdateSessionSettingsRequest
   'AuthProviders.create': CreateAuthProviderRequest
   'AuthProviders.delete': { id: string }
   'AuthProviders.list': void
@@ -7304,6 +7337,7 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.update': Assistant
   'Auth.changePassword': void
   'Auth.getConfig': AuthConfigResponse
+  'Auth.getSessionSettings': SessionSettings
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
@@ -7315,6 +7349,7 @@ export type ApiEndpointResponses = {
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
   'Auth.updateProfile': User
+  'Auth.updateSessionSettings': SessionSettings
   'AuthProviders.create': CreateAuthProviderResponse
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]

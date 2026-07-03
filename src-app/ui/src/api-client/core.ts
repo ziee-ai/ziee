@@ -24,6 +24,62 @@ export const getAuthToken = () => {
   }
 }
 
+// ─────────────────────── Silent-refresh integration ───────────────────────
+//
+// Module-level holder for the auth store's refreshSession, mirroring the
+// sync connection-id holder (core/sync/connection.ts) to avoid an import
+// cycle: the Auth store imports the api-client, so the api-client cannot
+// import the Auth store back — it registers itself here in its __init__.
+
+let onUnauthorized: (() => Promise<boolean>) | null = null
+
+/** Register (or clear) the handler `callAsync` awaits on a 401 before
+ *  retrying the request once with the refreshed token. Returns true when
+ *  a fresh token landed. */
+export const setUnauthorizedHandler = (
+  handler: (() => Promise<boolean>) | null,
+): void => {
+  onUnauthorized = handler
+}
+
+// Endpoints where a 401 is a NORMAL outcome (bad credentials, revoked
+// refresh token, wrong link password, …) — never trigger a silent
+// refresh + retry for these, or a failed login would burn a rotation
+// (and Auth.refresh itself would recurse).
+const AUTH_REFRESH_EXEMPT = new Set<string>([
+  'POST /api/auth/login',
+  'POST /api/auth/register',
+  'POST /api/auth/refresh',
+  'POST /api/auth/logout',
+  'POST /api/auth/link-account',
+  'POST /api/auth/login-password-only',
+  'POST /api/auth/magic-link/exchange',
+  'POST /api/app/setup/admin',
+  // Change-password returns 401 INVALID_CREDENTIALS on a wrong CURRENT
+  // password — a normal outcome, not an expired session. Exempt so a
+  // wrong-password attempt doesn't burn a refresh rotation and silently
+  // re-submit the mutation.
+  'POST /api/auth/password',
+])
+
+// Token-minting endpoints where a BROWSER client opts in to cookie-mode
+// delivery (`X-Refresh-Cookie: 1` → the refresh token arrives as an
+// httpOnly Set-Cookie and the JSON body's copy is blanked). Desktop
+// Tauri windows keep body tokens (no header); note the served-over-
+// tunnel phone pages hit desktop-only endpoints that are not listed
+// here, and `/api/auth/refresh` obeys body-in→body-out regardless.
+const COOKIE_MODE_ENDPOINTS = new Set<string>([
+  'POST /api/auth/login',
+  'POST /api/auth/register',
+  'POST /api/auth/refresh',
+  'POST /api/auth/link-account',
+  'POST /api/app/setup/admin',
+])
+
+const isTauri = (): boolean =>
+  typeof window !== 'undefined' &&
+  Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__)
+
 export { getBaseUrl }
 
 // Files upload progress callback type
@@ -76,6 +132,12 @@ export const callAsync = async <U extends ApiEndpointUrl>(
     const token = getAuthToken()
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
+    }
+
+    // Browser clients opt in to httpOnly-cookie refresh-token delivery
+    // on the token-minting endpoints (see COOKIE_MODE_ENDPOINTS).
+    if (!isTauri() && COOKIE_MODE_ENDPOINTS.has(endpointUrl)) {
+      headers['X-Refresh-Cookie'] = '1'
     }
 
     const method = endpointUrl.split(' ')[0] as
@@ -350,6 +412,38 @@ export const callAsync = async <U extends ApiEndpointUrl>(
           if (err instanceof Error && err.name === 'AbortError') throw err
           if (!retryableGet || attempt >= 5) throw err
           await new Promise(r => setTimeout(r, 200 * 2 ** attempt))
+        }
+      }
+
+      // Silent-refresh on 401: the access token expired mid-session
+      // (e.g. laptop woke from sleep past exp). Ask the auth store to
+      // rotate it via /api/auth/refresh, then retry the request ONCE
+      // with the fresh token. Safe for the SSE branch too — at this
+      // point no stream bytes have been consumed. Skipped for the auth
+      // endpoints where 401 is a normal outcome, and when no handler is
+      // registered (auth store not initialized yet). A false return
+      // (refresh failed → session cleared) falls through to the normal
+      // 401 error handling below.
+      if (
+        response.status === 401 &&
+        onUnauthorized &&
+        !AUTH_REFRESH_EXEMPT.has(endpointUrl)
+      ) {
+        // The handler (Auth.store.refreshSession) is internally guarded,
+        // but its navigator.locks.request wrapper can itself reject in
+        // edge webview states — never let that replace the original 401.
+        const refreshed = await onUnauthorized().catch(() => false)
+        if (refreshed) {
+          const freshToken = getAuthToken()
+          if (freshToken) {
+            headers['Authorization'] = `Bearer ${freshToken}`
+          }
+          response = await fetch(`${bUrl}${endpointPath}`, {
+            method,
+            headers,
+            body,
+            signal: abortController?.signal,
+          })
         }
       }
 

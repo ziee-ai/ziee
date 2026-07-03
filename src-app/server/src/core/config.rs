@@ -531,9 +531,20 @@ pub struct JwtConfig {
     pub secret: String,
     pub issuer: String,
     pub audience: String,
+    /// Initial seed + DB-read fallback since migration 129: the live value
+    /// is the `session_settings.access_token_expiry_hours` row (admin-
+    /// configurable), copied from this field exactly once at first boot.
     pub access_token_expiry_hours: i64,
+    /// Initial seed + DB-read fallback (see access_token_expiry_hours).
     #[serde(default = "default_refresh_token_expiry")]
     pub refresh_token_expiry_days: i64,
+    /// DEBUG-ONLY test seam: overrides the access-token TTL with a
+    /// seconds-granularity value so integration/e2e suites can exercise
+    /// token expiry without waiting hours. Honored only under
+    /// `cfg!(debug_assertions)` — physically inert in release builds
+    /// (same pattern as `SYNC_RECHECK_TICK_MS`).
+    #[serde(default)]
+    pub access_token_expiry_seconds: Option<i64>,
 }
 
 fn default_refresh_token_expiry() -> i64 {

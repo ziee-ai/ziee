@@ -158,18 +158,16 @@ pub async fn login_password_only(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Whitelist the refresh token so /auth/logout can revoke it. The
-    // legacy `generate_tokens` path issues a non-revocable refresh
-    // token that survives logout for the full 7-day TTL — bad for a
-    // phone session on a shared device.
-    let with_jti = jwt_service
-        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    ziee::refresh_tokens::register(
-        Repos.pool(),
-        with_jti.refresh_jti,
+    // The shared mint path: admin-configured lifetimes + a whitelisted
+    // (jti-registered) refresh token so /auth/logout can revoke it — a
+    // non-revocable token surviving logout is bad for a phone session on
+    // a shared device.
+    let with_jti = ziee::refresh_tokens::mint_session_tokens(
+        &jwt_service,
         user.id,
-        with_jti.refresh_expires_at,
+        &user.username,
+        &user.email,
+        user.is_admin,
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;

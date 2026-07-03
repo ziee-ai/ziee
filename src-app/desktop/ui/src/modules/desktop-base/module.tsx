@@ -5,7 +5,10 @@
  * - Desktop environment detection
  * - Tauri-driven auto-login (retried with backoff until the embedded
  *   server is ready)
- * - Proactive token refresh before expiry
+ * - PERMANENT sessions: the shared Auth store's silent refresh (75% of
+ *   lifetime + sleep/wake watchdog) keeps the token fresh, and a
+ *   registered fallback re-mints via `auto_login` if a refresh ever
+ *   fails — the local desktop user is never bounced to a login page.
  */
 
 import { createModule, type AppModule } from '@ziee/ui-core'
@@ -24,8 +27,6 @@ declare module '@/core/stores' {
 const RETRY_BACKOFF_MS = [500, 1000, 2000, 4000, 5000]
 const RETRY_DEADLINE_MS = 30_000
 
-// Token refresh timer (separate lifecycle from bootstrap).
-let refreshTimer: ReturnType<typeof setTimeout> | null = null
 let cleanupRequested = false
 
 function backoff(attempt: number): number {
@@ -33,21 +34,13 @@ function backoff(attempt: number): number {
 }
 
 function applyTokens(authData: AutoLoginResponse): void {
+  // The shared Auth store captures the body refresh token + expires_in
+  // and runs the proactive silent refresh + sleep/wake watchdog. (This
+  // module previously kept its own single 80%-of-lifetime setTimeout —
+  // which never fires when the machine sleeps through it, the root
+  // cause of the desktop mid-work auto-logout — deleted in favor of the
+  // shared machinery.)
   Stores.Auth.setAuthFromAutoLogin(authData)
-
-  if (refreshTimer) {
-    clearTimeout(refreshTimer)
-    refreshTimer = null
-  }
-
-  // Proactive refresh at 80% of token lifetime.
-  if (authData.expires_in) {
-    const refreshIn = authData.expires_in * 0.8 * 1000
-    refreshTimer = setTimeout(() => {
-      console.log('[Desktop] Proactively refreshing token...')
-      void runAutoLoginWithRetry()
-    }, refreshIn)
-  }
 }
 
 async function runAutoLoginWithRetry(): Promise<void> {
@@ -135,15 +128,23 @@ const desktopBaseModule: AppModule = createModule({
 
     cleanupRequested = false
     console.log('[Desktop] Tauri environment detected; starting auto-login')
+
+    // Permanence hook: if the shared silent refresh ever fails with a
+    // 401 (revoked/expired refresh token — e.g. the machine slept past
+    // the full session length), re-mint locally via auto_login instead
+    // of clearing auth. The embedded server trusts the local user, so
+    // the desktop session never ends up on a login screen.
+    Stores.Auth.setRefreshFallback(async () => {
+      console.log('[Desktop] Token refresh failed; re-minting via auto_login')
+      await runAutoLoginWithRetry()
+    })
+
     void runAutoLoginWithRetry()
   },
 
   cleanup: async () => {
     cleanupRequested = true
-    if (refreshTimer) {
-      clearTimeout(refreshTimer)
-      refreshTimer = null
-    }
+    Stores.Auth.setRefreshFallback(null)
     Stores.Bootstrap.__state.reset()
     console.log('[Desktop] Desktop base module cleaned up')
   },

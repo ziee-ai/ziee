@@ -370,6 +370,15 @@ pub struct TestServerOptions {
     /// config section (module default = enabled). `Some(false)` disables the
     /// whole control surface (no MCP row, no route).
     pub control_mcp_enabled: Option<bool>,
+    /// DEBUG-ONLY seconds-granularity access-token TTL, written as
+    /// `jwt.access_token_expiry_seconds` in the test config. Lets a test
+    /// exercise real token expiry in seconds instead of hours (the seam
+    /// is honored only under `cfg!(debug_assertions)`, which the test
+    /// server binary is). `None` omits the line (24h default).
+    pub access_token_expiry_seconds: Option<i64>,
+    /// Override `jwt.refresh_token_expiry_days` in the test config
+    /// (seed value for `session_settings` on first boot).
+    pub refresh_token_expiry_days: Option<i64>,
 }
 
 impl TestServer {
@@ -525,8 +534,8 @@ jwt:
   issuer: "ziee"
   audience: "ziee-api"
   access_token_expiry_hours: 24
-  refresh_token_expiry_days: 30
-
+  refresh_token_expiry_days: {refresh_days}
+{access_seconds}
 # At-rest secret storage key — enables pgcrypto encryption on api_key /
 # token / password columns. See common/secret.rs. Closes 06-llm-provider
 # F-02 once the repository wiring lands.
@@ -538,6 +547,11 @@ secrets:
             rl_enabled = rl_enabled,
             rl_per_sec = rl_per_sec,
             rl_burst = rl_burst,
+            refresh_days = opts.refresh_token_expiry_days.unwrap_or(30),
+            access_seconds = opts
+                .access_token_expiry_seconds
+                .map(|s| format!("  access_token_expiry_seconds: {s}\n"))
+                .unwrap_or_default(),
         );
 
         // Optional code_sandbox section. Only written when the test

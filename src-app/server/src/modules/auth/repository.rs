@@ -529,15 +529,22 @@ impl AuthRepository {
         Ok(link_token)
     }
 
-    /// Best-effort cleanup of expired oauth_sessions + pending_account_links
-    /// rows. Designed to be called from a periodic background task or
-    /// at server boot; safe to invoke at any time. Returns
-    /// `(sessions_pruned, pending_links_pruned)` counts.
+    /// Best-effort cleanup of expired oauth_sessions, pending_account_links,
+    /// and stale refresh_tokens rows. Designed to be called from a periodic
+    /// background task or at server boot; safe to invoke at any time.
+    /// Returns `(sessions_pruned, pending_links_pruned, refresh_tokens_pruned)`
+    /// counts.
     ///
     /// Even with the per-row TTL columns, rows we never re-touch (a
     /// user who abandons the OAuth dance mid-flow) would otherwise
-    /// accumulate forever — both tables would grow without bound.
-    pub async fn cleanup_expired_auth_rows(&self) -> Result<(u64, u64), AppError> {
+    /// accumulate forever — the tables would grow without bound.
+    ///
+    /// Refresh tokens keep a 7-day post-expiry/post-revocation buffer:
+    /// revoked rows must outlive the 30s rotation-grace window (and stay
+    /// visible for a while for audit/debugging), and there is no reason
+    /// to keep them longer. Desktop deployments mint a session per app
+    /// launch, so without this the table grows one row per launch.
+    pub async fn cleanup_expired_auth_rows(&self) -> Result<(u64, u64, u64), AppError> {
         let s = sqlx::query!(
             r#"DELETE FROM oauth_sessions WHERE expires_at < NOW()"#
         )
@@ -550,6 +557,16 @@ impl AuthRepository {
         .execute(&self.pool)
         .await
         .map_err(AppError::database_error)?;
-        Ok((s.rows_affected(), p.rows_affected()))
+        let r = sqlx::query!(
+            r#"
+            DELETE FROM refresh_tokens
+            WHERE expires_at < NOW() - INTERVAL '7 days'
+               OR (revoked_at IS NOT NULL AND revoked_at < NOW() - INTERVAL '7 days')
+            "#
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok((s.rows_affected(), p.rows_affected(), r.rows_affected()))
     }
 }

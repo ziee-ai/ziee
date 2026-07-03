@@ -38,3 +38,28 @@ impl PermissionCheck for AuthProvidersManage {
         "Create, update, delete, enable/disable, and test auth providers.";
     const MODULE: &'static str = "auth";
 }
+
+/// Read the deployment-wide session settings (access-token TTL + max
+/// session length). Implicitly held by Administrators via `*`; no seed
+/// migration needed.
+pub struct SessionSettingsRead;
+
+impl PermissionCheck for SessionSettingsRead {
+    const NAME: &'static str = "SessionSettingsRead";
+    const PERMISSION: &'static str = "auth::session_settings::read";
+    const DESCRIPTION: &'static str =
+        "Read session settings (access-token TTL + max session length).";
+    const MODULE: &'static str = "auth";
+}
+
+/// Mutate the deployment-wide session settings. Changes apply to tokens
+/// minted from that moment on; existing tokens keep their original exp.
+pub struct SessionSettingsManage;
+
+impl PermissionCheck for SessionSettingsManage {
+    const NAME: &'static str = "SessionSettingsManage";
+    const PERMISSION: &'static str = "auth::session_settings::manage";
+    const DESCRIPTION: &'static str =
+        "Update session settings (access-token TTL + max session length).";
+    const MODULE: &'static str = "auth";
+}
