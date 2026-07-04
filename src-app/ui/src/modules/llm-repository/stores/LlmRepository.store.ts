@@ -1,16 +1,14 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type {
-  CreateLlmRepositoryRequest,
-  LlmRepository,
-  LlmRepositoryWithHealthWarning,
-  TestRepositoryConnectionRequest,
-  UpdateLlmRepositoryRequest,
+import {
+  type CreateLlmRepositoryRequest,
+  type LlmRepository,
+  type LlmRepositoryWithHealthWarning,
+  Permissions,
+  type TestRepositoryConnectionRequest,
+  type UpdateLlmRepositoryRequest,
 } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 import {
   emitLlmRepositoryAutoDisabled,
   emitLlmRepositoryCreated,
@@ -18,488 +16,236 @@ import {
   emitLlmRepositoryUpdated,
 } from '@/modules/llm-repository/events'
 
-interface LlmRepositoryState {
-  // Data
-  repositories: LlmRepository[]
-  isInitialized: boolean
-
-  // Pagination state — drives the settings page's <Pagination>.
-  // Backend `LlmRepository.list` returns
-  // `{ repositories, total, page, per_page }`.
-  currentPage: number
-  pageSize: number
-  total: number
-
-  // Loading states
-  loading: boolean
-  creating: boolean
-  updating: boolean
-  deleting: boolean
-  testing: boolean
-
-  // Error state
-  error: string | null
-
-  // Actions
-  loadLlmRepositories: (page?: number, pageSize?: number) => Promise<void>
-  // Returns the wrapper so callers can react to a `connection_warning`
-  // (drawer flips the Enabled switch back to off, list page renders
-  // the Alert via the recorded health columns).
-  createLlmRepository: (
-    data: CreateLlmRepositoryRequest,
-  ) => Promise<LlmRepositoryWithHealthWarning>
-  updateLlmRepository: (
-    id: string,
-    data: UpdateLlmRepositoryRequest,
-  ) => Promise<LlmRepository>
-  deleteLlmRepository: (id: string) => Promise<void>
-  testLlmRepositoryConnection: (
-    data: TestRepositoryConnectionRequest,
-  ) => Promise<{ success: boolean; message: string }>
-  // Test an EXISTING repository by id. The backend merges the form
-  // `overrides` over the persisted row (so write-only secrets the
-  // user hasn't re-typed fall back to the saved value), then probes,
-  // records the outcome to `last_health_check_*`, and — on a
-  // currently-enabled row that fails — auto-disables + emits
-  // `llm_repository.auto_disabled`. On success it emits
-  // `llm_repository.updated` so the drawer's `editingRepository`
-  // re-syncs with the new health columns and the Alert clears.
-  testLlmRepositoryById: (
-    id: string,
-    overrides: UpdateLlmRepositoryRequest,
-  ) => Promise<{ success: boolean; message: string }>
-  clearLlmRepositoryStoreError: () => void
-  findLlmRepositoryById: (id: string) => LlmRepository | undefined
-  llmRepositoryHasCredentials: (repository: LlmRepository) => boolean
-
-  __init__: {
-    __store__?: () => void
-    repositories: () => Promise<void>
-  }
-
-  __destroy__?: () => void
-}
-
-export const useLlmRepositoryStore = create<LlmRepositoryState>()(
-  subscribeWithSelector(
-    (set, get): LlmRepositoryState => ({
-      // Initial state
-      repositories: [],
-      isInitialized: false,
-      // Pagination defaults match the settings page's
-      // pageSizeOptions={['5','10','20','50']}.
-      currentPage: 1,
-      pageSize: 10,
-      total: 0,
-      loading: false,
-      creating: false,
-      updating: false,
-      deleting: false,
-      testing: false,
-      error: null,
-
-      // Repository actions. Page-changes from the UI re-invoke this
-      // with explicit page/pageSize; `__init__` calls it with no args
-      // for the initial load. We only skip a fresh call when one is
-      // already in flight — explicit pagination requests always run.
-      loadLlmRepositories: async (page?: number, pageSize?: number) => {
-        if (!hasPermissionNow(Permissions.LlmRepositoriesRead)) {
-          return
-        }
-        const state = get()
-        if (state.loading) {
-          return
-        }
-        const nextPage = page ?? state.currentPage
-        const nextPageSize = pageSize ?? state.pageSize
-        try {
-          set({ loading: true, error: null })
-
-          const response = await ApiClient.LlmRepository.list({
-            page: nextPage,
-            per_page: nextPageSize,
-          })
-
-          set({
-            repositories: response.repositories,
-            total: response.total,
-            currentPage: response.page,
-            pageSize: response.per_page,
-            isInitialized: true,
-            loading: false,
-          })
-        } catch (error) {
-          set({
-            error:
-              error instanceof Error
-                ? error.message
-                : 'Failed to load repositories',
-            loading: false,
-          })
-          throw error
-        }
-      },
-
-      createLlmRepository: async (data: CreateLlmRepositoryRequest) => {
-        const state = get()
-        if (state.creating) {
-          return Promise.resolve(null as any)
-        }
-
+export const LlmRepositoryStoreDef = defineStore('LlmRepository', {
+  state: {
+    repositories: [] as LlmRepository[],
+    isInitialized: false,
+    // Pagination defaults match the settings page's pageSizeOptions.
+    currentPage: 1,
+    pageSize: 10,
+    total: 0,
+    loading: false,
+    creating: false,
+    updating: false,
+    deleting: false,
+    testing: false,
+    error: null as string | null,
+  },
+  actions: (set, get) => {
+    // Page-changes re-invoke with explicit page/pageSize; init calls with no
+    // args. Only skip when a load is already in flight.
+    const loadLlmRepositories = async (page?: number, pageSize?: number) => {
+      if (!hasPermissionNow(Permissions.LlmRepositoriesRead)) return
+      const state = get()
+      if (state.loading) return
+      const nextPage = page ?? state.currentPage
+      const nextPageSize = pageSize ?? state.pageSize
+      try {
+        set({ loading: true, error: null })
+        const response = await ApiClient.LlmRepository.list({
+          page: nextPage,
+          per_page: nextPageSize,
+        })
+        set({
+          repositories: response.repositories,
+          total: response.total,
+          currentPage: response.page,
+          pageSize: response.per_page,
+          isInitialized: true,
+          loading: false,
+        })
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Failed to load repositories',
+          loading: false,
+        })
+        throw error
+      }
+    }
+    return {
+      loadLlmRepositories,
+      createLlmRepository: async (
+        data: CreateLlmRepositoryRequest,
+      ): Promise<LlmRepositoryWithHealthWarning> => {
+        if (get().creating) return Promise.resolve(null as any)
         try {
           set({ creating: true, error: null })
-
-          // Response shape is `{ repository, connection_warning? }`
-          // — the backend probes when `enabled: true` and auto-flips
-          // to `enabled: false` on probe failure. The wrapper lets
-          // callers react to a populated `connection_warning`
-          // without re-fetching the row.
+          // Response `{ repository, connection_warning? }` (flattened): the
+          // backend probes when enabled:true and auto-flips on failure.
           const wrapped = await ApiClient.LlmRepository.create(data)
-
-          // Emit the standard created event so all listeners see the
-          // new row (whether probe passed or downgraded). The wrapper
-          // already carries the canonical `enabled` state.
           try {
-            // `wrapped` is flattened: the LlmRepository fields are at
-            // top level alongside the optional `connection_warning`.
-            // Pass the wrapper directly — its LlmRepository fields
-            // satisfy the event's repository shape.
             await emitLlmRepositoryCreated(wrapped)
           } catch (eventError) {
-            console.error(
-              'Failed to emit llm repository created event:',
-              eventError,
-            )
+            console.error('Failed to emit llm repository created event:', eventError)
           }
-
-          // When the probe downgraded the row, also emit the
-          // `auto_disabled` event so the settings page reloads its
-          // list and the new `unhealthy` Alert renders.
+          // On downgrade, also emit auto_disabled so the settings page reloads
+          // and renders the `unhealthy` Alert.
           if (wrapped.connection_warning) {
             try {
-              await emitLlmRepositoryAutoDisabled(
-                wrapped.id,
-                wrapped.connection_warning.reason,
-              )
+              await emitLlmRepositoryAutoDisabled(wrapped.id, wrapped.connection_warning.reason)
             } catch (eventError) {
-              console.error(
-                'Failed to emit llm repository auto_disabled event:',
-                eventError,
-              )
+              console.error('Failed to emit llm repository auto_disabled event:', eventError)
             }
           }
-
           set({ creating: false })
-
           return wrapped
         } catch (error) {
           set({
-            error:
-              error instanceof Error
-                ? error.message
-                : 'Failed to create repository',
+            error: error instanceof Error ? error.message : 'Failed to create repository',
             creating: false,
           })
           throw error
         }
       },
-
       updateLlmRepository: async (
         id: string,
         data: UpdateLlmRepositoryRequest,
-      ) => {
-        const state = get()
-        if (state.updating) {
-          return Promise.resolve(null as any)
-        }
-
+      ): Promise<LlmRepository> => {
+        if (get().updating) return Promise.resolve(null as any)
         try {
           set({ updating: true, error: null })
-
-          const repository = await ApiClient.LlmRepository.update({
-            repository_id: id,
-            ...data,
-          })
-
-          // Emit event after successful API call
-          // Event handler will update state (no manual state update here)
+          const repository = await ApiClient.LlmRepository.update({ repository_id: id, ...data })
           try {
             await emitLlmRepositoryUpdated(repository)
           } catch (eventError) {
-            console.error(
-              'Failed to emit llm repository updated event:',
-              eventError,
-            )
+            console.error('Failed to emit llm repository updated event:', eventError)
           }
-
           set({ updating: false })
-
           return repository
         } catch (error) {
-          // An enable-transition probe failure (400
-          // LLM_REPOSITORY_ENABLE_FAILED_HEALTH_CHECK) leaves the row
-          // disabled + marked `unhealthy` server-side. Emit auto_disabled
-          // so the settings list reloads and the inline "unhealthy" Alert
-          // renders deterministically — without waiting on the SSE event
-          // round-trip (which the create path already does on downgrade).
+          // An enable-transition probe failure (400) leaves the row disabled +
+          // `unhealthy` server-side. Emit auto_disabled so the list reloads
+          // deterministically without waiting on the SSE round-trip.
           const code = (error as { error_code?: string })?.error_code
           if (code === 'LLM_REPOSITORY_ENABLE_FAILED_HEALTH_CHECK') {
             try {
               await emitLlmRepositoryAutoDisabled(
                 id,
-                error instanceof Error
-                  ? error.message
-                  : 'Connection probe failed',
+                error instanceof Error ? error.message : 'Connection probe failed',
               )
             } catch (eventError) {
-              console.error(
-                'Failed to emit llm repository auto_disabled event:',
-                eventError,
-              )
+              console.error('Failed to emit llm repository auto_disabled event:', eventError)
             }
           }
           set({
-            error:
-              error instanceof Error
-                ? error.message
-                : 'Failed to update repository',
+            error: error instanceof Error ? error.message : 'Failed to update repository',
             updating: false,
           })
           throw error
         }
       },
-
       deleteLlmRepository: async (id: string) => {
-        const state = get()
-        if (state.deleting) {
-          return
-        }
-
+        if (get().deleting) return
         try {
           set({ deleting: true, error: null })
-
           await ApiClient.LlmRepository.delete({ repository_id: id })
-
-          // Emit event after successful API call
-          // Event handler will update state (no manual state update here)
           try {
             await emitLlmRepositoryDeleted(id)
           } catch (eventError) {
-            console.error(
-              'Failed to emit llm repository deleted event:',
-              eventError,
-            )
+            console.error('Failed to emit llm repository deleted event:', eventError)
           }
-
           set({ deleting: false })
         } catch (error) {
           set({
-            error:
-              error instanceof Error
-                ? error.message
-                : 'Failed to delete repository',
+            error: error instanceof Error ? error.message : 'Failed to delete repository',
             deleting: false,
           })
           throw error
         }
       },
-
       testLlmRepositoryConnection: async (
         data: TestRepositoryConnectionRequest,
-      ) => {
-        const state = get()
-        if (state.testing) {
-          return {
-            success: false,
-            message: 'Repository connection test already in progress',
-          }
+      ): Promise<{ success: boolean; message: string }> => {
+        if (get().testing) {
+          return { success: false, message: 'Repository connection test already in progress' }
         }
-
         try {
           set({ testing: true, error: null })
-
           const result = await ApiClient.LlmRepository.test(data)
-
           set({ testing: false })
-
           return result
         } catch (error) {
           set({
             error:
-              error instanceof Error
-                ? error.message
-                : 'Failed to test repository connection',
+              error instanceof Error ? error.message : 'Failed to test repository connection',
             testing: false,
           })
           throw error
         }
       },
-
       testLlmRepositoryById: async (
         id: string,
         overrides: UpdateLlmRepositoryRequest,
-      ) => {
-        const state = get()
-        if (state.testing) {
-          return {
-            success: false,
-            message: 'Repository connection test already in progress',
-          }
+      ): Promise<{ success: boolean; message: string }> => {
+        if (get().testing) {
+          return { success: false, message: 'Repository connection test already in progress' }
         }
-
         try {
           set({ testing: true, error: null })
-
-          // The endpoint takes the row id in the path + the same
-          // shape as UpdateLlmRepositoryRequest in the body. Form
-          // fields the user changed override; empty secrets fall
-          // back to the persisted decrypted secret server-side.
-          // The backend emits `updated` / `auto_disabled` events;
-          // the store's existing listeners pick those up and reload
-          // the list + sync the editing row in the drawer.
-          const result = await ApiClient.LlmRepository.testById({
-            repository_id: id,
-            ...overrides,
-          })
-
+          // Endpoint takes the row id + UpdateLlmRepositoryRequest body; changed
+          // fields override, empty secrets fall back server-side.
+          const result = await ApiClient.LlmRepository.testById({ repository_id: id, ...overrides })
           set({ testing: false })
-
-          // The test persisted a fresh health status (healthy/unhealthy)
-          // server-side. Re-fetch the canonical row and emit `updated` so
-          // the list + open drawer reflect it deterministically — the
-          // backend's SSE event round-trip is unreliable in tests and on
-          // flaky networks.
+          // The test persisted a fresh health status; re-fetch + emit `updated`
+          // so the list + open drawer reflect it (SSE round-trip is unreliable).
           try {
-            const fresh = await ApiClient.LlmRepository.get({
-              repository_id: id,
-            })
+            const fresh = await ApiClient.LlmRepository.get({ repository_id: id })
             await emitLlmRepositoryUpdated(fresh)
           } catch (refreshError) {
-            console.error(
-              'Failed to refresh repository after connection test:',
-              refreshError,
-            )
+            console.error('Failed to refresh repository after connection test:', refreshError)
           }
-
           return result
         } catch (error) {
           set({
             error:
-              error instanceof Error
-                ? error.message
-                : 'Failed to test repository connection',
+              error instanceof Error ? error.message : 'Failed to test repository connection',
             testing: false,
           })
           throw error
         }
       },
-
       clearLlmRepositoryStoreError: () => {
         set({ error: null })
       },
-
-      findLlmRepositoryById: (id: string) => {
-        return get().repositories.find(r => r.id === id)
-      },
-
-      llmRepositoryHasCredentials: (repository: LlmRepository) => {
-        // 09-llm-repository F-02 closure made api_key / password /
-        // token write-only — they're never returned by the server.
-        // We can't introspect them from the response anymore. The
-        // server-side validate_auth_config_for_create/update already
-        // refuses to persist an api_key auth_type with an empty
-        // api_key, so if a repo exists with auth_type != 'none' we
-        // can trust the credentials are set.
-        //
-        // The basic_auth case is partially checkable client-side
-        // because username (non-secret) still rides along — but
-        // password is hidden, so we treat the same way for
-        // consistency.
-        if (repository.auth_type === 'none') {
-          return true
-        }
-        // auth_type is api_key / basic_auth / bearer_token — server
-        // guarantees credentials are populated.
+      findLlmRepositoryById: (id: string): LlmRepository | undefined =>
+        get().repositories.find(r => r.id === id),
+      llmRepositoryHasCredentials: (repository: LlmRepository): boolean => {
+        // Secrets (api_key/password/token) are write-only — never returned. The
+        // server refuses to persist an api_key auth_type with an empty key, so a
+        // row with auth_type != 'none' has credentials set.
+        if (repository.auth_type === 'none') return true
         return true
       },
+    }
+  },
+  init: ({ on, get, set, actions }) => {
+    on('llm_repository.created', event => {
+      set(state => ({ repositories: [...state.repositories, event.data.repository] }))
+    })
+    on('llm_repository.updated', event => {
+      set(state => ({
+        repositories: state.repositories.map(r =>
+          r.id === event.data.repository.id ? event.data.repository : r,
+        ),
+      }))
+    })
+    on('llm_repository.deleted', event => {
+      set(state => ({
+        repositories: state.repositories.filter(r => r.id !== event.data.repositoryId),
+      }))
+    })
+    // Cross-device sync: loadLlmRepositories self-gates + skips while in flight.
+    const reload = () => void actions.loadLlmRepositories()
+    on('sync:llm_repository', reload)
+    on('sync:reconnect', reload)
+    // Connection-health auto-disable: reload to surface the new health columns.
+    // Boot-time auto-disables don't emit this (no EventBus yet at module init);
+    // the settings page's mount-time load catches those.
+    on('llm_repository.auto_disabled', () => {
+      void actions.loadLlmRepositories(get().currentPage, get().pageSize)
+    })
+    void actions.loadLlmRepositories()
+  },
+})
 
-      __init__: {
-        __store__: () => {
-          const eventBus = Stores.EventBus
-          const GROUP = 'LlmRepositoryStore'
-
-          // Subscribe to llm_repository.created
-          eventBus.on(
-            'llm_repository.created',
-            async event => {
-              const { repository } = event.data
-              set(state => ({
-                repositories: [...state.repositories, repository],
-              }))
-            },
-            GROUP,
-          )
-
-          // Subscribe to llm_repository.updated
-          eventBus.on(
-            'llm_repository.updated',
-            async event => {
-              const { repository } = event.data
-              set(state => ({
-                repositories: state.repositories.map(r =>
-                  r.id === repository.id ? repository : r,
-                ),
-              }))
-            },
-            GROUP,
-          )
-
-          // Subscribe to llm_repository.deleted
-          eventBus.on(
-            'llm_repository.deleted',
-            async event => {
-              const { repositoryId } = event.data
-              set(state => ({
-                repositories: state.repositories.filter(
-                  r => r.id !== repositoryId,
-                ),
-              }))
-            },
-            GROUP,
-          )
-
-          // Cross-device sync: reload on a server-pushed change or on
-          // reconnect. `loadLlmRepositories` self-gates on the read
-          // permission and skips while a load is in flight.
-          const reload = () => void get().loadLlmRepositories()
-          eventBus.on('sync:llm_repository', reload, GROUP)
-          eventBus.on('sync:reconnect', reload, GROUP)
-
-          // Connection-health auto-disable: the backend's enforcement
-          // just flipped a row to `enabled = false` because its probe
-          // failed. The canonical state (including the new
-          // `last_health_check_*` columns) lives in the DB; reload to
-          // surface them in the UI's Alert + Switch state. Boot-time
-          // auto-disables do NOT emit this — the EventBus isn't built
-          // yet at module init; the settings page's mount-time
-          // `loadLlmRepositories` catches those.
-          eventBus.on(
-            'llm_repository.auto_disabled',
-            async () => {
-              await get().loadLlmRepositories(
-                get().currentPage,
-                get().pageSize,
-              )
-            },
-            GROUP,
-          )
-        },
-        repositories: () => get().loadLlmRepositories(),
-      },
-
-      __destroy__: () => {
-        Stores.EventBus.removeGroupListeners('LlmRepositoryStore')
-      },
-    }),
-  ),
-)
+export const useLlmRepositoryStore = LlmRepositoryStoreDef.store
