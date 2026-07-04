@@ -1,137 +1,78 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
-  Permissions,
   type CodeSandboxResourceLimits,
+  Permissions,
   type UpdateCodeSandboxResourceLimits,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 
 /**
- * Runtime-configurable resource caps for the code sandbox (Plan 1 §6).
- *
- * Single singleton row exposed via `/api/code-sandbox/resource-limits`.
- * The page reads on first mount via the `__init__.limits` hook, then PATCHes
- * the diff on save. The server invalidates its in-process cache on a
- * successful PUT, so the next `execute_command` picks up the new caps —
- * no restart needed.
+ * Runtime-configurable resource caps for the code sandbox (singleton row via
+ * `/api/code-sandbox/resource-limits`). Read on first mount, PATCH the diff on
+ * save. The server invalidates its in-process cache on a successful PUT so the
+ * next `execute_command` picks up the new caps — no restart.
  */
-interface SandboxResourceLimitsStore {
-  limits: CodeSandboxResourceLimits | null
-  loading: boolean
-  saving: boolean
-  error: string | null
+export const SandboxResourceLimits = defineStore('SandboxResourceLimits', {
+  immer: true,
+  state: {
+    limits: null as CodeSandboxResourceLimits | null,
+    loading: false,
+    saving: false,
+    error: null as string | null,
+  },
+  actions: set => ({
+    loadLimits: async () => {
+      set(s => {
+        s.loading = true
+        s.error = null
+      })
+      try {
+        const res = await ApiClient.CodeSandbox.getResourceLimits(undefined)
+        set(s => {
+          s.limits = res
+          s.loading = false
+        })
+      } catch (e: any) {
+        set(s => {
+          s.error = e?.message ?? 'Failed to load resource limits'
+          s.loading = false
+        })
+      }
+    },
+    saveLimits: async (patch: UpdateCodeSandboxResourceLimits) => {
+      set(s => {
+        s.saving = true
+        s.error = null
+      })
+      try {
+        const res = await ApiClient.CodeSandbox.updateResourceLimits(patch)
+        set(s => {
+          s.limits = res
+          s.saving = false
+        })
+      } catch (e: any) {
+        set(s => {
+          s.error = e?.message ?? 'Failed to save resource limits'
+          s.saving = false
+        })
+        throw e
+      }
+    },
+  }),
+  init: ({ on, actions }) => {
+    // Singleton row. Refetch on a remote change or SSE reconnect. Self-gate the
+    // refetch (no-403 reconnect rule): sync:reconnect fires for every store
+    // regardless of audience, so a user without resource-limits read must not
+    // refetch. The perm MUST equal the GET's read-perm.
+    const reload = () => {
+      if (!hasPermissionNow(Permissions.CodeSandboxResourceLimitsRead)) return
+      void actions.loadLimits()
+    }
+    on('sync:code_sandbox_settings', reload)
+    on('sync:reconnect', reload)
+    void actions.loadLimits()
+  },
+})
 
-  __init__: {
-    __store__?: () => void
-    limits?: () => Promise<void>
-  }
-
-  __destroy__?: () => void
-
-  loadLimits: () => Promise<void>
-  saveLimits: (patch: UpdateCodeSandboxResourceLimits) => Promise<void>
-}
-
-export const useSandboxResourceLimitsStore =
-  create<SandboxResourceLimitsStore>()(
-    subscribeWithSelector(
-      immer((set, get) => ({
-        limits: null,
-        loading: false,
-        saving: false,
-        error: null,
-
-        __init__: {
-          __store__: () => {
-            const eventBus = Stores.EventBus
-            const GROUP = 'SandboxResourceLimitsStore'
-            // Code-sandbox resource-limit settings (singleton). Refetch on a
-            // remote change (the event id is nil — it's a singleton row) or on
-            // SSE reconnect. SELF-GATE the refetch: `sync:reconnect` fires for
-            // every store regardless of the user's permissions, so without this
-            // a user lacking resource-limits read would 403 on reconnect (the
-            // no-403-reconnect rule). The perm checked MUST equal the read-perm
-            // the GET endpoint enforces. Mirrors SandboxRootfsVersions.store.
-            // SSE reconnect.
-            // Self-gate the refetch (the no-403 reconnect rule): sync:reconnect
-            // fires for every store regardless of audience, so a user without
-            // resource-limits read must not refetch (the GET would 403).
-            // Mirrors SandboxRootfsVersions.store's reload gate.
-            const reload = () => {
-              if (!hasPermissionNow(Permissions.CodeSandboxResourceLimitsRead))
-                return
-              void get().loadLimits()
-            }
-            eventBus.on('sync:code_sandbox_settings', reload, GROUP)
-            eventBus.on('sync:reconnect', reload, GROUP)
-          },
-          limits: async () => {
-            set(s => {
-              s.loading = true
-              s.error = null
-            })
-            try {
-              const res =
-                await ApiClient.CodeSandbox.getResourceLimits(undefined)
-              set(s => {
-                s.limits = res
-                s.loading = false
-              })
-            } catch (e: any) {
-              set(s => {
-                s.error = e?.message ?? 'Failed to load resource limits'
-                s.loading = false
-              })
-            }
-          },
-        },
-
-        loadLimits: async () => {
-          set(s => {
-            s.loading = true
-            s.error = null
-          })
-          try {
-            const res = await ApiClient.CodeSandbox.getResourceLimits(undefined)
-            set(s => {
-              s.limits = res
-              s.loading = false
-            })
-          } catch (e: any) {
-            set(s => {
-              s.error = e?.message ?? 'Failed to load resource limits'
-              s.loading = false
-            })
-          }
-        },
-
-        saveLimits: async (patch: UpdateCodeSandboxResourceLimits) => {
-          set(s => {
-            s.saving = true
-            s.error = null
-          })
-          try {
-            const res = await ApiClient.CodeSandbox.updateResourceLimits(patch)
-            set(s => {
-              s.limits = res
-              s.saving = false
-            })
-          } catch (e: any) {
-            set(s => {
-              s.error = e?.message ?? 'Failed to save resource limits'
-              s.saving = false
-            })
-            throw e
-          }
-        },
-
-        __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('SandboxResourceLimitsStore')
-        },
-      })),
-    ),
-  )
+export const useSandboxResourceLimitsStore = SandboxResourceLimits.store

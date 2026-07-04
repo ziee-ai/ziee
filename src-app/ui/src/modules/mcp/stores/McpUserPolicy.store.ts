@@ -1,136 +1,99 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type {
-  McpUserPolicy,
+  McpUserPolicy as McpUserPolicyRow,
   UpdateMcpUserPolicyRequest,
 } from '@/api-client/types'
+import { defineStore } from '@/core/store-kit'
 import type { StoreProxy } from '@/core/stores'
 import { emitMcpUserPolicyUpdated } from '@/modules/mcp/events/emitters'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 
 /**
- * State shape — REACTIVITY CONTRACT:
- *
- * The `policy` field is a STATE PROPERTY. Reading it via
- * `const { policy } = Stores.McpUserPolicy` from inside a React
- * component installs a `useStore` subscription (see core/stores.ts) —
- * the component re-renders when the policy mutates.
- *
- * There used to be function-typed accessors (`canUserAddMcp`,
- * `allowedTransports`, …) on this store. They were REMOVED because
- * function-typed proxy properties bypass the subscription path and
- * silently produce stale renders. Consumers MUST compute these
- * locally from the `policy` state — that pattern is short and
- * fully reactive:
+ * REACTIVITY CONTRACT: `policy` is a STATE PROPERTY. Reading it via
+ * `const { policy } = Stores.McpUserPolicy` from a component installs a
+ * subscription (re-renders on mutation). Function-typed accessors were REMOVED
+ * because function-typed proxy props bypass the subscription path and go stale;
+ * compute derived values locally from `policy`:
  *
  *   const { policy } = Stores.McpUserPolicy
  *   const allowedTransports = policy?.allowed_transports ?? []
  *   const canUserAddMcp = allowedTransports.length > 0
  *
- * In non-component code (event handlers, async callbacks) use
- * `Stores.McpUserPolicy.__state.policy` to read the snapshot
- * without installing a subscription.
+ * In non-component code use `Stores.McpUserPolicy.$.policy` for a snapshot.
  */
-interface McpUserPolicyState {
-  policy: McpUserPolicy | null
-  loading: boolean
-  error: string | null
-  isInitialized: boolean
+export const McpUserPolicy = defineStore('McpUserPolicy', {
+  immer: true,
+  state: {
+    policy: null as McpUserPolicyRow | null,
+    loading: false,
+    error: null as string | null,
+    isInitialized: false,
+  },
+  actions: (set, get) => ({
+    load: async () => {
+      if (get().loading) return
+      // Endpoint is gated on `mcp_servers::read`; short-circuit when the user
+      // lacks it (leave policy: null — consumers treat that as "no restrictions
+      // surfaced") so the no-403 fixture doesn't flag a missing UI gate.
+      const auth = useAuthStore.getState()
+      const hasMcpRead =
+        auth.user?.is_admin ||
+        (auth.permissions ?? []).some(
+          p => p === 'mcp_servers::read' || p === '*' || p === 'mcp_servers::*',
+        )
+      if (!hasMcpRead) {
+        set(state => {
+          state.isInitialized = true
+        })
+        return
+      }
+      set(state => {
+        state.loading = true
+        state.error = null
+      })
+      try {
+        const policy = await ApiClient.McpUserPolicy.get()
+        set(state => {
+          state.policy = policy
+          state.loading = false
+          state.isInitialized = true
+        })
+      } catch (err: any) {
+        // Defensive — gracefully degrade on any unexpected error.
+        const errorMessage = err?.message ?? String(err)
+        set(state => {
+          state.loading = false
+          state.error = errorMessage
+          state.isInitialized = true
+        })
+      }
+    },
+    update: async (req: UpdateMcpUserPolicyRequest) => {
+      const policy = await ApiClient.McpUserPolicy.update(req)
+      set(state => {
+        state.policy = policy
+        state.error = null
+      })
+      await emitMcpUserPolicyUpdated(
+        policy.allowed_transports,
+        policy.user_stdio_sandbox_flavor ?? null,
+      )
+    },
+    clearError: () => {
+      set(state => {
+        state.error = null
+      })
+    },
+  }),
+  init: ({ actions }) => {
+    void actions.load()
+  },
+})
 
-  // Actions
-  load: () => Promise<void>
-  update: (req: UpdateMcpUserPolicyRequest) => Promise<void>
-  clearError: () => void
-
-  __init__?: { __store__?: () => void }
-}
+export const useMcpUserPolicyStore = McpUserPolicy.store
 
 declare module '../../../core/stores' {
   interface RegisteredStores {
-    McpUserPolicy: StoreProxy<McpUserPolicyState>
+    McpUserPolicy: StoreProxy<ReturnType<typeof McpUserPolicy.store.getState>>
   }
 }
-
-export const useMcpUserPolicyStore = create<McpUserPolicyState>()(
-  subscribeWithSelector(
-    immer((set, get) => ({
-      policy: null,
-      loading: false,
-      error: null,
-      isInitialized: false,
-
-      load: async () => {
-        if (get().loading) return
-        // Permission pre-check: the endpoint is gated on
-        // `mcp_servers::read`. Users without that perm get a 403, and
-        // the test-suite's `no-403` fixture flags any unexpected 403
-        // as a missing-UI-gate failure. Short-circuit here when the
-        // current user lacks the perm — leave `policy: null`, which
-        // every consumer (HubPage tab gate, McpServerDrawer transport
-        // filter, McpUserPolicyCard) already handles as "no
-        // restrictions surfaced for this user".
-        const auth = useAuthStore.getState()
-        const hasMcpRead =
-          auth.user?.is_admin ||
-          (auth.permissions ?? []).some(
-            p => p === 'mcp_servers::read' || p === '*' || p === 'mcp_servers::*',
-          )
-        if (!hasMcpRead) {
-          set(state => {
-            state.isInitialized = true
-          })
-          return
-        }
-        set(state => {
-          state.loading = true
-          state.error = null
-        })
-        try {
-          const policy = await ApiClient.McpUserPolicy.get()
-          set(state => {
-            state.policy = policy
-            state.loading = false
-            state.isInitialized = true
-          })
-        } catch (err: any) {
-          // Defensive catch — still gracefully degrade on any
-          // unexpected error so the rest of the UI keeps working.
-          const errorMessage = err?.message ?? String(err)
-          set(state => {
-            state.loading = false
-            state.error = errorMessage
-            state.isInitialized = true
-          })
-        }
-      },
-
-      update: async (req: UpdateMcpUserPolicyRequest) => {
-        const policy = await ApiClient.McpUserPolicy.update(req)
-        set(state => {
-          state.policy = policy
-          state.error = null
-        })
-        await emitMcpUserPolicyUpdated(
-          policy.allowed_transports,
-          policy.user_stdio_sandbox_flavor ?? null,
-        )
-      },
-
-      clearError: () => {
-        set(state => {
-          state.error = null
-        })
-      },
-
-      __init__: {
-        // Loaded on first access — see ../module.tsx for the Stores
-        // registration that hooks this in.
-        __store__: () => {
-          void useMcpUserPolicyStore.getState().load()
-        },
-      },
-    })),
-  ),
-)
