@@ -100,7 +100,7 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           data-testid="file-delimited-truncated-alert"
         />
       )}
-      <ScrollArea axis="both" className="flex-1 min-h-0 w-full">
+      <ScrollArea axis="both" className="max-h-full min-h-0 w-full">
         <Table
           columns={columns}
           dataSource={dataSource}

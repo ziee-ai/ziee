@@ -148,7 +148,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
             data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
           />
         )}
-        <ScrollArea axis="both" className="flex-1 min-h-0 w-full">
+        <ScrollArea axis="both" className="max-h-full min-h-0 w-full">
           <Table
             columns={columns}
             dataSource={dataSource}
