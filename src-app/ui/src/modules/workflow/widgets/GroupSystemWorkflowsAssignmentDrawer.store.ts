@@ -1,83 +1,21 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import type { Group } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 
-interface GroupSystemWorkflowsAssignmentState {
-  isOpen: boolean
-  selectedGroup: Group | null
+/** Open/selected-group state for the System Workflows assignment drawer. */
+export const GroupSystemWorkflowsAssignment = defineStore('GroupSystemWorkflowsAssignment', {
+  state: { isOpen: false, selectedGroup: null as Group | null },
+  actions: set => ({
+    openDrawer: (group: Group) => set({ isOpen: true, selectedGroup: group }),
+    closeDrawer: () => set({ isOpen: false, selectedGroup: null }),
+  }),
+  init: ({ on, get, set, actions }) => {
+    on('group.updated', event => {
+      if (get().selectedGroup?.id === event.data.group.id) set({ selectedGroup: event.data.group })
+    })
+    on('group.deleted', event => {
+      if (get().selectedGroup?.id === event.data.groupId) actions.closeDrawer()
+    })
+  },
+})
 
-  openDrawer: (group: Group) => void
-  closeDrawer: () => void
-
-  __init__: {
-    __store__: () => void
-  }
-  __destroy__?: () => void
-}
-
-/**
- * Open/selected-group state for the System Workflows assignment drawer.
- * Mirrors the MCP `GroupSystemMcpServersAssignmentDrawer.store`.
- */
-export const useGroupSystemWorkflowsAssignmentStore =
-  create<GroupSystemWorkflowsAssignmentState>()(
-    subscribeWithSelector(
-      immer((set, get) => ({
-        isOpen: false,
-        selectedGroup: null,
-
-        __init__: {
-          __store__: () => {
-            const GROUP = 'GroupSystemWorkflowsAssignmentDrawerStore'
-            const eventBus = Stores.EventBus
-
-            eventBus.on(
-              'group.updated',
-              async event => {
-                const { group } = event.data
-                if (get().selectedGroup?.id === group.id) {
-                  set(state => {
-                    state.selectedGroup = group
-                  })
-                }
-              },
-              GROUP,
-            )
-
-            eventBus.on(
-              'group.deleted',
-              async event => {
-                const { groupId } = event.data
-                if (get().selectedGroup?.id === groupId) {
-                  get().closeDrawer()
-                }
-              },
-              GROUP,
-            )
-          },
-        },
-
-        openDrawer: (group: Group) => {
-          set(state => {
-            state.isOpen = true
-            state.selectedGroup = group
-          })
-        },
-
-        closeDrawer: () => {
-          set(state => {
-            state.isOpen = false
-            state.selectedGroup = null
-          })
-        },
-
-        __destroy__: () => {
-          Stores.EventBus.removeGroupListeners(
-            'GroupSystemWorkflowsAssignmentDrawerStore',
-          )
-        },
-      })),
-    ),
-  )
+export const useGroupSystemWorkflowsAssignmentStore = GroupSystemWorkflowsAssignment.store
