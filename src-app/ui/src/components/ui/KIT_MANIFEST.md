@@ -417,11 +417,12 @@ _No always-required props._
 | `data-testid` | `string` | Test selector — forwarded onto the menu content <root>. Items derive `${testid}-item-${key}`. |
 | `items` | `DropdownItem[]` |  |
 
-<details><summary>Optional props (7)</summary>
+<details><summary>Optional props (8)</summary>
 
 | prop | type | notes |
 |---|---|---|
 | `align` | `"center" | "start" | "end" | undefined` |  |
+| `collisionAvoidance` | `CollisionAvoidance | undefined` | Collision handling for the align axis. Defaults to Base UI's `flip`, which swaps start↔end near a viewport edge; pass `{ align: 'shift' }… |
 | `defaultOpen` | `boolean | undefined` | Initial open state when uncontrolled (legacy `defaultOpen`). |
 | `disabled` | `boolean | undefined` | Disables the trigger (legacy `disabled`). |
 | `onOpenChange` | `((open: boolean) => void) | undefined` | Fires when the menu requests an open-state change (pairs with `open`). |
@@ -1202,15 +1203,18 @@ _No always-required props._
 | `dataSource` | `T[]` |  |
 | `rowKey` | `(keyof T & string) | ((record: T, index: number) => string)` | Row key: a record field name (legacy string form) or a function. |
 
-<details><summary>Optional props (5)</summary>
+<details><summary>Optional props (8)</summary>
 
 | prop | type | notes |
 |---|---|---|
 | `caption` | `ReactNode` |  |
 | `className` | `string | undefined` |  |
 | `empty` | `ReactNode` |  |
+| `estimateRowHeight` | `number | undefined` | Estimated row height (px) for the virtualizer; real heights are measured. |
 | `loading` | `boolean | undefined` | Own loading → in-place skeleton rows. Region loading (surface) → skeleton too. |
+| `maxHeight` | `string | undefined` | Max height (CSS length) of the virtualized scroll box; short tables shrink to fit, taller ones cap here and scroll. Default `min(60vh, 36… |
 | `onRowClick` | `((record: T, index: number) => void) | undefined` |  |
+| `virtualized` | `boolean | undefined` | Row-virtualize the body (only visible rows mount) for large data sets. Requires a bounded-height scroll ancestor (the kit ScrollArea / an… |
 
 </details>
 
@@ -1223,7 +1227,7 @@ _No always-required props._
 | `data-testid` | `string` | Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. |
 | `items` | `TabItem[]` |  |
 
-<details><summary>Optional props (13)</summary>
+<details><summary>Optional props (16)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -1233,12 +1237,15 @@ _No always-required props._
 | `defaultValue` | `string | undefined` |  |
 | `disabled` | `boolean | undefined` |  |
 | `editable` | `boolean | undefined` | Editable-card mode (legacy `type="editable-card"`). Requires `onEdit`. |
+| `fill` | `boolean | undefined` | Fill the container: root becomes a flex column, the tab strip stays a fixed row, and the active panel gets the remaining height (so its c… |
 | `hideAdd` | `boolean | undefined` | Hide the add button while keeping per-tab close affordances. |
 | `onClose` | `((key: string) => void) | undefined` | Also fires with the key of the tab whose close affordance was activated. |
 | `onEdit` | `((action: "remove" | "add", key: string) => void) | undefined` | Unified edit handler (legacy antd `onEdit`): action is 'add' (key='') or 'remove'. |
 | `onTabClick` | `((key: string) => void) | undefined` | Fires when a tab trigger is clicked (legacy `onTabClick`), even if already active. |
 | `onValueChange` | `((value: string) => void) | undefined` |  |
+| `scrollX` | `boolean | undefined` | Scroll the tab strip with the app's OverlayScrollbars (auto-hide) instead of a native `overflow-x-auto` box. |
 | `size` | `"default" | "sm" | undefined` |  |
+| `tabStripClassName` | `string | undefined` | Extra classes on the tab strip row (e.g. `justify-center px-3`). |
 | `value` | `string | undefined` |  |
 
 </details>

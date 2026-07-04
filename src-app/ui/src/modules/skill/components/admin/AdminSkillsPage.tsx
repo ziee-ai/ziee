@@ -36,7 +36,7 @@ export function AdminSkillsPage() {
       title="System Skills"
       subtitle="Skills installed for the whole deployment"
     >
-      <div className="flex flex-col gap-3 h-full" data-testid="skills-admin-page">
+      <div className="flex flex-col gap-3" data-testid="skills-admin-page">
         <Flex justify="end">
           <Can permission={Permissions.SkillsManageSystem}>
             <Button

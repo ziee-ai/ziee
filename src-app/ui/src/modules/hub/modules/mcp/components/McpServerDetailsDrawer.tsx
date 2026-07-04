@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Flex, Tag, Card, Text, Title } from '@/components/ui'
 import { Link } from 'lucide-react'
@@ -8,6 +9,8 @@ interface McpServerDetailsDrawerProps {
   server: HubMCPServer | null
   open: boolean
   onClose: () => void
+  /** Install actions (mirrors the card) rendered in the drawer footer. */
+  footer?: ReactNode
 }
 
 /**
@@ -23,6 +26,7 @@ export function McpServerDetailsDrawer({
   server,
   open,
   onClose,
+  footer,
 }: McpServerDetailsDrawerProps) {
   if (!server) return null
 
@@ -45,7 +49,7 @@ export function McpServerDetailsDrawer({
   const firstPackage = server.packages && server.packages[0]
 
   return (
-    <Drawer title={displayTitle} open={open} onClose={onClose}>
+    <Drawer title={displayTitle} open={open} onClose={onClose} footer={footer}>
       <Flex vertical className="gap-4" data-testid="hub-mcp-detail-sheet">
         {/* Basic Info */}
         <div>

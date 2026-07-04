@@ -56,10 +56,10 @@ const sidePos: Record<Placement, string> = {
   // No `h-full`: with the floating-card `m-2` margin, height:100% (=100vh) plus the
   // 8px top margin pushes the bottom 8px+ off-screen. `inset-y-0` (top:0 + bottom:0)
   // with height:auto stretches to fill BETWEEN the insets, honoring the margins.
-  right: 'inset-y-0 right-0 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
-  left: 'inset-y-0 left-0 data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
-  top: 'inset-x-0 top-0 w-full data-[state=open]:slide-in-from-top data-[state=closed]:slide-out-to-top',
-  bottom: 'inset-x-0 bottom-0 w-full data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
+  right: 'inset-y-0 right-0 data-[state=open]:slide-in-from-right-10 data-[state=closed]:slide-out-to-right-10',
+  left: 'inset-y-0 left-0 data-[state=open]:slide-in-from-left-10 data-[state=closed]:slide-out-to-left-10',
+  top: 'inset-x-0 top-0 w-full data-[state=open]:slide-in-from-top-10 data-[state=closed]:slide-out-to-top-10',
+  bottom: 'inset-x-0 bottom-0 w-full data-[state=open]:slide-in-from-bottom-10 data-[state=closed]:slide-out-to-bottom-10',
 }
 
 export const Drawer: React.FC<DrawerProps> = ({
@@ -85,6 +85,73 @@ export const Drawer: React.FC<DrawerProps> = ({
   const windowMinSize = useWindowMinSize()
   const horizontal = placement === 'left' || placement === 'right'
 
+  // Touch swipe-to-close: drag the panel toward the edge it's docked to (a right
+  // drawer → swipe right) and release past a threshold to close; otherwise it
+  // snaps back. Follows the finger live. Horizontal placements only.
+  const contentRef = React.useRef<HTMLDivElement>(null)
+  const swipe = React.useRef<{
+    x: number
+    y: number
+    active: boolean
+    dx: number
+  } | null>(null)
+  const closeDir = placement === 'right' ? 1 : placement === 'left' ? -1 : 0
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (closeDir === 0 || e.touches.length !== 1) return
+    // Don't hijack a horizontal scroller inside the drawer (e.g. an xlsx sheet-
+    // tab strip): if the touch starts in one, let it scroll instead of closing.
+    for (
+      let el = e.target as HTMLElement | null;
+      el && el !== e.currentTarget;
+      el = el.parentElement
+    ) {
+      const cs = getComputedStyle(el)
+      const scrollableX =
+        cs.overflowX === 'auto' ||
+        cs.overflowX === 'scroll' ||
+        el.hasAttribute('data-overlayscrollbars-viewport')
+      if (scrollableX && el.scrollWidth > el.clientWidth + 1) return
+    }
+    const t = e.touches[0]
+    swipe.current = { x: t.clientX, y: t.clientY, active: false, dx: 0 }
+  }
+  const onTouchMove = (e: React.TouchEvent) => {
+    const s = swipe.current
+    if (!s) return
+    const t = e.touches[0]
+    const dx = t.clientX - s.x
+    const dy = t.clientY - s.y
+    if (!s.active) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      // Vertical-dominant → let the body scroll; abandon the swipe.
+      if (Math.abs(dy) > Math.abs(dx)) {
+        swipe.current = null
+        return
+      }
+      s.active = true
+    }
+    s.dx = dx
+    const el = contentRef.current
+    if (!el) return
+    // Only follow in the close direction (don't over-drag inward).
+    const translate = Math.max(0, dx * closeDir) * closeDir
+    el.style.transition = 'none'
+    el.style.transform = `translateX(${translate}px)`
+  }
+  const onTouchEnd = () => {
+    const s = swipe.current
+    swipe.current = null
+    const el = contentRef.current
+    if (!s || !s.active || !el) return
+    el.style.transition = ''
+    const width = el.getBoundingClientRect().width
+    const moved = s.dx * closeDir
+    el.style.transform = ''
+    if (moved > Math.min(width * 0.35, 120)) {
+      onClose?.()
+    }
+  }
+
   const maskClosable =
     maskClosableProp ?? (typeof mask === 'object' ? mask.closable !== false : mask !== false)
   const showOverlay = mask !== false
@@ -92,6 +159,23 @@ export const Drawer: React.FC<DrawerProps> = ({
   // px size on the resize axis; full-bleed on the smallest breakpoint.
   const axisPx = width ?? (windowMinSize.xs && horizontal ? '100%' : sizePx(size))
   const sizeStyle: React.CSSProperties = horizontal ? { width: axisPx } : { height: axisPx }
+
+  // A drawer must NOT dismiss (Escape / click-outside) while another drawer or
+  // dialog is stacked ABOVE it — e.g. a file preview opened from inside this
+  // drawer. Radix fires this lower layer's dismiss handlers too; guard them so
+  // closing the top layer doesn't also close this one.
+  const thisZ = zIndex ?? 50
+  const higherLayerOpen = () => {
+    const layers = document.querySelectorAll(
+      '[data-testid="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]',
+    )
+    for (const el of layers) {
+      if (el === contentRef.current) continue
+      const z = parseInt(getComputedStyle(el).zIndex, 10)
+      if (Number.isFinite(z) && z > thisZ) return true
+    }
+    return false
+  }
 
   const footerNode = Array.isArray(footer) ? (
     // Array footers (e.g. [Cancel, Save]) right-align by convention.
@@ -133,23 +217,39 @@ export const Drawer: React.FC<DrawerProps> = ({
             // overlay can mount after the content — at equal z-index it would
             // then paint on top and swallow clicks on the drawer's own controls
             // (e.g. the Save button). A backdrop belongs under its content.
+            // When a caller elevates the drawer via `zIndex` (a drawer opened
+            // ON TOP of another drawer), the backdrop rides one below it so it
+            // still covers the drawer underneath.
+            style={zIndex != null ? { zIndex: zIndex - 1 } : undefined}
+            // Swipe-to-close also works when the gesture starts on the mask (the
+            // same handlers translate the panel via contentRef).
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
             className="fixed inset-0 z-40 bg-black/10 supports-backdrop-filter:backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
           />
         )}
         <DialogPrimitive.Content
+          ref={contentRef}
           data-testid={testid ?? 'layout-drawer-content'}
           // maskClosable=false → backdrop/outside click doesn't dismiss (Escape still does).
-          onPointerDownOutside={maskClosable ? undefined : e => e.preventDefault()}
-          onInteractOutside={maskClosable ? undefined : e => e.preventDefault()}
+          // A higher-stacked drawer/dialog (e.g. a file preview opened from here)
+          // being closed must not also dismiss THIS drawer.
+          onEscapeKeyDown={e => { if (higherLayerOpen()) e.preventDefault() }}
+          onPointerDownOutside={e => { if (!maskClosable || higherLayerOpen()) e.preventDefault() }}
+          onInteractOutside={e => { if (!maskClosable || higherLayerOpen()) e.preventDefault() }}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
           style={{ ...sizeStyle, zIndex }}
           className={cn(
-            'fixed z-50 flex flex-col gap-0 bg-background shadow-none transition ease-in-out',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-500 data-[state=closed]:duration-300',
+            'fixed z-50 flex flex-col gap-0 bg-background shadow-none transition duration-200 ease-in-out',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
             sidePos[placement],
             // floating-card insets matching the LeftSidebar, full-bleed on xs.
             windowMinSize.xs
               ? 'border-0 rounded-none max-w-[100vw]'
-              : 'border border-border rounded-lg m-2 ml-3 max-w-[calc(100vw-24px)]',
+              : 'ring-1 ring-foreground/10 rounded-lg m-2 ml-3 max-w-[calc(100vw-24px)]',
             className,
             classNames?.wrapper,
           )}

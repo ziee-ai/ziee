@@ -118,7 +118,15 @@ export function UserProfileWidget() {
   ]
 
   const item = (
-    <Dropdown data-testid="userprofile-menu-dropdown" items={items} side="top" align="start">
+    <Dropdown
+      data-testid="userprofile-menu-dropdown"
+      items={items}
+      side="top"
+      align="start"
+      // Keep the menu left-aligned under the username instead of flipping to the
+      // right at the sidebar's left edge (Base UI's default align collision).
+      collisionAvoidance={{ align: 'shift' }}
+    >
       {/* role=button so Radix's injected aria-expanded/aria-haspopup are valid
           on this dropdown trigger (a bare <div> doesn't support them → axe
           aria-allowed-attr). tabIndex keeps it keyboard-reachable. */}

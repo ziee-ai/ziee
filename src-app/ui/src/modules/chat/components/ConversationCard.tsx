@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react'
-import { Button, Card, Checkbox, Confirm, Separator, Text } from '@/components/ui'
+import { Button, Card, Checkbox, Confirm, Separator, Text, Tooltip } from '@/components/ui'
 import { message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -48,7 +48,12 @@ export function ConversationCard({
   // that need a network round-trip (e.g., project membership lookup)
   // don't fire N requests per page load. Sticky once true — the
   // user has already paid for the lookup, no point hiding again.
-  const [hoveredOnce, setHoveredOnce] = useState(false)
+  // Touch devices have no hover, so seed it true there (guarded by the
+  // `hover: none` media) — otherwise the trailing (Add-to-project) would
+  // never mount at all. Desktop keeps the lazy-on-hover behaviour.
+  const [hoveredOnce, setHoveredOnce] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches,
+  )
 
   const handleCardClick = () => {
     if (isInSelectionMode && onSelect) {
@@ -110,7 +115,7 @@ export function ConversationCard({
     >
       <div className="flex flex-col gap-2 pb-6">
         {/* Title and metadata */}
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           <Text strong className="text-base flex-1 min-w-0" ellipsis>
             {conversation.title || 'Untitled Conversation'}
           </Text>
@@ -154,34 +159,44 @@ export function ConversationCard({
         {/* Delete button — hidden in selection mode (bulk-delete in
             the toolbar replaces per-row deletes). */}
         {canDelete && !isInSelectionMode && (
-          <Confirm
-            data-testid={`chat-conversation-delete-confirm-${conversation.id}`}
-            title="Delete conversation?"
-            description="This will permanently delete the conversation and all its messages."
-            onConfirm={async () => {
-              await handleDeleteConversation()
-              setPopconfirmOpen(false)
-            }}
-            onCancel={() => setPopconfirmOpen(false)}
-            okText="Delete"
-            cancelText="Cancel"
-          >
-            <Button
-              data-testid={`chat-conversation-delete-btn-${conversation.id}`}
-              className={`transition-opacity bg-card ${
-                popconfirmOpen
-                  ? 'opacity-100'
-                  : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100'
-              }`}
-              variant="outline"
-              size="default"
-              icon={<Trash2 />}
-              onClick={(e: React.MouseEvent) => {
-                e.stopPropagation()
-                setPopconfirmOpen(true)
+          <>
+            {/* Tooltip wraps the button as its ONLY trigger. The Confirm is
+                driven by `open`/`onOpenChange` (trigger-less) rather than
+                wrapping the button — stacking an AlertDialog trigger and a
+                Tooltip trigger on the same node makes the tooltip thrash. */}
+            <Tooltip title="Delete conversation">
+              <Button
+                data-testid={`chat-conversation-delete-btn-${conversation.id}`}
+                aria-label="Delete conversation"
+                className={`transition-opacity bg-card ${
+                  popconfirmOpen
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
+                }`}
+                variant="outline"
+                size="default"
+                icon={<Trash2 />}
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation()
+                  setPopconfirmOpen(true)
+                }}
+              />
+            </Tooltip>
+            <Confirm
+              data-testid={`chat-conversation-delete-confirm-${conversation.id}`}
+              open={popconfirmOpen}
+              onOpenChange={setPopconfirmOpen}
+              title="Delete conversation?"
+              description="This will permanently delete the conversation and all its messages."
+              onConfirm={async () => {
+                await handleDeleteConversation()
+                setPopconfirmOpen(false)
               }}
+              onCancel={() => setPopconfirmOpen(false)}
+              okText="Delete"
+              cancelText="Cancel"
             />
-          </Confirm>
+          </>
         )}
 
         {/* Selection checkbox — visible on hover OR when selected. */}
@@ -190,15 +205,22 @@ export function ConversationCard({
             className={`transition-opacity ${
               isSelected
                 ? 'opacity-100'
-                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
             }`}
             onClick={e => e.stopPropagation()}
           >
-            <Checkbox
-              data-testid={`chat-conversation-select-${conversation.id}`}
-              checked={isSelected}
-              onChange={handleSelectChange}
-            />
+            {/* span trigger: the kit Checkbox doesn't forward the Tooltip's
+                hover handlers, so wrap it in a plain element that does. */}
+            <Tooltip title={isSelected ? 'Deselect conversation' : 'Select conversation'}>
+              <span className="inline-flex">
+                <Checkbox
+                  data-testid={`chat-conversation-select-${conversation.id}`}
+                  checked={isSelected}
+                  onChange={handleSelectChange}
+                  aria-label={isSelected ? 'Deselect conversation' : 'Select conversation'}
+                />
+              </span>
+            </Tooltip>
           </div>
         )}
       </div>

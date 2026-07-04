@@ -1,12 +1,36 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* Streamdown's streaming keyframes (sd-fadeIn / sd-blurIn / sd-slideUp), used
+ * by <Streamdown isAnimating>. Ships as a ready-made stylesheet in v2. */
+@import "streamdown/styles.css";
 
 @custom-variant dark (&:is(.dark *));
 
-/* Tailwind v4 only auto-scans the package root; streamdown lives in node_modules
- * so its utility classes must be pointed at explicitly. */
+/* Touch devices have no hover, so `group-hover`-revealed controls (card action
+ * buttons, checkboxes) would never appear. Use `hover-none:` to force them
+ * visible on coarse/no-hover pointers. Targets the device, not the viewport
+ * width, so a narrow desktop window still uses hover. */
+@custom-variant hover-none (@media (hover: none));
+
+/* Tailwind v4 only auto-scans this package's own tree; Streamdown bakes all of
+ * its element styling into Tailwind utility classes inside its compiled dist,
+ * so that dist MUST be scanned or the rendered markdown comes out unstyled.
+ * In this monorepo npm hoists deps to the repo-root node_modules (three levels
+ * up from src/), not this workspace's own — the first path is the real one.
+ * The second is a fallback for a non-hoisted install; Tailwind silently ignores
+ * an @source glob that matches nothing, so listing both is safe. */
+@source "../../../node_modules/streamdown/dist/*.js";
 @source "../node_modules/streamdown/dist/*.js";
+
+/* Cap a long code block's scroll body so a huge one doesn't dominate the
+ * message — scroll inside beyond ~60vh (ceiling 36rem). Streamdown puts no
+ * height cap of its own; its code body is the overflow-x-auto div inside the
+ * `data-streamdown="code-block"` card. Keep in sync with MarkdownTable's cap. */
+[data-streamdown="code-block"] [class*="overflow-x-auto"] {
+  max-height: min(60vh, 36rem);
+  overflow-y: auto;
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -160,6 +184,19 @@
   #root {
     height: 100dvh;
     width: 100dvw;
+  }
+  /* Native document-scroll mode (opt-in via useNativeScroll, mobile Settings).
+     Relax the fixed-height clamp so the WINDOW scrolls — the condition iOS
+     Safari needs to collapse its toolbar. Scoped to the class so nothing
+     changes by default. */
+  html.scroll-native,
+  html.scroll-native body {
+    height: auto;
+    overflow: visible;
+  }
+  html.scroll-native #root {
+    height: auto;
+    min-height: 100dvh;
   }
 }
 

@@ -1,80 +1,98 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 
 // Maximum file size (100MB)
 const MAX_FILE_SIZE = 100 * 1024 * 1024
 
-export interface FileUploadAreaProps {
-  children: React.ReactNode
-}
-
 /**
  * FileUploadArea Component
- * Drag-and-drop overlay for file uploads
- * Wraps the chat input area to accept dropped files. Clicks pass through
- * to the children (drag-and-drop only — no file dialog). The overlay is a
- * plain Tailwind layer shown only while a file drag is in progress.
+ *
+ * Drag-and-drop file upload for the chat composer. Slot-mounted (no children):
+ * the file extension registers this into an input-area slot, and it locates the
+ * composer root via the `[data-chat-composer]` marker on ChatInput, attaches
+ * drag listeners to it, and portals a "Drop files to upload" overlay while a
+ * file drag is in progress. This keeps the chat module decoupled from the file
+ * module (chat never imports file — the file extension registers into chat).
  */
-export function FileUploadArea({ children }: FileUploadAreaProps) {
-  // Access file extension store directly via Stores.Chat (reactive via store proxy)
-  const { uploadFiles } = Stores.File
+export function FileUploadArea() {
+  const sentinelRef = useRef<HTMLSpanElement>(null)
+  const [host, setHost] = useState<HTMLElement | null>(null)
   const [dragging, setDragging] = useState(false)
   // Depth counter so dragenter/leave bubbling from child nodes doesn't
   // flicker the overlay (only hide once the pointer truly leaves the area).
   const depth = useRef(0)
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    depth.current = 0
-    setDragging(false)
+  useEffect(() => {
+    const el = sentinelRef.current?.closest<HTMLElement>('[data-chat-composer]')
+    if (!el) return
+    setHost(el)
 
-    const dropped = Array.from(e.dataTransfer.files)
-    if (dropped.length === 0) return
-
-    // Validate file size — surface a toast for each oversized file.
-    dropped
-      .filter((f) => f.size > MAX_FILE_SIZE)
-      .forEach((f) =>
-        message.error(`File ${f.name} is too large. Maximum size is 100MB.`),
-      )
-
-    const files = dropped.filter((f) => f.size <= MAX_FILE_SIZE)
-    if (files.length > 0) {
-      uploadFiles(files).catch((error: any) => {
-        console.error('Upload failed:', error)
-        message.error('Failed to upload files')
-      })
+    const onEnter = (e: DragEvent) => {
+      e.preventDefault()
+      depth.current += 1
+      if (e.dataTransfer?.types?.includes('Files')) setDragging(true)
     }
-  }
+    const onOver = (e: DragEvent) => e.preventDefault()
+    const onLeave = (e: DragEvent) => {
+      e.preventDefault()
+      depth.current -= 1
+      if (depth.current <= 0) {
+        depth.current = 0
+        setDragging(false)
+      }
+    }
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault()
+      depth.current = 0
+      setDragging(false)
+
+      const dropped = Array.from(e.dataTransfer?.files ?? [])
+      if (dropped.length === 0) return
+
+      // Validate file size — surface a toast for each oversized file.
+      dropped
+        .filter((f) => f.size > MAX_FILE_SIZE)
+        .forEach((f) =>
+          message.error(`File ${f.name} is too large. Maximum size is 100MB.`),
+        )
+
+      const files = dropped.filter((f) => f.size <= MAX_FILE_SIZE)
+      if (files.length > 0) {
+        // `__state` (not the render-only proxy) — store access from a raw DOM
+        // event listener, outside React render.
+        Stores.File.__state.uploadFiles(files).catch((error: unknown) => {
+          console.error('Upload failed:', error)
+          message.error('Failed to upload files')
+        })
+      }
+    }
+
+    el.addEventListener('dragenter', onEnter)
+    el.addEventListener('dragover', onOver)
+    el.addEventListener('dragleave', onLeave)
+    el.addEventListener('drop', onDrop)
+    return () => {
+      el.removeEventListener('dragenter', onEnter)
+      el.removeEventListener('dragover', onOver)
+      el.removeEventListener('dragleave', onLeave)
+      el.removeEventListener('drop', onDrop)
+    }
+  }, [])
 
   return (
-    <div
-      className="relative"
-      onDragEnter={(e) => {
-        e.preventDefault()
-        depth.current += 1
-        if (e.dataTransfer.types?.includes('Files')) setDragging(true)
-      }}
-      onDragOver={(e) => e.preventDefault()}
-      onDragLeave={(e) => {
-        e.preventDefault()
-        depth.current -= 1
-        if (depth.current <= 0) {
-          depth.current = 0
-          setDragging(false)
-        }
-      }}
-      onDrop={handleDrop}
-    >
-      {children}
-      {dragging && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex min-h-[200px] items-center justify-center rounded-md border-2 border-dashed border-primary bg-accent">
-          <span className="text-sm font-medium text-primary">
-            Drop files to upload
-          </span>
-        </div>
-      )}
-    </div>
+    <>
+      <span ref={sentinelRef} className="hidden" aria-hidden="true" />
+      {dragging && host &&
+        createPortal(
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-accent/80">
+            <span className="text-sm font-medium text-primary">
+              Drop files to upload
+            </span>
+          </div>,
+          host,
+        )}
+    </>
   )
 }

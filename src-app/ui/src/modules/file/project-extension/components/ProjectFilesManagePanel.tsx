@@ -193,6 +193,8 @@ export function ProjectFilesManagePanel() {
   )
 
   const uploadButton = canUpload ? (
+    // No dashed dropzone (border-0 p-0) — drag-and-drop is already handled by
+    // the drawer-body drag listeners above; this is just the click affordance.
     <Upload
       multiple
       onFiles={(files) => dispatchFiles(files)}
@@ -200,6 +202,7 @@ export function ProjectFilesManagePanel() {
       disabled={atCap}
       label="Upload files"
       data-testid="file-project-upload-area"
+      className="!border-0 !p-0 !gap-0 !rounded-none"
     >
       <Tooltip title={atCap ? `At ${PROJECT_FILE_CAP}-file cap` : 'Upload files'}>
         <Button
@@ -266,8 +269,17 @@ export function ProjectFilesManagePanel() {
       </div>
     )
 
+  // Only the FIRST load (no files yet) shows the full spinner. A background
+  // refresh (e.g. after an upload completes) keeps `files` on screen so the
+  // list stays mounted and React reconciles by key — existing cards stay put
+  // and the new file just appends, instead of the whole list blinking out.
+  const initialLoading = filesLoading && files.length === 0
   const emptyOrList =
-    !filesLoading && files.length === 0 ? (
+    initialLoading ? (
+      <div className="flex justify-center py-6">
+        <Spin label="Loading" />
+      </div>
+    ) : files.length === 0 ? (
       <Empty
         description="No knowledge files yet"
         data-testid="file-project-empty"
@@ -278,10 +290,6 @@ export function ProjectFilesManagePanel() {
             : 'Attach files from your library to share their contents with every conversation in this project.'}
         </Text>
       </Empty>
-    ) : filesLoading ? (
-      <div className="flex justify-center py-6">
-        <Spin label="Loading" />
-      </div>
     ) : (
       <div className="flex flex-col gap-2">
         {files.map(file => {
@@ -302,24 +310,32 @@ export function ProjectFilesManagePanel() {
               }
               actions={
                 canEdit ? (
-                  <Confirm
-                    title="Delete this file?"
-                    description="This permanently removes the file from your library."
-                    okText="Delete"
-                    cancelText="Cancel"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => handleDelete(file.id, file.filename)}
-                    data-testid={`file-project-delete-confirm-${file.id}`}
-                  >
-                    <Tooltip title="Delete">
-                      <Button
-                        variant="outline"
-                        icon={<Trash2 />}
-                        aria-label={`Delete ${file.filename}`}
-                        data-testid={`file-project-delete-btn-${file.id}`}
-                      />
-                    </Tooltip>
-                  </Confirm>
+                  // One styled tooltip only: kit Tooltip on the span (a sibling
+                  // node of the Confirm trigger) + data-tooltip-wrapped on the
+                  // Button to kill its own auto-tooltip. Two overlapping Base-UI
+                  // tooltips thrash (flash-then-vanish); a single one on a sibling
+                  // coexists with the Confirm popover.
+                  <Tooltip title="Delete">
+                    <span className="inline-flex">
+                      <Confirm
+                        title="Delete this file?"
+                        description="This permanently removes the file from your library."
+                        okText="Delete"
+                        cancelText="Cancel"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => handleDelete(file.id, file.filename)}
+                        data-testid={`file-project-delete-confirm-${file.id}`}
+                      >
+                        <Button
+                          variant="outline"
+                          icon={<Trash2 />}
+                          aria-label={`Delete ${file.filename}`}
+                          data-tooltip-wrapped=""
+                          data-testid={`file-project-delete-btn-${file.id}`}
+                        />
+                      </Confirm>
+                    </span>
+                  </Tooltip>
                 ) : undefined
               }
             />
@@ -333,7 +349,9 @@ export function ProjectFilesManagePanel() {
       {/* Sticky header — keeps title/counter/upload/selection visible
           while the file list scrolls. */}
       <div
-        className="sticky z-10 -mx-1 px-1 bg-background"
+        // z-30: the FileCard's AttachmentActions are `relative z-20`, so a lower
+        // header would let their buttons show through as the list scrolls under.
+        className="sticky z-30 -mx-1 px-1 bg-background"
         style={{ top: -1, paddingTop: 1 }}
       >
         {header}

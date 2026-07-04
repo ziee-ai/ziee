@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, Space, InputNumber, message } from '@/components/ui'
-import { Wrench, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { Tool } from '@/api-client/types'
 import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/mcp/stores/McpComposer.store'
@@ -301,15 +301,19 @@ export function McpConfigModal() {
     return {
       key: server.id,
       label: (
-        <div className="flex items-center justify-between w-full" data-testid={`mcp-config-server-row-${server.id}`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between w-full" data-testid={`mcp-config-server-row-${server.id}`}>
           <div className="flex items-center gap-2">
-            <Switch
-              tooltip="Enable this server for the conversation"
-              checked={!!selection}
-              onChange={(checked) => handleServerToggle(server.id, checked)}
-              size="sm"
-              data-testid={`mcp-config-server-switch-${server.id}`}
-            />
+            {/* Stop the toggle's own click from bubbling to the accordion trigger,
+                so flipping the server switch doesn't also expand/collapse the row. */}
+            <span onClick={(e) => e.stopPropagation()} className="inline-flex">
+              <Switch
+                tooltip="Enable this server for the conversation"
+                checked={!!selection}
+                onChange={(checked) => handleServerToggle(server.id, checked)}
+                size="sm"
+                data-testid={`mcp-config-server-switch-${server.id}`}
+              />
+            </span>
             <Text strong>{server.display_name}</Text>
             <Tag variant="outline" tone={server.user_id ? 'info' : 'success'} className="text-xs" data-testid={`mcp-config-server-tag-${server.id}`}>
               {server.user_id ? 'User' : 'System'}
@@ -370,14 +374,7 @@ export function McpConfigModal() {
       onOpenChange={(v) => { if (!v) handleClose() }}
       className="max-w-[800px]"
       data-testid="mcp-config-modal"
-      title={
-        <div className="flex items-center gap-2">
-          <Wrench />
-          <span>
-            {isProjectScope ? 'MCP Defaults for Project' : 'MCP Configuration'}
-          </span>
-        </div>
-      }
+      title={isProjectScope ? 'MCP Defaults for Project' : 'MCP Configuration'}
       footer={
         <Space>
           {/* "Save as Default" writes user_mcp_defaults — orthogonal to
@@ -393,14 +390,14 @@ export function McpConfigModal() {
         </Space>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-4 pb-2">
         {/* Approval Mode Section */}
         <div>
-          <Title level={5}>Approval Mode</Title>
+          <Title level={5} className="!text-sm">Approval Mode</Title>
           <Select
             value={approvalMode}
             onChange={handleApprovalModeChange}
-            className="w-full"
+            className="w-full mt-2"
             data-testid="mcp-config-approval-select"
             options={[
               {
@@ -423,7 +420,7 @@ export function McpConfigModal() {
 
         {/* Server & Tool Selection Section */}
         <div>
-          <Title level={5}>Server & Tool Selection</Title>
+          <Title level={5} className="!text-sm">Server & Tool Selection</Title>
           {enabledServers.length === 0 ? (
             <Empty description="No MCP servers available" data-testid="mcp-config-empty-servers" />
           ) : (
@@ -435,10 +432,10 @@ export function McpConfigModal() {
 
         {/* Loop Settings Section */}
         <div>
-          <Title level={5}>Loop Settings</Title>
+          <Title level={5} className="!text-sm">Loop Settings</Title>
 
           {/* Boolean toggles */}
-          <div className="space-y-2 mb-4">
+          <div className="space-y-2 mb-4 mt-2">
             <div className="flex items-center justify-between">
               <Text>Stop when AI doesn't call any tools</Text>
               <Switch

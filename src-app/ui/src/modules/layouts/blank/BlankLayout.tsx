@@ -1,10 +1,14 @@
 import React, { useLayoutEffect } from 'react'
+import { useMetaThemeColor } from '@/components/ThemeProvider/themeColor'
 
 interface BlankLayoutProps {
   children: React.ReactNode
 }
 
 export function BlankLayout({ children }: BlankLayoutProps) {
+  // Blank/login pages paint --background to the edges → match the iOS bars.
+  useMetaThemeColor('--background')
+
   // useLayoutEffect (not useEffect) so the background color is applied AND
   // restored synchronously before the browser paints — with useEffect the
   // change lands a frame late, producing a visible white/blank flash on mount

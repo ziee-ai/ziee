@@ -99,7 +99,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
                 'flex w-full min-w-0 items-center gap-2 rounded-md text-sm',
                 collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
                 'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50',
-                selected ? 'bg-accent font-medium' : 'hover:bg-accent/60',
+                selected ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-accent/60',
               )}
             >
               {item.icon != null && <span aria-hidden className="shrink-0 [&_svg]:size-4">{item.icon}</span>}

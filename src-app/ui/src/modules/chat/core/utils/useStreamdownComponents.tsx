@@ -1,13 +1,49 @@
-import { useMemo, type JSX } from 'react'
+import { createElement, useMemo, type JSX, type ReactNode } from 'react'
+import { MarkdownTable } from '@/components/common/MarkdownTable'
+import {
+  nodeToText,
+  slugifyHeading,
+  safeDecode,
+  HEADING_CLASS,
+  LINK_CLASS,
+} from '@/components/common/markdownHeadings'
+import { cn } from '@/lib/utils'
 
 /**
  * Returns Streamdown component overrides shared by all markdown renderers in the chat module.
- * Pass a unique `contentId` to scope footnote DOM IDs — prevents cross-message ID collisions
- * when multiple messages contain footnotes with the same numbers.
+ * Pass a unique `contentId` to scope footnote + heading DOM IDs — prevents cross-message ID
+ * collisions when multiple messages contain the same footnote numbers / heading text, and lets
+ * in-markdown hash links (`[Section](#section)`) scroll to THIS message's heading.
  */
 export function useStreamdownComponents(contentId: string) {
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    // A slugged, message-scoped `id` on each heading so in-markdown hash links
+    // resolve to THIS message's heading (never a same-slug heading in another
+    // message). Respects an id the source already set (e.g. footnote anchors).
+    const headingId = (children: ReactNode, existing?: string) => {
+      if (existing) return existing
+      const slug = slugifyHeading(nodeToText(children))
+      return slug ? `${contentId}-h-${slug}` : undefined
+    }
+    const makeHeading =
+      (level: 1 | 2 | 3 | 4 | 5 | 6) =>
+      (props: JSX.IntrinsicElements['h1']) =>
+        createElement(`h${level}`, {
+          ...props,
+          id: headingId(props.children, props.id),
+          // Re-apply Streamdown's default heading class (overriding drops it).
+          className: cn(HEADING_CLASS[level], props.className),
+        })
+
+    return {
+      // Replace Streamdown's native-scroller + in-page-fullscreen table wrapper
+      // with our OverlayScrollbars + open-in-popup-window version.
+      table: MarkdownTable,
+      h1: makeHeading(1),
+      h3: makeHeading(3),
+      h4: makeHeading(4),
+      h5: makeHeading(5),
+      h6: makeHeading(6),
       h2(props: JSX.IntrinsicElements['h2']) {
         if (
           props.id === 'footnote-label' ||
@@ -16,7 +52,13 @@ export function useStreamdownComponents(contentId: string) {
           // Suppressed — the section override renders "References" via <summary>
           return null
         }
-        return <h2 {...props} />
+        return (
+          <h2
+            {...props}
+            id={headingId(props.children, props.id)}
+            className={cn(HEADING_CLASS[2], props.className)}
+          />
+        )
       },
       section(props: JSX.IntrinsicElements['section']) {
         const { children, ...rest } = props
@@ -51,6 +93,10 @@ export function useStreamdownComponents(contentId: string) {
           ? `#${contentId}-fn-${href.slice('#user-content-fn-'.length)}`
           : href?.startsWith('#user-content-fnref-')
           ? `#${contentId}-fnref-${href.slice('#user-content-fnref-'.length)}`
+          : href?.startsWith('#')
+          ? // A plain in-markdown hash link (`[Section](#section)`): re-target it
+            // at this message's slugged heading id (same slugify as the heading).
+            `#${contentId}-h-${slugifyHeading(safeDecode(href.slice(1)))}`
           : href
         // All hash links — scroll within the current page
         if (scopedHref?.startsWith('#')) {
@@ -59,7 +105,8 @@ export function useStreamdownComponents(contentId: string) {
               {...rest}
               id={scopedId}
               href={scopedHref}
-              className={className}
+              // Re-apply Streamdown's default link class (overriding drops it).
+              className={cn(LINK_CLASS, className)}
               onClick={(e) => {
                 e.preventDefault()
                 const target = document.getElementById(scopedHref.slice(1))
@@ -75,7 +122,7 @@ export function useStreamdownComponents(contentId: string) {
           )
         }
         // External links — open in new tab
-        return <a id={scopedId} href={scopedHref} className={className} {...rest} target="_blank" rel="noreferrer" />
+        return <a id={scopedId} href={scopedHref} className={cn(LINK_CLASS, className)} {...rest} target="_blank" rel="noreferrer" />
       },
       blockquote(props: JSX.IntrinsicElements['blockquote']) {
         return (
@@ -115,7 +162,6 @@ export function useStreamdownComponents(contentId: string) {
         const mergedClassName = ['py-1', '[&>p]:inline', className].filter(Boolean).join(' ')
         return <li id={scopedId} className={mergedClassName} {...rest} />
       },
-    }),
-    [contentId],
-  )
+    }
+  }, [contentId])
 }

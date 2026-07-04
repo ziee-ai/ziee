@@ -139,7 +139,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
       return record
     })
     return (
-      <div className="flex flex-col h-full w-full px-2">
+      <div className="flex flex-col h-full w-full">
         {sheet.truncated && (
           <Alert
             tone="warning"
@@ -148,14 +148,14 @@ export function XlsxBody(props: FileViewerSlotProps) {
             data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
           />
         )}
-        <div className="flex-1 min-h-0 overflow-auto w-full">
-          <Table
-            columns={columns}
-            dataSource={dataSource}
-            rowKey="key"
-            data-testid={`file-xlsx-table-${sheet.name}`}
-          />
-        </div>
+        {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
+        <Table
+          virtualized
+          columns={columns}
+          dataSource={dataSource}
+          rowKey="key"
+          data-testid={`file-xlsx-table-${sheet.name}`}
+        />
       </div>
     )
   }
@@ -166,10 +166,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
     // locates the xlsx surface whether or not tabs are shown. (The kit Tabs
     // root already forwards this testid in the multi-sheet branch below.)
     return (
-      <div
-        className="flex flex-col h-full w-full overflow-auto"
-        data-testid="file-xlsx-tabs"
-      >
+      <div className="flex flex-col h-full w-full" data-testid="file-xlsx-tabs">
         {renderSheet(sheets[0])}
       </div>
     )
@@ -179,7 +176,10 @@ export function XlsxBody(props: FileViewerSlotProps) {
     <div className="flex flex-col h-full w-full">
       <Tabs
         data-testid="file-xlsx-tabs"
-        className="flex-1 min-h-0 flex flex-col overflow-hidden"
+        fill
+        scrollX
+        className="flex-1 min-h-0"
+        tabStripClassName="[justify-content:safe_center] px-3 gap-1"
         items={sheets.map(sheet => ({
           key: sheet.name,
           label: sheet.name,

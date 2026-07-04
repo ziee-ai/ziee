@@ -1,4 +1,13 @@
-import { Spin } from '@/components/ui'
+import { ScrollArea, Spin } from '@/components/ui'
+import { MarkdownTable } from '@/components/common/MarkdownTable'
+import {
+  nodeToText,
+  slugifyHeading,
+  safeDecode,
+  HEADING_CLASS,
+  LINK_CLASS,
+} from '@/components/common/markdownHeadings'
+import { cn } from '@/lib/utils'
 import { Streamdown } from 'streamdown'
 import { Component, createElement, type ComponentProps, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
@@ -29,6 +38,52 @@ export function SafeImg(props: JSX.IntrinsicElements['img']) {
   const src = typeof props.src === 'string' ? props.src : ''
   if (!isLocalImageUrl(src)) return null
   return createElement('img', props)
+}
+
+// GitHub-style slug id on each heading so in-file hash links (`[Setup](#setup)`)
+// resolve. A single document, so unscoped ids are fine.
+function makeHeading(level: 1 | 2 | 3 | 4 | 5 | 6) {
+  return function Heading(props: JSX.IntrinsicElements['h1']) {
+    const slug = slugifyHeading(nodeToText(props.children))
+    return createElement(`h${level}`, {
+      ...props,
+      id: props.id ?? (slug || undefined),
+      // Re-apply Streamdown's default heading class (overriding drops it).
+      className: cn(HEADING_CLASS[level], props.className),
+    })
+  }
+}
+
+// Anchor override: for a `#hash` link, scroll to the matching heading instead of
+// letting Streamdown's DEFAULT anchor pop its link-safety modal (which fires for
+// EVERY link, hash anchors included). External links open in a new tab.
+function MdAnchor(props: JSX.IntrinsicElements['a']) {
+  const { href, children, className, ...rest } = props
+  // Re-apply Streamdown's default link class (overriding drops accent + underline).
+  const cls = cn(LINK_CLASS, className)
+  if (href?.startsWith('#')) {
+    const targetId = slugifyHeading(safeDecode(href.slice(1)))
+    return (
+      <a
+        {...rest}
+        className={cls}
+        href={`#${targetId}`}
+        onClick={(e) => {
+          e.preventDefault()
+          document
+            .getElementById(targetId)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+      >
+        {children}
+      </a>
+    )
+  }
+  return (
+    <a {...rest} className={cls} href={href} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  )
 }
 
 const isDynamicImportError = (err: unknown): boolean => {
@@ -92,7 +147,20 @@ export class StreamdownErrorBoundary extends Component<StreamdownErrorBoundaryPr
 }
 
 // Stable identity so Streamdown's prop-equality avoids re-renders.
-const SAFE_IMG_COMPONENTS = { img: SafeImg }
+// `table` uses our wrapper too, so tables in the file viewer get OverlayScrollbars
+// + an in-page fullscreen at z-[1200] (above the file drawer's z-1050) instead of
+// Streamdown's native scroller + z-50 fullscreen (which hid behind the drawer).
+const SAFE_IMG_COMPONENTS = {
+  img: SafeImg,
+  table: MarkdownTable,
+  a: MdAnchor,
+  h1: makeHeading(1),
+  h2: makeHeading(2),
+  h3: makeHeading(3),
+  h4: makeHeading(4),
+  h5: makeHeading(5),
+  h6: makeHeading(6),
+}
 
 // Hoisted to module scope — a literal `[...]` in the JSX below would create a
 // fresh array reference on every render, defeating any prop-equality check
@@ -128,16 +196,18 @@ export function MarkdownBody(props: FileViewerSlotProps) {
     return <RawCodeView text={content} filename={file.filename} />
   }
   return (
-    <div className="p-4 overflow-auto h-full">
-      <StreamdownErrorBoundary fallbackText={content}>
-        <Streamdown
-          shikiTheme={SHIKI_THEME}
-          urlTransform={streamdownUrlTransform}
-          components={SAFE_IMG_COMPONENTS}
-        >
-          {content}
-        </Streamdown>
-      </StreamdownErrorBoundary>
-    </div>
+    <ScrollArea axis="both" className="h-full">
+      <div className="p-4">
+        <StreamdownErrorBoundary fallbackText={content}>
+          <Streamdown
+            shikiTheme={SHIKI_THEME}
+            urlTransform={streamdownUrlTransform}
+            components={SAFE_IMG_COMPONENTS}
+          >
+            {content}
+          </Streamdown>
+        </StreamdownErrorBoundary>
+      </div>
+    </ScrollArea>
   )
 }

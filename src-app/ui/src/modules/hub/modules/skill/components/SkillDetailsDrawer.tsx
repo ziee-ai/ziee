@@ -1,4 +1,6 @@
-import { Descriptions, Sheet, Space, Tag, Paragraph, Title } from '@/components/ui'
+import type { ReactNode } from 'react'
+import { Descriptions, Space, Tag, Paragraph, Title } from '@/components/ui'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import type { DescriptionsItem } from '@/components/ui'
 import type { IndexItem } from '@/api-client/types'
 
@@ -6,6 +8,8 @@ interface SkillDetailsDrawerProps {
   item: IndexItem
   open: boolean
   onClose: () => void
+  /** Install actions (mirrors the card) rendered in the drawer footer. */
+  footer?: ReactNode
 }
 
 /**
@@ -18,6 +22,7 @@ export function SkillDetailsDrawer({
   item,
   open,
   onClose,
+  footer,
 }: SkillDetailsDrawerProps) {
   const items: DescriptionsItem[] = [
     { key: 'name', label: 'Name', children: item.name },
@@ -37,11 +42,12 @@ export function SkillDetailsDrawer({
       : []),
   ]
   return (
-    <Sheet
+    <Drawer
       data-testid="hub-skill-detail-sheet"
       open={open}
-      onOpenChange={(v) => { if (!v) onClose() }}
-      className="!max-w-[600px]"
+      onClose={onClose}
+      size={600}
+      footer={footer}
       title={
         <Space>
           <Title level={5} className="!m-0">
@@ -55,6 +61,6 @@ export function SkillDetailsDrawer({
         {item.summary && <Paragraph>{item.summary}</Paragraph>}
         <Descriptions size="sm" column={1} bordered items={items} data-testid="hub-skill-detail-descriptions" />
       </div>
-    </Sheet>
+    </Drawer>
   )
 }

@@ -86,7 +86,7 @@ export function AssistantsHubTab() {
   }
 
   return (
-    <div className="assistants-hub-tab flex flex-col gap-3 h-full overflow-hidden">
+    <div className="assistants-hub-tab flex flex-col gap-3 h-full overflow-hidden pt-1">
       {/* Search and Filters */}
       <div className="px-3">
         <div className="flex gap-2 flex-wrap">

@@ -103,7 +103,9 @@ function ComboboxContent({
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
-        className="isolate z-50"
+        // z-[70] so the popup renders ABOVE a Dialog it's opened inside
+        // (dialog content is z-[60]); isolate keeps it a self-contained context.
+        className="isolate z-[70]"
       >
         <ComboboxPrimitive.Popup
           data-slot="combobox-content"

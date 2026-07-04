@@ -212,17 +212,18 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
       {/* Body — viewer's existing component, called with the source variant.
           Body click does NOTHING; only the chevron in the header toggles.
 
-          `inlineFill` viewers (the tabular data grid) measure their own
-          container to size a virtual scroll area, so they need a DEFINITE
-          height — a bare `max-height` leaves their `height: 100%` resolving to
-          `auto`, and their measurement loops toward zero. They get a fixed-
-          height box with internal scroll; intrinsic viewers (image / text /
-          markdown) keep the content-sized `max-height` box. */}
+          Both branches are content-sized boxes with a max cap, so a SHORT table
+          (or any short body) shrinks to fit instead of leaving empty space. The
+          `inlineFill` viewers (the tabular data grid) own their own
+          OverlayScrollbars scroll region (`max-h-full` inside), which caps +
+          scrolls a tall grid within this box — no fixed height needed (the kit
+          Table isn't virtualized, so the old "needs a definite height for
+          measurement" constraint no longer applies). */}
       {showBody && Body ? (
         <div
           className={
             viewer?.inlineFill
-              ? 'overflow-hidden h-[420px]'
+              ? 'overflow-hidden'
               : 'overflow-auto max-h-[600px]'
           }
           data-testid="inline-file-preview-body"

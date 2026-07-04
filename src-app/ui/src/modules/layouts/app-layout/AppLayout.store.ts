@@ -49,6 +49,23 @@ interface AppLayoutState {
   sidebarWidth: number
   mainContentWidth: number
 
+  /**
+   * When true, the app shell unwinds its fixed-height/overflow clamp so the
+   * DOCUMENT (window) scrolls instead of an inner scroller — the condition iOS
+   * Safari needs to collapse its toolbar + flow content under the notch. Set
+   * only by pages that opt in via `useNativeScroll` (Settings, mobile only);
+   * defaults off so every other page keeps the fixed shell. Ephemeral (not
+   * persisted).
+   */
+  nativeScroll: boolean
+
+  /**
+   * In native scroll mode, whether the auto-hiding header is currently hidden
+   * (scrolled away on swipe-up). Shared so the fixed sidebar-toggle button can
+   * disappear/reappear together with the header. Ephemeral.
+   */
+  headerHidden: boolean
+
   // Actions
   setIsMobile: (isMobile: boolean) => void
   setMobileOverlayOpen: (open: boolean) => void
@@ -58,6 +75,8 @@ interface AppLayoutState {
   setSidebarWidth: (width: number) => void
   setMainContentWidth: (width: number) => void
   setIsFullscreen: (isFullscreen: boolean) => void
+  setNativeScroll: (nativeScroll: boolean) => void
+  setHeaderHidden: (headerHidden: boolean) => void
 }
 
 export const useAppLayoutStore = create<AppLayoutState>()(
@@ -72,6 +91,8 @@ export const useAppLayoutStore = create<AppLayoutState>()(
         isSidebarCollapsed: false,
         sidebarWidth: 240,
         mainContentWidth: 1000,
+        nativeScroll: false,
+        headerHidden: false,
 
         // Actions
         setIsMobile: (isMobile: boolean) => {
@@ -105,6 +126,14 @@ export const useAppLayoutStore = create<AppLayoutState>()(
 
         setIsFullscreen: (isFullscreen: boolean) => {
           set({ isFullscreen })
+        },
+
+        setNativeScroll: (nativeScroll: boolean) => {
+          set({ nativeScroll })
+        },
+
+        setHeaderHidden: (headerHidden: boolean) => {
+          set({ headerHidden })
         },
         }),
       ),

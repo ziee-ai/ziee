@@ -1,7 +1,9 @@
 import { Button, Dropdown, Flex, Link, Result, ScrollArea, Title, Text } from '@/components/ui'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
+import { cn } from '@/lib/utils'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { BookOpen, Compass, ExternalLink } from 'lucide-react'
 
@@ -30,6 +32,11 @@ export default function SettingsPage() {
   // button can expose `aria-expanded` (the menu-button ARIA contract).
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const minSize = useElementMinSize(containerRef)
+  // Opt Settings into native document scroll on mobile (iOS Safari toolbar
+  // collapse). No-op on desktop / non-xs — the two-pane inner-scroll layout is
+  // untouched there. `nativeScroll` from the store drives the flow classes.
+  useNativeScroll(true)
+  const { nativeScroll } = Stores.AppLayout
   // The settings layout needs the side-menu (~180px) + a content
   // column wide enough for cards/forms (~440px) to feel non-cramped
   // — that's ~620px total. Use `sm` (≤640px) as the threshold so
@@ -201,7 +208,7 @@ export default function SettingsPage() {
   const SettingsMenu = () => (
     <Menu
       data-testid="settings-nav-menu"
-      className="w-fit p-1"
+      className="w-fit px-2 py-1"
       items={kitMenuItems}
       selectedKey={currentSection ?? validSections[0]}
       onSelect={handleMenuClick}
@@ -213,7 +220,10 @@ export default function SettingsPage() {
   return (
     <div
       ref={containerRef}
-      className="h-full flex flex-col overflow-hidden"
+      className={cn(
+        'flex flex-col',
+        nativeScroll ? 'min-h-dvh' : 'h-full overflow-hidden',
+      )}
     >
       {/* Page Header */}
       <HeaderBarContainer>
@@ -222,7 +232,7 @@ export default function SettingsPage() {
             Settings
           </Title>
           {useMobileLayout && (
-            <div className="flex flex-1 items-center px-2">
+            <div className="flex items-center">
               <Dropdown
                 data-testid="settings-mobile-dropdown"
                 items={dropdownItems.map((item: any) => {
@@ -268,7 +278,7 @@ export default function SettingsPage() {
       </HeaderBarContainer>
 
       {/* Page Content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className={cn('flex flex-1', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Desktop Sidebar — top padding gives the menu a 16px gap
             from the HeaderBarContainer above. Without it the menu's
             first item sits flush against the bottom of the header,

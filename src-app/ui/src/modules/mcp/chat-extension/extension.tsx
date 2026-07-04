@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Alert, Button, Card, Progress, Text } from '@/components/ui'
-import { Wrench, CircleCheck, CircleX } from 'lucide-react'
+import { Wrench, CircleCheck, CircleX, ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   createExtension,
+  chatExtensionRegistry,
   type ChatExtension,
   type ContentRendererProps,
 } from '@/modules/chat/core/extensions'
@@ -15,6 +17,12 @@ import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
 import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusRow'
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
+
+// The tool-call header shows a human server name in parens — never a raw id.
+// (`server_id` is used as a fallback when the server row isn't loaded; that's a
+// meaningless UUID to the user, so we suppress it rather than display it.)
+const looksLikeId = (s?: string | null): boolean =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(s)
 
 /**
  * MCP Tool Call UI Component
@@ -39,16 +47,6 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
     }
   }
 
-  const getStatusText = () => {
-    switch (toolCall.status) {
-      case 'started':
-        return 'Running...'
-      case 'completed':
-        return 'Completed'
-      case 'error':
-        return 'Failed'
-    }
-  }
 
   return (
     <Card
@@ -60,21 +58,20 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
         <div className="flex items-center gap-2">
           {getStatusIcon()}
           <Text strong>{toolCall.tool_name}</Text>
-          <Text type="secondary" className="text-xs">
-            ({toolCall.server})
-          </Text>
-          <Text type="secondary" className="text-xs">
-            {getStatusText()}
-          </Text>
+          {toolCall.server && !looksLikeId(toolCall.server) && (
+            <Text type="secondary" className="text-xs">
+              ({toolCall.server})
+            </Text>
+          )}
         </div>
         <Button
-          size="default"
+          size="icon"
           variant="ghost"
+          tooltip={isExpanded ? 'Hide details' : 'Show details'}
+          icon={<ChevronDown className={cn('transition-transform', isExpanded && 'rotate-180')} />}
           onClick={() => setIsExpanded(!isExpanded)}
           data-testid={`mcp-toolcall-details-btn-${toolCall.tool_use_id}`}
-        >
-          {isExpanded ? 'Hide' : 'Show'} details
-        </Button>
+        />
       </div>
 
       {toolCall.status === 'started' && toolCall.progress && (
@@ -159,9 +156,8 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
     return <McpToolCallUI toolCall={toolCall} />
   }
 
-  // Look up server name from server_id
+  // Look up the server row so we can show its human display name (never the id).
   const server = servers.find(s => s.id === toolUseData.server_id)
-  const serverName = server?.display_name || toolUseData.server_id || 'Unknown'
 
   // Look up matching tool_result for historical display
   const message = Stores.Chat.messages.get(data.message_id)
@@ -186,22 +182,28 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
             <Wrench className="text-primary" />
           )}
           <Text strong>{toolUseData.name || 'Tool Call'}</Text>
-          <Text type="secondary" className="text-xs">({serverName})</Text>
+          {server?.display_name && (
+            <Text type="secondary" className="text-xs">({server.display_name})</Text>
+          )}
+          {/* Status is conveyed by the icon (check / x / wrench) — no text. A
+              hidden marker keeps the completed/failed signal available to tests. */}
           {toolResultData && (
-            <Text
-              type="secondary"
-              className="text-xs"
+            <span
+              className="sr-only"
               data-testid={`mcp-tooluse-status-${toolUseData.id}`}
               data-status={toolResultData.is_error ? 'failed' : 'completed'}
-            >
-              {toolResultData.is_error ? 'Failed' : 'Completed'}
-            </Text>
+            />
           )}
         </div>
         {hasDetails && (
-          <Button size="default" variant="ghost" onClick={() => setIsExpanded(!isExpanded)} data-testid={`mcp-tooluse-details-btn-${toolUseData.id}`}>
-            {isExpanded ? 'Hide' : 'Show'} details
-          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            tooltip={isExpanded ? 'Hide details' : 'Show details'}
+            icon={<ChevronDown className={cn('transition-transform', isExpanded && 'rotate-180')} />}
+            onClick={() => setIsExpanded(!isExpanded)}
+            data-testid={`mcp-tooluse-details-btn-${toolUseData.id}`}
+          />
         )}
       </div>
       {isExpanded && (
@@ -228,6 +230,115 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
       )}
     </Card>
   )
+}
+
+/**
+ * A maximal run of consecutive tool blocks starting at `index` — every
+ * following `tool_use` / `tool_result` block, stopping at the first block of any
+ * other type (e.g. an assistant `text`). Tool calls are emitted as adjacent
+ * tool_use→tool_result pairs, so a run of K tool calls is up to 2K blocks.
+ */
+function collectToolRun(
+  blocks: MessageContent[],
+  index: number,
+): MessageContent[] {
+  const run: MessageContent[] = []
+  for (let i = index; i < blocks.length; i++) {
+    const t = blocks[i].content_type
+    if (t !== 'tool_use' && t !== 'tool_result') break
+    run.push(blocks[i])
+  }
+  return run
+}
+
+/** Number of tool_use blocks in a run (the "N tools" count). */
+function countToolUses(run: MessageContent[]): number {
+  return run.filter(b => b.content_type === 'tool_use').length
+}
+
+/**
+ * Collapsed "N tools called" card for a run of ≥2 consecutive tool calls.
+ * Expanding renders each run member through the registry's single-block path
+ * (tool_use → its own card, tool_result → its files), so nothing regroups.
+ */
+function McpToolGroupCard({
+  run,
+  isUser,
+}: {
+  run: MessageContent[]
+  isUser: boolean
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const toolUses = run.filter(b => b.content_type === 'tool_use')
+  const resultByUseId = new Map<string, { is_error?: boolean }>()
+  for (const b of run) {
+    if (b.content_type !== 'tool_result') continue
+    const rc = b.content as unknown as { tool_use_id?: string; is_error?: boolean }
+    if (rc.tool_use_id) resultByUseId.set(rc.tool_use_id, rc)
+  }
+  const hasError = [...resultByUseId.values()].some(r => r.is_error)
+  const allDone = toolUses.every(u =>
+    resultByUseId.has((u.content as MessageContentDataToolUse).id),
+  )
+  const icon = hasError ? (
+    <CircleX className="text-destructive" />
+  ) : !allDone ? (
+    <Wrench className="text-primary animate-spin" />
+  ) : (
+    <CircleCheck className="text-success" />
+  )
+
+  return (
+    <Card size="sm" className="mb-2 bg-black/2" data-testid="mcp-toolgroup-card">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {icon}
+          <Text strong>{toolUses.length} tools called</Text>
+        </div>
+        <Button
+          size="icon"
+          variant="ghost"
+          tooltip={isExpanded ? 'Hide details' : 'Show details'}
+          icon={<ChevronDown className={cn('transition-transform', isExpanded && 'rotate-180')} />}
+          onClick={() => setIsExpanded(!isExpanded)}
+          data-testid="mcp-toolgroup-details-btn"
+        />
+      </div>
+      {isExpanded && (
+        <div className="mt-2 flex flex-col gap-2">
+          {run.map((b, i) => {
+            // Single-block render (no `blocks`), so the group renderer falls back
+            // to its single form — no recursion.
+            const res = chatExtensionRegistry.renderContent({ content: b, isUser })
+            return <Fragment key={b.id || `run-${i}`}>{res?.node ?? null}</Fragment>
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+/**
+ * tool_use renderer entry point. Given its neighbor blocks (from ChatMessage's
+ * run-loop), it folds a run of ≥2 consecutive tool calls into one
+ * `McpToolGroupCard`; otherwise (a lone call, or rendered standalone without
+ * neighbors) it defers to the single-tool `McpToolUseRenderer`. Its
+ * `contentSpan` tells the run-loop how many blocks the group consumed.
+ */
+function McpToolUseGroup(props: ContentRendererProps) {
+  const { content, isUser, blocks, index } = props
+  const run =
+    blocks && index != null ? collectToolRun(blocks, index) : null
+  if (!run || countToolUses(run) < 2) {
+    return <McpToolUseRenderer content={content} isUser={isUser} />
+  }
+  return <McpToolGroupCard run={run} isUser={isUser} />
+}
+McpToolUseGroup.contentSpan = (blocks: MessageContent[], index: number): number => {
+  const run = collectToolRun(blocks, index)
+  // Only swallow the whole run (use+result blocks) when it's an actual group;
+  // a lone tool call consumes just its own block so its result renders normally.
+  return countToolUses(run) >= 2 ? run.length : 1
 }
 
 /**
@@ -917,7 +1028,7 @@ const mcpExtension: ChatExtension = createExtension({
   // renderer for a content type, so registering a null renderer here would
   // shadow the file extension's.
   contentTypes: {
-    tool_use: McpToolUseRenderer,
+    tool_use: McpToolUseGroup,
     elicitation_request: ElicitationFormContent,
   },
 

@@ -14,6 +14,8 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 import { ProjectInlineChatInput } from '@/modules/projects/chat-extension/components/ProjectInlineChatInput'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
+import { cn } from '@/lib/utils'
 
 /**
  * Project detail page — Option A layout.
@@ -69,6 +71,9 @@ export function ProjectDetailPage() {
   const pageContainerRef = useRef<HTMLDivElement>(null)
   const pageMinSize = useElementMinSize(pageContainerRef)
   const toolbarInCardBody = pageMinSize.sm
+  // Native document-scroll on mobile (iOS toolbar collapse + under-notch flow).
+  useNativeScroll(true)
+  const { nativeScroll } = Stores.AppLayout
 
   // Drop selection on project switch so leftover ids from project A
   // can't trigger a bulk-delete after navigating to project B.
@@ -259,7 +264,7 @@ export function ProjectDetailPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className={cn('flex flex-col', nativeScroll ? 'min-h-dvh' : 'h-full overflow-hidden')}>
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full gap-2">
           <div className="flex items-center min-w-0 gap-2">
@@ -313,10 +318,11 @@ export function ProjectDetailPage() {
       {/* Use the shared DivScrollY (OverlayScrollbars) for the page
           body scroll instead of native `overflow-y-auto` — matches
           the rest of the app's themed scrollbar treatment. */}
-      <DivScrollY className="flex-1">
+      <DivScrollY nativeFlow className="flex-1">
         <div
           ref={pageContainerRef}
           className="flex flex-col gap-3 max-w-4xl mx-auto p-4 w-full"
+          style={nativeScroll ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' } : undefined}
         >
           {/* 1. Inline chat input — start a new conversation in this project.
                 The label above the input is intentional: users land here

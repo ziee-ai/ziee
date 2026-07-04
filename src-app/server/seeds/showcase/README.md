@@ -1,0 +1,159 @@
+# Chat rendering showcase seed
+
+Deterministic chat data for eyeball QA of the chat UI — markdown, code, tool
+calls, files, thinking, elicitation, and the stateful "waiting" surfaces.
+
+It seeds **several conversations** (all in a "UI Showcase" project):
+
+| Conversation | Purpose |
+|---|---|
+| **Rendering Showcase — every block type** (`11111111-…-111111111111`) | The exhaustive scroll-through reference: all markdown + every tool-result case + all file types. |
+| **Scenario · Tool call — awaiting approval** | The **pending approval panel**, re-hydrated on load from a `tool_use_approvals` row (`status='pending'`). |
+| **Scenario · Tool call — completed** | One clean completed tool call in isolation. |
+| **Scenario · Elicitation — waiting for input** | The **pending elicitation form** (`status='pending'`). |
+| **Scenario · Elicitation — resolved** | Accepted + declined elicitations side by side. |
+
+The scenario conversations isolate ONE state each so it's obvious in the sidebar
+— particularly the two **seedable "waiting" states**:
+
+- **Tool call awaiting approval** — a `tool_use` block with no result + a
+  `tool_use_approvals` row (`status='pending'`). On conversation open the MCP
+  chat-extension fetches `GET /branches/{id}/pending-approvals` and re-hydrates
+  the approval panel. *(This is the only way a "waiting for approval" state
+  survives a reload.)*
+- **Elicitation waiting** — an `elicitation_request` content block, `status='pending'`.
+
+> **Not seedable:** a *"Running…"* (started) tool call. That status lives only
+> in the live SSE stream and is never persisted; on reload it renders as a
+> result-less `tool_use`. So the only reload-stable "in progress" states are the
+> two above.
+
+Import is **idempotent** (fixed UUIDs + `ON CONFLICT DO NOTHING`), so re-running
+just no-ops.
+
+## Files in this directory
+
+| File | Purpose |
+|------|---------|
+| `showcase.sql`      | The seed. Heavily commented, organized into sections (Markdown / Thinking / Tool calls / Files / Elicitation+streaming) each ending in an `-- add more here --` anchor. |
+| `generate_files.py` | Generates the binary + text assets (PNG, JPG, multi-sheet XLSX, PDF, CSV, .py, .md, large .txt) into `files/`. Deps: `Pillow`, `openpyxl`. |
+| `load.sh`           | Resolves the target DB + owner user, generates assets if missing, copies bytes into the file store, and runs `showcase.sql`. |
+| `files/`            | The generated assets (safe to delete — `load.sh`/`generate_files.py` recreate them). |
+
+## How to load
+
+Prereqs: the server has **booted at least once** against the target DB (so the
+built-in `mcp_servers` rows exist) and **first-run setup is complete** (so a
+root admin user exists). `psql` + `python3` + `curl` on PATH.
+
+```bash
+cd src-app/server/seeds/showcase
+./load.sh
+```
+
+To get real **thumbnails, preview pages, and extracted text** on the seeded
+files, the server's HTTP API must be **reachable and running** while you load —
+step 6 uploads each asset through the live pipeline (there's no reprocess
+endpoint) and grafts the result onto the seed's fixed file ids. If the API is
+down or login fails, the load still completes but the files stay raw (no
+thumbnails/previews); just re-run with the server up. It's idempotent (skips
+already-processed files). Override `API_URL` / `ADMIN_USERNAME` /
+`ADMIN_PASSWORD` / `ZIEE_ADMIN_TOKEN`, or set `SKIP_FILE_PROCESSING=1` to skip.
+
+By default it targets the embedded dev Postgres (`…@127.0.0.1:54323/postgres`)
+and the dev file store (`<server>/../../ziee-data/dev/app-data/files`), and
+assigns ownership to the root admin (`users.is_admin = true`).
+
+Override any of those:
+
+```bash
+DATABASE_URL='postgresql://postgres:password@127.0.0.1:54323/postgres' \
+OWNER='<user-uuid>' \
+FILES_DIR='/path/to/app-data/files' \
+./load.sh
+```
+
+Then open the conversation in the chat UI (as the owner user) and scroll top to
+bottom. The mcp tool-call **Calls** tab (per built-in server) shows the 13
+recorded calls, including the failed + cancelled ones.
+
+## What it covers
+
+- **Markdown (base):** all 6 heading levels, bold/italic/strike/inline-code,
+  ordered / unordered / nested / task lists, simple + wide tables, nested
+  blockquotes, `hr`, links, footnotes, inline image, LaTeX inline + block math,
+  two Mermaid diagrams, fenced code in rust/python/typescript/sql/bash/json/yaml/
+  diff/html, a deliberately long code block + long prose block (scroll tests).
+- **Markdown (edge cases — the exhaustive pass, "Turn 3b"):** reference /
+  collapsed / autolink / bare-URL / email links, link + image titles,
+  image-as-link; table **column alignment** + in-cell formatting + empty cells +
+  escaped pipes; ordered-list-starting-at-N, `*`/`+`/`-` markers, tight vs loose
+  lists, list items containing a nested code block + blockquote; hard line breaks
+  (trailing-space **and** backslash), escaped chars, HTML entities, `<sub>`/
+  `<sup>`/`<kbd>`/`<mark>`/`<abbr>`/`<br>`; **GFM alerts** (NOTE/TIP/IMPORTANT/
+  WARNING/CAUTION); raw-HTML `<details>`/`<summary>` + an HTML table; setext
+  headings, indented (4-space) code, `~~~` fences, backticks-in-code-span, `***`/
+  `___` thematic breaks; emoji (unicode + shortcode), long-unbroken-token +
+  long-URL overflow, consecutive code blocks; math `aligned`/matrix/`\text{}`,
+  and a blockquote containing a heading + list + code.
+- **Thinking** block (with `metadata.token_count`).
+- **Tool calls** (realistic args + results):
+  `code_sandbox.execute_command` (stdout/stderr/exit + resource_link chart),
+  `web_search` + `fetch_url` (typed `structured_content`), `lit_search`
+  (full `LiteratureResult` shape → screening card), `memory` remember+recall,
+  `citations.format_citations`, `control.call_api`, `get_tool_result`. Plus the
+  full state matrix: **failed** (`is_error`), **cancelled**, **timeout**,
+  **large/truncated**, **mixed** (text+tool_use+tool_result+file), **multiple
+  resource_links** of different mime types in one result (image/PDF/CSV/XLSX
+  viewers at once), an **external (non-built-in)** MCP server call, an
+  **in-flight** tool_use with no result yet, and **empty `{}` input**. The
+  `mcp_tool_calls` rows cover every `status` (completed/failed/cancelled/timeout)
+  and every `source` (chat/always/rest/sampling/approval) for the Calls tab.
+- **Files:** PNG + JPG (as `image` blocks), PDF / CSV / multi-sheet XLSX / .py /
+  .md / large .txt (as `file_attachment` blocks), tool-returned `resource_link`
+  files, and 2 project files. On-disk bytes land at
+  `<FILES_DIR>/originals/<owner>/<file_id>.<ext>`.
+- **Elicitation** request blocks in **accepted / pending / declined** states,
+  and a long streaming-style assistant message.
+
+### Known non-rendering cases (deliberate signal)
+
+- A `tool_result`'s inline base64 `attachment` / `images` fields are **not**
+  rendered by the current UI (only `resource_links` with a `file_id` produce an
+  inline preview via `MessageFilesView`) — so the seed uses `resource_links`, not
+  base64 inline files. If inline-file rendering is added later, seed those too.
+- `hidden_content` on a tool_result is intentionally never shown (stripped
+  server-side); not seeded as a visible case.
+
+## How to add a new case
+
+1. **A new block/turn:** add `pg_temp.msg(...)` + `pg_temp.blk(...)` calls in the
+   relevant `SECTION` of `showcase.sql`, using the next free message UUID
+   (`30000000-…-NN`) and ordinal. Content is a `jsonb_build_object('type', …)`
+   matching one of the `MessageContentData` variants
+   (text / thinking / image / file_attachment / tool_use / tool_result /
+   elicitation_request).
+2. **A tool call** also needs a row in the `SECTION C-rows` `mcp_tool_calls`
+   INSERT (for the Calls tab).
+3. **A new file:** add a generator fn in `generate_files.py`, a `files` +
+   `file_versions` row in section 0 of `showcase.sql`, and an entry in
+   `load.sh`'s `FILE_MAP`. Recompute its `sha256` for the `checksum`.
+
+## Notes / signal for the human
+
+- **Content types actually registered by the UI** (`ContentRenderer` +
+  extension registry): `text`, `thinking`, `image`, `file_attachment`,
+  `tool_use`, `elicitation_request`, and `tool_result`. Anything else falls
+  through to a literal **"Unknown content type: …"** block — a useful smoke
+  signal if a future variant is added without a renderer.
+- `tool_use` is rendered by `McpToolUseRenderer`, which **pairs** the matching
+  `tool_result` (by `tool_use_id`) under a "Show details" expander. The
+  `tool_result` block itself is claimed by the **file** extension's
+  `MessageFilesView` (renders `resource_links` / attachments inline) or the
+  **literature** card — so a `tool_result` carrying *only text* leans on the
+  tool_use pairing for display. Verify a text-only tool_result still shows its
+  text where you expect.
+- The inline markdown image points at a non-existent URL on purpose (exercises
+  the `<img>` layout / broken-image state without bundling an external asset).
+- Math + Mermaid render via Streamdown's built-in remark-math / mermaid support;
+  if a build strips those plugins, those blocks are the canary.

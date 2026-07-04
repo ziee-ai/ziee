@@ -7,6 +7,8 @@ import { ConversationList } from '@/modules/chat/components/ConversationList'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
+import { cn } from '@/lib/utils'
 
 /**
  * ChatHistoryPage
@@ -37,6 +39,9 @@ export default function ChatHistoryPage() {
   const [searchOpenInNarrow, setSearchOpenInNarrow] = useState(false)
 
   // Chat history store for empty state detection
+  // Native document-scroll on mobile (iOS toolbar collapse + under-notch flow).
+  useNativeScroll(true)
+  const { nativeScroll } = Stores.AppLayout
   const { conversations, loading, error } = Stores.ChatHistory
 
   // Refetch on mount. The sidebar's RecentConversationsWidget may have
@@ -67,7 +72,7 @@ export default function ChatHistoryPage() {
   return (
     <div
       ref={pageRef}
-      className="h-full w-full flex flex-col overflow-y-hidden"
+      className={cn('w-full flex flex-col', nativeScroll ? 'min-h-dvh' : 'h-full overflow-y-hidden')}
     >
       {/* Header */}
       <HeaderBarContainer>
@@ -79,38 +84,50 @@ export default function ChatHistoryPage() {
             Chats
           </Title>
 
-          {/* Wide layout: inline search input portal target. */}
-          {!isNarrow && (
-            <div
-              ref={headerSearchRef}
-              className="flex-[0_1_320px] min-w-[200px]"
-            />
-          )}
-
-          {/* Narrow layout: search ICON button that toggles a body
-            * search box. Becomes `variant="default"` when the body search is
-            * open so the active state is visible. */}
-          {isNarrow && (
-            <Tooltip
-              content={searchOpenInNarrow ? 'Hide search' : 'Search'}
-            >
-              <Button
-                data-testid="chat-history-search-toggle-btn"
-                variant={searchOpenInNarrow ? 'default' : 'ghost'}
-                icon={<SearchIcon />}
-                onClick={() => setSearchOpenInNarrow(v => !v)}
-                aria-label={
-                  searchOpenInNarrow ? 'Hide search' : 'Open search'
-                }
-                aria-pressed={searchOpenInNarrow}
+          <div className="flex items-center gap-2 flex-1 justify-end min-w-0">
+            {/* Wide layout: inline search input portal target. */}
+            {!isNarrow && (
+              <div
+                ref={headerSearchRef}
+                className="flex-[0_1_320px] min-w-[200px]"
               />
-            </Tooltip>
-          )}
+            )}
+
+            {/* Narrow layout: search ICON button that toggles a body
+              * search box. Becomes `variant="default"` when the body search is
+              * open so the active state is visible. */}
+            {isNarrow && (
+              <Tooltip
+                content={searchOpenInNarrow ? 'Hide search' : 'Search'}
+              >
+                <Button
+                  data-testid="chat-history-search-toggle-btn"
+                  variant={searchOpenInNarrow ? 'default' : 'ghost'}
+                  icon={<SearchIcon />}
+                  onClick={() => setSearchOpenInNarrow(v => !v)}
+                  aria-label={
+                    searchOpenInNarrow ? 'Hide search' : 'Open search'
+                  }
+                  aria-pressed={searchOpenInNarrow}
+                />
+              </Tooltip>
+            )}
+
+            {/* New chat — filled action, navigates to the new-chat page. */}
+            <Button
+              data-testid="chat-history-header-new-chat-btn"
+              variant="default"
+              size="icon"
+              icon={<Plus />}
+              tooltip="New chat"
+              onClick={() => navigate('/chat')}
+            />
+          </div>
         </div>
       </HeaderBarContainer>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col overflow-hidden items-center">
+      <div className={cn('flex-1 flex flex-col items-center', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Body search box — always rendered when narrow + opened via
          * header button, so it works even in the empty state. */}
         {isNarrow && searchOpenInNarrow && (
@@ -123,8 +140,8 @@ export default function ChatHistoryPage() {
          * must mount on error even when the list is empty (otherwise a failed
          * load silently falls through to the empty state). */}
         {(conversations.length > 0 || loading || error) && (
-          <div className="flex flex-1 flex-col w-full justify-center overflow-hidden">
-            <DivScrollY className="h-full flex flex-col">
+          <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
+            <DivScrollY nativeFlow className={cn('flex flex-col', nativeScroll ? '' : 'h-full')}>
               <ConversationList
                 getSearchBoxContainer={getSearchBoxContainer}
               />
@@ -136,7 +153,7 @@ export default function ChatHistoryPage() {
          * ConversationList above) isn't shadowed by a duplicate empty panel. */}
         {!loading && conversations.length === 0 && !error && (
           <div className="text-center py-12 m-auto">
-            <MessageSquare className="text-6xl mb-4" />
+            <MessageSquare className="size-16 mx-auto mb-4" />
             <Title level={3}>
               No chat history yet
             </Title>

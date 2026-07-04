@@ -1,17 +1,7 @@
-import { Download, Users } from 'lucide-react'
-import {
-  Button,
-  Card,
-  Flex,
-  Dialog,
-  Tag,
-  Text,
-  message,
-  MultiSelect,
-} from '@/components/ui'
+import { Download } from 'lucide-react'
+import { Button, Card, Flex, Tag, Text, message } from '@/components/ui'
 import { useState } from 'react'
-import { ApiClient } from '@/api-client'
-import type { Group, IndexItem } from '@/api-client/types'
+import type { IndexItem } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
@@ -23,10 +13,6 @@ interface WorkflowHubCardProps {
 
 export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
   const [showDetails, setShowDetails] = useState(false)
-  const [groupsOpen, setGroupsOpen] = useState(false)
-  const [allGroups, setAllGroups] = useState<Group[]>([])
-  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
-  const [submittingGroups, setSubmittingGroups] = useState(false)
 
   const canInstall = usePermission(Permissions.WorkflowsInstall)
   const canManageSystem = usePermission(Permissions.WorkflowsManageSystem)
@@ -65,29 +51,35 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
     }
   }
 
-  const openGroupPicker = async () => {
-    try {
-      const res = await ApiClient.UserGroup.list({ page: 1, per_page: 100 })
-      setAllGroups(res.groups)
-      setSelectedGroups([])
-      setGroupsOpen(true)
-    } catch {
-      message.error('Failed to load groups')
-    }
-  }
-
-  const handleInstallForGroups = async () => {
-    setSubmittingGroups(true)
-    try {
-      await Stores.HubWorkflows.installForGroups(item.name, selectedGroups)
-      message.success(`Installed "${title}" for selected groups`)
-      setGroupsOpen(false)
-    } catch {
-      message.error('Install failed')
-    } finally {
-      setSubmittingGroups(false)
-    }
-  }
+  // Same install actions as the card, rendered in the detail drawer's footer.
+  const drawerFooter =
+    canInstall || canManageSystem ? (
+      <Flex justify="end" gap="small">
+        {canInstall && (
+          <Button
+            variant="default"
+            icon={<Download />}
+            loading={installing}
+            disabled={installing || state !== 'none'}
+            onClick={handleInstallForMe}
+            data-testid={`hub-workflow-drawer-install-btn-${item.name}`}
+          >
+            Install for me
+          </Button>
+        )}
+        {canManageSystem && (
+          <Button
+            icon={<Download />}
+            loading={installing}
+            disabled={installing || state === 'system'}
+            onClick={handleInstallForEveryone}
+            data-testid={`hub-workflow-drawer-install-as-system-btn-${item.name}`}
+          >
+            {state === 'system' ? 'System installed' : 'Install as system'}
+          </Button>
+        )}
+      </Flex>
+    ) : undefined
 
   return (
     <>
@@ -130,25 +122,15 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
               </Button>
             )}
             {canManageSystem && (
-              <>
-                <Button
-                  icon={<Download />}
-                  loading={installing}
-                  disabled={installing || state === 'system'}
-                  onClick={handleInstallForEveryone}
-                  data-testid={`hub-workflow-install-as-system-btn-${item.name}`}
-                >
-                  {state === 'system' ? 'System installed' : 'Install as system'}
-                </Button>
-                <Button
-                  icon={<Users />}
-                  disabled={installing}
-                  onClick={openGroupPicker}
-                  data-testid={`hub-workflow-install-groups-btn-${item.name}`}
-                >
-                  Groups…
-                </Button>
-              </>
+              <Button
+                icon={<Download />}
+                loading={installing}
+                disabled={installing || state === 'system'}
+                onClick={handleInstallForEveryone}
+                data-testid={`hub-workflow-install-as-system-btn-${item.name}`}
+              >
+                {state === 'system' ? 'System installed' : 'Install as system'}
+              </Button>
             )}
           </div>
         </Flex>
@@ -158,44 +140,8 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
         item={item}
         open={showDetails}
         onClose={() => setShowDetails(false)}
+        footer={drawerFooter}
       />
-
-      <Dialog
-        data-testid={`hub-workflow-groups-dialog-${item.name}`}
-        open={groupsOpen}
-        title="Install for groups"
-        onOpenChange={(open) => {
-          if (!open) setGroupsOpen(false)
-        }}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setGroupsOpen(false)} data-testid={`hub-workflow-groups-cancel-btn-${item.name}`}>
-              Cancel
-            </Button>
-            <Button
-              variant="default"
-              loading={submittingGroups}
-              onClick={handleInstallForGroups}
-              data-testid={`hub-workflow-groups-install-btn-${item.name}`}
-            >
-              Install
-            </Button>
-          </>
-        }
-      >
-        <MultiSelect
-          data-testid={`hub-workflow-groups-multiselect-${item.name}`}
-          className="w-full"
-          aria-label="Restrict to groups"
-          placeholder="Select groups (empty = all users)"
-          searchPlaceholder="Search groups…"
-          emptyText="No groups found"
-          value={selectedGroups}
-          onChange={setSelectedGroups}
-          options={allGroups.map(g => ({ label: g.name, value: g.id }))}
-          removeLabel={(label) => `Remove ${label}`}
-        />
-      </Dialog>
     </>
   )
 }

@@ -22,6 +22,12 @@ export interface DropdownProps {
   children: React.ReactElement
   side?: 'top' | 'right' | 'bottom' | 'left'
   align?: 'start' | 'center' | 'end'
+  /** Collision handling for the align axis. Defaults to Base UI's `flip`, which
+   *  swaps start↔end near a viewport edge; pass `{ align: 'shift' }` to keep the
+   *  requested align and slide it into view instead. */
+  collisionAvoidance?: React.ComponentProps<
+    typeof DropdownMenuContent
+  >['collisionAvoidance']
   /** Disables the trigger (legacy `disabled`). */
   disabled?: boolean
   /** Global selection handler receiving the activated item's `key` (legacy `menu.onClick`).
@@ -37,7 +43,7 @@ export interface DropdownProps {
   'data-testid': string
 }
 
-export function Dropdown({ items, children, side, align = 'end', disabled, onSelect, open, onOpenChange, defaultOpen, 'data-testid': testid }: DropdownProps) {
+export function Dropdown({ items, children, side, align = 'end', collisionAvoidance, disabled, onSelect, open, onOpenChange, defaultOpen, 'data-testid': testid }: DropdownProps) {
   // Base UI's trigger defaults to `nativeButton: true` and warns if the rendered
   // element isn't a real <button>. Our trigger is a caller-supplied element that
   // may be a native <button>, a component (e.g. kit <Button>, which renders one),
@@ -55,7 +61,7 @@ export function Dropdown({ items, children, side, align = 'end', disabled, onSel
           (OverlayScrollbars) below, so a long menu uses the app's overlay
           scrollbar instead of the native one. The ScrollArea owns the
           available-height cap + the p-1 item padding. */}
-      <DropdownMenuContent side={side} align={align} className="w-fit overflow-y-hidden max-h-none p-0" data-testid={testid}>
+      <DropdownMenuContent side={side} align={align} collisionAvoidance={collisionAvoidance} className="w-fit overflow-y-hidden max-h-none p-0" data-testid={testid}>
         <ScrollArea axis="y" autoHide="leave" className="max-h-(--available-height) p-1">
         {items.map((it, i) =>
           'type' in it && it.type === 'divider' ? (

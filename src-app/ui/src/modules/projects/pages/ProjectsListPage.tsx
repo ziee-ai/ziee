@@ -7,10 +7,22 @@ import { Permissions, type Project } from '@/api-client/types'
 import { ProjectCard } from '@/modules/projects/components/ProjectCard'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
+import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
+import { cn } from '@/lib/utils'
 
 export function ProjectsListPage() {
+  // Native document-scroll on mobile (iOS toolbar collapse + content under the
+  // notch); desktop keeps the fixed inner-scroll shell.
+  useNativeScroll(true)
+  const { nativeScroll } = Stores.AppLayout
   const { projects: projectsMap, loading, error } = Stores.Projects
   const projects = Array.from(projectsMap.values())
+  // Client-side "Load More" paging (the store loads the full set): reveal a
+  // page at a time, like the chat history page.
+  const PAGE_SIZE = 12
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const visibleProjects = projects.slice(0, visibleCount)
+  const hasMore = visibleCount < projects.length
   // Per-card mutation state so the duplicate/delete buttons can show a
   // spinner on the exact card being acted on (the store single-flights
   // globally, but feedback should be card-local).
@@ -55,7 +67,7 @@ export function ProjectsListPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className={cn('flex flex-col', nativeScroll ? 'min-h-dvh' : 'h-full overflow-hidden')}>
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
           <Title
@@ -78,13 +90,13 @@ export function ProjectsListPage() {
         </div>
       </HeaderBarContainer>
 
-      <div className="flex-1 flex flex-col overflow-hidden items-center">
+      <div className={cn('flex-1 flex flex-col items-center', nativeScroll ? '' : 'overflow-hidden')}>
         {projects.length > 0 ? (
-          <div className="flex flex-1 flex-col w-full overflow-hidden">
-            <div className="h-full flex flex-col overflow-y-auto">
-              <div className="max-w-4xl flex flex-wrap gap-3 pt-3 w-full self-center px-3">
-                {projects.map(project => (
-                  <div key={project.id} className="min-w-70 flex-1">
+          <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
+            <div className={cn('flex flex-col', nativeScroll ? '' : 'h-full overflow-y-auto')}>
+              <div className="max-w-4xl grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 w-full self-center px-3">
+                {visibleProjects.map(project => (
+                  <div key={project.id} className="min-w-0">
                     <ProjectCard
                       project={project}
                       onEdit={handleEdit}
@@ -99,9 +111,25 @@ export function ProjectsListPage() {
                     />
                   </div>
                 ))}
-                <div className="min-w-70 flex-1" />
-                <div className="min-w-70 flex-1" />
-                <div className="min-w-70 flex-1" />
+              </div>
+
+              {/* Paging — "Showing N of M" + Load More (mirrors the chat page). */}
+              <div
+                data-testid="project-list-paging"
+                className="text-center px-3 py-3 flex flex-col items-center gap-2"
+                style={nativeScroll ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' } : undefined}
+              >
+                <Text type="secondary" aria-live="polite" role="status">
+                  Showing {visibleProjects.length} of {projects.length} projects
+                </Text>
+                {hasMore && (
+                  <Button
+                    data-testid="project-list-load-more-btn"
+                    onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                  >
+                    Load More
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -111,7 +139,7 @@ export function ProjectsListPage() {
           </div>
         ) : (
           <div className="text-center py-12 m-auto" data-testid="project-list-empty">
-            <Folder className="text-6xl mb-4" />
+            <Folder className="size-16 mx-auto mb-4" />
               <Title level={3} className="text-muted-foreground">
                 No projects yet
               </Title>

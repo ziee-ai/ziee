@@ -57,7 +57,13 @@ interface FileExtensionStore {
   // Cache for all preview page blob URLs (used for PDF scroll view)
   // Map<fileId, Array<blobUrl|null>> — null means that page hasn't loaded yet
   previewPageUrls: Map<string, (string | null)[]>
+  // Per-file flag: a page-fetch queue is currently draining for this file.
   previewPageLoadingSet: Set<string>
+  // Pages already requested (loaded OR queued) per file — dedup so each page is
+  // fetched at most once.
+  previewPageRequested: Map<string, Set<number>>
+  // Pending page numbers to fetch per file, drained ONE AT A TIME (sequential).
+  previewPageQueue: Map<string, number[]>
 
   // Actions
   uploadFiles: (files: File[]) => Promise<void>
@@ -160,16 +166,21 @@ interface FileExtensionStore {
   loadThumbnail: (fileId: string) => Promise<void>
 
   /**
-   * Returns the cached preview page URLs for a file, or a null-filled array if not yet loaded.
-   * Triggers async loading on first call. Components call this directly — store re-renders progressively.
+   * Returns the cached preview page URLs for a file, or a null-filled array.
+   * PURE (no side effect): pages are loaded on demand via `requestPreviewPage`
+   * as the viewer scrolls, not all at once.
    */
   getPreviewPageUrls: (file: FileEntity) => (string | null)[]
 
   /**
-   * Async action: fetches all preview pages one by one and stores blob URLs.
-   * Updates page slots individually so the UI renders progressively.
+   * Request a single 1-based preview page. Deduped (each page fetched once) and
+   * enqueued into a per-file queue drained sequentially (one request at a time).
+   * The viewer calls this for the visible page + the next 2.
    */
-  loadPreviewPages: (file: FileEntity) => Promise<void>
+  requestPreviewPage: (file: FileEntity, page: number) => void
+
+  /** Internal: drains a file's page queue one request at a time. */
+  processPreviewQueue: (file: FileEntity) => Promise<void>
 
   /**
    * Triggers a browser download for the given file. Throws on failure.
@@ -222,6 +233,8 @@ export const useFileStore = create<FileExtensionStore>()(
     thumbnailLoadingSet: new Set(),
     previewPageUrls: new Map(),
     previewPageLoadingSet: new Set(),
+    previewPageRequested: new Map(),
+    previewPageQueue: new Map(),
 
     // Per-ID content cache for right panel tabs
     fileTextContents: new Map(),
@@ -709,54 +722,98 @@ export const useFileStore = create<FileExtensionStore>()(
     },
 
     getPreviewPageUrls: (file: FileEntity): (string | null)[] => {
-      const cached = get().previewPageUrls.get(file.id)
-      if (cached) return cached
-
-      if (!get().previewPageLoadingSet.has(file.id) && file.preview_page_count > 0) {
-        Promise.resolve().then(() => get().loadPreviewPages(file))
-      }
-
-      // Return a null-filled placeholder array so the component can render spinners
-      return Array(file.preview_page_count).fill(null)
+      // Pure read — no auto-load. The viewer drives loading via
+      // requestPreviewPage as pages scroll into view.
+      return (
+        get().previewPageUrls.get(file.id) ??
+        Array(file.preview_page_count).fill(null)
+      )
     },
 
-    loadPreviewPages: async (file: FileEntity): Promise<void> => {
+    requestPreviewPage: (file: FileEntity, page: number): void => {
+      if (page < 1 || page > file.preview_page_count) return
+      if (get().previewPageRequested.get(file.id)?.has(page)) return
+
       set((state) => {
-        const newSet = new Set(state.previewPageLoadingSet)
-        newSet.add(file.id)
-        // Initialise with null slots
-        const newPageUrls = new Map(state.previewPageUrls)
-        newPageUrls.set(file.id, Array(file.preview_page_count).fill(null))
-        state.previewPageLoadingSet = newSet
-        state.previewPageUrls = newPageUrls
+        const reqMap = new Map(state.previewPageRequested)
+        const reqSet = new Set(reqMap.get(file.id) ?? [])
+        reqSet.add(page)
+        reqMap.set(file.id, reqSet)
+        state.previewPageRequested = reqMap
+
+        const qMap = new Map(state.previewPageQueue)
+        qMap.set(file.id, [...(qMap.get(file.id) ?? []), page])
+        state.previewPageQueue = qMap
+
+        if (!state.previewPageUrls.has(file.id)) {
+          const m = new Map(state.previewPageUrls)
+          m.set(file.id, Array(file.preview_page_count).fill(null))
+          state.previewPageUrls = m
+        }
       })
 
-      const blobUrls: string[] = []
-      try {
-        for (let page = 1; page <= file.preview_page_count; page++) {
-          const response = await ApiClient.File.getPreview({ file_id: file.id, page })
-          const url = URL.createObjectURL(response)
-          blobUrls.push(url)
+      void get().processPreviewQueue(file)
+    },
 
-          // Update slot-by-slot so the UI renders progressively
+    processPreviewQueue: async (file: FileEntity): Promise<void> => {
+      // One drain per file — a running drain picks up newly-enqueued pages.
+      if (get().previewPageLoadingSet.has(file.id)) return
+      set((state) => {
+        const s = new Set(state.previewPageLoadingSet)
+        s.add(file.id)
+        state.previewPageLoadingSet = s
+      })
+
+      try {
+        while ((get().previewPageQueue.get(file.id) ?? []).length > 0) {
+          const queue = get().previewPageQueue.get(file.id) ?? []
+          const page = queue[0]
           set((state) => {
-            const existing = state.previewPageUrls.get(file.id)
-            if (!existing) return
-            const updated = [...existing]
-            updated[page - 1] = url
-            const newPageUrls = new Map(state.previewPageUrls)
-            newPageUrls.set(file.id, updated)
-            state.previewPageUrls = newPageUrls
+            const q = new Map(state.previewPageQueue)
+            q.set(file.id, queue.slice(1))
+            state.previewPageQueue = q
           })
+
+          try {
+            const response = await ApiClient.File.getPreview({ file_id: file.id, page })
+            const url = URL.createObjectURL(response)
+            set((state) => {
+              const existing =
+                state.previewPageUrls.get(file.id) ??
+                Array(file.preview_page_count).fill(null)
+              const updated = [...existing]
+              updated[page - 1] = url
+              const m = new Map(state.previewPageUrls)
+              m.set(file.id, updated)
+              state.previewPageUrls = m
+            })
+          } catch (error) {
+            // Un-mark so a later scroll can retry this page.
+            set((state) => {
+              const reqMap = new Map(state.previewPageRequested)
+              const reqSet = new Set(reqMap.get(file.id) ?? [])
+              reqSet.delete(page)
+              reqMap.set(file.id, reqSet)
+              state.previewPageRequested = reqMap
+            })
+            console.debug(
+              `[FileStore] Failed to load preview page ${page} for ${file.id}:`,
+              error,
+            )
+          }
         }
-      } catch (error) {
-        console.debug(`[FileStore] Failed to load preview pages for ${file.id}:`, error)
       } finally {
         set((state) => {
-          const newSet = new Set(state.previewPageLoadingSet)
-          newSet.delete(file.id)
-          state.previewPageLoadingSet = newSet
+          const s = new Set(state.previewPageLoadingSet)
+          s.delete(file.id)
+          state.previewPageLoadingSet = s
         })
+      }
+
+      // A page enqueued during the flag-teardown window would otherwise strand;
+      // restart the drain if the queue refilled.
+      if ((get().previewPageQueue.get(file.id) ?? []).length > 0) {
+        void get().processPreviewQueue(file)
       }
     },
 
@@ -767,7 +824,10 @@ export const useFileStore = create<FileExtensionStore>()(
         state.thumbnailLoadingSet = newSet
       })
       try {
-        const response = await ApiClient.File.getPreview({ file_id: fileId, page: 1 })
+        // Use the dedicated ~300px thumbnail (GET /files/{id}/thumbnail), not
+        // the full-size preview page 1 (~2000px) — the card image only needs a
+        // small image, so this is far lighter to fetch + decode.
+        const response = await ApiClient.File.getThumbnail({ file_id: fileId })
         const objectUrl = URL.createObjectURL(response)
         set((state) => {
           const newUrls = new Map(state.thumbnailUrls)

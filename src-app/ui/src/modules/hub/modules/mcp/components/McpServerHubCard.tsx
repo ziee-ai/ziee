@@ -175,6 +175,47 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const repoUrl = server.repository?.url
   const homepageUrl = server.websiteUrl
 
+  // Same install actions as the card, for the detail drawer footer.
+  const drawerFooter =
+    (multiUserMode && (isAlreadyInstalled || canInstall)) || canInstallSystem ? (
+      <Flex justify="end" gap="small">
+        {multiUserMode &&
+          (isAlreadyInstalled ? (
+            <Button
+              icon={<Eye />}
+              onClick={() => navigate('/settings/mcp-servers')}
+              data-testid="hub-mcp-drawer-view-btn"
+            >
+              View Server
+            </Button>
+          ) : canInstall ? (
+            <Button
+              variant="default"
+              icon={<Download />}
+              onClick={handleInstall}
+              disabled={installing || installingSystem}
+              loading={installing}
+              data-testid="hub-mcp-drawer-install-btn"
+            >
+              {canInstallSystem ? 'Install for me' : 'Install'}
+            </Button>
+          ) : null)}
+        {canInstallSystem && (
+          <Button
+            icon={<Copy />}
+            onClick={handleInstallAsSystem}
+            loading={installingSystem}
+            disabled={installing || installingSystem || isAlreadyInstalledAsSystem}
+            data-testid="hub-mcp-drawer-install-as-system-btn"
+          >
+            {isAlreadyInstalledAsSystem
+              ? 'System Installed'
+              : 'Install for the system'}
+          </Button>
+        )}
+      </Flex>
+    ) : undefined
+
   return (
     <>
       <Card
@@ -300,6 +341,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         server={server}
         open={showDetails}
         onClose={() => setShowDetails(false)}
+        footer={drawerFooter}
       />
     </>
   )

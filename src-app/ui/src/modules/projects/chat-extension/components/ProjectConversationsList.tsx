@@ -1,5 +1,5 @@
 import { CircleMinus } from 'lucide-react'
-import { Alert, Button, Empty, Tooltip, Text, message, Dialog } from '@/components/ui'
+import { Alert, Button, Empty, Tooltip, Text, message, Confirm } from '@/components/ui'
 import { useState } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -107,9 +107,9 @@ export function ProjectConversationsList({
 }
 
 /**
- * Hover-revealed icon button that detaches the conversation from the
- * project. Same visual rhythm as ConversationCard's delete button
- * (text + small + bg-container) so the row stays visually balanced.
+ * "Remove from project" affordance, styled + behaving like the chat card's
+ * "Add to project" button: an outline button (minus icon + text) revealed on
+ * hover/focus (always shown on touch), opening a controlled Confirm.
  */
 function RemoveFromProjectButton({
   projectId,
@@ -119,7 +119,7 @@ function RemoveFromProjectButton({
   conversationId: string
 }) {
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [, setLoading] = useState(false)
 
   const handleRemove = async () => {
     setLoading(true)
@@ -138,49 +138,40 @@ function RemoveFromProjectButton({
 
   return (
     <>
-      <Dialog
-        data-testid="project-conv-remove-dialog"
-        open={open}
-        onOpenChange={(v) => { if (!v) setOpen(false) }}
-        title="Remove from project?"
+      <div
+        className={`inline-flex items-center transition-opacity ${
+          open
+            ? 'opacity-100'
+            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
+        }`}
       >
-        <p className="text-muted-foreground">
-          The conversation will become unfiled. It is NOT deleted.
-        </p>
-        <div className="flex justify-end gap-2 mt-6">
+        <Tooltip title="Remove from project">
           <Button
-            data-testid="project-conv-remove-cancel-button"
-            onClick={() => setOpen(false)}
+            data-testid="project-conv-remove-trigger-button"
             variant="outline"
+            size="default"
+            icon={<CircleMinus />}
+            aria-label="Remove from project"
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation()
+              setOpen(true)
+            }}
           >
-            Cancel
+            Remove from project
           </Button>
-          <Button
-            data-testid="project-conv-remove-confirm-button"
-            onClick={handleRemove}
-            variant="destructive"
-            disabled={loading}
-          >
-            {loading ? 'Removing...' : 'Remove'}
-          </Button>
-        </div>
-      </Dialog>
-      <Tooltip content="Remove from project">
-        <Button
-          data-testid="project-conv-remove-trigger-button"
-          className={`transition-opacity bg-card ${
-            open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}
-          variant="ghost"
-          size="default"
-          icon={<CircleMinus />}
-          aria-label="Remove from project"
-          onClick={(e: React.MouseEvent) => {
-            e.stopPropagation()
-            setOpen(true)
-          }}
-        />
-      </Tooltip>
+        </Tooltip>
+      </div>
+      <Confirm
+        data-testid="project-conv-remove-dialog"
+        title="Remove from project?"
+        description="The conversation becomes unfiled. It is NOT deleted."
+        open={open}
+        onOpenChange={setOpen}
+        onConfirm={handleRemove}
+        onCancel={() => setOpen(false)}
+        okText="Remove"
+        cancelText="Cancel"
+      />
     </>
   )
 }

@@ -1,5 +1,5 @@
 import { Code, Copy, Download, Eye } from 'lucide-react'
-import { Button, Space } from '@/components/ui'
+import { Button, Segmented, Tooltip } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { message } from '@/components/ui'
@@ -29,26 +29,43 @@ export function RawToggle({ file }: { file: FileEntity }) {
   if (file.text_page_count === 0) return null
   const mode = Stores.File.fileViewModes.get(file.id) ?? 'compiled'
   return (
-    <Space direction="horizontal">
-      <Button
-        icon={<Eye />}
-        variant={mode === 'compiled' ? 'default' : 'outline'}
-        aria-label="Rendered view"
-        onClick={() => Stores.File.setFileViewMode(file.id, 'compiled')}
-        data-testid="file-viewer-rendered-btn"
-      >
-        Rendered view
-      </Button>
-      <Button
-        icon={<Code />}
-        variant={mode === 'raw' ? 'default' : 'outline'}
-        aria-label="Raw view"
-        onClick={() => Stores.File.setFileViewMode(file.id, 'raw')}
-        data-testid="file-viewer-raw-btn"
-      >
-        Raw view
-      </Button>
-    </Space>
+    <Segmented
+      value={mode}
+      onChange={(v: string) =>
+        Stores.File.setFileViewMode(file.id, v as 'compiled' | 'raw')
+      }
+      data-testid="file-viewer-mode-segmented"
+      options={[
+        {
+          value: 'compiled',
+          label: (
+            <Tooltip title="Rendered view">
+              <span
+                className="flex items-center"
+                aria-label="Rendered view"
+                data-testid="file-viewer-rendered-btn"
+              >
+                <Eye />
+              </span>
+            </Tooltip>
+          ),
+        },
+        {
+          value: 'raw',
+          label: (
+            <Tooltip title="Raw view">
+              <span
+                className="flex items-center"
+                aria-label="Raw view"
+                data-testid="file-viewer-raw-btn"
+              >
+                <Code />
+              </span>
+            </Tooltip>
+          ),
+        },
+      ]}
+    />
   )
 }
 
@@ -87,9 +104,14 @@ export function CopyButton({ file }: { file: FileEntity }) {
     }
   }
   return (
-    <Button icon={<Copy />} onClick={handleCopy} data-testid="file-viewer-copy-btn">
-      Copy
-    </Button>
+    <Button
+      variant="outline"
+      size="icon"
+      tooltip="Copy"
+      icon={<Copy />}
+      onClick={handleCopy}
+      data-testid="file-viewer-copy-btn"
+    />
   )
 }
 
@@ -100,6 +122,9 @@ export function CopyButton({ file }: { file: FileEntity }) {
 export function DownloadButton({ file }: { file: FileEntity }) {
   return (
     <Button
+      variant="outline"
+      size="icon"
+      tooltip="Download"
       icon={<Download />}
       onClick={() => {
         Stores.File.downloadFile(file).catch(() =>
@@ -107,8 +132,6 @@ export function DownloadButton({ file }: { file: FileEntity }) {
         )
       }}
       data-testid="file-viewer-download-btn"
-    >
-      Download
-    </Button>
+    />
   )
 }

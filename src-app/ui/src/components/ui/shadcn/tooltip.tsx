@@ -43,7 +43,9 @@ function TooltipContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        className="isolate z-50"
+        // z-[2000]: a tooltip is a transient hint that must sit above every
+        // surface — including elevated drawers (the file preview uses z-1050).
+        className="isolate z-[2000]"
       >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"

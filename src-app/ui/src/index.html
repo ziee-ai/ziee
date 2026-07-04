@@ -3,16 +3,33 @@
 <head>
     <meta charset="UTF-8"/>
     <link rel="icon" type="image/svg+xml" href="/vite.svg"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover"/>
+    <!-- matches asurascans.com's setup for the immersive-scroll experiment -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
     <title>Ziee Chat - Modular Architecture</title>
-    <!-- Pre-hydration theme: set the `dark` class before first paint to avoid a flash of the
-         wrong theme. Key must match ThemeProvider's storageKey (default 'ziee-theme'). -->
+    <!-- Static baseline so iOS Safari has a valid (hex) theme-color AT LOAD; it
+         rejects oklch and won't tint the bars without this. The pre-paint script
+         sets the right value per theme + route. Values mirror the tokens:
+         light --background/--card = #fff; dark --background = #0a0a0a,
+         --card = #1a1a1a. -->
+    <meta name="theme-color" content="#ffffff"/>
+    <!-- Pre-hydration: set the `dark` class + the theme-color before first paint
+         to avoid a flash of the wrong theme / status-bar color. The bar surface
+         differs per route (app shell = --card, blank/login = --background), so
+         pick the right one from the path. Key must match ThemeProvider's
+         storageKey (default 'ziee-theme'). -->
     <script>
       (function () {
         try {
           var p = localStorage.getItem('ziee-theme') || 'system'
           var dark = p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
           document.documentElement.classList.toggle('dark', dark)
+          // Blank/login routes paint --background; everything else is the app
+          // shell (--card). Keep this list in sync with the BlankLayout routes.
+          var blank = /^\/(auth|setup|onboarding|link-account|login)/.test(location.pathname)
+          var color = !dark ? '#ffffff' : blank ? '#0a0a0a' : '#1a1a1a'
+          var m = document.querySelector('meta[name="theme-color"]')
+          if (m) m.setAttribute('content', color)
         } catch (e) {}
       })()
     </script>

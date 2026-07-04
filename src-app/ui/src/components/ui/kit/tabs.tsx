@@ -3,6 +3,7 @@ import { Plus, X } from 'lucide-react'
 import { Tabs as Root, TabsList, TabsTrigger, TabsContent } from '../shadcn/tabs'
 import { useSurface } from './surface'
 import { useControllableState } from './use-controllable-state'
+import { DivScrollX } from '@/components/common/DivScrollX'
 import { cn } from '@/lib/utils'
 
 export interface TabItem {
@@ -24,6 +25,15 @@ interface TabsBase {
   disabled?: boolean
   size?: 'sm' | 'default'
   className?: string
+  /** Fill the container: root becomes a flex column, the tab strip stays a fixed
+   *  row, and the active panel gets the remaining height (so its content can
+   *  scroll). Use for a tabbed viewer that must fit a bounded box. */
+  fill?: boolean
+  /** Extra classes on the tab strip row (e.g. `justify-center px-3`). */
+  tabStripClassName?: string
+  /** Scroll the tab strip with the app's OverlayScrollbars (auto-hide) instead
+   *  of a native `overflow-x-auto` box. */
+  scrollX?: boolean
   /** Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. */
   'data-testid': string
 }
@@ -55,7 +65,8 @@ interface TabsStatic {
 export type TabsProps = TabsBase & (TabsEditable | TabsStatic)
 
 export function Tabs({
-  items, value, defaultValue, onValueChange, onTabClick, disabled, size, className,
+  items, value, defaultValue, onValueChange, onTabClick, disabled, size, className, fill,
+  tabStripClassName, scrollX,
   editable, hideAdd, onEdit, onClose, addLabel, closeLabel, 'data-testid': testid,
 }: TabsProps) {
   // React to an ambient disabled surface (e.g. inside a disabled Form/Card).
@@ -81,13 +92,39 @@ export function Tabs({
     <Root
       value={current}
       onValueChange={(v) => setCurrent(String(v ?? ''))}
-      className={cn('w-full', className)}
+      className={cn('w-full', fill && 'flex flex-col min-h-0', className)}
       data-testid={testid}
     >
       {/* The add button lives OUTSIDE TabsList: role=tablist requires its
           children to be role=tab (aria-required-children), and a plain add button
-          inside it violates that. */}
-      <div className="flex items-center">
+          inside it violates that. The strip scrolls horizontally (native
+          overflow-x-auto, or the app's OverlayScrollbars via `scrollX`) so a long
+          tab strip scrolls instead of wrapping/clipping. */}
+      {scrollX ? (
+        <DivScrollX className={cn(fill && 'shrink-0')} contentClassName={tabStripClassName}>
+          {renderStrip()}
+        </DivScrollX>
+      ) : (
+        <div className={cn('flex items-center overflow-x-auto', fill && 'shrink-0', tabStripClassName)}>
+          {renderStrip()}
+        </div>
+      )}
+      {items.map((t) => (
+        <TabsContent
+          key={t.key}
+          value={t.key}
+          data-testid={testid ? `${testid}-panel-${t.key}` : undefined}
+          className={fill ? 'flex-1 min-h-0 overflow-hidden' : undefined}
+        >
+          {t.children}
+        </TabsContent>
+      ))}
+    </Root>
+  )
+
+  function renderStrip() {
+    return (
+      <>
       <TabsList>
         {items.map((t) => {
           const showClose = (t.closable ?? editable) && !s.disabled && !t.disabled
@@ -133,12 +170,7 @@ export function Tabs({
           <Plus className="size-4" aria-hidden />
         </button>
       )}
-      </div>
-      {items.map((t) => (
-        <TabsContent key={t.key} value={t.key} data-testid={testid ? `${testid}-panel-${t.key}` : undefined}>
-          {t.children}
-        </TabsContent>
-      ))}
-    </Root>
-  )
+      </>
+    )
+  }
 }

@@ -1,10 +1,14 @@
-import { Descriptions, Sheet, Space, Tag, Paragraph, Title } from '@/components/ui'
+import type { ReactNode } from 'react'
+import { Descriptions, Space, Tag, Paragraph, Title } from '@/components/ui'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import type { IndexItem } from '@/api-client/types'
 
 interface WorkflowDetailsDrawerProps {
   item: IndexItem
   open: boolean
   onClose: () => void
+  /** Install actions (mirrors the card) rendered in the drawer footer. */
+  footer?: ReactNode
 }
 
 /**
@@ -16,14 +20,15 @@ export function WorkflowDetailsDrawer({
   item,
   open,
   onClose,
+  footer,
 }: WorkflowDetailsDrawerProps) {
   return (
-    <Sheet
+    <Drawer
       data-testid="hub-workflow-detail-sheet"
       open={open}
-      onOpenChange={(v) => { if (!v) onClose() }}
-      side="right"
-      className="!max-w-[720px]"
+      onClose={onClose}
+      size={720}
+      footer={footer}
       title={
         <Space>
           <Title level={5} className="!m-0">
@@ -54,6 +59,6 @@ export function WorkflowDetailsDrawer({
           ]}
         />
       </div>
-    </Sheet>
+    </Drawer>
   )
 }

@@ -91,7 +91,7 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
   }, [text, delimiter])
 
   return (
-    <div className="flex flex-col h-full w-full px-2">
+    <div className="flex flex-col h-full w-full">
       {truncated && (
         <Alert
           tone="warning"
@@ -100,14 +100,14 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           data-testid="file-delimited-truncated-alert"
         />
       )}
-      <div className="flex-1 min-h-0 overflow-auto w-full">
-        <Table
-          columns={columns}
-          dataSource={dataSource}
-          rowKey="key"
-          data-testid="file-delimited-table"
-        />
-      </div>
+      {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
+      <Table
+        virtualized
+        columns={columns}
+        dataSource={dataSource}
+        rowKey="key"
+        data-testid="file-delimited-table"
+      />
     </div>
   )
 }

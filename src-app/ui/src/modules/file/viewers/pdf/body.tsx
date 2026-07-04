@@ -1,5 +1,7 @@
+import { useEffect, useRef } from 'react'
 import { File } from 'lucide-react'
-import { Alert, Spin, Text } from '@/components/ui'
+import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
+import { Alert, ScrollArea, Spin, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 
@@ -31,6 +33,41 @@ export function PdfBody(props: FileViewerSlotProps) {
   const truncated =
     typeof totalPages === 'number' && totalPages > file.preview_page_count
 
+  // Load pages on demand: as a page slot scrolls into view (with a prefetch
+  // margin), request that page + the next 2. The store dedupes and fetches
+  // sequentially, so pages load one-by-one, only around the viewport.
+  // ScrollArea is OverlayScrollbars, so the element that actually scrolls (and
+  // must be the IntersectionObserver root) is the OS *viewport*, not the host.
+  const osRef = useRef<OverlayScrollbarsComponentRef>(null)
+  useEffect(() => {
+    const root = osRef.current?.osInstance()?.elements().viewport
+    if (!root || file.preview_page_count === 0) return
+    // Always load the first page(s) up front. Until page 1 renders, every empty
+    // slot is short, so relying only on visibility would flag them all as
+    // visible and load everything — the reserved placeholder height (below)
+    // plus this eager first request keep the window small.
+    Stores.File.requestPreviewPage(file, 1)
+    Stores.File.requestPreviewPage(file, 2)
+    Stores.File.requestPreviewPage(file, 3)
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const idx = Number((entry.target as HTMLElement).dataset.pageIndex)
+          if (Number.isNaN(idx)) continue
+          // visible page (idx+1) + the next 2
+          Stores.File.requestPreviewPage(file, idx + 1)
+          Stores.File.requestPreviewPage(file, idx + 2)
+          Stores.File.requestPreviewPage(file, idx + 3)
+        }
+      },
+      { root, rootMargin: '200px 0px' },
+    )
+    root.querySelectorAll('[data-page-index]').forEach((el) => io.observe(el))
+    return () => io.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.id, file.preview_page_count])
+
   if (file.preview_page_count === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
@@ -41,7 +78,8 @@ export function PdfBody(props: FileViewerSlotProps) {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 overflow-auto h-full">
+    <ScrollArea ref={osRef} axis="both" className="h-full">
+    <div className="flex flex-col gap-6 p-4">
       {truncated && (
         <Alert
           tone="info"
@@ -56,6 +94,7 @@ export function PdfBody(props: FileViewerSlotProps) {
       {pageUrls.map((url, i) => (
         <div
           key={i}
+          data-page-index={i}
           className="flex flex-col items-center gap-1"
           // Browser-native virtualization: skip painting / image
           // decode for pages that are offscreen. Each page is
@@ -82,12 +121,16 @@ export function PdfBody(props: FileViewerSlotProps) {
               loading="lazy"
             />
           ) : (
-            <div className="w-full flex items-center justify-center py-16">
+            // Reserve a page-sized height so unloaded pages aren't tiny —
+            // otherwise every slot would fit the viewport at once and the
+            // visibility check would request all pages.
+            <div className="w-full flex items-center justify-center min-h-[800px]">
               <Spin label="Loading" />
             </div>
           )}
         </div>
       ))}
     </div>
+    </ScrollArea>
   )
 }

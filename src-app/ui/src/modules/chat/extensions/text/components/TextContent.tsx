@@ -24,17 +24,13 @@ export const TextContent = memo(function TextContent({
     return null
   }
 
-  // User messages: plain text (no markdown)
-  if (isUser) {
-    return <div style={{ whiteSpace: 'pre-wrap' }}>{textData.text}</div>
-  }
-
-  // Assistant messages: streaming markdown
+  // Both user and assistant text render as markdown (code blocks, tables, etc.).
+  // Only the assistant's LIVE stream animates; a user message is never streaming.
   return (
     <div className="w-full overflow-x-auto pt-2">
       <StreamdownErrorBoundary fallbackText={textData.text}>
         <Streamdown
-          isAnimating={isStreaming}
+          isAnimating={!isUser && isStreaming}
           shikiTheme={['github-light', 'github-dark']}
           components={components}
           urlTransform={streamdownUrlTransform}

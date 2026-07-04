@@ -159,7 +159,7 @@ export const AuthCallbackPage: React.FC = () => {
 
   return (
     <BlankLayoutComponent>
-      <Layout data-testid="auth-callback-layout" className="min-h-screen">
+      <Layout data-testid="auth-callback-layout" className="min-h-dvh">
         <Content data-testid="auth-callback-content" className="flex items-center justify-center p-4">
           <Card data-testid="auth-callback-card" className="w-full max-w-md text-center">
             {error ? (
