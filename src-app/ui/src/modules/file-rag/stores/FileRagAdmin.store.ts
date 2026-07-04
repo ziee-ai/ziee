@@ -1,6 +1,3 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
   type FileRagAdminSettings,
@@ -9,7 +6,7 @@ import {
   type UpdateFileRagAdminSettingsRequest,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 
 /** Candidate embedding-model row for the picker. */
 export type CandidateModelRow = Pick<
@@ -17,60 +14,13 @@ export type CandidateModelRow = Pick<
   'id' | 'name' | 'display_name' | 'provider_id' | 'capabilities'
 >
 
-// The backend's `embedding_model_id` is tri-state (`Option<Option<Uuid>>`:
-// absent = leave, null = clear, value = set), but the TS codegen drops the
-// `null` arm. Widen at the store boundary so callers can pass `null` to clear.
+// Tri-state `embedding_model_id` (`Option<Option<Uuid>>`) — codegen drops the
+// `null` arm; widen at the store boundary so callers can clear.
 export type FileRagAdminUpdatePatch = Omit<
   UpdateFileRagAdminSettingsRequest,
   'embedding_model_id'
 > & {
   embedding_model_id?: string | null
-}
-
-interface FileRagAdminStore {
-  settings: FileRagAdminSettings | null
-  embeddingModels: CandidateModelRow[]
-  loading: boolean
-  saving: boolean
-  loadingModels: boolean
-  triggeringReembed: boolean
-  triggeringBackfill: boolean
-  error: string | null
-
-  __init__: {
-    __store__?: () => void
-    settings: () => Promise<void>
-    embeddingModels: () => Promise<void>
-  }
-  __destroy__?: () => void
-
-  load: () => Promise<void>
-  loadEmbeddingModels: () => Promise<void>
-  triggerReembed: () => Promise<void>
-  triggerBackfill: () => Promise<void>
-  update: (patch: FileRagAdminUpdatePatch) => Promise<FileRagAdminSettings>
-}
-
-const loadAdminSettings = async (
-  set: (fn: (s: FileRagAdminStore) => void) => void,
-) => {
-  set(s => {
-    s.loading = true
-    s.error = null
-  })
-  try {
-    const row = await ApiClient.FileRagAdmin.get()
-    set(s => {
-      s.settings = row
-      s.loading = false
-    })
-  } catch (error) {
-    set(s => {
-      s.error =
-        error instanceof Error ? error.message : 'Failed to load admin settings'
-      s.loading = false
-    })
-  }
 }
 
 const toRow = (m: LlmModel): CandidateModelRow => ({
@@ -81,74 +31,63 @@ const toRow = (m: LlmModel): CandidateModelRow => ({
   capabilities: m.capabilities,
 })
 
-const loadEmbeddingModels = async (
-  set: (fn: (s: FileRagAdminStore) => void) => void,
-) => {
-  set(s => {
-    s.loadingModels = true
-  })
-  try {
-    // Server-filtered to `text_embedding` so the picker is never crowded out
-    // by chat models (same rationale as the memory admin store).
-    const body = await ApiClient.LlmModel.list({
-      capability: 'text_embedding',
-      page: 1,
-      perPage: 200,
-    })
-    set(s => {
-      s.embeddingModels = body.models.map(toRow)
-      s.loadingModels = false
-    })
-  } catch (error) {
-    set(s => {
-      s.error = error instanceof Error ? error.message : 'Failed to load models'
-      s.loadingModels = false
-    })
-  }
-}
-
-export const useFileRagAdminStore = create<FileRagAdminStore>()(
-  subscribeWithSelector(
-    immer((set, _get) => ({
-      settings: null,
-      embeddingModels: [],
-      loading: false,
-      saving: false,
-      loadingModels: false,
-      triggeringReembed: false,
-      triggeringBackfill: false,
-      error: null,
-
-      // Property-init loads hit `file_rag::admin::read`-gated endpoints; skip
-      // the call for users without the permission so non-admins don't 403.
-      __init__: {
-        __store__: () => {
-          const eventBus = Stores.EventBus
-          const GROUP = 'FileRagAdmin'
-          const reload = () => {
-            if (!hasPermissionNow(Permissions.FileRagAdminRead)) return
-            void loadAdminSettings(set)
-          }
-          eventBus.on('sync:file_rag_admin_settings', reload, GROUP)
-          eventBus.on('sync:reconnect', reload, GROUP)
-        },
-        settings: () =>
-          hasPermissionNow(Permissions.FileRagAdminRead)
-            ? loadAdminSettings(set)
-            : Promise.resolve(),
-        embeddingModels: () =>
-          hasPermissionNow(Permissions.FileRagAdminRead)
-            ? loadEmbeddingModels(set)
-            : Promise.resolve(),
-      },
-
-      __destroy__: () => {
-        Stores.EventBus.removeGroupListeners('FileRagAdmin')
-      },
-
-      load: () => loadAdminSettings(set),
-      loadEmbeddingModels: () => loadEmbeddingModels(set),
-
+export const FileRagAdmin = defineStore('FileRagAdmin', {
+  immer: true,
+  state: {
+    settings: null as FileRagAdminSettings | null,
+    embeddingModels: [] as CandidateModelRow[],
+    loading: false,
+    saving: false,
+    loadingModels: false,
+    triggeringReembed: false,
+    triggeringBackfill: false,
+    error: null as string | null,
+  },
+  actions: set => {
+    const load = async () => {
+      set(s => {
+        s.loading = true
+        s.error = null
+      })
+      try {
+        const row = await ApiClient.FileRagAdmin.get()
+        set(s => {
+          s.settings = row
+          s.loading = false
+        })
+      } catch (error) {
+        set(s => {
+          s.error = error instanceof Error ? error.message : 'Failed to load admin settings'
+          s.loading = false
+        })
+      }
+    }
+    const loadEmbeddingModels = async () => {
+      set(s => {
+        s.loadingModels = true
+      })
+      try {
+        // Server-filtered to `text_embedding` so the picker isn't crowded by
+        // chat models (same rationale as the memory admin store).
+        const body = await ApiClient.LlmModel.list({
+          capability: 'text_embedding',
+          page: 1,
+          perPage: 200,
+        })
+        set(s => {
+          s.embeddingModels = body.models.map(toRow)
+          s.loadingModels = false
+        })
+      } catch (error) {
+        set(s => {
+          s.error = error instanceof Error ? error.message : 'Failed to load models'
+          s.loadingModels = false
+        })
+      }
+    }
+    return {
+      load,
+      loadEmbeddingModels,
       triggerReembed: async (): Promise<void> => {
         set(s => {
           s.triggeringReembed = true
@@ -167,7 +106,6 @@ export const useFileRagAdminStore = create<FileRagAdminStore>()(
           throw error
         }
       },
-
       triggerBackfill: async (): Promise<void> => {
         set(s => {
           s.triggeringBackfill = true
@@ -186,8 +124,7 @@ export const useFileRagAdminStore = create<FileRagAdminStore>()(
           throw error
         }
       },
-
-      update: async (patch): Promise<FileRagAdminSettings> => {
+      update: async (patch: FileRagAdminUpdatePatch): Promise<FileRagAdminSettings> => {
         set(s => {
           s.saving = true
           s.error = null
@@ -209,6 +146,22 @@ export const useFileRagAdminStore = create<FileRagAdminStore>()(
           throw error
         }
       },
-    })),
-  ),
-)
+    }
+  },
+  // Property-init loads hit `file_rag::admin::read`-gated endpoints; skip for
+  // users without the perm so non-admins don't 403.
+  init: ({ on, actions }) => {
+    const reload = () => {
+      if (!hasPermissionNow(Permissions.FileRagAdminRead)) return
+      void actions.load()
+    }
+    on('sync:file_rag_admin_settings', reload)
+    on('sync:reconnect', reload)
+    if (hasPermissionNow(Permissions.FileRagAdminRead)) {
+      void actions.load()
+      void actions.loadEmbeddingModels()
+    }
+  },
+})
+
+export const useFileRagAdminStore = FileRagAdmin.store
