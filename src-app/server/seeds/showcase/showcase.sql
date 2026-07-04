@@ -1028,6 +1028,115 @@ If your corpus is tiny, a linear scan in Postgres is simpler and exact. Vector s
 That is the whirlwind tour — ask about any layer for a deeper dive.$md$));
 -- -- add more sections/turns here --
 
+-- ###########################################################################
+-- SECTION E — RICH USER MESSAGES + BRANCHING
+-- ###########################################################################
+-- Two branch helpers (scoped to this session's pg_temp like msg/blk):
+--   bmsg  — a NEW message on an arbitrary branch (is_clone=false).
+--   bclone— link an EXISTING message into a branch as a shared ancestor
+--           (is_clone=true), mirroring what the edit/regenerate handler does
+--           ("clones all messages before the fork point").
+
+CREATE OR REPLACE FUNCTION pg_temp.bmsg(mid uuid, bid uuid, mrole text, n numeric) RETURNS void AS $fn$
+BEGIN
+  INSERT INTO messages (id, role, originated_from_id, edit_count, created_at)
+    VALUES (mid, mrole, mid, 0, TIMESTAMPTZ '2026-07-01 12:00:00+00' + (n || ' seconds')::interval)
+    ON CONFLICT (id) DO NOTHING;
+  INSERT INTO branch_messages (branch_id, message_id, is_clone, created_at)
+    VALUES (bid, mid, false, TIMESTAMPTZ '2026-07-01 12:00:00+00' + (n || ' seconds')::interval)
+    ON CONFLICT (branch_id, message_id) DO NOTHING;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pg_temp.bclone(mid uuid, bid uuid, n numeric) RETURNS void AS $fn$
+BEGIN
+  INSERT INTO branch_messages (branch_id, message_id, is_clone, created_at)
+    VALUES (bid, mid, true, TIMESTAMPTZ '2026-07-01 12:00:00+00' + (n || ' seconds')::interval)
+    ON CONFLICT (branch_id, message_id) DO NOTHING;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- --- E1: a rich USER turn at the end — a fenced code block + two file attachments.
+--     (User text renders as PLAIN text today, so the fences show verbatim; this is
+--      still the realistic shape of what a user sends.)
+SELECT pg_temp.msg('30000000-0000-0000-0000-0000000000f0', 'user', 100);
+SELECT pg_temp.blk('30000000-0000-0000-0000-0000000000f0', 0, 'text',
+  jsonb_build_object('type','text','text', $e1$Here's the function I mentioned — can you spot the off-by-one?
+
+```python
+def moving_average(xs, k):
+    out = []
+    for i in range(len(xs)):
+        window = xs[i - k:i]      # is this the right slice?
+        out.append(sum(window) / k)
+    return out
+```
+
+I attached the CSV it chokes on and the full script.$e1$));
+SELECT pg_temp.blk('30000000-0000-0000-0000-0000000000f0', 1, 'file_attachment',
+  jsonb_build_object('type','file_attachment','file_id','f1000000-0000-0000-0000-000000000004','filename','data.csv','mime_type','text/csv','file_size',133));
+SELECT pg_temp.blk('30000000-0000-0000-0000-0000000000f0', 2, 'file_attachment',
+  jsonb_build_object('type','file_attachment','file_id','f1000000-0000-0000-0000-000000000006','filename','script.py','mime_type','text/x-python','file_size',261));
+
+SELECT pg_temp.msg('30000000-0000-0000-0000-0000000000f1', 'assistant', 101);
+SELECT pg_temp.blk('30000000-0000-0000-0000-0000000000f1', 0, 'text',
+  jsonb_build_object('type','text','text', $e2$Good eye — it's the first window. When `i < k`, `xs[i - k:i]` wraps to the tail via negative indices, so early averages are wrong. Two fixes:
+
+```python
+# 1) skip the warm-up
+for i in range(k, len(xs) + 1):
+    window = xs[i - k:i]
+
+# 2) or pad, if you want a same-length output
+```
+
+Use option 1 unless you need `len(out) == len(xs)`.$e2$));
+
+-- --- E2: USER-EDIT fork ("< 1/2 >") at the FIRST user message (30000000-…001).
+--     The child branch clones nothing before it (…001 is the first turn) and
+--     carries an edited user message + an alternate assistant reply.
+INSERT INTO branches (id, conversation_id, parent_branch_id, created_from_message_id, fork_level, created_at)
+  VALUES ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111',
+          '22222222-2222-2222-2222-222222222222', '30000000-0000-0000-0000-000000000001', 'user',
+          TIMESTAMPTZ '2026-07-01 12:00:01+00')
+  ON CONFLICT (id) DO NOTHING;
+SELECT pg_temp.bmsg('30000000-0000-0000-0000-0000000000e1', '44444444-4444-4444-4444-444444444444', 'user', 1);
+SELECT pg_temp.blk('30000000-0000-0000-0000-0000000000e1', 0, 'text',
+  jsonb_build_object('type','text','text', $e3$Actually — forget the kitchen sink. Just show me a tight example: a fenced code block and a table, nothing else.$e3$));
+SELECT pg_temp.bmsg('30000000-0000-0000-0000-0000000000e2', '44444444-4444-4444-4444-444444444444', 'assistant', 2);
+SELECT pg_temp.blk('30000000-0000-0000-0000-0000000000e2', 0, 'text',
+  jsonb_build_object('type','text','text', $e4$Sure — minimal version:
+
+```ts
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
+```
+
+| n | sum |
+|---|-----|
+| 1 | 1   |
+| 2 | 3   |
+| 3 | 6   |
+$e4$));
+
+-- --- E3: ASSISTANT-REGENERATE fork ("< 1/2 >") at the first assistant reply
+--     (30000000-…002). fork_level='assistant'; clones the user turn (…001)
+--     before it, then an alternate assistant answer.
+INSERT INTO branches (id, conversation_id, parent_branch_id, created_from_message_id, fork_level, created_at)
+  VALUES ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-111111111111',
+          '22222222-2222-2222-2222-222222222222', '30000000-0000-0000-0000-000000000002', 'assistant',
+          TIMESTAMPTZ '2026-07-01 12:00:02+00')
+  ON CONFLICT (id) DO NOTHING;
+SELECT pg_temp.bclone('30000000-0000-0000-0000-000000000001', '55555555-5555-5555-5555-555555555555', 1);
+SELECT pg_temp.bmsg('30000000-0000-0000-0000-0000000000e3', '55555555-5555-5555-5555-555555555555', 'assistant', 2);
+SELECT pg_temp.blk('30000000-0000-0000-0000-0000000000e3', 0, 'text',
+  jsonb_build_object('type','text','text', $e5$(regenerated) Rather than *every* feature, here are the three you'll actually use:
+
+1. **Bold** / *italic* / `inline code`
+2. Fenced code blocks (with language for highlighting)
+3. Tables
+
+Want the exhaustive version instead?$e5$));
+
 COMMIT;
 
 -- ===========================================================================
