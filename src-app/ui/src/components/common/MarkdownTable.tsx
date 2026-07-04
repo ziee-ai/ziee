@@ -59,34 +59,34 @@ export const MarkdownTable = memo(function MarkdownTable({
   )
 
   return (
+    // Card layout mirroring Streamdown's code block: a bordered container with
+    // an ALWAYS-VISIBLE header bar (controls live OUTSIDE the table, like the
+    // code-block toolbar) above the scrollable table body.
     <div
       data-streamdown="table-wrapper"
-      className="group/table relative my-4 w-full"
+      className="my-4 flex w-full flex-col gap-2 rounded-xl border border-border bg-sidebar p-2"
     >
-      <div
-        className={
-          'absolute right-1 top-1 z-10 flex gap-0.5 rounded-md border border-border ' +
-          'bg-background/80 p-0.5 backdrop-blur opacity-0 transition-opacity ' +
-          'group-hover/table:opacity-100 focus-within:opacity-100 hover-none:opacity-100'
-        }
-      >
-        <TableCopyDropdown className={CONTROL_BTN} />
-        <TableDownloadDropdown className={CONTROL_BTN} />
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7"
-          tooltip="View fullscreen"
-          icon={<Maximize2 className="size-3.5" />}
-          onClick={() => setFullscreen(true)}
-          data-testid="markdown-table-fullscreen-btn"
-        />
+      <div className="flex h-8 items-center justify-between text-muted-foreground text-xs">
+        <span className="ml-1 font-mono lowercase">table</span>
+        <div className="flex items-center gap-0.5">
+          <TableCopyDropdown className={CONTROL_BTN} />
+          <TableDownloadDropdown className={CONTROL_BTN} />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7"
+            tooltip="View fullscreen"
+            icon={<Maximize2 className="size-3.5" />}
+            onClick={() => setFullscreen(true)}
+            data-testid="markdown-table-fullscreen-btn"
+          />
+        </div>
       </div>
 
       <ScrollArea
         axis="x"
         autoHide="leave"
-        className="rounded-lg border border-border"
+        className="rounded-md border border-border bg-background"
       >
         {table}
       </ScrollArea>
