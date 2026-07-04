@@ -1,5 +1,3 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import {
   type CreateMcpServerRequest,
@@ -11,7 +9,7 @@ import {
   type UpdateMcpServerRequest,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 import {
   emitGroupSystemMcpServersChanged,
   emitMcpServerCreated,
@@ -22,348 +20,144 @@ import {
 /** Debounce timer for system MCP search-term reloads (250ms). */
 let sysMcpSearchDebounce: ReturnType<typeof setTimeout> | null = null
 
-interface SystemMcpServersState {
-  // System servers data
-  systemServers: McpServer[]
-  systemServersTotal: number
-  systemServersPage: number
-  systemServersPageSize: number
-  systemServersInitialized: boolean
-
-  // Server-side filter state. Search is debounced; status fires
-  // an immediate reload.
-  searchTerm: string
-  statusFilter: string // 'all' | 'enabled' | 'disabled'
-
-  // Loading states
-  systemServersLoading: boolean
-  creating: boolean
-  updating: boolean
-  deleting: boolean
-
-  // Operation-specific loading states
-  operationsLoading: Map<string, boolean>
-
-  // Error states
-  systemServersError: string | null
-
-  // Private: Store event unsubscribers for cleanup
-  _eventUnsubscribers?: (() => void)[]
-
-  // Initialization methods
-  __init__: {
-    __store__?: () => void
-    systemServers: () => Promise<void>
-  }
-
-  // Cleanup hook
-  __destroy__?: () => void
-
-  // Custom delay (10 seconds for system stores)
-  __destroyDelay__?: number
-
-  // Actions
-  loadSystemServers: (page?: number, pageSize?: number) => Promise<void>
-  setSearchTerm: (q: string) => void
-  setStatusFilter: (status: string) => void
-  createSystemServer: (
-    data: CreateMcpServerRequest,
-  ) => Promise<McpServerWithHealthWarning>
-  updateSystemServer: (
-    id: string,
-    data: UpdateMcpServerRequest,
-  ) => Promise<McpServer>
-  deleteSystemServer: (id: string) => Promise<void>
-  testSystemServerConnection: (
-    data: TestMcpConnectionRequest,
-  ) => Promise<TestMcpConnectionResponse>
-  getServerGroups: (serverId: string) => Promise<string[]>
-  assignServerToGroups: (serverId: string, groupIds: string[]) => Promise<void>
-  removeServerFromGroup: (serverId: string, groupId: string) => Promise<void>
-  updateGroupServers: (groupId: string, serverIds: string[]) => Promise<void>
-  getServersForGroup: (groupId: string) => Promise<McpServer[]>
-  clearSystemMcpErrors: () => void
-  refreshSystemServers: () => Promise<void>
-  isServerOperationLoading: (serverId: string, operation?: string) => boolean
-  getSystemServerById: (serverId: string) => McpServer | null
-  getEnabledSystemServers: () => McpServer[]
-  searchSystemServers: (query: string) => McpServer[]
+const INITIAL = {
+  systemServers: [] as McpServer[],
+  systemServersTotal: 0,
+  systemServersPage: 1,
+  systemServersPageSize: 20,
+  systemServersInitialized: false,
+  // Filter state (server-side). Search is debounced; status fires immediately.
+  searchTerm: '',
+  statusFilter: 'all',
+  systemServersLoading: false,
+  creating: false,
+  updating: false,
+  deleting: false,
+  operationsLoading: new Map<string, boolean>(),
+  systemServersError: null as string | null,
 }
 
-export const useSystemMcpServersStore = create<SystemMcpServersState>()(
-  subscribeWithSelector(
-    (set, get): SystemMcpServersState => ({
-      // System servers data
-      systemServers: [],
-      systemServersTotal: 0,
-      systemServersPage: 1,
-      systemServersPageSize: 20,
-      systemServersInitialized: false,
-
-      // Filter state (server-side).
-      searchTerm: '',
-      statusFilter: 'all',
-
-      // Loading states
-      systemServersLoading: false,
-      creating: false,
-      updating: false,
-      deleting: false,
-
-      // Operation-specific loading states
-      operationsLoading: new Map<string, boolean>(),
-
-      // Error states
-      systemServersError: null,
-
-      // Initialization methods
-      __init__: {
-        __store__: () => {
-          const eventBus = Stores.EventBus
-          const unsubscribers: (() => void)[] = []
-
-          // Subscribe to mcp_server.created and track unsubscriber
-          unsubscribers.push(
-            eventBus.on('mcp_server.created', async event => {
-              const { server } = event.data
-              // Only add if it's a system server
-              if (server.is_system) {
-                set(state => ({
-                  systemServers: [...state.systemServers, server],
-                  systemServersTotal: state.systemServersTotal + 1,
-                }))
-              }
-            }),
-          )
-
-          // Subscribe to mcp_server.updated and track unsubscriber
-          unsubscribers.push(
-            eventBus.on('mcp_server.updated', async event => {
-              const { server } = event.data
-              // Only update if it's a system server
-              if (server.is_system) {
-                set(state => ({
-                  systemServers: state.systemServers.map(s =>
-                    s.id === server.id ? server : s,
-                  ),
-                }))
-              }
-            }),
-          )
-
-          // Subscribe to mcp_server.deleted and track unsubscriber
-          unsubscribers.push(
-            eventBus.on('mcp_server.deleted', async event => {
-              const { serverId } = event.data
-              set(state => ({
-                systemServers: state.systemServers.filter(
-                  s => s.id !== serverId,
-                ),
-                systemServersTotal: state.systemServersTotal - 1,
-              }))
-            }),
-          )
-
-          // Cross-device sync for the admin system (deployment-shared)
-          // MCP servers table. Self-gate on mcp_servers_admin::read —
-          // loadSystemServers does NOT gate internally, so guard here.
-          const reload = () => {
-            if (!hasPermissionNow(Permissions.McpServersAdminRead)) return
-            void get().loadSystemServers()
-          }
-          unsubscribers.push(eventBus.on('sync:mcp_server_system', reload))
-          unsubscribers.push(eventBus.on('sync:reconnect', reload))
-
-          // Store unsubscribers for cleanup
-          set({ _eventUnsubscribers: unsubscribers })
-        },
-        systemServers: () => get().loadSystemServers(),
-      },
-
-      // Actions
-      loadSystemServers: async (
-        page?: number,
-        pageSize?: number,
-      ): Promise<void> => {
-        const state = get()
-
-        if (
-          state.systemServersInitialized &&
-          state.systemServersLoading &&
-          !page
-        ) {
-          return
-        }
-
-        try {
-          const requestPage = page || state.systemServersPage
-          const requestPageSize = pageSize || state.systemServersPageSize
-
-          set({
-            systemServersLoading: true,
-            systemServersError: null,
-          })
-
-          const response = await ApiClient.McpServerSystem.list({
-            page: requestPage,
-            per_page: requestPageSize,
-            ...(state.searchTerm ? { search: state.searchTerm } : {}),
-            ...(state.statusFilter !== 'all'
-              ? { status: state.statusFilter }
-              : {}),
-          })
-
-          set({
-            systemServers: response.servers,
-            systemServersTotal: response.total,
-            systemServersPage: response.page,
-            systemServersPageSize: response.per_page,
-            systemServersInitialized: true,
-            systemServersLoading: false,
-            systemServersError: null,
-          })
-        } catch (error) {
-          console.error('Failed to load system servers:', error)
-          set({
-            systemServersLoading: false,
-            systemServersError:
-              error instanceof Error
-                ? error.message
-                : 'Failed to load system servers',
-          })
-          throw error
-        }
-      },
-
-      // Filter setters — both reset to page 1 and reload. Search
-      // debounced; status fires immediately.
+export const SystemMcpServer = defineStore('SystemMcpServer', {
+  state: {
+    ...INITIAL,
+    // Wait 10s before destroying (users might come back). Read by the proxy.
+    __destroyDelay__: 10000,
+  },
+  actions: (set, get) => {
+    const loadSystemServers = async (page?: number, pageSize?: number): Promise<void> => {
+      const state = get()
+      if (state.systemServersInitialized && state.systemServersLoading && !page) return
+      try {
+        const requestPage = page || state.systemServersPage
+        const requestPageSize = pageSize || state.systemServersPageSize
+        set({ systemServersLoading: true, systemServersError: null })
+        const response = await ApiClient.McpServerSystem.list({
+          page: requestPage,
+          per_page: requestPageSize,
+          ...(state.searchTerm ? { search: state.searchTerm } : {}),
+          ...(state.statusFilter !== 'all' ? { status: state.statusFilter } : {}),
+        })
+        set({
+          systemServers: response.servers,
+          systemServersTotal: response.total,
+          systemServersPage: response.page,
+          systemServersPageSize: response.per_page,
+          systemServersInitialized: true,
+          systemServersLoading: false,
+          systemServersError: null,
+        })
+      } catch (error) {
+        console.error('Failed to load system servers:', error)
+        set({
+          systemServersLoading: false,
+          systemServersError:
+            error instanceof Error ? error.message : 'Failed to load system servers',
+        })
+        throw error
+      }
+    }
+    return {
+      loadSystemServers,
+      // Filter setters — both reset to page 1 and reload. Search debounced;
+      // status fires immediately.
       setSearchTerm: (q: string) => {
         set({ searchTerm: q, systemServersPage: 1 })
         if (sysMcpSearchDebounce) clearTimeout(sysMcpSearchDebounce)
         sysMcpSearchDebounce = setTimeout(() => {
-          void get().loadSystemServers(1)
+          void loadSystemServers(1)
         }, 250)
       },
       setStatusFilter: (status: string) => {
         set({ statusFilter: status, systemServersPage: 1 })
-        void get().loadSystemServers(1)
+        void loadSystemServers(1)
       },
-
       createSystemServer: async (
         data: CreateMcpServerRequest,
       ): Promise<McpServerWithHealthWarning> => {
         try {
-          set({
-            creating: true,
-            systemServersError: null,
-          })
-
-          // See createMcpServer (user store) for the
-          // health-check-on-create wrapper rationale. The response is
-          // flattened: McpServer fields at top level + optional
-          // `connection_warning` sibling.
+          set({ creating: true, systemServersError: null })
+          // Response is flattened: McpServer fields at top level + optional
+          // `connection_warning` sibling (health-check-on-create).
           const wrapped = await ApiClient.McpServerSystem.create(data)
           const { connection_warning: _w, ...newServer } = wrapped
-
-          // Emit event after successful API call
           try {
             await emitMcpServerCreated(newServer)
           } catch (eventError) {
-            console.error(
-              'Failed to emit mcp server created event:',
-              eventError,
-            )
+            console.error('Failed to emit mcp server created event:', eventError)
           }
-
           set(state => ({
             systemServers: [...state.systemServers, newServer],
             systemServersTotal: state.systemServersTotal + 1,
             creating: false,
           }))
-
           return wrapped
         } catch (error) {
           console.error('Failed to create system server:', error)
           set({
             creating: false,
             systemServersError:
-              error instanceof Error
-                ? error.message
-                : 'Failed to create system server',
+              error instanceof Error ? error.message : 'Failed to create system server',
           })
           throw error
         }
       },
-
-      updateSystemServer: async (
-        id: string,
-        data: UpdateMcpServerRequest,
-      ): Promise<McpServer> => {
+      updateSystemServer: async (id: string, data: UpdateMcpServerRequest): Promise<McpServer> => {
         try {
-          set({
-            updating: true,
-            systemServersError: null,
-          })
-
-          const updatedServer = await ApiClient.McpServerSystem.update({
-            id,
-            ...data,
-          })
-
-          // Emit event after successful API call
+          set({ updating: true, systemServersError: null })
+          const updatedServer = await ApiClient.McpServerSystem.update({ id, ...data })
           try {
             await emitMcpServerUpdated(updatedServer)
           } catch (eventError) {
-            console.error(
-              'Failed to emit mcp server updated event:',
-              eventError,
-            )
+            console.error('Failed to emit mcp server updated event:', eventError)
           }
-
           set(state => ({
             systemServers: state.systemServers.map(server =>
               server.id === id ? updatedServer : server,
             ),
             updating: false,
           }))
-
           return updatedServer
         } catch (error) {
           console.error('Failed to update system server:', error)
           set({
             updating: false,
             systemServersError:
-              error instanceof Error
-                ? error.message
-                : 'Failed to update system server',
+              error instanceof Error ? error.message : 'Failed to update system server',
           })
           throw error
         }
       },
-
       deleteSystemServer: async (id: string): Promise<void> => {
         try {
-          set({
-            deleting: true,
-            systemServersError: null,
-          })
-
+          set({ deleting: true, systemServersError: null })
           await ApiClient.McpServerSystem.delete({ id })
-
-          // Emit event after successful API call
           try {
             await emitMcpServerDeleted(id)
           } catch (eventError) {
-            console.error(
-              'Failed to emit mcp server deleted event:',
-              eventError,
-            )
+            console.error('Failed to emit mcp server deleted event:', eventError)
           }
-
           set(state => ({
-            systemServers: state.systemServers.filter(
-              server => server.id !== id,
-            ),
+            systemServers: state.systemServers.filter(server => server.id !== id),
             systemServersTotal: state.systemServersTotal - 1,
             deleting: false,
           }))
@@ -372,136 +166,79 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           set({
             deleting: false,
             systemServersError:
-              error instanceof Error
-                ? error.message
-                : 'Failed to delete system server',
+              error instanceof Error ? error.message : 'Failed to delete system server',
           })
           throw error
         }
       },
-
-      // Probe a candidate system-server config (read-only; nothing persisted).
-      // Returns { success, message, tool_count } with HTTP 200 even on failure.
+      // Probe a candidate config (read-only; nothing persisted). 200 even on failure.
       testSystemServerConnection: async (
         data: TestMcpConnectionRequest,
-      ): Promise<TestMcpConnectionResponse> => {
-        return await ApiClient.McpServerSystem.testConnection(data)
-      },
-
+      ): Promise<TestMcpConnectionResponse> => await ApiClient.McpServerSystem.testConnection(data),
       getServerGroups: async (serverId: string): Promise<string[]> => {
         try {
-          const groupIds = await ApiClient.McpServerSystem.getServerGroups({
-            id: serverId,
-          })
-          return groupIds
+          return await ApiClient.McpServerSystem.getServerGroups({ id: serverId })
         } catch (error) {
           console.error('Failed to get server groups:', error)
           throw error
         }
       },
-
-      assignServerToGroups: async (
-        serverId: string,
-        groupIds: string[],
-      ): Promise<void> => {
+      assignServerToGroups: async (serverId: string, groupIds: string[]): Promise<void> => {
         try {
-          await ApiClient.McpServerSystem.assignServerToGroups({
-            id: serverId,
-            group_ids: groupIds,
-          })
+          await ApiClient.McpServerSystem.assignServerToGroups({ id: serverId, group_ids: groupIds })
         } catch (error) {
           console.error('Failed to assign server to groups:', error)
           throw error
         }
       },
-
-      removeServerFromGroup: async (
-        serverId: string,
-        groupId: string,
-      ): Promise<void> => {
+      removeServerFromGroup: async (serverId: string, groupId: string): Promise<void> => {
         try {
-          await ApiClient.McpServerSystem.removeServerFromGroup({
-            id: serverId,
-            group_id: groupId,
-          })
+          await ApiClient.McpServerSystem.removeServerFromGroup({ id: serverId, group_id: groupId })
         } catch (error) {
           console.error('Failed to remove server from group:', error)
           throw error
         }
       },
-
-      updateGroupServers: async (
-        groupId: string,
-        serverIds: string[],
-      ): Promise<void> => {
+      updateGroupServers: async (groupId: string, serverIds: string[]): Promise<void> => {
         try {
-          // Use the group-centric bulk update API endpoint
-          await ApiClient.Group.updateSystemServers({
-            group_id: groupId,
-            server_ids: serverIds,
-          })
-
-          // Emit event to invalidate cache
+          // Group-centric bulk update endpoint.
+          await ApiClient.Group.updateSystemServers({ group_id: groupId, server_ids: serverIds })
           await emitGroupSystemMcpServersChanged(groupId, serverIds)
         } catch (error) {
           console.error('Failed to update group servers:', error)
           throw error
         }
       },
-
       getServersForGroup: async (groupId: string): Promise<McpServer[]> => {
         try {
           // Read the group's assigned servers directly from the canonical
-          // endpoint. The previous approach iterated the cached
-          // `systemServers` list and queried each server's groups, which
-          // dropped any server missing from the (paginated / possibly
-          // stale) cache — so re-opening the assignment drawer could fail
-          // to preload an existing assignment and silently drop it on save.
-          const response = await ApiClient.Group.getSystemServers({
-            group_id: groupId,
-          })
+          // endpoint (iterating the paginated cache dropped servers not in it).
+          const response = await ApiClient.Group.getSystemServers({ group_id: groupId })
           return response.servers
         } catch (error) {
           console.error('Failed to get servers for group:', error)
           throw error
         }
       },
-
       clearSystemMcpErrors: () => {
-        set({
-          systemServersError: null,
-        })
+        set({ systemServersError: null })
       },
-
       refreshSystemServers: async (): Promise<void> => {
         const { systemServersPage, systemServersPageSize } = get()
-        await get().loadSystemServers(systemServersPage, systemServersPageSize)
+        await loadSystemServers(systemServersPage, systemServersPageSize)
       },
-
-      isServerOperationLoading: (
-        serverId: string,
-        operation?: string,
-      ): boolean => {
+      isServerOperationLoading: (serverId: string, operation?: string): boolean => {
         const { operationsLoading } = get()
         const operationKey = operation ? `${serverId}-${operation}` : serverId
         return operationsLoading.get(operationKey) || false
       },
-
-      getSystemServerById: (serverId: string): McpServer | null => {
-        const { systemServers } = get()
-        return systemServers.find(server => server.id === serverId) || null
-      },
-
-      getEnabledSystemServers: (): McpServer[] => {
-        const { systemServers } = get()
-        return systemServers.filter(server => server.enabled)
-      },
-
+      getSystemServerById: (serverId: string): McpServer | null =>
+        get().systemServers.find(server => server.id === serverId) || null,
+      getEnabledSystemServers: (): McpServer[] =>
+        get().systemServers.filter(server => server.enabled),
       searchSystemServers: (query: string): McpServer[] => {
         const { systemServers } = get()
-
         if (!query.trim()) return systemServers
-
         const searchTerm = query.toLowerCase()
         return systemServers.filter(
           server =>
@@ -511,33 +248,46 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
             server.transport_type.toLowerCase().includes(searchTerm),
         )
       },
+    }
+  },
+  init: ({ on, set, actions, onCleanup }) => {
+    on('mcp_server.created', event => {
+      const { server } = event.data
+      if (server.is_system) {
+        set(state => ({
+          systemServers: [...state.systemServers, server],
+          systemServersTotal: state.systemServersTotal + 1,
+        }))
+      }
+    })
+    on('mcp_server.updated', event => {
+      const { server } = event.data
+      if (server.is_system) {
+        set(state => ({
+          systemServers: state.systemServers.map(s => (s.id === server.id ? server : s)),
+        }))
+      }
+    })
+    on('mcp_server.deleted', event => {
+      set(state => ({
+        systemServers: state.systemServers.filter(s => s.id !== event.data.serverId),
+        systemServersTotal: state.systemServersTotal - 1,
+      }))
+    })
+    // Cross-device sync for the admin system (deployment-shared) table. Self-gate
+    // on mcp_servers_admin::read — loadSystemServers does NOT gate internally.
+    const reload = () => {
+      if (!hasPermissionNow(Permissions.McpServersAdminRead)) return
+      void actions.loadSystemServers()
+    }
+    on('sync:mcp_server_system', reload)
+    on('sync:reconnect', reload)
+    void actions.loadSystemServers()
+    // Reset to initial state on destroy so a re-mount starts clean + refetches.
+    onCleanup(() => {
+      set({ ...INITIAL, operationsLoading: new Map() })
+    })
+  },
+})
 
-      // Auto-cleanup when no components use this store (after delay)
-      __destroy__: () => {
-        const { _eventUnsubscribers } = get()
-
-        // Unsubscribe from all events
-        _eventUnsubscribers?.forEach(unsub => unsub())
-
-        // Reset to initial state
-        set({
-          systemServers: [],
-          systemServersTotal: 0,
-          systemServersPage: 1,
-          systemServersPageSize: 20,
-          systemServersInitialized: false,
-          systemServersLoading: false,
-          creating: false,
-          updating: false,
-          deleting: false,
-          operationsLoading: new Map(),
-          systemServersError: null,
-          _eventUnsubscribers: [],
-        })
-      },
-
-      // Wait 10 seconds before destroying (users might come back)
-      __destroyDelay__: 10000,
-    }),
-  ),
-)
+export const useSystemMcpServersStore = SystemMcpServer.store

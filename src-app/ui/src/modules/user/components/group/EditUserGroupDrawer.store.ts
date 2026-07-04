@@ -1,76 +1,20 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
 import type { Group } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 
-interface UserGroupDrawerState {
-  // State
-  isOpen: boolean
-  editingGroup: Group | null
+export const EditUserGroupDrawer = defineStore('EditUserGroupDrawer', {
+  state: { isOpen: false, editingGroup: null as Group | null },
+  actions: set => ({
+    openUserGroupDrawer: (group: Group) => set({ isOpen: true, editingGroup: group }),
+    closeUserGroupDrawer: () => set({ isOpen: false, editingGroup: null }),
+  }),
+  init: ({ on, get, set, actions }) => {
+    on('group.updated', event => {
+      if (get().editingGroup?.id === event.data.group.id) set({ editingGroup: event.data.group })
+    })
+    on('group.deleted', event => {
+      if (get().editingGroup?.id === event.data.groupId) actions.closeUserGroupDrawer()
+    })
+  },
+})
 
-  // Actions
-  openUserGroupDrawer: (group: Group) => void
-  closeUserGroupDrawer: () => void
-
-  // Initialization
-  __init__: {
-    __store__: () => void
-  }
-  __destroy__?: () => void
-}
-
-export const useUserGroupDrawerStore = create<UserGroupDrawerState>()(
-  subscribeWithSelector(
-    (set, get): UserGroupDrawerState => ({
-      isOpen: false,
-      editingGroup: null,
-
-      __init__: {
-        __store__: () => {
-          const GROUP = 'EditUserGroupDrawerStore'
-          const eventBus = Stores.EventBus
-
-          // Subscribe to group.updated
-          eventBus.on(
-            'group.updated',
-            async event => {
-              const { group } = event.data
-              const state = get()
-
-              if (state.editingGroup?.id === group.id) {
-                set({ editingGroup: group })
-              }
-            },
-            GROUP,
-          )
-
-          // Subscribe to group.deleted
-          eventBus.on(
-            'group.deleted',
-            async event => {
-              const { groupId } = event.data
-              const state = get()
-
-              if (state.editingGroup?.id === groupId) {
-                get().closeUserGroupDrawer()
-              }
-            },
-            GROUP,
-          )
-        },
-      },
-
-      openUserGroupDrawer: (group: Group) => {
-        set({ isOpen: true, editingGroup: group })
-      },
-
-      closeUserGroupDrawer: () => {
-        set({ isOpen: false, editingGroup: null })
-      },
-
-      __destroy__: () => {
-        Stores.EventBus.removeGroupListeners('EditUserGroupDrawerStore')
-      },
-    }),
-  ),
-)
+export const useUserGroupDrawerStore = EditUserGroupDrawer.store

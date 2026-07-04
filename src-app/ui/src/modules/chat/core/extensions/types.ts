@@ -427,7 +427,7 @@ export interface ChatExtension {
    * ```typescript
    * store: {
    *   name: 'McpStore',  // Store key for registration
-   *   createStore: () => createExtensionStore<MyStore>((set, get) => ({
+   *   createStore: defineExtensionStore<MyStore>({ state, actions })  // ({
    *     // State
    *     selectedId: null,
    *

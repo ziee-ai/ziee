@@ -1,64 +1,37 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type { HubInstalledResponse, HubInstalledRow } from '@/api-client/types'
+import { defineStore } from '@/core/store-kit'
 
 /**
- * Backs the "Installed" hub tab — every tracked hub install the
- * caller can see (per-user installs always; system-wide installs
- * when the caller has `hub::catalog::read`). Replaces the prior
- * Updates store, which only surfaced rows behind the catalog.
+ * Backs the "Installed" hub tab — every tracked hub install the caller can see
+ * (per-user installs always; system-wide installs when the caller has
+ * `hub::catalog::read`).
  */
-interface HubInstalledState {
-  items: HubInstalledRow[]
-  catalogVersion: string | null
-  loading: boolean
-  error: string | null
+export const HubInstalled = defineStore('HubInstalled', {
+  immer: true,
+  state: {
+    items: [] as HubInstalledRow[],
+    catalogVersion: null as string | null,
+    loading: false,
+    error: null as string | null,
+  },
+  actions: (set, get) => ({
+    loadInstalled: async () => {
+      if (get().loading) return
+      set({ loading: true, error: null })
+      try {
+        const resp: HubInstalledResponse = await ApiClient.Hub.getInstalled()
+        set({ items: resp.items, catalogVersion: resp.catalog_version, loading: false })
+      } catch (error: any) {
+        // Keep previously-loaded items on a refetch failure — a transient error
+        // shouldn't blank a list the user was viewing.
+        set({ error: error?.message || 'Failed to load installed hub items', loading: false })
+      }
+    },
+  }),
+  init: ({ actions }) => {
+    void actions.loadInstalled()
+  },
+})
 
-  loadInstalled: () => Promise<void>
-
-  __init__: {
-    items: () => Promise<void>
-  }
-}
-
-export const useHubInstalledStore = create<HubInstalledState>()(
-  subscribeWithSelector(
-    immer(
-      (set, get): HubInstalledState => ({
-        items: [],
-        catalogVersion: null,
-        loading: false,
-        error: null,
-
-        loadInstalled: async () => {
-          if (get().loading) return
-          set({ loading: true, error: null })
-          try {
-            const resp: HubInstalledResponse =
-              await ApiClient.Hub.getInstalled()
-            set({
-              items: resp.items,
-              catalogVersion: resp.catalog_version,
-              loading: false,
-            })
-          } catch (error: any) {
-            // Keep any previously-loaded items on a refetch failure — a
-            // transient error (e.g. a background reload) shouldn't blank
-            // out a list the user was already viewing. On the initial load
-            // `items` is already [], so nothing is lost there either.
-            set({
-              error: error?.message || 'Failed to load installed hub items',
-              loading: false,
-            })
-          }
-        },
-
-        __init__: {
-          items: () => get().loadInstalled(),
-        },
-      }),
-    ),
-  ),
-)
+export const useHubInstalledStore = HubInstalled.store

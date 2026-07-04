@@ -1,5 +1,4 @@
-import { create } from 'zustand'
-import { persist, subscribeWithSelector } from 'zustand/middleware'
+import { defineStore } from '@/core/store-kit'
 import { ApiClient } from '@/api-client'
 import { setUnauthorizedHandler } from '@/api-client/core'
 import type {
@@ -336,12 +335,34 @@ function refreshSessionImpl(): Promise<boolean> {
   return refreshSessionInFlight
 }
 
-export const useAuthStore = create<AuthState>()(
-  subscribeWithSelector(
-    persist(
-      (set, get): AuthState => ({
-        ...defaultState,
-
+export const Auth = defineStore('Auth', {
+  persist: {
+    name: 'auth-storage',
+    // expiresAt/expiresIn ride along with the token so a reloaded tab re-arms
+    // the proactive refresh; the refresh token itself is NEVER persisted
+    // (web: httpOnly cookie; desktop: in-memory).
+    partialize: state => ({
+      token: state.token,
+      expiresAt: state.expiresAt,
+      expiresIn: state.expiresIn,
+    }),
+  },
+  state: defaultState as Pick<
+    AuthState,
+    | 'user'
+    | 'token'
+    | 'expiresAt'
+    | 'expiresIn'
+    | 'permissions'
+    | 'hasPassword'
+    | 'isAuthenticated'
+    | 'isLoading'
+    | 'isInitializing'
+    | 'error'
+  >,
+  actions: (set, getRaw) => {
+    const get = getRaw as () => AuthState
+    return {
         // Actions
         authenticateUser: async (credentials: LoginRequest) => {
           const state = get()
@@ -594,105 +615,6 @@ export const useAuthStore = create<AuthState>()(
             })
         },
 
-        __init__: {
-          __store__: () => {
-            const eventBus = Stores.EventBus
-            const GROUP = 'AuthStore'
-
-            // Silent refresh: register as the api-client's on-401 handler
-            // (module holder — same import-cycle dodge as the sync
-            // connection id), arm the proactive timer from any persisted
-            // session, and start the sleep/wake watchdog.
-            setUnauthorizedHandler(() => get().refreshSession())
-            scheduleProactiveRefresh()
-            // Clear any prior instances first so a double-init (without an
-            // interleaved __destroy__) can't leak an orphaned interval /
-            // listener.
-            if (watchdogTimer) clearInterval(watchdogTimer)
-            watchdogTimer = setInterval(
-              () => void maybeRefresh(),
-              WATCHDOG_INTERVAL_MS,
-            )
-            if (onlineListener) window.removeEventListener('online', onlineListener)
-            onlineListener = () => void maybeRefresh()
-            window.addEventListener('online', onlineListener)
-
-            // Sync events are ordinary EventBus events: a session/profile
-            // change on another device (or a reconnect resync) quietly
-            // re-fetches /me and patches user + permissions.
-            eventBus.on(
-              'sync:session',
-              () => void get().refreshFromSync(),
-              GROUP,
-            )
-            eventBus.on(
-              'sync:profile',
-              () => void get().refreshFromSync(),
-              GROUP,
-            )
-            eventBus.on(
-              'sync:reconnect',
-              () => void get().refreshFromSync(),
-              GROUP,
-            )
-
-            // Re-fetch /me when the tab regains focus, so a permissions
-            // change made by an admin in another tab self-heals here on
-            // the next interaction (permission-plan follow-up).
-            visibilityListener = () => {
-              if (document.visibilityState !== 'visible') return
-              const state = get()
-              if (!state.token || state.isLoading) return
-              // Wake-from-suspend check: a long setTimeout doesn't tick
-              // while the OS sleeps, so the tab may already be past the
-              // refresh threshold (or past exp) the moment it becomes
-              // visible again. maybeRefresh() compares wall-clock
-              // timestamps and refreshes before the /me below can 401.
-              void maybeRefresh()
-              ApiClient.Auth.me(undefined, undefined)
-                .then(response => {
-                  set({
-                    user: response.user,
-                    permissions: response.permissions,
-                    hasPassword: response.has_password,
-                  })
-                })
-                .catch(err => {
-                  // 401 → user's session was revoked elsewhere; let the
-                  // next API call's normal error handling kick in rather
-                  // than logging the user out here (which would lose
-                  // any in-progress work).
-                  console.warn('[Auth] visibility-refetch /me failed:', err)
-                })
-            }
-            document.addEventListener('visibilitychange', visibilityListener)
-          },
-        },
-
-        // Remove the visibilitychange listener on store destroy so
-        // listener slots don't accumulate per destroy/re-init cycle.
-        // (permission follow-up)
-        __destroy__: () => {
-          // Tear down the silent-refresh machinery symmetrically with
-          // __init__ (handler, timers, listeners, in-memory token).
-          setUnauthorizedHandler(null)
-          stopRefreshMachinery()
-          if (watchdogTimer) {
-            clearInterval(watchdogTimer)
-            watchdogTimer = null
-          }
-          if (onlineListener) {
-            window.removeEventListener('online', onlineListener)
-            onlineListener = null
-          }
-          refreshFallback = null
-          Stores.EventBus.removeGroupListeners('AuthStore')
-          if (visibilityListener) {
-            document.removeEventListener('visibilitychange', visibilityListener)
-            visibilityListener = null
-          }
-        },
-
         initAuth: async () => {
           const state = get()
           if (state.isLoading) {
@@ -804,18 +726,105 @@ export const useAuthStore = create<AuthState>()(
         setRefreshFallback: (fn: (() => Promise<void>) | null) => {
           refreshFallback = fn
         },
-      }),
-      {
-        name: 'auth-storage',
-        // expiresAt/expiresIn ride along with the token so a reloaded
-        // tab re-arms the proactive refresh; the refresh token itself is
-        // NEVER persisted (web: httpOnly cookie; desktop: in-memory).
-        partialize: state => ({
-          token: state.token,
-          expiresAt: state.expiresAt,
-          expiresIn: state.expiresIn,
-        }),
-      },
-    ),
-  ),
-)
+    }
+  },
+  init: ({ set, get: getRaw, onCleanup }) => {
+    const get = getRaw as () => AuthState
+
+            const eventBus = Stores.EventBus
+            const GROUP = 'AuthStore'
+
+            // Silent refresh: register as the api-client's on-401 handler
+            // (module holder — same import-cycle dodge as the sync
+            // connection id), arm the proactive timer from any persisted
+            // session, and start the sleep/wake watchdog.
+            setUnauthorizedHandler(() => get().refreshSession())
+            scheduleProactiveRefresh()
+            // Clear any prior instances first so a double-init (without an
+            // interleaved __destroy__) can't leak an orphaned interval /
+            // listener.
+            if (watchdogTimer) clearInterval(watchdogTimer)
+            watchdogTimer = setInterval(
+              () => void maybeRefresh(),
+              WATCHDOG_INTERVAL_MS,
+            )
+            if (onlineListener) window.removeEventListener('online', onlineListener)
+            onlineListener = () => void maybeRefresh()
+            window.addEventListener('online', onlineListener)
+
+            // Sync events are ordinary EventBus events: a session/profile
+            // change on another device (or a reconnect resync) quietly
+            // re-fetches /me and patches user + permissions.
+            eventBus.on(
+              'sync:session',
+              () => void get().refreshFromSync(),
+              GROUP,
+            )
+            eventBus.on(
+              'sync:profile',
+              () => void get().refreshFromSync(),
+              GROUP,
+            )
+            eventBus.on(
+              'sync:reconnect',
+              () => void get().refreshFromSync(),
+              GROUP,
+            )
+
+            // Re-fetch /me when the tab regains focus, so a permissions
+            // change made by an admin in another tab self-heals here on
+            // the next interaction (permission-plan follow-up).
+            visibilityListener = () => {
+              if (document.visibilityState !== 'visible') return
+              const state = get()
+              if (!state.token || state.isLoading) return
+              // Wake-from-suspend check: a long setTimeout doesn't tick
+              // while the OS sleeps, so the tab may already be past the
+              // refresh threshold (or past exp) the moment it becomes
+              // visible again. maybeRefresh() compares wall-clock
+              // timestamps and refreshes before the /me below can 401.
+              void maybeRefresh()
+              ApiClient.Auth.me(undefined, undefined)
+                .then(response => {
+                  set({
+                    user: response.user,
+                    permissions: response.permissions,
+                    hasPassword: response.has_password,
+                  })
+                })
+                .catch(err => {
+                  // 401 → user's session was revoked elsewhere; let the
+                  // next API call's normal error handling kick in rather
+                  // than logging the user out here (which would lose
+                  // any in-progress work).
+                  console.warn('[Auth] visibility-refetch /me failed:', err)
+                })
+            }
+            document.addEventListener('visibilitychange', visibilityListener)
+          
+    onCleanup(() => {
+
+          // Tear down the silent-refresh machinery symmetrically with
+          // __init__ (handler, timers, listeners, in-memory token).
+          setUnauthorizedHandler(null)
+          stopRefreshMachinery()
+          if (watchdogTimer) {
+            clearInterval(watchdogTimer)
+            watchdogTimer = null
+          }
+          if (onlineListener) {
+            window.removeEventListener('online', onlineListener)
+            onlineListener = null
+          }
+          refreshFallback = null
+          Stores.EventBus.removeGroupListeners('AuthStore')
+          if (visibilityListener) {
+            document.removeEventListener('visibilitychange', visibilityListener)
+            visibilityListener = null
+          }
+        
+    })
+  },
+})
+
+export const useAuthStore = Auth.store

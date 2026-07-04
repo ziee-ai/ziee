@@ -1,253 +1,158 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
+  type ConversationResponse,
   Permissions,
   type Project,
-  type ConversationResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 
-/// Page size for the project-conversations list. Matches what the
-/// ChatHistory store uses for its primary list, and is bounded by the
-/// backend's PaginationQuery::resolved() clamp (≤100).
+/// Page size for the project-conversations list. Matches ChatHistory's primary
+/// list; bounded by the backend's PaginationQuery::resolved() clamp (≤100).
 const CONVERSATIONS_PAGE_SIZE = 20
 
-// `ProjectFileUploadProgress` + the entire file-related slice
-// (files, filesLoading, uploadingFiles, loadFiles, attachFile,
-// uploadAndAttachFiles, dismissUploadingFile, detachFile) moved to
-// `modules/file/project-extension/stores/ProjectFiles.store.ts` as
-// part of the project↔file inversion. Read via `Stores.ProjectFiles.*`.
+// The file-related slice moved to
+// `modules/file/project-extension/stores/ProjectFiles.store.ts` as part of the
+// project↔file inversion. Read via `Stores.ProjectFiles.*`.
 
-interface ProjectDetailState {
-  project: Project | null
-  conversations: ConversationResponse[]
-  /// Current page (1-based) of `conversations` — incremented by
-  /// `loadMoreConversations` and reset by `loadConversations`.
-  conversationsPage: number
-  /// True iff the last fetched page came back full
-  /// (length == CONVERSATIONS_PAGE_SIZE), so there may be more rows
-  /// upstream. Mirrors ChatHistory's heuristic — neither backend
-  /// endpoint returns a total count today, so this is the best we
-  /// can do without a schema change.
-  conversationsHasMore: boolean
+export const ProjectDetail = defineStore('ProjectDetail', {
+  immer: true,
+  state: {
+    project: null as Project | null,
+    conversations: [] as ConversationResponse[],
+    /// Current page (1-based) of `conversations`.
+    conversationsPage: 1,
+    /// True iff the last page came back full (may be more upstream).
+    conversationsHasMore: false,
+    // Starts true: the detail page always loads on mount, so the initial render
+    // shows the spinner — not the load-failed state — before loadProject runs.
+    loading: true,
+    conversationsLoading: false,
+    /// True while a `loadMoreConversations` request is in flight (distinct from
+    /// conversationsLoading so "Load More" spins without re-rendering the list).
+    conversationsLoadingMore: false,
+    error: null as string | null,
+    /// Conversation-list load error, distinct from the shared `error`.
+    conversationsError: null as string | null,
+  },
+  actions: (set, get) => {
+    // Load the first page. Replaces the list, resets page to 1.
+    const loadConversations = async (projectId: string) => {
+      try {
+        set({ conversationsLoading: true, conversationsPage: 1, conversationsError: null })
+        const conversations = await ApiClient.Project.listConversations({
+          id: projectId,
+          page: 1,
+          limit: CONVERSATIONS_PAGE_SIZE,
+        })
+        set({
+          conversations,
+          conversationsLoading: false,
+          conversationsHasMore: conversations.length === CONVERSATIONS_PAGE_SIZE,
+        })
+      } catch (error) {
+        set({
+          conversationsError:
+            error instanceof Error ? error.message : 'Failed to load project conversations',
+          conversationsLoading: false,
+        })
+      }
+    }
+    return {
+      loadConversations,
+      loadProject: async (projectId: string) => {
+        try {
+          set({ loading: true, error: null })
+          const project = await ApiClient.Project.get({ id: projectId })
+          set({ project, loading: false })
+          // File loading is the file module's responsibility — ProjectFiles
+          // subscribes to `project.id` changes and reloads automatically.
+          void loadConversations(projectId)
+        } catch (error) {
+          set({
+            error: error instanceof Error ? error.message : 'Failed to load project',
+            loading: false,
+          })
+          throw error
+        }
+      },
+      // Fetch the NEXT page and append. Guarded against double-call.
+      loadMoreConversations: async (projectId: string) => {
+      const state = get()
+      if (
+        !state.conversationsHasMore ||
+        state.conversationsLoadingMore ||
+        state.conversationsLoading
+      ) {
+        return
+      }
+      const nextPage = state.conversationsPage + 1
+      try {
+        set({ conversationsLoadingMore: true })
+        const more = await ApiClient.Project.listConversations({
+          id: projectId,
+          page: nextPage,
+          limit: CONVERSATIONS_PAGE_SIZE,
+        })
+        set(draft => {
+          // Dedupe by id in case the server returned a row we already have.
+          const seen = new Set(draft.conversations.map(c => c.id))
+          for (const c of more) if (!seen.has(c.id)) draft.conversations.push(c)
+          draft.conversationsPage = nextPage
+          draft.conversationsHasMore = more.length === CONVERSATIONS_PAGE_SIZE
+          draft.conversationsLoadingMore = false
+        })
+      } catch (error) {
+        set({
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to load more project conversations',
+          conversationsLoadingMore: false,
+        })
+      }
+    },
+      clearProjectDetailError: () => {
+        set({ error: null })
+      },
+    }
+  },
+  init: ({ on, get, set, actions }) => {
+    // Refresh the currently-loaded project when it changes upstream.
+    on('project.updated', event => {
+      const current = get().project
+      if (current && current.id === event.data.project.id) {
+        set({ project: event.data.project })
+      }
+    })
+    // Cross-device: a remote edit arrives as a `sync:project` frame (the local
+    // `project.updated` only fires for same-device mutations). Refetch the open
+    // project. Self-gated per the no-403-reconnect convention.
+    const reloadOnSync = () => {
+      if (!hasPermissionNow(Permissions.ProjectsRead)) return
+      const id = get().project?.id
+      if (id) void actions.loadProject(id)
+    }
+    on('sync:project', reloadOnSync)
+    on('sync:reconnect', reloadOnSync)
+    // Drop a conversation from the list when ANY component deletes it.
+    on('conversation.deleted', event => {
+      set(state => {
+        state.conversations = state.conversations.filter(
+          c => c.id !== event.data.conversationId,
+        )
+      })
+    })
+    // Detaching a conversation from THIS project drops it from the list.
+    on('project.conversation_detached', event => {
+      if (event.data.projectId !== get().project?.id) return
+      set(state => {
+        state.conversations = state.conversations.filter(
+          c => c.id !== event.data.conversationId,
+        )
+      })
+    })
+  },
+})
 
-  loading: boolean
-  conversationsLoading: boolean
-  /// True while a `loadMoreConversations` request is in flight.
-  /// Distinct from `conversationsLoading` so the "Load More" button
-  /// can show a spinner without re-rendering the existing list as
-  /// "loading".
-  conversationsLoadingMore: boolean
-
-  error: string | null
-
-  /// Conversation-list load error, distinct from the shared `error` (which
-  /// also carries project-detail load failures). Lets the list surface a real
-  /// failure instead of the misleading "no conversations" empty state.
-  conversationsError: string | null
-
-  __init__: {
-    __store__: () => void
-  }
-  __destroy__?: () => void
-
-  loadProject: (projectId: string) => Promise<void>
-  loadConversations: (projectId: string) => Promise<void>
-  loadMoreConversations: (projectId: string) => Promise<void>
-  clearProjectDetailError: () => void
-}
-
-export const useProjectDetailStore = create<ProjectDetailState>()(
-  subscribeWithSelector(
-    immer(
-      (set, get): ProjectDetailState => ({
-        project: null,
-        conversations: [],
-        conversationsPage: 1,
-        conversationsHasMore: false,
-        // Starts true: the detail page always loads on mount, so the
-        // initial render should show the spinner — not the
-        // load-failed state — before loadProject runs. This also lets
-        // the page distinguish "still loading" from "load settled with
-        // no project" (a failure), instead of spinning forever.
-        loading: true,
-        conversationsLoading: false,
-        conversationsLoadingMore: false,
-        error: null,
-        conversationsError: null,
-
-        __init__: {
-          __store__: () => {
-            const GROUP = 'ProjectDetailStore'
-            const eventBus = Stores.EventBus
-
-            // Refresh the currently-loaded project when it changes upstream.
-            eventBus.on(
-              'project.updated',
-              async event => {
-                const current = get().project
-                if (current && current.id === event.data.project.id) {
-                  set({ project: event.data.project })
-                }
-              },
-              GROUP,
-            )
-
-            // Cross-device: a remote edit to this project arrives as a
-            // `sync:project` notify-and-refetch frame (the local
-            // `project.updated` above only fires for same-device mutations).
-            // Refetch the open project so the detail page stays current.
-            // Self-gated per the no-403-reconnect convention.
-            const reloadOnSync = () => {
-              if (!hasPermissionNow(Permissions.ProjectsRead)) return
-              const id = get().project?.id
-              if (id) void get().loadProject(id)
-            }
-            eventBus.on('sync:project', reloadOnSync, GROUP)
-            eventBus.on('sync:reconnect', reloadOnSync, GROUP)
-
-            // F5: drop a conversation from the project's local list
-            // when ANY component deletes it (sidebar, chat history
-            // page, or this page itself).
-            eventBus.on(
-              'conversation.deleted',
-              async event => {
-                set(state => {
-                  state.conversations = state.conversations.filter(
-                    c => c.id !== event.data.conversationId,
-                  )
-                })
-              },
-              GROUP,
-            )
-
-            // Detaching a conversation from THIS project must drop it from the
-            // detail-page list immediately. The detach action only emits the
-            // event (no list mutation), so without this the card lingered until
-            // a manual reload.
-            eventBus.on(
-              'project.conversation_detached',
-              async event => {
-                if (event.data.projectId !== get().project?.id) return
-                set(state => {
-                  state.conversations = state.conversations.filter(
-                    c => c.id !== event.data.conversationId,
-                  )
-                })
-              },
-              GROUP,
-            )
-          },
-        },
-
-        loadProject: async projectId => {
-          try {
-            set({ loading: true, error: null })
-            const project = await ApiClient.Project.get({ id: projectId })
-            set({ project, loading: false })
-            // File loading is now the file module's responsibility —
-            // ProjectFiles.store subscribes to `project.id` changes
-            // and reloads automatically.
-            void get().loadConversations(projectId)
-          } catch (error) {
-            set({
-              error:
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to load project',
-              loading: false,
-            })
-            throw error
-          }
-        },
-
-        // Load the first page. Replaces the previous list. Resets
-        // conversationsPage to 1 and recomputes conversationsHasMore
-        // from the response size.
-        loadConversations: async projectId => {
-          try {
-            set({
-              conversationsLoading: true,
-              conversationsPage: 1,
-              conversationsError: null,
-            })
-            const conversations = await ApiClient.Project.listConversations({
-              id: projectId,
-              page: 1,
-              limit: CONVERSATIONS_PAGE_SIZE,
-            })
-            set({
-              conversations,
-              conversationsLoading: false,
-              conversationsHasMore:
-                conversations.length === CONVERSATIONS_PAGE_SIZE,
-            })
-          } catch (error) {
-            set({
-              conversationsError:
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to load project conversations',
-              conversationsLoading: false,
-            })
-          }
-        },
-
-        // Fetch the NEXT page and append. Guarded against double-call
-        // while a previous load is in flight. Sets
-        // `conversationsHasMore=false` when the response comes back
-        // smaller than the page size (no more rows upstream).
-        loadMoreConversations: async projectId => {
-          const state = get()
-          if (
-            !state.conversationsHasMore ||
-            state.conversationsLoadingMore ||
-            state.conversationsLoading
-          ) {
-            return
-          }
-          const nextPage = state.conversationsPage + 1
-          try {
-            set({ conversationsLoadingMore: true })
-            const more = await ApiClient.Project.listConversations({
-              id: projectId,
-              page: nextPage,
-              limit: CONVERSATIONS_PAGE_SIZE,
-            })
-            set(draft => {
-              // Dedupe by id in case the server returned a row we
-              // already have (race with conversation.created on the
-              // tail of the prior page).
-              const seen = new Set(draft.conversations.map(c => c.id))
-              for (const c of more) {
-                if (!seen.has(c.id)) draft.conversations.push(c)
-              }
-              draft.conversationsPage = nextPage
-              draft.conversationsHasMore = more.length === CONVERSATIONS_PAGE_SIZE
-              draft.conversationsLoadingMore = false
-            })
-          } catch (error) {
-            set({
-              error:
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to load more project conversations',
-              conversationsLoadingMore: false,
-            })
-          }
-        },
-
-        clearProjectDetailError: () => {
-          set({ error: null })
-        },
-
-        __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('ProjectDetailStore')
-        },
-      }),
-    ),
-  ),
-)
+export const useProjectDetailStore = ProjectDetail.store

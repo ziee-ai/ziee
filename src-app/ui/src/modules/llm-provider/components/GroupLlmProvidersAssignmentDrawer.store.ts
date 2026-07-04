@@ -1,79 +1,21 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
 import type { Group } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 
-/**
- * Store for managing the Group LLM Providers Assignment Drawer state.
- * This drawer allows assigning/removing LLM Providers to/from a user group.
- */
-interface GroupLlmProvidersAssignmentState {
-  isOpen: boolean
-  selectedGroup: Group | null
-  openDrawer: (group: Group) => void
-  closeDrawer: () => void
+/** Open/selected-group state for the Group LLM Providers assignment drawer. */
+export const GroupLlmProvidersAssignment = defineStore('GroupLlmProvidersAssignment', {
+  state: { isOpen: false, selectedGroup: null as Group | null },
+  actions: set => ({
+    openDrawer: (group: Group) => set({ isOpen: true, selectedGroup: group }),
+    closeDrawer: () => set({ isOpen: false, selectedGroup: null }),
+  }),
+  init: ({ on, get, set, actions }) => {
+    on('group.updated', event => {
+      if (get().selectedGroup?.id === event.data.group.id) set({ selectedGroup: event.data.group })
+    })
+    on('group.deleted', event => {
+      if (get().selectedGroup?.id === event.data.groupId) actions.closeDrawer()
+    })
+  },
+})
 
-  __init__: {
-    __store__: () => void
-  }
-  __destroy__?: () => void
-}
-
-export const useGroupLlmProvidersAssignmentStore =
-  create<GroupLlmProvidersAssignmentState>()(
-    subscribeWithSelector(
-      (set, get): GroupLlmProvidersAssignmentState => ({
-        isOpen: false,
-        selectedGroup: null,
-
-        __init__: {
-          __store__: () => {
-            const GROUP = 'GroupLlmProvidersAssignmentDrawerStore'
-            const eventBus = Stores.EventBus
-
-            // Subscribe to group.updated
-            eventBus.on(
-              'group.updated',
-              async event => {
-                const { group } = event.data
-                const state = get()
-
-                if (state.selectedGroup?.id === group.id) {
-                  set({ selectedGroup: group })
-                }
-              },
-              GROUP,
-            )
-
-            // Subscribe to group.deleted
-            eventBus.on(
-              'group.deleted',
-              async event => {
-                const { groupId } = event.data
-                const state = get()
-
-                if (state.selectedGroup?.id === groupId) {
-                  get().closeDrawer()
-                }
-              },
-              GROUP,
-            )
-          },
-        },
-
-        openDrawer: (group: Group) => {
-          set({ isOpen: true, selectedGroup: group })
-        },
-
-        closeDrawer: () => {
-          set({ isOpen: false, selectedGroup: null })
-        },
-
-        __destroy__: () => {
-          Stores.EventBus.removeGroupListeners(
-            'GroupLlmProvidersAssignmentDrawerStore',
-          )
-        },
-      }),
-    ),
-  )
+export const useGroupLlmProvidersAssignmentStore = GroupLlmProvidersAssignment.store

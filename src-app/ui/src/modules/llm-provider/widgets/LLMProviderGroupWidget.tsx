@@ -3,27 +3,24 @@ import { useEffect } from 'react'
 import { Button, Card, Flex, Space, Tag, Text, Spin } from '@/components/ui'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
+import { LlmProviderGroupWidgetStore } from './LLMProviderGroupWidget.store'
 
 /**
  * Widget that displays LLM Providers assigned to a group.
- * Shows in GroupListItem below group info.
- * Uses a dedicated store to prevent duplicate API calls and cache data.
  *
- * IMPORTANT: Widget fetches data on mount AND listens to events for real-time updates.
- * This ensures data is loaded even after page reloads.
+ * Backed by a PRIVATE per-instance store (`defineLocalStore`) — one per group
+ * row, fetched on mount, listeners scoped to this group and auto-cleaned on
+ * unmount. Reactive reads use the same `const { … } = s` syntax as `Stores.X`.
  */
 export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
-  // Get data from store
-  const groupData = Stores.LlmProviderGroupWidget.groupProviders.get(group.id)
-  const providers = groupData?.providers || []
-  const loading = groupData?.loading || false
-  const error = groupData?.error || null
+  const s = LlmProviderGroupWidgetStore.use({ groupId: group.id })
+  const { providers, loading, error } = s
 
-  // CRITICAL: Load data on mount
-  // The store has 30-second caching, so this won't cause excessive API calls
+  // Defensive re-point if this widget instance is reused for a different group
+  // (no-op on mount since the initial groupId already matches).
   useEffect(() => {
-    Stores.LlmProviderGroupWidget.loadProvidersForGroup(group.id)
-  }, [group.id])
+    s.setGroup(group.id)
+  }, [group.id, s])
 
   const handleEdit = () => {
     Stores.GroupLlmProvidersAssignment.openDrawer(group)

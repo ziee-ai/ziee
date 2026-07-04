@@ -1,18 +1,16 @@
-import { create } from 'zustand'
+import { createJSONStorage } from 'zustand/middleware'
 import {
-  createJSONStorage,
-  persist,
-  subscribeWithSelector,
-} from 'zustand/middleware'
+  type AccentPreset,
+  ACCENT_PRESETS,
+  DEFAULT_ACCENT,
+} from '@/components/ThemeProvider/accentPresets'
+import { defineStore } from '@/core/store-kit'
 import type { StoreProxy } from '@/core/stores'
 
-// Guarded persistence storage. Accessing `localStorage` (or writing to it)
-// throws in locked-down contexts — private-mode quota, disabled storage, or a
-// sandboxed iframe where even reading the property raises SecurityError.
-// Without this guard, zustand's default `localStorage`-backed persist would
-// throw during store creation and take the whole app down. We probe once and
-// fall back to an in-memory store so the app still runs; the preference simply
-// won't survive a reload in that environment.
+// Guarded persistence storage. Accessing `localStorage` throws in locked-down
+// contexts (private-mode quota, disabled storage, sandboxed iframe). Probe once
+// and fall back to in-memory so store creation never takes the app down; the
+// preference simply won't survive a reload there.
 const safeStorage = createJSONStorage(() => {
   try {
     const probe = '__ziee_ls_probe__'
@@ -32,76 +30,53 @@ const safeStorage = createJSONStorage(() => {
     }
   }
 })
-import {
-  type AccentPreset,
-  DEFAULT_ACCENT,
-  ACCENT_PRESETS,
-} from '@/components/ThemeProvider/accentPresets'
 
 export type ThemePreference = 'light' | 'dark' | 'system'
-
-interface ConfigClientState {
-  themePreference: ThemePreference
-  /** User-selected brand accent (Settings → Appearance). Drives --primary/--ring. */
-  accentPreset: AccentPreset
-
-  // Actions
-  setThemePreference: (preference: ThemePreference) => void
-  getThemePreference: () => ThemePreference
-  setAccentPreset: (preset: AccentPreset) => void
-}
-
-// Augment RegisteredStores for IntelliSense
-declare module '../../core/stores' {
-  interface RegisteredStores {
-    ConfigClient: StoreProxy<ConfigClientState>
-  }
-}
-
-const defaultState = {
-  themePreference: 'system' as ThemePreference,
-  accentPreset: DEFAULT_ACCENT,
-}
 
 // Guard against a stale persisted accent id that no longer exists in code.
 const normalizeAccent = (a: AccentPreset): AccentPreset =>
   a in ACCENT_PRESETS ? a : DEFAULT_ACCENT
 
-export const useConfigClientStore = create<ConfigClientState>()(
-  subscribeWithSelector(
-    persist(
-      (set, get): ConfigClientState => ({
-        ...defaultState,
+export const ConfigClient = defineStore('ConfigClient', {
+  persist: {
+    name: 'config-client-storage',
+    storage: safeStorage,
+    partialize: state => ({
+      themePreference: state.themePreference,
+      accentPreset: state.accentPreset,
+    }),
+    merge: (persisted, current) => {
+      const p = (persisted ?? {}) as {
+        themePreference?: ThemePreference
+        accentPreset?: AccentPreset
+      }
+      return {
+        ...current,
+        ...p,
+        accentPreset: normalizeAccent(p.accentPreset ?? current.accentPreset),
+      }
+    },
+  },
+  state: {
+    themePreference: 'system' as ThemePreference,
+    /** User-selected brand accent (Settings → Appearance). Drives --primary/--ring. */
+    accentPreset: DEFAULT_ACCENT as AccentPreset,
+  },
+  actions: (set, get) => ({
+    setThemePreference: (preference: ThemePreference) => {
+      set({ themePreference: preference })
+    },
+    getThemePreference: (): ThemePreference => get().themePreference,
+    setAccentPreset: (preset: AccentPreset) => {
+      set({ accentPreset: normalizeAccent(preset) })
+    },
+  }),
+})
 
-        // Actions
-        setThemePreference: (preference: ThemePreference) => {
-          set({ themePreference: preference })
-        },
+export const useConfigClientStore = ConfigClient.store
 
-        getThemePreference: () => {
-          return get().themePreference
-        },
-
-        setAccentPreset: (preset: AccentPreset) => {
-          set({ accentPreset: normalizeAccent(preset) })
-        },
-      }),
-      {
-        name: 'config-client-storage',
-        storage: safeStorage,
-        partialize: state => ({
-          themePreference: state.themePreference,
-          accentPreset: state.accentPreset,
-        }),
-        merge: (persisted, current) => {
-          const p = (persisted ?? {}) as Partial<ConfigClientState>
-          return {
-            ...current,
-            ...p,
-            accentPreset: normalizeAccent(p.accentPreset ?? current.accentPreset),
-          }
-        },
-      },
-    ),
-  ),
-)
+declare module '../../core/stores' {
+  interface RegisteredStores {
+    ConfigClient: StoreProxy<ReturnType<typeof ConfigClient.store.getState>>
+  }
+}

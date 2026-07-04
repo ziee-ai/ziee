@@ -1,61 +1,17 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import type { User } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 
-interface ResetPasswordDrawerState {
-  isOpen: boolean
-  user: User | null
+export const ResetPasswordDrawer = defineStore('ResetPasswordDrawer', {
+  state: { isOpen: false, user: null as User | null },
+  actions: set => ({
+    openResetPasswordDrawer: (user: User) => set({ isOpen: true, user }),
+    closeResetPasswordDrawer: () => set({ isOpen: false, user: null }),
+  }),
+  init: ({ on, get, actions }) => {
+    on('user.deleted', event => {
+      if (get().user?.id === event.data.userId) actions.closeResetPasswordDrawer()
+    })
+  },
+})
 
-  openResetPasswordDrawer: (user: User) => void
-  closeResetPasswordDrawer: () => void
-
-  __init__: {
-    __store__: () => void
-  }
-  __destroy__?: () => void
-}
-
-export const useResetPasswordDrawerStore = create<ResetPasswordDrawerState>()(
-  subscribeWithSelector(
-    immer(
-      (set, get): ResetPasswordDrawerState => ({
-        isOpen: false,
-        user: null,
-
-        openResetPasswordDrawer: (user: User) => {
-          set({ isOpen: true, user })
-        },
-
-        closeResetPasswordDrawer: () => {
-          set({ isOpen: false, user: null })
-        },
-
-        __init__: {
-          __store__: () => {
-            const GROUP = 'ResetPasswordDrawerStore'
-            const eventBus = Stores.EventBus
-
-            // Close drawer when user is deleted
-            eventBus.on(
-              'user.deleted',
-              async event => {
-                const { userId } = event.data
-                const state = get()
-                if (state.user?.id === userId) {
-                  get().closeResetPasswordDrawer()
-                }
-              },
-              GROUP,
-            )
-          },
-        },
-
-        __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('ResetPasswordDrawerStore')
-        },
-      }),
-    ),
-  ),
-)
+export const useResetPasswordDrawerStore = ResetPasswordDrawer.store

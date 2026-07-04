@@ -1,38 +1,21 @@
-// Global file-preview drawer state.
+// Global file-preview drawer state (Stores.FilePreviewDrawer).
 //
-// The drawer is the universal "click a file card to preview" surface.
-// Chat surfaces opt into the side-by-side right-panel (`displayInRightPanel`)
-// instead by passing an explicit `onClick` to FileCard — the drawer is
-// FileCard's default fallback so any non-chat surface (project knowledge
-// drawer, knowledge card on ProjectDetailPage, future file library page,
-// etc.) gets a working preview without per-surface plumbing.
-//
-// Exposed as `Stores.FilePreviewDrawer`.
+// The drawer is the universal "click a file card to preview" surface. Chat
+// surfaces opt into the right-panel instead by passing an explicit onClick to
+// FileCard; the drawer is FileCard's default fallback so any non-chat surface
+// gets a working preview without per-surface plumbing.
 
-import { create } from 'zustand'
 import type { File as FileEntity } from '@/api-client/types'
+import { defineStore } from '@/core/store-kit'
 
-interface FilePreviewDrawerState {
-  isOpen: boolean
-  file: FileEntity | null
-
-  openPreview: (file: FileEntity) => void
-  closePreview: () => void
-}
-
-export const useFilePreviewDrawerStore = create<FilePreviewDrawerState>()(
-  (set): FilePreviewDrawerState => ({
-    isOpen: false,
-    file: null,
-
-    openPreview: (file: FileEntity) => {
-      set({ isOpen: true, file })
-    },
-
-    closePreview: () => {
-      // Keep `file` set so antd's exit animation has content to render
-      // while the drawer slides out. Next openPreview overwrites it.
-      set({ isOpen: false })
-    },
+export const FilePreviewDrawer = defineStore('FilePreviewDrawer', {
+  state: { isOpen: false, file: null as FileEntity | null },
+  actions: set => ({
+    openPreview: (file: FileEntity) => set({ isOpen: true, file }),
+    // Keep `file` set so the exit animation has content while sliding out;
+    // the next openPreview overwrites it.
+    closePreview: () => set({ isOpen: false }),
   }),
-)
+})
+
+export const useFilePreviewDrawerStore = FilePreviewDrawer.store

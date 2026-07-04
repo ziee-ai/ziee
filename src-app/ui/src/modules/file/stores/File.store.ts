@@ -1,6 +1,4 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
+import { defineStore } from '@/core/store-kit'
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
@@ -218,9 +216,9 @@ interface FileExtensionStore {
  *     fileViewModes): survive across conversations — keyed by message
  *     or file id, useful in message-history rendering across the app.
  */
-export const useFileStore = create<FileExtensionStore>()(
-  subscribeWithSelector(
-    immer((set, get) => ({
+export const File = defineStore('File', {
+  immer: true,
+  state: {
     // Initial state
     uploadingFiles: new Map(),
     selectedFiles: new Map(),
@@ -235,13 +233,36 @@ export const useFileStore = create<FileExtensionStore>()(
     previewPageLoadingSet: new Set(),
     previewPageRequested: new Map(),
     previewPageQueue: new Map(),
-
     // Per-ID content cache for right panel tabs
     fileTextContents: new Map(),
     fileTextLoadingSet: new Set(),
     fileBinaryContents: new Map(),
     fileBinaryLoadingSet: new Set(),
     fileViewModes: new Map(),
+  } as unknown as Pick<
+    FileExtensionStore,
+    | 'uploadingFiles'
+    | 'selectedFiles'
+    | 'restoredFileIds'
+    | 'backupSelectedFiles'
+    | 'backupUploadingFiles'
+    | 'messageFilesCache'
+    | 'messageFilesLoadingSet'
+    | 'thumbnailUrls'
+    | 'thumbnailLoadingSet'
+    | 'previewPageUrls'
+    | 'previewPageLoadingSet'
+    | 'previewPageRequested'
+    | 'previewPageQueue'
+    | 'fileTextContents'
+    | 'fileTextLoadingSet'
+    | 'fileBinaryContents'
+    | 'fileBinaryLoadingSet'
+    | 'fileViewModes'
+  >,
+  actions: (set, getRaw) => {
+    const get = getRaw as () => FileExtensionStore
+    return {
 
     // Upload files with progress tracking
     uploadFiles: async (files: File[]) => {
@@ -869,8 +890,10 @@ export const useFileStore = create<FileExtensionStore>()(
       window.open(url, '_blank', 'noopener,noreferrer')
     },
 
-    __init__: {
-      __store__: () => {
+    }
+  },
+  init: ({ set, get: getRaw, onCleanup }) => {
+    const get = getRaw as () => FileExtensionStore
         const eventBus = Stores.EventBus
         const GROUP = 'FileStore'
         // A file's HEAD changed (restore / MCP edit / sandbox version-back),
@@ -928,12 +951,10 @@ export const useFileStore = create<FileExtensionStore>()(
         }
         eventBus.on('sync:file', onFileSync, GROUP)
         eventBus.on('sync:reconnect', onReconnect, GROUP)
-      },
-    },
-
-    __destroy__: () => {
+    onCleanup(() => {
       Stores.EventBus.removeGroupListeners('FileStore')
-    },
-  })),
-  ),
-)
+    })
+  },
+})
+
+export const useFileStore = File.store

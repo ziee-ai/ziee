@@ -1,309 +1,91 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import type { LlmProvider } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@/core/stores'
+import { defineLocalStore } from '@/core/store-kit'
 
-interface GroupProviders {
-  groupId: string
-  providers: LlmProvider[]
-  loading: boolean
-  error: string | null
-  lastFetched: number | null
-}
+/**
+ * PRIVATE, per-widget store (one instance per group row) — MIGRATED from a global
+ * `groupId`-keyed singleton to `defineLocalStore`.
+ *
+ * Before: one global store held a `Map<groupId, providers>` + an `allProviders`
+ * cache, was registered in `Stores.LlmProviderGroupWidget`, and every widget
+ * shared it — so the widget needed a mount `useEffect` to fetch, and the store
+ * carried Map bookkeeping + a manual `__destroy__`.
+ *
+ * After: each mounted widget owns just ITS group's providers. `init` fetches on
+ * MOUNT (so it's populated after a reload with no consumer-side effect) and its
+ * event listeners auto-unsubscribe on UNMOUNT. No global Map, no
+ * `Stores.LlmProviderGroupWidget`, no GROUP string, no `__destroy__`.
+ */
+export const LlmProviderGroupWidgetStore = defineLocalStore({
+  immer: true,
+  state: {
+    groupId: '' as string,
+    providers: [] as LlmProvider[],
+    loading: false,
+    error: null as string | null,
+  },
 
-interface LlmProviderGroupWidgetState {
-  // Map of groupId -> provider data
-  groupProviders: Map<string, GroupProviders>
+  actions: (set, get) => {
+    const load = async (force = false) => {
+      const groupId = get().groupId
+      if (!groupId) return
+      if (get().loading && !force) return
+      set(d => {
+        d.loading = true
+        d.error = null
+      })
+      try {
+        const response = await ApiClient.Group.getProviders({ group_id: groupId })
+        set(d => {
+          d.providers = response.providers
+          d.loading = false
+        })
+      } catch (error) {
+        console.error(`Failed to load providers for group ${groupId}:`, error)
+        set(d => {
+          d.loading = false
+          d.error =
+            error instanceof Error ? error.message : 'Failed to load providers'
+        })
+      }
+    }
 
-  // Cached providers
-  allProviders: LlmProvider[]
-  providersLoading: boolean
-  providersError: string | null
-  providersInitialized: boolean
+    return {
+      load,
+      /** Re-point this instance at a different group (defensive — parents should
+       *  key widgets by group.id, but group.id can change in place). */
+      setGroup: (groupId: string) => {
+        if (get().groupId === groupId) return
+        set(d => {
+          d.groupId = groupId
+        })
+        void load(true)
+      },
+    }
+  },
 
-  // Initialization
-  __init__: {
-    __store__: () => void
-    allProviders: () => Promise<void>
-  }
+  // Runs on MOUNT; every `on(...)` auto-unsubscribes on UNMOUNT.
+  init: ({ on, get, set, actions }) => {
+    void actions.load()
 
-  // Actions
-  loadAllProviders: () => Promise<void>
-  loadProvidersForGroup: (groupId: string, force?: boolean) => Promise<void>
-  clearGroupProviders: (groupId: string) => void
-  clearAllGroupProviders: () => void
-  getGroupProvidersData: (groupId: string) => GroupProviders | undefined
-
-  // Cleanup
-  __destroy__?: () => void
-}
-
-export const useLlmProviderGroupWidgetStore =
-  create<LlmProviderGroupWidgetState>()(
-    subscribeWithSelector(
-      immer(
-        (set, get): LlmProviderGroupWidgetState => ({
-          groupProviders: new Map(),
-          allProviders: [],
-          providersLoading: false,
-          providersError: null,
-          providersInitialized: false,
-          __init__: {
-            // Store-level initialization - runs once on first access (any property)
-            __store__: () => {
-              const GROUP = 'LLMProviderGroupWidgetStore'
-              // Subscribe to group provider assignment changes
-              const eventBus = Stores.EventBus
-
-              // When providers are assigned to a group, update the cache directly
-              eventBus.on(
-                'llm_provider.group_providers_changed',
-                async event => {
-                  const { groupId, providerIds } = event.data
-
-                  // Ensure providers are loaded
-                  await get().loadAllProviders()
-
-                  // Use cached providers to build the assigned list
-                  const allProviders = get().allProviders
-                  const assignedProviders = allProviders.filter(p =>
-                    providerIds.includes(p.id),
-                  )
-
-                  set(state => {
-                    state.groupProviders.set(groupId, {
-                      groupId,
-                      providers: assignedProviders,
-                      loading: false,
-                      error: null,
-                      lastFetched: Date.now(),
-                    })
-                  })
-                },
-                GROUP,
-              )
-
-              // Subscribe to llm_provider.created
-              eventBus.on(
-                'llm_provider.created',
-                async () => {
-                  set(state => {
-                    state.providersInitialized = false
-                  })
-                  await get().loadAllProviders()
-                },
-                GROUP,
-              )
-
-              // Subscribe to llm_provider.updated
-              eventBus.on(
-                'llm_provider.updated',
-                async event => {
-                  const { provider } = event.data
-                  set(state => {
-                    const index = state.allProviders.findIndex(
-                      p => p.id === provider.id,
-                    )
-                    if (index !== -1) {
-                      state.allProviders[index] = provider
-                    }
-                  })
-                },
-                GROUP,
-              )
-
-              // Subscribe to llm_provider.deleted
-              eventBus.on(
-                'llm_provider.deleted',
-                async event => {
-                  const { providerId } = event.data
-                  set(state => {
-                    // Remove from allProviders cache
-                    state.allProviders = state.allProviders.filter(
-                      p => p.id !== providerId,
-                    )
-
-                    // Clear it from all groupProviders maps
-                    state.groupProviders.forEach((groupData, groupId) => {
-                      const updatedProviders = groupData.providers.filter(
-                        p => p.id !== providerId,
-                      )
-                      state.groupProviders.set(groupId, {
-                        ...groupData,
-                        providers: updatedProviders,
-                      })
-                    })
-                  })
-                },
-                GROUP,
-              )
-            },
-
-            // Property-specific initialization - runs when allProviders is first accessed
-            allProviders: async () => {
-              await get().loadAllProviders()
-            },
-          },
-
-          /**
-           * Load all providers (cached)
-           * Only fetches if not already initialized
-           */
-          loadAllProviders: async (): Promise<void> => {
-            const state = get()
-
-            // If already loading, don't start another fetch
-            if (state.providersLoading) {
-              return
-            }
-
-            // If already initialized, use cached data
-            if (state.providersInitialized && !state.providersError) {
-              return
-            }
-
-            set(state => {
-              state.providersLoading = true
-              state.providersError = null
-            })
-
-            try {
-              const response = await ApiClient.LlmProvider.list({
-                page: 1,
-                per_page: 1000,
-              })
-
-              set(state => {
-                state.allProviders = response.providers
-                state.providersLoading = false
-                state.providersError = null
-                state.providersInitialized = true
-              })
-            } catch (error) {
-              console.error('Failed to load providers:', error)
-
-              set(state => {
-                state.providersLoading = false
-                state.providersError =
-                  error instanceof Error
-                    ? error.message
-                    : 'Failed to load providers'
-              })
-
-              throw error
-            }
-          },
-
-          /**
-           * Load providers for a specific group
-           * Uses cached providers instead of fetching every time
-           */
-          loadProvidersForGroup: async (
-            groupId: string,
-            force = false,
-          ): Promise<void> => {
-            const state = get()
-            const existing = state.groupProviders.get(groupId)
-
-            // If already loading, don't start another fetch
-            if (existing?.loading && !force) {
-              return
-            }
-
-            // If data is fresh (< 30 seconds old) and not forcing, use cached data
-            if (
-              !force &&
-              existing?.lastFetched &&
-              Date.now() - existing.lastFetched < 30000 &&
-              !existing.error
-            ) {
-              return
-            }
-
-            // Set loading state
-            set(state => {
-              state.groupProviders.set(groupId, {
-                groupId,
-                providers: existing?.providers || [],
-                loading: true,
-                error: null,
-                lastFetched: existing?.lastFetched || null,
-              })
-            })
-
-            try {
-              const response = await ApiClient.Group.getProviders({
-                group_id: groupId,
-              })
-
-              set(state => {
-                state.groupProviders.set(groupId, {
-                  groupId,
-                  providers: response.providers,
-                  loading: false,
-                  error: null,
-                  lastFetched: Date.now(),
-                })
-              })
-            } catch (error) {
-              console.error(
-                `Failed to load providers for group ${groupId}:`,
-                error,
-              )
-
-              set(state => {
-                state.groupProviders.set(groupId, {
-                  groupId,
-                  providers: existing?.providers || [],
-                  loading: false,
-                  error:
-                    error instanceof Error
-                      ? error.message
-                      : 'Failed to load providers',
-                  lastFetched: existing?.lastFetched || null,
-                })
-              })
-
-              throw error
-            }
-          },
-
-          /**
-           * Clear cached data for a specific group
-           */
-          clearGroupProviders: (groupId: string): void => {
-            set(state => {
-              state.groupProviders.delete(groupId)
-            })
-          },
-
-          /**
-           * Clear all cached provider data
-           */
-          clearAllGroupProviders: (): void => {
-            set(state => {
-              state.groupProviders.clear()
-            })
-          },
-
-          /**
-           * Get providers for a specific group from the store
-           */
-          getGroupProvidersData: (
-            groupId: string,
-          ): GroupProviders | undefined => {
-            return get().groupProviders.get(groupId)
-          },
-
-          /**
-           * Cleanup method - removes all event listeners for this store
-           */
-          __destroy__: () => {
-            Stores.EventBus.removeGroupListeners('LLMProviderGroupWidgetStore')
-          },
-        }),
-      ),
-    ),
-  )
+    // Real-time updates, scoped to THIS instance's group.
+    on('llm_provider.group_providers_changed', async event => {
+      if (event.data.groupId !== get().groupId) return
+      await actions.load(true)
+    })
+    on('llm_provider.created', () => {
+      void actions.load(true)
+    })
+    on('llm_provider.updated', event => {
+      set(d => {
+        const i = d.providers.findIndex(p => p.id === event.data.provider.id)
+        if (i !== -1) d.providers[i] = event.data.provider
+      })
+    })
+    on('llm_provider.deleted', event => {
+      set(d => {
+        d.providers = d.providers.filter(p => p.id !== event.data.providerId)
+      })
+    })
+  },
+})

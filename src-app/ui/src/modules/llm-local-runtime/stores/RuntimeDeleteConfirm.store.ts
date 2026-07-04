@@ -1,13 +1,11 @@
-import { create } from 'zustand'
 import type { RuntimeVersionResponse } from '@/api-client/types'
+import { defineStore } from '@/core/store-kit'
 
-interface RuntimeDeleteConfirmState {
-  version: RuntimeVersionResponse | null
+export const RuntimeDeleteConfirm = defineStore('RuntimeDeleteConfirm', {
+  state: { version: null as RuntimeVersionResponse | null },
+  actions: set => ({
+    setVersion: (version: RuntimeVersionResponse | null) => set({ version }),
+  }),
+})
 
-  setVersion: (version: RuntimeVersionResponse | null) => void
-}
-
-export const useRuntimeDeleteConfirmStore = create<RuntimeDeleteConfirmState>((set) => ({
-  version: null,
-  setVersion: (version) => set({ version })
-}))
+export const useRuntimeDeleteConfirmStore = RuntimeDeleteConfirm.store

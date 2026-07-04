@@ -30,6 +30,7 @@ type RemoveVoid<T> = T extends void ? never : T
 type ExtractZustandState<T> = T extends UseBoundStore<infer Store>
   ? Store extends StoreApi<infer State>
     ? RemoveVoid<State> & {
+        $: RemoveVoid<State>
         __state: RemoveVoid<State>
         __setState: StoreApi<State>['setState']
       }
@@ -210,8 +211,11 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
 
   return new Proxy({} as Readonly<ExtractZustandState<T>>, {
     get: (_, prop) => {
-      // Special properties
-      if (prop === '__state') {
+      // Special properties.
+      // `$` is the clean handler-side snapshot: `Stores.X.$.field` reads
+      // getState() with NO hooks (safe in event handlers / async). It is the
+      // preferred replacement for the older `__state` (kept as an alias below).
+      if (prop === '$' || prop === '__state') {
         return useStore.getState()
       }
       if (prop === '__setState') {
@@ -288,6 +292,8 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
 // Helper type to wrap store state with proxy methods
 export type StoreProxy<T> = Readonly<
   T & {
+    /** Handler-side snapshot: `Stores.X.$.field` (no hooks, safe anywhere). */
+    $: T
     __state: T
     __setState: (partial: Partial<T> | ((state: T) => Partial<T>)) => void
     __refCount: number

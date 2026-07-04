@@ -1,6 +1,3 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type {
   CreateMemoryRequest,
@@ -8,7 +5,7 @@ import type {
   UpdateMemoryRequest,
   UserMemory,
 } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 import {
   emitMemoryAllCleared,
   emitMemoryCreated,
@@ -16,129 +13,63 @@ import {
   emitMemoryUpdated,
 } from '@/modules/memory/events'
 
-interface MemoriesStore {
-  memories: UserMemory[]
-  loading: boolean
-  saving: boolean
-  error: string | null
-  searchQuery: string
-  kindFilter: string | null
-  sourceFilter: string | null
-
-  // Pagination state — drives MyMemoriesSection's <Pagination>.
-  // Backend `Memory.list` accepts `page` + `per_page` and returns
-  // `MemoryListResponse { items, total, page, per_page }`.
-  currentPage: number
-  pageSize: number
-  total: number
-
-  __init__: {
-    __store__?: () => void
-    memories: () => Promise<void>
-  }
-
-  __destroy__?: () => void
-
-  load: (page?: number, pageSize?: number) => Promise<void>
-  create: (
-    content: string,
-    importance?: number,
-    kind?: string,
-  ) => Promise<UserMemory>
-  update: (
-    id: string,
-    patch: Omit<UpdateMemoryRequest, never>,
-  ) => Promise<UserMemory>
-  remove: (id: string) => Promise<void>
-  removeAll: () => Promise<number>
-  setSearchQuery: (q: string) => void
-  setKindFilter: (k: string | null) => void
-  setSourceFilter: (s: string | null) => void
-  reset: () => void
-}
-
-const loadMemories = async (
-  set: (fn: (s: MemoriesStore) => void) => void,
-  get: () => MemoriesStore,
-  page?: number,
-  pageSize?: number,
-) => {
-  const state = get()
-  const nextPage = page ?? state.currentPage
-  const nextPageSize = pageSize ?? state.pageSize
-  set(s => {
-    s.loading = true
-    s.error = null
-  })
-  try {
-    const resp = await ApiClient.Memory.list({
-      page: nextPage,
-      per_page: nextPageSize,
-      // Server-side filters — backend ILIKE + exact-match on kind/source.
-      // Empty/null values are omitted so the server short-circuits.
-      ...(state.searchQuery ? { search: state.searchQuery } : {}),
-      ...(state.kindFilter ? { kind: state.kindFilter } : {}),
-      ...(state.sourceFilter ? { source: state.sourceFilter } : {}),
-    })
-    set(s => {
-      s.memories = resp.items
-      s.total = resp.total
-      s.currentPage = resp.page
-      s.pageSize = resp.per_page
-      s.loading = false
-    })
-  } catch (error) {
-    set(s => {
-      s.error =
-        error instanceof Error ? error.message : 'Failed to load memories'
-      s.loading = false
-    })
-  }
-}
-
-/**
- * Debounce timer for search-query reloads — keystrokes within
- * 250ms coalesce into a single backend hit.
- */
+// Debounce timer for search-query reloads — keystrokes within 250ms coalesce.
 let searchDebounce: ReturnType<typeof setTimeout> | null = null
 
-export const useMemoriesStore = create<MemoriesStore>()(
-  subscribeWithSelector(
-    immer((set, get) => ({
-      memories: [],
-      loading: false,
-      saving: false,
-      error: null,
-      searchQuery: '',
-      kindFilter: null,
-      sourceFilter: null,
-      currentPage: 1,
-      pageSize: 10,
-      total: 0,
-
-      __init__: {
-        __store__: () => {
-          const eventBus = Stores.EventBus
-          const GROUP = 'Memories'
-          // Memories is a paginated list; `load()` reloads the current
-          // page, which surfaces remote creates/edits/deletes that fall
-          // on it (a bulk-clear arrives as a Delete with a nil id and
-          // reloads the page to empty). No permission self-gate needed.
-          const reload = () => void loadMemories(set, get)
-          eventBus.on('sync:memory', reload, GROUP)
-          eventBus.on('sync:reconnect', reload, GROUP)
-        },
-        memories: () => loadMemories(set, get),
-      },
-
-      __destroy__: () => {
-        Stores.EventBus.removeGroupListeners('Memories')
-      },
-
-      load: (page?: number, pageSize?: number) =>
-        loadMemories(set, get, page, pageSize),
-
-      create: async (content, importance, kind): Promise<UserMemory> => {
+export const Memories = defineStore('Memories', {
+  immer: true,
+  state: {
+    memories: [] as UserMemory[],
+    loading: false,
+    saving: false,
+    error: null as string | null,
+    searchQuery: '',
+    kindFilter: null as string | null,
+    sourceFilter: null as string | null,
+    // Pagination state — drives MyMemoriesSection's <Pagination>.
+    currentPage: 1,
+    pageSize: 10,
+    total: 0,
+  },
+  actions: (set, get) => {
+    const load = async (page?: number, pageSize?: number) => {
+      const state = get()
+      const nextPage = page ?? state.currentPage
+      const nextPageSize = pageSize ?? state.pageSize
+      set(s => {
+        s.loading = true
+        s.error = null
+      })
+      try {
+        const resp = await ApiClient.Memory.list({
+          page: nextPage,
+          per_page: nextPageSize,
+          // Server-side filters (ILIKE + exact kind/source). Empty/null omitted.
+          ...(state.searchQuery ? { search: state.searchQuery } : {}),
+          ...(state.kindFilter ? { kind: state.kindFilter } : {}),
+          ...(state.sourceFilter ? { source: state.sourceFilter } : {}),
+        })
+        set(s => {
+          s.memories = resp.items
+          s.total = resp.total
+          s.currentPage = resp.page
+          s.pageSize = resp.per_page
+          s.loading = false
+        })
+      } catch (error) {
+        set(s => {
+          s.error = error instanceof Error ? error.message : 'Failed to load memories'
+          s.loading = false
+        })
+      }
+    }
+    return {
+      load,
+      create: async (
+        content: string,
+        importance?: number,
+        kind?: string,
+      ): Promise<UserMemory> => {
         set(s => {
           s.saving = true
           s.error = null
@@ -170,8 +101,10 @@ export const useMemoriesStore = create<MemoriesStore>()(
           throw error
         }
       },
-
-      update: async (id, patch): Promise<UserMemory> => {
+      update: async (
+        id: string,
+        patch: Omit<UpdateMemoryRequest, never>,
+      ): Promise<UserMemory> => {
         set(s => {
           s.saving = true
           s.error = null
@@ -197,8 +130,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
           throw error
         }
       },
-
-      remove: async (id): Promise<void> => {
+      remove: async (id: string): Promise<void> => {
         try {
           await ApiClient.Memory.delete({ id })
           set(s => {
@@ -217,7 +149,6 @@ export const useMemoriesStore = create<MemoriesStore>()(
           throw error
         }
       },
-
       removeAll: async (): Promise<number> => {
         try {
           const body: DeleteAllResponse = await ApiClient.Memory.deleteAll()
@@ -229,49 +160,42 @@ export const useMemoriesStore = create<MemoriesStore>()(
           try {
             await emitMemoryAllCleared(body.deleted)
           } catch (eventError) {
-            console.error(
-              'Failed to emit memory all-cleared event:',
-              eventError,
-            )
+            console.error('Failed to emit memory all-cleared event:', eventError)
           }
           return body.deleted
         } catch (error) {
           set(s => {
-            s.error =
-              error instanceof Error ? error.message : 'Delete-all failed'
+            s.error = error instanceof Error ? error.message : 'Delete-all failed'
           })
           throw error
         }
       },
-
-      // Filter setters all reset to page 1 and reload from the
-      // server. Search is debounced (250ms) so keystrokes don't
-      // hammer the backend; select-style filters fire immediately.
-      setSearchQuery: q => {
+      // Filter setters reset to page 1 and reload. Search is debounced (250ms);
+      // select-style filters fire immediately.
+      setSearchQuery: (q: string) => {
         set(s => {
           s.searchQuery = q
           s.currentPage = 1
         })
         if (searchDebounce) clearTimeout(searchDebounce)
         searchDebounce = setTimeout(() => {
-          void loadMemories(set, get, 1)
+          void load(1)
         }, 250)
       },
-      setKindFilter: k => {
+      setKindFilter: (k: string | null) => {
         set(s => {
           s.kindFilter = k
           s.currentPage = 1
         })
-        void loadMemories(set, get, 1)
+        void load(1)
       },
-      setSourceFilter: source => {
+      setSourceFilter: (source: string | null) => {
         set(s => {
           s.sourceFilter = source
           s.currentPage = 1
         })
-        void loadMemories(set, get, 1)
+        void load(1)
       },
-
       reset: () =>
         set(s => {
           s.memories = []
@@ -282,6 +206,17 @@ export const useMemoriesStore = create<MemoriesStore>()(
           s.kindFilter = null
           s.sourceFilter = null
         }),
-    })),
-  ),
-)
+    }
+  },
+  init: ({ on, actions }) => {
+    // Paginated list; load() reloads the current page (surfacing remote
+    // creates/edits/deletes on it; a bulk-clear arrives as a nil-id Delete).
+    // No permission self-gate needed.
+    const reload = () => void actions.load()
+    on('sync:memory', reload)
+    on('sync:reconnect', reload)
+    void actions.load()
+  },
+})
+
+export const useMemoriesStore = Memories.store
