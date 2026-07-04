@@ -1,36 +1,25 @@
-// Project knowledge-files store.
+// Project knowledge-files store — MIGRATED to the store-kit `defineStore`.
 //
-// Owns the per-project file list + upload progress + multi-select state.
-// Relocated from `modules/projects/stores/ProjectDetail.store.ts` as part
-// of the project↔file inversion — the projects module no longer has
-// any file state.
-//
-// Single-project scope: subscribes to `Stores.ProjectDetail.project.id`
-// and atomically resets (files cleared, uploads cleared, selection
-// cleared) whenever the active project changes. No `Map<projectId, ...>`
-// because nothing in the app opens two projects at once.
+// Compare with the old shape: this drops the create()(subscribeWithSelector(
+// immer(…))) nesting, the `__init__.__store__` / `__destroy__` scaffolding, the
+// `GROUP = 'ProjectFilesStore'` string + its two uses, and the verbose type
+// merge. Listeners register via the scoped `on` / `watch` (auto-unsubscribed on
+// destroy — no manual removeGroupListeners). Consumers are UNCHANGED: still
+// `Stores.ProjectFiles.files`, `Stores.ProjectFiles.loadFiles(...)`, and the new
+// `Stores.ProjectFiles.$.currentProjectId` for handler-side reads.
 
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
+import { defineStore } from '@/core/store-kit'
 import { ApiClient } from '@/api-client'
 import type { File as ProjectFile } from '@/api-client/types'
-import { Stores } from '@/core/stores'
 import {
   emitProjectFileAttached,
   emitProjectFileDetached,
 } from '@/modules/file/project-extension/events'
-// Import the raw zustand store directly so `.subscribe()` calls don't
-// route through the Stores proxy (which would call useEffect+useStore
-// hooks on `.__store__` access — see the proxy at core/stores.ts:212).
-// This is the file → projects import direction, which is the allowed
-// inversion direction post-refactor.
 import { useProjectDetailStore } from '@/modules/projects/stores'
 
 /**
- * Per-file upload progress. The map key is a synthetic local id (so the
- * same file uploaded twice gets two separate progress rows). Mirrors
- * the chat composer's FileStore pattern but scoped to the active project.
+ * Per-file upload progress. The map key is a synthetic local id (so the same
+ * file uploaded twice gets two separate progress rows).
  */
 export interface ProjectFileUploadProgress {
   id: string
@@ -41,338 +30,241 @@ export interface ProjectFileUploadProgress {
   error?: string
 }
 
-interface ProjectFilesState {
-  /** Currently-active project id, mirrored from `Stores.ProjectDetail.project.id`
-   *  via the __init__ subscription. Null when no project is open. */
-  currentProjectId: string | null
+/** 100 MiB — mirrors the file module's per-file cap. */
+const MAX_FILE_SIZE = 100 * 1024 * 1024
 
-  files: ProjectFile[]
-  filesLoading: boolean
+export const ProjectFiles = defineStore('ProjectFiles', {
+  immer: true,
+  state: {
+    /** Active project id, mirrored from `ProjectDetail.project.id`. */
+    currentProjectId: null as string | null,
+    files: [] as ProjectFile[],
+    filesLoading: false,
+    uploadingFiles: new Map<string, ProjectFileUploadProgress>(),
+    selectedFileIds: new Set<string>(),
+    attaching: false,
+    detaching: false,
+    error: null as string | null,
+  },
 
-  /** In-flight uploads keyed by synthetic local id. Done entries are
-   *  removed on success; failed entries remain with `status: 'error'`
-   *  until the user clears them. */
-  uploadingFiles: Map<string, ProjectFileUploadProgress>
+  actions: (set, get) => {
+    // Hoisted so sibling actions + init can call it directly (typed), instead of
+    // `get().loadFiles` (get() is state-only by design).
+    const loadFiles = async (projectId: string) => {
+      try {
+        set({ filesLoading: true })
+        const response = await ApiClient.Project.listFiles({ id: projectId })
+        set({ files: response.files, filesLoading: false })
+      } catch (error) {
+        set({
+          error:
+            error instanceof Error ? error.message : 'Failed to load project files',
+          filesLoading: false,
+        })
+      }
+    }
 
-  /** Multi-select state for batch operations (e.g. batch detach).
-   *  Cleared atomically on project change. */
-  selectedFileIds: Set<string>
+    return {
+      loadFiles,
 
-  attaching: boolean
-  detaching: boolean
-  error: string | null
+      attachFile: async (projectId: string, fileId: string) => {
+      try {
+        set({ attaching: true, error: null })
+        await ApiClient.Project.attachFile({ id: projectId, file_id: fileId })
+        await emitProjectFileAttached(projectId, fileId)
+        set({ attaching: false })
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Failed to attach file',
+          attaching: false,
+        })
+        throw error
+      }
+    },
 
-  __init__: {
-    __store__: () => void
-  }
-  __destroy__?: () => void
+    uploadAndAttachFiles: async (projectId: string, files: File[]) => {
+      let anySucceeded = false
+      await Promise.all(
+        files.map(async file => {
+          const uploadId = `up_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+          set(state => {
+            state.uploadingFiles.set(uploadId, {
+              id: uploadId,
+              filename: file.name,
+              size: file.size,
+              progress: 0,
+              status: 'pending',
+            })
+          })
 
-  loadFiles: (projectId: string) => Promise<void>
-  attachFile: (projectId: string, fileId: string) => Promise<void>
-  /** Upload N files via multipart and attach in one shot. Each gets
-   *  its own progress row; errors stay visible until cleared. */
-  uploadAndAttachFiles: (projectId: string, files: File[]) => Promise<void>
-  dismissUploadingFile: (uploadId: string) => void
-  deleteFile: (projectId: string, fileId: string) => Promise<void>
-
-  // Selection actions
-  toggleSelection: (fileId: string) => void
-  selectAll: () => void
-  deselectAll: () => void
-  batchDelete: (projectId: string) => Promise<void>
-
-  clearError: () => void
-}
-
-export const useProjectFilesStore = create<ProjectFilesState>()(
-  subscribeWithSelector(
-    immer(
-      (set, get): ProjectFilesState => ({
-        currentProjectId: null,
-        files: [],
-        filesLoading: false,
-        uploadingFiles: new Map(),
-        selectedFileIds: new Set(),
-        attaching: false,
-        detaching: false,
-        error: null,
-
-        __init__: {
-          __store__: () => {
-            const GROUP = 'ProjectFilesStore'
-            const eventBus = Stores.EventBus
-
-            // Mirror the active project's id and reload files when it
-            // changes. Subscribe directly to the raw zustand store —
-            // going through `Stores.ProjectDetail.__store__` triggers
-            // useEffect+useStore hooks via the proxy, which corrupts
-            // the hook-count on first render (CSS hook-order violation).
-            useProjectDetailStore.subscribe(
-              state => state.project?.id ?? null,
-              newProjectId => {
-                // Atomic reset on project change.
-                set(state => {
-                  state.currentProjectId = newProjectId
-                  state.files = []
-                  state.uploadingFiles.clear()
-                  state.selectedFileIds.clear()
-                })
-                if (newProjectId) {
-                  void get().loadFiles(newProjectId)
-                }
-              },
-              { fireImmediately: true },
-            )
-
-            // Refresh on file attach (e.g. from another tab / sibling
-            // emit). Re-fetch so the new row's full metadata reaches
-            // the list.
-            eventBus.on(
-              'project.file_attached',
-              async event => {
-                const current = get().currentProjectId
-                if (current && current === event.data.projectId) {
-                  await get().loadFiles(current)
-                }
-              },
-              GROUP,
-            )
-
-            // Local removal on detach — avoids a full reload for a
-            // single-row drop.
-            eventBus.on(
-              'project.file_detached',
-              async event => {
-                const current = get().currentProjectId
-                if (current && current === event.data.projectId) {
-                  set(state => {
-                    state.files = state.files.filter(
-                      f => f.id !== event.data.fileId,
-                    )
-                    state.selectedFileIds.delete(event.data.fileId)
-                  })
-                }
-              },
-              GROUP,
-            )
-
-            // Clear all state when the project is deleted (race against
-            // ProjectDetail's own cleanup is benign — both end up empty).
-            eventBus.on(
-              'project.deleted',
-              async event => {
-                const current = get().currentProjectId
-                if (current && current === event.data.projectId) {
-                  set(state => {
-                    state.currentProjectId = null
-                    state.files = []
-                    state.uploadingFiles.clear()
-                    state.selectedFileIds.clear()
-                  })
-                }
-              },
-              GROUP,
-            )
-          },
-        },
-
-        loadFiles: async projectId => {
           try {
-            set({ filesLoading: true })
-            const response = await ApiClient.Project.listFiles({
-              id: projectId,
+            if (file.size > MAX_FILE_SIZE) {
+              throw new Error(`${file.name} exceeds the per-file size cap`)
+            }
+            set(state => {
+              const entry = state.uploadingFiles.get(uploadId)
+              if (entry) entry.status = 'uploading'
             })
-            set({ files: response.files, filesLoading: false })
-          } catch (error) {
-            set({
-              error:
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to load project files',
-              filesLoading: false,
-            })
-          }
-        },
 
-        attachFile: async (projectId, fileId) => {
-          try {
-            set({ attaching: true, error: null })
-            await ApiClient.Project.attachFile({
-              id: projectId,
-              file_id: fileId,
-            })
-            await emitProjectFileAttached(projectId, fileId)
-            set({ attaching: false })
-          } catch (error) {
-            set({
-              error:
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to attach file',
-              attaching: false,
-            })
-            throw error
-          }
-        },
+            const formData = new FormData()
+            formData.append('id', projectId)
+            formData.append('file', file)
 
-        uploadAndAttachFiles: async (projectId, files) => {
-          let anySucceeded = false
-          await Promise.all(
-            files.map(async file => {
-              const uploadId = `up_${Date.now()}_${Math.random()
-                .toString(36)
-                .slice(2, 11)}`
-              set(state => {
-                state.uploadingFiles.set(uploadId, {
-                  id: uploadId,
-                  filename: file.name,
-                  size: file.size,
-                  progress: 0,
-                  status: 'pending',
-                })
-              })
-
-              try {
-                set(state => {
-                  const entry = state.uploadingFiles.get(uploadId)
-                  if (entry) entry.status = 'uploading'
-                })
-
-                const formData = new FormData()
-                formData.append('id', projectId)
-                formData.append('file', file)
-
-                const uploaded = await ApiClient.Project.uploadAndAttachFile(
-                  formData as unknown as { id: string } & FormData,
-                  {
-                    fileUploadProgress: {
-                      onProgress: progress => {
-                        set(state => {
-                          const entry = state.uploadingFiles.get(uploadId)
-                          if (entry) entry.progress = progress
-                        })
-                      },
-                    },
+            const uploaded = await ApiClient.Project.uploadAndAttachFile(
+              formData as unknown as { id: string } & FormData,
+              {
+                fileUploadProgress: {
+                  onProgress: progress => {
+                    set(state => {
+                      const entry = state.uploadingFiles.get(uploadId)
+                      if (entry) entry.progress = progress
+                    })
                   },
-                )
+                },
+              },
+            )
 
-                set(state => {
-                  state.uploadingFiles.delete(uploadId)
-                })
-                anySucceeded = true
-                await emitProjectFileAttached(projectId, uploaded.id)
-              } catch (error) {
-                set(state => {
-                  const entry = state.uploadingFiles.get(uploadId)
-                  if (entry) {
-                    entry.status = 'error'
-                    entry.error =
-                      error instanceof Error
-                        ? error.message
-                        : 'Upload failed'
-                  }
-                })
-              }
-            }),
-          )
-          if (anySucceeded) {
-            await get().loadFiles(projectId)
-          }
-        },
-
-        dismissUploadingFile: uploadId => {
-          set(state => {
-            state.uploadingFiles.delete(uploadId)
-          })
-        },
-
-        deleteFile: async (projectId, fileId) => {
-          // Project-knowledge "delete" is a true library delete. We hit
-          // DELETE /files/{id}, and the backend's FK ON DELETE CASCADE
-          // wipes the project_files membership row (plus any
-          // llm_provider_files mirror) automatically. The
-          // project_file_detached event then reloads this project's
-          // file list. Per-message chat attachments are independent
-          // (separate upload flow), so deleting a knowledge file never
-          // breaks an existing chat message ref in practice.
-          try {
-            set({ detaching: true, error: null })
-            await ApiClient.File.delete({ file_id: fileId })
-            await emitProjectFileDetached(projectId, fileId)
-            set({ detaching: false })
-          } catch (error) {
-            set({
-              error:
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to delete file',
-              detaching: false,
+            set(state => {
+              state.uploadingFiles.delete(uploadId)
             })
-            throw error
+            anySucceeded = true
+            await emitProjectFileAttached(projectId, uploaded.id)
+          } catch (error) {
+            set(state => {
+              const entry = state.uploadingFiles.get(uploadId)
+              if (entry) {
+                entry.status = 'error'
+                entry.error =
+                  error instanceof Error ? error.message : 'Upload failed'
+              }
+            })
           }
-        },
+        }),
+      )
+      if (anySucceeded) {
+        await loadFiles(projectId)
+      }
+    },
 
-        toggleSelection: fileId => {
-          set(state => {
-            if (state.selectedFileIds.has(fileId)) {
-              state.selectedFileIds.delete(fileId)
-            } else {
-              state.selectedFileIds.add(fileId)
-            }
+    dismissUploadingFile: (uploadId: string) => {
+      set(state => {
+        state.uploadingFiles.delete(uploadId)
+      })
+    },
+
+    deleteFile: async (projectId: string, fileId: string) => {
+      try {
+        set({ detaching: true, error: null })
+        await ApiClient.File.delete({ file_id: fileId })
+        await emitProjectFileDetached(projectId, fileId)
+        set({ detaching: false })
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Failed to delete file',
+          detaching: false,
+        })
+        throw error
+      }
+    },
+
+    toggleSelection: (fileId: string) => {
+      set(state => {
+        if (state.selectedFileIds.has(fileId)) {
+          state.selectedFileIds.delete(fileId)
+        } else {
+          state.selectedFileIds.add(fileId)
+        }
+      })
+    },
+
+    selectAll: () => {
+      set(state => {
+        for (const file of state.files) state.selectedFileIds.add(file.id)
+      })
+    },
+
+    deselectAll: () => {
+      set(state => {
+        state.selectedFileIds.clear()
+      })
+    },
+
+    batchDelete: async (projectId: string) => {
+      const ids = Array.from(get().selectedFileIds)
+      if (ids.length === 0) return
+      set({ detaching: true, error: null })
+      for (const fileId of ids) {
+        try {
+          await ApiClient.File.delete({ file_id: fileId })
+          await emitProjectFileDetached(projectId, fileId)
+        } catch (error) {
+          set({
+            error:
+              error instanceof Error ? error.message : `Failed to delete ${fileId}`,
           })
-        },
+        }
+      }
+      set(state => {
+        state.detaching = false
+        state.selectedFileIds.clear()
+      })
+    },
 
-        selectAll: () => {
-          set(state => {
-            for (const file of state.files) {
-              state.selectedFileIds.add(file.id)
-            }
-          })
-        },
+      clearError: () => {
+        set({ error: null })
+      },
+    }
+  },
 
-        deselectAll: () => {
-          set(state => {
-            state.selectedFileIds.clear()
-          })
-        },
+  // All listener + cross-store wiring, auto-torn-down on destroy.
+  init: ({ on, watch, set, get, actions }) => {
+    // Mirror the active project's id and reload files when it changes — atomic
+    // reset on project change. Replaces the raw `useProjectDetailStore.subscribe`.
+    watch(
+      useProjectDetailStore,
+      state => state.project?.id ?? null,
+      newProjectId => {
+        set(state => {
+          state.currentProjectId = newProjectId
+          state.files = []
+          state.uploadingFiles.clear()
+          state.selectedFileIds.clear()
+        })
+        if (newProjectId) void actions.loadFiles(newProjectId)
+      },
+      { fireImmediately: true },
+    )
 
-        batchDelete: async projectId => {
-          const ids = Array.from(get().selectedFileIds)
-          if (ids.length === 0) return
-          set({ detaching: true, error: null })
-          // Sequential to keep event order predictable; the backend
-          // doesn't expose a batch endpoint and per-row deletes are
-          // cheap (FK cascade does the project_files + storage cleanup).
-          for (const fileId of ids) {
-            try {
-              await ApiClient.File.delete({ file_id: fileId })
-              await emitProjectFileDetached(projectId, fileId)
-            } catch (error) {
-              set({
-                error:
-                  error instanceof Error
-                    ? error.message
-                    : `Failed to delete ${fileId}`,
-              })
-              // Continue with remaining deletes so a single failure
-              // doesn't strand the user; the error message surfaces
-              // the failed one.
-            }
-          }
-          set(state => {
-            state.detaching = false
-            state.selectedFileIds.clear()
-          })
-        },
+    // Refresh on attach (e.g. from another tab / sibling emit).
+    on('project.file_attached', async event => {
+      const current = get().currentProjectId
+      if (current && current === event.data.projectId) {
+        await actions.loadFiles(current)
+      }
+    })
 
-        clearError: () => {
-          set({ error: null })
-        },
+    // Local removal on detach — avoids a full reload for a single-row drop.
+    on('project.file_detached', async event => {
+      const current = get().currentProjectId
+      if (current && current === event.data.projectId) {
+        set(state => {
+          state.files = state.files.filter(f => f.id !== event.data.fileId)
+          state.selectedFileIds.delete(event.data.fileId)
+        })
+      }
+    })
 
-        __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('ProjectFilesStore')
-        },
-      }),
-    ),
-  ),
-)
+    // Clear all state when the project is deleted.
+    on('project.deleted', async event => {
+      const current = get().currentProjectId
+      if (current && current === event.data.projectId) {
+        set(state => {
+          state.currentProjectId = null
+          state.files = []
+          state.uploadingFiles.clear()
+          state.selectedFileIds.clear()
+        })
+      }
+    })
+  },
+})
