@@ -1,38 +1,11 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
+import { defineStore } from '@/core/store-kit'
 
-interface CreateUserDrawerState {
-  isOpen: boolean
+export const CreateUserDrawer = defineStore('CreateUserDrawer', {
+  state: { isOpen: false },
+  actions: set => ({
+    openCreateUserDrawer: () => set({ isOpen: true }),
+    closeCreateUserDrawer: () => set({ isOpen: false }),
+  }),
+})
 
-  openCreateUserDrawer: () => void
-  closeCreateUserDrawer: () => void
-
-  __init__: {
-    __store__: () => void
-  }
-}
-
-export const useCreateUserDrawerStore = create<CreateUserDrawerState>()(
-  subscribeWithSelector(
-    immer(
-      (set): CreateUserDrawerState => ({
-        isOpen: false,
-
-        openCreateUserDrawer: () => {
-          set({ isOpen: true })
-        },
-
-        closeCreateUserDrawer: () => {
-          set({ isOpen: false })
-        },
-
-        __init__: {
-          __store__: () => {
-            // No event subscriptions needed for create-only drawer
-          },
-        },
-      }),
-    ),
-  ),
-)
+export const useCreateUserDrawerStore = CreateUserDrawer.store
