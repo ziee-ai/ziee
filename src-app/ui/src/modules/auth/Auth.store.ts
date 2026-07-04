@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
+import { setUnauthorizedHandler } from '@/api-client/core'
 import type {
   CreateUserRequest,
   LinkAccountRequest,
@@ -64,6 +65,11 @@ export interface AutoLoginResponse {
 interface AuthState {
   user?: User | null
   token?: string | null
+  // Epoch-ms deadline of the current access token + its lifetime in
+  // seconds. Persisted (alongside `token`) so a reloaded tab can
+  // re-arm the proactive silent refresh without waiting for a 401.
+  expiresAt?: number | null
+  expiresIn?: number | null
   permissions?: string[]
   // Whether the current account has a local password (drives the
   // self-service "change password" form on the profile page). False
@@ -92,6 +98,15 @@ interface AuthState {
   // Called after a self-service profile edit so the sidebar widget and
   // password-section visibility stay in sync without a page reload.
   refreshCurrentUser: () => Promise<void>
+  // Silently rotate the access token via POST /api/auth/refresh (web:
+  // httpOnly cookie; desktop/tunnel: in-memory body token). Returns
+  // true when a fresh token landed. Registered as the api-client's
+  // on-401 handler and driven proactively by the timer/watchdog below.
+  refreshSession: () => Promise<boolean>
+  // Desktop registers its auto_login re-mint here so a failed refresh
+  // re-mints locally instead of bouncing the local user to a login
+  // page (desktop sessions are permanent). Web leaves it unset.
+  setRefreshFallback: (fn: (() => Promise<void>) | null) => void
 }
 
 // Augment the RegisteredStores interface for IntelliSense
@@ -104,6 +119,8 @@ declare module '../../core/stores' {
 const defaultState = {
   user: null,
   token: null,
+  expiresAt: null,
+  expiresIn: null,
   permissions: [],
   hasPassword: false,
   isAuthenticated: false,
@@ -122,6 +139,202 @@ let visibilityListener: (() => void) | null = null
 // post-save refresh + visibility refetch) collapse to a single in-flight
 // /me request instead of racing.
 let refreshInFlight: Promise<void> | null = null
+
+// ────────────────── Silent-refresh machinery (module-scope) ──────────────────
+//
+// The refresh token itself deliberately lives OUTSIDE the store state:
+//   - web: in the httpOnly `ziee_refresh` cookie — page JS never sees it;
+//     the refresh call sends `{}` and the browser attaches the cookie.
+//   - desktop/tunnel: in `bodyRefreshToken` below, seeded from the
+//     auto_login / magic-link / password-login responses. In-memory only,
+//     never persisted (localStorage would re-open the XSS window the
+//     cookie closes on web).
+
+let bodyRefreshToken: string | null = null
+let proactiveTimer: ReturnType<typeof setTimeout> | null = null
+let watchdogTimer: ReturnType<typeof setInterval> | null = null
+let onlineListener: (() => void) | null = null
+// Desktop's auto_login re-mint (see `setRefreshFallback`).
+let refreshFallback: (() => Promise<void>) | null = null
+// In-tab single-flight: concurrent 401s / timer+watchdog overlaps share
+// one refresh round-trip.
+let refreshSessionInFlight: Promise<boolean> | null = null
+// Bumped every time the session is intentionally torn down (logout / a
+// terminal 401 wipe). A refresh whose round-trip is already in flight
+// captures the epoch at start and DISCARDS its result if the epoch moved
+// — so a wake-triggered refresh that resolves 200 just after the user
+// logged out cannot resurrect the cleared session.
+let sessionEpoch = 0
+function endSession(): void {
+  sessionEpoch += 1
+  stopRefreshMachinery()
+}
+
+// Refresh at 75% of the token's lifetime — early enough that a slow
+// network can't strand the session, late enough to not spam rotations.
+const REFRESH_AT_FRACTION = 0.75
+// The watchdog + visibilitychange/online listeners are the OS-sleep fix:
+// a long setTimeout doesn't tick while the machine is suspended, so on
+// wake the timer can be hours late. The listeners compare wall-clock
+// timestamps instead, which suspend can't fool.
+const WATCHDOG_INTERVAL_MS = 60_000
+// setTimeout clamps its delay to a signed 32-bit ms int (~24.8 days);
+// past that the watchdog re-arms the timer on each tick.
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1
+
+/** Epoch-ms moment at which the session should be refreshed. */
+function refreshThreshold(state: Pick<AuthState, 'expiresAt' | 'expiresIn'>): number | null {
+  if (!state.expiresAt) return null
+  const lifetimeMs = (state.expiresIn ?? 0) * 1000
+  if (lifetimeMs > 0) {
+    return state.expiresAt - lifetimeMs * (1 - REFRESH_AT_FRACTION)
+  }
+  // Lifetime unknown (older persisted sessions): refresh 60s before exp.
+  return state.expiresAt - 60_000
+}
+
+/** (Re-)arm the proactive refresh timer from the current expiresAt. */
+function scheduleProactiveRefresh(): void {
+  if (proactiveTimer) {
+    clearTimeout(proactiveTimer)
+    proactiveTimer = null
+  }
+  const state = useAuthStore.getState()
+  if (!state.token) return
+  const threshold = refreshThreshold(state)
+  if (threshold == null) return
+  const delay = Math.min(Math.max(threshold - Date.now(), 0), MAX_TIMER_DELAY_MS)
+  proactiveTimer = setTimeout(() => void maybeRefresh(), delay)
+}
+
+/** Refresh if we're past the threshold; otherwise just re-arm the timer. */
+async function maybeRefresh(): Promise<void> {
+  const state = useAuthStore.getState()
+  if (!state.token) return
+  const threshold = refreshThreshold(state)
+  if (threshold == null) return
+  if (Date.now() >= threshold) {
+    await state.refreshSession()
+  } else {
+    scheduleProactiveRefresh()
+  }
+}
+
+/** Record freshly-minted tokens + re-arm the proactive refresh.
+ *  A non-empty body refresh token (desktop/tunnel) is captured into the
+ *  in-memory shadow; web responses carry a blank one (cookie mode). */
+function seedSessionTokens(
+  set: (partial: Partial<AuthState>) => void,
+  accessToken: string,
+  expiresIn?: number | null,
+  refreshTokenFromBody?: string | null,
+): void {
+  if (refreshTokenFromBody) {
+    bodyRefreshToken = refreshTokenFromBody
+  }
+  set({
+    token: accessToken,
+    expiresAt: expiresIn ? Date.now() + expiresIn * 1000 : null,
+    expiresIn: expiresIn ?? null,
+  })
+  scheduleProactiveRefresh()
+}
+
+/** Tear down timers + the in-memory refresh token (logout / auth wipe). */
+function stopRefreshMachinery(): void {
+  bodyRefreshToken = null
+  if (proactiveTimer) {
+    clearTimeout(proactiveTimer)
+    proactiveTimer = null
+  }
+}
+
+/** The actual refresh round-trip. Runs under the cross-tab lock. */
+async function doRefresh(): Promise<boolean> {
+  const state = useAuthStore.getState()
+  if (!state.token) return false
+  const epochAtStart = sessionEpoch
+  try {
+    // Web sends `{}` — the browser attaches the httpOnly cookie and the
+    // server answers in cookie mode (rotated cookie + blank body token).
+    // Desktop/tunnel sends the in-memory body token and gets a body
+    // token back (body-in→body-out).
+    const pair = await ApiClient.Auth.refresh(
+      bodyRefreshToken ? { refresh_token: bodyRefreshToken } : {},
+      undefined,
+    )
+    // A logout / terminal wipe raced this in-flight refresh — the session
+    // is intentionally gone. Discard the fresh token rather than
+    // resurrecting it (and don't reschedule).
+    if (sessionEpoch !== epochAtStart) return false
+    if (pair.refresh_token) {
+      bodyRefreshToken = pair.refresh_token
+    }
+    useAuthStore.setState({
+      token: pair.access_token,
+      expiresAt: Date.now() + pair.expires_in * 1000,
+      expiresIn: pair.expires_in,
+    })
+    scheduleProactiveRefresh()
+    return true
+  } catch (error) {
+    if (sessionEpoch !== epochAtStart) return false
+    const status = (error as { status?: number } | null)?.status
+    if (status === 401) {
+      // Session genuinely over (refresh token revoked/expired/absent).
+      if (refreshFallback) {
+        // Desktop: re-mint locally via auto_login — the local user is
+        // never bounced to a login page. On fallback failure the
+        // desktop Bootstrap surface owns the messaging; keep the store
+        // state as-is rather than flashing an auth screen.
+        try {
+          await refreshFallback()
+          return !!useAuthStore.getState().token
+        } catch (fallbackError) {
+          console.error('[Auth] refresh fallback failed:', fallbackError)
+          return false
+        }
+      }
+      // Web: clear the session → AuthGuard routes to the login page.
+      endSession()
+      useAuthStore.setState({
+        user: null,
+        token: null,
+        expiresAt: null,
+        expiresIn: null,
+        isAuthenticated: false,
+      })
+      return false
+    }
+    // Network / transient server error: keep the session; the watchdog
+    // (or the next on-401 interception) retries.
+    console.warn('[Auth] token refresh failed (transient):', error)
+    return false
+  }
+}
+
+/** Single-flight + cross-tab-serialized refresh. */
+function refreshSessionImpl(): Promise<boolean> {
+  refreshSessionInFlight ??= (async () => {
+    try {
+      // Cross-tab serialization: rotation is single-use, so two tabs
+      // refreshing concurrently would burn each other's token (the
+      // server's 30s rotation grace is the backstop; the lock avoids
+      // leaning on it). Web Locks is available in all evergreen
+      // browsers + the Tauri webviews; fall back to in-tab-only
+      // single-flight elsewhere.
+      if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+        return await navigator.locks.request('ziee-auth-refresh', () =>
+          doRefresh(),
+        )
+      }
+      return await doRefresh()
+    } finally {
+      refreshSessionInFlight = null
+    }
+  })()
+  return refreshSessionInFlight
+}
 
 export const useAuthStore = create<AuthState>()(
   subscribeWithSelector(
@@ -148,7 +361,12 @@ export const useAuthStore = create<AuthState>()(
             // separate initAuth) avoids the post-setup hang: AuthGuard's
             // initAuth() races this call, early-returns on our `isLoading`,
             // and would otherwise leave `isInitializing` stuck true forever.
-            set({ token: response.access_token })
+            seedSessionTokens(
+              set,
+              response.access_token,
+              response.expires_in,
+              response.refresh_token,
+            )
             const me = await ApiClient.Auth.me(undefined, undefined)
             set({
               user: me.user,
@@ -183,10 +401,13 @@ export const useAuthStore = create<AuthState>()(
               isInitializing: false,
             }
             if (!loginSucceeded || !isAbort) {
+              endSession()
               set({
                 ...baseError,
                 isAuthenticated: false,
                 token: null,
+                expiresAt: null,
+                expiresIn: null,
                 user: null,
               })
             } else {
@@ -206,27 +427,43 @@ export const useAuthStore = create<AuthState>()(
           try {
             const { token } = get()
             if (token) {
-              // Call logout API to invalidate token on server
+              // Call logout API to invalidate token on server (revokes
+              // every refresh token + clears the httpOnly cookie).
               await ApiClient.Auth.logout(undefined, undefined)
             }
-
-            set({
-              user: null,
-              token: null,
-              isAuthenticated: false,
-              isLoading: false,
-              error: null,
-            })
-          } catch {
-            // Even if logout fails on server, clear local state
-            set({
-              user: null,
-              token: null,
-              isAuthenticated: false,
-              isLoading: false,
-              error: null,
-            })
+          } catch (err) {
+            // If logout 401'd because the ACCESS token expired (e.g. the
+            // machine slept past exp), the server-side revoke + cookie
+            // clear never happened. Refresh once and retry so logout
+            // genuinely tears down the session rather than only clearing
+            // localStorage (which would leave the refresh token live for
+            // its full TTL). `/auth/logout` is exempt from the api-client
+            // 401 interceptor, so drive the refresh explicitly here.
+            const status = (err as { status?: number } | null)?.status
+            if (status === 401) {
+              try {
+                if (await refreshSessionImpl()) {
+                  await ApiClient.Auth.logout(undefined, undefined)
+                }
+              } catch {
+                // Best effort — fall through and clear local state.
+              }
+            }
+            // Any other error: fall through and clear local state.
           }
+          // End the session: bump the epoch (so any in-flight refresh
+          // discards its result) and kill the timers BEFORE clearing the
+          // token.
+          endSession()
+          set({
+            user: null,
+            token: null,
+            expiresAt: null,
+            expiresIn: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
+          })
         },
 
         registerNewUser: async (userData: CreateUserRequest) => {
@@ -241,7 +478,12 @@ export const useAuthStore = create<AuthState>()(
             // Complete the bootstrap here (token → /me for permissions →
             // isInitializing:false), same as authenticateUser — so the app
             // shell doesn't hang on the spinner after registration.
-            set({ token: response.access_token })
+            seedSessionTokens(
+              set,
+              response.access_token,
+              response.expires_in,
+              response.refresh_token,
+            )
             const me = await ApiClient.Auth.me(undefined, undefined)
             set({
               user: me.user,
@@ -281,6 +523,7 @@ export const useAuthStore = create<AuthState>()(
             user: res.user,
             access_token: res.access_token,
             refresh_token: res.refresh_token,
+            expires_in: res.expires_in,
           })
           await get().initAuth()
         },
@@ -301,18 +544,28 @@ export const useAuthStore = create<AuthState>()(
           // path, so the UX (spinner instead of login flash) is
           // identical. (round-5 audit finding.)
           if (response.user == null) {
+            seedSessionTokens(
+              set,
+              response.access_token,
+              response.expires_in,
+              response.refresh_token,
+            )
             set({
               user: null,
-              token: response.access_token,
               isAuthenticated: false,
               isInitializing: true,
               error: null,
             })
             return
           }
+          seedSessionTokens(
+            set,
+            response.access_token,
+            response.expires_in,
+            response.refresh_token,
+          )
           set({
             user: response.user,
-            token: response.access_token,
             isAuthenticated: true,
             isLoading: false,
             error: null,
@@ -346,6 +599,24 @@ export const useAuthStore = create<AuthState>()(
             const eventBus = Stores.EventBus
             const GROUP = 'AuthStore'
 
+            // Silent refresh: register as the api-client's on-401 handler
+            // (module holder — same import-cycle dodge as the sync
+            // connection id), arm the proactive timer from any persisted
+            // session, and start the sleep/wake watchdog.
+            setUnauthorizedHandler(() => get().refreshSession())
+            scheduleProactiveRefresh()
+            // Clear any prior instances first so a double-init (without an
+            // interleaved __destroy__) can't leak an orphaned interval /
+            // listener.
+            if (watchdogTimer) clearInterval(watchdogTimer)
+            watchdogTimer = setInterval(
+              () => void maybeRefresh(),
+              WATCHDOG_INTERVAL_MS,
+            )
+            if (onlineListener) window.removeEventListener('online', onlineListener)
+            onlineListener = () => void maybeRefresh()
+            window.addEventListener('online', onlineListener)
+
             // Sync events are ordinary EventBus events: a session/profile
             // change on another device (or a reconnect resync) quietly
             // re-fetches /me and patches user + permissions.
@@ -372,6 +643,12 @@ export const useAuthStore = create<AuthState>()(
               if (document.visibilityState !== 'visible') return
               const state = get()
               if (!state.token || state.isLoading) return
+              // Wake-from-suspend check: a long setTimeout doesn't tick
+              // while the OS sleeps, so the tab may already be past the
+              // refresh threshold (or past exp) the moment it becomes
+              // visible again. maybeRefresh() compares wall-clock
+              // timestamps and refreshes before the /me below can 401.
+              void maybeRefresh()
               ApiClient.Auth.me(undefined, undefined)
                 .then(response => {
                   set({
@@ -396,6 +673,19 @@ export const useAuthStore = create<AuthState>()(
         // listener slots don't accumulate per destroy/re-init cycle.
         // (permission follow-up)
         __destroy__: () => {
+          // Tear down the silent-refresh machinery symmetrically with
+          // __init__ (handler, timers, listeners, in-memory token).
+          setUnauthorizedHandler(null)
+          stopRefreshMachinery()
+          if (watchdogTimer) {
+            clearInterval(watchdogTimer)
+            watchdogTimer = null
+          }
+          if (onlineListener) {
+            window.removeEventListener('online', onlineListener)
+            onlineListener = null
+          }
+          refreshFallback = null
           Stores.EventBus.removeGroupListeners('AuthStore')
           if (visibilityListener) {
             document.removeEventListener('visibilitychange', visibilityListener)
@@ -479,10 +769,13 @@ export const useAuthStore = create<AuthState>()(
               set(baseError)
               return
             }
+            endSession()
             set({
               ...baseError,
               isAuthenticated: false,
               token: null,
+              expiresAt: null,
+              expiresIn: null,
               user: null,
             })
           }
@@ -505,10 +798,23 @@ export const useAuthStore = create<AuthState>()(
           })()
           return refreshInFlight
         },
+
+        refreshSession: () => refreshSessionImpl(),
+
+        setRefreshFallback: (fn: (() => Promise<void>) | null) => {
+          refreshFallback = fn
+        },
       }),
       {
         name: 'auth-storage',
-        partialize: state => ({ token: state.token }),
+        // expiresAt/expiresIn ride along with the token so a reloaded
+        // tab re-arms the proactive refresh; the refresh token itself is
+        // NEVER persisted (web: httpOnly cookie; desktop: in-memory).
+        partialize: state => ({
+          token: state.token,
+          expiresAt: state.expiresAt,
+          expiresIn: state.expiresIn,
+        }),
       },
     ),
   ),

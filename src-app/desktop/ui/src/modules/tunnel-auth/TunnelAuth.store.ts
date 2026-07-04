@@ -37,79 +37,21 @@ interface TunnelAuthState {
   exchangeMagicLink: (token: string) => Promise<void>
 }
 
-// Module-local shadow of the current phone session's refresh token +
-// the proactive-refresh timer handle. The server-UI `Stores.Auth`
-// holds the refresh token internally but doesn't expose it on the
-// public state shape; rather than reach into its private fields, the
-// magic-link exchange + password login responses give us the refresh
-// token directly via `AuthResponse.refresh_token` and we shadow it
-// here. Single phone session per bundle instance.
-let refreshToken: string | null = null
-let refreshTimer: ReturnType<typeof setTimeout> | null = null
-
-function scheduleRefresh(expiresInSeconds: number | undefined): void {
-  if (refreshTimer) {
-    clearTimeout(refreshTimer)
-    refreshTimer = null
-  }
-  if (!expiresInSeconds || expiresInSeconds <= 0) return
-  // Refresh at 80% of token lifetime (matches the desktop auto-login
-  // path's behavior). For a 1-hour access token, that's ~48 min — well
-  // before expiry, with enough slack that a slow network won't strand
-  // the phone session if the rotation itself is slow.
-  const refreshInMs = Math.floor(expiresInSeconds * 0.8 * 1000)
-  refreshTimer = setTimeout(() => {
-    void refreshPhoneSession()
-  }, refreshInMs)
-}
-
-async function refreshPhoneSession(): Promise<void> {
-  if (!refreshToken) return
-  try {
-    // Call the standard `/api/auth/refresh` with the cached refresh
-    // token. The server rotates BOTH tokens (refresh token is
-    // single-use post-H3) and returns a `TokenPair` (no `user` —
-    // the user obviously didn't change during a refresh, so we
-    // preserve whatever's in `Stores.Auth.user`).
-    const pair = await ApiClient.Auth.refresh(
-      { refresh_token: refreshToken },
-      undefined,
-    )
-    refreshToken = pair.refresh_token
-    Stores.Auth.setAuthFromAutoLogin({
-      // null tells setAuthFromAutoLogin to keep the existing user
-      // (it re-fetches /me to revalidate the row internally).
-      user: null,
-      access_token: pair.access_token,
-      refresh_token: pair.refresh_token,
-      expires_in: pair.expires_in,
-    })
-    scheduleRefresh(pair.expires_in)
-  } catch {
-    // Refresh failed (token revoked, server gone, network out).
-    // Drop the shadow + let the next API call bounce the user back
-    // to PhoneAuthPage via AuthGuard.
-    refreshToken = null
-    if (refreshTimer) {
-      clearTimeout(refreshTimer)
-      refreshTimer = null
-    }
-  }
-}
-
 function applySession(res: AuthResponse): void {
-  // Shadow the refresh token for the next proactive rotation.
-  refreshToken = res.refresh_token
+  // Hand the whole pair to the shared Auth store: it captures the body
+  // refresh token into its in-memory shadow, records expires_in, and
+  // schedules the proactive silent refresh (75% of lifetime + sleep/wake
+  // watchdog). This store used to run its OWN 80% timer alongside — two
+  // independent schedulers racing the single-use rotation — deleted when
+  // the shared refresh machinery landed. On refresh failure the shared
+  // store clears auth and AuthGuard bounces back to PhoneAuthPage,
+  // which is correct for a remote phone session.
   Stores.Auth.setAuthFromAutoLogin({
     user: res.user,
     access_token: res.access_token,
     refresh_token: res.refresh_token,
     expires_in: res.expires_in,
   })
-  // Schedule proactive refresh. Without this, the phone's 1-hour
-  // access token silently dies and AuthGuard bounces the user back
-  // to PhoneAuthPage mid-session.
-  scheduleRefresh(res.expires_in)
 }
 
 export const useTunnelAuthStore = create<TunnelAuthState>((set, get) => ({

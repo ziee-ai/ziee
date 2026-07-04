@@ -36,10 +36,11 @@ pub struct TokenPair {
 
 /// TokenPair + the refresh token's jti + expires_at.
 ///
-/// Returned by JwtService::generate_tokens so the caller can register
-/// the refresh-token row in the `refresh_tokens` whitelist before the
-/// token is handed back to the user. See the comment on generate_tokens
-/// for the two-step protocol that closes 01-auth F-02 + F-03.
+/// Returned by JwtService::generate_tokens_with_jti so the caller can
+/// register the refresh-token row in the `refresh_tokens` whitelist
+/// before the token is handed back to the user. See the comment on
+/// generate_tokens_with_jti for the two-step protocol that closes
+/// 01-auth F-02 + F-03.
 #[derive(Debug)]
 pub struct TokenPairWithJti {
     pub pair: TokenPair,
@@ -58,6 +59,11 @@ pub struct JwtService {
 /// Minimum acceptable JWT secret length (bytes). HMAC-SHA256 ideally
 /// uses ≥ 32 bytes of entropy. Closes 01-auth F-10 + 14-core F-03.
 const MIN_JWT_SECRET_LEN: usize = 32;
+
+/// `exp`/`nbf` validation slack, in seconds. Small because the issuer and
+/// validator are the same process (no cross-host clock skew); see
+/// `validate_access_token`.
+const JWT_LEEWAY_SECONDS: u64 = 5;
 
 /// Known shipped placeholder secrets. Refuse to boot with any of these
 /// — if an operator's config still contains a template value they
@@ -120,97 +126,132 @@ impl JwtService {
         Self::try_new(config).expect("JWT secret validation failed; use try_new for graceful errors")
     }
 
-    /// Generate access and refresh tokens for a user (legacy form).
-    ///
-    /// Refresh token does NOT carry a jti, so it bypasses the whitelist
-    /// check in the refresh handler (no jti → no whitelist gate). Kept
-    /// for callers that don't yet wire refresh-token registration. New
-    /// code should use `generate_tokens_with_jti` and register the
-    /// returned jti in the `refresh_tokens` table — that's the path
-    /// that closes 01-auth F-02 + F-03.
-    pub fn generate_tokens(
-        &self,
-        user_id: Uuid,
-        username: &str,
-        email: &str,
-        is_admin: bool,
-    ) -> Result<TokenPair, AppError> {
-        let access_token = self.generate_access_token(user_id, username, email, is_admin)?;
-        let refresh_token = self.generate_legacy_refresh_token(user_id)?;
-        Ok(TokenPair {
-            access_token,
-            refresh_token,
-            token_type: "Bearer".to_string(),
-            expires_in: self.config.access_token_expiry_hours * 3600,
-        })
+    /// The YAML-config lifetimes — the mint-time FALLBACK used when the
+    /// `session_settings` DB read fails (see `mint_session_tokens` in
+    /// refresh_tokens.rs). Returns `(access_hours, refresh_days)`.
+    pub(crate) fn config_expiries(&self) -> (i64, i64) {
+        (
+            self.config.access_token_expiry_hours,
+            self.config.refresh_token_expiry_days,
+        )
     }
 
-    /// Legacy refresh token without a jti — used by callers that
-    /// haven't yet wired the whitelist.
-    fn generate_legacy_refresh_token(&self, user_id: Uuid) -> Result<String, AppError> {
-        let now = Utc::now();
-        let exp = now + Duration::days(self.config.refresh_token_expiry_days);
-
-        let claims = Claims {
-            sub: user_id.to_string(),
-            exp: exp.timestamp(),
-            iat: now.timestamp(),
-            iss: self.config.issuer.clone(),
-            aud: format!("{}-refresh", self.config.audience),
-            username: String::new(),
-            email: String::new(),
-            is_admin: false,
-            jti: None,
-        };
-
-        encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
-            AppError::internal_error(format!("Failed to generate refresh token: {}", e))
-        })
+    /// Access-token TTL as (duration, whole_seconds), honoring the
+    /// DEBUG-ONLY `jwt.access_token_expiry_seconds` test seam. The seam is
+    /// physically inert in release builds (`cfg!(debug_assertions)`), so a
+    /// production config carrying the field cannot shorten tokens.
+    fn access_expiry(&self, access_hours: i64) -> (Duration, i64) {
+        if cfg!(debug_assertions)
+            && let Some(secs) = self.config.access_token_expiry_seconds
+        {
+            return (Duration::seconds(secs), secs);
+        }
+        (Duration::hours(access_hours), access_hours * 3600)
     }
 
-    /// Generate access and refresh tokens for a user.
+    /// Generate access and refresh tokens with explicit lifetimes
+    /// (`access_hours` for the access token, `refresh_days` for the
+    /// refresh token — normally the `session_settings` values resolved
+    /// by `session_expiries`).
     ///
     /// Returns the TokenPair plus the refresh token's `jti` and
-    /// `expires_at`. The caller (handler) MUST then write a row to
+    /// `expires_at`. The caller MUST then write a row to
     /// `refresh_tokens` so the new refresh token is whitelisted; without
     /// that follow-up write, the whitelist check will reject the
     /// freshly-issued token. The two-step protocol (mint then register)
     /// is deliberate — it lets callers fail closed if the DB write fails,
-    /// without minting a usable secret. Closes 01-auth F-02 + F-03 once
-    /// the handlers wire register/revoke.
-    pub fn generate_tokens_with_jti(
+    /// without minting a usable secret. Closes 01-auth F-02 + F-03.
+    ///
+    /// Most callers should use `mint_session_tokens` (refresh_tokens.rs),
+    /// which resolves the lifetimes AND handles the registration; the
+    /// refresh handler is the one caller that sequences the steps itself
+    /// (generate → revoke_rotated → register).
+    pub fn generate_tokens_with_jti_expiry(
         &self,
         user_id: Uuid,
         username: &str,
         email: &str,
         is_admin: bool,
+        access_hours: i64,
+        refresh_days: i64,
     ) -> Result<TokenPairWithJti, AppError> {
-        let access_token = self.generate_access_token(user_id, username, email, is_admin)?;
+        let (_, expires_in) = self.access_expiry(access_hours);
+        let access_token =
+            self.generate_access_token(user_id, username, email, is_admin, access_hours)?;
         let (refresh_token, refresh_jti, refresh_expires_at) =
-            self.generate_refresh_token_with_jti(user_id)?;
+            self.generate_refresh_token_with_jti(user_id, refresh_days)?;
 
         Ok(TokenPairWithJti {
             pair: TokenPair {
                 access_token,
                 refresh_token,
                 token_type: "Bearer".to_string(),
-                expires_in: self.config.access_token_expiry_hours * 3600,
+                expires_in,
             },
             refresh_jti,
             refresh_expires_at,
         })
     }
 
-    /// Generate an access token
+    /// Re-issue a session token pair BINDING the refresh token to an
+    /// EXISTING, already-whitelisted `refresh_jti` (the rotation-grace
+    /// successor) with its `refresh_expires_at`, rather than minting a new
+    /// jti. Used ONLY by the refresh handler's grace path so a racing /
+    /// replayed-within-grace presentation converges onto the successor
+    /// family instead of forking an independent chain — no new
+    /// `refresh_tokens` row is created (the jti is already registered).
+    /// The access token is fresh (new exp); the refresh token simply
+    /// re-encodes the existing jti + exp.
+    pub fn reissue_tokens_for_jti(
+        &self,
+        user_id: Uuid,
+        username: &str,
+        email: &str,
+        is_admin: bool,
+        access_hours: i64,
+        refresh_jti: Uuid,
+        refresh_expires_at: chrono::DateTime<Utc>,
+    ) -> Result<TokenPair, AppError> {
+        let (_, expires_in) = self.access_expiry(access_hours);
+        let access_token =
+            self.generate_access_token(user_id, username, email, is_admin, access_hours)?;
+
+        let now = Utc::now();
+        let claims = Claims {
+            sub: user_id.to_string(),
+            exp: refresh_expires_at.timestamp(),
+            iat: now.timestamp(),
+            iss: self.config.issuer.clone(),
+            aud: format!("{}-refresh", self.config.audience),
+            username: String::new(),
+            email: String::new(),
+            is_admin: false,
+            jti: Some(refresh_jti.to_string()),
+        };
+        let refresh_token = encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
+            AppError::internal_error(format!("Failed to re-issue refresh token: {}", e))
+        })?;
+
+        Ok(TokenPair {
+            access_token,
+            refresh_token,
+            token_type: "Bearer".to_string(),
+            expires_in,
+        })
+    }
+
+    /// Generate an access token with the given TTL in hours.
     fn generate_access_token(
         &self,
         user_id: Uuid,
         username: &str,
         email: &str,
         is_admin: bool,
+        access_hours: i64,
     ) -> Result<String, AppError> {
         let now = Utc::now();
-        let exp = now + Duration::hours(self.config.access_token_expiry_hours);
+        let (ttl, _) = self.access_expiry(access_hours);
+        let exp = now + ttl;
 
         let claims = Claims {
             sub: user_id.to_string(),
@@ -230,17 +271,18 @@ impl JwtService {
     }
 
     /// Generate a refresh token (simpler claims, longer expiry, carries
-    /// a jti for whitelist tracking).
+    /// a jti for whitelist tracking) with the given TTL in days.
     ///
     /// Returns (token, jti, expires_at). Callers must register the jti
-    /// in the `refresh_tokens` table — see generate_tokens for the
-    /// two-step protocol.
+    /// in the `refresh_tokens` table — see generate_tokens_with_jti for
+    /// the two-step protocol.
     fn generate_refresh_token_with_jti(
         &self,
         user_id: Uuid,
+        refresh_days: i64,
     ) -> Result<(String, Uuid, chrono::DateTime<Utc>), AppError> {
         let now = Utc::now();
-        let exp = now + Duration::days(self.config.refresh_token_expiry_days);
+        let exp = now + Duration::days(refresh_days);
         let jti = Uuid::new_v4();
 
         let claims = Claims {
@@ -267,6 +309,13 @@ impl JwtService {
         let mut validation = Validation::default();
         validation.set_issuer(&[&self.config.issuer]);
         validation.set_audience(&[&self.config.audience]);
+        // jsonwebtoken defaults `leeway` to 60s (clock-skew slack between a
+        // separate issuer and validator). Here the issuer IS the validator
+        // (same process), so skew is ~0 — a 60s grace on `exp` would make a
+        // configured short access TTL (the admin "shorter is safer" knob)
+        // effectively 60s longer and delay cutting off a refreshed/deactivated
+        // session. A small cushion still absorbs sub-second scheduling.
+        validation.leeway = JWT_LEEWAY_SECONDS;
 
         decode::<Claims>(token, &self.decoding_key, &validation)
             .map(|data| data.claims)
@@ -280,6 +329,7 @@ impl JwtService {
         let mut validation = Validation::default();
         validation.set_issuer(&[&self.config.issuer]);
         validation.set_audience(&[&format!("{}-refresh", self.config.audience)]);
+        validation.leeway = JWT_LEEWAY_SECONDS;
 
         decode::<Claims>(token, &self.decoding_key, &validation)
             .map(|data| data.claims)
@@ -309,5 +359,100 @@ impl JwtService {
         }
 
         Ok(token)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(access_seconds: Option<i64>) -> JwtConfig {
+        JwtConfig {
+            secret: "unit-test-jwt-secret-with-at-least-32-chars!".to_string(),
+            issuer: "ziee".to_string(),
+            audience: "ziee-api".to_string(),
+            access_token_expiry_hours: 24,
+            refresh_token_expiry_days: 30,
+            access_token_expiry_seconds: access_seconds,
+        }
+    }
+
+    /// The explicit-lifetime mint honors its `access_hours` /
+    /// `refresh_days` args (the session_settings values) rather than
+    /// the config defaults, including in `expires_in`.
+    #[test]
+    fn expiry_override_variant_honored() {
+        let svc = JwtService::try_new(test_config(None)).unwrap();
+        let user = Uuid::new_v4();
+        let minted = svc
+            .generate_tokens_with_jti_expiry(user, "u", "u@x", false, 2, 7)
+            .unwrap();
+
+        assert_eq!(minted.pair.expires_in, 2 * 3600);
+
+        let now = Utc::now().timestamp();
+        let access = svc.validate_access_token(&minted.pair.access_token).unwrap();
+        let access_ttl = access.exp - now;
+        assert!(
+            (2 * 3600 - 60..=2 * 3600 + 60).contains(&access_ttl),
+            "access exp ≈ now+2h, got ttl {access_ttl}s"
+        );
+
+        let refresh = svc
+            .validate_refresh_token(&minted.pair.refresh_token)
+            .unwrap();
+        let refresh_ttl = refresh.exp - now;
+        let seven_days = 7 * 24 * 3600;
+        assert!(
+            (seven_days - 60..=seven_days + 60).contains(&refresh_ttl),
+            "refresh exp ≈ now+7d, got ttl {refresh_ttl}s"
+        );
+        // The refresh token carries a jti and its expires_at matches exp.
+        assert!(refresh.jti.is_some());
+        assert_eq!(minted.refresh_expires_at.timestamp(), refresh.exp);
+    }
+
+    /// DEBUG-ONLY seam: `jwt.access_token_expiry_seconds` overrides the
+    /// hour-granularity TTL (and `expires_in`) so integration/e2e suites
+    /// can exercise real expiry in seconds. This test only asserts the
+    /// debug behavior — the release build compiles the seam out.
+    #[test]
+    fn debug_seconds_override_wins() {
+        let svc = JwtService::try_new(test_config(Some(5))).unwrap();
+        let user = Uuid::new_v4();
+        let minted = svc
+            .generate_tokens_with_jti_expiry(user, "u", "u@x", false, 24, 30)
+            .unwrap();
+
+        assert_eq!(minted.pair.expires_in, 5);
+        let now = Utc::now().timestamp();
+        let access = svc.validate_access_token(&minted.pair.access_token).unwrap();
+        let ttl = access.exp - now;
+        assert!(
+            (0..=6).contains(&ttl),
+            "access exp ≈ now+5s under the debug seam, got ttl {ttl}s"
+        );
+        // The refresh token is NOT affected by the seam.
+        let refresh = svc
+            .validate_refresh_token(&minted.pair.refresh_token)
+            .unwrap();
+        let refresh_ttl = refresh.exp - now;
+        let thirty_days = 30 * 24 * 3600;
+        assert!(
+            (thirty_days - 60..=thirty_days + 60).contains(&refresh_ttl),
+            "refresh unaffected by the seconds seam, got ttl {refresh_ttl}s"
+        );
+    }
+
+    /// Weak/placeholder secrets are refused at construction.
+    #[test]
+    fn weak_secret_refused() {
+        let mut cfg = test_config(None);
+        cfg.secret = "short".to_string();
+        assert!(JwtService::try_new(cfg).is_err());
+
+        let mut cfg = test_config(None);
+        cfg.secret = "dev-secret-change-in-production-min-32-chars-long".to_string();
+        assert!(JwtService::try_new(cfg).is_err());
     }
 }

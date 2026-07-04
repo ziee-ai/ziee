@@ -31,9 +31,19 @@ pub async fn mint_admin_login(
         .map_err(|e| format!("Failed to get admin: {}", e))?
         .ok_or_else(|| "Admin not found - server may still be starting".to_string())?;
 
-    let tokens = jwt_service
-        .generate_tokens(admin.id, &admin.username, &admin.email, admin.is_admin)
-        .map_err(|e| format!("Failed to generate tokens: {}", e))?;
+    // Same mint path as every server login flow: admin-configured
+    // lifetimes + a jti-whitelisted refresh token, so desktop sessions
+    // are revocable (logout-everywhere) and pruned like any other.
+    let minted = ziee::refresh_tokens::mint_session_tokens(
+        jwt_service,
+        admin.id,
+        &admin.username,
+        &admin.email,
+        admin.is_admin,
+    )
+    .await
+    .map_err(|e| format!("Failed to generate tokens: {}", e))?;
+    let tokens = minted.pair;
 
     Ok(AutoLoginResponse {
         user: admin,

@@ -170,19 +170,17 @@ pub async fn exchange(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Use generate_tokens_with_jti + refresh_tokens::register so the
-    // issued refresh token is whitelisted. Without this, /auth/logout
-    // can't revoke the phone's session — the token would stay usable
-    // for the full refresh-token TTL (7 days by default), defeating
-    // the logout button's whole purpose.
-    let with_jti = jwt_service
-        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    ziee::refresh_tokens::register(
-        Repos.pool(),
-        with_jti.refresh_jti,
+    // The shared mint path: admin-configured lifetimes + a whitelisted
+    // (jti-registered) refresh token. Without the whitelist, /auth/logout
+    // can't revoke the phone's session — the token would stay usable for
+    // the full refresh-token TTL, defeating the logout button's whole
+    // purpose.
+    let with_jti = ziee::refresh_tokens::mint_session_tokens(
+        &jwt_service,
         user.id,
-        with_jti.refresh_expires_at,
+        &user.username,
+        &user.email,
+        user.is_admin,
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;

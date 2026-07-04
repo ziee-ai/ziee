@@ -955,6 +955,103 @@ Each module's Zustand store subscribes DIRECTLY in its `__init__.__store__` to
 
 ---
 
+## Session & Token Refresh
+
+An actively-used session must never auto-logout when the short-lived JWT
+**access token** expires. The backend has always had a rotating **refresh
+token** (`refresh_tokens` jti whitelist, single-use rotation, logout
+revocation); this subsystem makes the client actually use it (silent
+refresh), moves the web refresh token into an httpOnly cookie, and makes
+the two token lifetimes admin-configurable.
+
+### Token lifetimes are an admin setting (migration 129)
+
+- `session_settings` singleton (`modules/auth/session_settings.rs`):
+  `access_token_expiry_hours` (default 24) + `refresh_token_expiry_days`
+  (default 30, the idle bound — active sessions roll on every refresh).
+  Admin page **`/settings/sessions`** (`ui/src/modules/auth/`,
+  `settingsAdminPages` slot); REST `GET/PUT /api/auth/session-settings`
+  gated `auth::session_settings::{read,manage}`; sync entity
+  `SessionSettings`.
+- The YAML `jwt.*` values are the **one-time boot seed** (copied in once
+  when `seeded_from_config` is FALSE — `seed_from_config_once`, also
+  latched by any admin PUT) and the **mint-time fallback** if the DB read
+  fails. `refresh_tokens::session_expiries()` reads the row on every mint.
+- Every mint flows through **one path** — `refresh_tokens::mint_session_tokens`
+  (register / login / LDAP / OAuth / link-account / first-run setup /
+  desktop auto_login / desktop magic-link / tunnel password). The legacy
+  jti-less `generate_tokens` is deleted; `revoke_all_for_user` (logout /
+  password-change) therefore covers every session.
+- **JWT validation leeway is 5s** (`jwt.rs::JWT_LEEWAY_SECONDS`), not
+  jsonwebtoken's 60s default — issuer == validator (same process), so a
+  short access TTL isn't silently extended.
+
+### httpOnly refresh cookie (web) — opt-in, backward-compatible
+
+`modules/auth/cookie.rs`: `ziee_refresh=<jwt>; HttpOnly; SameSite=Strict;
+Path=/api/auth; Max-Age=…[; Secure]` (`Secure` only when the request
+arrived over https via a **trusted** proxy — `X-Forwarded-Proto` +
+`trust_forwarded_headers`). A request carrying header **`X-Refresh-Cookie:
+1`** gets Set-Cookie + a blanked body `refresh_token`; **no header →
+byte-for-byte the old body-token behavior** (desktop Tauri / tunnel keep
+body tokens). The web client sends the header only when `!window.__TAURI__`.
+OAuth callback is browser-only ⇒ always cookie mode (`success_redirect`
+adds Set-Cookie + `expires_in` to the fragment; the refresh token NEVER
+rides the URL — this fixed a bug where OAuth's refresh token was
+discarded). `/auth/refresh` reads the token body-first then cookie; the
+**body-in→body-out rule** means a body-sourced refresh always answers in
+the body (protects phone/tunnel browsers that also send the header).
+
+### Rotation grace (racing-client safety) — single-use preserved
+
+Rotation is single-use, so two tabs / an SSE-reconnect refreshing
+concurrently would log the loser out. `refresh` **atomically claims** the
+token (`claim_rotation` = one guarded UPDATE); the loser (or a replay
+within `ROTATION_GRACE_SECONDS` = 30s) is **re-issued tokens bound to the
+EXISTING successor** (`reissue_tokens_for_jti` — no new jti, no
+independent chain) via `rotation_grace_successor`, which additionally
+requires the successor to still be active. That last clause makes logout /
+password-change **hard-fail even a just-rotated token** (they revoke the
+successor). A token rotated >30s ago hard-fails with `REFRESH_TOKEN_REVOKED`.
+
+### Client silent refresh (`ui/src`, shared with desktop)
+
+`Auth.store.ts` persists `token` + `expiresAt`; the refresh token is
+NEVER persisted (web: cookie; desktop/tunnel: in-memory `bodyRefreshToken`).
+`refreshSession()` (single-flight + `navigator.locks` cross-tab
+serialization) is registered as the api-client's on-401 handler
+(`core.ts::setUnauthorizedHandler`, retry-once) AND driven proactively at
+**75% of lifetime** by a timer + a **60s watchdog + visibilitychange/online
+listeners** (the watchdog is the OS-sleep fix — a long `setTimeout` doesn't
+tick while suspended). A `sessionEpoch` guard prevents an in-flight refresh
+from resurrecting a session cleared by logout mid-flight; `logoutUser`
+refresh-and-retries on a 401 so an expired-token logout still revokes.
+Desktop registers `setRefreshFallback` → `auto_login`, so a failed refresh
+re-mints locally and the local user is **never** bounced to login
+(permanent sessions). The SSE stream still tears down at `exp`; the
+reconnect picks up the refreshed token.
+
+### Debug-only test seam
+
+`jwt.access_token_expiry_seconds` (config, honored only under
+`cfg!(debug_assertions)`) shortens the access TTL to seconds for tests —
+harness knob `TestServerOptions.access_token_expiry_seconds`, e2e
+`test.use({ jwtAccessExpirySeconds })`. Same pattern as
+`SYNC_RECHECK_TICK_MS`.
+
+### Tests
+
+| Tier | Location | Covers |
+|---|---|---|
+| unit | `modules/auth/{cookie,jwt}.rs` `#[cfg(test)]` | cookie attrs/parse/clear, expiry-override + debug seam, weak-secret refusal |
+| integration | `tests/auth/session_refresh_test.rs` | cookie set+blank / no-header regression / refresh-via-cookie rotation / body-precedence / missing-both-401 / REVOKED-401 / rotation-grace (allow + logout-kills + >30s-expiry) / logout clears cookie / expired-token→refresh recovery / all-mints-jti / setup cookie / prune |
+| integration | `tests/auth/session_settings_test.rs` | GET/PUT/403+401/validation/db-expiry-honored/sync-emit/seed-once |
+| integration | `tests/auth/oauth_test.rs` | callback sets refresh cookie + whitelisted jti |
+| desktop | `desktop/tauri/tests/auth_tests.rs` | auto_login mints a whitelisted jti |
+| E2E | `ui/tests/e2e/auth/session-silent-refresh.spec.ts`, `session-settings-admin.spec.ts`, `sync/session-settings-sync.spec.ts`, `desktop/ui/tests/e2e/desktop-auto-login.spec.ts` | survives-past-expiry (proactive), reload-recovery (reactive cookie), SSE resume, logout kills refresh, admin edit persists + cross-device sync, desktop refresh→auto_login permanence |
+
+---
+
 ## MCP Tool-Call History
 
 Every MCP tool-call invocation is recorded to `mcp_tool_calls` (migration 105) —

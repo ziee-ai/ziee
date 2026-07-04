@@ -577,6 +577,8 @@ pub fn github_fetch_server_options(
         update_check_enabled: None,
         bio_mcp_enabled: false,
         control_mcp_enabled: None,
+        access_token_expiry_seconds: None,
+        refresh_token_expiry_days: None,
     })
 }
 

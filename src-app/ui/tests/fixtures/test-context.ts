@@ -94,10 +94,19 @@ interface TestOptions {
    * surface.
    */
   bioMcpEnabled: boolean
+  /**
+   * DEBUG-ONLY seconds-granularity access-token TTL written as
+   * `jwt.access_token_expiry_seconds` into this spec's backend config
+   * (honored only in debug server builds — which E2E backends are).
+   * Lets the silent-refresh specs exercise REAL token expiry in seconds
+   * instead of 24 hours. `undefined` (default) omits the line.
+   */
+  jwtAccessExpirySeconds: number | undefined
 }
 
 export const test = base.extend<TestFixtures & TestOptions>({
   bioMcpEnabled: [false, { option: true }],
+  jwtAccessExpirySeconds: [undefined, { option: true }],
 
   // Auto-capture HTML snapshot, console logs, and network requests on test failure
   // Auto-capture HTML snapshot, console logs, and network requests on test failure
@@ -182,7 +191,7 @@ export const test = base.extend<TestFixtures & TestOptions>({
     }
   },
 
-  testInfra: async ({ bioMcpEnabled }, use, testInfo) => {
+  testInfra: async ({ bioMcpEnabled, jwtAccessExpirySeconds }, use, testInfo) => {
     const testId = crypto.randomBytes(4).toString('hex')
     const databaseName = `ziee_test_${testId}`
     const workerIndex = testInfo.workerIndex
@@ -316,14 +325,21 @@ jwt:
   audience: "ziee-test-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
-
+${
+  // DEBUG-ONLY short access-token TTL for the silent-refresh specs
+  // (test.use({ jwtAccessExpirySeconds: 8 })). Omitted by default.
+  jwtAccessExpirySeconds != null
+    ? `  access_token_expiry_seconds: ${jwtAccessExpirySeconds}
+`
+    : ''
+}
 bio_mcp:
-  # Disabled in E2E for isolation. BioMCP is ON by default in production, but
+  # Disabled in E2E for isolation (BioMCP is ON by default in production, but
   # leaving it on here would register the bio server in every system-server
-  # list and auto-attach it (spawning the biomcp sidecar) in every tool-capable
-  # chat. Its admin surface is the generic MCP system-server UI; a dedicated
-  # bio E2E spec would enable it explicitly.
-  enabled: false
+  # list and auto-attach it — spawning the biomcp sidecar — in every
+  # tool-capable chat). A dedicated bio spec enables it explicitly via
+  # test.use({ bioMcpEnabled: true }).
+  enabled: ${bioMcpEnabled}
 ${
   // Code sandbox is OFF by default in E2E (enabling it spawns squashfuse and
   // requires a mounted rootfs). The real-sandbox-via-chat E2E
@@ -332,8 +348,6 @@ ${
   process.env.ZIEE_E2E_SANDBOX === '1'
     ? `code_sandbox:
   enabled: true
-  # bio E2E spec enables it explicitly via test.use({ bioMcpEnabled: true }).
-  enabled: ${bioMcpEnabled}
 `
     : ''
 }`

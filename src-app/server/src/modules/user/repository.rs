@@ -445,6 +445,26 @@ impl GroupRepository {
         .map_err(AppError::database_error)
     }
 
+    /// All groups, unpaginated. Used cross-crate by the desktop's
+    /// single-admin event handlers (assign new providers/MCP servers to
+    /// every group), so it reads as dead from the server bin — keep it
+    /// (same pattern as `JwtService::new`).
+    #[allow(dead_code)]
+    pub async fn get_all(&self) -> Result<Vec<Group>, AppError> {
+        sqlx::query_as!(
+            Group,
+            r#"
+            SELECT id, name, description, permissions, is_system, is_active, is_default,
+                   created_at as "created_at: _", updated_at as "updated_at: _"
+            FROM groups
+            ORDER BY name
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
     /// List groups with pagination
     pub async fn list(&self, page: i32, per_page: i32) -> Result<(Vec<Group>, i64), AppError> {
         let offset = (page - 1) * per_page;

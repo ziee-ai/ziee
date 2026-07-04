@@ -210,6 +210,7 @@ declare_repositories! {
     mcp_settings: McpSettingsRepository => crate::modules::mcp::settings,
     app: AppRepository => crate::modules::app,
     auth: AuthRepository => crate::modules::auth,
+    session_settings: SessionSettingsRepository => crate::modules::auth,
     file: FileRepository => crate::modules::file,
     file_rag: FileRagRepository => crate::modules::file_rag,
     project_files: ProjectFilesRepository => crate::modules::file::project_extension,
