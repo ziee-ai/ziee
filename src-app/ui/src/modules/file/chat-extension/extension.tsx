@@ -8,6 +8,7 @@ import { FileUploadArea } from '@/modules/file/chat-extension/components/FileUpl
 import { FileAttachMenuItem } from '@/modules/file/chat-extension/components/FileAttachMenuItem'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
+import { ImageContent } from '@/modules/file/chat-extension/components/ImageContent'
 import { Stores } from '@/core/stores'
 // Raw zustand hook for the `useSendBlocker` reactive subscription —
 // going through Stores.File would fire the Stores-proxy's internal
@@ -384,6 +385,9 @@ const fileExtension: ChatExtension = createExtension({
   // Register content type components
   contentTypes: {
     file_attachment: FileAttachmentRenderer,
+    // Inline images (url / base64 / file source) — previously fell through to
+    // the "Unknown content type: image" placeholder.
+    image: ImageContent,
     // Tool-returned files (resource_links) render INLINE at the tool_result
     // block's position via this renderer — not aggregated into a footer. The
     // MCP extension intentionally does NOT register `tool_result` so this one
