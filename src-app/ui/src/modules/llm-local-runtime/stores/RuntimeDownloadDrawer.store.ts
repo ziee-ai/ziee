@@ -1,18 +1,12 @@
-import { create } from 'zustand'
 import type { RuntimeEngine } from '../types'
+import { defineStore } from '@/core/store-kit'
 
-interface RuntimeDownloadDrawerState {
-  open: boolean
-  engine: RuntimeEngine | null
+export const RuntimeDownloadDrawer = defineStore('RuntimeDownloadDrawer', {
+  state: { open: false, engine: null as RuntimeEngine | null },
+  actions: set => ({
+    openDrawer: (engine: RuntimeEngine) => set({ open: true, engine }),
+    closeDrawer: () => set({ open: false, engine: null }),
+  }),
+})
 
-  openDrawer: (engine: RuntimeEngine) => void
-  closeDrawer: () => void
-}
-
-export const useRuntimeDownloadDrawerStore = create<RuntimeDownloadDrawerState>((set) => ({
-  open: false,
-  engine: null,
-
-  openDrawer: (engine) => set({ open: true, engine }),
-  closeDrawer: () => set({ open: false, engine: null })
-}))
+export const useRuntimeDownloadDrawerStore = RuntimeDownloadDrawer.store

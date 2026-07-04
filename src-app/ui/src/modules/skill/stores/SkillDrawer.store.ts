@@ -1,36 +1,27 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import type { Skill } from '@/api-client/types'
+import { defineStore } from '@/core/store-kit'
 
-interface SkillDrawerState {
-  isOpen: boolean
-  skill: Skill | null
-  // Optional conversation context — when set, the drawer surfaces the
-  // "Hide in this conversation" checkbox.
-  conversationId: string | null
-  open: (skill: Skill, conversationId?: string) => void
-  close: () => void
-}
-
-export const useSkillDrawerStore = create<SkillDrawerState>()(
-  subscribeWithSelector(
-    immer(
-      (set): SkillDrawerState => ({
-        isOpen: false,
-        skill: null,
-        conversationId: null,
-        open: (skill: Skill, conversationId?: string) =>
-          set(draft => {
-            draft.isOpen = true
-            draft.skill = skill
-            draft.conversationId = conversationId ?? null
-          }),
-        close: () =>
-          set(draft => {
-            draft.isOpen = false
-          }),
+export const SkillDrawer = defineStore('SkillDrawer', {
+  immer: true,
+  state: {
+    isOpen: false,
+    skill: null as Skill | null,
+    // Optional conversation context — when set, the drawer surfaces the
+    // "Hide in this conversation" checkbox.
+    conversationId: null as string | null,
+  },
+  actions: set => ({
+    open: (skill: Skill, conversationId?: string) =>
+      set(d => {
+        d.isOpen = true
+        d.skill = skill
+        d.conversationId = conversationId ?? null
       }),
-    ),
-  ),
-)
+    close: () =>
+      set(d => {
+        d.isOpen = false
+      }),
+  }),
+})
+
+export const useSkillDrawerStore = SkillDrawer.store
