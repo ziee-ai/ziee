@@ -16,7 +16,6 @@
 //! The synchronous `/test` path is the one exception: it keeps a fixed
 //! `RUN_WALL_CLOCK` cap (it mocks every step and must return promptly).
 
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1014,6 +1013,9 @@ pub async fn resolve_outputs_full(
 
 /// Outcome of a synchronous test run (B6).
 pub struct TestRunOutcome {
+    // Populated by the test-run path; not read by callers yet (they inspect
+    // `status`/`outputs`). Part of the B6 test-run result surface.
+    #[allow(dead_code)]
     pub run_id: Uuid,
     pub status: WorkflowRunStatus,
     pub error: Option<String>,

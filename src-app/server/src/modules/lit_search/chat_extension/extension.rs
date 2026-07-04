@@ -1,5 +1,4 @@
 //! lit_search extension registration for the chat module.
-#![allow(dead_code)]
 
 use linkme::distributed_slice;
 use sqlx::PgPool;

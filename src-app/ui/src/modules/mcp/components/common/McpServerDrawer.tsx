@@ -667,6 +667,25 @@ export function McpServerDrawer() {
       } else {
         message.error(result.message || 'Connection failed')
       }
+
+      // The probe (sent with `id`) is recorded onto the persisted row's
+      // `last_health_check_*` by the backend. Re-fetch + re-bind the drawer to
+      // edit mode so `editingServer` reflects the fresh status — this is what
+      // makes the top-of-body health-error Alert appear after a failed probe
+      // (it renders only on `last_health_check_status === 'unhealthy'`).
+      try {
+        const fresh = saved.is_system
+          ? await Stores.SystemMcpServer.getSystemServerById(saved.id)
+          : await Stores.McpServer.getMcpServer(saved.id)
+        if (fresh) {
+          Stores.McpServerDrawer.openMcpServerDrawer(
+            fresh,
+            fresh.is_system ? 'edit-system' : 'edit',
+          )
+        }
+      } catch (e) {
+        console.warn('Failed to refresh MCP server after probe:', e)
+      }
     } catch (error) {
       message.error(
         error instanceof Error ? error.message : 'Connection test failed',
@@ -797,6 +816,20 @@ export function McpServerDrawer() {
       setPrefillTransportSwapped(null)
     }
   }, [transportType, prefillTransportSwapped])
+
+  // Toggling run_in_sandbox (system mode) flips whether the host command
+  // allowlist applies — sandbox lifts it, so a host-disallowed command becomes
+  // valid (and vice-versa). RHF won't re-check `command` on its own when a
+  // *different* field changes, so re-validate it here to clear/raise the error.
+  useEffect(() => {
+    if (
+      form.getFieldState('command').isTouched ||
+      form.formState.isSubmitted
+    ) {
+      void form.trigger('command')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSandboxed])
 
   // Local mirror for the title's Enabled Switch + a "currently
   // toggling" flag that disables the Switch (with a loading

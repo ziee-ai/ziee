@@ -4,8 +4,8 @@ use aide::transform::TransformOperation;
 use axum::{
     Extension, Form, Json, debug_handler,
     extract::{Path, Query},
-    http::StatusCode,
-    response::{IntoResponse, Redirect},
+    http::{HeaderMap, StatusCode, header},
+    response::{IntoResponse, Redirect, Response},
 };
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -17,7 +17,8 @@ use crate::modules::user::events::UserEvent;
 use crate::modules::user::permissions::ProfileEdit;
 use crate::modules::user::{User, UserService};
 
-use super::jwt::{JwtService, TokenPair};
+use super::cookie;
+use super::jwt::{JwtService, TokenPair, TokenPairWithJti};
 use super::jwt_extractor::JwtAuth;
 use super::password;
 use super::permissions::{AuthProvidersManage, AuthProvidersRead};
@@ -26,6 +27,7 @@ use super::providers::{
     AuthResult, create_provider, health as provider_health, repository as provider_repo,
 };
 use super::refresh_tokens;
+use super::refresh_tokens::mint_session_tokens;
 use super::types::{
     AppleCallbackForm, AuthProviderResponse, AuthResponse, ChangePasswordRequest,
     CreateAuthProviderRequest, CreateAuthProviderResponse, DeleteProviderResponse,
@@ -38,6 +40,51 @@ use crate::modules::sync::{
 };
 
 // =====================================================
+// Cookie-mode response shaping
+// =====================================================
+
+/// Build the JSON response for a token-minting endpoint, honoring the
+/// client's delivery mode.
+///
+/// Cookie mode (request carried `X-Refresh-Cookie: 1`): the refresh token
+/// moves into an httpOnly `Set-Cookie` (Max-Age = the refresh token's
+/// remaining TTL) and the JSON body's `refresh_token` is blanked — page
+/// JavaScript never sees it. Body mode (no header — desktop Tauri, tunnel
+/// clients): the body carries the refresh token exactly as before and no
+/// cookie is set.
+///
+/// The docs (`*_docs`) keep advertising the same JSON schema; only the
+/// `refresh_token` VALUE differs between modes.
+///
+/// `pub(crate)` because the app module's first-run `setup_admin` (also a
+/// browser flow) shares it.
+pub(crate) fn token_response<T: serde::Serialize>(
+    req_headers: &HeaderMap,
+    status: StatusCode,
+    minted: TokenPairWithJti,
+    build: impl FnOnce(TokenPair) -> T,
+) -> (StatusCode, Response) {
+    let mut tokens = minted.pair;
+    let mut set_cookie = None;
+    if cookie::wants_cookie(req_headers) {
+        let max_age = (minted.refresh_expires_at - chrono::Utc::now())
+            .num_seconds()
+            .max(0);
+        set_cookie = Some(cookie::build_refresh_cookie(
+            &tokens.refresh_token,
+            max_age,
+            cookie::is_secure_request(req_headers),
+        ));
+        tokens.refresh_token = String::new();
+    }
+    let mut resp = Json(build(tokens)).into_response();
+    if let Some(c) = set_cookie {
+        resp.headers_mut().append(header::SET_COOKIE, c);
+    }
+    (status, resp)
+}
+
+// =====================================================
 // Route Handlers
 // =====================================================
 
@@ -47,8 +94,9 @@ use crate::modules::sync::{
 pub async fn register(
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    headers: HeaderMap,
     Json(req): Json<RegisterRequest>,
-) -> ApiResult<Json<AuthResponse>> {
+) -> ApiResult<Response> {
     // Validate input fields
     if req.username.trim().is_empty() {
         return Err((
@@ -136,23 +184,14 @@ pub async fn register(
     // Emit UserCreated event asynchronously
     event_bus.emit_async(UserEvent::created(user.clone()));
 
-    // Generate JWT tokens with a jti and register the refresh token in the
-    // whitelist so it can be revoked (e.g. by logout) — a jti-less token would
-    // bypass the whitelist check entirely.
-    let token_pair_with_jti = jwt_service
-        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
+    // Mint + whitelist the session tokens (admin-configured lifetimes).
+    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    refresh_tokens::register(
-        Repos.pool(),
-        token_pair_with_jti.refresh_jti,
-        user.id,
-        token_pair_with_jti.refresh_expires_at,
-    )
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    let tokens = token_pair_with_jti.pair;
 
-    Ok((StatusCode::CREATED, Json(AuthResponse { user, tokens })))
+    Ok(token_response(&headers, StatusCode::CREATED, minted, |tokens| {
+        AuthResponse { user, tokens }
+    }))
 }
 
 /// Documentation for register endpoint
@@ -168,8 +207,9 @@ pub fn register_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn login(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    headers: HeaderMap,
     Json(req): Json<LoginRequest>,
-) -> ApiResult<Json<AuthResponse>> {
+) -> ApiResult<Response> {
     // Check if external provider is specified
     if let Some(provider_name) = &req.provider
         && provider_name != "local" {
@@ -177,6 +217,7 @@ pub async fn login(
             return login_with_provider(
                 Repos.pool().clone(),
                 jwt_service,
+                &headers,
                 &req.username,
                 &req.password,
                 provider_name,
@@ -262,22 +303,14 @@ pub async fn login(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Generate JWT tokens with a jti and whitelist the refresh token so it can
-    // be revoked (logout) — a jti-less token bypasses the whitelist check.
-    let token_pair_with_jti = jwt_service
-        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
+    // Mint + whitelist the session tokens (admin-configured lifetimes).
+    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    refresh_tokens::register(
-        Repos.pool(),
-        token_pair_with_jti.refresh_jti,
-        user.id,
-        token_pair_with_jti.refresh_expires_at,
-    )
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    let tokens = token_pair_with_jti.pair;
 
-    Ok((StatusCode::OK, Json(AuthResponse { user, tokens })))
+    Ok(token_response(&headers, StatusCode::OK, minted, |tokens| {
+        AuthResponse { user, tokens }
+    }))
 }
 
 /// Documentation for login endpoint
@@ -292,10 +325,11 @@ pub fn login_docs(op: TransformOperation) -> TransformOperation {
 async fn login_with_provider(
     pool: PgPool,
     jwt_service: Arc<JwtService>,
+    headers: &HeaderMap,
     username: &str,
     password: &str,
     provider_name: &str,
-) -> ApiResult<Json<AuthResponse>> {
+) -> ApiResult<Response> {
     use crate::modules::auth::providers::{create_provider, repository as provider_repo};
 
     // Get provider configuration
@@ -400,22 +434,14 @@ async fn login_with_provider(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Generate JWT tokens with a jti and whitelist the refresh token so it can
-    // be revoked (logout) — a jti-less token bypasses the whitelist check.
-    let token_pair_with_jti = jwt_service
-        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
+    // Mint + whitelist the session tokens (admin-configured lifetimes).
+    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    refresh_tokens::register(
-        Repos.pool(),
-        token_pair_with_jti.refresh_jti,
-        user.id,
-        token_pair_with_jti.refresh_expires_at,
-    )
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    let tokens = token_pair_with_jti.pair;
 
-    Ok((StatusCode::OK, Json(AuthResponse { user, tokens })))
+    Ok(token_response(headers, StatusCode::OK, minted, |tokens| {
+        AuthResponse { user, tokens }
+    }))
 }
 
 /// POST /api/auth/refresh
@@ -423,11 +449,33 @@ async fn login_with_provider(
 #[debug_handler]
 pub async fn refresh(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    headers: HeaderMap,
     Json(req): Json<RefreshTokenRequest>,
-) -> ApiResult<Json<TokenPair>> {
+) -> ApiResult<Response> {
+    // Source precedence: an explicit body token wins (desktop Tauri /
+    // tunnel clients); otherwise the httpOnly `ziee_refresh` cookie (web).
+    // The response mirrors the source — body-in→body-out, cookie-in→
+    // cookie-out — so a phone browser driving the tunnel body-path can't
+    // have its token silently moved into a cookie it doesn't read.
+    let (presented, from_cookie) = match req.refresh_token.filter(|t| !t.is_empty()) {
+        Some(t) => (t, false),
+        None => match cookie::read_refresh_cookie(&headers) {
+            Some(t) => (t, true),
+            None => {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    AppError::unauthorized(
+                        "MISSING_REFRESH_TOKEN",
+                        "No refresh token in request body or cookie",
+                    ),
+                ));
+            }
+        },
+    };
+
     // Validate refresh token (signature + exp + iss + aud)
     let claims = jwt_service
-        .validate_refresh_token(&req.refresh_token)
+        .validate_refresh_token(&presented)
         .map_err(|e| (StatusCode::UNAUTHORIZED, e))?;
 
     // Parse user ID from claims
@@ -448,31 +496,15 @@ pub async fn refresh(
     // the upgrade. Within ~30 days every active session is naturally
     // re-issued through the new code path and gets a jti, after which
     // unchecked legacy tokens can no longer exist.
-    if let Some(jti_str) = claims.jti.as_deref() {
-        let jti = uuid::Uuid::parse_str(jti_str).map_err(|_| {
+    let presented_jti = match claims.jti.as_deref() {
+        Some(jti_str) => Some(uuid::Uuid::parse_str(jti_str).map_err(|_| {
             (
                 StatusCode::UNAUTHORIZED,
                 AppError::unauthorized("INVALID_TOKEN", "Invalid refresh token jti"),
             )
-        })?;
-        let active = refresh_tokens::is_active(Repos.pool(), jti)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-        if !active {
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                AppError::unauthorized(
-                    "REFRESH_TOKEN_REVOKED",
-                    "Refresh token has been revoked or already used",
-                ),
-            ));
-        }
-        // Revoke the presented refresh token NOW so it can't be used a
-        // second time even if the new pair fails to land at the client.
-        refresh_tokens::revoke(Repos.pool(), jti)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    }
+        })?),
+        None => None,
+    };
 
     // Get user from database
     let user = Repos
@@ -495,29 +527,130 @@ pub async fn refresh(
         ));
     }
 
-    // Generate new tokens with jti and register the new refresh token
-    // in the whitelist before returning it.
-    let token_pair_with_jti = jwt_service
-        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    refresh_tokens::register(
-        Repos.pool(),
-        token_pair_with_jti.refresh_jti,
-        user.id,
-        token_pair_with_jti.refresh_expires_at,
-    )
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let (access_hours, refresh_days) = refresh_tokens::session_expiries(&jwt_service).await;
 
-    Ok((StatusCode::OK, Json(token_pair_with_jti.pair)))
+    // Determine the outgoing pair + the refresh token's expiry (for the
+    // cookie Max-Age). Three cases:
+    //
+    //  1. Presented jti present (the normal path): ATOMICALLY claim the
+    //     token for rotation (`claim_rotation` flips active→revoked in one
+    //     UPDATE). The winner registers a fresh successor and returns it.
+    //     A LOSER (concurrent double-refresh, or a replay within the grace
+    //     window) is re-issued tokens bound to the EXISTING successor
+    //     family via `reissue_tokens_for_jti` — NOT an independent new
+    //     chain — so single-use holds even under a race and a
+    //     replayed-within-grace token can never outlive the family it
+    //     belongs to. No successor in grace → 401 REFRESH_TOKEN_REVOKED.
+    //
+    //  2. No jti (a legacy token minted before this feature): the
+    //     one-time upgrade allowance — mint + register a fresh jti pair.
+    //
+    // The claim + successor-register happen in ONE transaction
+    // (`claim_rotation_and_register`), so a losing concurrent request
+    // blocks on the presented row's lock until the successor is committed
+    // + visible, then falls into the grace path — no spurious 401. On a
+    // mid-transaction DB failure nothing commits and the presented token
+    // stays active, so the client's retry simply rotates again.
+    let (out_pair, out_refresh_expires_at) = if let Some(jti) = presented_jti {
+        let candidate = jwt_service
+            .generate_tokens_with_jti_expiry(
+                user.id,
+                &user.username,
+                &user.email,
+                user.is_admin,
+                access_hours,
+                refresh_days,
+            )
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+        let won = refresh_tokens::claim_rotation_and_register(
+            Repos.pool(),
+            jti,
+            candidate.refresh_jti,
+            user.id,
+            candidate.refresh_expires_at,
+        )
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+        if won {
+            (candidate.pair, candidate.refresh_expires_at)
+        } else {
+            // We lost the race / the token was already rotated. `candidate`
+            // is discarded (never registered). Serve the existing
+            // successor family if still within grace + active.
+            match refresh_tokens::rotation_grace_successor(Repos.pool(), jti)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+            {
+                Some((succ_jti, succ_exp)) => {
+                    let pair = jwt_service
+                        .reissue_tokens_for_jti(
+                            user.id,
+                            &user.username,
+                            &user.email,
+                            user.is_admin,
+                            access_hours,
+                            succ_jti,
+                            succ_exp,
+                        )
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+                    (pair, succ_exp)
+                }
+                None => {
+                    return Err((
+                        StatusCode::UNAUTHORIZED,
+                        AppError::unauthorized(
+                            "REFRESH_TOKEN_REVOKED",
+                            "Refresh token has been revoked or already used",
+                        ),
+                    ));
+                }
+            }
+        }
+    } else {
+        // Legacy jti-less token: one-time upgrade allowance.
+        let minted = refresh_tokens::mint_session_tokens(
+            &jwt_service,
+            user.id,
+            &user.username,
+            &user.email,
+            user.is_admin,
+        )
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        (minted.pair, minted.refresh_expires_at)
+    };
+
+    // body-in→body-out / cookie-in→cookie-out (see the source comment).
+    if from_cookie {
+        let max_age = (out_refresh_expires_at - chrono::Utc::now())
+            .num_seconds()
+            .max(0);
+        let set_cookie = cookie::build_refresh_cookie(
+            &out_pair.refresh_token,
+            max_age,
+            cookie::is_secure_request(&headers),
+        );
+        let mut tokens = out_pair;
+        tokens.refresh_token = String::new();
+        let mut resp = Json(tokens).into_response();
+        resp.headers_mut().append(header::SET_COOKIE, set_cookie);
+        Ok((StatusCode::OK, resp))
+    } else {
+        Ok((StatusCode::OK, Json(out_pair).into_response()))
+    }
 }
 
 /// Documentation for refresh endpoint
 pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
-    op.description("Refresh access token using refresh token")
-        .id("Auth.refresh")
-        .tag("auth")
-        .response::<200, Json<TokenPair>>()
+    op.description(
+        "Refresh access token using a refresh token (JSON body, or the \
+         httpOnly ziee_refresh cookie when the body token is absent)",
+    )
+    .id("Auth.refresh")
+    .tag("auth")
+    .response::<200, Json<TokenPair>>()
 }
 
 /// POST /api/auth/logout
@@ -531,7 +664,7 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 /// the design intent) or a per-request revocation check (deferred — adds
 /// a DB hit to every authenticated request).
 #[debug_handler]
-pub async fn logout(auth: JwtAuth) -> ApiResult<()> {
+pub async fn logout(auth: JwtAuth, headers: HeaderMap) -> ApiResult<Response> {
     let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -541,7 +674,15 @@ pub async fn logout(auth: JwtAuth) -> ApiResult<()> {
     refresh_tokens::revoke_all_for_user(Repos.pool(), user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok((StatusCode::NO_CONTENT, ()))
+
+    // Clear the httpOnly refresh cookie on web clients (harmless no-op
+    // for body-token clients that never had one).
+    let mut resp = ().into_response();
+    resp.headers_mut().append(
+        header::SET_COOKIE,
+        cookie::clear_refresh_cookie(cookie::is_secure_request(&headers)),
+    );
+    Ok((StatusCode::NO_CONTENT, resp))
 }
 
 /// Documentation for logout endpoint
@@ -586,10 +727,7 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
     }
 
     // Get effective permissions (union of user permissions + group permissions)
-    let user_service = UserService::new(
-        (**Repos.user).clone(),
-        (**Repos.group).clone(),
-    );
+    let user_service = UserService::new((**Repos.user).clone());
     let permissions = user_service
         .get_effective_permissions(user_id)
         .await
@@ -762,12 +900,14 @@ pub async fn change_password(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Revoke the user's whitelisted refresh tokens on credential rotation
-    // (OWASP session-management). Mirrors `logout`. NOTE: only refresh
-    // tokens carrying a `jti` are whitelisted (those issued by the refresh
-    // rotation path); legacy non-`jti` tokens from register/login bypass
-    // the whitelist and are unaffected — a pre-existing limitation shared
-    // with `logout`, not specific to this endpoint. Outstanding access
-    // tokens also stay valid for their short remaining TTL.
+    // (OWASP session-management). Mirrors `logout`. Every mint path now
+    // routes through `mint_session_tokens`, so every issued refresh token
+    // carries a whitelisted `jti` and is revoked here (only jti-less
+    // tokens minted BEFORE this feature deployed slip through, and those
+    // age out within the refresh TTL). Revoking the active successor also
+    // closes the rotation-grace window (`rotation_grace_successor`
+    // requires an active successor). Outstanding access tokens stay valid
+    // for their short remaining TTL.
     refresh_tokens::revoke_all_for_user(Repos.pool(), user.id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -956,6 +1096,7 @@ pub async fn oauth_callback(
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
     // SECURITY: same enumeration concern as oauth_callback_post —
     // looking up the provider by name first would expose distinct
@@ -1002,7 +1143,7 @@ pub async fn oauth_callback(
             ),
         ));
     }
-    oauth_complete(jwt_service, provider_name, query.code, query.state, None).await
+    oauth_complete(jwt_service, &headers, provider_name, query.code, query.state, None).await
 }
 
 /// POST /api/auth/oauth/{provider_name}/callback
@@ -1014,6 +1155,7 @@ pub async fn oauth_callback(
 pub async fn oauth_callback_post(
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Path(provider_name): Path<String>,
+    headers: HeaderMap,
     Form(form): Form<AppleCallbackForm>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
     // SECURITY: only Apple uses response_mode=form_post. Reject POSTs
@@ -1071,7 +1213,7 @@ pub async fn oauth_callback_post(
             ),
         ));
     }
-    oauth_complete(jwt_service, provider_name, form.code, form.state, form.user).await
+    oauth_complete(jwt_service, &headers, provider_name, form.code, form.state, form.user).await
 }
 
 /// Shared callback completion logic. The user has bounced back from
@@ -1080,11 +1222,12 @@ pub async fn oauth_callback_post(
 /// user / nothing to do) and route accordingly.
 async fn oauth_complete(
     jwt_service: Arc<JwtService>,
+    headers: &HeaderMap,
     provider_name: String,
     code: String,
     state: String,
     apple_user_json: Option<String>,
-) -> Result<Redirect, (StatusCode, AppError)> {
+) -> Result<Response, (StatusCode, AppError)> {
     // Run the inner logic, then ALWAYS try to delete the oauth_sessions
     // row keyed by `state` — providers delete on success, but every
     // error path used to leave an orphan row that would only be reaped
@@ -1093,7 +1236,7 @@ async fn oauth_complete(
     // here is non-fatal (the row will be reaped by TTL), and we don't
     // want to mask the original error.
     let result =
-        oauth_complete_inner(jwt_service, provider_name, code, &state, apple_user_json)
+        oauth_complete_inner(jwt_service, headers, provider_name, code, &state, apple_user_json)
             .await;
     if result.is_err() {
         let _ = Repos.auth.delete_oauth_session(&state).await;
@@ -1103,11 +1246,12 @@ async fn oauth_complete(
 
 async fn oauth_complete_inner(
     jwt_service: Arc<JwtService>,
+    headers: &HeaderMap,
     provider_name: String,
     code: String,
     state: &str,
     apple_user_json: Option<String>,
-) -> Result<Redirect, (StatusCode, AppError)> {
+) -> Result<Response, (StatusCode, AppError)> {
     let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1204,11 +1348,12 @@ async fn oauth_complete_inner(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-        let tokens = jwt_service
-            .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        let minted =
+            mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-        return Ok(success_redirect(&tokens.access_token, return_to.as_deref()));
+        return Ok(success_redirect(&minted, return_to.as_deref(), headers));
     }
 
     // ── 2. Email collision with an existing local account ───────
@@ -1246,7 +1391,8 @@ async fn oauth_complete_inner(
                             "/auth/link-account?link_token={}",
                             url::form_urlencoded::byte_serialize(link_token.as_bytes())
                                 .collect::<String>()
-                        )));
+                        ))
+                        .into_response());
                     } else {
                         // External-only account with the same email exists.
                         // Refuse with a clear error — auto-linking these
@@ -1323,11 +1469,12 @@ async fn oauth_complete_inner(
             )
         })?;
 
-    let tokens = jwt_service
-        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let minted =
+        mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    Ok(success_redirect(&tokens.access_token, return_to.as_deref()))
+    Ok(success_redirect(&minted, return_to.as_deref(), headers))
 }
 
 /// Was the email asserted as verified by the provider? Both shapes
@@ -1462,18 +1609,40 @@ fn merge_apple_user_json(auth_result: &mut AuthResult, user_json_str: &str) {
     }
 }
 
-/// Build the post-auth redirect. The access token rides in the URL
-/// **fragment** (`#token=…`) so it does not appear in server access
-/// logs, Referer headers, or browser history. The SPA's
+/// Build the post-auth redirect. The access token (+ its `expires_in`,
+/// which the SPA uses to schedule its proactive silent refresh) rides in
+/// the URL **fragment** (`#token=…`) so it does not appear in server
+/// access logs, Referer headers, or browser history. The SPA's
 /// `/auth/callback` page reads the fragment then immediately calls
 /// `history.replaceState` to scrub it.
-fn success_redirect(access_token: &str, return_to: Option<&str>) -> Redirect {
+///
+/// The refresh token NEVER touches the URL: OAuth is a browser-only flow,
+/// so it always travels as the httpOnly `ziee_refresh` cookie set on this
+/// redirect response. (Before migration 129 the OAuth refresh token was
+/// generated and then silently discarded — OAuth sessions could never
+/// refresh at all.)
+fn success_redirect(
+    minted: &TokenPairWithJti,
+    return_to: Option<&str>,
+    headers: &HeaderMap,
+) -> Response {
     let target = return_to.unwrap_or("/");
     let fragment = url::form_urlencoded::Serializer::new(String::new())
-        .append_pair("token", access_token)
+        .append_pair("token", &minted.pair.access_token)
+        .append_pair("expires_in", &minted.pair.expires_in.to_string())
         .append_pair("return_to", target)
         .finish();
-    Redirect::temporary(&format!("/auth/callback#{}", fragment))
+    let max_age = (minted.refresh_expires_at - chrono::Utc::now())
+        .num_seconds()
+        .max(0);
+    let set_cookie = cookie::build_refresh_cookie(
+        &minted.pair.refresh_token,
+        max_age,
+        cookie::is_secure_request(headers),
+    );
+    let mut resp = Redirect::temporary(&format!("/auth/callback#{}", fragment)).into_response();
+    resp.headers_mut().append(header::SET_COOKIE, set_cookie);
+    resp
 }
 
 /// POST /api/auth/link-account
@@ -1484,8 +1653,9 @@ fn success_redirect(access_token: &str, return_to: Option<&str>) -> Redirect {
 #[debug_handler]
 pub async fn link_account(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    headers: HeaderMap,
     Json(req): Json<LinkAccountRequest>,
-) -> ApiResult<Json<AuthResponse>> {
+) -> ApiResult<Response> {
     // Peek (don't consume) so a wrong-password attempt doesn't burn
     // the single-use token — the user gets to retry without
     // re-running the entire OAuth dance. The token is still
@@ -1602,11 +1772,14 @@ pub async fn link_account(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    let tokens = jwt_service
-        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+    // Mint + whitelist the session tokens (admin-configured lifetimes).
+    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    Ok((StatusCode::OK, Json(AuthResponse { user, tokens })))
+    Ok(token_response(&headers, StatusCode::OK, minted, |tokens| {
+        AuthResponse { user, tokens }
+    }))
 }
 
 pub fn link_account_docs(op: TransformOperation) -> TransformOperation {

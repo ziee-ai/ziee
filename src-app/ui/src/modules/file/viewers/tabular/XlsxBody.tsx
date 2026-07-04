@@ -161,8 +161,12 @@ export function XlsxBody(props: FileViewerSlotProps) {
   }
 
   if (sheets.length === 1) {
+    // A single-sheet workbook renders no tab bar (nothing to switch between),
+    // but the viewer root still carries `file-xlsx-tabs` so the same selector
+    // locates the xlsx surface whether or not tabs are shown. (The kit Tabs
+    // root already forwards this testid in the multi-sheet branch below.)
     return (
-      <div className="flex flex-col h-full w-full">
+      <div className="flex flex-col h-full w-full" data-testid="file-xlsx-tabs">
         {renderSheet(sheets[0])}
       </div>
     )

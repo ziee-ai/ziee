@@ -298,14 +298,14 @@ test.describe('Projects - MCP Defaults card', () => {
     // PHASE 1: open modal — the server starts ENABLED (it's in the default
     // group, fresh project has no disabled_servers) — toggle OFF, Save & Close.
     await openModal()
-    await expect(serverSwitch()).toBeChecked()
+    await expect(serverSwitch()).toHaveAttribute('aria-checked', 'true')
     const savePut = page.waitForResponse(
       r =>
         r.url().includes(`/api/projects/${projectId}/mcp-settings`) &&
         r.request().method() === 'PUT',
     )
     await serverSwitch().click()
-    await expect(serverSwitch()).not.toBeChecked()
+    await expect(serverSwitch()).toHaveAttribute('aria-checked', 'false')
     await byTestId(page, 'mcp-config-close-btn').click()
     await savePut
 
@@ -313,6 +313,6 @@ test.describe('Projects - MCP Defaults card', () => {
     // disabled state, NOT stale in-memory selectedServers from before.
     await page.reload()
     await openModal()
-    await expect(serverSwitch()).not.toBeChecked()
+    await expect(serverSwitch()).toHaveAttribute('aria-checked', 'false')
   })
 })

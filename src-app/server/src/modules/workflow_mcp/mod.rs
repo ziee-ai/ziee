@@ -61,7 +61,6 @@ static WORKFLOW_MCP_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
 };
 
 pub struct WorkflowMcpModule {
-    #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
 }
 

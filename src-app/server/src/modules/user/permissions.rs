@@ -1,5 +1,4 @@
 // User permissions
-#![allow(dead_code)]
 
 use crate::modules::permissions::{PermissionCheck, PermissionInfo};
 
@@ -137,6 +136,10 @@ impl PermissionCheck for GroupsAssignUsers {
 // =====================================================
 
 /// Get all user module permissions
+// Introspection entry point (the sole in-crate consumer of the permission
+// `to_info()` / `PermissionInfo` API). Not wired to a `/permissions` handler
+// yet; retained so the introspection subsystem stays exercised end-to-end.
+#[allow(dead_code)]
 pub fn all_permissions() -> Vec<PermissionInfo> {
     vec![
         ProfileRead::to_info(),
@@ -154,3 +157,4 @@ pub fn all_permissions() -> Vec<PermissionInfo> {
         GroupsAssignUsers::to_info(),
     ]
 }
+

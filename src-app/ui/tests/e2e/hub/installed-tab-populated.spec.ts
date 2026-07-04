@@ -36,17 +36,16 @@ test.describe('Hub — Installed tab populated + Re-install', () => {
     const hubAssistantId = testId?.replace('hub-assistant-card-', '') ?? ''
     expect(hubAssistantId).toBeTruthy()
 
-    const installedName = `Installed Populated ${Date.now()}`
-    await createAssistantFromHub(page, hubAssistantId, { name: installedName })
+    // The one-click "Use Assistant" hub flow installs with the manifest name
+    // (there is no name-customization UI), so we identify the row by position:
+    // a fresh per-test DB has exactly one hub-installed entity (this one).
+    await createAssistantFromHub(page, hubAssistantId)
 
     // --- Open the Installed tab; the row renders with its metadata ---
     await page.goto(`${baseURL}/hub/installed`)
     await expect(page).toHaveURL(/\/hub\/installed/)
 
-    const rowContainer = page
-      .getByTestId(/^hub-installed-row-/)
-      .filter({ hasText: installedName })
-      .first()
+    const rowContainer = page.getByTestId(/^hub-installed-row-/).first()
     await expect(rowContainer).toBeVisible({ timeout: 15000 })
 
     // (1) Populated-render coverage: the version Tag (`v{current}` or
@@ -64,13 +63,14 @@ test.describe('Hub — Installed tab populated + Re-install', () => {
     await expect(reinstallBtn).toBeEnabled()
     await reinstallBtn.click()
 
-    const confirm = page.getByTestId(/^hub-installed-reinstall-confirm-/)
+    // Target the Confirm OK button specifically — the prefix regex also
+    // matches the dialog content + the cancel button (3 nodes → strict-mode
+    // violation).
+    const confirm = page.locator(
+      '[data-testid^="hub-installed-reinstall-confirm-"][data-testid$="-confirm"]',
+    )
     await expect(confirm).toBeVisible({ timeout: 5000 })
-    await page
-      .locator(
-        '[data-testid^="hub-installed-reinstall-confirm-"][data-testid$="-confirm"]',
-      )
-      .click()
+    await confirm.click()
 
     // The reinstall() handler shows a "Re-installed …" success toast and
     // reloads the Installed tab; the row remains present afterwards.
@@ -78,10 +78,7 @@ test.describe('Hub — Installed tab populated + Re-install', () => {
       page.locator('[data-sonner-toast][data-type="success"]').first(),
     ).toBeVisible({ timeout: 15000 })
     await expect(
-      page
-        .getByTestId(/^hub-installed-row-/)
-        .filter({ hasText: installedName })
-        .first(),
+      page.getByTestId(/^hub-installed-row-/).first(),
     ).toBeVisible({ timeout: 15000 })
   })
 })

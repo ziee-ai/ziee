@@ -16,6 +16,10 @@ test.describe('MCP user policy — stdio sandbox flavor', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     await loginAsAdmin(page, testInfra.baseURL)
     await page.goto(`${testInfra.baseURL}/settings/mcp-admin`)
+    // The User-Policy card lives in the (non-default) "Policy" tab. The kit Tabs
+    // lazy-render only the active panel, so the card isn't in the DOM until the
+    // Policy tab is activated — activate it before waiting for the card.
+    await page.getByTestId('mcp-system-tabs-tab-policy').click()
     await expect(
       page.getByTestId('mcp-user-policy-card'),
     ).toBeVisible({ timeout: 30000 })
@@ -46,6 +50,16 @@ test.describe('MCP user policy — stdio sandbox flavor', () => {
   test('picking a flavor from the SandboxFlavors catalog saves the policy', async ({
     page,
   }) => {
+    // Persisting a stdio user policy is rejected (422 MCP_SANDBOX_DISABLED) unless
+    // code_sandbox is enabled in the deployment. E2E boots with code_sandbox OFF
+    // by default (it needs bwrap + a mounted rootfs); the run opts in via
+    // ZIEE_E2E_SANDBOX=1. Without that, this save path can't succeed, so skip —
+    // matching the rootfs-gated sandbox specs. The sibling client-side test above
+    // exercises the picker without needing the backend feature.
+    test.skip(
+      process.env.ZIEE_E2E_SANDBOX !== '1',
+      'code_sandbox disabled in default E2E deployment — stdio policy save requires ZIEE_E2E_SANDBOX=1',
+    )
     const card = page.getByTestId('mcp-user-policy-card')
     await card.getByTestId('mcp-policy-transport-stdio').check()
 

@@ -1285,3 +1285,143 @@ async fn test_oauth_callback_provider_error_is_rejected() {
     );
 }
 
+
+/// The OAuth callback is a browser-only flow ⇒ always cookie mode: the
+/// 302 to `/auth/callback` carries (1) the access token + `expires_in`
+/// in the URL fragment and (2) the refresh token as an httpOnly
+/// `ziee_refresh` Set-Cookie whose jti is whitelisted — refreshing via
+/// that cookie works immediately. (Before migration 129 the OAuth
+/// refresh token was generated then DISCARDED server-side; this is the
+/// regression guard.)
+#[tokio::test]
+async fn test_oauth_callback_sets_refresh_cookie_and_registers_jti() {
+    let test_server = crate::common::TestServer::start().await;
+    let oauth_server = OAuthMockServer::start()
+        .await
+        .expect("Failed to start OAuth mock server");
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+    seed_oidc_provider(&pool, "cookie-oauth", &oauth_server, json!({})).await;
+
+    // Same dance as drive_oauth_flow, but keeping the callback RESPONSE
+    // so its Set-Cookie header can be asserted (the shared helper only
+    // returns status + location).
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
+        .build()
+        .unwrap();
+
+    let our_authorize = client
+        .get(format!(
+            "{}/api/auth/oauth/cookie-oauth/authorize",
+            test_server.base_url
+        ))
+        .send()
+        .await
+        .expect("initiate OAuth");
+    assert_eq!(our_authorize.status(), 307);
+    let provider_authorize_url = our_authorize
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let provider_response = client
+        .post(&provider_authorize_url)
+        .form(&[
+            ("username", "cookie-oauth-sub"),
+            (
+                "claims",
+                &json!({
+                    "email": "cookieoauth@example.com",
+                    "email_verified": true,
+                    "preferred_username": "cookieoauth",
+                })
+                .to_string(),
+            ),
+        ])
+        .send()
+        .await
+        .expect("provider authorize");
+    assert_eq!(provider_response.status(), 302);
+    let callback_url = provider_response
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let callback_resp = client.get(&callback_url).send().await.expect("callback");
+    assert!(
+        callback_resp.status().is_redirection(),
+        "callback should redirect, got {}",
+        callback_resp.status()
+    );
+
+    // (1) Fragment carries the access token + expires_in (for the SPA's
+    //     proactive refresh scheduling), never the refresh token.
+    let loc = callback_resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        loc.starts_with("/auth/callback#token="),
+        "fragment carries the access token: {loc}"
+    );
+    assert!(
+        loc.contains("expires_in="),
+        "fragment carries expires_in: {loc}"
+    );
+    assert!(
+        !loc.contains("refresh"),
+        "the refresh token must NEVER ride the URL: {loc}"
+    );
+
+    // (2) The redirect set the httpOnly refresh cookie.
+    let set_cookie = callback_resp
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|c| c.starts_with("ziee_refresh="))
+        .map(str::to_string)
+        .expect("callback redirect must set the ziee_refresh cookie");
+    assert!(set_cookie.contains("HttpOnly"), "httpOnly: {set_cookie}");
+    assert!(
+        set_cookie.contains("Path=/api/auth"),
+        "path-scoped: {set_cookie}"
+    );
+
+    // (3) The cookie's jti is whitelisted: refresh-via-cookie works.
+    let res = client
+        .post(format!("{}/api/auth/refresh", test_server.base_url))
+        .header("X-Refresh-Cookie", "1")
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        200,
+        "the OAuth-minted refresh cookie must be whitelisted + usable"
+    );
+    let pair: serde_json::Value = res.json().await.unwrap();
+    let me = reqwest::Client::new()
+        .get(format!("{}/api/auth/me", test_server.base_url))
+        .header(
+            "Authorization",
+            format!("Bearer {}", pair["access_token"].as_str().unwrap()),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(me.status(), 200);
+}

@@ -1,5 +1,4 @@
 // Hub types
-#![allow(dead_code)]
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -102,6 +101,9 @@ pub struct CreateMcpServerFromHubRequest {
     pub display_name: Option<String>,
 
     /// Optional: Override enabled
+    // Deserialized wire field; not yet read server-side. Narrow allow (was a
+    // module blanket) keeps it as part of the request shape.
+    #[allow(dead_code)]
     #[serde(default = "default_true")]
     pub enabled: bool,
 
@@ -143,6 +145,9 @@ pub struct CreateModelFromHubRequest {
     pub quantization_name: Option<String>,
 
     /// Whether this model is enabled
+    // Deserialized wire field; not yet read server-side. Narrow allow (was a
+    // module blanket) keeps it as part of the model shape.
+    #[allow(dead_code)]
     #[serde(default = "default_true")]
     pub enabled: bool,
 }

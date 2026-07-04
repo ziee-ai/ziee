@@ -5,7 +5,6 @@
 //! `skills::read` is the only permission gate; no per-tool authorization
 //! split.
 
-#![allow(dead_code)]
 
 use axum::{
     Json, debug_handler,

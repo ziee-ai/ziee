@@ -1,4 +1,5 @@
 // Auth module - JWT-based authentication
+pub mod cookie;
 pub mod events;
 pub mod handlers;
 pub mod jwt;
@@ -9,6 +10,7 @@ pub mod providers;
 pub mod refresh_tokens;
 mod repository;
 pub mod routes;
+pub mod session_settings;
 pub mod types;
 
 // Re-exports
@@ -18,6 +20,7 @@ pub use jwt::JwtService;
 pub use password::hash_password;
 pub use repository::AuthRepository;
 pub use routes::{auth_admin_routes, auth_routes};
+pub use session_settings::SessionSettingsRepository;
 pub use types::AuthResponse;
 
 use aide::axum::ApiRouter;
@@ -88,6 +91,24 @@ impl AppModule for AuthModule {
         // module re-init isn't expected but isn't an error condition).
         let _ = TRUST_FORWARDED_HEADERS.set(ctx.config.server.trust_forwarded_headers);
 
+        // One-time copy of the YAML jwt lifetimes into the session_settings
+        // singleton (migration 129). Writes only while seeded_from_config is
+        // FALSE, so an operator's customized YAML values survive the upgrade
+        // that introduced the DB-backed setting; thereafter the DB row is
+        // authoritative. Failure is non-fatal — mint_session_tokens falls
+        // back to the YAML values whenever the DB read fails.
+        {
+            let pool = ctx.db_pool.clone();
+            let access_hours = ctx.config.jwt.access_token_expiry_hours;
+            let refresh_days = ctx.config.jwt.refresh_token_expiry_days;
+            tokio::spawn(async move {
+                let repo = session_settings::SessionSettingsRepository::new((*pool).clone());
+                if let Err(e) = repo.seed_from_config_once(access_hours, refresh_days).await {
+                    tracing::warn!(error = ?e, "session_settings config seed failed; DB defaults remain");
+                }
+            });
+        }
+
         // Spawn a periodic cleanup task: prune expired oauth_sessions
         // and pending_account_links rows. Both have TTL columns, but
         // rows that are never re-touched (abandoned OAuth dances,
@@ -107,10 +128,11 @@ impl AppModule for AuthModule {
                 let outcome = std::panic::AssertUnwindSafe(repo.cleanup_expired_auth_rows());
                 let result = futures::FutureExt::catch_unwind(outcome).await;
                 match result {
-                    Ok(Ok((s, p))) if s > 0 || p > 0 => {
+                    Ok(Ok((s, p, r))) if s > 0 || p > 0 || r > 0 => {
                         tracing::debug!(
                             sessions_pruned = s,
                             pending_links_pruned = p,
+                            refresh_tokens_pruned = r,
                             "auth cleanup tick"
                         );
                     }

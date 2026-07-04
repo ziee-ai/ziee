@@ -13,7 +13,6 @@
 //! - `tools/call` — spawn the runner, await completion, format result
 //! - `resources/list` / `resources/read` — outputs / artifacts / logs
 
-#![allow(dead_code)]
 
 use axum::{
     Json, debug_handler,

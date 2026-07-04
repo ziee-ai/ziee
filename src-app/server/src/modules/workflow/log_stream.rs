@@ -7,7 +7,6 @@
 //! segment); B5's workflow_mcp `resources/read` is the primary
 //! consumer for those.
 
-#![allow(dead_code)]
 
 use aide::transform::TransformOperation;
 use axum::body::Body;

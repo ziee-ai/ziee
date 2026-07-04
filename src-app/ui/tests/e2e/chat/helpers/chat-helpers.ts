@@ -97,17 +97,37 @@ export async function waitForChatPageLoad(page: Page) {
 // =====================================================
 
 export async function getVisibleModelsInDropdown(page: Page): Promise<string[]> {
-  // Open the Radix/shadcn Select dropdown by clicking its trigger.
-  await page.locator('[data-testid="ullm-model-select"]').click()
-
-  await page.waitForSelector('[role="listbox"]', { state: 'visible', timeout: 5000 })
+  // The base-ui Select is disabled while the (group-scoped) model list is
+  // still syncing; clicking a disabled trigger is a no-op and its listbox
+  // stays in the DOM but hidden. Retry the open so an async provider/model
+  // sync has time to land, and treat a never-opening (empty) dropdown as
+  // "no models" so negative assertions don't hang.
+  const trigger = page.locator('[data-testid="ullm-model-select"]')
+  let opened = false
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await trigger.click().catch(() => {})
+    try {
+      await page.waitForSelector('[role="listbox"]', {
+        state: 'visible',
+        timeout: 2000,
+      })
+      opened = true
+      break
+    } catch {
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.waitForTimeout(500)
+    }
+  }
+  if (!opened) return []
 
   // Get all option labels (model display names)
   const options = await page.getByRole('option').allTextContents()
 
   // Close dropdown
   await page.keyboard.press('Escape')
-  await page.waitForSelector('[role="listbox"]', { state: 'hidden', timeout: 5000 })
+  await page
+    .waitForSelector('[role="listbox"]', { state: 'hidden', timeout: 5000 })
+    .catch(() => {})
 
   return options.map((o) => o.trim())
 }

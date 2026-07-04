@@ -108,6 +108,10 @@ pub enum SyncEntity {
     /// Deployment-wide summarization settings (singleton). Notify-only;
     /// the frontend refetches via the existing REST endpoint.
     SummarizationAdminSettings,
+    /// Deployment-wide JWT session settings (singleton): access-token TTL +
+    /// max session length. Notify-only; the admin UI refetches via
+    /// `GET /api/auth/session-settings`.
+    SessionSettings,
     /// Deployment-wide web search settings + provider config (singleton).
     /// Notify-only; the frontend refetches settings + the provider catalog.
     WebSearchSettings,

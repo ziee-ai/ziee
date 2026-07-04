@@ -70,7 +70,7 @@ sandbox-test:
 
 # Run everything before pushing changes that touch the sandbox.
 # Skips bwrap tests if no rootfs is mounted (prints a hint).
-check: check-schema-sync openapi-check check-sandbox-unit
+check: check-schema-sync check-deadcode-blankets openapi-check check-sandbox-unit
     @echo "✓ pre-push checks passed (cheap layer)"
     @echo
     @echo "Run \`just check-sandbox\` next if you've mounted a rootfs"
@@ -96,6 +96,12 @@ check-schema-sync:
             exit 1; \
         fi; \
         echo "✓ schema version sync: $toml"'
+
+# Tier-C guard: fail if a NEW module-level `#![allow(dead_code)]` blanket was
+# added (baseline the existing ~90; removals are always allowed). See
+# WARNING_AUDIT.md §6 + scripts/check-deadcode-blankets.sh.
+check-deadcode-blankets:
+    @bash scripts/check-deadcode-blankets.sh
 
 # Tier 1 + 2 + 3 — no rootfs needed (~30 s).
 check-sandbox-unit:

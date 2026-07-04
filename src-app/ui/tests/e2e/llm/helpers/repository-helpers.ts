@@ -136,7 +136,7 @@ export async function updateRepository(
   await fillRepositoryForm(page, updates as RepositoryFormData)
   const [resp] = await Promise.all([
     page.waitForResponse(
-      r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+      r => /\/api\/llm-repositories\/[0-9a-f-]+/.test(r.url()) && r.request().method() === 'POST',
       { timeout: 15000 }
     ),
     updateRepositoryForm(page),
@@ -310,7 +310,7 @@ export async function configureHuggingFaceAuth(page: Page, baseURL: string): Pro
 
   const [resp] = await Promise.all([
     page.waitForResponse(
-      r => /\/api\/.*repositor/.test(r.url()) && r.request().method() === 'PUT',
+      r => /\/api\/llm-repositories\/[0-9a-f-]+/.test(r.url()) && r.request().method() === 'POST',
       { timeout: 15000 }
     ),
     updateRepositoryForm(page),

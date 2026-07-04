@@ -76,11 +76,6 @@ export function HardwareMonitor() {
             </Button>
           )}
         </div>
-        {currentUsage && (
-          <Text type="secondary" className="text-xs" data-testid="hardware-last-update">
-            Last update: {new Date(currentUsage.timestamp).toLocaleTimeString()}
-          </Text>
-        )}
       </div>
     </Card>
   )
@@ -164,6 +159,16 @@ export function HardwareMonitor() {
         <h1 className="sr-only" data-testid="hardware-monitor-heading">Hardware Monitor</h1>
         <div className="flex flex-col gap-3">
           {renderConnectionStatus()}
+
+          {/* Live-data freshness indicator. Kept OUTSIDE renderConnectionStatus
+              because that card is `hidden` once sseConnected — but "Last update"
+              is most meaningful precisely WHEN connected and receiving frames, so
+              nesting it there hid it exactly when it mattered. */}
+          {currentUsage && (
+            <Text type="secondary" className="text-xs" data-testid="hardware-last-update">
+              Last update: {new Date(currentUsage.timestamp).toLocaleTimeString()}
+            </Text>
+          )}
 
         {currentUsage ? (
           <>

@@ -46,6 +46,16 @@ test.describe('App layout — complex multi-interaction sequence', () => {
 
     // 3) Resize the drawer wider via its handle.
     const wrapper = page.getByTestId('layout-drawer-content').last()
+
+    // Let the slide-in animation settle first — mid-animation the Content
+    // carries a `translateX(...)` transform that puts the (absolute) resize
+    // handle off-screen, so a drag would land on empty space. Ends at `none`.
+    await expect
+      .poll(async () =>
+        wrapper.evaluate(el => getComputedStyle(el as HTMLElement).transform),
+      )
+      .toBe('none')
+
     const before = (await wrapper.boundingBox())!.width
     const handle = page.getByTestId('drawer-resize-handle').last()
     const hb = (await handle.boundingBox())!

@@ -13,7 +13,6 @@
 //! pure-data parts (fixture parse + mock-coverage check + assertion
 //! matching); the run plumbing lives in the handler + `runner::run_for_test`.
 
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 

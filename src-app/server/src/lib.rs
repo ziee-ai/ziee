@@ -26,7 +26,7 @@ pub use core::{Repos, EventBus, EventHandler, AppEvent};
 #[doc(hidden)]
 pub use core::secrets::{init_storage_key, storage_key};
 pub use module_api::ModuleContext as ServerContext;
-pub use modules::auth::{JwtService, AuthResponse, hash_password};
+pub use modules::auth::{AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, hash_password};
 pub use modules::auth::jwt_extractor::JwtAuth;
 pub use modules::auth::refresh_tokens;
 pub use modules::user::models::User;

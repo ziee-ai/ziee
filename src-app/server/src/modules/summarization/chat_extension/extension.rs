@@ -1,5 +1,4 @@
 //! Summarization extension registration for the chat module.
-#![allow(dead_code)]
 
 use linkme::distributed_slice;
 use sqlx::PgPool;
@@ -22,9 +21,13 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
     order: 24,
 };
 
+// Reserved extension-contract placeholder: every chat extension declares the
+// request fields it contributes (empty here; see mcp/file for populated versions).
+#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema, Default)]
 pub struct SendMessageRequestFields {}
 
+#[allow(dead_code)] // reserved extension-contract placeholder; no summarization SSE events today
 pub enum SSEChatStreamEventVariants {}
 
 pub fn create(pool: PgPool, _config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {

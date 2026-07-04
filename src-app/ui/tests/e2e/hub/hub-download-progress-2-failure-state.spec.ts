@@ -48,11 +48,18 @@ test('hub card surfaces failure state with red tag, exception bar, and Retry but
     ) ?? ''
   expect(cardModelId).not.toBe('')
 
+  // v2 Phase 7: models are keyed by reverse-DNS `name` (matching the
+  // card testid) and the download `repository_path` comes off a
+  // source's `identifier` (there is no model-wide `repository_path`).
   const token = await getAdminToken(baseURL)
   const hubModels = (await fetch(`${baseURL}/api/hub/models?lang=en`, {
     headers: { Authorization: `Bearer ${token}` },
-  }).then(r => r.json())) as Array<{ id: string; repository_path: string }>
-  const repoPath = hubModels.find(m => m.id === cardModelId)?.repository_path ?? ''
+  }).then(r => r.json())) as Array<{
+    name: string
+    sources?: Array<{ identifier: string }>
+  }>
+  const repoPath =
+    hubModels.find(m => m.name === cardModelId)?.sources?.[0]?.identifier ?? ''
   expect(repoPath).not.toBe('')
 
   // Inject a synthetic FAILED download whose `request_data.repository_path`

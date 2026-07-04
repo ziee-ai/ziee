@@ -91,7 +91,7 @@ test.describe('Chat - Basic Flow', () => {
     // Verify page elements
     await expect(byTestId(page, 'new-chat-greeting')).toBeVisible()
     await expect(byTestId(page, 'chat-message-textarea')).toBeVisible()
-    await expect(byTestId(page, 'chat-model-select')).toBeVisible() // Model selector
+    await expect(byTestId(page, 'ullm-model-select')).toBeVisible() // Model selector (user-llm-providers chat extension)
   })
 
   test('should create conversation and send first message', async ({
@@ -208,7 +208,7 @@ test.describe('Chat - Basic Flow', () => {
 
     // No need to navigate again - we're already on the conversation page
     // Verify model selector is visible and shows both models
-    await expect(byTestId(page, 'chat-model-select')).toBeVisible()
+    await expect(byTestId(page, 'ullm-model-select')).toBeVisible()
 
     const visibleModels = await getVisibleModelsInDropdown(page)
     expect(visibleModels).toContain('GPT-4o Mini')

@@ -1,5 +1,4 @@
 // Permission system infrastructure
-#![allow(dead_code)]
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

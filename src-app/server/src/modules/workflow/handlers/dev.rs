@@ -6,7 +6,6 @@
 //!
 //! See plan §3 (REST surface) + §4.5 (dry-run) + §7 (test fixtures).
 
-#![allow(dead_code)]
 
 use aide::transform::TransformOperation;
 use axum::extract::{Multipart, Path as AxumPath, Query};

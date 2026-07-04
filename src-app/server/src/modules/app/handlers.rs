@@ -1,10 +1,12 @@
 use aide::transform::TransformOperation;
 use axum::debug_handler;
-use axum::{Extension, Json, http::StatusCode};
+use axum::{Extension, Json, http::HeaderMap, http::StatusCode, response::Response};
 use std::sync::Arc;
 
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
+use crate::modules::auth::handlers::token_response;
+use crate::modules::auth::refresh_tokens::mint_session_tokens;
 use crate::modules::auth::{AuthResponse, JwtService, password};
 
 use super::types::{SetupAdminRequest, SetupStatusResponse};
@@ -45,8 +47,9 @@ pub fn get_setup_status_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn setup_admin(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    headers: HeaderMap,
     Json(req): Json<SetupAdminRequest>,
-) -> ApiResult<Json<AuthResponse>> {
+) -> ApiResult<Response> {
     // Check if admin already exists
     let has_admin = Repos
         .user
@@ -79,9 +82,9 @@ pub async fn setup_admin(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Generate tokens
-    let tokens = jwt_service
-        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+    // Mint + whitelist the session tokens (admin-configured lifetimes).
+    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Log setup event
@@ -91,7 +94,9 @@ pub async fn setup_admin(
         "Admin user created during setup"
     );
 
-    Ok((StatusCode::CREATED, Json(AuthResponse { user, tokens })))
+    Ok(token_response(&headers, StatusCode::CREATED, minted, |tokens| {
+        AuthResponse { user, tokens }
+    }))
 }
 
 /// Documentation for setup_admin endpoint

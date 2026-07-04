@@ -6,7 +6,7 @@ import {
   createModelViaAPI,
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
-import { goToSkillsPage } from './helpers/skill-helpers'
+import { goToSkillsPage, showAllSkills } from './helpers/skill-helpers'
 import { byTestId } from '../testid.ts'
 
 /**
@@ -90,6 +90,9 @@ test.describe('Skills - import → use-in-conversation journey', () => {
     // SKILL_NAME is dynamic data this test created — a text filter on the
     // skill card is allowed.
     await goToSkillsPage(page, baseURL)
+    // Name-sorted + client-paginated at 10; the built-in capability skills fill
+    // the first page, so show all on one page to find the imported skill.
+    await showAllSkills(page)
     await expect(
       page
         .locator('[data-testid^="skill-list-card-"]')

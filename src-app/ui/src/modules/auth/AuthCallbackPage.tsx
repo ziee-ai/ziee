@@ -50,8 +50,14 @@ export const AuthCallbackPage: React.FC = () => {
       ? window.location.hash.slice(1)
       : window.location.hash
     const params = new URLSearchParams(raw)
+    const expiresInRaw = params.get('expires_in')
+    const expiresIn = expiresInRaw ? Number.parseInt(expiresInRaw, 10) : NaN
     return {
       token: params.get('token'),
+      // Access-token lifetime (seconds) — seeds the proactive silent
+      // refresh. The refresh token itself never rides the URL: it was
+      // set as an httpOnly cookie on the redirect response.
+      expiresIn: Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : undefined,
       returnTo: params.get('return_to'),
     }
   })
@@ -95,10 +101,13 @@ export const AuthCallbackPage: React.FC = () => {
       // user=null: server is the truth — initAuth() right below
       // re-fetches /me. The store keeps isAuthenticated=false until
       // /me resolves so consumers don't see a half-hydrated state.
+      // refresh_token stays blank: it lives in the httpOnly cookie the
+      // server set on the OAuth redirect (cookie mode).
       Stores.Auth.setAuthFromAutoLogin({
         user: null,
         access_token: token,
         refresh_token: '',
+        expires_in: initial.expiresIn,
       })
 
       try {

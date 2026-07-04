@@ -1,7 +1,6 @@
 //! `GET /api/workflow-runs/{run_id}/artifact/{step_id}/{filename}` —
 //! stream an artifact file's bytes.
 
-#![allow(dead_code)]
 
 use aide::transform::TransformOperation;
 use axum::body::Body;

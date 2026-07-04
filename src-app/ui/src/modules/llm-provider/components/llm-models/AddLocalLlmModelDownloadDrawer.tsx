@@ -223,13 +223,26 @@ export function AddLocalLlmModelDownloadDrawer() {
       // Auto-generate model ID from display name
       const modelId = generateModelId((values.display_name as string) || 'model')
 
+      // Required-field validation (this form has no zod resolver). Surface
+      // errors as inline FieldErrors (role="alert") rather than toasts.
+      let hasFieldError = false
       if (!values.repository_id) {
-        message.error('Repository is required')
-        return
+        form.setError('repository_id', { message: 'Repository is required' })
+        hasFieldError = true
       }
-
-      if (!values.repository_path) {
-        message.error('Repository path is required')
+      if (!(values.repository_path as string | undefined)?.trim()) {
+        form.setError('repository_path', { message: 'Repository path is required' })
+        hasFieldError = true
+      }
+      if (!(values.display_name as string | undefined)?.trim()) {
+        form.setError('display_name', { message: 'Display name is required' })
+        hasFieldError = true
+      }
+      if (!(values.main_filename as string | undefined)?.trim()) {
+        form.setError('main_filename', { message: 'Main filename is required' })
+        hasFieldError = true
+      }
+      if (hasFieldError) {
         return
       }
 
@@ -280,6 +293,10 @@ export function AddLocalLlmModelDownloadDrawer() {
             engine_type: ((values.engine_type as string) || 'mistralrs') as EngineType,
             engine_settings: (values.engine_settings as Record<string, unknown>) || {},
           },
+          // `onStart` fires as soon as the download is registered: it switches
+          // this shared drawer from add-mode to View-Download-Details mode
+          // (`open = viewMode || addMode`), so the editable form (its submit
+          // button) is replaced by the read-only view.
           Stores.ViewDownloadDrawer.openViewDownloadDrawer,
         )
 

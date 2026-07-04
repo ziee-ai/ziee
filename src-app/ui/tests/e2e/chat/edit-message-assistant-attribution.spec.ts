@@ -62,11 +62,17 @@ test.describe('Chat — edit-message assistant attribution restoration', () => {
     await goToNewChatPage(page, baseURL)
     await selectModelInDropdown(page, 'Claude Haiku 4.5')
 
-    // Select assistant A in the composer's assistant picker.
-    const picker = byTestId(page, 'assistant-selector')
+    // The composer's assistant picker is the "+" dropdown → assistant
+    // submenu; the current selection surfaces as the assistant-status-chip.
+    const selectAssistant = async (id: string) => {
+      await byTestId(page, 'chat-input-add-btn').click()
+      await byTestId(page, 'assistant-menu-trigger').click()
+      await byTestId(page, `assistant-option-${id}`).click()
+    }
     const chip = byTestId(page, 'assistant-status-chip')
-    await picker.click()
-    await byTestId(page, `assistant-selector-opt-${idByName[nameA]}`).click()
+
+    // Select assistant A in the composer's assistant picker.
+    await selectAssistant(idByName[nameA])
     await expect(chip).toContainText(nameA)
 
     // Send a message → it is attributed to A; wait for the reply.
@@ -76,8 +82,7 @@ test.describe('Chat — edit-message assistant attribution restoration', () => {
     await waitForAssistantResponse(page)
 
     // Switch the picker to assistant B (the "pre-edit" selection).
-    await picker.click()
-    await byTestId(page, `assistant-selector-opt-${idByName[nameB]}`).click()
+    await selectAssistant(idByName[nameB])
     await expect(chip).toContainText(nameB)
 
     // Edit the sent user message → the extension restores A's attribution.

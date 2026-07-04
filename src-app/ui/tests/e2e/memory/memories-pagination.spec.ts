@@ -66,8 +66,9 @@ test.describe('Memory — My memories pagination', () => {
     await expect(byTestId(page, 'memory-pagination')).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('[data-memory-id]')).toHaveCount(10)
 
-    // Jump to page 2 via the quick-jumper. The store fires a real
-    // GET /api/memories?page=2 server fetch.
+    // Jump to page 2 via the quick-jumper input. The store fires a real
+    // GET /api/memories?page=2 server fetch. (ListPagination renders the
+    // shared kit quick-jumper — `${testid}-jump` — on every list.)
     const pageTwoReq = page.waitForRequest(
       req =>
         req.url().includes('/api/memories') &&

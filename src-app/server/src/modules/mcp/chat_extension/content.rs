@@ -1,5 +1,4 @@
 // MCP content types
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -235,11 +234,4 @@ impl McpContentData {
         }
     }
 
-    /// Get content type string
-    pub fn content_type(&self) -> &'static str {
-        match self {
-            Self::ToolUse { .. } => "tool_use",
-            Self::ToolResult { .. } => "tool_result",
-        }
-    }
 }

@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test'
-import { installTauriMock, mockBackendDefaults } from './helpers/tauri-mock'
+import {
+  FAKE_TOKENS,
+  installTauriMock,
+  mockBackendDefaults,
+} from './helpers/tauri-mock'
 
 test.describe('desktop auto-login', () => {
   test('happy path: lands on app without flashing the login form', async ({
@@ -52,6 +56,57 @@ test.describe('desktop auto-login', () => {
       () => (window as any).__TAURI_MOCK_CALLS__.auto_login,
     )
     expect(calls).toBeGreaterThanOrEqual(3)
+  })
+
+  test('refresh failure falls back to auto_login — the desktop session is permanent', async ({
+    page,
+  }) => {
+    // Short-lived token so the shared Auth store's proactive silent
+    // refresh fires within the test (75% of 4s ≈ 3s)…
+    await installTauriMock(page, {
+      autoLogin: 'success',
+      tokens: { ...FAKE_TOKENS, expires_in: 4 },
+    })
+    await mockBackendDefaults(page)
+    // …and the refresh endpoint hard-401s (revoked/expired session —
+    // e.g. the machine slept past the full session length). The desktop
+    // fallback must re-mint via auto_login instead of logging out.
+    await page.route('**/api/auth/refresh', async route => {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: 'revoked',
+          error_code: 'REFRESH_TOKEN_REVOKED',
+        }),
+      })
+    })
+
+    await page.goto('/')
+
+    // Bootstrap lands normally on the first auto_login.
+    await expect(
+      page.getByRole('textbox', { name: /username/i }),
+    ).toHaveCount(0)
+
+    // Wait past the refresh point (~3s) + fallback round-trip, then
+    // assert the fallback re-minted locally: a SECOND auto_login call…
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () => (window as any).__TAURI_MOCK_CALLS__.auto_login,
+          ),
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThanOrEqual(2)
+
+    // …and the user NEVER saw a login surface or an error screen.
+    await expect(
+      page.getByRole('textbox', { name: /username/i }),
+    ).toHaveCount(0)
+    await expect(page).not.toHaveURL(/\/auth\b/)
+    await expect(page.getByTestId('desktop-bootstrap-failed')).toHaveCount(0)
   })
 
   test('permanent failure: spinner switches to the actionable message after the deadline', async ({

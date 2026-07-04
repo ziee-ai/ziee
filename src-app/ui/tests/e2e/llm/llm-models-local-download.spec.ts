@@ -62,7 +62,11 @@ async function submitDownloadAndWait(page: Page) {
 }
 
 async function cancelDownloadForm(page: Page) {
-  await byTestId(page, 'llm-download-drawer-cancel-btn').click()
+  // A kit Select popup opened earlier in the drawer can leave a closing
+  // animation that keeps the footer button reporting "not stable"; dismiss any
+  // open popup first, then force past the stability wait for this teardown click.
+  await page.keyboard.press('Escape')
+  await byTestId(page, 'llm-download-drawer-cancel-btn').click({ force: true })
   await byTestId(page, 'llm-model-download-form').waitFor({ state: 'hidden', timeout: 5000 })
 }
 
@@ -236,7 +240,7 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     await submitDownloadAndWait(page)
 
     // Form drawer closes; the View Download Details drawer auto-opens.
-    await byTestId(page, 'llm-model-download-form').waitFor({ state: 'hidden', timeout: 5000 })
+    await byTestId(page, 'llm-download-drawer-submit-btn').waitFor({ state: 'hidden', timeout: 5000 })
     await closeViewDetails(page)
   })
 
@@ -253,7 +257,7 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
 
     // Download is accepted; validation happens asynchronously.
     await submitDownloadAndWait(page)
-    await byTestId(page, 'llm-model-download-form').waitFor({ state: 'hidden', timeout: 5000 })
+    await byTestId(page, 'llm-download-drawer-submit-btn').waitFor({ state: 'hidden', timeout: 5000 })
 
     // Download appears in the "Downloading Models" section with the model name.
     await expect(byTestId(page, 'llm-downloads-section-card')).toBeVisible({ timeout: 5000 })
@@ -636,8 +640,13 @@ test.describe('LLM Models - Local Download - Auto-detect files', () => {
     await openDownloadDrawer(page)
 
     await selectRepo(page, 'Hugging Face Hub')
+    // Wait for the selection to register (and the Select popup to close) so the
+    // Detect click lands immediately instead of racing the closing popup.
+    await expect(byTestId(page, 'llm-download-repository-select')).toContainText('Hugging Face Hub')
 
-    // Leave the repository path EMPTY and click Detect.
+    // Clear the repository path (the add form pre-fills a TinyLlama default),
+    // then click Detect to exercise the empty-path validation branch.
+    await byTestId(page, 'llm-download-repository-path-input').fill('')
     await byTestId(page, 'llm-download-detect-files-btn').click()
 
     await expect(

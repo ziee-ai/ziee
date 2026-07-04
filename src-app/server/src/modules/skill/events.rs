@@ -4,7 +4,6 @@
 //! `skill_mcp` `list_tools` response refetch on the corresponding
 //! `sync:<entity>` event. Rich row data lives in the REST endpoints.
 
-#![allow(dead_code)]
 
 use uuid::Uuid;
 

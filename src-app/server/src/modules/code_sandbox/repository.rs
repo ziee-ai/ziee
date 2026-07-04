@@ -83,26 +83,6 @@ impl CodeSandboxRepository {
         Ok(rows)
     }
 
-    /// True when the conversation already has a provenance row for this path
-    /// (so staging can skip re-copying / re-seeding).
-    #[allow(dead_code)]
-    pub async fn workspace_provenance_exists(
-        &self,
-        conversation_id: Uuid,
-        workspace_relpath: &str,
-    ) -> Result<bool, AppError> {
-        let row = sqlx::query_scalar!(
-            r#"SELECT 1 FROM sandbox_workspace_files
-               WHERE conversation_id = $1 AND workspace_relpath = $2"#,
-            conversation_id,
-            workspace_relpath,
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(Self::db_err)?;
-        Ok(row.is_some())
-    }
-
     /// Advance the base version after a successful version-back commit.
     pub async fn update_workspace_base(
         &self,

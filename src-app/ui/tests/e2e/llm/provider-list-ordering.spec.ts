@@ -33,9 +33,10 @@ async function createProvider(
 }
 
 async function y(page: import('@playwright/test').Page, name: string) {
+  // The provider list renders as vertical nav buttons (kit Menu is a <nav>,
+  // not role="menu"); each item carries a `llm-provider-nav-<id>` testid.
   const item = page
-    .locator('[role="menu"]')
-    .getByRole('menuitem')
+    .locator('[data-testid^="llm-provider-nav-"]')
     .filter({ hasText: name })
     .first()
   await item.waitFor({ state: 'visible', timeout: 15000 })

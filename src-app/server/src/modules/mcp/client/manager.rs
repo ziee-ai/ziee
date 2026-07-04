@@ -46,7 +46,6 @@ pub struct McpSessionManager {
 }
 
 impl McpSessionManager {
-    #[allow(dead_code)] // Used in main.rs (binary), not in library
     pub fn new(config: Arc<Config>) -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -289,19 +288,6 @@ impl McpSessionManager {
     #[allow(dead_code)]
     pub async fn contains(&self, server_id: Uuid) -> bool {
         self.sessions.read().await.contains_key(&server_id)
-    }
-
-    /// Forcibly insert a placeholder session, bypassing the
-    /// `get_or_create` path. Test-only — lets the cleanup test seed
-    /// the pool without standing up a real subprocess / HTTP server.
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub async fn insert_for_test(
-        &self,
-        server_id: Uuid,
-        session: Arc<RwLock<McpSession>>,
-    ) {
-        self.sessions.write().await.insert(server_id, session);
     }
 
     #[allow(dead_code)] // Phase 3 feature: background task to cleanup idle sessions

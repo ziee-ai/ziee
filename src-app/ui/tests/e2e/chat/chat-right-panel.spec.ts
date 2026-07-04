@@ -482,11 +482,19 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     // unit-test equivalent is at the backend integration layer.
     const panelBody = page.locator('[data-testid="chat-right-panel"]')
     await expect(page.locator('[data-testid="cannot-preview"]')).toHaveCount(0)
-    // Body either succeeds (table renders) OR fails gracefully (error UI
-    // shows). Asserting on the union pins the contract: XlsxBody never
-    // hangs silently in spinner state.
+    // Body either succeeds (a per-sheet table renders) OR fails gracefully
+    // (error UI shows). Asserting on the union pins the contract: XlsxBody
+    // never hangs silently in spinner state. We assert on the per-sheet
+    // `file-xlsx-table-<sheet>` div (present in BOTH the single- and
+    // multi-sheet success paths) rather than the `file-xlsx-tabs` root,
+    // because the root is absent in the graceful-error branch — the table
+    // testid is the reliable success signal that also excludes the error UI.
+    // (The kit <Tabs> root DOES forward `data-testid`; the `file-xlsx-tabs`
+    // hook is now present on the viewer root in both sheet-count paths.)
     await expect(
-      byTestId(panelBody, 'file-xlsx-tabs').or(byTestId(panelBody, 'file-xlsx-error'))
+      panelBody
+        .locator('[data-testid^="file-xlsx-table-"], [data-testid="file-xlsx-error"]')
+        .first()
     ).toBeVisible({ timeout: 20000 })
 
     await expect(panelButton(page, 'Download')).toBeVisible()

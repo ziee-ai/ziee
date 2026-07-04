@@ -1,6 +1,8 @@
 import { Page, expect } from '@playwright/test'
 import { fillDownloadForm, fillUploadForm, submitUploadForm, type DownloadFormData, type UploadFormData } from './form-helpers'
 import { byTestId } from '../../testid'
+import * as fs from 'fs'
+import * as path from 'path'
 
 /**
  * LLM Model CRUD helpers (kit / data-testid based)
@@ -47,7 +49,13 @@ export async function uploadModelFolder(page: Page, folderPath: string) {
   // type="file"> is a descendant (a sibling of the role=button dropzone, for a11y
   // — not nested inside it). No webkitdirectory — it's a multiple input.
   const fileInput = byTestId(page, 'llm-upload-files').locator('input[type="file"]')
-  await fileInput.setInputFiles(folderPath)
+  // The input is a plain `multiple` file input (no webkitdirectory), so Playwright
+  // cannot accept a directory path — enumerate the folder and pass each file.
+  const files = fs
+    .readdirSync(folderPath)
+    .map((name) => path.join(folderPath, name))
+    .filter((p) => fs.statSync(p).isFile())
+  await fileInput.setInputFiles(files)
   await page.waitForLoadState('domcontentloaded')
   // Wait for the selected-files list (indicates files were processed).
   await byTestId(page, 'llm-upload-selected-files-list').waitFor({ timeout: 10000 })
@@ -133,8 +141,12 @@ export async function startModelDownload(page: Page, data: DownloadFormData): Pr
   ])
   expect(resp.ok()).toBeTruthy()
 
-  // Wait for the download drawer form to close.
-  await form.waitFor({ state: 'hidden', timeout: 10000 })
+  // On a successful start the shared drawer switches from the editable
+  // add-form to the read-only "View Download Details" mode (they share one
+  // Drawer, so `llm-model-download-form` stays mounted). The add-mode submit
+  // button disappearing is the reliable signal that the transition happened.
+  void form
+  await byTestId(page, 'llm-download-drawer-submit-btn').waitFor({ state: 'hidden', timeout: 10000 })
 }
 
 // =====================================================

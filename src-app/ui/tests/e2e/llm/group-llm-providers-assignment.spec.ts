@@ -71,7 +71,7 @@ test.describe('User Group Assignment in LLM Providers', () => {
     await expect(card).toBeVisible({ timeout: 15000 })
 
     // Verify edit button exists
-    await expect(byTestId(page, 'llm-provider-groups-manage-btn')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-groups-assign')).toBeVisible()
 
     // Cleanup
     await page.goBack()
@@ -121,16 +121,16 @@ test.describe('User Group Assignment in LLM Providers', () => {
     await openGroupAssignmentDrawerFromProvider(page)
 
     // Drawer is open (save button present) and the group card appears.
-    await expect(byTestId(page, 'llm-provider-groups-save-btn')).toBeVisible()
+    await expect(byTestId(page, 'llm-provider-groups-save')).toBeVisible()
 
     const groupContainer = page
-      .locator('[data-testid^="llm-provider-group-card-"]')
+      .locator('[data-testid^="llm-provider-groups-drawer-card-"]')
       .filter({ hasText: groupName })
       .first()
     await expect(groupContainer).toBeVisible()
 
     const switchElement = groupContainer
-      .locator('[data-testid^="llm-provider-group-switch-"]')
+      .locator('[data-testid^="llm-provider-groups-drawer-switch-"]')
       .first()
     await expect(switchElement).toBeVisible()
 
@@ -302,17 +302,11 @@ test.describe('User Group Assignment in LLM Providers', () => {
     // Open drawer
     await openGroupAssignmentDrawerFromProvider(page)
 
-    // Look for "All Users" (which is a system group)
-    const allUsersContainer = page
-      .locator('[data-testid^="llm-provider-group-card-"]')
-      .filter({ hasText: 'All Users' })
-
-    // If All Users exists, verify it has System tag
-    const allUsersCount = await allUsersContainer.count()
-    if (allUsersCount > 0) {
-      await expect(
-        allUsersContainer.first().locator('[data-testid^="llm-provider-group-system-tag-"]')
-      ).toBeVisible()
+    // The shared assignment drawer marks the default group with a "Default"
+    // tag (there is no separate "system" tag in the shared component).
+    const defaultTag = page.locator('[data-testid^="llm-provider-groups-drawer-default-tag-"]')
+    if ((await defaultTag.count()) > 0) {
+      await expect(defaultTag.first()).toBeVisible()
     }
 
     // Close drawer
@@ -323,7 +317,7 @@ test.describe('User Group Assignment in LLM Providers', () => {
     await deleteProvider(page, providerName)
   })
 
-  test('should show active/inactive status for groups', async ({ page, testInfra }) => {
+  test('shows the group name and description in the assignment drawer', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     const groupName = `test-group-status-${Date.now()}`
     const providerName = `test-provider-status-${Date.now()}`
@@ -344,15 +338,15 @@ test.describe('User Group Assignment in LLM Providers', () => {
 
     // Find the group container
     const groupContainer = page
-      .locator('[data-testid^="llm-provider-group-card-"]')
+      .locator('[data-testid^="llm-provider-groups-drawer-card-"]')
       .filter({ hasText: groupName })
       .first()
     await expect(groupContainer).toBeVisible()
 
-    // Verify it shows an "Active" status tag (groups are active by default)
-    await expect(
-      groupContainer.locator('[data-testid^="llm-provider-group-status-tag-"]')
-    ).toContainText('Active')
+    // The shared assignment drawer renders the group's name and description; it
+    // does not surface an active/inactive status tag.
+    await expect(groupContainer).toContainText(groupName)
+    await expect(groupContainer).toContainText('Status test group')
 
     // Close drawer
     await cancelGroupAssignment(page)
@@ -474,7 +468,7 @@ test.describe('User Group Assignment in LLM Providers', () => {
 
     // Find the group container
     const groupContainer = page
-      .locator('[data-testid^="llm-provider-group-card-"]')
+      .locator('[data-testid^="llm-provider-groups-drawer-card-"]')
       .filter({ hasText: groupName })
       .first()
     await expect(groupContainer).toBeVisible()

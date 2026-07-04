@@ -1,5 +1,4 @@
 // Chat type infrastructure
-#![allow(dead_code)]
 
 // Conversation API request/response types
 
@@ -9,6 +8,9 @@ use uuid::Uuid;
 use crate::modules::chat::core::models::{Branch, Conversation};
 
 /// Conversation with its active branch
+// API response DTO (OpenAPI-derived) not yet returned by any handler; kept as
+// part of the conversation type surface rather than deleted.
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConversationWithBranch {
     #[serde(flatten)]

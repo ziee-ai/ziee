@@ -7,7 +7,6 @@
 //! `skills::read`) before calling these; the tools themselves
 //! re-verify per-skill access and per-conversation visibility.
 
-#![allow(dead_code)]
 
 use std::path::{Component, Path, PathBuf};
 

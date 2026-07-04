@@ -13,7 +13,6 @@
 //! registered provider returns gets surfaced, and nothing is injected when
 //! nothing is mounted (the common case, ~zero overhead: an empty registry read).
 
-#![allow(dead_code)]
 
 use std::sync::Arc;
 

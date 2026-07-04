@@ -10,7 +10,6 @@
 //! Persistence of the per-step metadata into `workflow_runs` happens
 //! in the runner (one place, transactional with status updates).
 
-#![allow(dead_code)]
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -44,6 +43,10 @@ use crate::modules::workflow::validate::{
 };
 
 /// Per-call LLM token cap (plan §4.5).
+// FIXME(token-cap): defined per the plan but not yet enforced at any call site;
+// the per-step cap below is what's wired today. Kept so the policy constant
+// isn't lost before the per-call enforcement lands.
+#[allow(dead_code)]
 pub const PER_CALL_TOKEN_CAP: u64 = 50_000;
 
 /// Per-step token cap (plan §4.5 + §10). Re-exported from the runner so

@@ -176,7 +176,8 @@ test.describe('Chat ↔ project decoupling — list endpoint contract', () => {
       },
       { api: apiURL, t: token },
     )
-    const ids: string[] = (listed as { id: string }[]).map(c => c.id)
+    // GET /api/conversations returns a paginated object, not a bare array.
+    const ids: string[] = (listed as { conversations: { id: string }[] }).conversations.map(c => c.id)
     expect(ids).toContain(unfiled.id)
     expect(ids).toContain(projectBound)
   })

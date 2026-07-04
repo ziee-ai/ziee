@@ -7,7 +7,6 @@
 //! `format_outputs_for_mcp` honoring each output's `expose:` mode and
 //! the size caps (plan §4.7).
 
-#![allow(dead_code)]
 
 use std::path::Path;
 use std::time::Duration;
@@ -836,6 +835,9 @@ fn no_progress_limit_secs() -> i64 {
 
 /// Test-only access to the no-progress await loop (re-exported via
 /// `ziee::workflow_mcp_internal` for the crashed-runner integration test).
+// Consumed only by the integration test suite through the pub re-export, so the
+// lib/bin build sees it as dead. Narrow allow (was module blanket).
+#[allow(dead_code)]
 #[doc(hidden)]
 pub async fn await_terminal_for_test(
     pool: &sqlx::PgPool,

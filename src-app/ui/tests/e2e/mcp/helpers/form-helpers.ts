@@ -62,9 +62,14 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
   // Transport type — open the kit Select and pick the option by its derived
   // `${testid}-opt-${value}` id (options render in a portal, so scope to page).
   const transportSelect = byTestId(drawer, 'mcp-drawer-transport-select')
-  await transportSelect.scrollIntoViewIfNeeded()
-  await transportSelect.click()
-  await byTestId(page, `mcp-drawer-transport-select-opt-${data.transportType}`).click()
+  // Transport is immutable once a server exists — the Select is rendered disabled
+  // in edit mode. Only pick a transport when it's actually editable (create mode);
+  // in edit mode the existing transport already stands and its fields are shown.
+  if (await transportSelect.isEnabled()) {
+    await transportSelect.scrollIntoViewIfNeeded()
+    await transportSelect.click()
+    await byTestId(page, `mcp-drawer-transport-select-opt-${data.transportType}`).click()
+  }
 
   // Wait for transport-specific fields to appear and be ready
   if (data.transportType === 'stdio') {

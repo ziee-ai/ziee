@@ -1,5 +1,4 @@
 // MCP repository
-#![allow(dead_code)]
 
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use chrono::{DateTime, Utc};
@@ -426,6 +425,10 @@ impl McpRepository {
         get_user_mcp_server(&self.pool, id, user_id).await
     }
 
+    // Real user/group MCP repository surface not currently called from a
+    // handler (group assignment is served via the system-MCP path). Narrow
+    // allow (was module blanket) keeps the API without hiding new dead code.
+    #[allow(dead_code)]
     pub async fn list_user_servers(
         &self,
         user_id: Uuid,
@@ -578,6 +581,9 @@ impl McpRepository {
     }
 
     // Group assignment operations
+    // Superseded at the handler layer by get_system_servers_for_group; kept as
+    // the raw group→servers query. Narrow allow (was module blanket).
+    #[allow(dead_code)]
     pub async fn get_group_mcp_servers(&self, group_id: Uuid) -> Result<Vec<Uuid>, AppError> {
         get_group_mcp_servers(&self.pool, group_id).await
     }
@@ -597,6 +603,7 @@ impl McpRepository {
         remove_mcp_server_from_group(&self.pool, server_id, group_id).await
     }
 
+    #[allow(dead_code)] // bulk group→servers setter; not currently routed (see above)
     pub async fn set_group_servers(
         &self,
         group_id: Uuid,
@@ -890,6 +897,9 @@ pub async fn get_user_mcp_server(
 }
 
 /// List user's own MCP servers with pagination
+// Called only by the (not-currently-routed) list_user_servers repo method;
+// kept as the real query. Narrow allow (was module blanket).
+#[allow(dead_code)]
 pub async fn list_user_mcp_servers(
     pool: &PgPool,
     user_id: Uuid,
@@ -2022,6 +2032,9 @@ pub async fn delete_system_mcp_server_in_tx(
 // =====================================================
 
 /// Get server IDs assigned to a group
+// Called only by the same-named (not-routed) repo method; kept as the raw
+// query. Narrow allow (was module blanket).
+#[allow(dead_code)]
 pub async fn get_group_mcp_servers(pool: &PgPool, group_id: Uuid) -> Result<Vec<Uuid>, AppError> {
     let server_ids = sqlx::query!(
         "SELECT mcp_server_id FROM user_group_mcp_servers WHERE group_id = $1",
@@ -2159,6 +2172,7 @@ pub async fn remove_mcp_server_from_group(
 }
 
 /// Set group's MCP servers (replaces all assignments)
+#[allow(dead_code)] // called only by the not-routed set_group_servers method; real query
 pub async fn set_group_mcp_servers(
     pool: &PgPool,
     group_id: Uuid,

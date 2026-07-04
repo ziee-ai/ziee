@@ -127,6 +127,7 @@ fn test_jwt_service() -> Arc<ziee::JwtService> {
         audience: "ziee-api".to_string(),
         access_token_expiry_hours: 24,
         refresh_token_expiry_days: 30,
+        access_token_expiry_seconds: None,
     };
     Arc::new(ziee::JwtService::new(config))
 }
@@ -217,6 +218,40 @@ fn mint_admin_login_returns_valid_jwt_for_bootstrapped_admin() {
             "refresh_token must be populated"
         );
         assert!(response.expires_in > 0, "expires_in must be positive");
+    });
+}
+
+/// Desktop auto-login mints through the SAME path as every server login
+/// (`mint_session_tokens`): the refresh token carries a jti that is
+/// whitelisted in `refresh_tokens` — so logout-everywhere genuinely
+/// revokes desktop sessions and the prune keeps the table bounded.
+#[test]
+#[serial]
+fn mint_admin_login_registers_whitelisted_jti() {
+    rt().block_on(async {
+        let pool = shared_pool().await;
+        clean_users(pool).await;
+        ensure_desktop_admin().await.expect("bootstrap admin");
+
+        let jwt = test_jwt_service();
+        let response = mint_admin_login(&jwt)
+            .await
+            .expect("mint_admin_login should succeed when admin exists");
+
+        // The refresh token decodes with a jti…
+        let claims = jwt
+            .validate_refresh_token(&response.refresh_token)
+            .expect("refresh token must validate");
+        let jti = uuid::Uuid::parse_str(
+            claims.jti.as_deref().expect("desktop refresh token must carry a jti"),
+        )
+        .expect("jti is a uuid");
+
+        // …that is whitelisted (active) in the refresh_tokens table.
+        let active = ziee::refresh_tokens::is_active(pool, jti)
+            .await
+            .expect("is_active query");
+        assert!(active, "the minted jti must be whitelisted + active");
     });
 }
 

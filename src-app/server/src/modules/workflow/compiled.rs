@@ -19,7 +19,6 @@
 //! noted in the plan as optional). Recompute on every install + on any
 //! workflow definition change.
 
-#![allow(dead_code)]
 
 use std::collections::BTreeMap;
 

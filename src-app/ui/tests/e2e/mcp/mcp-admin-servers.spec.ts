@@ -555,7 +555,7 @@ test.describe('MCP - Admin System Servers', () => {
   test('run-in-sandbox help text mentions filesystem isolation', async ({ page }) => {
     await openAddServerDrawer(page, true)
     // The help text is rendered under the Switch.
-    const sandboxHelp = byTestId(page, 'run_in_sandbox-description')
+    const sandboxHelp = byTestId(page, 'field-desc-run_in_sandbox')
     await expect(sandboxHelp).toContainText(/isolated workspace/i)
     await expect(sandboxHelp).toContainText(/filesystem-oriented/i)
   })
@@ -592,12 +592,12 @@ test.describe('MCP - Admin System Servers: sandbox flavor + command tiers', () =
 
     // Host tier (run-in-sandbox off) → submit is blocked with an inline error.
     await byTestId(page, 'mcp-drawer-submit-btn').click()
-    await expect(byTestId(page, 'command-error')).toBeVisible()
+    await expect(byTestId(page, 'field-error-command')).toBeVisible()
     await expect(byTestId(page, 'mcp-drawer-form')).toBeVisible() // drawer stays open (save blocked)
 
     // Enabling run-in-sandbox lifts the restriction; the error clears.
     await byTestId(page, 'mcp-drawer-run-sandbox-switch').click()
-    await expect(byTestId(page, 'command-error')).toHaveCount(0)
+    await expect(byTestId(page, 'field-error-command')).toHaveCount(0)
 
     // Save disabled so the create-time connection probe doesn't spawn the command.
     await byTestId(page, 'mcp-drawer-enabled-switch').click()

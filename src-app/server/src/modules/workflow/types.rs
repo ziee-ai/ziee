@@ -5,7 +5,6 @@
 //! event payloads consumed by the per-run SSE endpoint
 //! (`progress_sse.rs`) and the workflow_mcp progress bridge (B5).
 
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -158,6 +157,9 @@ pub enum StepKindTag {
 }
 
 impl StepKindTag {
+    // Stable wire/log string for each tag; no caller yet (the enum is used via
+    // its serde repr today).
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             StepKindTag::Llm => "llm",

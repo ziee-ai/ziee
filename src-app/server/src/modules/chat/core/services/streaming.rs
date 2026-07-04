@@ -1,5 +1,4 @@
 // Streaming service infrastructure
-#![allow(dead_code)]
 
 // Streaming service - Core streaming logic with delta accumulation
 
@@ -908,44 +907,6 @@ impl StreamingService {
         Ok((user_message_id, assistant_message_id))
     }
 
-    /// Convert conversation history to AI provider message format
-    fn convert_history_to_messages(
-        &self,
-        history: &[crate::modules::chat::core::types::MessageWithContent],
-    ) -> Result<Vec<ChatMessage>, AppError> {
-        let mut messages = Vec::new();
-
-        for msg_with_content in history {
-            let role = msg_with_content
-                .message
-                .role_enum()
-                .map_err(|e| AppError::internal_error(format!("Invalid message role: {}", e)))?;
-
-            // Convert role to AI provider role
-            let ai_role = match role {
-                MessageRole::User => ai_providers::Role::User,
-                MessageRole::Assistant => ai_providers::Role::Assistant,
-                MessageRole::System => continue, // There should be no system message in the database
-            };
-
-            // Convert content blocks (all content now handled by extensions)
-            let content_blocks = Vec::new();
-            for content in &msg_with_content.contents {
-                let _content_data = content.parse_content()?;
-                // All content types are now extension types - this method shouldn't be used
-                // Use convert_history_to_messages_with_extensions instead
-                tracing::warn!("Using deprecated convert_history_to_messages without extensions - content may not be converted properly");
-            }
-
-            messages.push(ChatMessage {
-                role: ai_role,
-                content: content_blocks,
-            });
-        }
-
-        Ok(messages)
-    }
-
     /// Convert history to messages with extension support for content transformation
     /// This version supports extensions transforming content before sending to LLM
     ///
@@ -1088,73 +1049,6 @@ impl StreamingService {
         Ok(messages)
     }
 
-    /// Static version of convert_history_to_messages for use when extensions not available
-    /// Kept for backward compatibility
-    fn convert_history_to_messages_static(
-        history: &[crate::modules::chat::core::types::MessageWithContent],
-    ) -> Result<Vec<ChatMessage>, AppError> {
-        let mut messages = Vec::new();
-
-        for msg_with_content in history {
-            let role = msg_with_content
-                .message
-                .role_enum()
-                .map_err(|e| AppError::internal_error(format!("Invalid message role: {}", e)))?;
-
-            // Convert role to AI provider role
-            let ai_role = match role {
-                MessageRole::User => ai_providers::Role::User,
-                MessageRole::Assistant => ai_providers::Role::Assistant,
-                MessageRole::System => continue, // Skip system messages for now
-            };
-
-            // Convert content blocks (all content now handled by extensions)
-            let content_blocks = Vec::new();
-            for content in &msg_with_content.contents {
-                let _content_data = content.parse_content()?;
-                // All content types are now extension types - this static method shouldn't be used
-                // Use convert_history_to_messages_with_extensions with a registry instead
-                tracing::warn!("Using deprecated convert_history_to_messages_static without extensions - content may not be converted properly");
-            }
-
-            messages.push(ChatMessage {
-                role: ai_role,
-                content: content_blocks,
-            });
-        }
-
-        Ok(messages)
-    }
-
-    /// Transform AI provider stream to our ChatStreamChunk format with accumulation
-    fn transform_stream(
-        &self,
-        ai_stream: Pin<
-            Box<dyn Stream<Item = Result<AiStreamChunk, ai_providers::ProviderError>> + Send>,
-        >,
-        accumulator: Arc<Mutex<DeltaAccumulator>>,
-    ) -> Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, AppError>> + Send>> {
-        use futures_util::StreamExt;
-
-        let stream = ai_stream.then(move |result| {
-            let accumulator = Arc::clone(&accumulator);
-            async move {
-                match result {
-                    Ok(ai_chunk) => {
-                        // Process the chunk and accumulate deltas
-                        let mut acc = accumulator.lock().await;
-                        acc.process_chunk(ai_chunk).await
-                    }
-                    Err(e) => Err(AppError::internal_error(format!(
-                        "AI provider stream error: {}",
-                        e
-                    ))),
-                }
-            }
-        });
-
-        Box::pin(stream)
-    }
 }
 
 /// Build a thinking config from the model registry, or `None` when the model is
@@ -1209,7 +1103,6 @@ fn apply_model_params(
 struct AccumulatedContent {
     content_type: String,
     accumulated_text: String,
-    index: usize,
     /// Anthropic thinking-block signature (captured from `signature_delta`).
     signature: Option<String>,
     /// Redacted-thinking opaque data (captured from a redacted_thinking block).
@@ -1345,7 +1238,6 @@ impl DeltaAccumulator {
             self.content_blocks.push(AccumulatedContent {
                 content_type: String::new(),
                 accumulated_text: String::new(),
-                index: self.content_blocks.len(),
                 signature: None,
                 redacted_data: None,
             });
@@ -1535,6 +1427,9 @@ impl DeltaAccumulator {
 ///
 /// For non-tool messages (or User messages) all blocks are combined into a
 /// single message with the original role.
+// Exercised only by the unit tests below (the production stream path groups
+// blocks inline), so compile it under test cfg to keep it dead-code-clean.
+#[cfg(test)]
 fn group_blocks_into_provider_messages(
     role: MessageRole,
     tool_use_blocks: Vec<ai_providers::ContentBlock>,
