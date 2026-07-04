@@ -1,6 +1,10 @@
 import { create, useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
-import { subscribeWithSelector } from 'zustand/middleware'
+import {
+  persist as persistMiddleware,
+  type PersistOptions,
+  subscribeWithSelector,
+} from 'zustand/middleware'
 import { immer as immerMiddleware } from 'zustand/middleware/immer'
 import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useRef } from 'react'
@@ -68,6 +72,15 @@ export interface StoreConfig<State extends object, Actions extends object> {
    *  Zustand shallow-merge (`set(s => ({ x: 1 }))`), so merge-style stores like
    *  Chat migrate with NO change to their setters. */
   immer?: boolean
+  /** Opt-in localStorage persistence — the plain zustand `persist` options
+   *  (`name`, `storage`, `partialize`, `version`, `migrate`, `merge`,
+   *  `onRehydrateStorage`, `skipHydration`). Applied UNDER subscribeWithSelector
+   *  (so the 3-arg subscribe overload survives) and OVER immer (when enabled).
+   *  `partialize` sees only `State` (the data fields — never actions/lifecycle,
+   *  which are always restored from the builder); typing it over `State` rather
+   *  than the full state is also what keeps `Actions` cleanly inferrable from
+   *  the `actions` return instead of collapsing to `object`. */
+  persist?: PersistOptions<State, any>
   state: State
   // `get`/`set` are typed over STATE only (not State & Actions) — that keeps
   // `Actions` out of any parameter position, so it's inferred cleanly from the
@@ -153,6 +166,22 @@ function makeBuilder<State extends object, Actions extends object>(
   }
 }
 
+/** Apply the middleware stack in the fixed order the kit guarantees:
+ *  `subscribeWithSelector( persist?( immer?( builder ) ) )`. subscribeWithSelector
+ *  stays OUTERMOST so `store.subscribe(selector, cb, opts)` type-checks; persist
+ *  (when configured) wraps the base creator so only `partialize`'d keys persist;
+ *  immer (when enabled) is innermost so draft setters work under both. */
+function applyMiddleware<State extends object, Actions extends object>(
+  builder: (set: any, get: any) => FullStoreState<State, Actions>,
+  config: StoreConfig<State, Actions>,
+) {
+  const withImmer = config.immer ? immerMiddleware(builder as any) : builder
+  const withPersist = config.persist
+    ? persistMiddleware(withImmer as any, config.persist)
+    : withImmer
+  return subscribeWithSelector(withPersist as any)
+}
+
 /**
  * Global singleton store. Register it on a module via
  * `createModule({ stores: [MyStore] })` — the name is written ONCE here, and
@@ -163,12 +192,8 @@ export function defineStore<State extends object, Actions extends object>(
   config: StoreConfig<State, Actions>,
 ): StoreHandle<FullStoreState<State, Actions>> {
   const builder = makeBuilder(name, config)
-  const store = (
-    config.immer
-      ? create<FullStoreState<State, Actions>>()(
-          subscribeWithSelector(immerMiddleware(builder as any)),
-        )
-      : create<FullStoreState<State, Actions>>()(subscribeWithSelector(builder as any))
+  const store = create<FullStoreState<State, Actions>>()(
+    applyMiddleware(builder, config) as any,
   ) as BoundStore<FullStoreState<State, Actions>>
   return { name, store }
 }
@@ -239,14 +264,8 @@ export function defineLocalStore<State extends object, Actions extends object>(
           ? { ...config, state: { ...config.state, ...initial } as State }
           : config
         const builder = makeBuilder(group, merged)
-        const api = (
-          config.immer
-            ? createStore<FullStoreState<State, Actions>>()(
-                subscribeWithSelector(immerMiddleware(builder as any)),
-              )
-            : createStore<FullStoreState<State, Actions>>()(
-                subscribeWithSelector(builder as any),
-              )
+        const api = createStore<FullStoreState<State, Actions>>()(
+          applyMiddleware(builder, merged) as any,
         ) as StoreApi<FullStoreState<State, Actions>>
         ref.current = { api, proxy: createLocalProxy(api) }
       }
