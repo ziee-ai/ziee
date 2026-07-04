@@ -784,7 +784,9 @@ export class ChatExtensionRegistry {
    * Uses pre-built content-type registry for efficient rendering
    * Only creates components for extensions registered to this content type
    */
-  renderContent(props: ContentRendererProps): React.ReactNode | null {
+  renderContent(
+    props: ContentRendererProps,
+  ): { node: React.ReactNode; consumed: number } | null {
     const contentType = props.content.content_type
     const registered = this.contentTypeRegistry.get(contentType)
 
@@ -807,13 +809,23 @@ export class ChatExtensionRegistry {
     // extensions co-own a content type (`tool_result`) without an internal
     // delegation chain — each claims its own, the catch-all handles the rest.
     for (const { extension, Component } of enabledRegistered) {
-      const match = (Component as { contentMatch?: (c: ContentRendererProps['content']) => boolean })
-        .contentMatch
-      if (match && !match(props.content)) {
+      const statics = Component as {
+        contentMatch?: (c: ContentRendererProps['content']) => boolean
+        contentSpan?: (blocks: ContentRendererProps['content'][], index: number) => number
+      }
+      if (statics.contentMatch && !statics.contentMatch(props.content)) {
         continue
       }
       try {
-        return <Component {...props} />
+        // A grouping renderer may consume this block + following ones — but only
+        // when it has the neighbor list (inline in a message). Rendered
+        // standalone (no `blocks`), it always consumes exactly one, so grouping
+        // never recurses when a group renders its own members.
+        const consumed =
+          props.blocks && props.index != null && statics.contentSpan
+            ? Math.max(1, statics.contentSpan(props.blocks, props.index))
+            : 1
+        return { node: <Component {...props} />, consumed }
       } catch (error) {
         console.error(
           `[ChatExtensions] Error rendering content type '${contentType}' in ${extension.name}:`,

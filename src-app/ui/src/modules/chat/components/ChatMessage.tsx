@@ -1,7 +1,7 @@
-import { memo } from 'react'
+import { Fragment, memo, type ReactNode } from 'react'
 import { Avatar, ScrollArea } from '@/components/ui'
 import type { MessageWithContent } from '@/api-client/types'
-import { ExtensionSlot } from '@/modules/chat/core/extensions'
+import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
 import { MessageContext } from '@/modules/chat/core/MessageContext'
 import { BranchNavigator } from '@/modules/chat/components/BranchNavigator'
@@ -40,6 +40,33 @@ export const ChatMessage = memo(function ChatMessage({
   const bubbleBlocks = isUser
     ? sortedContents.filter(c => c.content_type !== 'file_attachment')
     : sortedContents
+
+  // Render blocks with a run-loop (not a plain map): a renderer that claims a
+  // block can consume the blocks that follow it (via its static `contentSpan`),
+  // so e.g. the MCP extension can fold a consecutive tool_use/tool_result run
+  // into one "N tools called" group. `renderContent` reports how many blocks it
+  // took; we advance past them. A block no extension claims falls back to the
+  // built-in ContentRenderer (consumes 1).
+  const bubbleNodes: ReactNode[] = []
+  for (let i = 0; i < bubbleBlocks.length; ) {
+    const block = bubbleBlocks[i]
+    const key = block.id || `blk-${i}`
+    const res = chatExtensionRegistry.renderContent({
+      content: block,
+      isUser,
+      blocks: bubbleBlocks,
+      index: i,
+    })
+    if (res) {
+      bubbleNodes.push(<Fragment key={key}>{res.node}</Fragment>)
+      i += res.consumed
+    } else {
+      bubbleNodes.push(
+        <ContentRenderer key={key} content={block} isUser={isUser} />,
+      )
+      i += 1
+    }
+  }
 
   return (
     <div
@@ -87,15 +114,7 @@ export const ChatMessage = memo(function ChatMessage({
             <div
               className={`${isUser ? '!pt-0.5' : ''} flex flex-1 -mt-[2px] w-full overflow-x-hidden flex-col`}
             >
-              <div className={'w-full flex flex-col gap-2'}>
-                {bubbleBlocks.map((content, index) => (
-                  <ContentRenderer
-                    key={`${content.id || index}`}
-                    content={content}
-                    isUser={isUser}
-                  />
-                ))}
-              </div>
+              <div className={'w-full flex flex-col gap-2'}>{bubbleNodes}</div>
             </div>
           </div>
         </div>

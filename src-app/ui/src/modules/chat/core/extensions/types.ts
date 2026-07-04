@@ -170,6 +170,26 @@ export interface ExtensionRequestFields {
 export interface ContentRendererProps {
   content: MessageContent
   isUser: boolean
+  /**
+   * The message's full ordered block list + this block's index in it. Passed
+   * only when rendered inline in a message (the `ChatMessage` run-loop), so a
+   * renderer can group consecutive blocks. A renderer that claims `content` MAY
+   * expose a static `contentSpan(blocks, index) => number` to tell the loop how
+   * many blocks it consumed (default 1); it should then render those blocks
+   * itself (e.g. a "3 tools called" group). Absent when rendered standalone
+   * (attachments, or a group rendering its own members) — in which case
+   * `contentSpan` is not consulted, so grouping doesn't recurse.
+   */
+  blocks?: MessageContent[]
+  index?: number
+}
+
+/** A content renderer that can also group consecutive blocks (see `blocks`). */
+export type GroupingContentRenderer = React.ComponentType<ContentRendererProps> & {
+  /** Claim only certain blocks of the registered content type (default: catch-all). */
+  contentMatch?: (content: MessageContent) => boolean
+  /** How many blocks (starting at `index`) this renderer consumes. Default 1. */
+  contentSpan?: (blocks: MessageContent[], index: number) => number
 }
 
 /**
