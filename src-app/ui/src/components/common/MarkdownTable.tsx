@@ -84,9 +84,11 @@ export const MarkdownTable = memo(function MarkdownTable({
       </div>
 
       <ScrollArea
-        axis="x"
+        axis="both"
         autoHide="leave"
-        className="rounded-md border border-border bg-background"
+        // Cap tall tables so a huge one doesn't dominate the message; scroll
+        // inside beyond that. Keep in sync with index.css's code-block cap.
+        className="max-h-[min(60vh,36rem)] rounded-md border border-border bg-background"
       >
         {table}
       </ScrollArea>
