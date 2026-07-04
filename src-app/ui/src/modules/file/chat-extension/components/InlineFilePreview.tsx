@@ -223,7 +223,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
         <div
           className={
             viewer?.inlineFill
-              ? 'overflow-hidden max-h-[420px]'
+              ? 'overflow-hidden'
               : 'overflow-auto max-h-[600px]'
           }
           data-testid="inline-file-preview-body"

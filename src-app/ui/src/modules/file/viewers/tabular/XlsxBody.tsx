@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Spin, Alert, ScrollArea, Text } from '@/components/ui'
+import { Spin, Alert, Text } from '@/components/ui'
 import { Tabs } from '@/components/ui/kit/tabs'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
@@ -148,14 +148,14 @@ export function XlsxBody(props: FileViewerSlotProps) {
             data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
           />
         )}
-        <ScrollArea axis="both" className="max-h-full min-h-0 w-full">
-          <Table
-            columns={columns}
-            dataSource={dataSource}
-            rowKey="key"
-            data-testid={`file-xlsx-table-${sheet.name}`}
-          />
-        </ScrollArea>
+        {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
+        <Table
+          virtualized
+          columns={columns}
+          dataSource={dataSource}
+          rowKey="key"
+          data-testid={`file-xlsx-table-${sheet.name}`}
+        />
       </div>
     )
   }

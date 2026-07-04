@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, ScrollArea } from '@/components/ui'
+import { Alert } from '@/components/ui'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
 
@@ -100,14 +100,14 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           data-testid="file-delimited-truncated-alert"
         />
       )}
-      <ScrollArea axis="both" className="max-h-full min-h-0 w-full">
-        <Table
-          columns={columns}
-          dataSource={dataSource}
-          rowKey="key"
-          data-testid="file-delimited-table"
-        />
-      </ScrollArea>
+      {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
+      <Table
+        virtualized
+        columns={columns}
+        dataSource={dataSource}
+        rowKey="key"
+        data-testid="file-delimited-table"
+      />
     </div>
   )
 }
