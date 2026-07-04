@@ -1,15 +1,13 @@
-import { create } from 'zustand'
 import type {
   LlmModel,
   ModelCapabilities,
   ModelEngineSettings,
 } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
+import { defineStore } from '@/core/store-kit'
 import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
 
-/**
- * Upload progress for a single file
- */
+/** Upload progress for a single file */
 export interface FileUploadProgress {
   filename: string
   progress: number // 0-100
@@ -17,9 +15,7 @@ export interface FileUploadProgress {
   status: 'pending' | 'uploading' | 'completed' | 'error'
 }
 
-/**
- * Upload request data
- */
+/** Upload request data */
 export interface UploadModelData {
   name: string // auto-generated model ID
   provider_id: string
@@ -33,40 +29,20 @@ export interface UploadModelData {
   files: File[]
 }
 
-/**
- * Upload store state
- */
-interface UploadState {
-  // Upload status
-  uploading: boolean
-  uploadProgress: FileUploadProgress[]
-  overallUploadProgress: number
-  uploadError: string | null
-
-  // Actions
-  uploadLocalModel: (data: UploadModelData) => Promise<LlmModel>
-  cancelUpload: () => void
-  clearUploadState: () => void
-  clearUploadError: () => void
-}
-
-// Store XHR for cancellation
+// Store XHR for cancellation (module-scope: not serializable / reactive).
 let currentUploadXhr: XMLHttpRequest | null = null
 
-/**
- * Upload store with progress tracking
- */
-export const useUploadStore = create<UploadState>()(
-  (set): UploadState => ({
+/** Upload store with progress tracking */
+export const LlmModelUpload = defineStore('LlmModelUpload', {
+  state: {
     uploading: false,
-    uploadProgress: [],
+    uploadProgress: [] as FileUploadProgress[],
     overallUploadProgress: 0,
-    uploadError: null,
-
-    // Actions
+    uploadError: null as string | null,
+  },
+  actions: set => ({
     uploadLocalModel: async (data: UploadModelData): Promise<LlmModel> => {
       try {
-        // Initialize upload state
         set({
           uploading: true,
           uploadError: null,
@@ -79,54 +55,29 @@ export const useUploadStore = create<UploadState>()(
           overallUploadProgress: 0,
         })
 
-        // Create FormData
         const formData = new FormData()
-
-        // Add files to FormData
         data.files.forEach(file => {
           formData.append('files', file)
         })
-
-        // Add metadata fields
         formData.append('provider_id', data.provider_id)
         formData.append('name', data.name)
         formData.append('display_name', data.display_name)
         formData.append('main_filename', data.main_filename)
         formData.append('file_format', data.file_format)
-
-        if (data.description) {
-          formData.append('description', data.description)
-        }
-
-        if (data.capabilities) {
+        if (data.description) formData.append('description', data.description)
+        if (data.capabilities)
           formData.append('capabilities', JSON.stringify(data.capabilities))
-        }
+        if (data.engine_type) formData.append('engine_type', data.engine_type)
+        if (data.engine_settings)
+          formData.append('engine_settings', JSON.stringify(data.engine_settings))
 
-        if (data.engine_type) {
-          formData.append('engine_type', data.engine_type)
-        }
-
-        if (data.engine_settings) {
-          formData.append(
-            'engine_settings',
-            JSON.stringify(data.engine_settings),
-          )
-        }
-
-        // Call the upload API with file upload progress tracking
         const model = await ApiClient.LlmModel.upload(formData as any, {
           fileUploadProgress: {
             __init: (xhr: XMLHttpRequest) => {
-              // Store XHR for cancellation
               currentUploadXhr = xhr
             },
-            onProgress: (
-              progress: number,
-              fileIndex: number,
-              overallProgress: number,
-            ) => {
-              // Handle file-specific upload progress
-              // Note: progress and overallProgress are already in 0-100 range from core.ts
+            onProgress: (progress: number, fileIndex: number, overallProgress: number) => {
+              // progress/overallProgress already in 0-100 range from core.ts
               set(state => ({
                 uploadProgress: state.uploadProgress.map((fp, index) =>
                   index === fileIndex
@@ -144,7 +95,6 @@ export const useUploadStore = create<UploadState>()(
               }))
             },
             onComplete: () => {
-              // Handle upload completion
               set(state => ({
                 uploadProgress: state.uploadProgress.map(fp => ({
                   ...fp,
@@ -154,17 +104,11 @@ export const useUploadStore = create<UploadState>()(
                 overallUploadProgress: 100,
                 uploading: false,
               }))
-
-              // Clear XHR reference
               currentUploadXhr = null
-
-              // Refresh the provider's models list (don't await to avoid blocking)
-              void useLlmProviderStore
-                .getState()
-                .loadModelsForProvider(data.provider_id)
+              // Refresh the provider's models list (don't await to avoid blocking).
+              void useLlmProviderStore.getState().loadModelsForProvider(data.provider_id)
             },
             onError: (error: string, fileName?: string) => {
-              // Handle upload error
               set(state => ({
                 uploadProgress: state.uploadProgress.map(fp =>
                   fileName && fp.filename === fileName
@@ -174,49 +118,32 @@ export const useUploadStore = create<UploadState>()(
                 uploadError: error || 'Upload failed',
                 uploading: false,
               }))
-
-              // Clear XHR reference
               currentUploadXhr = null
             },
           },
         })
-
         return model
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to upload model'
-        set({
-          uploading: false,
-          uploadError: errorMessage,
-        })
-
-        // Clear XHR reference
+        set({ uploading: false, uploadError: errorMessage })
         currentUploadXhr = null
-
         throw error
       }
     },
-
     cancelUpload: () => {
       if (currentUploadXhr) {
         currentUploadXhr.abort()
         currentUploadXhr = null
       }
     },
-
     clearUploadState: () => {
-      set({
-        uploading: false,
-        uploadProgress: [],
-        overallUploadProgress: 0,
-        uploadError: null,
-      })
+      set({ uploading: false, uploadProgress: [], overallUploadProgress: 0, uploadError: null })
     },
-
     clearUploadError: () => {
-      set({
-        uploadError: null,
-      })
+      set({ uploadError: null })
     },
   }),
-)
+})
+
+export const useUploadStore = LlmModelUpload.store
