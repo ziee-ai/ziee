@@ -91,7 +91,7 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
   }, [text, delimiter])
 
   return (
-    <div className="flex flex-col h-full w-full px-2">
+    <div className="flex flex-col h-full w-full">
       {truncated && (
         <Alert
           tone="warning"

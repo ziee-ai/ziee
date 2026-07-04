@@ -139,7 +139,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
       return record
     })
     return (
-      <div className="flex flex-col h-full w-full px-2">
+      <div className="flex flex-col h-full w-full">
         {sheet.truncated && (
           <Alert
             tone="warning"
