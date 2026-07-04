@@ -57,6 +57,10 @@ export interface StoreInitCtx<State> {
     cb: (value: U, prev: U) => void,
     opts?: { fireImmediately?: boolean; equalityFn?: (a: U, b: U) => boolean },
   ) => void
+  /** Register an arbitrary teardown to run on store destroy — the escape hatch
+   *  for imperative resources (an SSE AbortController, a timer) that aren't an
+   *  `on`/`watch` subscription. Runs alongside the auto-cleaned listeners. */
+  onCleanup: (fn: () => void) => void
 }
 
 export interface StoreConfig<State extends object, Actions extends object> {
@@ -116,6 +120,9 @@ function makeBuilder<State extends object, Actions extends object>(
         cleanups.push(
           (store.subscribe as any)(selector, cb, { fireImmediately: true, ...opts }),
         )
+      },
+      onCleanup: fn => {
+        cleanups.push(fn)
       },
     }
     return {
