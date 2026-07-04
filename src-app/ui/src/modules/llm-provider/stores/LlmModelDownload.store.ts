@@ -177,11 +177,9 @@ export const LlmModelDownload = defineStore('LlmModelDownload', {
     const setupDownloadTracking = (): void => {
       if (isSubscriptionSetup) return
       isSubscriptionSetup = true
-      // Cast: store-kit's handle type erases the subscribeWithSelector overload
-      // (runtime still has the middleware), so the 3-arg subscribe needs `as any`.
-      ;(useLlmModelDownloadStore.subscribe as any)(
-        (state: { downloads: DownloadInstance[] }) => state.downloads,
-        (downloads: DownloadInstance[]) => {
+      useLlmModelDownloadStore.subscribe(
+        state => state.downloads,
+        downloads => {
           const activeDownloads = downloads.filter(
             d => d.status === 'downloading' || d.status === 'pending',
           )

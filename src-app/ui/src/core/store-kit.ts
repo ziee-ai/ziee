@@ -4,7 +4,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer as immerMiddleware } from 'zustand/middleware/immer'
 import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useRef } from 'react'
-import type { StoreApi, UseBoundStore } from 'zustand'
+import type { Mutate, StoreApi, UseBoundStore } from 'zustand'
 import { useEventBusStore } from '@/core/events'
 import type { AppEvents, EventHandler, Unsubscribe } from '@/core/events/types'
 
@@ -90,9 +90,19 @@ export type FullStoreState<State, Actions> = State & Actions & Lifecycle
 
 /** A registered global store: shaped exactly as `StoreRegistration`
  *  ({ name, store }) so `createModule({ stores: [handle] })` accepts it. */
+/** The store bound-hook type, carrying the `subscribeWithSelector` mutator so
+ *  the 3-arg `store.subscribe(selector, cb, opts)` overload is preserved for
+ *  consumers (chat extensions, `watch`) — every store-kit store is wrapped in
+ *  subscribeWithSelector at runtime. */
+export type BoundStore<FullState> = UseBoundStore<
+  Mutate<StoreApi<FullState>, [['zustand/subscribeWithSelector', never]]>
+>
+
+/** A registered global store: shaped exactly as `StoreRegistration`
+ *  ({ name, store }) so `createModule({ stores: [handle] })` accepts it. */
 export interface StoreHandle<FullState> {
   name: string
-  store: UseBoundStore<StoreApi<FullState>>
+  store: BoundStore<FullState>
 }
 
 /** Build the state object + wire the auto-cleanup lifecycle. Shared by the
@@ -159,7 +169,7 @@ export function defineStore<State extends object, Actions extends object>(
           subscribeWithSelector(immerMiddleware(builder as any)),
         )
       : create<FullStoreState<State, Actions>>()(subscribeWithSelector(builder as any))
-  ) as UseBoundStore<StoreApi<FullStoreState<State, Actions>>>
+  ) as BoundStore<FullStoreState<State, Actions>>
   return { name, store }
 }
 

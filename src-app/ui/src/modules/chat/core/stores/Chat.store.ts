@@ -1,6 +1,5 @@
 import { type ComponentType, memo, type ReactNode } from 'react'
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
+import { defineStore } from '@/core/store-kit'
 import { ApiClient } from '@/api-client'
 import type {
   Branch,
@@ -435,42 +434,41 @@ interface ChatState {
   __destroy__?: () => void
 }
 
-export const useChatStore = create<ChatState>()(
-  subscribeWithSelector((set, get) => ({
-    // ── Initial state ──────────────────────────────────────────────────────
-
-    conversation: null,
+export const Chat = defineStore('Chat', {
+  state: {
+    conversation: null as Conversation | null,
     messages: new Map<string, MessageWithContent>(),
     loading: false,
-    loadingConversationId: null,
+    loadingConversationId: null as string | null,
     sending: false,
     isStreaming: false,
-    error: null,
-    streamingMessage: null,
-    tempUserMessageId: null,
-    streamingAbortController: null,
-    streamingMessageId: null,
-
+    error: null as string | null,
+    streamingMessage: null as MessageWithContent | null,
+    tempUserMessageId: null as string | null,
+    streamingAbortController: null as AbortController | null,
+    streamingMessageId: null as string | null,
     conversationStateCache: new Map<string, ChatStateSnapshot>(),
     cacheClearTimers: new Map<string, NodeJS.Timeout>(),
-
     // Branch initial state
-    branches: [],
+    branches: [] as Branch[],
     branchesLoading: false,
-    pendingBranchFromMessageId: null,
-    pendingBranchForkLevel: null,
-    branchForkLevels: new Map(),
+    pendingBranchFromMessageId: null as string | null,
+    pendingBranchForkLevel: null as 'user' | 'assistant' | null,
+    branchForkLevels: new Map<string, 'user' | 'assistant'>(),
     branchChangedDuringStream: false,
-    forkPoints: new Map(),
-    editingMessage: null,
-
+    forkPoints: new Map<string, string[]>(),
+    editingMessage: null as MessageWithContent | null,
     // Right panel initial state
     rightPanel: {
       panelWidth: 440,
-      tabs: [],
-      activeId: null,
+      tabs: [] as RightPanelTab[],
+      activeId: null as string | null,
       mobileDrawerOpen: false,
     },
+  },
+  actions: (set, getRaw) => {
+    const get = getRaw as () => ChatState
+    return {
 
     // ── Conversation state management ──────────────────────────────────────
 
@@ -1744,8 +1742,11 @@ export const useChatStore = create<ChatState>()(
 
     // ── Lifecycle methods ──────────────────────────────────────────────────
 
-    __init__: {
-      __store__: async () => {
+    }
+  },
+  init: ({ set, get: getRaw, onCleanup }) => {
+    const get = getRaw as () => ChatState
+    void (async () => {
         const { Stores } = await import('@/core/stores')
 
         // Cross-device sync: when the currently-OPEN conversation changed on
@@ -1847,10 +1848,8 @@ export const useChatStore = create<ChatState>()(
         // On stream (re)connect the server replays the reply-so-far (catch-up);
         // also reconcile the open conversation from the DB (debounced).
         Stores.EventBus.on('chat:stream-reconnect', () => resyncOpen(), 'Chat')
-      },
-    },
-
-    __destroy__: () => {
+    })()
+    onCleanup(() => {
       console.log('[Chat.store] Destroying - cleaning up resources')
 
       void import('@/core/stores').then(({ Stores }) =>
@@ -1890,6 +1889,8 @@ export const useChatStore = create<ChatState>()(
       state.cacheClearTimers.clear()
 
       console.log('[Chat.store] Destroyed successfully')
-    },
-  })),
-)
+    })
+  },
+})
+
+export const useChatStore = Chat.store
