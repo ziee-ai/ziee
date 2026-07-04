@@ -1,67 +1,39 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type {
-  GpuDetectionResponse,
-  RuntimeSettings,
-  UpdateRuntimeSettingsRequest,
+import {
+  type GpuDetectionResponse,
+  Permissions,
+  type RuntimeSettings,
+  type UpdateRuntimeSettingsRequest,
 } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 
-interface RuntimeConfigState {
-  // Singleton runtime settings (idle / auto-start / drain / allow_unsigned)
-  settings: RuntimeSettings | null
-  loadingSettings: boolean
-  savingSettings: boolean
-
-  // GPU detection result (powers the GPU card)
-  gpu: GpuDetectionResponse | null
-  loadingGpu: boolean
-
-  error: string | null
-
-  loadSettings: () => Promise<void>
-  saveSettings: (req: UpdateRuntimeSettingsRequest) => Promise<void>
-  loadGpu: () => Promise<void>
-  clearError: () => void
-
-  __init__: {
-    __store__: () => void
-    settings: () => Promise<void>
-    gpu: () => Promise<void>
-  }
-  __destroy__: () => void
-}
-
-export const useRuntimeConfigStore = create<RuntimeConfigState>()(
-  subscribeWithSelector((set, get) => ({
-    settings: null,
+export const RuntimeConfig = defineStore('RuntimeConfig', {
+  state: {
+    // Singleton runtime settings (idle / auto-start / drain / allow_unsigned)
+    settings: null as RuntimeSettings | null,
     loadingSettings: false,
     savingSettings: false,
-    gpu: null,
+    // GPU detection result (powers the GPU card)
+    gpu: null as GpuDetectionResponse | null,
     loadingGpu: false,
-    error: null,
-
+    error: null as string | null,
+  },
+  actions: set => ({
     loadSettings: async () => {
       if (!hasPermissionNow(Permissions.RuntimeSettingsRead)) return
       set({ loadingSettings: true, error: null })
       try {
-        const settings =
-          await ApiClient.LocalRuntime.getRuntimeSettings(undefined)
+        const settings = await ApiClient.LocalRuntime.getRuntimeSettings(undefined)
         set({ settings, loadingSettings: false })
       } catch (error) {
         set({
           error:
-            error instanceof Error
-              ? error.message
-              : 'Failed to load runtime settings',
+            error instanceof Error ? error.message : 'Failed to load runtime settings',
           loadingSettings: false,
         })
       }
     },
-
     saveSettings: async (req: UpdateRuntimeSettingsRequest) => {
       set({ savingSettings: true, error: null })
       try {
@@ -70,20 +42,16 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>()(
       } catch (error) {
         set({
           error:
-            error instanceof Error
-              ? error.message
-              : 'Failed to save runtime settings',
+            error instanceof Error ? error.message : 'Failed to save runtime settings',
           savingSettings: false,
         })
         throw error
       }
     },
-
     loadGpu: async () => {
       set({ loadingGpu: true })
-      // detect-gpu spawns host probes and can transiently 502 on a cold
-      // backend; retry a few times with backoff before giving up so the card
-      // isn't left blank.
+      // detect-gpu spawns host probes and can transiently 502 on a cold backend;
+      // retry a few times with backoff before giving up so the card isn't blank.
       const delays = [1000, 2000, 3000]
       for (let attempt = 0; attempt <= delays.length; attempt++) {
         try {
@@ -93,8 +61,7 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>()(
         } catch (error) {
           if (attempt === delays.length) {
             set({
-              error:
-                error instanceof Error ? error.message : 'GPU detection failed',
+              error: error instanceof Error ? error.message : 'GPU detection failed',
               loadingGpu: false,
             })
           } else {
@@ -103,26 +70,17 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>()(
         }
       }
     },
-
     clearError: () => set({ error: null }),
+  }),
+  init: ({ on, actions }) => {
+    // Cross-device sync: reload the deployment-wide runtime settings (singleton)
+    // on a remote change or after an SSE reconnect. loadSettings self-gates.
+    const reload = () => void actions.loadSettings()
+    on('sync:runtime_settings', reload)
+    on('sync:reconnect', reload)
+    void actions.loadSettings()
+    void actions.loadGpu()
+  },
+})
 
-    __init__: {
-      __store__: () => {
-        const eventBus = Stores.EventBus
-
-        // Cross-device sync: reload the deployment-wide runtime settings
-        // (singleton; sync id is nil) on a remote change, or after an SSE
-        // reconnect. loadSettings self-gates on RuntimeSettingsRead.
-        const reload = () => void get().loadSettings()
-        eventBus.on('sync:runtime_settings', reload, 'RuntimeConfigStore')
-        eventBus.on('sync:reconnect', reload, 'RuntimeConfigStore')
-      },
-      settings: () => get().loadSettings(),
-      gpu: () => get().loadGpu(),
-    },
-
-    __destroy__: () => {
-      Stores.EventBus.removeGroupListeners('RuntimeConfigStore')
-    },
-  })),
-)
+export const useRuntimeConfigStore = RuntimeConfig.store
