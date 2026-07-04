@@ -1,17 +1,15 @@
-import { create } from 'zustand'
+import { defineStore } from '@/core/store-kit'
 import type { RouteConfig } from '@/modules/router/types'
 
-interface RoutesState {
-  routes: RouteConfig<any>[]
-  addRoutes: (routes: RouteConfig<any>[]) => void
-}
-
-export const useRoutesStore = create<RoutesState>(set => ({
-  routes: [],
-
-  addRoutes: (routes: RouteConfig<any>[]) => {
-    set(state => ({
-      routes: [...state.routes, ...routes],
-    }))
+export const Routes = defineStore('Routes', {
+  state: {
+    routes: [] as RouteConfig<any>[],
   },
-}))
+  actions: set => ({
+    addRoutes: (routes: RouteConfig<any>[]) => {
+      set(state => ({ routes: [...state.routes, ...routes] }))
+    },
+  }),
+})
+
+export const useRoutesStore = Routes.store

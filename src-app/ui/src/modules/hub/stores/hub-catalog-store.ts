@@ -1,6 +1,3 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type {
   Catalog,
@@ -10,26 +7,18 @@ import type {
 } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@/core/store-kit'
 import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
 
 /**
- * After the active catalog version changes (refresh / activate), the
- * per-category tab lists are stale — they were loaded against the old
- * `current/`. Re-pull all three so every tab reflects the new version.
- * Forced (true) so an in-flight first-load doesn't make the reload
- * early-return on the `loading` guard and leave a tab showing the old
- * version. The per-category endpoints serve from the rotated `current/`
- * dir, so a reload picks up the switch.
+ * After the active catalog version changes (refresh / activate), the per-category
+ * tab lists are stale. Re-pull all three (forced) so every tab reflects the new
+ * version. Self-gated: the three tab reads don't self-gate, and `hub::models::read`
+ * is admin-only, so a non-admin reconnect would 403 without this.
  */
 export async function reloadAllTabs(): Promise<void> {
-  // Self-gate: this refetch calls loadModels + loadAssistants + loadServers,
-  // none of which self-gate. `hub::models::read` is admin-only (migration 37
-  // removed it from the Users group), so a non-admin reconnect would 403 on
-  // `GET /hub/models` without this guard. (NOT `hub::catalog::read` — that's
-  // the admin catalog-settings perm, unrelated to the three tab reads here.)
   if (
     !hasPermissionNow({
       allOf: [
@@ -49,162 +38,93 @@ export async function reloadAllTabs(): Promise<void> {
 }
 
 /**
- * Result of a per-item compat check (see compatOf below).
- * `ok` = no min_ziee_version, or server >= min; `too_old` = the item
- * requires a newer ziee server and is hidden from the tab + rejected
- * by the install endpoint.
+ * Result of a per-item compat check. `ok` = no min_ziee_version, or server >=
+ * min; `too_old` = the item requires a newer ziee server and is hidden.
  */
 export type Compat = { status: 'ok' } | { status: 'too_old'; required: string }
 
-interface HubCatalogState {
-  catalog: Catalog | null
-  serverVersion: string | null
-  hubVersion: string | null
-  counts: HubCatalogVersionResponse['counts'] | null
-  loading: boolean
-  refreshing: boolean
-  error: string | null
+export const HubCatalog = defineStore('HubCatalog', {
+  immer: true,
+  state: {
+    catalog: null as Catalog | null,
+    serverVersion: null as string | null,
+    hubVersion: null as string | null,
+    counts: null as HubCatalogVersionResponse['counts'] | null,
+    loading: false,
+    refreshing: false,
+    error: null as string | null,
+  },
+  actions: (set, get) => {
+    const loadCatalog = async (force = false) => {
+      // `force` lets refresh bypass the in-flight guard.
+      if (get().loading && !force) return
+      // GET /hub/index requires hub::catalog::read — gate on the real endpoint
+      // perm; short-circuit for non-catalog-readers (the catalog degrades).
+      if (!hasPermissionNow(Permissions.HubCatalogRead)) return
+      set({ loading: true, error: null })
+      try {
+        const catalog = await ApiClient.Hub.getCatalog()
+        set({ catalog, hubVersion: catalog.hub_version, loading: false })
+      } catch (error: any) {
+        set({ error: error?.message || 'Failed to load hub catalog', loading: false })
+      }
+    }
+    const loadVersion = async () => {
+      // GET /hub/version requires hub::catalog::read — skip for non-readers.
+      if (!hasPermissionNow(Permissions.HubCatalogRead)) return
+      try {
+        const v = await ApiClient.Hub.getCatalogVersion()
+        set({ serverVersion: v.server_version, hubVersion: v.hub_version, counts: v.counts })
+      } catch (error: any) {
+        set({ error: error?.message || 'Failed to load hub version' })
+      }
+    }
+    return {
+      loadCatalog,
+      loadVersion,
+      refresh: async () => {
+        set({ refreshing: true, error: null })
+        try {
+          const outcome = await ApiClient.Hub.refreshCatalog()
+          // Re-pull even when nothing advanced so generated_at + counts stay fresh.
+          await loadCatalog(true)
+          await loadVersion()
+          await reloadAllTabs()
+          set({ refreshing: false })
+          return outcome as unknown as void
+        } catch (error: any) {
+          set({ error: error?.message || 'Failed to refresh hub catalog', refreshing: false })
+          throw error
+        }
+      },
+      itemsByCategory: (category: HubCategory): IndexItem[] => {
+        const catalog = get().catalog
+        if (!catalog) return []
+        return catalog.items.filter(it => it.category === category)
+      },
+    }
+  },
+  init: ({ on, actions }) => {
+    // Under Hub v2 the catalog version isn't pinnable, so a hub_settings change
+    // (or reconnect) just refetches the version marker + reloads every tab.
+    const handleHubSettingsChange = () => {
+      void actions.loadVersion()
+      void reloadAllTabs()
+    }
+    on('sync:hub_settings', handleHubSettingsChange)
+    on('sync:reconnect', handleHubSettingsChange)
+    void actions.loadCatalog()
+    void actions.loadVersion()
+  },
+})
 
-  // Actions
-  loadCatalog: (force?: boolean) => Promise<void>
-  loadVersion: () => Promise<void>
-  refresh: () => Promise<void>
-  itemsByCategory: (category: HubCategory) => IndexItem[]
-
-  // Lazy initialization
-  __init__: {
-    __store__?: () => void
-    catalog: () => Promise<void>
-    serverVersion: () => Promise<void>
-    hubVersion: () => Promise<void>
-    counts: () => Promise<void>
-  }
-
-  __destroy__?: () => void
-}
-
-export const useHubCatalogStore = create<HubCatalogState>()(
-  subscribeWithSelector(
-    immer(
-      (set, get): HubCatalogState => ({
-        catalog: null,
-        serverVersion: null,
-        hubVersion: null,
-        counts: null,
-        loading: false,
-        refreshing: false,
-        error: null,
-
-        loadCatalog: async (force = false) => {
-          // `force` lets refresh bypass the in-flight guard so a
-          // concurrent first-load doesn't make the post-refresh reload
-          // a no-op (which would leave the UI on the old catalog).
-          if (get().loading && !force) return
-          // GET /hub/index requires hub::models::read. The hub shell
-          // reads this store for ANY hub user, so a hub-but-not-catalog
-          // user (e.g. models-only) would 403. GET /hub/index requires
-          // hub::catalog::read (NOT hub::models::read) — gate on the real
-          // endpoint perm. Short-circuit; the catalog stays null and degrades.
-          if (!hasPermissionNow(Permissions.HubCatalogRead)) {
-            return
-          }
-          set({ loading: true, error: null })
-          try {
-            const catalog = await ApiClient.Hub.getCatalog()
-            set({
-              catalog,
-              hubVersion: catalog.hub_version,
-              loading: false,
-            })
-          } catch (error: any) {
-            set({
-              error: error?.message || 'Failed to load hub catalog',
-              loading: false,
-            })
-          }
-        },
-
-        loadVersion: async () => {
-          // GET /hub/version requires hub::catalog::read (same as /hub/index).
-          // Skip for non-catalog-readers to avoid a 403 (no-403 rule).
-          if (!hasPermissionNow(Permissions.HubCatalogRead)) return
-          try {
-            const v = await ApiClient.Hub.getCatalogVersion()
-            set({
-              serverVersion: v.server_version,
-              hubVersion: v.hub_version,
-              counts: v.counts,
-            })
-          } catch (error: any) {
-            set({ error: error?.message || 'Failed to load hub version' })
-          }
-        },
-
-        refresh: async () => {
-          set({ refreshing: true, error: null })
-          try {
-            const outcome = await ApiClient.Hub.refreshCatalog()
-            // Even when nothing advanced, re-pull the catalog so the
-            // generated_at timestamp + counts stay fresh in the UI.
-            await get().loadCatalog(true)
-            await get().loadVersion()
-            await reloadAllTabs()
-            set({ refreshing: false })
-            return outcome as unknown as void
-          } catch (error: any) {
-            set({
-              error: error?.message || 'Failed to refresh hub catalog',
-              refreshing: false,
-            })
-            throw error
-          }
-        },
-
-        itemsByCategory: (category: HubCategory) => {
-          const catalog = get().catalog
-          if (!catalog) return []
-          return catalog.items.filter(it => it.category === category)
-        },
-
-        __init__: {
-          __store__: () => {
-            const eventBus = Stores.EventBus
-            const GROUP = 'HubCatalogStore'
-
-            // Cross-device sync handler. Under Hub v2 the catalog
-            // version isn't pinnable (per-entry semver replaced the
-            // version-picker), so this just refetches the version
-            // marker + reloads every hub category tab when the
-            // backend tells us the catalog changed.
-            const handleHubSettingsChange = () => {
-              void get().loadVersion()
-              void reloadAllTabs()
-            }
-            eventBus.on('sync:hub_settings', handleHubSettingsChange, GROUP)
-            eventBus.on('sync:reconnect', handleHubSettingsChange, GROUP)
-          },
-          catalog: () => get().loadCatalog(),
-          serverVersion: () => get().loadVersion(),
-          hubVersion: () => get().loadVersion(),
-          counts: () => get().loadVersion(),
-        },
-
-        __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('HubCatalogStore')
-        },
-      }),
-    ),
-  ),
-)
+export const useHubCatalogStore = HubCatalog.store
 
 // -------- helpers consumable by per-tab components --------
 
 /**
- * Lightweight semver compare. Returns -1/0/1 like a typical comparator.
- * Pre-release suffix (`-alpha`, `-rc.1`) treated as "older than the
- * same X.Y.Z without the suffix" — i.e. `0.5.0-alpha < 0.5.0`. Both
- * sides being garbled returns 0 (treat as compatible). Sufficient for
- * the compat() check; not a full semver implementation.
+ * Lightweight semver compare (-1/0/1). Pre-release suffix treated as "older than
+ * the same X.Y.Z without the suffix". Both sides garbled → 0 (compatible).
  */
 function semverCompare(a: string, b: string): number {
   const parse = (s: string): [number[], string | null] => {
@@ -227,21 +147,14 @@ function semverCompare(a: string, b: string): number {
   // Equal cores → pre-release is OLDER than no-pre-release.
   if (prea && !preb) return -1
   if (!prea && preb) return 1
-  // Both pre-release or neither: don't try to order pre-release tags.
   return 0
 }
 
 /**
- * Compat check for one catalog item against the running server. Items
- * with no `min_ziee_version`, or whose requirement the server meets,
- * are `ok`; otherwise `too_old`. Tabs hide `too_old` items entirely
- * (and the install endpoint rejects them server-side). Returns `ok`
+ * Compat check for one catalog item against the running server. Returns `ok`
  * when the server version hasn't loaded yet so nothing flickers hidden.
  */
-export function compatOf(
-  item: IndexItem,
-  serverVersion: string | null,
-): Compat {
+export function compatOf(item: IndexItem, serverVersion: string | null): Compat {
   if (!item.min_ziee_version) return { status: 'ok' }
   if (!serverVersion) return { status: 'ok' } // not loaded yet — don't gate
   return semverCompare(serverVersion, item.min_ziee_version) >= 0
