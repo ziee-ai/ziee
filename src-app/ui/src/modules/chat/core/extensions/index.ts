@@ -48,11 +48,9 @@ export type {
 // Slot definitions
 export { CHAT_SLOTS } from './types'
 
-// Extension store utilities
-export {
-  createExtensionStore,
-  createEmptyExtensionStore,
-} from './createExtensionStore'
+// Extension store authoring — store-kit model (state / actions / init / persist / $).
+// Returns a `() => proxy` factory for a chat-extension's `store.createStore`.
+export { defineExtensionStore } from '@/core/store-kit'
 
 // Registry
 export {

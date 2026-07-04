@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react'
 import type { Mutate, StoreApi, UseBoundStore } from 'zustand'
 import { useEventBusStore } from '@/core/events'
 import type { AppEvents, EventHandler, Unsubscribe } from '@/core/events/types'
+import { createStoreProxy } from '@/core/stores'
 
 // ============================================================================
 // store-kit — thin authoring layer over the existing Zustand + Stores.X proxy.
@@ -196,6 +197,42 @@ export function defineStore<State extends object, Actions extends object>(
     applyMiddleware(builder, config) as any,
   ) as BoundStore<FullStoreState<State, Actions>>
   return { name, store }
+}
+
+// ============================================================================
+// defineExtensionStore — chat-extension stores (the `Stores.Chat.<Name>` family).
+//
+// Same authoring model (state / actions / init / immer / persist / $) as
+// defineStore, but returns a FACTORY (`() => proxy`) instead of a {name, store}
+// handle — because the chat-extension registry calls `createStore()` per
+// registration and INJECTS the returned proxy into the Chat store, so it's read
+// nested as `Stores.Chat.<Name>` rather than top-level `Stores.<Name>`.
+//
+// The returned proxy is the SAME `createStoreProxy` used everywhere, so reads
+// are identical (`const {a}=Stores.Chat.X`, `Stores.Chat.X.$.a`, actions), and
+// the `init` listeners auto-tear-down via the proxy's ref-count destroy. Each
+// `createStore()` call gets a fresh instance + a unique EventBus group so two
+// live instances can't clobber each other's listeners (like defineLocalStore).
+//
+//   export const createTextStore = defineExtensionStore({
+//     immer: true,
+//     state: { draft: '' },
+//     actions: (set) => ({ setDraft: (v: string) => set(s => { s.draft = v }) }),
+//   })
+//   // extension.tsx →  store: { name: 'TextStore', createStore: createTextStore }
+// ============================================================================
+export function defineExtensionStore<State extends object, Actions extends object>(
+  config: StoreConfig<State, Actions>,
+) {
+  let counter = 0
+  return () => {
+    const group = `chat-ext:${counter++}`
+    const builder = makeBuilder(group, config)
+    const store = create<FullStoreState<State, Actions>>()(
+      applyMiddleware(builder, config) as any,
+    ) as BoundStore<FullStoreState<State, Actions>>
+    return createStoreProxy(store)
+  }
 }
 
 // ============================================================================
