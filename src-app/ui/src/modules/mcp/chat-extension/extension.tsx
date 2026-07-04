@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Alert, Button, Card, Progress, Text } from '@/components/ui'
-import { Wrench, CircleCheck, CircleX } from 'lucide-react'
+import { Wrench, CircleCheck, CircleX, ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   createExtension,
   type ChatExtension,
@@ -15,6 +16,12 @@ import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
 import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusRow'
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
+
+// The tool-call header shows a human server name in parens — never a raw id.
+// (`server_id` is used as a fallback when the server row isn't loaded; that's a
+// meaningless UUID to the user, so we suppress it rather than display it.)
+const looksLikeId = (s?: string | null): boolean =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(s)
 
 /**
  * MCP Tool Call UI Component
@@ -39,16 +46,6 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
     }
   }
 
-  const getStatusText = () => {
-    switch (toolCall.status) {
-      case 'started':
-        return 'Running...'
-      case 'completed':
-        return 'Completed'
-      case 'error':
-        return 'Failed'
-    }
-  }
 
   return (
     <Card
@@ -60,21 +57,20 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
         <div className="flex items-center gap-2">
           {getStatusIcon()}
           <Text strong>{toolCall.tool_name}</Text>
-          <Text type="secondary" className="text-xs">
-            ({toolCall.server})
-          </Text>
-          <Text type="secondary" className="text-xs">
-            {getStatusText()}
-          </Text>
+          {toolCall.server && !looksLikeId(toolCall.server) && (
+            <Text type="secondary" className="text-xs">
+              ({toolCall.server})
+            </Text>
+          )}
         </div>
         <Button
-          size="default"
+          size="icon"
           variant="ghost"
+          tooltip={isExpanded ? 'Hide details' : 'Show details'}
+          icon={<ChevronDown className={cn('transition-transform', isExpanded && 'rotate-180')} />}
           onClick={() => setIsExpanded(!isExpanded)}
           data-testid={`mcp-toolcall-details-btn-${toolCall.tool_use_id}`}
-        >
-          {isExpanded ? 'Hide' : 'Show'} details
-        </Button>
+        />
       </div>
 
       {toolCall.status === 'started' && toolCall.progress && (
@@ -159,9 +155,8 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
     return <McpToolCallUI toolCall={toolCall} />
   }
 
-  // Look up server name from server_id
+  // Look up the server row so we can show its human display name (never the id).
   const server = servers.find(s => s.id === toolUseData.server_id)
-  const serverName = server?.display_name || toolUseData.server_id || 'Unknown'
 
   // Look up matching tool_result for historical display
   const message = Stores.Chat.messages.get(data.message_id)
@@ -186,22 +181,28 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
             <Wrench className="text-primary" />
           )}
           <Text strong>{toolUseData.name || 'Tool Call'}</Text>
-          <Text type="secondary" className="text-xs">({serverName})</Text>
+          {server?.display_name && (
+            <Text type="secondary" className="text-xs">({server.display_name})</Text>
+          )}
+          {/* Status is conveyed by the icon (check / x / wrench) — no text. A
+              hidden marker keeps the completed/failed signal available to tests. */}
           {toolResultData && (
-            <Text
-              type="secondary"
-              className="text-xs"
+            <span
+              className="sr-only"
               data-testid={`mcp-tooluse-status-${toolUseData.id}`}
               data-status={toolResultData.is_error ? 'failed' : 'completed'}
-            >
-              {toolResultData.is_error ? 'Failed' : 'Completed'}
-            </Text>
+            />
           )}
         </div>
         {hasDetails && (
-          <Button size="default" variant="ghost" onClick={() => setIsExpanded(!isExpanded)} data-testid={`mcp-tooluse-details-btn-${toolUseData.id}`}>
-            {isExpanded ? 'Hide' : 'Show'} details
-          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            tooltip={isExpanded ? 'Hide details' : 'Show details'}
+            icon={<ChevronDown className={cn('transition-transform', isExpanded && 'rotate-180')} />}
+            onClick={() => setIsExpanded(!isExpanded)}
+            data-testid={`mcp-tooluse-details-btn-${toolUseData.id}`}
+          />
         )}
       </div>
       {isExpanded && (
