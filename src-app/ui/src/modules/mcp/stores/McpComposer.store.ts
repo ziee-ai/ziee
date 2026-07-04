@@ -1,7 +1,5 @@
-import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
+import { defineStore } from '@/core/store-kit'
 import { Permissions, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
@@ -112,164 +110,6 @@ function resolveConfigKey(
  * MCP extension store
  * Combines state and actions
  */
-interface McpStore {
-  // State
-  /** Map of tool calls by tool_use_id */
-  toolCalls: Map<string, McpToolCall>
-  /** Pending approval decisions (to be sent with next message) */
-  approvalDecisions: ToolApprovalDecision[]
-  /** Per-conversation MCP configuration (persisted) */
-  conversationConfigs: Map<string, ConversationMcpConfig>
-  /** Current conversation ID (null for new conversations) */
-  currentConversationId: string | null
-  /** Current project ID — set only when the modal was opened from the
-   *  project detail page to edit project MCP defaults. Dispatch rule:
-   *  `currentProjectId !== null && currentConversationId === null` →
-   *  project scope; everything else → conversation scope. Both set is
-   *  treated as conversation-wins (defensive). */
-  currentProjectId: string | null
-  /** Selected servers and their tools (computed from current conversation config) */
-  selectedServers: Map<string, ServerSelection>
-  /** User's default MCP settings (loaded on init) */
-  userDefaults: UserMcpDefaultsResponse | null
-  /** Whether user defaults have been loaded */
-  userDefaultsLoaded: boolean
-  /** Whether the config modal is visible */
-  configModalVisible: boolean
-  /** Pending elicitation requests keyed by elicitation_id */
-  elicitationRequests: Map<string, ElicitationRequestState>
-
-  // Tool call actions
-  /** Add a new tool call */
-  addToolCall: (toolCall: McpToolCall) => void
-  /** Update an existing tool call */
-  updateToolCall: (toolUseId: string, updates: Partial<McpToolCall>) => void
-  /** Attach progress to the running tool call(s) for a server (progress
-   * notifications carry server but not tool_use_id, so we correlate by
-   * the in-flight 'started' call from that server). */
-  setToolCallProgress: (server: string, progress: McpToolProgressState) => void
-  /** Get a tool call by ID */
-  getToolCall: (toolUseId: string) => McpToolCall | undefined
-  /** Get all active tool calls (started or pending approval) */
-  getActiveCalls: () => McpToolCall[]
-  /** Clear all tool calls for current conversation */
-  clearToolCalls: () => void
-
-  // Approval decision actions
-  /** Add an approval decision (will be sent with next message) */
-  addApprovalDecision: (decision: ToolApprovalDecision) => void
-  /** Get all pending approval decisions */
-  getApprovalDecisions: () => ToolApprovalDecision[]
-  /** Clear all approval decisions (after sending) */
-  clearApprovalDecisions: () => void
-
-  // Conversation config actions
-  /** Set current conversation ID and load its config */
-  setCurrentConversation: (conversationId: string | null) => void
-  /** Load conversation config (from backend or create default) */
-  loadConversationConfig: (conversationId: string, config?: ConversationMcpConfig) => void
-  /** Save conversation config changes (availableServerIds used to compute disabled_servers, serverToolsMap used to persist partial tool selections) */
-  saveConversationConfig: (conversationId: string, availableServerIds?: string[], serverToolsMap?: Map<string, string[]>, updateAutoApproved?: boolean) => Promise<void>
-  /** Get or create pending config for new conversations */
-  getOrCreatePendingConfig: () => ConversationMcpConfig
-  /** Transfer pending config to a real conversation ID */
-  transferPendingConfig: (conversationId: string) => void
-  /** Set approval mode for a conversation (or pending) */
-  setApprovalMode: (conversationId: string | null, mode: 'disabled' | 'auto_approve' | 'manual_approve') => void
-  /** Toggle auto-approved status for a tool (conversationId can be null for pending) */
-  toggleAutoApprovedTool: (conversationId: string | null, serverId: string, toolName: string) => void
-  /** Check if a tool is auto-approved */
-  isToolAutoApproved: (serverId: string, toolName: string) => boolean
-
-  // Loop settings actions
-  /** Set loop settings (partial update) */
-  setLoopSettings: (conversationId: string | null, settings: Partial<LoopSettings>) => void
-  /** Add a tool to stop_when_tools_called */
-  addStopWhenToolCalled: (conversationId: string | null, tool: ToolIdentifier) => void
-  /** Remove a tool from stop_when_tools_called */
-  removeStopWhenToolCalled: (conversationId: string | null, serverId: string, toolName: string) => void
-  /** Add a per-tool iteration limit */
-  addPerToolLimit: (conversationId: string | null, limit: PerToolLimit) => void
-  /** Remove a per-tool iteration limit */
-  removePerToolLimit: (conversationId: string | null, serverId: string, toolName: string) => void
-  /** Update a per-tool iteration limit */
-  updatePerToolLimit: (conversationId: string | null, serverId: string, toolName: string, maxIteration: number) => void
-
-  // Server selection actions
-  /** Select a server (tools=[] means all tools) */
-  selectServer: (serverId: string, tools?: string[]) => void
-  /** Deselect a server */
-  deselectServer: (serverId: string) => void
-  /** Toggle a specific tool for a server */
-  toggleServerTool: (serverId: string, toolName: string) => void
-  /** Get selected servers config for request */
-  getSelectedServersConfig: () => McpServerConfig[]
-  /** Clear all server selections */
-  clearSelection: () => void
-  /** Set enabled servers from a list of IDs (deselects all others) */
-  setEnabledServers: (serverIds: string[]) => void
-
-  // Initialization methods
-  __init__: {
-    userDefaults: () => Promise<void>
-  }
-
-  // User defaults actions
-  /** Load user defaults from backend */
-  loadUserDefaults: () => Promise<void>
-  /** Save current config as user defaults (availableServerIds used to compute disabled_servers) */
-  saveUserDefaults: (conversationId: string | null, availableServerIds: string[], updateAutoApproved?: boolean) => Promise<void>
-  /** Apply user defaults to pending config (for new conversations) */
-  applyUserDefaultsToPending: (availableServerIds: string[]) => void
-
-  // Config modal actions
-  /** Open the config modal (conversation scope — uses currentConversationId
-   *  or pending). */
-  openConfigModal: () => void
-  /** Open the config modal for editing a project's MCP defaults. Sets
-   *  currentProjectId, clears currentConversationId, seeds the supplied
-   *  project settings into the per-key config map. Settings are passed
-   *  explicitly (rather than read from `Project`) because the `Project`
-   *  payload no longer carries `mcp_*` fields after the unification —
-   *  callers fetch via `Stores.ProjectMcpSettings`. */
-  openConfigModalForProject: (
-    projectId: string,
-    settings: import('@/modules/mcp/project-extension/stores/ProjectMcpSettings.store').ProjectMcpSettings | null,
-  ) => void
-  /** Close the config modal (also clears currentProjectId). */
-  closeConfigModal: () => void
-  /** Fetch the live tool list from a running MCP server (used by the
-   *  config modal's lazy load). Pure passthrough — the modal owns its
-   *  own per-server cache. */
-  listServerTools: (
-    serverId: string,
-  ) => Promise<import('@/api-client/types').ListToolsResponse>
-  /** Fetch a conversation's persisted MCP settings (selectedServers
-   *  + disabled servers + approval mode + loop settings). Used by
-   *  the chat extension's onConversationLoad to restore state on
-   *  navigation/refresh. */
-  getConversationMcpSettings: (
-    conversationId: string,
-  ) => Promise<import('@/api-client/types').McpSettingsResponse>
-  /** Fetch pending tool-approval requests for a branch. Used by the
-   *  chat extension on conversation load to restore approval panels
-   *  after a refresh. */
-  getBranchPendingApprovals: (
-    branchId: string,
-  ) => Promise<import('@/api-client/types').PendingApprovalsResponse>
-  /** Save the project's MCP defaults to /projects/{id}/mcp-settings. */
-  saveProjectConfig: (
-    projectId: string,
-    availableServerIds?: string[],
-    serverToolsMap?: Map<string, string[]>,
-  ) => Promise<void>
-
-  // Elicitation actions
-  /** Add a new elicitation request (called when mcpElicitationRequired SSE event arrives) */
-  addElicitationRequest: (request: SSEChatStreamMcpElicitationRequiredData) => void
-  /** Respond to an elicitation (POST to backend, then remove from map) */
-  resolveElicitation: (elicitation_id: string, action: 'accept' | 'decline' | 'cancel', content?: Record<string, unknown>) => Promise<void>
-}
 
 /**
  * MCP composer store — the chat composer's MCP server selections,
@@ -278,25 +118,21 @@ interface McpStore {
  * Prior name: `Stores.McpComposer`; relocated out of the chat-extension
  * framework so MCP-domain state lives in the MCP module.
  */
-export const useMcpComposerStore = create<McpStore>()(
-  subscribeWithSelector(
-    immer((set, get) => ({
-    // State
+export const McpComposer = defineStore('McpComposer', {
+  immer: true,
+  state: {
     toolCalls: new Map<string, McpToolCall>(),
-    approvalDecisions: [],
+    approvalDecisions: [] as ToolApprovalDecision[],
     conversationConfigs: new Map<string, ConversationMcpConfig>(),
-    currentConversationId: null,
-    currentProjectId: null,
+    currentConversationId: null as string | null,
+    currentProjectId: null as string | null,
     selectedServers: new Map<string, ServerSelection>(),
-    userDefaults: null,
+    userDefaults: null as UserMcpDefaultsResponse | null,
     userDefaultsLoaded: false,
     configModalVisible: false,
     elicitationRequests: new Map<string, ElicitationRequestState>(),
-
-    // Initialization methods
-    __init__: {
-      userDefaults: () => get().loadUserDefaults(),
-    },
+  },
+  actions: (set, get) => ({
 
     // Tool call actions
     /**
@@ -1149,7 +985,12 @@ export const useMcpComposerStore = create<McpStore>()(
      * project has never customized defaults — we fall back to
      * manual_approve + empty arrays.
      */
-    openConfigModalForProject: (projectId, settings) => {
+    openConfigModalForProject: (
+      projectId: string,
+      settings:
+        | import('@/modules/mcp/project-extension/stores/ProjectMcpSettings.store').ProjectMcpSettings
+        | null,
+    ) => {
       const key = projectConfigKey(projectId)
       set(state => {
         const autoApprovedRaw = (settings?.auto_approved_tools as
@@ -1285,6 +1126,10 @@ export const useMcpComposerStore = create<McpStore>()(
       // as the live source of truth during streaming. On page reload, the DB content
       // (with the persisted status) is used as the fallback.
     },
-  })),
-  ),
-)
+  }),
+  init: ({ actions }) => {
+    void actions.loadUserDefaults()
+  },
+})
+
+export const useMcpComposerStore = McpComposer.store
