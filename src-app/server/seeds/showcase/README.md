@@ -44,12 +44,21 @@ just no-ops.
 
 Prereqs: the server has **booted at least once** against the target DB (so the
 built-in `mcp_servers` rows exist) and **first-run setup is complete** (so a
-root admin user exists). `psql` + `python3` on PATH.
+root admin user exists). `psql` + `python3` + `curl` on PATH.
 
 ```bash
 cd src-app/server/seeds/showcase
 ./load.sh
 ```
+
+To get real **thumbnails, preview pages, and extracted text** on the seeded
+files, the server's HTTP API must be **reachable and running** while you load —
+step 6 uploads each asset through the live pipeline (there's no reprocess
+endpoint) and grafts the result onto the seed's fixed file ids. If the API is
+down or login fails, the load still completes but the files stay raw (no
+thumbnails/previews); just re-run with the server up. It's idempotent (skips
+already-processed files). Override `API_URL` / `ADMIN_USERNAME` /
+`ADMIN_PASSWORD` / `ZIEE_ADMIN_TOKEN`, or set `SKIP_FILE_PROCESSING=1` to skip.
 
 By default it targets the embedded dev Postgres (`…@127.0.0.1:54323/postgres`)
 and the dev file store (`<server>/../../ziee-data/dev/app-data/files`), and
