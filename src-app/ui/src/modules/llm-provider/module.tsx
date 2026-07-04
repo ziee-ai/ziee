@@ -16,7 +16,6 @@ import {
   useUploadStore,
   useViewDownloadDrawerStore,
 } from '@/modules/llm-provider/stores'
-import { useLlmProviderGroupWidgetStore } from '@/modules/llm-provider/widgets/LLMProviderGroupWidget.store'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/llm-provider/types'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
@@ -100,10 +99,6 @@ export default createModule({
     {
       name: 'GroupLlmProvidersAssignment',
       store: useGroupLlmProvidersAssignmentStore,
-    },
-    {
-      name: 'LlmProviderGroupWidget',
-      store: useLlmProviderGroupWidgetStore,
     },
     {
       name: 'ProviderGroupAssignmentCard',
