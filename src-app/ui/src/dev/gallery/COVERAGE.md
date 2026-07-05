@@ -28,6 +28,17 @@ no entry fails `tsc`; `npm run check:gallery-coverage` guards the generated unio
 - **Fixtures**: recorded from a real server; typed vs `types.ts` (tsc); ajv-
   validated vs `openapi.json` (71 values, 0 fatal).
 
+### Multi-state states
+
+### Multi-state delivery
+
+- **Data pages** (35): loaded + empty + error via cassette-swapping (`gallery:states`).
+- **Overlays** (14): rendered OPEN with seeded data; 5 form drawers additionally
+  get filled + invalid via Playwright interaction (`gallery:forms`).
+- **Chat**: the rich showcase conversation (47 messages: markdown, code, tool
+  results, attachments, 3 branches) replays via the chat cassette, rendered in
+  isolation (`?surface=chat-detail&conversationId=…`); empty state via empty mode.
+
 ### Remaining work (the `pending` set)
 
 The 41 `pending` surfaces are interaction-only overlays (drawers/dialogs/modals).

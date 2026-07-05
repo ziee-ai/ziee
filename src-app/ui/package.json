@@ -138,7 +138,8 @@
     "gen:gallery-crawl": "node scripts/gen-crawl-cassette.mjs",
     "check:gallery-crawl": "node scripts/gen-crawl-cassette.mjs --check",
     "gallery:screenshots": "node scripts/capture-gallery-screenshots.mjs",
-    "gallery:states": "node scripts/capture-gallery-states.mjs"
+    "gallery:states": "node scripts/capture-gallery-states.mjs",
+    "gallery:forms": "node scripts/capture-gallery-forms.mjs"
   },
   "type": "module",
   "types": "./dist/index.d.ts"
