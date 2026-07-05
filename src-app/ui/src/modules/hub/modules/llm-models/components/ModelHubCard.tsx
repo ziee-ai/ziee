@@ -1,4 +1,4 @@
-import { LayoutGrid, Download, CircleAlert, Eye, FileText, Key, Lock, MessageSquare, Image, RotateCw, Search, Wrench } from 'lucide-react'
+import { LayoutGrid, Download, CircleAlert, CircleCheck, Eye, FileText, Key, Lock, MessageSquare, Image, RotateCw, Search, Wrench } from 'lucide-react'
 import {
   Card,
   Progress,
@@ -339,7 +339,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       Downloading
                     </Tag>
                   ) : isModelDownloaded ? (
-                    <Tag tone="info" variant="solid" data-testid={`hub-model-status-tag-${model.name}`}>Downloaded</Tag>
+                    <Tag tone="info" variant="solid" icon={<CircleCheck />} data-testid={`hub-model-status-tag-${model.name}`}>Downloaded</Tag>
                   ) : failedDownload ? (
                     <Tag tone="error" icon={<CircleAlert />} data-testid={`hub-model-status-tag-${model.name}`}>
                       Download Failed

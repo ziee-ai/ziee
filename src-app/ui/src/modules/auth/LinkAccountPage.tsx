@@ -88,6 +88,7 @@ export const LinkAccountPage: React.FC = () => {
               form={form}
               layout="vertical"
               onSubmit={onFinish}
+              disabled={loading || !linkToken}
             >
               <FormField
                 name="password"
@@ -98,7 +99,6 @@ export const LinkAccountPage: React.FC = () => {
                   prefix={<Lock />}
                   placeholder="Your existing password"
                   autoComplete="current-password"
-                  disabled={!linkToken}
                   showLabel="Show password"
                   hideLabel="Hide password"
                 />
@@ -107,7 +107,6 @@ export const LinkAccountPage: React.FC = () => {
                 data-testid="auth-link-account-submit"
                 block
                 loading={loading}
-                disabled={!linkToken}
                 type="submit"
               >
                 Link and sign in

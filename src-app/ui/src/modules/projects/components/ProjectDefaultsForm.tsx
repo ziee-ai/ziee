@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Combobox, message } from '@/components/ui'
+import { Combobox, Loading, message } from '@/components/ui'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -46,6 +46,10 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [models, setModels] = useState<LlmModel[]>([])
   const [optionsLoading, setOptionsLoading] = useState(false)
+  // Distinguishes the first fetch (show a skeleton — the pickers have no
+  // value yet) from background refetches (keep the current value visible +
+  // just lock the picker via the Combobox `loading` prop).
+  const [loadedOnce, setLoadedOnce] = useState(false)
 
   // Per-field saving spinner so the two selects don't share a loader
   // (clicking model shouldn't grey out assistant).
@@ -78,7 +82,10 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
         message.error('Failed to load assistant/model options')
       }
     } finally {
-      if (mountedRef.current) setOptionsLoading(false)
+      if (mountedRef.current) {
+        setOptionsLoading(false)
+        setLoadedOnce(true)
+      }
     }
   }, [])
 
@@ -170,13 +177,17 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
     return [...base, ...opts]
   })()
 
+  // On the very first fetch the pickers have no value to show yet, so
+  // present a skeleton instead of a disabled "No default" placeholder
+  // (which reads as "there are no options" rather than "still loading").
+  const showInitialSkeleton = optionsLoading && !loadedOnce
+
   // Wrapper data-test-* attributes carry the boolean "is a default
   // set?" signal used by the project detail-page E2E specs to assert
   // the Advanced section's summary state without scraping the antd
   // Select's value (which is just a UUID).
-  return (
-    <fieldset disabled={!canEdit} className="contents">
-      <div className="flex flex-col gap-4">
+  const body = (
+    <div className="flex flex-col gap-4">
         <div
           data-test-default-assistant-set={project.default_assistant_id ? 'true' : 'false'}
           className="flex flex-col gap-1.5"
@@ -217,6 +228,11 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
           </p>
         </div>
       </div>
+  )
+
+  return (
+    <fieldset disabled={!canEdit} className="contents">
+      {showInitialSkeleton ? <Loading>{body}</Loading> : body}
     </fieldset>
   )
 }
