@@ -88,7 +88,7 @@ export const McpServersStep = defineStore('McpServersStep', {
       for (const hubId of selectedMcpServerIds) {
         if (installedNames.has(hubId)) continue
         try {
-          await ApiClient.Hub.createMcpServerFromHub({ hub_id: hubId, enabled: true }, undefined)
+          await ApiClient.Hub.createMcpServerFromHub({ hub_id: hubId }, undefined)
           newlyInstalled.push(hubId)
         } catch (err: any) {
           errors.push(`Install "${hubId}": ${err.message || 'Unknown error'}`)

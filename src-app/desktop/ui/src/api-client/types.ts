@@ -437,6 +437,21 @@ export interface CitationItemResult {
 }
 
 /**
+ * Result of clearing a model's `failed` (flap / restart-cap) state so
+ *  auto-start can retry it.
+ */
+export interface ClearFailedResponse {
+  /**
+   * True when the model was actually in the `failed` state and has been
+   *  reset; false when it wasn't failed (the call is then a no-op).
+   */
+  cleared: boolean
+  model_id: string
+  /** The model's runtime state after the call (`stopped` when cleared). */
+  state: string
+}
+
+/**
  * One row of `code_sandbox_settings`. Field order mirrors the SQL column
  *  order; field names match the SQL column names (snake_case) so the sqlx
  *  `query_as` mapping is trivial.
@@ -778,6 +793,8 @@ export interface CreateLlmModelRequest {
   name: string
   parameters?: ModelParameters
   provider_id: string
+  /** Optional runtime version to pin this model to */
+  required_runtime_version_id?: string
 }
 
 export interface CreateLlmProviderRequest {
@@ -846,8 +863,6 @@ export interface CreateLlmRepositoryRequest {
 export interface CreateMcpServerFromHubRequest {
   /** Optional: Override display name */
   display_name?: string
-  /** Optional: Override enabled */
-  enabled?: boolean
   /** Hub MCP server ID */
   hub_id: string
   /** Optional: Override name */
@@ -930,8 +945,6 @@ export interface CreateMemoryRequest {
 export interface CreateModelFromHubRequest {
   /** Optional: Override display name */
   display_name?: string
-  /** Whether this model is enabled */
-  enabled?: boolean
   /** Hub model ID */
   hub_id: string
   /** Provider ID to associate model with */
@@ -5504,6 +5517,8 @@ export interface UpdateLlmModelRequest {
   is_active?: boolean
   name?: string
   parameters?: ModelParameters
+  /** Optional runtime version to pin this model to */
+  required_runtime_version_id?: string
 }
 
 export interface UpdateLlmProviderRequest {
@@ -6758,6 +6773,7 @@ export const ApiEndpoints = {
   'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
   'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
   'LocalLlmProxy.listModels': 'GET /api/local-llm/v1/models',
+  'LocalRuntime.clearFailed': 'POST /api/local-runtime/models/{model_id}/clear-failed',
   'LocalRuntime.detectGpu': 'GET /api/local-runtime/detect-gpu',
   'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
   'LocalRuntime.getLogs': 'GET /api/local-runtime/models/{model_id}/logs',
@@ -7133,6 +7149,7 @@ export type ApiEndpointParameters = {
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
   'LocalLlmProxy.listModels': void
+  'LocalRuntime.clearFailed': { model_id: string }
   'LocalRuntime.detectGpu': void
   'LocalRuntime.getInstance': { model_id: string }
   'LocalRuntime.getLogs': { model_id: string }
@@ -7508,6 +7525,7 @@ export type ApiEndpointResponses = {
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
   'LocalLlmProxy.listModels': void
+  'LocalRuntime.clearFailed': ClearFailedResponse
   'LocalRuntime.detectGpu': GpuDetectionResponse
   'LocalRuntime.getInstance': InstanceResponse
   'LocalRuntime.getLogs': LogsResponse

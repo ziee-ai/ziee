@@ -4422,6 +4422,55 @@
         ]
       }
     },
+    "/api/local-runtime/models/{model_id}/clear-failed": {
+      "post": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Clear a model's failed runtime state so it can be started again",
+        "operationId": "LocalRuntime.clearFailed",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Start, stop, and restart local LLM runtime instances",
+                        "name": "LocalRuntimeManage",
+                        "value": "llm_local_runtime::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Result of clearing a model's `failed` (flap / restart-cap) state so\n auto-start can retry it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearFailedResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/local-runtime/models/{model_id}/runtime-version": {
       "post": {
         "tags": [
@@ -13671,13 +13720,13 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "View system MCP servers",
-                        "name": "McpServersAdminRead",
-                        "value": "mcp_servers_admin::read"
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
                       }
                     ]
                   },
-                  "error": "Missing required permission: mcp_servers_admin::read",
+                  "error": "Missing required permission: code_sandbox::environments::read",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -14095,6 +14144,233 @@
             }
           }
         }
+      }
+    },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/memories": {
@@ -15043,233 +15319,6 @@
                     ]
                   },
                   "error": "Missing required permission: memory::admin::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/summarization/settings": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Read deployment-wide summarization settings",
-        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
-        "operationId": "SummarizationAdmin.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
-                        "name": "SummarizationSettingsRead",
-                        "value": "summarization::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Update deployment-wide summarization settings",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
-        "operationId": "SummarizationAdmin.update",
-        "requestBody": {
-          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/conversations/{id}/summary": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Get the active-branch summary for a conversation (null if none)",
-        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
-        "operationId": "Summarization.getConversationSummary",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConversationSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/_test/summarization/refresh": {
-      "post": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
-        "operationId": "SummarizationTest.refresh",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRefreshRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -16527,162 +16576,6 @@
           },
           "401": {
             "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
           }
         },
         "security": [
@@ -18417,6 +18310,162 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
           }
         },
         "security": [
@@ -22276,6 +22325,29 @@
           "verification_status"
         ]
       },
+      "ClearFailedResponse": {
+        "description": "Result of clearing a model's `failed` (flap / restart-cap) state so\n auto-start can retry it.",
+        "type": "object",
+        "properties": {
+          "cleared": {
+            "description": "True when the model was actually in the `failed` state and has been\n reset; false when it wasn't failed (the call is then a no-op).",
+            "type": "boolean"
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "description": "The model's runtime state after the call (`stopped` when cleared).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "cleared",
+          "state"
+        ]
+      },
       "CodeSandboxResourceLimits": {
         "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
         "type": "object",
@@ -23175,6 +23247,14 @@
           "provider_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "required_runtime_version_id": {
+            "description": "Optional runtime version to pin this model to",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         },
         "additionalProperties": false,
@@ -23348,11 +23428,6 @@
               "string",
               "null"
             ]
-          },
-          "enabled": {
-            "description": "Optional: Override enabled",
-            "type": "boolean",
-            "default": true
           },
           "hub_id": {
             "description": "Hub MCP server ID",
@@ -23534,11 +23609,6 @@
               "string",
               "null"
             ]
-          },
-          "enabled": {
-            "description": "Whether this model is enabled",
-            "type": "boolean",
-            "default": true
           },
           "hub_id": {
             "description": "Hub model ID",
@@ -36135,6 +36205,14 @@
                 "type": "null"
               }
             ]
+          },
+          "required_runtime_version_id": {
+            "description": "Optional runtime version to pin this model to",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },

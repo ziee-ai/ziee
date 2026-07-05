@@ -4422,6 +4422,55 @@
         ]
       }
     },
+    "/api/local-runtime/models/{model_id}/clear-failed": {
+      "post": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Clear a model's failed runtime state so it can be started again",
+        "operationId": "LocalRuntime.clearFailed",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Start, stop, and restart local LLM runtime instances",
+                        "name": "LocalRuntimeManage",
+                        "value": "llm_local_runtime::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Result of clearing a model's `failed` (flap / restart-cap) state so\n auto-start can retry it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearFailedResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/local-runtime/models/{model_id}/runtime-version": {
       "post": {
         "tags": [
@@ -13671,13 +13720,13 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "View system MCP servers",
-                        "name": "McpServersAdminRead",
-                        "value": "mcp_servers_admin::read"
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
                       }
                     ]
                   },
-                  "error": "Missing required permission: mcp_servers_admin::read",
+                  "error": "Missing required permission: code_sandbox::environments::read",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -21191,6 +21240,29 @@
           "verification_status"
         ]
       },
+      "ClearFailedResponse": {
+        "description": "Result of clearing a model's `failed` (flap / restart-cap) state so\n auto-start can retry it.",
+        "type": "object",
+        "properties": {
+          "cleared": {
+            "description": "True when the model was actually in the `failed` state and has been\n reset; false when it wasn't failed (the call is then a no-op).",
+            "type": "boolean"
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "description": "The model's runtime state after the call (`stopped` when cleared).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "cleared",
+          "state"
+        ]
+      },
       "CodeSandboxResourceLimits": {
         "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
         "type": "object",
@@ -22090,6 +22162,14 @@
           "provider_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "required_runtime_version_id": {
+            "description": "Optional runtime version to pin this model to",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         },
         "additionalProperties": false,
@@ -22263,11 +22343,6 @@
               "string",
               "null"
             ]
-          },
-          "enabled": {
-            "description": "Optional: Override enabled",
-            "type": "boolean",
-            "default": true
           },
           "hub_id": {
             "description": "Hub MCP server ID",
@@ -22449,11 +22524,6 @@
               "string",
               "null"
             ]
-          },
-          "enabled": {
-            "description": "Whether this model is enabled",
-            "type": "boolean",
-            "default": true
           },
           "hub_id": {
             "description": "Hub model ID",
@@ -34703,6 +34773,14 @@
                 "type": "null"
               }
             ]
+          },
+          "required_runtime_version_id": {
+            "description": "Optional runtime version to pin this model to",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
