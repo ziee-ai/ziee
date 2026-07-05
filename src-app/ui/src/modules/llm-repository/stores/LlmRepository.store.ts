@@ -9,6 +9,7 @@ import {
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
+import { useAuthStore } from '@/modules/auth/Auth.store'
 import {
   emitLlmRepositoryAutoDisabled,
   emitLlmRepositoryCreated,
@@ -218,7 +219,7 @@ export const LlmRepositoryStoreDef = defineStore('LlmRepository', {
       },
     }
   },
-  init: ({ on, get, set, actions }) => {
+  init: ({ on, get, set, actions, watch }) => {
     on('llm_repository.created', event => {
       set(state => ({ repositories: [...state.repositories, event.data.repository] }))
     })
@@ -245,6 +246,19 @@ export const LlmRepositoryStoreDef = defineStore('LlmRepository', {
       void actions.loadLlmRepositories(get().currentPage, get().pageSize)
     })
     void actions.loadLlmRepositories()
+    // Auth-bootstrap race: this store's init runs on first access, which can be
+    // BEFORE /auth/me populates permissions. The load above then bails on its
+    // hasPermissionNow gate, and — with no post-auth re-trigger — the list stays
+    // empty (API-seeded rows never appear on the settings page, and the
+    // model-download drawer's repository picker renders no options). Re-fire the
+    // self-gating load the moment LlmRepositoriesRead becomes available.
+    watch(
+      useAuthStore,
+      () => hasPermissionNow(Permissions.LlmRepositoriesRead),
+      (canRead, prev) => {
+        if (canRead && !prev) void actions.loadLlmRepositories()
+      },
+    )
   },
 })
 
