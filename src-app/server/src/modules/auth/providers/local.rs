@@ -91,7 +91,13 @@ impl AuthProviderTrait for LocalAuthProvider {
                 display_name: user.display_name.clone(),
                 first_name: None,   // Not tracked separately in new schema
                 last_name: None,    // Not tracked separately in new schema
-                groups: Vec::new(), // TODO: Add group support
+                // Empty by design: `UserAttributes.groups` carries EXTERNAL
+                // (LDAP/OAuth) group names for the provider layer. A local user's
+                // group membership is DB-sourced (`user_groups`, resolved via
+                // `get_user_groups` at request time), never from this field — the
+                // login handler does not consume `attributes.groups` — so leaving
+                // it empty does NOT degrade group-based authz for local users.
+                groups: Vec::new(),
             },
         })
     }

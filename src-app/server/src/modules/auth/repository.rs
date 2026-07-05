@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::auth::providers::models::OAuthSession;
-use crate::modules::user::Group;
+use crate::modules::user::{Group, User};
 
 /// Auth Repository
 pub struct AuthRepository {
@@ -33,25 +33,66 @@ impl AuthRepository {
         .map_err(AppError::database_error)
     }
 
-    /// Assign user to default group
-    pub async fn assign_user_to_default_group(&self, user_id: Uuid) -> Result<(), AppError> {
-        let default_group = self.get_default_group().await?;
+    /// Create a local (password) user AND assign the default group in ONE
+    /// transaction. `register()` previously did these as two independent writes:
+    /// a failure of the group assignment after the user INSERT committed left an
+    /// orphan user with no group membership (hence no permissions), unrecoverable
+    /// without manual cleanup. Mirrors the atomicity of
+    /// `create_external_user_with_link`.
+    pub async fn create_local_user_with_default_group(
+        &self,
+        username: &str,
+        email: &str,
+        password_hash: Option<String>,
+        display_name: Option<String>,
+    ) -> Result<User, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
 
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            INSERT INTO users (username, email, password_hash, display_name, permissions)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, username, email, email_verified, password_hash, display_name,
+                      avatar_url, is_active, is_admin, permissions,
+                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
+            "#,
+            username,
+            email,
+            password_hash,
+            display_name,
+            &[] as &[String],
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            // A duplicate username/email racing past the handler's pre-check
+            // must surface as 409 Conflict, not a generic 500.
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::conflict("Username or email");
+            }
+            AppError::database_error(e)
+        })?;
+
+        let default_group = self.get_default_group().await?;
         if let Some(group) = default_group {
             sqlx::query!(
                 r#"
                 INSERT INTO user_groups (user_id, group_id, assigned_at)
                 VALUES ($1, $2, NOW())
                 "#,
-                user_id,
+                user.id,
                 group.id
             )
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(AppError::database_error)?;
         }
 
-        Ok(())
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(user)
     }
 
     /// Find user auth link by provider and external ID

@@ -161,23 +161,18 @@ pub async fn register(
         )
     })?;
 
-    // Create user
+    // Create user + assign the default group atomically (one transaction) so a
+    // failure of the group assignment can't leave an orphan user with no group
+    // membership (and hence no permissions). Mirrors the external/OAuth path's
+    // `create_external_user_with_link`.
     let user = Repos
-        .user
-        .create(
+        .auth
+        .create_local_user_with_default_group(
             &req.username,
             &req.email,
             Some(password_hash),
             req.display_name,
-            None,
         )
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-
-    // Auto-assign user to default group
-    Repos
-        .auth
-        .assign_user_to_default_group(user.id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 

@@ -61,6 +61,10 @@ to us**:
   rootfs fetcher (`src-app/server/src/modules/code_sandbox/runtime_fetch.rs`),
   the cosign cert-identity regex
   (`scripts/bootstrap-first-rootfs-release.sh`), and `sandbox-rootfs/README.md`.
+- The self-update release repo slug `phibya/ziee-chat-new` — the actual
+  GitHub repo backing the app (the `origin` remote), used by
+  `src-app/server/src/modules/server_update/checker.rs` (`REPO` const, the
+  `mod.rs` doc-comment, and the test `html_url`). Deliberate; not legacy.
 - Historical log/diagnostic artifacts under `src-app/server/test-logs/` and
   `src-app/ui/docs/antd-diagnostics/`. They roll over naturally.
 

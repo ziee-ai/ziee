@@ -8,9 +8,11 @@ use uuid::Uuid;
 
 /// Events emitted by the user module
 // Emit-only lifecycle events: `created` is consumed (assistant module reads
-// Created), but Updated/Deleted payloads have no subscriber yet and
-// LoggedIn/LoggedOut aren't emitted at all — retained as the module's event
-// vocabulary for future subscribers (e.g. login audit).
+// Created); Updated/Deleted payloads are emitted but have no subscriber yet —
+// retained as the module's event vocabulary. (LoggedIn/LoggedOut variants were
+// removed: they were never emitted anywhere and had no subscriber — dead
+// vocabulary for a login-audit feature that isn't wired. Re-add them alongside
+// their emit site + subscriber if/when that feature lands.)
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum UserEvent {
@@ -22,16 +24,8 @@ pub enum UserEvent {
 
     /// A user was deleted
     Deleted { user_id: Uuid },
-
-    /// A user logged in
-    LoggedIn { user_id: Uuid },
-
-    /// A user logged out
-    LoggedOut { user_id: Uuid },
 }
 
-// created/updated/deleted are wired; logged_in/logged_out retained for the
-// not-yet-emitted auth-lifecycle events.
 #[allow(dead_code)]
 impl UserEvent {
     /// Helper to create a UserCreated event wrapped in AppEvent
@@ -47,15 +41,5 @@ impl UserEvent {
     /// Helper to create a UserDeleted event wrapped in AppEvent
     pub fn deleted(user_id: Uuid) -> crate::core::AppEvent {
         crate::core::AppEvent::User(UserEvent::Deleted { user_id })
-    }
-
-    /// Helper to create a UserLoggedIn event wrapped in AppEvent
-    pub fn logged_in(user_id: Uuid) -> crate::core::AppEvent {
-        crate::core::AppEvent::User(UserEvent::LoggedIn { user_id })
-    }
-
-    /// Helper to create a UserLoggedOut event wrapped in AppEvent
-    pub fn logged_out(user_id: Uuid) -> crate::core::AppEvent {
-        crate::core::AppEvent::User(UserEvent::LoggedOut { user_id })
     }
 }
