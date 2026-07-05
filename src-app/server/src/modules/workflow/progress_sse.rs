@@ -105,7 +105,8 @@ pub async fn subscribe(
         step_manifest,
     });
 
-    let terminal = matches!(row.status.as_str(), "completed" | "failed" | "cancelled");
+    let terminal = crate::modules::workflow::models::WorkflowRunStatus::from_db_str(&row.status)
+        .is_some_and(|s| s.is_terminal());
     let snapshot_axum: Event = snapshot.into();
     let connected_axum: Event = SSEWorkflowRunEvent::Connected(SSEConnectedData {
         message: format!("connected to workflow run {run_id}"),

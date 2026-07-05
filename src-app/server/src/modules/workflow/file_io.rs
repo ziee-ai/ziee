@@ -18,7 +18,6 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tokio::io::AsyncReadExt;
 
 use crate::common::AppError;
 use crate::modules::workflow::types::{OutputMeta, ParsedAs, RunContext, StepKindTag};
@@ -176,33 +175,6 @@ pub async fn open_output_stream(host_path: &PathBuf) -> Result<tokio::fs::File, 
             format!("workflow output file missing or unreadable: {e}"),
         )
     })
-}
-
-/// Async size check (for the REST handler to short-circuit oversized
-/// outputs before opening the stream).
-#[allow(dead_code)]
-pub async fn file_size(host_path: &PathBuf) -> Result<u64, AppError> {
-    let md = tokio::fs::metadata(host_path).await.map_err(|e| {
-        AppError::new(
-            axum::http::StatusCode::NOT_FOUND,
-            "WORKFLOW_OUTPUT_MISSING",
-            format!("workflow output file missing: {e}"),
-        )
-    })?;
-    Ok(md.len())
-}
-
-/// Drain an open AsyncRead into a Vec, capped at STEP_OUTPUT_CAP_BYTES.
-#[allow(dead_code)]
-pub async fn drain_to_string(file: &mut tokio::fs::File) -> Result<String, AppError> {
-    let mut buf = Vec::with_capacity(STEP_OUTPUT_CAP_BYTES.min(8192) as usize);
-    file.take(STEP_OUTPUT_CAP_BYTES as u64)
-        .read_to_end(&mut buf)
-        .await
-        .map_err(|e| {
-            AppError::internal_error(format!("workflow file_io: read step output: {e}"))
-        })?;
-    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 fn build_preview(bytes: &[u8]) -> String {

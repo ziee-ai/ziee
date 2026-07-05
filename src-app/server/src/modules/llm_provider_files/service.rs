@@ -118,16 +118,37 @@ pub async fn get_or_upload_provider_file(
         }),
     };
 
-    // Get base URL
-    let base_url = provider.base_url.as_deref().unwrap_or({
-        // Default base URLs for known providers
-        match provider.provider_type.as_str() {
-            "anthropic" => "https://api.anthropic.com/v1",
-            "gemini" => "https://generativelanguage.googleapis.com/v1beta",
-            "openai" => "https://api.openai.com/v1",
-            _ => "http://localhost:8000/v1",
-        }
-    });
+    // Resolve the base URL. Known providers carry a public default; an unknown
+    // provider_type with no configured base_url is REJECTED — the old
+    // `http://localhost:8000/v1` fallback silently targeted an internal service
+    // with the provider api_key.
+    let default_base = match provider.provider_type.as_str() {
+        "anthropic" => Some("https://api.anthropic.com/v1"),
+        "gemini" => Some("https://generativelanguage.googleapis.com/v1beta"),
+        "openai" => Some("https://api.openai.com/v1"),
+        _ => None,
+    };
+    let base_url = provider.base_url.as_deref().or(default_base).ok_or_else(|| {
+        AppError::bad_request(
+            "PROVIDER_BASE_URL_MISSING",
+            format!(
+                "provider type '{}' has no default upload endpoint; set base_url",
+                provider.provider_type
+            ),
+        )
+    })?;
+
+    // SSRF hardening: this upload POSTs the file + provider api_key to base_url.
+    // Reject a base_url that resolves to loopback / RFC1918 / cloud metadata
+    // before the secret leaves the process (mirrors the guard on
+    // llm_provider::discover's api_key-bearing request). PUBLIC_HTTP_OR_HTTPS
+    // also forbids the old localhost fallback.
+    let files_url = format!("{}/files", base_url.trim_end_matches('/'));
+    crate::utils::url_validator::validate_outbound_url(
+        &files_url,
+        &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+    )
+    .map_err(|e| AppError::bad_request("PROVIDER_URL_BLOCKED", format!("blocked upload url: {e}")))?;
 
     // Upload to provider
     let upload_response = ai_provider

@@ -361,7 +361,7 @@ pub async fn subscribe_download_progress(
 
     // Add client to the connection pool
     {
-        let mut clients = SSE_CLIENTS.lock().unwrap();
+        let mut clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
         clients.insert(client_id, tx.clone());
     }
 
@@ -408,7 +408,7 @@ pub fn subscribe_download_progress_docs(op: TransformOperation) -> TransformOper
 
 /// Start download monitoring service
 async fn start_download_monitoring() {
-    let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
+    let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
     if *monitoring_active {
         return; // Already running
     }
@@ -435,14 +435,14 @@ async fn start_download_monitoring() {
 
             // Check if we have any connected clients
             let client_count = {
-                let clients = SSE_CLIENTS.lock().unwrap();
+                let clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
                 clients.len()
             };
 
             if client_count == 0 {
                 // No clients connected, stop monitoring
                 tracing::info!("No clients connected, stopping download monitoring");
-                let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
+                let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
                 *monitoring_active = false;
                 break;
             }
@@ -460,7 +460,7 @@ async fn start_download_monitoring() {
                         broadcast_event(complete_event.into()).await;
 
                         tracing::info!("All downloads completed, stopping download monitoring");
-                        let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
+                        let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
                         *monitoring_active = false;
                         break;
                     } else {
@@ -484,7 +484,7 @@ async fn start_download_monitoring() {
                     broadcast_event(error_event.into()).await;
 
                     // Stop monitoring on error
-                    let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
+                    let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
                     *monitoring_active = false;
                     break;
                 }
@@ -496,7 +496,7 @@ async fn start_download_monitoring() {
 /// Broadcast event to all connected clients
 async fn broadcast_event(event: Event) {
     let clients = {
-        let clients = SSE_CLIENTS.lock().unwrap();
+        let clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
         clients.clone()
     };
 
@@ -515,7 +515,7 @@ async fn broadcast_event(event: Event) {
 
     // Remove disconnected clients
     if !disconnected_clients.is_empty() {
-        let mut clients = SSE_CLIENTS.lock().unwrap();
+        let mut clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
         for client_id in disconnected_clients {
             clients.remove(&client_id);
             tracing::info!(
@@ -528,7 +528,7 @@ async fn broadcast_event(event: Event) {
 
 /// Remove client from connection pool
 fn remove_client(client_id: ClientId) {
-    let mut clients = SSE_CLIENTS.lock().unwrap();
+    let mut clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
     clients.remove(&client_id);
     tracing::info!("Removed download monitoring client: {}", client_id);
 }

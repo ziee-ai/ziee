@@ -17,19 +17,6 @@ pub enum LlmModelEvent {
 
     /// A model was deleted
     Deleted { id: Uuid, name: String },
-
-    /// A model download was started
-    DownloadStarted { instance_id: Uuid, model_id: Uuid },
-
-    /// A model download was completed
-    DownloadCompleted { instance_id: Uuid, model_id: Uuid },
-
-    /// A model download failed
-    DownloadFailed {
-        instance_id: Uuid,
-        model_id: Uuid,
-        error: String,
-    },
 }
 
 impl LlmModelEvent {
@@ -46,36 +33,6 @@ impl LlmModelEvent {
     /// Create a Deleted event
     pub fn deleted(id: Uuid, name: String) -> Self {
         Self::Deleted { id, name }
-    }
-
-    /// Create a DownloadStarted event
-    // Scaffolding: download-progress events aren't emitted via these helpers
-    // yet (download state is surfaced through the sync/SSE path instead).
-    #[allow(dead_code)]
-    pub fn download_started(instance_id: Uuid, model_id: Uuid) -> Self {
-        Self::DownloadStarted {
-            instance_id,
-            model_id,
-        }
-    }
-
-    /// Create a DownloadCompleted event
-    #[allow(dead_code)]
-    pub fn download_completed(instance_id: Uuid, model_id: Uuid) -> Self {
-        Self::DownloadCompleted {
-            instance_id,
-            model_id,
-        }
-    }
-
-    /// Create a DownloadFailed event
-    #[allow(dead_code)]
-    pub fn download_failed(instance_id: Uuid, model_id: Uuid, error: String) -> Self {
-        Self::DownloadFailed {
-            instance_id,
-            model_id,
-            error,
-        }
     }
 }
 

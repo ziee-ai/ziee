@@ -382,7 +382,8 @@ pub async fn create_llm_model(
          RETURNING id, provider_id, name, display_name, description, enabled, is_deprecated, is_active,
                    capabilities, parameters,
                    created_at, updated_at, file_size_bytes, validation_status, validation_issues,
-                   port, pid, engine_type, engine_settings, file_format"#,
+                   port, pid, engine_type, engine_settings, file_format,
+                   required_runtime_version_id"#,
         model_id,
         request.provider_id,
         &request.name,
@@ -424,7 +425,7 @@ pub async fn create_llm_model(
             .and_then(|v| serde_json::from_value(v).ok()),
         port: row.port,
         pid: row.pid,
-        required_runtime_version_id: None,
+        required_runtime_version_id: row.required_runtime_version_id,
         engine_type: EngineType::from_str(&row.engine_type).unwrap(),
         engine_settings: row
             .engine_settings
@@ -982,16 +983,4 @@ pub async fn find_existing_in_progress_download(
     )
     .fetch_optional(pool)
     .await
-}
-
-/// Delete all download instances
-// Bulk-clear helper for a future admin "clear all downloads" action; no
-// handler calls it yet.
-#[allow(dead_code)]
-pub async fn delete_all_downloads(pool: &PgPool) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query!("DELETE FROM download_instances")
-        .execute(pool)
-        .await?;
-
-    Ok(result.rows_affected())
 }
