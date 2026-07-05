@@ -131,40 +131,6 @@ pub async fn write_text_log(
     }))
 }
 
-/// Per-item log for `llm_map`. Always captured at `log: full`; omitted
-/// otherwise. Stored as JSON for round-trip with the FE renderer.
-// Future-API: the per-item `llm_map` logging path is not wired to a caller yet.
-#[allow(dead_code)]
-pub async fn write_item_log(
-    ctx: &RunContext,
-    step_id: &str,
-    item_index: usize,
-    record: &serde_json::Value,
-    log_level: LogCapture,
-) -> Result<Option<LogEntryMeta>, AppError> {
-    if !(ctx.force_log_capture || log_level == LogCapture::Full) {
-        return Ok(None);
-    }
-    let dir = step_log_dir(ctx, step_id).join("items");
-    ensure_dir(&dir).await?;
-    let dest = dir.join(format!("{item_index}.json"));
-    let bytes = serde_json::to_vec_pretty(record)
-        .map_err(|e| AppError::internal_error(format!("log_io: serialize item: {e}")))?;
-    tokio::fs::write(&dest, &bytes).await.map_err(|e| {
-        AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
-    })?;
-    let body_str = String::from_utf8_lossy(&bytes).into_owned();
-    let preview = body_str.chars().take(500).collect::<String>();
-    // Discarded by callers; the durable, run-budgeted body is produced by
-    // `snapshot_step_logs`. Per-log cap only (don't charge the run budget here).
-    Ok(Some(LogEntryMeta {
-        path: dest,
-        size_bytes: bytes.len() as u64,
-        preview,
-        body: Some(cap_body(&body_str)),
-    }))
-}
-
 /// Always-on per-step trace (timing + tokens). Persists to
 /// `logs/<step_id>/trace.json`.
 pub async fn write_trace(
