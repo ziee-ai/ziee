@@ -260,6 +260,10 @@ async fn main() {
     // — module event handlers are registered before this point and can't
     // receive Axum Extensions, so they read the process-wide handle.
     modules::mcp::client::manager::set_global(mcp_session_manager.clone());
+    // Reap idle pooled MCP sessions in the background so a server the
+    // user has stopped chatting with releases its subprocess / HTTP
+    // keep-alive; re-created lazily on next use.
+    let _ = mcp_session_manager.spawn_idle_reaper();
     tracing::info!("MCP session manager initialized");
 
     // Build API router with all module routes (including auth)

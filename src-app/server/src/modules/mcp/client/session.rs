@@ -183,7 +183,9 @@ impl McpSession {
         self.created_at.elapsed()
     }
 
-    #[allow(dead_code)] // Used by cleanup_idle() for session management (Phase 3)
+    /// Used by the manager's idle reaper (`cleanup_idle`) to decide
+    /// which pooled sessions to close.
+    #[allow(dead_code)] // reached via `cleanup_idle`, wired in the bin (main.rs)
     pub fn idle_time(&self) -> std::time::Duration {
         self.last_used.elapsed()
     }

@@ -40,6 +40,20 @@ pub fn global() -> Option<Arc<McpSessionManager>> {
     MCP_SESSION_MANAGER.get().cloned()
 }
 
+/// Idle reaper cadence: how often the background task scans the pool.
+#[allow(dead_code)] // reached only from `spawn_idle_reaper`, wired in the bin (main.rs)
+const REAPER_TICK: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// A pooled session untouched for longer than this is closed by the
+/// reaper. Sessions are re-created lazily on the next `get_or_create`,
+/// so eviction only costs a reconnect on the next use — worth it to
+/// release the underlying subprocess / HTTP keep-alive of a server the
+/// user has stopped chatting with. Mirrors `llm_local_runtime`'s
+/// idle-unload, but MCP has no per-server admin setting so the
+/// threshold is a compile-time constant.
+#[allow(dead_code)] // reached only from `spawn_idle_reaper`, wired in the bin (main.rs)
+const REAPER_MAX_IDLE_SECONDS: u64 = 30 * 60;
+
 pub struct McpSessionManager {
     sessions: Arc<RwLock<HashMap<Uuid, Arc<RwLock<McpSession>>>>>,
     config: Arc<Config>,
@@ -290,7 +304,40 @@ impl McpSessionManager {
         self.sessions.read().await.contains_key(&server_id)
     }
 
-    #[allow(dead_code)] // Phase 3 feature: background task to cleanup idle sessions
+    /// Spawn the background idle-session reaper. Ticks every
+    /// [`REAPER_TICK`] and closes any pooled session idle longer than
+    /// [`REAPER_MAX_IDLE_SECONDS`]. Called once from `main.rs` after the
+    /// manager is installed as the process-wide handle. Returns the
+    /// `JoinHandle` (mirrors `llm_local_runtime::reaper::spawn`); boot
+    /// drops it — the task lives for the process lifetime.
+    #[allow(dead_code)] // called from the bin (main.rs); the lib compiles standalone
+    pub fn spawn_idle_reaper(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let manager = self.clone();
+        tokio::spawn(async move {
+            tracing::info!(
+                "mcp::session reaper: started (tick {}s, max_idle {}s)",
+                REAPER_TICK.as_secs(),
+                REAPER_MAX_IDLE_SECONDS
+            );
+            let mut interval = tokio::time::interval(REAPER_TICK);
+            // Skip the immediate first tick (interval fires once at t=0).
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                match manager.cleanup_idle(REAPER_MAX_IDLE_SECONDS).await {
+                    Ok(n) if n > 0 => {
+                        tracing::debug!("mcp::session reaper: closed {} idle session(s)", n);
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!("mcp::session reaper tick failed: {}", e);
+                    }
+                }
+            }
+        })
+    }
+
+    #[allow(dead_code)] // driven by `spawn_idle_reaper`, wired in the bin (main.rs)
     pub async fn cleanup_idle(&self, max_idle_seconds: u64) -> Result<usize, AppError> {
         let to_remove = {
             let sessions = self.sessions.read().await;
