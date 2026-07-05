@@ -48,7 +48,7 @@ pub fn add_client(
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
     {
-        let mut clients = SSE_CLIENTS.lock().unwrap();
+        let mut clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
         if clients.len() >= MAX_SSE_CLIENTS {
             tracing::warn!(
                 client_count = clients.len(),
@@ -65,7 +65,7 @@ pub fn add_client(
 
 /// Remove client from connection pool
 pub fn remove_client(client_id: ClientId) {
-    let mut clients = SSE_CLIENTS.lock().unwrap();
+    let mut clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
     clients.remove(&client_id);
     tracing::debug!("Removed hardware monitoring client: {}", client_id);
 }
@@ -98,7 +98,7 @@ pub async fn start_hardware_monitoring() {
 
             // Check if we have any connected clients
             let client_count = {
-                let clients = SSE_CLIENTS.lock().unwrap();
+                let clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
                 clients.len()
             };
 
@@ -110,7 +110,7 @@ pub async fn start_hardware_monitoring() {
                 // during the tiny window between client_count check and
                 // the store above, they would have seen the flag still
                 // set (and skipped restart). Resurrect ourselves if so.
-                let recheck = SSE_CLIENTS.lock().unwrap().len();
+                let recheck = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner()).len();
                 if recheck > 0
                     && MONITORING_ACTIVE
                         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -145,7 +145,7 @@ pub fn stop_hardware_monitoring() {
 }
 
 /// Collect current hardware usage
-fn collect_hardware_usage(sys: &mut System) -> HardwareUsageUpdate {
+pub(super) fn collect_hardware_usage(sys: &mut System) -> HardwareUsageUpdate {
     let timestamp = chrono::Utc::now().to_rfc3339();
 
     // CPU usage (average of all cores)
@@ -192,7 +192,7 @@ fn collect_hardware_usage(sys: &mut System) -> HardwareUsageUpdate {
 /// Broadcast usage update to all connected clients
 async fn broadcast_usage_update(usage_update: HardwareUsageUpdate) {
     let clients = {
-        let clients = SSE_CLIENTS.lock().unwrap();
+        let clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
         clients.clone()
     };
 
@@ -214,7 +214,7 @@ async fn broadcast_usage_update(usage_update: HardwareUsageUpdate) {
 
     // Remove disconnected clients
     if !disconnected_clients.is_empty() {
-        let mut clients = SSE_CLIENTS.lock().unwrap();
+        let mut clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
         for client_id in disconnected_clients {
             clients.remove(&client_id);
         }
