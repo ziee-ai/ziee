@@ -16,12 +16,17 @@
     <!-- Pre-hydration: set the `dark` class + the theme-color before first paint
          to avoid a flash of the wrong theme / status-bar color. The bar surface
          differs per route (app shell = --card, blank/login = --background), so
-         pick the right one from the path. Key must match ThemeProvider's
-         storageKey (default 'ziee-theme'). -->
+         pick the right one from the path. Key + shape must match the persisted
+         ConfigClient store (zustand persist name 'config-client-storage',
+         value `{ state: { themePreference } }`). -->
     <script>
       (function () {
         try {
-          var p = localStorage.getItem('ziee-theme') || 'system'
+          var p = 'system'
+          try {
+            var raw = localStorage.getItem('config-client-storage')
+            if (raw) p = JSON.parse(raw).state.themePreference || 'system'
+          } catch (e) {}
           var dark = p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
           document.documentElement.classList.toggle('dark', dark)
           // Blank/login routes paint --background; everything else is the app

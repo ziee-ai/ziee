@@ -74,6 +74,7 @@ export const HeaderBarContainer = ({
         />
       )}
       <div
+      data-testid="app-header-bar"
       className={cn(
         'w-full flex px-3 border-b border-border box-border py-0',
         nativeScroll

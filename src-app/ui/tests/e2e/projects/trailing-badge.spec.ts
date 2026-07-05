@@ -184,13 +184,9 @@ test.describe('ConversationCard trailing badge — remove-from-project', () => {
     await expect(card).toBeVisible({ timeout: 10000 })
     await card.hover()
 
-    // Wait for the trailing area to mount + the project lookup to
-    // resolve. Once done the membership Tag renders inside the card.
-    await expect(
-      byTestId(card, 'project-trailing-membership-tag'),
-    ).toBeVisible({ timeout: 10000 })
-
-    // Click the remove (×) button on the membership tag.
+    // Wait for the trailing area to mount + the project lookup to resolve.
+    // For a project-bound conversation the "Remove from project" button
+    // renders inside the card (it replaced the old membership Tag + × icon).
     const removeButton = byTestId(card, 'project-trailing-remove-button')
     await expect(removeButton).toBeVisible({ timeout: 10000 })
     await removeButton.click()

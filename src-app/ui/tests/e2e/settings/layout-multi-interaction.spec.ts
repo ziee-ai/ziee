@@ -29,13 +29,14 @@ test.describe('App layout — combined multi-interaction flow', () => {
     await page.goto(`${baseURL}/settings/about`)
     await expect(byTestId(page, 'settings-page-title')).toBeVisible({ timeout: 30000 })
 
-    // 3) Switch to mobile: the sidebar auto-collapses; open it then Escape-close.
+    // 3) Switch to mobile: the sidebar becomes a closed Sheet (content not
+    //    mounted); open it via the toggle then Escape-close it.
     await page.setViewportSize({ width: 400, height: 800 })
     const sidebar = byTestId(page, 'app-sidebar')
-    await expect(sidebar).toHaveAttribute('aria-hidden', 'true', { timeout: 10000 })
+    await expect(sidebar).toBeHidden({ timeout: 10000 })
     await byTestId(page, 'layout-sidebar-toggle-button').click()
-    await expect(sidebar).not.toHaveAttribute('aria-hidden', 'true', { timeout: 10000 })
+    await expect(sidebar).toBeVisible({ timeout: 10000 })
     await page.keyboard.press('Escape')
-    await expect(sidebar).toHaveAttribute('aria-hidden', 'true', { timeout: 10000 })
+    await expect(sidebar).toBeHidden({ timeout: 10000 })
   })
 })

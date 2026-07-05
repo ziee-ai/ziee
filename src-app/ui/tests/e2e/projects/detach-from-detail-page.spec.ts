@@ -74,9 +74,10 @@ test.describe('Projects — detach from the detail page conversations list', () 
     await card.hover()
     await byTestId(card, 'project-conv-remove-trigger-button').click()
 
-    // Confirm via the remove dialog.
+    // Confirm via the remove dialog. The kit Confirm derives its confirm
+    // button testid as `${dialog-testid}-confirm`.
     await expect(byTestId(page, 'project-conv-remove-dialog')).toBeVisible()
-    await byTestId(page, 'project-conv-remove-confirm-button').click()
+    await byTestId(page, 'project-conv-remove-dialog-confirm').click()
 
     // The DELETE fired and the card leaves the project list.
     await expect
