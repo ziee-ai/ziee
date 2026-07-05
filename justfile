@@ -175,9 +175,16 @@ server:
 # `.ziee-cache/sandbox-rootfs`), so there is no local build step — just
 # network access on the first run. Pin a different release via
 # `ZIEE_SANDBOX_TEST_TAG`.
+# Default to a MODERATE parallelism (6). The suite isolates at the DB layer
+# (per-test UUID databases + a spawned server subprocess per test), so
+# --test-threads>1 is safe for isolation. On a busy/shared host a very high
+# count plus the stdio-MCP `npx`/`bun` install storm causes slow tails + the
+# occasional real-LLM agentic hang; 6-8 is the sweet spot (raise if the host is
+# idle, drop to 1 to debug a suspected race). Override: `just test THREADS=8`.
+THREADS := "6"
 test:
     cd src-app/server && \
-        bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads=1'
+        bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads={{THREADS}}'
 
 # Same as `test` but also runs tier-6 e2e + tier-5 LLM tests (tier-5 is
 # `#[ignore]` — needs ANTHROPIC_API_KEY and costs ~$0.30/run). Tier-6
@@ -186,7 +193,7 @@ test:
 # cycles.
 test-all:
     cd src-app/server && \
-        bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads=1 --include-ignored'
+        bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads={{THREADS}} --include-ignored'
 
 # ─── UI ─────────────────────────────────────────────────────────────
 

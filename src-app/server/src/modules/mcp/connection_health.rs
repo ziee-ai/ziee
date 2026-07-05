@@ -304,7 +304,16 @@ pub async fn probe(pool: &PgPool, server: &McpServer) -> Result<(), ProbeFailure
 /// opens the MCP servers list — no event channel needed for the
 /// boot path specifically.
 pub async fn run_startup_health_check(pool: PgPool) {
-    let servers = match Repos.mcp.list_enabled_for_health_check().await {
+    // Use the passed `pool` for every DB op (list / record / disable) rather
+    // than the process-global `Repos`. In production the two are the same pool
+    // (`init_repositories` runs once at boot), but `run_startup_health_check`
+    // takes a `pool` param and must be self-consistent: reading the server list
+    // via a different pool than the one it writes disables through is a latent
+    // bug. It also makes the boot path independent of `Repos` init ordering
+    // (e.g. the in-process test harness, where sibling tests re-`init_repositories`
+    // the global factory concurrently — this is what let the boot-recovery unit
+    // test flake under a parallel `cargo test --lib`).
+    let servers = match super::repository::list_enabled_for_health_check(&pool).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = ?e, "mcp::health: failed to list enabled servers for startup check");
@@ -332,7 +341,7 @@ pub async fn run_startup_health_check(pool: PgPool) {
                     server_name = %server_name,
                     "mcp::health: server reachable",
                 );
-                if let Err(e) = Repos.mcp.record_health_check(server_id, "healthy", None).await {
+                if let Err(e) = record_health_check_on(&pool, server_id, "healthy", None).await {
                     tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record healthy status (non-fatal)");
                 }
             }
@@ -352,7 +361,7 @@ pub async fn run_startup_health_check(pool: PgPool) {
                         "mcp::health: failed to auto-disable server",
                     );
                 }
-                if let Err(e) = Repos.mcp.record_health_check(server_id, "unhealthy", Some(&failure.reason)).await {
+                if let Err(e) = record_health_check_on(&pool, server_id, "unhealthy", Some(&failure.reason)).await {
                     tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record unhealthy status (non-fatal)");
                 }
             }
@@ -371,6 +380,32 @@ async fn disable_for_health_failure(
     sqlx::query!(
         "UPDATE mcp_servers SET enabled = false, updated_at = NOW() WHERE id = $1",
         server_id,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Record a boot-probe health result against an explicit `pool` — the
+/// pool-taking twin of `McpRepository::record_health_check` (which writes via
+/// the global `Repos` pool). `run_startup_health_check` uses this so its list /
+/// record / disable all go through the one pool it was handed.
+async fn record_health_check_on(
+    pool: &PgPool,
+    server_id: Uuid,
+    status: &str,
+    reason: Option<&str>,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        "UPDATE mcp_servers
+         SET last_health_check_at = NOW(),
+             last_health_check_status = $2,
+             last_health_check_reason = $3
+         WHERE id = $1",
+        server_id,
+        status,
+        reason,
     )
     .execute(pool)
     .await
