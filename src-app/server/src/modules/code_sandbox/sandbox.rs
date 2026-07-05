@@ -28,9 +28,10 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::code_sandbox::types::{HardeningCapabilities, PidNsMode, SandboxContext};
-// Used only by the Linux-gated in-host execution path (run_in_sandbox*);
-// on macOS/Windows execution goes through the VM / WSL2 backend.
-#[cfg(target_os = "linux")]
+// Used by the Linux-gated in-host execution path (run_in_sandbox*) and by
+// the test module (which compiles on every OS); on macOS/Windows non-test
+// builds execution goes through the VM / WSL2 backend and these are unused.
+#[cfg(any(target_os = "linux", test))]
 use crate::modules::code_sandbox::types::{CgroupMode, CodeSandboxState, SeccompMode};
 
 /// Output of a single bwrap invocation. stdout/stderr are each
