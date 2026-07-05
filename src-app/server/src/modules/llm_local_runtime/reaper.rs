@@ -81,6 +81,10 @@ pub async fn run_one_tick(pool: &PgPool) -> Result<(), AppError> {
         .map_err(|e| AppError::internal_error(format!("reaper: settings load: {e}")))?;
     let (idle_secs, drain_secs) = (settings.idle_unload_secs, settings.drain_timeout_secs);
 
+    // Periodic health-monitor pass runs regardless of whether idle eviction
+    // is enabled — it only reads/updates the `state` column, never `status`.
+    monitor_health(pool).await;
+
     if idle_secs <= 0 {
         // Eviction disabled.
         return Ok(());
@@ -149,6 +153,78 @@ pub async fn run_one_tick(pool: &PgPool) -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+/// Periodic health-monitor pass — the "health loop" that turns each running
+/// engine's bare `/health` bool into the richer `healthy`/`unhealthy` states
+/// the UI + recovery logic read. For every `status = 'running'` instance we
+/// probe `/health` and feed the result into its state machine via
+/// [`super::auto_start::report_health`]; when that drives a `state` transition
+/// we persist the new `state` string to the row. Best-effort: a probe or DB
+/// error for one instance is logged and skipped, never aborting the tick.
+///
+/// This only ever touches the `state` column, never `status` — a degraded
+/// engine stays `running` (nothing is killed here); it's the idle reaper and
+/// the auto-start crash path that own `status` transitions.
+async fn monitor_health(pool: &PgPool) {
+    let running = match sqlx::query!(
+        "SELECT model_id, base_url FROM llm_runtime_instances WHERE status = 'running'",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!("reaper: health-monitor candidate query failed: {}", e);
+            return;
+        }
+    };
+
+    if running.is_empty() {
+        return;
+    }
+
+    let dep = match get_deployment_manager()
+        .get_deployment(
+            &crate::modules::llm_local_runtime::models::DeploymentConfig::Local {
+                binary_path: None,
+            },
+        )
+        .await
+    {
+        Ok(dep) => dep,
+        Err(e) => {
+            tracing::warn!("reaper: health-monitor deployment lookup failed: {}", e);
+            return;
+        }
+    };
+
+    for row in running {
+        let model_id = row.model_id;
+        let healthy = dep.health_check(&row.base_url).await.unwrap_or(false);
+        if let Some((from, to)) = super::auto_start::report_health(
+            model_id,
+            healthy,
+            "engine /health probe failed",
+        )
+        .await
+        {
+            if let Err(e) = sqlx::query!(
+                "UPDATE llm_runtime_instances
+                 SET state = $2, state_changed_at = NOW()
+                 WHERE model_id = $1",
+                model_id,
+                to,
+            )
+            .execute(pool)
+            .await
+            {
+                tracing::warn!("reaper: health-monitor state persist for {model_id}: {}", e);
+            } else {
+                tracing::debug!("reaper: model {model_id} health state {from} -> {to}");
+            }
+        }
+    }
 }
 
 /// Drain the in-memory last_used_at map and bump each touched

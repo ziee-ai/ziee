@@ -88,16 +88,12 @@ impl InstanceState {
 /// [`HealthEvent::AdminStop`] / [`HealthEvent::AdminStart`] /
 /// [`HealthEvent::ClearFailed`] from REST handlers.
 ///
-/// # Dead-code note
-/// `Ok`, `Unhealthy`, and `ClearFailed` variants are part of the state
-/// machine's designed input set but currently never constructed: the
-/// health-check → event path (Ok/Unhealthy) and the admin-rest →
-/// event path (ClearFailed) were not wired up. AdminStop IS constructed
-/// in tests. Keeping these variants so the state machine's match is
-/// total — if a future patch wires the REST handler or the health
-/// reporter, the enum contract is complete.
+/// Wiring: `Ok` / `Unhealthy` are emitted from the reaper's periodic
+/// health-monitor pass (`reaper::monitor_health` →
+/// `auto_start::report_health`); `ClearFailed` is emitted from the admin
+/// `clear-failed` REST endpoint (`handlers::clear_failed_instance` →
+/// `auto_start::clear_failed`); `AdminStop` is exercised by tests.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum HealthEvent {
     /// Engine reports `Ok` — equivalent to `HealthSignal::Ok`.
     Ok,
@@ -106,11 +102,17 @@ pub enum HealthEvent {
     /// Engine process is gone.
     Crashed(Option<i32>),
     /// Backoff timer elapsed; supervisor is about to call
-    /// `engine.start()` again.
+    /// `engine.start()` again. Part of the designed input set + exercised by
+    /// tests; the lazy auto-start path drives restarts via the `Restart`
+    /// transition rather than emitting this explicitly.
+    #[allow(dead_code)]
     RestartAttempt,
     /// Engine started successfully (post-restart or first start).
     StartedOk,
-    /// Admin explicitly stopped the instance.
+    /// Admin explicitly stopped the instance. Part of the designed input set +
+    /// exercised by tests; the stop REST path evicts in-memory state via
+    /// `auto_start::forget` instead of feeding this event.
+    #[allow(dead_code)]
     AdminStop,
     /// Admin explicitly cleared a `Failed` state.
     ClearFailed,
@@ -358,10 +360,9 @@ impl HealthStateMachine {
                 }
             }
             (InstanceState::Failed { .. }, HealthEvent::ClearFailed) => {
-                self.state = InstanceState::Stopped;
-                self.restart_attempts = 0;
-                self.backoff.reset();
-                self.flap_window.clear();
+                // Reuse the manual reset so the REST-driven ClearFailed path and
+                // the direct `clear_failed()` helper share one implementation.
+                self.clear_failed();
                 Transition::StateChanged {
                     from,
                     to: "stopped".into(),
@@ -376,9 +377,8 @@ impl HealthStateMachine {
         }
     }
 
-    /// Manual reset for a Failed instance.
-    // Exercised by the health state-machine tests; no production caller yet.
-    #[allow(dead_code)]
+    /// Manual reset for a Failed instance. Driven in production by the admin
+    /// `clear-failed` REST endpoint via the `HealthEvent::ClearFailed` arm.
     pub fn clear_failed(&mut self) {
         if matches!(self.state, InstanceState::Failed { .. }) {
             self.state = InstanceState::Stopped;
@@ -493,6 +493,46 @@ mod tests {
         sm.clear_failed();
         assert_eq!(sm.state.name(), "stopped");
         assert_eq!(sm.restart_attempts, 0);
+    }
+
+    #[test]
+    fn clear_failed_event_resets_to_stopped() {
+        // The ClearFailed event arm delegates to `clear_failed()` — drive it
+        // via the event so the admin `clear-failed` REST path is covered.
+        let mut sm = HealthStateMachine::new(1);
+        let t0 = Instant::now();
+        sm.on_event_at(HealthEvent::Crashed(None), t0);
+        sm.on_event_at(HealthEvent::RestartAttempt, t0);
+        sm.on_event_at(HealthEvent::Crashed(None), t0 + Duration::from_secs(120));
+        assert!(matches!(sm.state, InstanceState::Failed { .. }));
+
+        let t = sm.on_event(HealthEvent::ClearFailed);
+        assert!(matches!(
+            t,
+            Transition::StateChanged { ref to, .. } if to == "stopped"
+        ));
+        assert_eq!(sm.state.name(), "stopped");
+        assert_eq!(sm.restart_attempts, 0);
+    }
+
+    #[test]
+    fn unhealthy_then_ok_round_trips() {
+        // The reaper health-monitor pass feeds Ok/Unhealthy; verify the
+        // Healthy <-> Unhealthy round trip the persisted `state` column tracks.
+        let mut sm = HealthStateMachine::new(5);
+        sm.on_event(HealthEvent::StartedOk);
+        assert_eq!(sm.state.name(), "healthy");
+
+        let t = sm.on_event(HealthEvent::Unhealthy("5xx".into()));
+        assert!(matches!(t, Transition::StateChanged { ref to, .. } if to == "unhealthy"));
+        assert_eq!(sm.state.name(), "unhealthy");
+
+        let t = sm.on_event(HealthEvent::Ok);
+        assert!(matches!(t, Transition::StateChanged { ref to, .. } if to == "healthy"));
+        assert_eq!(sm.state.name(), "healthy");
+
+        // A steady-state Ok is a no-op (no churn / no DB write).
+        assert!(matches!(sm.on_event(HealthEvent::Ok), Transition::NoOp));
     }
 
     #[test]

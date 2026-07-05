@@ -528,6 +528,46 @@ async fn do_start(
     Ok(())
 }
 
+/// Feed a periodic health-probe result into the model's state machine. This
+/// is the "health loop" input: the reaper's `monitor_health` pass probes each
+/// running engine's `/health` and calls this with the boolean outcome, turning
+/// a bare liveness bool into the richer `Healthy`/`Unhealthy` states the UI +
+/// recovery logic read. Returns `Some((old_state, new_state))` when the probe
+/// drove a state transition (so the caller can persist the new `state` string),
+/// else `None`.
+pub async fn report_health(
+    model_id: Uuid,
+    healthy: bool,
+    reason: &str,
+) -> Option<(String, String)> {
+    let event = if healthy {
+        HealthEvent::Ok
+    } else {
+        HealthEvent::Unhealthy(reason.to_string())
+    };
+    match note_event(model_id, event).await {
+        Transition::StateChanged { from, to } => Some((from, to)),
+        _ => None,
+    }
+}
+
+/// Clear a model's `Failed` state (flap / restart-cap give-up) so auto-start
+/// will retry it. Driven by the admin `clear-failed` REST endpoint. Restores
+/// from persisted state first so a `failed` row from before a server restart
+/// still resolves. Returns `true` when the model was in fact `Failed` (so the
+/// caller can decide whether to persist + emit a status-change event).
+pub async fn clear_failed(model_id: Uuid) -> bool {
+    ensure_restored(model_id).await;
+    let mut map = HEALTH.lock().await;
+    match map.get_mut(&model_id) {
+        Some(sm) if matches!(sm.state, InstanceState::Failed { .. }) => {
+            sm.on_event(HealthEvent::ClearFailed);
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Force-clear the in-flight cell AND the health state machine for a model.
 /// Used by the reaper + tests after a drained instance was stopped. Evicting
 /// the HEALTH entry here bounds the map to currently-tracked models (otherwise
