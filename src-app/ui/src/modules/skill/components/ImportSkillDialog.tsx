@@ -116,7 +116,7 @@ export function ImportSkillDialog({
             setValidation(null)
           }}
         >
-          <Inbox />
+          <Inbox aria-hidden="true" />
           <span className="text-sm">
             Drop a skill bundle (.tar.gz) or SKILL.md here
           </span>

@@ -165,24 +165,31 @@ export default function OnboardingPage() {
           const isCompleted = completedGuideIds.includes(g.id)
           const isActive = g.id === activeGuideId
           return (
-            <div
+            <Button
               key={g.id}
+              variant="ghost"
+              block
               data-testid={`onboarding-guide-card-${g.id}`}
-              className={`p-3 rounded-lg cursor-pointer transition-colors ${isActive ? 'bg-accent border border-primary' : 'border border-border'}`}
+              aria-current={isActive ? 'true' : undefined}
               onClick={() => handleSelectGuide(g)}
+              className={`h-auto flex flex-col items-start justify-start gap-1 whitespace-normal text-left p-3 rounded-lg ${isActive ? 'bg-accent border border-primary' : 'border border-border hover:bg-accent/50'}`}
             >
-              <div className="flex items-center justify-between">
+              <span className="flex w-full items-center justify-between">
                 <Text strong className={isActive ? 'text-primary' : ''}>
                   {g.title}
                 </Text>
                 {isCompleted && (
-                  <CircleCheck className="text-success" />
+                  <CircleCheck
+                    className="text-success"
+                    role="img"
+                    aria-label="Completed"
+                  />
                 )}
-              </div>
-              <Text type="secondary" className="text-xs block mt-1">
+              </span>
+              <Text type="secondary" className="text-xs block">
                 {g.description}
               </Text>
-            </div>
+            </Button>
           )
         })}
       </div>
