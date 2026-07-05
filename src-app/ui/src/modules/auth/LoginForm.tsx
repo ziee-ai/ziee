@@ -61,7 +61,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
         </div>
       )}
 
-      <Form data-testid="auth-login-form" form={form} name="login" onSubmit={onSubmit} layout="vertical" size="lg">
+      <Form data-testid="auth-login-form" form={form} name="login" onSubmit={onSubmit} layout="vertical" size="lg" disabled={isLoading}>
         <FormField label="Username or Email" name="username">
           <Input
             data-testid="auth-login-username"
