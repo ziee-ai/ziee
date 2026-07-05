@@ -154,19 +154,11 @@ pub async fn fetch_and_extract(
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::env::temp_dir());
     fs::create_dir_all(&staging_parent).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: create staging parent {}: {}",
-            staging_parent.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let staging_root = staging_parent.join(".staging").join(Uuid::new_v4().to_string());
     fs::create_dir_all(&staging_root).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: create staging dir {}: {}",
-            staging_root.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
 
     let download_path = staging_root.join("bundle.tar.gz");
@@ -179,7 +171,7 @@ pub async fn fetch_and_extract(
         })
         .await
         .map_err(|e| {
-            AppError::internal_error(format!("bundle: download join: {e}"))
+            AppError::internal_with_id(e)
         })?;
     let sha_actual = match download_result {
         Ok(s) => s,
@@ -202,20 +194,14 @@ pub async fn fetch_and_extract(
     // Extract.
     let extracted_dir = staging_root.join("extracted");
     fs::create_dir_all(&extracted_dir).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: create extracted dir {}: {}",
-            extracted_dir.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let extract_result = {
         let bytes = match fs::read(&download_path) {
             Ok(b) => b,
             Err(e) => {
                 let _ = fs::remove_dir_all(&staging_root);
-                return Err(AppError::internal_error(format!(
-                    "bundle: read staged tar.gz: {e}"
-                )));
+                return Err(AppError::internal_with_id(e));
             }
         };
         extract_tar_gz_to(&bytes, &extracted_dir, kind)
@@ -234,29 +220,16 @@ pub async fn fetch_and_extract(
     // decided to overwrite.
     if let Some(parent) = target_dir.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: create target parent {}: {}",
-                parent.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
     }
     if target_dir.exists() {
         fs::remove_dir_all(target_dir).map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: remove prior target {}: {}",
-                target_dir.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
     }
     fs::rename(&extracted_dir, target_dir).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: promote {} -> {}: {}",
-            extracted_dir.display(),
-            target_dir.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let _ = fs::remove_dir_all(&staging_root);
 
@@ -296,27 +269,15 @@ pub async fn extract_from_seed_bytes(
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::env::temp_dir());
     fs::create_dir_all(&staging_parent).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: create seed staging parent {}: {}",
-            staging_parent.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let staging_root = staging_parent.join(".staging").join(Uuid::new_v4().to_string());
     fs::create_dir_all(&staging_root).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: create seed staging dir {}: {}",
-            staging_root.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let extracted_dir = staging_root.join("extracted");
     fs::create_dir_all(&extracted_dir).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: create seed extracted dir {}: {}",
-            extracted_dir.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let extraction = match extract_tar_gz_to(bytes, &extracted_dir, kind) {
         Ok(e) => e,
@@ -328,29 +289,16 @@ pub async fn extract_from_seed_bytes(
 
     if let Some(parent) = target_dir.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: create seed target parent {}: {}",
-                parent.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
     }
     if target_dir.exists() {
         fs::remove_dir_all(target_dir).map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: remove prior seed target {}: {}",
-                target_dir.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
     }
     fs::rename(&extracted_dir, target_dir).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: promote {} -> {}: {}",
-            extracted_dir.display(),
-            target_dir.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let _ = fs::remove_dir_all(&staging_root);
 
@@ -385,22 +333,14 @@ pub async fn extract_tarball_bytes(
         .map(|p| p.to_path_buf())
         .unwrap_or_else(std::env::temp_dir);
     fs::create_dir_all(&staging_parent).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: create import staging parent {}: {}",
-            staging_parent.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let staging_root = staging_parent
         .join(".staging")
         .join(Uuid::new_v4().to_string());
     let extracted_dir = staging_root.join("extracted");
     fs::create_dir_all(&extracted_dir).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: create import extracted dir {}: {}",
-            extracted_dir.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
 
     let extraction = match extract_tar_gz_to(bytes, &extracted_dir, kind) {
@@ -413,29 +353,16 @@ pub async fn extract_tarball_bytes(
 
     if let Some(parent) = target_dir.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: create import target parent {}: {}",
-                parent.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
     }
     if target_dir.exists() {
         fs::remove_dir_all(target_dir).map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: remove prior import target {}: {}",
-                target_dir.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
     }
     fs::rename(&extracted_dir, target_dir).map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: promote {} -> {}: {}",
-            extracted_dir.display(),
-            target_dir.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     let _ = fs::remove_dir_all(&staging_root);
 
@@ -480,10 +407,10 @@ pub fn pack_workspace_dir(root: &Path) -> Result<Vec<u8>, AppError> {
 
     let enc = builder
         .into_inner()
-        .map_err(|e| AppError::internal_error(format!("pack: tar finish: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
     let bytes = enc
         .finish()
-        .map_err(|e| AppError::internal_error(format!("pack: gzip finish: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
     Ok(bytes)
 }
 
@@ -498,16 +425,16 @@ fn append_dir_to_tar(
     total_bytes: &mut u64,
 ) -> Result<(), AppError> {
     let mut entries: Vec<PathBuf> = fs::read_dir(cur)
-        .map_err(|e| AppError::internal_error(format!("pack: read_dir {}: {e}", cur.display())))?
+        .map_err(|e| AppError::internal_with_id(e))?
         .map(|r| r.map(|e| e.path()))
         .collect::<Result<_, _>>()
-        .map_err(|e| AppError::internal_error(format!("pack: dir entry: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
     // Deterministic ordering so identical trees pack to identical archives.
     entries.sort();
 
     for path in entries {
         let meta = fs::symlink_metadata(&path).map_err(|e| {
-            AppError::internal_error(format!("pack: stat {}: {e}", path.display()))
+            AppError::internal_with_id(e)
         })?;
         let ft = meta.file_type();
         if ft.is_symlink() {
@@ -517,7 +444,7 @@ fn append_dir_to_tar(
             ));
         }
         let rel = path.strip_prefix(root).map_err(|e| {
-            AppError::internal_error(format!("pack: strip_prefix {}: {e}", path.display()))
+            AppError::internal_with_id(e)
         })?;
         if ft.is_dir() {
             append_dir_to_tar(builder, root, &path, file_count, total_bytes)?;
@@ -548,7 +475,7 @@ fn append_dir_to_tar(
                 ));
             }
             let data = fs::read(&path).map_err(|e| {
-                AppError::internal_error(format!("pack: read {}: {e}", path.display()))
+                AppError::internal_with_id(e)
             })?;
             let mut header = Header::new_gnu();
             header.set_size(len);
@@ -564,7 +491,7 @@ fn append_dir_to_tar(
             header.set_entry_type(tar::EntryType::Regular);
             header.set_cksum();
             builder.append_data(&mut header, rel, &data[..]).map_err(|e| {
-                AppError::internal_error(format!("pack: append {}: {e}", rel.display()))
+                AppError::internal_with_id(e)
             })?;
         }
         // Anything else (devices/FIFOs/sockets) can't appear in a normal
@@ -603,10 +530,10 @@ fn extract_tar_gz_to(
     let mut dir_count: u32 = 0;
 
     for entry_result in archive.entries().map_err(|e| {
-        AppError::internal_error(format!("bundle: tar entries: {e}"))
+        AppError::internal_with_id(e)
     })? {
         let mut entry = entry_result.map_err(|e| {
-            AppError::internal_error(format!("bundle: tar entry: {e}"))
+            AppError::internal_with_id(e)
         })?;
         let entry_type = entry.header().entry_type();
 
@@ -624,7 +551,7 @@ fn extract_tar_gz_to(
         let path = entry
             .path()
             .map_err(|e| {
-                AppError::internal_error(format!("bundle: entry path: {e}"))
+                AppError::internal_with_id(e)
             })?
             .into_owned();
 
@@ -659,18 +586,14 @@ fn extract_tar_gz_to(
             dir_count += 1;
             let dest = target_dir.join(&path);
             fs::create_dir_all(&dest).map_err(|e| {
-                AppError::internal_error(format!(
-                    "bundle: mkdir {}: {}",
-                    dest.display(),
-                    e
-                ))
+                AppError::internal_with_id(e)
             })?;
             continue;
         }
 
         // Regular file.
         let size = entry.header().size().map_err(|e| {
-            AppError::internal_error(format!("bundle: header size: {e}"))
+            AppError::internal_with_id(e)
         })?;
         if size > MAX_BUNDLE_SINGLE_FILE_BYTES {
             return Err(AppError::unprocessable_entity(
@@ -700,11 +623,7 @@ fn extract_tar_gz_to(
         let dest = target_dir.join(&path);
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                AppError::internal_error(format!(
-                    "bundle: mkdir {}: {}",
-                    parent.display(),
-                    e
-                ))
+                AppError::internal_with_id(e)
             })?;
         }
 
@@ -714,7 +633,7 @@ fn extract_tar_gz_to(
         let mut buf: Vec<u8> = Vec::with_capacity(size as usize);
         let mut reader = (&mut entry).take(MAX_BUNDLE_SINGLE_FILE_BYTES + 1);
         reader.read_to_end(&mut buf).map_err(|e| {
-            AppError::internal_error(format!("bundle: read entry body: {e}"))
+            AppError::internal_with_id(e)
         })?;
         if buf.len() as u64 > MAX_BUNDLE_SINGLE_FILE_BYTES {
             return Err(AppError::unprocessable_entity(
@@ -742,18 +661,10 @@ fn extract_tar_gz_to(
             .write(true)
             .open(&dest)
             .map_err(|e| {
-                AppError::internal_error(format!(
-                    "bundle: open dest {}: {}",
-                    dest.display(),
-                    e
-                ))
+                AppError::internal_with_id(e)
             })?;
         f.write_all(&buf).map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: write {}: {}",
-                dest.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
         drop(f);
 
@@ -799,17 +710,17 @@ fn download_to_file(url: &str, dest: &Path) -> Result<String, AppError> {
         .user_agent(concat!("ziee/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| {
-            AppError::internal_error(format!("bundle: http client: {e}"))
+            AppError::internal_with_id(e)
         })?;
     let resp = client
         .get(url)
         .send()
         .map_err(|e| {
-            AppError::internal_error(format!("bundle: GET {url}: {e}"))
+            AppError::internal_with_id(e)
         })?
         .error_for_status()
         .map_err(|e| {
-            AppError::internal_error(format!("bundle: GET {url}: {e}"))
+            AppError::internal_with_id(e)
         })?;
     if let Some(len) = resp.content_length()
         && len > MAX_BUNDLE_COMPRESSED_BYTES
@@ -827,11 +738,7 @@ fn download_to_file(url: &str, dest: &Path) -> Result<String, AppError> {
         .write(true)
         .open(dest)
         .map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: open dest {}: {}",
-                dest.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
     let mut hasher = Sha256::new();
     let mut total: u64 = 0;
@@ -840,7 +747,7 @@ fn download_to_file(url: &str, dest: &Path) -> Result<String, AppError> {
     loop {
         let n = reader
             .read(&mut buf)
-            .map_err(|e| AppError::internal_error(format!("bundle: read {url}: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
         if n == 0 {
             break;
         }
@@ -853,19 +760,11 @@ fn download_to_file(url: &str, dest: &Path) -> Result<String, AppError> {
         }
         hasher.update(&buf[..n]);
         file.write_all(&buf[..n]).map_err(|e| {
-            AppError::internal_error(format!(
-                "bundle: write {}: {}",
-                dest.display(),
-                e
-            ))
+            AppError::internal_with_id(e)
         })?;
     }
     file.flush().map_err(|e| {
-        AppError::internal_error(format!(
-            "bundle: flush {}: {}",
-            dest.display(),
-            e
-        ))
+        AppError::internal_with_id(e)
     })?;
     Ok(format!("{:x}", hasher.finalize()))
 }

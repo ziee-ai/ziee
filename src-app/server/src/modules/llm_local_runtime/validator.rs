@@ -134,7 +134,7 @@ pub async fn validate_remote_model(
     )
     .fetch_optional(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("validator: model: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
     let row = row.ok_or_else(|| AppError::not_found("model not found"))?;
     let (model_name, provider_id) = (row.name, row.provider_id);
 
@@ -142,7 +142,7 @@ pub async fn validate_remote_model(
         .llm_provider
         .get_by_id(provider_id)
         .await
-        .map_err(|e| AppError::internal_error(format!("validator: provider: {e}")))?
+        .map_err(|e| AppError::database_error(e))?
         .ok_or_else(|| AppError::not_found("provider not found"))?;
 
     let api_key = provider.api_key.clone().unwrap_or_default();
@@ -379,7 +379,7 @@ async fn tiny_chat_probe(pool: &PgPool, model_id: Uuid) -> Result<(), AppError> 
     )
     .fetch_optional(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("validator: instance port: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
     let port = port.ok_or_else(|| AppError::internal_error("no running port"))?;
 
     let bearer =
@@ -391,12 +391,12 @@ async fn tiny_chat_probe(pool: &PgPool, model_id: Uuid) -> Result<(), AppError> 
     )
     .fetch_one(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("validator: model name: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
-        .map_err(|e| AppError::internal_error(format!("reqwest: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
     let body = serde_json::json!({
         "model": model_name,
         "messages": [{"role": "user", "content": "Hi"}],
@@ -409,7 +409,7 @@ async fn tiny_chat_probe(pool: &PgPool, model_id: Uuid) -> Result<(), AppError> 
         .json(&body)
         .send()
         .await
-        .map_err(|e| AppError::internal_error(format!("tiny chat POST: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
     if !resp.status().is_success() {
         return Err(AppError::internal_error(format!(
             "tiny chat returned {}",
@@ -434,7 +434,7 @@ async fn extract_and_persist_capabilities(
     )
     .fetch_optional(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("validator: cap model query: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
     let Some(model) = model else {
         return Ok(());
     };
@@ -446,7 +446,7 @@ async fn extract_and_persist_capabilities(
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("validator: cap files query: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
     if files.is_empty() {
         return Ok(());
     }

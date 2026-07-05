@@ -68,7 +68,7 @@ async fn extract_authenticated_user(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("Failed to load user: {}", e)),
+                AppError::database_error(e),
             )
         })?
         .ok_or_else(|| {
@@ -131,7 +131,7 @@ impl<Perms: PermissionList> FromRequestParts<()> for RequirePermissions<Perms> {
             let groups = Repos.user.get_user_groups(user.id).await.map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    AppError::internal_error(format!("Failed to load groups: {}", e)),
+                    AppError::database_error(e),
                 )
             })?;
 

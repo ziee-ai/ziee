@@ -137,7 +137,7 @@ async fn create_model_with_files(
     // Initialize storage
     let storage = ModelStorage::new()
         .await
-        .map_err(|e| AppError::internal_error(format!("Failed to initialize storage: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     // Validate provider exists and is of type 'local'
     let provider =
@@ -167,7 +167,7 @@ async fn create_model_with_files(
         .create_model_directory(&request.provider_id, &model_id)
         .await
         .map_err(|e| {
-            AppError::internal_error(format!("Failed to create storage directory: {}", e))
+            AppError::internal_with_id(e)
         })?;
 
     tracing::debug!(
@@ -180,13 +180,13 @@ async fn create_model_with_files(
         Ok(mut entries) => {
             let mut files = Vec::new();
             while let Some(entry) = entries.next_entry().await.map_err(|e| {
-                AppError::internal_error(format!("Failed to read directory entry: {}", e))
+                AppError::internal_with_id(e)
             })? {
                 if entry
                     .file_type()
                     .await
                     .map_err(|e| {
-                        AppError::internal_error(format!("Failed to get file type: {}", e))
+                        AppError::internal_with_id(e)
                     })?
                     .is_file()
                 {
@@ -196,10 +196,7 @@ async fn create_model_with_files(
             files
         }
         Err(e) => {
-            return Err(AppError::internal_error(format!(
-                "Failed to read source directory: {}",
-                e
-            )));
+            return Err(AppError::internal_with_id(e));
         }
     };
 
@@ -233,12 +230,9 @@ async fn create_model_with_files(
             .join(filename);
 
         // Get file size
-        let metadata = tokio::fs::metadata(&source_path).await.map_err(|e| {
-            AppError::internal_error(format!(
-                "Failed to get file metadata for {}: {}",
-                filename, e
-            ))
-        })?;
+        let metadata = tokio::fs::metadata(&source_path)
+            .await
+            .map_err(AppError::internal_with_id)?;
         let file_size = metadata.len();
         total_size += file_size;
 
@@ -246,7 +240,7 @@ async fn create_model_with_files(
         tokio::fs::copy(&source_path, &dest_path)
             .await
             .map_err(|e| {
-                AppError::internal_error(format!("Failed to copy file {}: {}", filename, e))
+                AppError::internal_with_id(e)
             })?;
 
         // Collect file information for database insertion later
@@ -330,7 +324,7 @@ async fn create_model_with_files(
 
     if old_dir != new_dir {
         tokio::fs::rename(&old_dir, &new_dir).await.map_err(|e| {
-            AppError::internal_error(format!("Failed to rename model directory: {}", e))
+            AppError::internal_with_id(e)
         })?;
         tracing::debug!(
             "Renamed model directory from {} to {}",
@@ -434,7 +428,7 @@ pub async fn upload_multiple_files_and_commit(
     let storage = ModelStorage::new().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Storage initialization failed: {}", e)),
+            AppError::internal_with_id(e),
         )
     })?;
 
@@ -772,7 +766,7 @@ pub async fn upload_multiple_files_and_commit(
             .map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    AppError::internal_error(format!("Failed to save file {}: {}", filename, e)),
+                    AppError::internal_with_id(e),
                 )
             })?;
     }

@@ -33,30 +33,66 @@ pub async fn ingest_bytes(
     let mime_type = mime_hint.or_else(|| mime_guess::from_ext(&ext).first().map(|m| m.to_string()));
     let mime_type_str = mime_type.as_deref().unwrap_or("application/octet-stream");
 
+    // A processing failure is non-fatal — the raw original is still stored
+    // below — but it must not be silent: log it so a missing text/thumbnail
+    // derivative is traceable rather than looking like an empty document.
     let processing_result = ProcessingManager::new()
         .process_file(bytes, mime_type_str)
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            tracing::warn!(
+                "ingest_bytes: processing failed for {} ({}): {}; storing original only",
+                filename,
+                mime_type_str,
+                e
+            );
+            Default::default()
+        });
 
     let file_id = Uuid::new_v4();
     let storage = get_file_storage();
     storage
         .save_original(user_id, file_id, &ext, bytes)
         .await
-        .map_err(|e| AppError::internal_error(format!("ingest: save_original: {e}")))?;
+        .map_err(AppError::internal_with_id)?;
 
+    // Derivative writes are best-effort (the original + DB row are the source
+    // of truth) but a failure is logged so a dropped page/thumbnail is
+    // traceable instead of silently vanishing.
     for (n, text) in processing_result.text_pages.iter().enumerate() {
-        let _ = storage
+        if let Err(e) = storage
             .save_text_page(user_id, file_id, (n + 1) as u32, text)
-            .await;
+            .await
+        {
+            tracing::warn!(
+                "ingest_bytes: failed to save text page {} for {}: {}",
+                n + 1,
+                file_id,
+                e
+            );
+        }
     }
     if let Some(thumb) = processing_result.thumbnails.first() {
-        let _ = storage.save_image(user_id, file_id, 1, true, thumb).await;
+        if let Err(e) = storage.save_image(user_id, file_id, 1, true, thumb).await {
+            tracing::warn!(
+                "ingest_bytes: failed to save thumbnail for {}: {}",
+                file_id,
+                e
+            );
+        }
     }
     for (n, img) in processing_result.images.iter().enumerate() {
-        let _ = storage
+        if let Err(e) = storage
             .save_image(user_id, file_id, (n + 1) as u32, false, img)
-            .await;
+            .await
+        {
+            tracing::warn!(
+                "ingest_bytes: failed to save preview image {} for {}: {}",
+                n + 1,
+                file_id,
+                e
+            );
+        }
     }
 
     let checksum = storage.calculate_checksum(bytes);

@@ -204,7 +204,9 @@ pub enum Audience {
     /// Only connections whose permission snapshot satisfies the rule
     /// (admins always qualify).
     Perm(PermRule),
-    /// Every authenticated connection.
+    /// Every authenticated connection. No current prod caller (owner/perm
+    /// scoping covers today's entities); retained as intentional API surface.
+    #[allow(dead_code)]
     Everyone,
 }
 
@@ -223,7 +225,10 @@ impl Audience {
         Audience::Owner(user_id)
     }
 
-    /// Deliver to every authenticated connection.
+    /// Deliver to every authenticated connection. Part of the audience API for
+    /// genuinely-public entities; no current caller (owner/perm scoping covers
+    /// today's entities), so retained as intentional API surface.
+    #[allow(dead_code)]
     pub fn everyone() -> Self {
         Audience::Everyone
     }

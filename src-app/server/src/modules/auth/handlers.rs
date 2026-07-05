@@ -333,7 +333,7 @@ async fn login_with_provider(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("Database error: {}", e)),
+                AppError::database_error(e),
             )
         })?
         .ok_or_else(|| {
@@ -937,7 +937,7 @@ pub async fn oauth_authorize(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("Database error: {}", e)),
+                AppError::database_error(e),
             )
         })?
         .ok_or_else(|| {

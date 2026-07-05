@@ -52,32 +52,7 @@ pub fn detect_gpu_devices() -> Vec<GPUDevice> {
         }
     }
 
-    // 2. Try to detect GPUs using OpenCL (works for AMD, Intel, NVIDIA, Apple)
-    #[cfg(feature = "gpu-detect")]
-    {
-        if let Ok(opencl_gpus) = detect_opencl_gpus() {
-            // Only add OpenCL GPUs if we haven't already detected them via NVML
-            for opencl_gpu in opencl_gpus {
-                if !gpu_devices
-                    .iter()
-                    .any(|existing| existing.name == opencl_gpu.name)
-                {
-                    gpu_devices.push(opencl_gpu);
-                }
-            }
-        }
-    }
-
-    // 3. Try to detect GPUs using wgpu-hal (cross-platform fallback)
-    #[cfg(feature = "gpu-detect")]
-    {
-        if gpu_devices.is_empty()
-            && let Ok(wgpu_gpus) = detect_wgpu_gpus() {
-                gpu_devices.extend(wgpu_gpus);
-            }
-    }
-
-    // 4. Platform-specific fallbacks if no GPUs detected
+    // 2. Platform-specific fallbacks if no GPUs detected
     if gpu_devices.is_empty() {
         #[cfg(target_os = "macos")]
         {
@@ -323,26 +298,6 @@ fn get_nvidia_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
 }
 
 // =====================================================
-// OpenCL and WGPU Detection (Placeholders)
-// =====================================================
-
-// OpenCL GPU detection (cross-platform)
-#[cfg(feature = "gpu-detect")]
-fn detect_opencl_gpus() -> Result<Vec<GPUDevice>, Box<dyn std::error::Error>> {
-    // For now, return empty result as OpenCL3 API is complex
-    // This can be implemented later with proper OpenCL bindings
-    Ok(Vec::new())
-}
-
-// Simplified GPU detection without wgpu-hal
-#[cfg(feature = "gpu-detect")]
-fn detect_wgpu_gpus() -> Result<Vec<GPUDevice>, Box<dyn std::error::Error>> {
-    // For now, return empty result
-    // This can be implemented later with proper wgpu-hal integration
-    Ok(Vec::new())
-}
-
-// =====================================================
 // AMD GPU Detection (Linux Only)
 // =====================================================
 
@@ -493,10 +448,10 @@ fn get_amd_gpu_usage_sysfs() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>
 // Intel GPU usage detection (Linux and Windows)
 #[cfg(feature = "gpu-detect")]
 fn get_intel_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     let mut gpu_usage: Vec<GPUUsage> = Vec::new();
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(not(target_os = "linux"))]
     let gpu_usage: Vec<GPUUsage> = Vec::new();
 
     #[cfg(target_os = "linux")]
@@ -573,21 +528,9 @@ fn get_intel_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
         }
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        // On Windows, Intel GPU monitoring would require WMI or Performance Counters
-        // This is a placeholder for future Windows Intel GPU monitoring implementation
-        gpu_usage.push(GPUUsage {
-            device_id: "intel:0".to_string(),
-            device_name: "Intel GPU".to_string(),
-            utilization_percentage: None,
-            memory_used: None,
-            memory_total: None,
-            memory_usage_percentage: None,
-            temperature: None,
-            power_usage: None,
-        });
-    }
+    // On Windows, Intel GPU monitoring would require WMI or Performance
+    // Counters, which are not yet implemented. Report no device rather than a
+    // fabricated all-`None` entry (which the UI would show as a real GPU).
 
     Ok(gpu_usage)
 }

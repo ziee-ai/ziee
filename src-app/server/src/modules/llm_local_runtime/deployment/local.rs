@@ -607,7 +607,7 @@ impl Deployment for LocalDeployment {
             .binary_manager
             .get_system_default(normalized_engine)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to query system default: {}", e)))?
+            .map_err(|e| AppError::internal_with_id(e))?
             .or_else(|| {
                 // Fallback: try to get latest version (blocking)
                 let binary_manager = self.binary_manager.clone();
@@ -630,7 +630,7 @@ impl Deployment for LocalDeployment {
             .binary_manager
             .get_binary_path(runtime_version.id)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to get binary path: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         tracing::info!(
             "Using runtime version: {} {} ({})",
@@ -678,7 +678,7 @@ impl Deployment for LocalDeployment {
 
         // Spawn the process
         let mut child = cmd.spawn().map_err(|e| {
-            AppError::internal_error(format!("Failed to spawn process: {}", e))
+            AppError::internal_with_id(e)
         })?;
 
         // Register the per-instance bearer only after the spawn succeeds, so an
@@ -796,7 +796,7 @@ impl Deployment for LocalDeployment {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build()
-            .map_err(|e| AppError::internal_error(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         match client.get(&health_url).send().await {
             Ok(response) => Ok(response.status().is_success()),

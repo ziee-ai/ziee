@@ -45,6 +45,7 @@ pub const PER_USER_STORAGE_QUOTA_BYTES: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
 pub async fn upload_file_inner(
     user_id: Uuid,
     mut multipart: Multipart,
+    origin: Option<Uuid>,
 ) -> Result<File, AppError> {
     // Extract file from multipart
     let mut filename: Option<String> = None;
@@ -237,9 +238,9 @@ pub async fn upload_file_inner(
 
     // Notify the owner's other devices a new file exists (I3). Emitted from the
     // shared core so BOTH the direct `/files/upload` and the project
-    // `upload+attach` paths sync. No origin → the uploading device does one
-    // redundant (harmless) refetch.
-    crate::modules::file::sync::publish_file_changed(user_id, file.id);
+    // `upload+attach` paths sync. `origin` skips the uploading device's own
+    // redundant refetch when the request carried its SSE connection id.
+    crate::modules::file::sync::publish_file_changed_with_origin(user_id, file.id, origin);
 
     // Document RAG: chunk + (when an embedder is configured) embed in the
     // background. Self-gates on file_rag_admin_settings.enabled.
@@ -291,9 +292,10 @@ fn file_suitability(mime: &str, has_text: bool) -> (&'static str, Option<&'stati
 /// adds permission gating + the 201 response code.
 pub async fn upload_file(
     auth: RequirePermissions<(FilesUpload,)>,
+    origin: crate::modules::sync::SyncOrigin,
     multipart: Multipart,
 ) -> ApiResult<Json<File>> {
-    let file = upload_file_inner(auth.user.id, multipart).await?;
+    let file = upload_file_inner(auth.user.id, multipart, origin.0).await?;
     Ok((StatusCode::CREATED, Json(file)))
 }
 

@@ -1536,7 +1536,7 @@ pub async fn create_model_from_hub(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("Database error: {}", e)),
+                AppError::database_error(e),
             )
         })?
         .ok_or_else(|| {
@@ -2758,7 +2758,7 @@ pub async fn get_hub_local_providers(
     let providers = Repos.llm_provider.list_local_providers().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Database error: {}", e)),
+            AppError::database_error(e),
         )
     })?;
 

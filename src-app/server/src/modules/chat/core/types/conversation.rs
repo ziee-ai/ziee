@@ -5,18 +5,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::modules::chat::core::models::{Branch, Conversation};
-
-/// Conversation with its active branch
-// API response DTO (OpenAPI-derived) not yet returned by any handler; kept as
-// part of the conversation type surface rather than deleted.
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConversationWithBranch {
-    #[serde(flatten)]
-    pub conversation: Conversation,
-    pub branch: Branch,
-}
+use crate::modules::chat::core::models::Conversation;
 
 /// Request to create a new conversation.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

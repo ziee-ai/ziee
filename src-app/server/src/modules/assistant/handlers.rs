@@ -392,7 +392,7 @@ pub async fn create_template_assistant(
         SyncEntity::AssistantTemplate,
         SyncAction::Create,
         assistant.id,
-        Audience::everyone(),
+        Audience::perm::<AssistantsTemplateRead>(),
         origin.0,
     );
 
@@ -503,7 +503,7 @@ pub async fn update_template_assistant(
         SyncEntity::AssistantTemplate,
         SyncAction::Update,
         assistant.id,
-        Audience::everyone(),
+        Audience::perm::<AssistantsTemplateRead>(),
         origin.0,
     );
 
@@ -548,7 +548,7 @@ pub async fn delete_template_assistant(
         SyncEntity::AssistantTemplate,
         SyncAction::Delete,
         id,
-        Audience::everyone(),
+        Audience::perm::<AssistantsTemplateRead>(),
         origin.0,
     );
 

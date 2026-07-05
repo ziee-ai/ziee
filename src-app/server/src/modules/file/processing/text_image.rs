@@ -26,7 +26,7 @@ impl TextImageGenerator {
 
         // Decode JPEG
         let img = image::load_from_memory(image_data)
-            .map_err(|e| AppError::internal_error(format!("Failed to decode image: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         // Convert to RGB first (to ensure resize returns RGB)
         let rgb_img = img.to_rgb8();
@@ -53,7 +53,7 @@ impl TextImageGenerator {
         // Encode to JPEG
         let mut jpeg_data = Vec::new();
         thumbnail.write_to(&mut std::io::Cursor::new(&mut jpeg_data), image::ImageFormat::Jpeg)
-            .map_err(|e| AppError::internal_error(format!("Failed to encode thumbnail: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         Ok(jpeg_data)
     }
@@ -144,7 +144,7 @@ impl TextImageGenerator {
         // Load embedded DejaVuSansMono font (monospace, good for both code and text)
         let font_data = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/fonts/DejaVuSansMono.ttf"));
         let font = FontRef::try_from_slice(font_data)
-            .map_err(|e| AppError::internal_error(format!("Failed to load font: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let scale = PxScale::from(FONT_SIZE);
         let text_color = if is_code {
@@ -205,7 +205,7 @@ impl TextImageGenerator {
                 IMAGE_HEIGHT,
                 image::ExtendedColorType::Rgb8,
             )
-            .map_err(|e| AppError::internal_error(format!("Failed to encode JPEG: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         Ok(jpeg_data)
     }

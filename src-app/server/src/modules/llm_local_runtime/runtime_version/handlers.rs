@@ -83,18 +83,18 @@ pub async fn list_runtime_versions(
 ) -> ApiResult<Json<RuntimeVersionListResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     let versions = if let Some(engine) = params.engine {
         binary_manager
             .list_versions_for_engine(&engine, params.page, params.per_page)
             .await
-            .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
+            .map_err(|e| AppError::database_error(e))?
     } else {
         binary_manager
             .list_versions(params.page, params.per_page)
             .await
-            .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
+            .map_err(|e| AppError::database_error(e))?
     };
 
     // Pagination is applied at the repository layer via page/per_page
@@ -118,7 +118,7 @@ pub async fn get_runtime_version(
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     // Verify binary exists (result is the path, but we only need to check existence)
     let _version = binary_manager
@@ -128,14 +128,14 @@ pub async fn get_runtime_version(
             if e.to_string().contains("not found") {
                 AppError::not_found("Runtime version")
             } else {
-                AppError::internal_error(format!("Database error: {}", e))
+                AppError::database_error(e)
             }
         })?;
 
     // Get the version record from database
     let version_record = crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
         .await
-        .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
+        .map_err(|e| AppError::database_error(e))?
         .ok_or_else(|| AppError::not_found("Runtime version"))?;
 
     Ok((StatusCode::OK, Json(RuntimeVersionResponse::from(version_record))))
@@ -159,7 +159,7 @@ pub async fn download_runtime_version(
         pool.clone(),
         std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
     )
-    .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+    .map_err(|e| AppError::internal_with_id(e))?;
 
     // Parse engine type
     let engine = match req.engine.as_str() {
@@ -449,7 +449,7 @@ pub async fn delete_runtime_version(
 ) -> ApiResult<impl IntoApiResponse> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     let remove_binary = params.remove_binary.unwrap_or(false);
 
@@ -458,7 +458,7 @@ pub async fn delete_runtime_version(
     // than a spurious 404.
     let version_record = match crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
         .await
-        .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
+        .map_err(|e| AppError::database_error(e))?
     {
         Some(v) => v,
         None => return Ok((StatusCode::NO_CONTENT, ())),
@@ -481,7 +481,7 @@ pub async fn delete_runtime_version(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("usage models query: {e}")),
+                AppError::database_error(e),
             )
         })?;
     let mut effective_models = 0u32;
@@ -496,12 +496,13 @@ pub async fn delete_runtime_version(
             .select_runtime_version(Some(m.id), Some(m.provider_id), &version_record.engine)
             .await
             .map_err(|e| {
+                tracing::error!(
+                    "in-use guard: effective-version resolution failed for model {}: {e}",
+                    m.id
+                );
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    AppError::internal_error(format!(
-                        "in-use guard: effective-version resolution failed for model {}: {e}",
-                        m.id
-                    )),
+                    AppError::internal_with_id(e),
                 )
             })?;
         if resolved.map(|v| v.id) == Some(version_id) {
@@ -514,7 +515,7 @@ pub async fn delete_runtime_version(
             .map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    AppError::internal_error(format!("usage check: {e}")),
+                    AppError::database_error(e),
                 )
             })?;
     if effective_models > 0 || usage.providers > 0 || usage.running_instances > 0 {
@@ -539,12 +540,7 @@ pub async fn delete_runtime_version(
         if e.to_string().contains("not found") {
             return Ok((StatusCode::NO_CONTENT, ()));
         }
-        tracing::error!("Failed to delete runtime version: {}", e);
-        return Err(AppError::internal_error(format!(
-            "Failed to delete runtime version: {}",
-            e
-        ))
-        .into());
+        return Err(AppError::internal_with_id(e).into());
     }
 
     // Emit event for cache invalidation
@@ -571,7 +567,7 @@ pub async fn set_system_default(
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     binary_manager
         .set_system_default(version_id)
@@ -581,14 +577,14 @@ pub async fn set_system_default(
             if e.to_string().contains("not found") {
                 AppError::not_found("Runtime version")
             } else {
-                AppError::internal_error(format!("Failed to set system default: {}", e))
+                AppError::internal_with_id(e)
             }
         })?;
 
     // Get the updated version record
     let version_record = crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
         .await
-        .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
+        .map_err(|e| AppError::database_error(e))?
         .ok_or_else(|| AppError::not_found("Runtime version"))?;
 
     // Emit event for cache invalidation
@@ -613,7 +609,7 @@ pub async fn check_for_updates(
 ) -> ApiResult<Json<AvailableUpdatesResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     // Asset-readiness is host-specific: a release may ship the cpu binary
     // for one platform/arch before another. Compute the diff for THIS host,
@@ -627,6 +623,7 @@ pub async fn check_for_updates(
         .map_err(|e| {
             tracing::error!("Failed to check for updates: {}", e);
             AppError::internal_with_id(format!("check for updates: {e}"))
+            AppError::internal_with_id(e)
         })?;
 
     let response = AvailableUpdatesResponse {
@@ -656,19 +653,19 @@ pub async fn list_version_usage(
     let engine = params.engine.as_deref();
     let models = super::repository::list_local_models_with_status(pool, engine)
         .await
-        .map_err(|e| AppError::internal_error(format!("usage query: {e}")))?;
+        .map_err(|e| AppError::database_error(e))?;
 
     let versions = match engine {
         Some(e) => super::repository::list_by_engine(pool, e, 1, MAX_USAGE_VERSIONS).await,
         None => super::repository::list_all(pool, 1, MAX_USAGE_VERSIONS).await,
     }
-    .map_err(|e| AppError::internal_error(format!("versions query: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
 
     // Batched effective-version resolution (was an N+1 of select_runtime_version
     // per model). One constant set of queries resolves every model.
     let resolution = super::repository::resolve_effective_versions(pool, &models)
         .await
-        .map_err(|e| AppError::internal_error(format!("resolve query: {e}")))?;
+        .map_err(|e| AppError::database_error(e))?;
 
     let mut by_version: std::collections::HashMap<Uuid, Vec<ModelUsageInfo>> =
         std::collections::HashMap::new();
@@ -733,7 +730,7 @@ pub async fn sync_cache(
 ) -> ApiResult<Json<SyncCacheResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     let synced_count = binary_manager
         .sync_cache()
@@ -741,6 +738,7 @@ pub async fn sync_cache(
         .map_err(|e| {
             tracing::error!("Failed to sync cache: {}", e);
             AppError::internal_with_id(format!("sync cache: {e}"))
+            AppError::internal_with_id(e)
         })?;
 
     let response = SyncCacheResponse {

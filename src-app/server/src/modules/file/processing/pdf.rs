@@ -75,27 +75,15 @@ impl ContentProcessor for PdfProcessor {
                 // Load PDF document
                 let document = pdfium
                     .load_pdf_from_byte_slice(&data, None)
-                    .map_err(|e| AppError::internal_error(format!("Failed to load PDF: {}", e)))?;
+                    .map_err(|e| AppError::internal_with_id(e))?;
 
                 let mut text_pages = Vec::new();
 
                 // Extract text from each page
                 for page_index in 0..document.pages().len() {
-                    let page = document.pages().get(page_index).map_err(|e| {
-                        AppError::internal_error(format!(
-                            "Failed to get page {}: {}",
-                            page_index + 1,
-                            e
-                        ))
-                    })?;
+                    let page = document.pages().get(page_index).map_err(AppError::internal_with_id)?;
 
-                    let page_text = page.text().map_err(|e| {
-                        AppError::internal_error(format!(
-                            "Failed to extract text from page {}: {}",
-                            page_index + 1,
-                            e
-                        ))
-                    })?;
+                    let page_text = page.text().map_err(AppError::internal_with_id)?;
 
                     let all_text = page_text.all();
                     let cleaned_text = processor.clean_extracted_text(&all_text);
@@ -107,7 +95,7 @@ impl ContentProcessor for PdfProcessor {
             })
         })
         .await
-        .map_err(|e| AppError::internal_error(format!("PDF text extraction task failed: {}", e)))?
+        .map_err(|e| AppError::internal_with_id(e))?
     }
 
     async fn extract_metadata(
@@ -128,7 +116,7 @@ impl ContentProcessor for PdfProcessor {
             .unwrap_or(None)
         })
         .await
-        .map_err(|e| AppError::internal_error(format!("PDF metadata task failed: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
         Ok(serde_json::json!({
             "format": mime_type,
@@ -158,7 +146,7 @@ impl ImageGenerator for PdfProcessor {
         // Load the PDF document from bytes
         let document = pdfium
             .load_pdf_from_byte_slice(&data, None)
-            .map_err(|e| AppError::internal_error(format!("Failed to load PDF: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let page_count = document.pages().len() as u32;
         let max_pages = page_count.min(max_thumbnails);
@@ -169,7 +157,7 @@ impl ImageGenerator for PdfProcessor {
             let page = document
                 .pages()
                 .get(page_index as u16)
-                .map_err(|e| AppError::internal_error(format!("Failed to get page {}: {}", page_index + 1, e)))?;
+                .map_err(AppError::internal_with_id)?;
 
             // Generate high-quality image (2000px)
             let image_bytes = render_page_to_jpeg(&page, MAX_IMAGE_DIM)?;
@@ -205,7 +193,7 @@ impl ImageGenerator for PdfProcessor {
         })
         })
         .await
-        .map_err(|e| AppError::internal_error(format!("PDF image generation task failed: {}", e)))?
+        .map_err(|e| AppError::internal_with_id(e))?
     }
 }
 
@@ -218,7 +206,7 @@ fn render_page_to_jpeg(page: &PdfPage, max_dim: u32) -> Result<Vec<u8>, AppError
 
     let bitmap = page
         .render_with_config(&render_config)
-        .map_err(|e| AppError::internal_error(format!("Failed to render page: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     // Convert bitmap to RGB image
     let width = bitmap.width() as u32;
@@ -248,7 +236,7 @@ fn render_page_to_jpeg(page: &PdfPage, max_dim: u32) -> Result<Vec<u8>, AppError
     let mut cursor = std::io::Cursor::new(&mut buffer);
     rgb_image
         .write_to(&mut cursor, image::ImageFormat::Jpeg)
-        .map_err(|e| AppError::internal_error(format!("Failed to encode JPEG: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     Ok(buffer)
 }

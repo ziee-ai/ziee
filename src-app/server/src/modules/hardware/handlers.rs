@@ -164,9 +164,16 @@ pub fn subscribe_hardware_usage_docs(op: TransformOperation) -> TransformOperati
         .response::<401, ()>()
 }
 
-/// Dummy endpoint for type generation - ensures SSE types are included in OpenAPI spec
+/// Type-generation anchor that also serves a one-shot usage snapshot.
+///
+/// Its primary purpose is to pull `HardwareUsageUpdate` into the OpenAPI spec
+/// (the real data flows over the SSE stream), but the route is registered and
+/// therefore reachable — so it returns a real snapshot rather than panicking
+/// with `unreachable!()` (which would 500 any caller that hits it).
 pub async fn hardware_types() -> Json<HardwareUsageUpdate> {
-    unreachable!("This endpoint is only for OpenAPI type generation")
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    Json(super::monitoring::collect_hardware_usage(&mut sys))
 }
 
 /// Documentation for types endpoint

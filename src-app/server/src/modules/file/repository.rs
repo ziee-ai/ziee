@@ -346,7 +346,11 @@ impl FileRepository {
         per_page: i32,
     ) -> Result<(Vec<File>, i64), AppError> {
         let page64 = (page as i64).max(1);
-        let per_page64 = (per_page as i64).max(1);
+        // Clamp per_page to the shared upper bound so `?per_page=100000000`
+        // can't force an unbounded LIMIT (memory amplification). Matches the
+        // convention in file/handlers/versions.rs + common::PaginationQuery.
+        let per_page64 =
+            (per_page as i64).clamp(1, crate::common::PAGINATION_MAX_PER_PAGE as i64);
         let offset = (page64 - 1).saturating_mul(per_page64);
 
         let total: i64 = sqlx::query_scalar!(

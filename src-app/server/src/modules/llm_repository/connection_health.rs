@@ -168,7 +168,7 @@ impl<'a> HealthOps for ProductionHealthOps<'a> {
             .llm_repository
             .disable_for_health_failure(repo_id)
             .await
-            .map_err(|e| AppError::internal_error(format!("Database error: {e}")))
+            .map_err(|e| AppError::database_error(e))
     }
 
     async fn get_repository(&self, repo_id: Uuid) -> Result<Option<LlmRepository>, AppError> {
@@ -176,7 +176,7 @@ impl<'a> HealthOps for ProductionHealthOps<'a> {
             .llm_repository
             .get_by_id(repo_id)
             .await
-            .map_err(|e| AppError::internal_error(format!("Database error: {e}")))
+            .map_err(|e| AppError::database_error(e))
     }
 
     fn emit_auto_disabled(&self, repo_id: Uuid, reason: String) {

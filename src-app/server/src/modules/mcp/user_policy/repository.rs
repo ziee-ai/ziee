@@ -36,7 +36,7 @@ pub async fn load(pool: &PgPool) -> Result<McpUserPolicy, AppError> {
     )
     .fetch_one(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("Failed to load mcp_user_policy: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
 
     let sandbox_enabled = code_sandbox::config::get_state().is_some();
     let (allowed_transports, flavor) = if sandbox_enabled {
@@ -87,7 +87,7 @@ pub async fn save(
     )
     .execute(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("Failed to update mcp_user_policy: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
 
     load(pool).await
 }
