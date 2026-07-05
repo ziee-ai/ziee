@@ -105,23 +105,42 @@ const jsonResponse = (data: unknown, status = 200): Response =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-// Permissive default for an unrecorded endpoint: a superset shape whose common
-// list/pagination accessors resolve to empties, so an unseeded store degrades to
-// "empty" instead of throwing on `res.items`/`res.providers`/….
-const EMPTY_DEFAULT = {
-  page: 1,
-  per_page: 50,
-  total: 0,
-  providers: [],
-  models: [],
-  items: [],
-  data: [],
-  results: [],
-  entries: [],
-  conversations: [],
-  servers: [],
-  files: [],
-} as const
+// Crash-safe default for an UNRECORDED endpoint. An unseeded store must not
+// crash the page it feeds — but no single literal shape fits every consumer
+// (some read `res.items.map`, others `res.map`, others `res.total`). So the
+// default is a recursive, array-like proxy:
+//   - iteration / array methods (`map`/`filter`/`forEach`/…) act as an empty
+//     array → `res.map(...)` and `res.items.map(...)` both yield `[]`;
+//   - `length` is 0; numeric indexing is undefined;
+//   - ANY other property access returns the same proxy → `res.a.b.c.map(...)`
+//     is safe to arbitrary depth;
+//   - it serializes to `[]` and is falsy-ish for `?? []` guards via iteration.
+// The tradeoff (a scalar field read as this proxy renders oddly) only affects
+// genuinely unrecorded endpoints; every gallery page records the data it needs.
+const ARRAY_METHODS = new Set([
+  'map', 'filter', 'forEach', 'reduce', 'reduceRight', 'find', 'findIndex',
+  'some', 'every', 'slice', 'concat', 'flat', 'flatMap', 'includes',
+  'indexOf', 'join', 'keys', 'values', 'entries', 'at', 'sort', 'reverse',
+])
+
+function makeSafeEmpty(): any {
+  const target: any = []
+  return new Proxy(target, {
+    get(t, prop) {
+      if (prop === Symbol.iterator) return [][Symbol.iterator].bind([])
+      if (prop === 'length') return 0
+      if (prop === 'toJSON') return () => []
+      if (prop === Symbol.toPrimitive) return () => ''
+      if (typeof prop === 'symbol') return (t as any)[prop]
+      if (prop === 'then') return undefined // never a thenable
+      if (ARRAY_METHODS.has(prop as string)) {
+        return (...args: any[]) => (t as any)[prop](...args)
+      }
+      // Unknown property → recurse so deep access stays safe.
+      return makeSafeEmpty()
+    },
+  })
+}
 
 /** Register (replace) the cassette the interceptor answers from. */
 export function setCassette(cassette: Cassette): void {
@@ -175,7 +194,7 @@ export function installMockApi(cassette?: Cassette): void {
       if (import.meta.env.DEV) {
         console.warn(`[gallery mockApi] no route for ${method} ${parsed.pathname}`)
       }
-      return jsonResponse(EMPTY_DEFAULT)
+      return jsonResponse(makeSafeEmpty())
     }
 
     const entry = activeCassette[matched.route.key]
@@ -185,7 +204,7 @@ export function installMockApi(cassette?: Cassette): void {
           `[gallery mockApi] no cassette for ${matched.route.key} (${method} ${parsed.pathname})`,
         )
       }
-      return jsonResponse(EMPTY_DEFAULT)
+      return jsonResponse(makeSafeEmpty())
     }
 
     const query: Record<string, string> = {}

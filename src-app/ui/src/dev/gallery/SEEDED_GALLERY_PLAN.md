@@ -66,5 +66,29 @@ renders silently against a wrong shape.
 
 ## Coverage checklist
 
-Tracked in `dev/gallery/COVERAGE.md` — components covered/total, stores
-covered/total, pages covered/total, per workspace.
+Tracked in `dev/gallery/COVERAGE.md` — the human-readable rollup (components
+covered/total, stores covered/total, pages covered/total, per workspace).
+
+## Coverage is an ENFORCED compile-time gate (not just COVERAGE.md)
+
+Modeled on `testIds.generated.ts`. Adding a page/component without a gallery
+entry (or a reviewed allow-list reason) FAILS `tsc` + `npm run check`.
+
+1. **Generator** — `npm run gen:gallery-coverage` walks `modules/**/*.tsx` +
+   `components/ui/**/*.tsx` and emits `galleryCoverage.generated.ts`: the
+   `GallerySurface` union (the DENOMINATOR — every page/component id) +
+   `GALLERY_SURFACES` list.
+2. **Typed registry** — `coverage.ts` declares
+   `GALLERY_COVERAGE: Record<GallerySurface, Coverage>`. Because it's a total
+   `Record` over the generated union, a surface with NO entry is a **tsc error**
+   (the "bake into tsc" gate).
+3. **Allow-list** — genuinely non-visual surfaces (providers, context, pure
+   logic, null-render listeners) map to a reviewed `note('gallery:none — <why>')`
+   / `via('<page>')`, which satisfies the `Record` without a visual entry, so the
+   gate isn't noisy.
+4. **Parity test** — `npm run check:gallery-coverage` regenerates the union and
+   fails if `galleryCoverage.generated.ts` is stale (mirrors `types_ts_parity`),
+   and lists any surface still marked `pending`.
+5. **Wired** — `gen:gallery-coverage` runs in the openapi/gen flow;
+   `check:gallery-coverage` runs in `npm run check`. Same machinery in
+   `src-app/desktop/ui` with its own generated union + `openapi.json`.

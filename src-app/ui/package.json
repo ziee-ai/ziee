@@ -105,7 +105,7 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
-    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run check:kit-manifest && npm run check:testid-registry",
+    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run check:kit-manifest && npm run check:testid-registry && npm run check:gallery-coverage && npm run gallery:check-fixtures",
     "lint:guardrails": "biome lint --only=style/noRestrictedImports src",
     "lint:colors": "node scripts/lint-hardcoded-colors.mjs",
     "check:kit-manifest": "node scripts/gen-kit-manifest.mjs --check",
@@ -132,7 +132,9 @@
     "test:visual:list": "playwright test -c playwright.visual.config.ts --list",
     "visual:judge": "node scripts/visual-judge.mjs",
     "gallery:record": "node scripts/record-gallery-fixtures.mjs",
-    "gallery:check-fixtures": "node scripts/check-gallery-fixtures.mjs"
+    "gallery:check-fixtures": "node scripts/check-gallery-fixtures.mjs",
+    "gen:gallery-coverage": "node scripts/gen-gallery-coverage.mjs",
+    "check:gallery-coverage": "node scripts/gen-gallery-coverage.mjs --check"
   },
   "type": "module",
   "types": "./dist/index.d.ts"
