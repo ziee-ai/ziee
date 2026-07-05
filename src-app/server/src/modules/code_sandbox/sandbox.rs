@@ -14,6 +14,7 @@ use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::process::Stdio;
+#[cfg(target_os = "linux")]
 use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::time::{Duration, Instant};
@@ -26,9 +27,9 @@ use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::code_sandbox::types::{
-    CgroupMode, CodeSandboxState, HardeningCapabilities, PidNsMode, SandboxContext, SeccompMode,
-};
+#[cfg(target_os = "linux")]
+use crate::modules::code_sandbox::types::{CgroupMode, CodeSandboxState, SeccompMode};
+use crate::modules::code_sandbox::types::{HardeningCapabilities, PidNsMode, SandboxContext};
 
 /// Output of a single bwrap invocation. stdout/stderr are each
 /// capped at [`OUTPUT_CAP_BYTES`]; bytes past the cap are drained

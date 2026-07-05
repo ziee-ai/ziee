@@ -23,6 +23,7 @@ use uuid::Uuid;
 use crate::common::AppError;
 use crate::modules::code_sandbox::backend;
 use crate::modules::code_sandbox::backend::vm_long_lived;
+#[cfg(target_os = "linux")]
 use crate::modules::code_sandbox::sandbox;
 use crate::modules::code_sandbox::types::CodeSandboxState;
 

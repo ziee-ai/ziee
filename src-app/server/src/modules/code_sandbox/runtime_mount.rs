@@ -495,6 +495,7 @@ async fn mount_if_needed(
     // is dead and safe to clear. `fusermount -u -z` (lazy) can return
     // before the kernel fully releases the point, so retry the mkdir a
     // few times.
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
     let mut mkdir_result = std::fs::create_dir_all(mount_dir);
     #[cfg(target_os = "linux")]
     {

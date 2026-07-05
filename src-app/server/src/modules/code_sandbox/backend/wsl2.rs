@@ -362,7 +362,7 @@ impl Wsl2Backend {
         // (2) Dev/test bypass: explicit VmId, no privileged path at all.
         let g = if let Ok(s) = std::env::var("ZIEE_WSL_VM_ID") {
             hvsocket::parse_guid(&s).map_err(|e| {
-                AppError::internal_error(format!("ZIEE_WSL_VM_ID malformed: {e}"))
+                AppError::internal_with_id(format!("ZIEE_WSL_VM_ID malformed: {e}"))
             })?
         } else {
             // (3) Normal path: broker through the LocalSystem helper service.
@@ -441,7 +441,7 @@ impl Wsl2Backend {
         if !distro_registered(&distro).await {
             let import_dir = Self::import_dir(state, flavor, version);
             std::fs::create_dir_all(&import_dir)
-                .map_err(|e| AppError::internal_error(format!("create WSL import dir: {e}")))?;
+                .map_err(|e| AppError::internal_with_id(format!("create WSL import dir: {e}")))?;
             run_wsl(&[
                 "--import",
                 &distro,
@@ -451,7 +451,7 @@ impl Wsl2Backend {
                 "2",
             ])
             .await
-            .map_err(|e| AppError::internal_error(format!("wsl --import {distro}: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("wsl --import {distro}: {e}")))?;
         }
 
         // 2. Provision once (bwrap, agent, identity, AppArmor profile, wsl.conf).
@@ -501,7 +501,7 @@ impl Wsl2Backend {
             ])
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| AppError::internal_error(format!("spawn WSL2 agent: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("spawn WSL2 agent: {e}")))?;
 
         // Wait for the agent's vsock listener to accept. Probe via the same
         // hvsocket API the hot path uses, so a failure here surfaces the exact
@@ -527,7 +527,7 @@ impl Wsl2Backend {
                 // port-template GUID must be registered under
                 // HKLM\…\GuestCommunicationServices AND vmcompute must
                 // have picked it up since (needs `wsl --shutdown`).
-                return Err(AppError::internal_error(format!(
+                return Err(AppError::internal_with_id(format!(
                     "WSL2 agent did not start listening on vsock:{vsock_port} \
                      within 30s. Last connect error: {}\n\
                      \n\
@@ -701,7 +701,7 @@ async fn run_in_distro(distro: &str, script: &str) -> Result<(), AppError> {
         .args(["-d", distro, "-u", "root", "--", "bash", "-c", script])
         .status()
         .await
-        .map_err(|e| AppError::internal_error(format!("wsl bash -c: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("wsl bash -c: {e}")))?;
     if !status.success() {
         return Err(AppError::internal_error(format!(
             "in-distro command failed (exit {:?}): {}",
@@ -733,7 +733,7 @@ async fn write_file_into_distro(
         .args(["-d", distro, "-u", "root", "--", "bash", "-c", &script])
         .stdin(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| AppError::internal_error(format!("spawn wsl write {dest_path}: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("spawn wsl write {dest_path}: {e}")))?;
     {
         let mut stdin = child
             .stdin
@@ -742,13 +742,13 @@ async fn write_file_into_distro(
         stdin
             .write_all(content.as_bytes())
             .await
-            .map_err(|e| AppError::internal_error(format!("pipe {dest_path}: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("pipe {dest_path}: {e}")))?;
         // Drop closes stdin → cat sees EOF → exits → bash chmods → exits.
     }
     let status = child
         .wait()
         .await
-        .map_err(|e| AppError::internal_error(format!("wait wsl write {dest_path}: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("wait wsl write {dest_path}: {e}")))?;
     if !status.success() {
         return Err(AppError::internal_error(format!(
             "wsl write {dest_path} failed (exit {:?})",
@@ -886,7 +886,7 @@ impl SandboxBackend for Wsl2Backend {
         let outcome =
             runtime_fetch::ensure_fetched_format(&cache, flavor, RootfsFormat::TarZst, |_| {})
                 .await
-                .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+                .map_err(|e| AppError::internal_with_id(format!("rootfs fetch failed: {e}")))?;
 
         let guest_caps = HardeningCapabilities {
             bwrap_path: PathBuf::from(GUEST_BWRAP_PATH),
@@ -960,7 +960,7 @@ impl SandboxBackend for Wsl2Backend {
         let fetched =
             runtime_fetch::ensure_fetched_format(&cache, flavor, RootfsFormat::TarZst, |_| {})
                 .await
-                .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+                .map_err(|e| AppError::internal_with_id(format!("rootfs fetch failed: {e}")))?;
         let tarball = fetched.installed_path;
         let version = fetched.version;
 
@@ -1206,7 +1206,7 @@ impl SandboxBackend for Wsl2Backend {
         let stream = hvsocket::connect(distro.vm_id, distro.vsock_port)
             .await
             .map_err(|e| {
-                AppError::internal_error(format!(
+                AppError::internal_with_id(format!(
                     "connect to test distro vsock:{}: {e}",
                     distro.vsock_port
                 ))
@@ -1240,7 +1240,7 @@ impl SandboxBackend for Wsl2Backend {
             |_| {},
         )
         .await
-        .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("rootfs fetch failed: {e}")))?;
         let tarball = fetched.installed_path;
         let version = fetched.version;
         let h = self.ensure_distro(state, flavor, &tarball, &version).await?;
@@ -1293,7 +1293,7 @@ impl SandboxBackend for Wsl2Backend {
             |_| {},
         )
         .await
-        .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("rootfs fetch failed: {e}")))?;
         let distro = Self::distro_name(flavor, &fetched.version);
         let host_workspace = state
             .workspace_root
@@ -1312,7 +1312,7 @@ impl SandboxBackend for Wsl2Backend {
             src = host_mnt,
         );
         run_in_distro(&distro, &script).await.map_err(|e| {
-            AppError::internal_error(format!("mcp vm workspace sync-in failed: {e}"))
+            AppError::internal_with_id(format!("mcp vm workspace sync-in failed: {e}"))
         })
     }
 }
@@ -1451,7 +1451,7 @@ impl Wsl2Backend {
                 .join("ziee-sandbox-test")
                 .join(&distro);
             std::fs::create_dir_all(&import_dir).map_err(|e| {
-                AppError::internal_error(format!("create test WSL import dir: {e}"))
+                AppError::internal_with_id(format!("create test WSL import dir: {e}"))
             })?;
             run_wsl(&[
                 "--import",
@@ -1463,7 +1463,7 @@ impl Wsl2Backend {
             ])
             .await
             .map_err(|e| {
-                AppError::internal_error(format!("wsl --import {distro}: {e}"))
+                AppError::internal_with_id(format!("wsl --import {distro}: {e}"))
             })?;
         }
 
@@ -1507,7 +1507,7 @@ impl Wsl2Backend {
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| {
-                AppError::internal_error(format!("spawn WSL2 test agent: {e}"))
+                AppError::internal_with_id(format!("spawn WSL2 test agent: {e}"))
             })?;
 
         // Wait for the agent to start accepting on vsock. See the matching
@@ -1526,7 +1526,7 @@ impl Wsl2Backend {
                 // (needs `wsl --shutdown`). The bundled
                 // `scripts/register-sandbox-vsock-ports.ps1` does both
                 // in one admin invocation.
-                return Err(AppError::internal_error(format!(
+                return Err(AppError::internal_with_id(format!(
                     "WSL2 test agent did not start listening on vsock:{vsock_port} \
                      within 30s. Last connect error: {}\n\
                      \n\
@@ -1650,7 +1650,7 @@ async fn wslpath(distro: &str, win: &Path) -> Result<String, AppError> {
         .arg(win.as_os_str())
         .output()
         .await
-        .map_err(|e| AppError::internal_error(format!("wslpath: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("wslpath: {e}")))?;
     if !out.status.success() {
         return Err(AppError::internal_error(format!(
             "wslpath failed for {}",
@@ -1666,9 +1666,9 @@ async fn run_wsl(args: &[&str]) -> Result<(), AppError> {
         .args(args)
         .output()
         .await
-        .map_err(|e| AppError::internal_error(format!("wsl.exe {args:?}: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("wsl.exe {args:?}: {e}")))?;
     if !out.status.success() {
-        return Err(AppError::internal_error(format!(
+        return Err(AppError::internal_with_id(format!(
             "wsl.exe {args:?} failed: {}",
             decode_wsl_output(&out.stderr)
         )));
