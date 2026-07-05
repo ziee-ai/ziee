@@ -15,7 +15,16 @@ import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { GalleryPage } from './GalleryPage'
 import { seedGallery, type AuthSeed } from './seed'
 import { setMockMode, type MockMode } from './mockApi'
+import { OVERLAY_ENTRIES } from './overlays'
 import '@/index.css'
+
+// Runtime manifest for the runtime-health pass. Page slugs are enumerated from
+// the rendered DOM (they only exist after the router store populates), but the
+// overlay open-states are interaction-only surfaces never present on the browse
+// canvas — expose their slugs statically so the health script can drive each via
+// `?surface=<slug>&state=open` without hard-coding the list.
+;(window as unknown as { __GALLERY_OVERLAYS__?: string[] }).__GALLERY_OVERLAYS__ =
+  OVERLAY_ENTRIES.map(o => o.slug)
 
 // URL-driven multi-state rendering. The DEFAULT (no params) browses every page
 // in its loaded state. A single-combo URL renders ONE surface in ONE state for

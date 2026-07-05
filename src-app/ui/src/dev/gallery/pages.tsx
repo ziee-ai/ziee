@@ -127,7 +127,7 @@ function PageFrame({
       data-gallery-state={state}
       className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-background"
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" data-gallery-chrome>
         <Title level={3}>
           {page.path}
           {state !== 'loaded' ? (
@@ -180,7 +180,7 @@ function OverlayFrame({ entry }: { entry: OverlayEntry }) {
       data-gallery-state="open"
       className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-background"
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" data-gallery-chrome>
         <Title level={3}>
           {entry.title}
           <Text tone="muted" className="ml-2 text-sm">

@@ -24,7 +24,7 @@ export function GroupSystemSkillsAssignmentDrawer() {
     let cancelled = false
     ApiClient.SkillSystem.list({ limit: 1000, offset: 0 })
       .then(res => {
-        if (!cancelled) setAllSkills(res.skills)
+        if (!cancelled) setAllSkills(Array.isArray(res.skills) ? res.skills : [])
       })
       .catch(err => console.error('Failed to load system skills:', err))
     return () => {
@@ -42,7 +42,7 @@ export function GroupSystemSkillsAssignmentDrawer() {
       allEntities={allSkills}
       loadAssigned={gid =>
         ApiClient.Group.getSystemSkills({ group_id: gid }).then(r =>
-          r.skills.map(s => s.id),
+          (Array.isArray(r.skills) ? r.skills : []).map(s => s.id),
         )
       }
       save={(gid, ids) =>

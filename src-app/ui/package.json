@@ -139,7 +139,9 @@
     "check:gallery-crawl": "node scripts/gen-crawl-cassette.mjs --check",
     "gallery:screenshots": "node scripts/capture-gallery-screenshots.mjs",
     "gallery:states": "node scripts/capture-gallery-states.mjs",
-    "gallery:forms": "node scripts/capture-gallery-forms.mjs"
+    "gallery:forms": "node scripts/capture-gallery-forms.mjs",
+    "gallery:runtime": "node scripts/runtime-health.mjs",
+    "gate:ui": "node scripts/gate-ui.mjs"
   },
   "type": "module",
   "types": "./dist/index.d.ts"

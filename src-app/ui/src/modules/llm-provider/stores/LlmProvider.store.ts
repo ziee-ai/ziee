@@ -335,7 +335,8 @@ export const LlmProviderStoreDef = defineStore('LlmProvider', {
       getProvidersForGroup: async (groupId: string): Promise<BaseLlmProvider[]> => {
         try {
           const response = await ApiClient.Group.getProviders({ group_id: groupId })
-          return response.providers
+          // Guard: callers `.map` the result — never hand back undefined.
+          return Array.isArray(response.providers) ? response.providers : []
         } catch (error) {
           console.error('Failed to get providers for group:', error)
           throw error

@@ -1420,6 +1420,78 @@ cargo test --test integration_tests citations:: -- --test-threads=1
 
 ---
 
+## UI Build Gate — the visual-testing exit condition
+
+The component gallery (`src-app/ui/src/dev/gallery/`, mirrored in
+`src-app/desktop/ui/`) renders **every** real page/overlay/kit-component across
+its states (loaded / empty / error / open) × themes × accents, seeded through a
+backend-free mock-API cassette. It is the one stable surface the whole
+visual-testing system runs against.
+
+### Definition of DONE for a UI surface
+
+A UI surface (page, drawer, dialog, kit component) is **DONE** only when **ALL**
+of these hold. This is not aspirational — it's the exit condition; a surface that
+misses any one is not finished.
+
+1. **No HIGH visual findings** from the design-critic pass (the Opus/Sonnet
+   vision review of the gallery screenshots — spacing, hierarchy, contrast,
+   alignment, affordance). Recorded out of band (a vision model can't be wired
+   into a headless gate); the four criteria below are the machine-enforced ones.
+2. **Zero runtime HIGH findings** — the runtime-health pass reports no console
+   error, no uncaught exception / ErrorBoundary crash, no failed network request,
+   and no WCAG-AA contrast failure for that surface, in ANY state × theme.
+3. **Visual-regression baseline matches** — `toHaveScreenshot` (Layer B) is green
+   against blessed baselines, and the deterministic Layer A layout invariants +
+   axe a11y pass.
+4. **`tsc --noEmit` + lint clean** — types compile and the biome guardrails +
+   hardcoded-color lint pass.
+
+### `npm run gate:ui` — the enforced gate
+
+```bash
+cd src-app/ui
+npm run gate:ui                    # tsc + lint + runtime-health + Layer A/axe
+VISUAL_SNAPSHOTS=1 npm run gate:ui # also runs Layer B pixel regression
+npm run gate:ui -- --skip-visual   # fast: tsc + lint + runtime only
+```
+
+`scripts/gate-ui.mjs` runs criteria 2–4, boots (or reuses) the gallery Vite
+server, prints a **per-surface PASS/FAIL table** (fail = any HIGH runtime
+finding), and exits non-zero on any failure. It is the UI analog of `just check`
+for the backend — run it before pushing UI work.
+
+### `npm run gallery:runtime` — the runtime-health pass (systematized)
+
+```bash
+npm run gallery:runtime            # writes RUNTIME_FINDINGS.{md,jsonl}
+node scripts/runtime-health.mjs --report-only   # never exits non-zero
+```
+
+`scripts/runtime-health.mjs` is the automation of the manual "render every
+surface and watch the console" review that originally caught the
+`/settings/user-groups` array-crash. It drives every `gallery-page-<slug>` (in
+loaded/empty/error) plus every overlay open-state (from the runtime
+`window.__GALLERY_OVERLAYS__` manifest) × themes, as isolated full reloads, and
+captures per cell:
+
+| Category | Severity | Source |
+|---|---|---|
+| `console-error` / `page-error` / `nav-error` | HIGH (gating) | `page.on('console'\|'pageerror')` |
+| `request-failed` | HIGH (gating) | `page.on('requestfailed')` (favicon/HMR filtered) |
+| `contrast` | HIGH (gating) | in-page `getComputedStyle` fg-vs-effective-bg WCAG-AA ratio |
+| `react-warning` | MEDIUM | console warnings matching React key/act/deprecation patterns |
+| `a11y-name` | MEDIUM | interactive element (button/link/field/role) with no accessible name |
+| `spacing-grid` | LOW (informational) | computed padding/margin/gap off the 4px grid (the kit uses 2px half-steps, so this is drift-tracking, never gating) |
+
+Output is `src/dev/gallery/RUNTIME_FINDINGS.jsonl` (one finding per line — the
+gate rolls this up per surface) + `RUNTIME_FINDINGS.md` (grouped human summary).
+The visual-testing layers themselves (Layer A layout invariants + axe, Layer B
+screenshots) live in `tests/e2e/visual/` and run under
+`playwright.visual.config.ts`.
+
+---
+
 ## Documentation Index
 
 ### 📐 Architecture
