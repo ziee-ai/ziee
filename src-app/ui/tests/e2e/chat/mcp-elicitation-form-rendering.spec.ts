@@ -237,7 +237,7 @@ test.describe('Elicitation form — field rendering', () => {
     const input = byTestId(page, 'elicitation-field-code').first()
     await input.fill('abc') // lowercase — doesn't match
     await byTestId(page, 'elicitation-submit').first().click()
-    await expect(byTestId(page, 'mcp-elicitation-form').getByTestId(/-error$/).first()).toBeVisible()
+    await expect(byTestId(page, 'mcp-elicitation-form').getByTestId(/^field-error-/).first()).toBeVisible()
   })
 
   test('required field → submit empty shows inline error', async ({ page, testInfra }) => {
@@ -246,7 +246,7 @@ test.describe('Elicitation form — field rendering', () => {
       required: ['name'],
     })
     await byTestId(page, 'elicitation-submit').first().click()
-    await expect(byTestId(page, 'mcp-elicitation-form').getByTestId(/-error$/).filter({ hasText: /required/i }).first()).toBeVisible()
+    await expect(byTestId(page, 'mcp-elicitation-form').getByTestId(/^field-error-/).filter({ hasText: /required/i }).first()).toBeVisible()
   })
 })
 
