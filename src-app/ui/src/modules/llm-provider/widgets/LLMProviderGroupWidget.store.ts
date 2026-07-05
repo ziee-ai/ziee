@@ -37,7 +37,10 @@ export const LlmProviderGroupWidgetStore = defineLocalStore({
       try {
         const response = await ApiClient.Group.getProviders({ group_id: groupId })
         set(d => {
-          d.providers = response.providers
+          // Defensive: never assign a non-array into `providers` — the widget
+          // reads `providers.length` unconditionally, so a malformed/empty
+          // response ({} or missing field) would crash the whole group row.
+          d.providers = Array.isArray(response.providers) ? response.providers : []
           d.loading = false
         })
       } catch (error) {
