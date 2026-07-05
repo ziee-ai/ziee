@@ -351,8 +351,6 @@ const mcpExtension: ChatExtension = createExtension({
   priority: 50, // Higher priority to handle events early
 
   initialize: async () => {
-    console.log('[MCP Extension] Initialized')
-
     const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
     const { Stores } = await import('@/core/stores')
     const { ApiClient } = await import('@/api-client')
@@ -376,15 +374,11 @@ const mcpExtension: ChatExtension = createExtension({
             if (resp.server_ids.length > 0) {
               mcpStore.setEnabledServers(resp.server_ids)
             }
-          } catch (err) {
+          } catch {
             // Soft-fail: no snapshot recorded (pre-migration message
             // or write hook failed at send-time) → keep current
             // selection. Matches the pre-extraction behavior for
             // messages without the column populated.
-            console.warn(
-              '[MCP Extension] Failed to load message server snapshot:',
-              err,
-            )
           }
         } else {
           // Edit cancelled or sent — restore from stored conversation config
@@ -489,8 +483,6 @@ const mcpExtension: ChatExtension = createExtension({
           })
         }
       }
-
-      console.log('[MCP Extension] Tool started:', data.tool_name)
     },
 
     mcpToolProgress: async data => {
@@ -576,8 +568,6 @@ const mcpExtension: ChatExtension = createExtension({
             streamingMessage: updatedMessage,
             messages: newMessages,
           })
-
-          console.log('[MCP Extension] Added tool_use content block to existing streaming message:', data.tool_name)
         }
       } else {
         // No streaming message exists — check messages map for an existing one first (dedup)
@@ -610,12 +600,8 @@ const mcpExtension: ChatExtension = createExtension({
             streamingMessage: newMessage,
             messages: newMessages,
           })
-
-          console.log('[MCP Extension] Created new streaming message with tool_use block:', data.tool_name)
         }
       }
-
-      console.log('[MCP Extension] Approval required for:', data.tool_name)
     },
 
     mcpElicitationRequired: async (data, get, set) => {
@@ -687,8 +673,6 @@ const mcpExtension: ChatExtension = createExtension({
         newMessages.set(newMessage.id, newMessage)
         set({ streamingMessage: newMessage, messages: newMessages })
       }
-
-      console.log('[MCP Extension] Elicitation required:', data.message_id, 'from', data.server)
     },
 
     mcpToolComplete: async (data, _get, _set) => {
@@ -700,12 +684,6 @@ const mcpExtension: ChatExtension = createExtension({
         error: data.is_error ? 'Tool execution failed' : undefined,
         result: data.result,
       })
-
-      console.log(
-        '[MCP Extension] Tool completed:',
-        data.tool_use_id,
-        data.is_error ? '(error)' : '(success)',
-      )
     },
 
     artifactCreated: async (data, get, set) => {
@@ -796,8 +774,6 @@ const mcpExtension: ChatExtension = createExtension({
       const newMessages = new Map(chatState.messages)
       newMessages.set(updatedMessage.id, updatedMessage)
       set({ streamingMessage: updatedMessage, messages: newMessages })
-
-      console.log('[MCP Extension] Artifact created:', data.filename, data.file_id, '→ tool', toolUseId)
     },
   },
 
@@ -812,7 +788,6 @@ const mcpExtension: ChatExtension = createExtension({
 
     if (hasApprovalDecisions) {
       // Discard text extension's cancel since we're sending tool approvals
-      console.log('[MCP Extension] Has approval decisions, discarding text cancel')
       return { cancel: false, discardCancel: ['text'] }
     }
 
@@ -826,19 +801,21 @@ const mcpExtension: ChatExtension = createExtension({
     const selectedServers = mcpStore.getSelectedServersConfig()
     const approvalDecisions = mcpStore.getApprovalDecisions()
 
-    const fields: any = {}
+    const fields: {
+      enable_mcp?: boolean
+      mcp_config?: { mcp_servers: typeof selectedServers }
+      tool_approvals?: typeof approvalDecisions
+    } = {}
 
     // Add MCP config if servers are selected
     if (selectedServers.length > 0) {
       fields.enable_mcp = true
       fields.mcp_config = { mcp_servers: selectedServers }
-      console.log('[MCP Extension] Including MCP config:', fields.mcp_config)
     }
 
     // Add approval decisions if present
     if (approvalDecisions.length > 0) {
       fields.tool_approvals = approvalDecisions
-      console.log('[MCP Extension] Including approval decisions:', approvalDecisions)
     }
 
     return fields
@@ -905,12 +882,6 @@ const mcpExtension: ChatExtension = createExtension({
         }
 
         mcpStore.loadConversationConfig(conversation.id, config)
-        console.log('[MCP Extension] Loaded conversation MCP config:', conversation.id, {
-          availableServers: availableServerIds.size,
-          disabledServers: disabledServers.length,
-          selectedServers: selectedServers.size,
-          loopSettings: response.settings.loop_settings,
-        })
       } else {
         // If settings don't exist yet, select all available servers by default
         const selectedServers = new Map<string, { server_id: string; tools: string[] }>()
@@ -927,9 +898,8 @@ const mcpExtension: ChatExtension = createExtension({
         }
 
         mcpStore.loadConversationConfig(conversation.id, config)
-        console.log('[MCP Extension] No existing config, using defaults with all servers enabled:', conversation.id)
       }
-    } catch (error) {
+    } catch {
       // If settings don't exist yet, create default config with all servers enabled
       const mcpServerState = Stores.McpServer.__state
       const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
@@ -947,7 +917,6 @@ const mcpExtension: ChatExtension = createExtension({
       }
 
       mcpStore.loadConversationConfig(conversation.id, config)
-      console.log('[MCP Extension] Error loading config, using defaults:', conversation.id, error)
     }
 
     // Load pending approvals for the current branch (to restore state after page refresh)
@@ -968,10 +937,6 @@ const mcpExtension: ChatExtension = createExtension({
               input: approval.input,
             })
           }
-          console.log(
-            '[MCP Extension] Loaded pending approvals:',
-            approvalsResponse.approvals.length,
-          )
         }
       } catch (error) {
         console.error('[MCP Extension] Failed to load pending approvals:', error)
@@ -991,8 +956,6 @@ const mcpExtension: ChatExtension = createExtension({
 
     // Handle new conversation creation
     if (conversation?.id && !mcpStore.currentConversationId) {
-      console.log('[MCP Extension] New conversation created, transferring pending config:', conversation.id)
-
       // Transfer pending config to the new conversation
       mcpStore.transferPendingConfig(conversation.id)
 
@@ -1014,7 +977,6 @@ const mcpExtension: ChatExtension = createExtension({
     }
 
     mcpStore.clearApprovalDecisions()
-    console.log('[MCP Extension] Cleared approval decisions after message sent')
 
     return {}
   },
@@ -1042,9 +1004,7 @@ const mcpExtension: ChatExtension = createExtension({
     input_area_suffix: { component: McpConfigModal, order: 20 },
   },
 
-  cleanup: async () => {
-    console.log('[MCP Extension] Cleaned up')
-  },
+  cleanup: async () => {},
 })
 
 export default mcpExtension

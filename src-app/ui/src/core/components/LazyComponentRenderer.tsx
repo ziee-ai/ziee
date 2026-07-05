@@ -26,6 +26,14 @@ type ComponentLike = ComponentType<any> | LazyComponent | ReactElement
  */
 const lazyComponentCache = new WeakMap<LazyComponent, ComponentType<any>>()
 
+/**
+ * Stable default for the `props` param. A `props = {}` default literal is a
+ * fresh object every render, which churns the `useMemo` deps below (and, before
+ * the lazy-type cache, remounted the subtree). Sharing one frozen empty object
+ * keeps the no-props case referentially stable.
+ */
+const EMPTY_PROPS: Record<string, any> = Object.freeze({})
+
 function getCachedLazy(loader: LazyComponent): ComponentType<any> {
   let Lazy = lazyComponentCache.get(loader)
   if (!Lazy) {
@@ -80,7 +88,7 @@ interface LazyComponentRendererProps {
  */
 export function LazyComponentRenderer({
   component,
-  props = {},
+  props = EMPTY_PROPS,
   fallback = <Loading size="sm" />,
 }: LazyComponentRendererProps) {
   // Check if it's a lazy function by checking if it's a function with 0 params
