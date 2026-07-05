@@ -256,6 +256,14 @@ export async function seedAssistantWithMultipleToolResults(
     .first()
     .waitFor({ state: 'visible', timeout: 15000 })
 
+  // A run of ≥2 consecutive tool calls folds into a collapsed
+  // "N tools called" group (McpToolGroupCard). Expand it so each
+  // tool_result's inline file previews render for the assertions.
+  const groupToggle = page.locator('[data-testid="mcp-toolgroup-details-btn"]')
+  if ((await groupToggle.count()) > 0) {
+    await groupToggle.first().click()
+  }
+
   return { assistantMessageId }
 }
 

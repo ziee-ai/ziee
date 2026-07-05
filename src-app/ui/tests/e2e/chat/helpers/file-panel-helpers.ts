@@ -56,10 +56,11 @@ export const FILE_ASSETS = {
 export async function attachFileViaUI(page: Page, absoluteFilePath: string): Promise<void> {
   const filename = path.basename(absoluteFilePath)
 
-  // The + dropdown contains the "Attach files or photos" menu item, which
-  // wraps an AntD <Upload> component. Clicking it triggers the native file
-  // chooser; we capture it via Playwright's fileChooser event.
-  await page.getByRole('button', { name: 'Add attachment' }).click()
+  // The + dropdown (aria-label "Add tools & files", stable testid
+  // `chat-input-add-btn`) contains the "Attach files or photos" menu item.
+  // Clicking that item triggers the native file chooser; we capture it via
+  // Playwright's fileChooser event.
+  await page.locator('[data-testid="chat-input-add-btn"]').click()
   const [fileChooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     page.getByText('Attach files or photos').click(),

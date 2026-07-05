@@ -114,7 +114,21 @@ test.describe('Chat - web_search result rendering', () => {
       .first()
     await assistantMsg.waitFor({ state: 'visible', timeout: 15000 })
 
-    // The web_search result's text digest renders in the chat transcript.
+    // The MCP tool-use renderer shows the web_search tool-use card + a
+    // Completed status for the matched tool_result. Tool results are collapsed
+    // by default; the digest text renders inside the expanded "Result:" panel.
+    const toolCard = assistantMsg.locator(
+      `[data-testid="mcp-tooluse-card-${toolUseId}"]`,
+    )
+    await expect(toolCard).toBeVisible({ timeout: 10000 })
+    await expect(
+      assistantMsg.locator(`[data-testid="mcp-tooluse-status-${toolUseId}"]`),
+    ).toHaveAttribute('data-status', 'completed')
+
+    // Expand details → the readable web_search digest renders inline.
+    await assistantMsg
+      .locator(`[data-testid="mcp-tooluse-details-btn-${toolUseId}"]`)
+      .click()
     await expect(assistantMsg.getByText(/Web search:/)).toBeVisible()
     await expect(assistantMsg.getByText(/2 results from searxng/)).toBeVisible()
   })

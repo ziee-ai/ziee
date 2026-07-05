@@ -8,10 +8,11 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import {
-  createConversationWithModel,
-  waitForAssistantResponse,
+  goToNewChatPage,
+  selectModelInDropdown,
 } from './helpers/chat-helpers'
 import { FILE_ASSETS, attachFileViaUI } from './helpers/file-panel-helpers'
+import { mockChatStream, startedEvent } from '../helpers/sse-mock-helpers'
 
 /**
  * E2E — ChatRightPanel MOBILE drawer mode (audit gap all-788b166f9359).
@@ -38,8 +39,13 @@ async function setupChatAtNewConversation(page: Page, baseURL: string, apiURL: s
   await loginAsAdmin(page, baseURL)
   const adminToken = await getAdminToken(apiURL)
   await setupProviderAndModel(apiURL, adminToken)
-  await createConversationWithModel(page, baseURL, 'GPT-4o Mini', 'Hello!')
-  await waitForAssistantResponse(page)
+  // started-only stream: the optimistic user bubble (with its file card) stays
+  // mounted for the drawer flow without a real LLM completing the turn. The
+  // drawer test operates on the USER message's file card, so no assistant
+  // response is needed. Same trick as user-attachments-layout.spec.ts.
+  await mockChatStream(page, [[startedEvent({ userMessageId: 'umsg_mobile' })]])
+  await goToNewChatPage(page, baseURL)
+  await selectModelInDropdown(page, 'GPT-4o Mini')
 }
 
 test.describe('Chat - Right Panel mobile drawer', () => {
@@ -62,7 +68,12 @@ test.describe('Chat - Right Panel mobile drawer', () => {
     await byTestId(page, 'chat-message-textarea').fill('see attached')
     await expect(sendButton).toBeEnabled({ timeout: 30000 })
     await sendButton.click()
-    await waitForAssistantResponse(page)
+
+    // The sent user message carries the clickable FileCard (no assistant
+    // response required — the started-only stream keeps the bubble mounted).
+    await expect(
+      page.locator('[data-testid="file-card"][data-filename="test.md"]').last(),
+    ).toBeVisible({ timeout: 15000 })
 
     // Before opening: the mobile drawer (the right panel, role=dialog on mobile)
     // is not present.

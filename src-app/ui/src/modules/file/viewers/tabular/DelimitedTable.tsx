@@ -10,6 +10,12 @@ import type { TableColumn } from '@/components/ui/kit/table'
  *  antd Table keeps row rendering cheap at this size. */
 const MAX_ROWS = 10_000
 
+/** Above this row count, switch the grid to row virtualization (needs a
+ *  definite scroll-viewport height); at or below it, render a plain table so
+ *  the rows are present in any container (content-sized inline previews
+ *  included). Covers every inline preview and the vast majority of files. */
+const VIRTUALIZE_ROW_THRESHOLD = 200
+
 function parseDelimitedLine(line: string, delimiter: string): string[] {
   const fields: string[] = []
   let field = ''
@@ -100,9 +106,14 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           data-testid="file-delimited-truncated-alert"
         />
       )}
-      {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
+      {/* Virtualize only large grids. Row virtualization needs a definite,
+          measurable scroll-viewport height; in a content-sized container (e.g.
+          the chat inline file preview) that measurement resolves to 0 and the
+          grid renders its header but NO data rows. A plain table has no such
+          dependency, so small grids (the overwhelming majority — and every
+          inline preview) render all rows in any container. */}
       <Table
-        virtualized
+        virtualized={dataSource.length > VIRTUALIZE_ROW_THRESHOLD}
         columns={columns}
         dataSource={dataSource}
         rowKey="key"

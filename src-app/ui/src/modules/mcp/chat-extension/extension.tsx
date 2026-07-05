@@ -63,6 +63,16 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
               ({toolCall.server})
             </Text>
           )}
+          {/* Status is conveyed by the icon (check / x / wrench) — no text. A
+              hidden marker keeps the completed/failed signal available to tests
+              (mirrors the historical McpToolUseRenderer marker). */}
+          {(toolCall.status === 'completed' || toolCall.status === 'error') && (
+            <span
+              className="sr-only"
+              data-testid={`mcp-toolcall-status-${toolCall.tool_use_id}`}
+              data-status={toolCall.status === 'error' ? 'failed' : 'completed'}
+            />
+          )}
         </div>
         <Button
           size="icon"

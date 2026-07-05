@@ -49,11 +49,10 @@ test.describe('Inline file previews — existing-feature integration', () => {
     await expect(bubble).toBeVisible({ timeout: 10000 })
     // The inline file preview renders at the tool_result position.
     await expect(bubble.locator('[data-testid="inline-file-preview"]').first()).toBeVisible()
-    // Actions slot is also rendered — assert one of the core action
-    // components (the copy/regenerate buttons) is present in this
-    // bubble, since the message_actions extension slot itself is empty
-    // when no extension registers a component for it.
-    await expect(bubble.locator('[data-testid="message-actions"], [data-testid="inline-file-preview-icon"]-copy').first())
+    // Actions slot is also rendered — assert the core copy action button
+    // (MessageActions, stable testid) is present in this bubble alongside
+    // the inline file preview.
+    await expect(bubble.locator('[data-testid="chat-message-copy-btn"]').first())
       .toBeVisible()
   })
 
