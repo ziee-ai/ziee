@@ -89,6 +89,9 @@ test.describe('Workflows - elicit form submit validation', () => {
 
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-elicit-validate')
+    // The detail drawer opens on the Details tab; switch to Runs first.
+    await byTestId(page, 'wf-detail-tabs-tab-runs').click()
+    await expect(byTestId(page, 'wf-runs-list')).toBeVisible()
     await page.locator('[data-testid^="wf-run-source-tag-"]').first().click()
     await expect(byTestId(page, 'wf-elicit-alert')).toBeVisible({ timeout: 15000 })
 

@@ -76,37 +76,51 @@ test.describe('Summarization — automatic trigger during a real chat', () => {
         },
         data: {
           enabled: true,
-          summarize_after_tokens: 40,
-          summarizer_keep_recent_tokens: 10,
+          // The backend clamps these to valid ranges: trigger ∈ 500..=1e6 and
+          // keep_recent >= 100 (and < trigger). Use the minimum trigger so a
+          // few substantive turns cross it.
+          summarize_after_tokens: 500,
+          summarizer_keep_recent_tokens: 100,
         },
       },
     )
-    expect(settingsResp.ok()).toBeTruthy()
+    expect(
+      settingsResp.ok(),
+      `settings PUT should succeed: ${settingsResp.status()} ${await settingsResp.text()}`,
+    ).toBeTruthy()
 
-    // Drive a real conversation: enough turns to push cumulative tokens past 40.
+    // Drive a real conversation: enough detailed turns to push cumulative
+    // tokens well past the 500 trigger so the background summarizer fires.
     await goToNewChatPage(page, baseURL)
     await selectModelInDropdown(page, 'Claude Haiku 4.5')
 
     await sendChatMessage(
       page,
-      'Let us plan a detailed multi-day itinerary for a trip to Tokyo, Japan.',
+      'Plan a detailed multi-day itinerary for a trip to Tokyo, Japan, with specific neighborhoods and attractions for each day.',
     )
     await sendChatMessage(
       page,
-      'Add Kyoto and Osaka as well, with food recommendations for each city.',
+      'Add Kyoto and Osaka as well, with several food recommendations and a signature dish for each city.',
     )
     await sendChatMessage(
       page,
-      'Now summarize the budget considerations for the whole trip in brief.',
+      'Now break down the budget considerations for the whole trip: flights, lodging, food, and local transport.',
+    )
+    await sendChatMessage(
+      page,
+      'Finally, suggest a packing list and a few useful Japanese phrases for the trip.',
     )
 
-    // The background summarizer runs after a reply; the pill reloads the read
-    // model on the next messages.size change. Reload to force a clean read,
-    // then poll for the boundary divider that only renders when a summary row
-    // exists (auto-created, never seeded here).
-    await page.reload()
-    await expect(byTestId(page, 'summ-boundary-toggle').first()).toBeVisible({
-      timeout: 60_000,
-    })
+    // The background summarizer runs AFTER a reply and is itself an async LLM
+    // call, so the boundary row may not exist yet at the first reload. The
+    // summary read-model reloads on each conversation open, so poll by
+    // reloading until the boundary divider renders (it only appears when a
+    // summary row exists — auto-created here, never seeded).
+    await expect(async () => {
+      await page.reload()
+      await expect(byTestId(page, 'summ-boundary-toggle').first()).toBeVisible({
+        timeout: 8_000,
+      })
+    }).toPass({ timeout: 120_000, intervals: [4_000] })
   })
 })

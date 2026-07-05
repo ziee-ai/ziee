@@ -26,15 +26,12 @@ test.describe('App layout — responsive breakpoint transition', () => {
     )
     await expect(newChat).toBeVisible({ timeout: 30000 })
 
-    // Cross to a mobile width (< xs=480) → the sidebar auto-collapses: it
-    // slides off-screen via `translateX(-100%)` and is marked aria-hidden
-    // (AppLayout.tsx). The menu items stay in the DOM (so crossing back
-    // restores them without a remount) but are pushed out of the viewport, so
-    // they're invisible to both sighted users and assistive tech. `toBeHidden`
-    // is the wrong matcher here — it checks CSS display/visibility, not a
-    // transform offset — so assert the item is OUT of the viewport instead.
+    // Cross to a mobile width (< xs=480) → the persistent desktop sidebar
+    // unmounts and the mobile sidebar becomes a Sheet that is CLOSED on boot,
+    // so its content is not mounted. Either way the sidebar + its New Chat item
+    // are no longer shown until the user opens the Sheet via the toggle button.
     await page.setViewportSize({ width: 400, height: 800 })
-    await expect(sidebar).toHaveAttribute('aria-hidden', 'true', { timeout: 10000 })
-    await expect(newChat).not.toBeInViewport({ timeout: 10000 })
+    await expect(sidebar).toBeHidden({ timeout: 10000 })
+    await expect(newChat).toBeHidden({ timeout: 10000 })
   })
 })

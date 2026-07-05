@@ -39,12 +39,12 @@ test.describe('hub module — permission gating', () => {
       byTestId(page, 'layout-sidebar-tools-menu-item-hub'),
     ).toBeVisible()
 
-    // The Segmented control renders one item per visible tab (derived
-    // `hub-tabs-segmented-opt-<tabId>` ids). The MCP-servers tab is present;
-    // the Models + Assistants tabs are gated out.
-    await expect(byTestId(page, 'hub-tabs-segmented-opt-mcp-servers')).toBeVisible()
-    await expect(byTestId(page, 'hub-tabs-segmented-opt-models')).toHaveCount(0)
-    await expect(byTestId(page, 'hub-tabs-segmented-opt-assistants')).toHaveCount(0)
+    // The desktop side-menu (kit Menu, testid `hub-nav-menu`) renders one item
+    // per visible tab (derived `hub-nav-menu-item-<tabId>` ids). The MCP-servers
+    // tab is present; the Models + Assistants tabs are gated out.
+    await expect(byTestId(page, 'hub-nav-menu-item-mcp-servers')).toBeVisible()
+    await expect(byTestId(page, 'hub-nav-menu-item-models')).toHaveCount(0)
+    await expect(byTestId(page, 'hub-nav-menu-item-assistants')).toHaveCount(0)
   })
 
   test('hub-models-only user accessing forbidden tab via URL: inline 403 (URL preserved)', async ({

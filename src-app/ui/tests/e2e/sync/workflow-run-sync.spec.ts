@@ -97,6 +97,8 @@ test.describe('Realtime sync — workflow run transitions', () => {
       await loginAsAdmin(pageB, baseURL)
       await goToWorkflowsSettingsPage(pageB, baseURL)
       await openWorkflowCard(pageB, 'e2e-run-sync')
+      // The detail drawer opens on the Details tab; switch to Runs first.
+      await byTestId(pageB, 'wf-detail-tabs-tab-runs').click()
       await expect(byTestId(pageB, 'wf-runs-heading')).toBeVisible()
 
       // Device A starts the run (screen mocked → no tokens; pauses on elicit).

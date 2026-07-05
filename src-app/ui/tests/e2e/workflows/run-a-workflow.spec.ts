@@ -169,23 +169,23 @@ test.describe('Workflows - run a standalone workflow (real LLM)', () => {
     await expect(promptAccordion).toContainText(/say something about/i, {
       timeout: 15000,
     })
-
-    // Likewise "Show trace" fetches + renders trace.json content.
-    await traceBtn.first().click()
-    await expect(traceAccordion).toContainText(/summarize/, {
-      timeout: 15000,
-    })
     // Expander INTERACTION (StepLogExpander): the prompt interpolates the
-    // `topic` input, so the rendered content contains "quantum entanglement".
-    await promptBtn.first().click()
+    // `topic` input, so the SAME rendered prompt body also contains
+    // "quantum entanglement". The button is a toggle, so assert on the already-
+    // open accordion rather than re-clicking (which would collapse it).
     await expect(promptAccordion).toContainText(/quantum entanglement/i, {
       timeout: 15000,
     })
-    await expect(logUnavailable).toHaveCount(0)
 
-    // The trace expander likewise loads its content (trace.json) on click,
-    // not the unavailable note.
+    // "Show trace" lazily fetches + renders trace.json — its body is per-step
+    // run metadata (started_at / ms_elapsed / attempts / …), NOT the step id,
+    // so assert a real trace field to prove the fetch+render path ran.
     await traceBtn.first().click()
+    await expect(traceAccordion).toContainText(/started_at/, {
+      timeout: 15000,
+    })
+
+    // Neither expander rendered the "log unavailable" fallback.
     await expect(logUnavailable).toHaveCount(0)
   })
 })

@@ -51,6 +51,13 @@ export function setMetaThemeColorFromVar(cssVar: string): void {
 export function useMetaThemeColor(cssVar: string): void {
   const { isDarkMode } = useTheme()
   useEffect(() => {
-    setMetaThemeColorFromVar(cssVar)
+    // Defer the CSS-var read to after the browser applies the new theme.
+    // The `.dark`/`.light` class that drives `--card`/`--background` is toggled
+    // by ThemeProvider's effect (the parent), which — because child effects run
+    // before parent effects in a commit — fires AFTER this hook's effect. Reading
+    // synchronously here would resolve the PREVIOUS theme's value (a one-step-
+    // behind meta theme-color). A rAF read runs after the class + style recalc.
+    const id = requestAnimationFrame(() => setMetaThemeColorFromVar(cssVar))
+    return () => cancelAnimationFrame(id)
   }, [cssVar, isDarkMode])
 }
