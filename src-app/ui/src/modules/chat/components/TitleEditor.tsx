@@ -85,7 +85,7 @@ export function TitleEditor() {
         <FormField
           name="title"
           aria-label="Conversation title"
-          className="!mb-0 flex-1"
+          className="flex-1"
         >
           <Input
             data-testid="chat-title-input"
