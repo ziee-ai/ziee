@@ -199,6 +199,7 @@ export function UserGroupAssignment({
                       <div className="flex items-start gap-3">
                         <Switch
                           tooltip="Assign this group"
+                          aria-label={`Assign group ${g.name}`}
                           checked={checked}
                           onChange={next =>
                             setDraft(d => (next ? [...d, g.id] : d.filter(x => x !== g.id)))

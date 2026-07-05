@@ -2,6 +2,7 @@ import { Flex, Text, message } from '@/components/ui'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
+import { Loading } from '@/core/components/Loading'
 import { ProviderHeader } from '@/modules/llm-provider/components/ProviderHeader'
 import { LlmModelsSection } from '@/modules/llm-provider/components/LlmModelsSection'
 import { ProviderGroupAssignmentCard } from '@/modules/llm-provider/components/ProviderGroupAssignmentCard'
@@ -14,7 +15,7 @@ export function LocalProviderSettings() {
   const { providerId } = useParams<{ providerId?: string }>()
 
   // Store data
-  const { error } = Stores.LlmProvider
+  const { error, loading, isInitialized } = Stores.LlmProvider
 
   // Get current provider
   const currentProvider = Stores.LlmProvider.providers.find(
@@ -28,6 +29,12 @@ export function LocalProviderSettings() {
       Stores.LlmProvider.clearLlmProviderStoreError()
     }
   }, [error])
+
+  // Providers still loading — show a spinner instead of a blank screen so the
+  // page doesn't flash empty before the provider list resolves.
+  if (!currentProvider && (loading || !isInitialized)) {
+    return <Loading />
+  }
 
   // Return early if no provider or not local
   if (!currentProvider || currentProvider.provider_type !== 'local') {

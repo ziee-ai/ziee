@@ -316,7 +316,15 @@ export function LlmModelsSection() {
                         {llmModel.display_name}
                       </Text>
                       {llmModel.is_deprecated && (
-                        <span className="text-xs">⚠️</span>
+                        <Tooltip content="Deprecated">
+                          <span
+                            className="text-xs"
+                            role="img"
+                            aria-label="Deprecated"
+                          >
+                            ⚠️
+                          </span>
+                        </Tooltip>
                       )}
                     </div>
                     <div className={'flex flex-wrap gap-1 items-center justify-end'}>
