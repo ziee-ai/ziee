@@ -12,26 +12,15 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
-import { createModule } from '@/core'
-import { useModuleSystemStore } from '@/core/module-system'
-import { useConfigClientStore } from '@/modules/config-client/ConfigClient.store'
 import { GalleryPage } from './GalleryPage'
+import { seedGallery } from './seed'
 import '@/index.css'
 
-// Register just the ConfigClient store so `Stores.ConfigClient` resolves and the
-// real ThemeProvider/useGalleryTheme path works without the full app bootstrap.
-// `createModule` normalizes `stores` into the `registerStores()` the module
-// system reads (a raw object would be silently ignored).
-useModuleSystemStore.getState().registerModule(
-  createModule({
-    metadata: {
-      name: 'gallery-standalone',
-      version: '1.0.0',
-      description: 'Standalone gallery store host',
-    },
-    stores: [{ name: 'ConfigClient', store: useConfigClientStore }],
-  }),
-)
+// Seed the gallery: install the mock-API cassette, authenticate an admin, and
+// load every module so `Stores.X` resolves for any page and populates through
+// the real load() path. This registers ConfigClient (used by ThemeProvider /
+// useGalleryTheme) among all other module stores — no manual registration.
+seedGallery()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

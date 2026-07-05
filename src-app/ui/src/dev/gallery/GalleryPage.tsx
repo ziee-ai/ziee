@@ -12,6 +12,7 @@ import { ACCENT_PRESETS } from '@/components/ThemeProvider/accentPresets'
 import { GALLERY_ALL_ACCENTS, GALLERY_DIRS, GALLERY_THEMES } from './matrix'
 import { StorySection } from './story'
 import { ALL_STORIES } from './stories'
+import { ALL_PAGES, GalleryPages } from './pages'
 import { useGalleryTheme } from './useGalleryTheme'
 
 const ctl = (name: string) => `gallery-control-${name}`
@@ -80,6 +81,9 @@ export function GalleryPage() {
     >
       <ControlBar />
       <div className="flex flex-col gap-6 p-6">
+        {/* Seeded module pages — real pages populated via mock-API. */}
+        <GalleryPages entries={ALL_PAGES} />
+        {/* Isolated kit component stories. */}
         {ALL_STORIES.map(story => (
           <StorySection key={story.id} story={story} />
         ))}

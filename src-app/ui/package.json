@@ -130,7 +130,9 @@
     "test:visual": "playwright test -c playwright.visual.config.ts",
     "test:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots",
     "test:visual:list": "playwright test -c playwright.visual.config.ts --list",
-    "visual:judge": "node scripts/visual-judge.mjs"
+    "visual:judge": "node scripts/visual-judge.mjs",
+    "gallery:record": "node scripts/record-gallery-fixtures.mjs",
+    "gallery:check-fixtures": "node scripts/check-gallery-fixtures.mjs"
   },
   "type": "module",
   "types": "./dist/index.d.ts"
