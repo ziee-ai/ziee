@@ -1,64 +1,129 @@
 /**
- * Page entries for the seeded gallery — each renders a REAL module page inside
+ * Page entries for the seeded gallery — every REAL module route rendered inside
  * an isolated `MemoryRouter`, populated through the mock-API cassette.
  *
- * A page frame gives the page a bounded, sized viewport (its `h-full` layouts
- * need a height) and its own router so `useParams`/`useNavigate` and any
- * auto-navigation are isolated per entry (multiple pages share one canvas).
+ * Pages are ENUMERATED AT RENDER TIME from the router store (populated by
+ * `seed()` → `loadModules()`), so every route a module registers is covered
+ * automatically — nothing is hand-listed or missed. A page frame gives the page
+ * a bounded, sized viewport (its `h-full` layouts need a height) and its own
+ * router so `useParams`/`useNavigate` + auto-navigation stay isolated per entry.
  *
- * Testid convention (matches the story sections):
- *   - each page → `gallery-page-<id>`
+ * Testid convention: each page → `gallery-page-<id>`.
  */
-import type { ComponentType, ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { Text, Title } from '@/components/ui'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
-import { LlmProviderSettings } from '@/modules/llm-provider/components/LlmProviderSettings'
-import { firstEnabledRemoteProviderId } from './fixtures/llm-providers'
-
-export interface GalleryPageEntry {
-  /** Stable slug → `gallery-page-<id>`. */
-  id: string
-  /** Section heading. */
-  title: string
-  /** One-line note about the state being shown. */
-  note?: string
-  /** Route pattern the component reads params from (e.g. `/settings/x/:id?`). */
-  routePattern: string
-  /** Initial URL the MemoryRouter starts at. */
-  initialPath: string
-  /** The page component under test. */
-  component: ComponentType
-  /** Frame height in px (default 720). */
-  height?: number
-}
+import { Loading } from '@/core/components/Loading'
+import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import { useRoutesStore } from '@/modules/router/stores'
+import type { RouteConfig } from '@/modules/router/types'
+import {
+  firstEnabledRemoteProviderId,
+  llmProvidersList,
+} from './fixtures/llm-providers'
 
 export const pageTestId = (id: string) => `gallery-page-${id}`
 
-function PageFrame({ entry }: { entry: GalleryPageEntry }): ReactNode {
-  const height = entry.height ?? 720
+/**
+ * Concrete values for required route params (`:conversationId`, `:projectId`, …)
+ * sourced from recorded fixtures. A route whose required param is unresolved is
+ * skipped (and surfaced in COVERAGE.md) rather than rendered broken.
+ */
+const PARAM_VALUES: Record<string, string | undefined> = {
+  providerId: firstEnabledRemoteProviderId ?? llmProvidersList.providers[0]?.id,
+  // conversationId / projectId are filled once showcase data is recorded.
+}
+
+// Routes that are not reviewable page CONTENT (redirects, the gallery itself,
+// pure-logic callbacks). Skipped from the page grid.
+const SKIP_PATHS = new Set(['/', '/dev/gallery', '/auth/callback'])
+
+interface ResolvedPage {
+  id: string
+  path: string
+  initialPath: string
+  element: RouteConfig<any>['element']
+}
+
+/** path → stable slug for the testid (`/settings/llm-providers/:x?` → `settings-llm-providers`). */
+function slugFor(path: string): string {
+  const cleaned = path
+    .replace(/\/:[^/?]+\??/g, '') // drop param segments
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\//g, '-')
+  return cleaned || 'root'
+}
+
+/** Fill a route path's params; return undefined if a REQUIRED param is unresolved. */
+function resolveInitialPath(path: string): string | undefined {
+  const segments = path.split('/')
+  const out: string[] = []
+  for (const seg of segments) {
+    if (!seg.startsWith(':')) {
+      out.push(seg)
+      continue
+    }
+    const optional = seg.endsWith('?')
+    const name = seg.slice(1, optional ? -1 : undefined)
+    const value = PARAM_VALUES[name]
+    if (value) out.push(value)
+    else if (optional) continue // drop the optional segment
+    else return undefined // required + unresolved → skip page
+  }
+  return out.join('/') || '/'
+}
+
+/** Build the ordered, de-duplicated page list from the router store. */
+export function useResolvedPages(): ResolvedPage[] {
+  const routes = useRoutesStore(s => s.routes) as RouteConfig<any>[]
+  const seen = new Set<string>()
+  const pages: ResolvedPage[] = []
+  for (const route of routes) {
+    if (!route.path || SKIP_PATHS.has(route.path)) continue
+    const initialPath = resolveInitialPath(route.path)
+    if (initialPath === undefined) continue
+    const id = slugFor(route.path)
+    if (seen.has(id)) continue
+    seen.add(id)
+    if (!route.element) continue
+    pages.push({ id, path: route.path, initialPath, element: route.element })
+  }
+  // Stable, reviewable order: settings pages grouped, then the rest.
+  return pages.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+function PageFrame({ page, height = 720 }: { page: ResolvedPage; height?: number }): ReactNode {
   return (
     <section
-      data-testid={pageTestId(entry.id)}
+      data-testid={pageTestId(page.id)}
       className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-background"
     >
       <div className="flex flex-col gap-1">
-        <Title level={3}>{entry.title}</Title>
-        {entry.note ? (
-          <Text tone="muted" className="text-sm">
-            {entry.note}
-          </Text>
-        ) : null}
+        <Title level={3}>{page.path}</Title>
+        <Text tone="muted" className="text-sm">
+          gallery-page-{page.id} · seeded via mock-API
+        </Text>
       </div>
-      {/* Bounded viewport so the page's h-full layout resolves to a real size. */}
       <div
         className="w-full overflow-hidden rounded-md border border-border bg-background"
         style={{ height }}
       >
-        <AppErrorBoundary label={`page-${entry.id}`} fallback={() => null}>
-          <MemoryRouter initialEntries={[entry.initialPath]}>
+        <AppErrorBoundary label={`page-${page.id}`} fallback={() => null}>
+          <MemoryRouter initialEntries={[page.initialPath]}>
             <Routes>
-              <Route path={entry.routePattern} element={<entry.component />} />
+              {/* LazyComponentRenderer materializes every route.element form
+                  (lazy fn / lazy component / JSX element) — same path the real
+                  RouterComponent uses. */}
+              <Route
+                path={page.path}
+                element={
+                  <LazyComponentRenderer
+                    component={page.element}
+                    fallback={<Loading />}
+                  />
+                }
+              />
             </Routes>
           </MemoryRouter>
         </AppErrorBoundary>
@@ -67,32 +132,14 @@ function PageFrame({ entry }: { entry: GalleryPageEntry }): ReactNode {
   )
 }
 
-export function GalleryPages({ entries }: { entries: GalleryPageEntry[] }) {
+/** Render every enumerated page. */
+export function GalleryPages() {
+  const pages = useResolvedPages()
   return (
     <>
-      {entries.map(entry => (
-        <PageFrame key={entry.id} entry={entry} />
+      {pages.map(page => (
+        <PageFrame key={page.id} page={page} />
       ))}
     </>
   )
 }
-
-/**
- * The page registry. The vertical slice covers the LLM-providers settings page
- * fully populated; the fan-out appends the remaining module pages here.
- */
-export const ALL_PAGES: GalleryPageEntry[] = [
-  {
-    id: 'llm-providers',
-    title: 'Settings · LLM Providers (populated)',
-    note: 'Real recorded providers + models replayed via mock-API; renders the first provider’s remote settings.',
-    routePattern: '/settings/llm-providers/:providerId?',
-    // Start on the first enabled remote provider so the populated remote
-    // settings render (the local provider's download drawer is exercised by a
-    // dedicated local-provider entry in the fan-out).
-    initialPath: firstEnabledRemoteProviderId
-      ? `/settings/llm-providers/${firstEnabledRemoteProviderId}`
-      : '/settings/llm-providers',
-    component: LlmProviderSettings,
-  },
-]

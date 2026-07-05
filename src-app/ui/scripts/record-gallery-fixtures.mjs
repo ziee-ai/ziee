@@ -112,6 +112,33 @@ async function postJson(url, body, token) {
   return { ok: res.ok, status: res.status, json }
 }
 
+/** Parse `ApiEndpoints` from the generated types.ts → [{key, method, path}]. */
+function parseEndpoints() {
+  const src = fs.readFileSync(path.join(UI_DIR, 'src/api-client/types.ts'), 'utf8')
+  const start = src.indexOf('export const ApiEndpoints')
+  const end = src.indexOf('} as const', start)
+  const block = src.slice(start, end)
+  const re = /'([^']+)':\s*'(GET|POST|PUT|DELETE) ([^']+)'/g
+  const out = []
+  let m
+  while ((m = re.exec(block))) out.push({ key: m[1], method: m[2], path: m[3] })
+  return out
+}
+
+// Endpoints unsafe/pointless to crawl: SSE/streams, blob exports, per-request
+// JSON-RPC (trailing /mcp), proxies. Regex so `/mcp$` doesn't nuke `/api/mcp/*`.
+const CRAWL_SKIP = [
+  /\/subscribe/,
+  /\/stream/,
+  /\/export/,
+  /\/download/,
+  /\/mcp$/, // built-in MCP JSON-RPC endpoints only (NOT /api/mcp/servers)
+  /\/local-llm\/v1/,
+  /\/setup\/status/,
+  /\/health/,
+  /\/auth\/me/, // recorded separately
+]
+
 function resolveBinary() {
   if (process.env.ZIEE_BINARY && fs.existsSync(process.env.ZIEE_BINARY)) {
     return process.env.ZIEE_BINARY
@@ -230,6 +257,39 @@ update_check: { enabled: false }
         const me = await getJson(`${base}/api/auth/me`, token)
         return { 'auth.json': { me } }
       },
+      // Broad crawl: every SAFE paramless GET → its live response. Feeds the
+      // generic crawl cassette so list/settings pages across all modules
+      // populate. Path-param detail endpoints stay in per-module fixtures.
+      crawl: async () => {
+        const eps = parseEndpoints().filter(
+          e =>
+            e.method === 'GET' &&
+            !e.path.includes('{') &&
+            !CRAWL_SKIP.some(rx => rx.test(e.path)),
+        )
+        const crawl = {}
+        for (const ep of eps) {
+          // default page/per_page for paginated ones (harmless on the rest).
+          const url = `${base}${ep.path}${ep.path.includes('?') ? '&' : '?'}page=1&per_page=100`
+          try {
+            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+            if (!res.ok) {
+              log(`  crawl skip ${ep.key} -> ${res.status}`)
+              continue
+            }
+            const ct = res.headers.get('content-type') || ''
+            if (!ct.includes('application/json')) {
+              log(`  crawl skip ${ep.key} -> ${ct || 'no-ct'}`)
+              continue
+            }
+            crawl[ep.key] = await res.json()
+          } catch (e) {
+            log(`  crawl error ${ep.key} -> ${e.message}`)
+          }
+        }
+        log(`  crawled ${Object.keys(crawl).length}/${eps.length} paramless GET endpoints`)
+        return { 'crawl.json': crawl }
+      },
       'llm-providers': async () => {
         // A fresh server seeds the built-in providers DISABLED with 0 models.
         // Populate a realistic state THROUGH the real API (enable a few
@@ -330,9 +390,11 @@ update_check: { enabled: false }
       },
     }
 
-    const selected = only
-      ? Object.entries(recorders).filter(([k]) => only.includes(k) || k === 'auth')
-      : Object.entries(recorders)
+    const selected = (
+      only
+        ? Object.entries(recorders).filter(([k]) => only.includes(k) || k === 'auth')
+        : Object.entries(recorders)
+    ).sort(([a], [b]) => (a === 'crawl' ? 1 : b === 'crawl' ? -1 : 0)) // crawl last
 
     for (const [name, fn] of selected) {
       log(`recording ${name}…`)

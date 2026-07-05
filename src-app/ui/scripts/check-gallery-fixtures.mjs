@@ -52,6 +52,32 @@ function pluck(root, pointer) {
   return frontier
 }
 
+/** Parse `ApiEndpoints` from types.ts → { key: "METHOD /path" }. */
+function endpointMap() {
+  const src = fs.readFileSync(path.resolve(UI_DIR, 'src/api-client/types.ts'), 'utf8')
+  const start = src.indexOf('export const ApiEndpoints')
+  const end = src.indexOf('} as const', start)
+  const block = src.slice(start, end)
+  const re = /'([^']+)':\s*'(GET|POST|PUT|DELETE) ([^']+)'/g
+  const map = {}
+  let m
+  while ((m = re.exec(block))) map[m[1]] = { method: m[2], path: m[3] }
+  return map
+}
+
+const ptr = s => s.replace(/~/g, '~0').replace(/\//g, '~1')
+
+/** A `full#/...` JSON-pointer to the endpoint's 200 JSON response schema, or undefined. */
+function schemaRefForEndpoint(openapi, method, rawPath) {
+  const p = rawPath.split('?')[0]
+  const item = openapi.paths?.[p]?.[method.toLowerCase()]
+  const code = item?.responses?.['200'] ? '200' : item?.responses?.['201'] ? '201' : undefined
+  if (!code) return undefined
+  const schema = item.responses[code]?.content?.['application/json']?.schema
+  if (!schema) return undefined
+  return `full#/paths/${ptr(p)}/${method.toLowerCase()}/responses/${code}/content/${ptr('application/json')}/schema`
+}
+
 function main() {
   const openapi = JSON.parse(fs.readFileSync(OPENAPI, 'utf8'))
   // strict:false → tolerate the OpenAPI 3.0 dialect (`nullable`, `example`,
@@ -59,6 +85,7 @@ function main() {
   // semantics don't affect validation.
   const ajv = new Ajv({ strict: false, allErrors: true, validateFormats: false })
   ajv.addSchema({ $id: 'oa', components: openapi.components })
+  ajv.addSchema({ ...openapi, $id: 'full' })
 
   let failures = 0
   let checked = 0
@@ -87,7 +114,42 @@ function main() {
     }
   }
 
-  console.log(`\n${checked} value(s) checked, ${failures} failure(s).`)
+  // Auto-validate every recorded crawl endpoint against its openapi 200 schema.
+  const crawlPath = path.join(REC_DIR, 'crawl.json')
+  if (fs.existsSync(crawlPath)) {
+    const crawl = JSON.parse(fs.readFileSync(crawlPath, 'utf8'))
+    const eps = endpointMap()
+    let crawlFail = 0
+    const drift = []
+    for (const key of Object.keys(crawl).sort()) {
+      const ep = eps[key]
+      if (!ep) continue
+      const ref = schemaRefForEndpoint(openapi, ep.method, ep.path)
+      if (!ref) continue // void / non-json response — nothing to validate
+      checked++
+      const validate = ajv.compile({ $ref: ref })
+      if (validate(crawl[key])) {
+        console.log(`✓ crawl:${key}`)
+      } else {
+        crawlFail++
+        drift.push(key)
+        console.error(`✗ crawl:${key}`)
+        for (const e of (validate.errors ?? []).slice(0, 4)) {
+          console.error(`    ${e.instancePath || '/'} ${e.message}`)
+        }
+      }
+    }
+    // Crawl drift is reported but NON-fatal: the crawl is recorded from a
+    // possibly-older reference binary and excluded-from-typed entries fall back
+    // to the crash-safe default. The hand fixtures above ARE fatal.
+    if (drift.length) {
+      console.warn(
+        `\n⚠ ${crawlFail} crawl endpoint(s) drift from openapi.json (re-record from a matching binary): ${drift.join(', ')}`,
+      )
+    }
+  }
+
+  console.log(`\n${checked} value(s) checked, ${failures} fatal failure(s).`)
   if (failures > 0) process.exit(1)
 }
 
