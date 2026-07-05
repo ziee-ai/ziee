@@ -1639,10 +1639,19 @@ cargo test &  # Output is lost or fragmented
    - File location: `/home/pbya/projects/ziee/src-app/server/tests/.env.test`
 
 2. **Test execution:**
-   - Use `--test-threads=1` to avoid database conflicts
-   - Tests take ~8-10 minutes to run sequentially
-   - Expected result: 253-256/256 tests pass
-   - Occasional flaky failures (1-3 tests) due to connection timeouts are normal - re-run those specific tests
+   - **Recommended: `--test-threads=6` (6-8).** The suite isolates at the DB layer
+     (per-test UUID databases cloned from a template + a spawned server subprocess
+     per test — see `tests/common/harness_inner.rs`), so parallelism is SAFE for
+     isolation; it does NOT cause "database conflicts". `just test` defaults to 6
+     (`just test THREADS=8`). On a shared/busy host, a very high count (16) plus the
+     stdio-MCP `npx`/`bun` install storm causes slow tails + the occasional real-LLM
+     agentic hang, so 6-8 is the sweet spot.
+   - `--test-threads=1` is the safe fallback for debugging a suspected race, but it is
+     ~hours for the full suite here (every test spawns a server subprocess).
+   - **Run the code_sandbox tiers as a SEPARATE `--test-threads=1` pass** — they spawn
+     squashfuse + bwrap + a server and genuinely contend under high parallelism.
+   - Occasional flaky failures due to connection timeouts under load — re-run those
+     specific tests (or lower `THREADS`).
 
 3. **Without env file:**
    - 245/256 tests pass

@@ -222,20 +222,41 @@ async fn broadcast_usage_update(usage_update: HardwareUsageUpdate) {
 }
 #[cfg(test)]
 mod sse_cap_tests {
-    use super::{add_client, remove_client, MAX_SSE_CLIENTS};
+    use super::{add_client, remove_client, SSE_CLIENTS, MAX_SSE_CLIENTS};
 
+    use serial_test::serial;
     use uuid::Uuid;
 
 
     // audit id all-88a88aca7ba3 — the MAX_SSE_CLIENTS=256 cap (the OOM guard for
     // the hardware-monitoring SSE registry) had no test. add_client must return
     // Some until the registry is full, None at capacity, and accept a new client
-    // again once a slot is freed via remove_client. Uses the real global
-    // registry; the test fills, asserts, then cleans up every id it inserted.
+    // again once a slot is freed via remove_client.
+    //
+    // NEEDS SINGLE-THREAD ISOLATION — `#[ignore]`d from the default parallel
+    // `cargo test`. This test asserts EXACT occupancy of the process-global
+    // `SSE_CLIENTS` registry while filling it to `MAX_SSE_CLIENTS`; under a
+    // parallel run, sibling tests (and the production `add_client` path) mutate
+    // the same singleton, so `#[serial]` + clear-at-start still race in the fill
+    // window. The cap LOGIC is already proven, race-free, by the sibling
+    // `tests::add_client_enforces_cap_and_remove_frees_slot`. Run this one
+    // explicitly when you want the exact-occupancy variant:
+    //   cargo test --lib -p ziee -- --ignored --test-threads=1 \
+    //       modules::hardware::monitoring::sse_cap_tests
     #[test]
+    #[serial(hw_monitoring)]
+    #[ignore = "exact-occupancy assert on the process-global SSE registry; needs \
+                --test-threads=1. Cap behaviour is covered race-free by \
+                tests::add_client_enforces_cap_and_remove_frees_slot. Run with \
+                --ignored --test-threads=1."]
     fn add_client_enforces_global_cap_and_frees_on_remove() {
-        // Fill to capacity. (Other tests don't touch this static, so the
-        // registry starts empty.)
+        // Start from a clean registry. The static is process-global and a
+        // serialized sibling (or a panicked prior run) can leave residue, so
+        // don't assume it's empty — enforce it (mirrors the `tests` mod's
+        // `add_client_enforces_cap_and_remove_frees_slot`, which clears too).
+        SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+
+        // Fill to capacity.
         let mut ids = Vec::with_capacity(MAX_SSE_CLIENTS);
         for i in 0..MAX_SSE_CLIENTS {
             let id = Uuid::new_v4();
@@ -271,12 +292,18 @@ mod sse_cap_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
 
     /// F-01: the SSE client pool is capped at MAX_SSE_CLIENTS — `add_client`
     /// returns `Some` until the cap, then `None` (the caller surfaces 429/503),
     /// and `remove_client` frees a slot so a new client can connect again.
+    ///
+    /// `#[serial(hw_monitoring)]` — shares the process-global `SSE_CLIENTS` /
+    /// `MONITORING_ACTIVE` singletons with the other monitoring tests; serialized
+    /// so a parallel `cargo test --lib` doesn't let them clobber the registry.
     #[test]
+    #[serial(hw_monitoring)]
     fn add_client_enforces_cap_and_remove_frees_slot() {
         // Start from a clean registry (the static is process-global).
         SSE_CLIENTS.lock().unwrap().clear();
@@ -312,6 +339,7 @@ mod tests {
     /// F-04: `stop_hardware_monitoring` clears the active flag so the monitoring
     /// loop exits on its next tick (graceful shutdown).
     #[test]
+    #[serial(hw_monitoring)]
     fn stop_clears_active_flag() {
         MONITORING_ACTIVE.store(true, Ordering::SeqCst);
         stop_hardware_monitoring();
@@ -361,6 +389,7 @@ mod tests {
     /// receives the usage event, and a client whose receiver has been dropped is
     /// pruned from the registry (so a stale channel can't accumulate).
     #[tokio::test]
+    #[serial(hw_monitoring)]
     async fn broadcast_usage_update_delivers_to_live_client_and_prunes_dead() {
         SSE_CLIENTS.lock().unwrap().clear();
 
@@ -410,6 +439,7 @@ mod tests {
     /// (Real time rather than `start_paused`/`advance`, which need tokio's
     /// `test-util` feature that the lib's dev-deps don't enable.)
     #[tokio::test]
+    #[serial(hw_monitoring)]
     async fn start_is_idempotent_and_idle_stops_without_clients() {
         // Force the precondition immediately before claiming so the
         // compare_exchange wins and a loop genuinely spawns.
