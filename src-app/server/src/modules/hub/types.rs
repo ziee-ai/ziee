@@ -100,13 +100,6 @@ pub struct CreateMcpServerFromHubRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
 
-    /// Optional: Override enabled
-    // Deserialized wire field; not yet read server-side. Narrow allow (was a
-    // module blanket) keeps it as part of the request shape.
-    #[allow(dead_code)]
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-
     /// System-only: when true, delete the existing system install
     /// for this `hub_id` before creating the new one. Used by the
     /// `/hub/updates` Re-install action to refresh an outdated
@@ -143,13 +136,6 @@ pub struct CreateModelFromHubRequest {
     /// falling back to `quantizations[0]` if no entry sets it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quantization_name: Option<String>,
-
-    /// Whether this model is enabled
-    // Deserialized wire field; not yet read server-side. Narrow allow (was a
-    // module blanket) keeps it as part of the model shape.
-    #[allow(dead_code)]
-    #[serde(default = "default_true")]
-    pub enabled: bool,
 }
 
 // =====================================================

@@ -248,23 +248,32 @@ fn detect_mime_from_extension(name: &str) -> &'static str {
     }
 }
 
-/// Resolve (path-safe) the host path of a named step artifact.
-// Exercised by unit tests in this module; the REST streaming wiring that will
-// consume it is not landed yet.
-#[allow(dead_code)]
+/// Resolve (path-safe) the host path of a named step artifact under
+/// `artifacts_dir` (the run's `<sandbox_workspace>/artifacts/`). Consumed by
+/// the `artifact_stream::read_artifact` REST download handler, which re-derives
+/// `artifacts_dir` from the workspace layout rather than trusting the
+/// persisted `ArtifactMeta::host_path`.
 pub fn artifact_host_path(
-    ctx: &RunContext,
+    artifacts_dir: &Path,
     step_id: &str,
     filename: &str,
 ) -> Result<PathBuf, AppError> {
-    // Path safety: filename must not escape.
+    // Path safety: neither segment may escape the run's artifact tree. The
+    // axum `{step_id}` / `{filename}` captures can't contain a literal `/`,
+    // but a bare `..` segment would still climb out.
+    if step_id.contains("..") || step_id.contains('/') || step_id.contains('\\') {
+        return Err(AppError::bad_request(
+            "ARTIFACT_PATH_INVALID",
+            format!("artifact step id '{step_id}' is not safe"),
+        ));
+    }
     if filename.contains("..") || filename.starts_with('/') {
         return Err(AppError::bad_request(
             "ARTIFACT_PATH_INVALID",
             format!("artifact filename '{filename}' is not safe"),
         ));
     }
-    Ok(ctx.artifact_path_for_step(step_id).join(filename))
+    Ok(artifacts_dir.join(step_id).join(filename))
 }
 
 #[cfg(test)]
@@ -330,38 +339,18 @@ mod tests {
 
     #[test]
     fn path_safety_rejects_escape() {
-        use crate::modules::workflow::types::RunContext;
-        use std::path::PathBuf;
-        use uuid::Uuid;
-        let ctx = RunContext {
-            run_id: Uuid::nil(),
-            user_id: Uuid::nil(),
-            conversation_id: None,
-            workflow_id: Uuid::nil(),
-            inputs: Default::default(),
-            step_outputs: Default::default(),
-            step_item_progress: Default::default(),
-            extracted_path: PathBuf::from("/tmp"),
-            sandbox_workspace: PathBuf::from("/tmp"),
-            outputs_dir: PathBuf::from("/tmp"),
-            artifacts_dir: PathBuf::from("/tmp"),
-            inputs_dir: PathBuf::from("/tmp"),
-            model_id: Uuid::nil(),
-            model_name: "m".into(),
-            model_max_tokens: 8192,
-            sandbox_flavor: None,
-            total_tokens: 0,
-            total_output_bytes: 0,
-            is_dev: false,
-            mocks: std::collections::HashMap::new(),
-            force_mocks: false,
-            persist_artifacts: false,
-            force_log_capture: false,
-            total_log_bytes: std::sync::atomic::AtomicU64::new(0),
-        };
-        assert!(artifact_host_path(&ctx, "s", "../../etc/passwd").is_err());
-        assert!(artifact_host_path(&ctx, "s", "/abs").is_err());
-        assert!(artifact_host_path(&ctx, "s", "ok.md").is_ok());
+        let artifacts_dir = Path::new("/tmp/artifacts");
+        // filename escapes
+        assert!(artifact_host_path(artifacts_dir, "s", "../../etc/passwd").is_err());
+        assert!(artifact_host_path(artifacts_dir, "s", "/abs").is_err());
+        // step_id escapes
+        assert!(artifact_host_path(artifacts_dir, "..", "ok.md").is_err());
+        assert!(artifact_host_path(artifacts_dir, "a/b", "ok.md").is_err());
+        // happy path resolves under the artifacts tree
+        assert_eq!(
+            artifact_host_path(artifacts_dir, "s", "ok.md").unwrap(),
+            artifacts_dir.join("s").join("ok.md")
+        );
     }
 
     /// Build a minimal RunContext whose `artifacts_dir` points at `dir`

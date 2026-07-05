@@ -918,7 +918,6 @@ async fn build_mcp_server_create_from_hub(
         // tokens, and toggles the title Enabled Switch — that flow
         // runs the probe + auto-enables on success (see
         // `connection_health::enforce_on_update_transition`).
-        // `request.enabled` is ignored here for the same reason.
         enabled: Some(false),
         transport_type,
         command: derived_command,
