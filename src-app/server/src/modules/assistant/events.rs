@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 /// Events emitted by the assistant module
 // Emit-only lifecycle events: created/updated/deleted are published but no
-// subscriber reads their payloads yet, and Enabled/Disabled aren't emitted
-// yet — retained as the module's event vocabulary for future subscribers.
+// subscriber reads their payloads yet — retained as the module's event
+// vocabulary for future subscribers.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum AssistantEvent {
@@ -29,22 +29,9 @@ pub enum AssistantEvent {
         assistant_id: Uuid,
         user_id: Option<Uuid>,
     },
-
-    /// An assistant was enabled
-    Enabled {
-        assistant_id: Uuid,
-        user_id: Option<Uuid>,
-    },
-
-    /// An assistant was disabled
-    Disabled {
-        assistant_id: Uuid,
-        user_id: Option<Uuid>,
-    },
 }
 
-// Emit helpers: created/updated/deleted are wired; enabled/disabled retained
-// for the (not-yet-emitted) enable/disable lifecycle transitions.
+// Emit helpers for the wired created/updated/deleted lifecycle events.
 #[allow(dead_code)]
 impl AssistantEvent {
     /// Helper to create an AssistantCreated event wrapped in AppEvent
@@ -66,22 +53,6 @@ impl AssistantEvent {
     /// Helper to create an AssistantDeleted event wrapped in AppEvent
     pub fn deleted(assistant_id: Uuid, user_id: Option<Uuid>) -> crate::core::AppEvent {
         crate::core::AppEvent::Assistant(AssistantEvent::Deleted {
-            assistant_id,
-            user_id,
-        })
-    }
-
-    /// Helper to create an AssistantEnabled event wrapped in AppEvent
-    pub fn enabled(assistant_id: Uuid, user_id: Option<Uuid>) -> crate::core::AppEvent {
-        crate::core::AppEvent::Assistant(AssistantEvent::Enabled {
-            assistant_id,
-            user_id,
-        })
-    }
-
-    /// Helper to create an AssistantDisabled event wrapped in AppEvent
-    pub fn disabled(assistant_id: Uuid, user_id: Option<Uuid>) -> crate::core::AppEvent {
-        crate::core::AppEvent::Assistant(AssistantEvent::Disabled {
             assistant_id,
             user_id,
         })
