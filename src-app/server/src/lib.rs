@@ -559,7 +559,7 @@ async fn run_server(
     let local_addr = listener.local_addr()?;
 
     tracing::info!(
-        "Ziee Chat backend server started successfully on {}",
+        "ziee backend server started successfully on {}",
         local_addr
     );
 
@@ -583,7 +583,7 @@ pub async fn start_server(
     config: Config,
 ) -> Result<SocketAddr, Box<dyn std::error::Error + Send + Sync>> {
     init_tracing(&config);
-    tracing::info!("Starting Ziee Chat backend server");
+    tracing::info!("Starting ziee backend server");
     init_data_dir(&config);
 
     let setup = setup_server(config, vec![]).await?;
@@ -601,7 +601,7 @@ where
     F: FnOnce(Router, Arc<JwtService>) -> Router,
 {
     init_tracing(&config);
-    tracing::info!("Starting Ziee Chat backend server (with custom routes)");
+    tracing::info!("Starting ziee backend server (with custom routes)");
     init_data_dir(&config);
 
     let setup = setup_server(config, additional_handlers).await?;
