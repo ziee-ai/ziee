@@ -1421,36 +1421,15 @@ pub fn list_mounted_artifacts() -> Vec<Arc<MountedArtifact>> {
     MOUNTED_ARTIFACTS.iter().map(|e| e.value().clone()).collect()
 }
 
-/// Deregister every mount entry whose flavor matches `flavor`. Used
-/// by `runtime_mount::evict_flavor` (the legacy admin DELETE
-/// `/code-sandbox/environments/{flavor}` path) so that wholesale
-/// eviction of a flavor across every pinned version also flushes the
-/// version-manager registry — without this, MOUNTED_ARTIFACTS leaks
-/// stale entries until the next server restart. Returns the count
-/// of entries removed.
-//
-// FIXME(mount-leak): this function has ZERO callers — the described caller
-// `runtime_mount::evict_flavor` does not exist in the tree (grep confirms).
-// The wholesale-eviction path (admin DELETE /code-sandbox/environments/{flavor})
-// therefore never flushes MOUNTED_ARTIFACTS, so evicting a flavor across pinned
-// versions leaks stale registry entries until the next server restart — the
-// exact leak this function was written to prevent. Wire this into the flavor-
-// eviction handler (or delete both if the eviction path is truly gone). Kept
-// under #[allow(dead_code)] rather than deleted so the intended fix isn't lost.
-// See WARNING_AUDIT.md §"Latent findings".
-#[allow(dead_code)]
-pub fn deregister_mounts_for_flavor(flavor: &str) -> usize {
-    let stale: Vec<Uuid> = MOUNTED_ARTIFACTS
-        .iter()
-        .filter(|e| e.value().flavor == flavor)
-        .map(|e| e.value().artifact_id)
-        .collect();
-    let n = stale.len();
-    for id in stale {
-        MOUNTED_ARTIFACTS.remove(&id);
-    }
-    n
-}
+// NOTE (A5-01 / mount-leak): a `deregister_mounts_for_flavor` helper used to
+// live here to flush MOUNTED_ARTIFACTS on wholesale flavor eviction, but its
+// only intended caller — the admin DELETE `/code-sandbox/environments/{flavor}`
+// path (`runtime_mount::evict_flavor`) — was retired with Plan 5 Phase 2c (see
+// routes.rs). There is no flavor-wide eviction surface anymore: pin changes go
+// through `set_pin_with_drain` (which removes each stale MOUNTED_ARTIFACTS entry
+// on drain) and per-version deletes go through `delete_artifact`, so no path can
+// leak flavor-keyed registry entries. The dead helper was removed rather than
+// kept under #[allow(dead_code)].
 
 /// Wait on the artifact's `drained` Notify until BOTH inflight
 /// counters read zero. Drain tasks `await` this; in-flight execs +

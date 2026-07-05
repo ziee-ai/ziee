@@ -379,6 +379,7 @@ pub struct SetPinResponse {
 
 pub async fn set_pin_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
+    origin: SyncOrigin,
     Json(body): Json<SetPinRequest>,
 ) -> ApiResult<Json<SetPinResponse>> {
     // Re-use the install-request semver check (Plan 5 audit B1).
@@ -402,6 +403,16 @@ pub async fn set_pin_handler(
     .await
     .map_err(map_version_err)?;
     let status = version_manager::status(&pool).await.map_err(map_version_err)?;
+    // Cross-device sync: the system-wide pin changed (set synchronously before
+    // the async drain) → other admin devices refetch the versions surface so
+    // the pin state doesn't go stale. Mirrors the delete path's publish.
+    sync_publish(
+        SyncEntity::CodeSandboxRootfsVersion,
+        SyncAction::Update,
+        Uuid::nil(),
+        Audience::perm::<CodeSandboxEnvironmentsRead>(),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(SetPinResponse { swap, status })))
 }
 

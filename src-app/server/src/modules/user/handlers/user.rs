@@ -408,13 +408,27 @@ pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
 /// Reset user password (requires users::reset_password permission)
 #[debug_handler]
 pub async fn reset_user_password(
-    _auth: RequirePermissions<(UsersResetPassword,)>,
+    auth: RequirePermissions<(UsersResetPassword,)>,
     origin: SyncOrigin,
     Json(request): Json<ResetPasswordRequest>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    if Repos.user.get_by_id(request.user_id).await?.is_none() {
-        return Err(AppError::not_found("User").into());
+    let target_user = Repos
+        .user
+        .get_by_id(request.user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("User"))?;
+
+    // Protect admin/root accounts: a non-admin holding the delegable
+    // users::reset_password must not be able to reset an admin's (esp. the root
+    // admin's) password to a known value and take over the account. Mirrors the
+    // admin protection in update_user / toggle_user_active (CANNOT_DISABLE_ADMIN).
+    if target_user.is_admin && !auth.user.is_admin {
+        return Err(AppError::forbidden(
+            "CANNOT_RESET_ADMIN_PASSWORD",
+            "Only administrators can reset an admin user's password",
+        )
+        .into());
     }
 
     // Validate new password strength. Closes 03-user F-05 (Medium).

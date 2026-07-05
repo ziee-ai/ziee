@@ -89,13 +89,38 @@ pub fn get_group_docs(op: TransformOperation) -> TransformOperation {
 /// Create a new group (requires groups::create permission)
 #[debug_handler]
 pub async fn create_group(
-    _auth: RequirePermissions<(GroupsCreate,)>,
+    auth: RequirePermissions<(GroupsCreate,)>,
     origin: SyncOrigin,
     Json(request): Json<CreateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Validate group name
     if request.name.is_empty() {
         return Err(AppError::bad_request("VALIDATION_ERROR", "Group name cannot be empty").into());
+    }
+
+    // Prevent self-escalation: caller must hold every permission they're
+    // trying to grant via this group (admins bypass). Mirrors update_group —
+    // create was missed, so a non-admin holding the delegable groups::create
+    // could mint a group with permissions=['*'] (or 'users::*', etc.) and grant
+    // itself more than it holds (group permissions union via
+    // check_permission_union). 02-permissions F-02 / 03-user F-04 class.
+    if !auth.user.is_admin {
+        for perm in &request.permissions {
+            if !crate::modules::permissions::checker::check_permission_union(
+                &auth.user,
+                &auth.groups,
+                perm,
+            ) {
+                return Err(AppError::forbidden(
+                    "CANNOT_GRANT_PERMISSION",
+                    format!(
+                        "Cannot grant permission '{}' that you do not hold yourself",
+                        perm
+                    ),
+                )
+                .into());
+            }
+        }
     }
 
     // Check if group name already exists
@@ -353,8 +378,43 @@ pub async fn assign_user_to_group(
     }
 
     // Check if group exists
-    if Repos.group.get_by_id(request.group_id).await?.is_none() {
-        return Err(AppError::not_found("Group").into());
+    let target_group = Repos
+        .group
+        .get_by_id(request.group_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Group"))?;
+
+    // Prevent privilege escalation via group assignment: a non-admin holding
+    // the delegable groups::assign_users must not be able to add anyone (incl.
+    // themselves) to a privileged group — the pre-existing Administrators group
+    // (permissions '*') or a group minted with wildcard perms. Require is_admin
+    // to assign into any system group, and require the caller to already hold
+    // every permission the target group grants (admins bypass). Mirrors the
+    // create_group/update_group self-escalation guards (02-permissions F-02).
+    if !auth.user.is_admin {
+        if target_group.is_system {
+            return Err(AppError::forbidden(
+                "CANNOT_ASSIGN_PRIVILEGED_GROUP",
+                "Only administrators can assign users to system groups",
+            )
+            .into());
+        }
+        for perm in &target_group.permissions {
+            if !crate::modules::permissions::checker::check_permission_union(
+                &auth.user,
+                &auth.groups,
+                perm,
+            ) {
+                return Err(AppError::forbidden(
+                    "CANNOT_ASSIGN_PRIVILEGED_GROUP",
+                    format!(
+                        "Cannot assign users to a group granting permission '{}' that you do not hold yourself",
+                        perm
+                    ),
+                )
+                .into());
+            }
+        }
     }
 
     // Assign user to group

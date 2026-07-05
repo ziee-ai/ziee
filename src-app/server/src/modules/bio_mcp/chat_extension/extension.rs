@@ -20,8 +20,13 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
 };
 
 /// Extension factory function.
-pub fn create(pool: PgPool, _config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
-    Arc::new(super::bio::BioMcpExtension::new(pool))
+pub fn create(pool: PgPool, config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
+    // Deploy-level kill switch — ON by default (an absent `bio_mcp:` config
+    // section means enabled), mirroring `bio_mcp::mod::init`. When off, the
+    // extension must never attach even if a stale enabled row survives from a
+    // prior boot.
+    let config_enabled = config.bio_mcp.as_ref().map(|c| c.enabled).unwrap_or(true);
+    Arc::new(super::bio::BioMcpExtension::new(pool, config_enabled))
 }
 
 #[distributed_slice(CHAT_EXTENSIONS)]

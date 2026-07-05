@@ -30,19 +30,29 @@ const FORWARD_REQUEST_HEADERS: &[&str] = &[
     "last-event-id",
 ];
 
-static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+static CLIENT: std::sync::OnceLock<Option<reqwest::Client>> = std::sync::OnceLock::new();
 
-fn shared_client() -> &'static reqwest::Client {
-    // No request timeout — MCP streamable-HTTP responses may be long-lived
-    // SSE streams. (See the llm_local_runtime proxy client for the same
-    // reasoning; `.timeout(ZERO)` would break every request.)
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .pool_max_idle_per_host(8)
-            .no_proxy()
-            .build()
-            .expect("bio_mcp shared reqwest client init")
-    })
+/// The shared reqwest client is built lazily on the FIRST request (not at boot),
+/// so a build failure must map to a 503 rather than panic the worker. reqwest's
+/// build is near-infallible (only the TLS backend init can fail), and the
+/// failure is deterministic, so caching the `None` is fine.
+///
+/// No request timeout — MCP streamable-HTTP responses may be long-lived SSE
+/// streams. (See the llm_local_runtime proxy client for the same reasoning;
+/// `.timeout(ZERO)` would break every request.)
+fn shared_client() -> Option<&'static reqwest::Client> {
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .pool_max_idle_per_host(8)
+                .no_proxy()
+                .build()
+                .map_err(|e| {
+                    tracing::error!(error = %e, "bio_mcp: failed to build shared reqwest client");
+                })
+                .ok()
+        })
+        .as_ref()
 }
 
 pub async fn proxy_handler(
@@ -65,10 +75,20 @@ pub async fn proxy_handler(
     };
 
     let upstream_url = format!("{}/mcp", base_url);
+    let client = match shared_client() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": "biomcp proxy client unavailable" })),
+            )
+                .into_response();
+        }
+    };
     // axum's `Method` is `http::Method`, which reqwest 0.12 re-exports — pass
     // it through faithfully (no silent coercion; the router only mounts
     // POST/GET/DELETE here anyway).
-    let mut req = shared_client().request(method, &upstream_url);
+    let mut req = client.request(method, &upstream_url);
     for name in FORWARD_REQUEST_HEADERS {
         if let Some(v) = headers.get(*name) {
             req = req.header(*name, v);
@@ -80,11 +100,22 @@ pub async fn proxy_handler(
 
     match req.send().await {
         Ok(resp) => stream_back(resp).await,
-        Err(e) => (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("biomcp sidecar request failed: {}", e) })),
-        )
-            .into_response(),
+        Err(e) => {
+            // Don't leak the reqwest error's Display (it can include the upstream
+            // host/port, TLS/DNS internals) to the client. Log it under a UUID
+            // trace_id and return a generic body, mirroring
+            // `AppError::internal_with_id`.
+            let trace_id = uuid::Uuid::new_v4();
+            tracing::error!(%trace_id, error = %e, "bio_mcp: sidecar request failed");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({
+                    "error": "upstream biomcp request failed",
+                    "trace_id": trace_id.to_string(),
+                })),
+            )
+                .into_response()
+        }
     }
 }
 
