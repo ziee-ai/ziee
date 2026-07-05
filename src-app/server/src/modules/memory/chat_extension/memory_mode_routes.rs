@@ -18,6 +18,7 @@ use crate::{
     modules::{
         chat::core::permissions::{ConversationsEdit, ConversationsRead},
         permissions::{extractors::RequirePermissions, with_permission},
+        sync::{publish as sync_publish, Audience, SyncAction, SyncEntity, SyncOrigin},
     },
 };
 
@@ -75,6 +76,7 @@ pub fn get_conversation_memory_mode_docs(op: TransformOperation) -> TransformOpe
 pub async fn put_conversation_memory_mode(
     auth: RequirePermissions<(ConversationsEdit,)>,
     Path(conversation_id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(req): Json<UpdateConversationMemoryModeRequest>,
 ) -> ApiResult<Json<ConversationMemoryModeResponse>> {
     if !is_valid_memory_mode(&req.memory_mode) {
@@ -95,6 +97,16 @@ pub async fn put_conversation_memory_mode(
     }
     repo.set_conversation_memory_mode(conversation_id, &req.memory_mode)
         .await?;
+    // The per-conversation memory-mode pill is a synced surface; refresh
+    // sync:conversation listeners on the owner's other devices so the pill
+    // doesn't stay stale on a second device viewing this conversation.
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     // Echo back the persisted value (always the request value after a
     // successful upsert, but the round-trip lets the caller skip a
     // follow-up GET).
