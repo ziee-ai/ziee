@@ -17,6 +17,7 @@ use crate::{
             core::permissions::*,
         },
         permissions::{extractors::RequirePermissions, with_permission},
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 
@@ -79,6 +80,7 @@ pub fn get_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_mcp_settings(
     auth: RequirePermissions<(ConversationsEdit,)>,
+    origin: SyncOrigin,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<models::UpsertMcpSettingsRequest>,
 ) -> ApiResult<Json<models::ConversationMcpSettingsResponse>> {
@@ -105,6 +107,16 @@ pub async fn update_mcp_settings(
             &request.loop_settings,
         )
         .await?;
+
+    // The conversation's MCP settings render in the chat MCP panel; notify the
+    // owner's other devices so an open conversation refetches (notify-only).
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(models::ConversationMcpSettingsResponse::from(settings))))
 }

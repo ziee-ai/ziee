@@ -18,6 +18,7 @@ use crate::modules::mcp::chat_extension::defaults::models::LoopSettings;
 use crate::modules::mcp::settings::{McpScope, McpSettings};
 use crate::modules::permissions::{extractors::RequirePermissions, with_permission};
 use crate::modules::project::permissions::{ProjectsEdit, ProjectsRead};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 use super::models::ProjectMcpSettingsRequest;
 
@@ -64,6 +65,7 @@ pub fn get_project_mcp_settings_docs(op: TransformOperation) -> TransformOperati
 #[debug_handler]
 pub async fn update_project_mcp_settings(
     auth: RequirePermissions<(ProjectsEdit,)>,
+    origin: SyncOrigin,
     Path(id): Path<Uuid>,
     Json(request): Json<ProjectMcpSettingsRequest>,
 ) -> ApiResult<Json<ProjectMcpSettingsResponse>> {
@@ -116,6 +118,18 @@ pub async fn update_project_mcp_settings(
             },
         )
         .await?;
+
+    // Notify the owner's other devices so an open project-detail MCP settings
+    // page refetches (notify-only; the settings surface is the only affected
+    // view — existing conversations keep their attach-time snapshot).
+    sync_publish(
+        SyncEntity::Project,
+        SyncAction::Update,
+        project.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(ProjectMcpSettingsResponse::from(saved))))
 }
 

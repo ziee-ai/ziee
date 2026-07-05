@@ -47,6 +47,10 @@ pub struct VmLaunchConfig {
 
 /// Tag prefix for host-folder virtio-fs shares. MUST match the agent's
 /// `EXTRA_MOUNT_TAG_PREFIX` and mac_vm.rs's `GUEST_EXTRA_MOUNT_TAG_PREFIX`.
+/// Only referenced from the macOS libkrun path (its sole use-site is inside a
+/// `#[cfg(target_os = "macos")]` block), so gate the const to match and avoid a
+/// dead-code warning on Linux/Windows builds.
+#[cfg(target_os = "macos")]
 const EXTRA_MOUNT_TAG_PREFIX: &str = "host-mount-";
 
 fn main() {

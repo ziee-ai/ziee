@@ -1664,7 +1664,7 @@ pub async fn create_model_from_hub(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Failed to initiate download: {}", e)),
+            AppError::internal_with_id(format!("initiate download: {e}")),
         )
     })?;
 
@@ -2924,7 +2924,7 @@ pub async fn get_hub_installed(
     // `/api/auth/me` handler — JwtAuth gives us claims; we load the
     // rest from the DB.
     let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
-        AppError::internal_error(format!("Invalid user ID in token: {}", e))
+        AppError::internal_with_id(format!("parse user id from token: {e}"))
     })?;
     let user = Repos
         .user

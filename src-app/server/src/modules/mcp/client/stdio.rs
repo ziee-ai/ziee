@@ -458,11 +458,10 @@ impl McpClient for StdioMcpClient {
                 }
             }).collect(),
             is_error: result.is_error.unwrap_or(false),
-            // External stdio servers: structuredContent capture is a future enhancement
-            // (depends on the rmcp CallToolResult field). The built-in servers that use
-            // structured_content (literature, web_search, get_tool_result) are all HTTP,
-            // where it's captured automatically via the `structuredContent` serde alias.
-            structured_content: None,
+            // Pass through the `structuredContent` an external stdio server returns
+            // (rmcp's CallToolResult carries it), matching the HTTP path where it's
+            // captured via the `structuredContent` serde alias.
+            structured_content: result.structured_content,
         })
     }
 

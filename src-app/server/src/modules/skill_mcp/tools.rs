@@ -166,7 +166,7 @@ pub async fn read_skill_file(
 
     let bytes = tokio::fs::read(&canon_full)
         .await
-        .map_err(|e| AppError::internal_error(&format!("read failed: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("read skill file: {e}")))?;
     if is_binary(&bytes) {
         return Err(AppError::bad_request(
             "BINARY_REJECTED",
@@ -245,7 +245,7 @@ async fn read_skill_md_cached(
     }
     let raw = tokio::fs::read_to_string(&path)
         .await
-        .map_err(|e| AppError::internal_error(format!("read SKILL.md failed: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("read SKILL.md: {e}")))?;
     let (_frontmatter, body) = frontmatter::parse_skill_md_frontmatter(&raw)?;
     file_cache::put(key, body.clone());
     Ok(body)

@@ -54,7 +54,7 @@ fn notify_onboarding_updated(user_id: Uuid, origin: Option<Uuid>) {
 
 fn user_id_from_claims(auth: &JwtAuth) -> Result<Uuid, AppError> {
     Uuid::parse_str(&auth.claims.sub)
-        .map_err(|e| AppError::internal_error(format!("Invalid user ID in token: {}", e)))
+        .map_err(|e| AppError::internal_with_id(format!("parse user id from token: {e}")))
 }
 
 /// Get the current user's onboarding progress. Authentication-only gate

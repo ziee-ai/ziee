@@ -166,7 +166,7 @@ pub async fn create_user(
 
     // Hash password
     let password_hash = bcrypt::hash(&request.password, bcrypt::DEFAULT_COST)
-        .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(format!("hash password: {e}")))?;
 
     // Create user
     let user = Repos
@@ -440,7 +440,7 @@ pub async fn reset_user_password(
 
     // Hash new password
     let password_hash = bcrypt::hash(&request.new_password, bcrypt::DEFAULT_COST)
-        .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))?;
+        .map_err(|e| AppError::internal_with_id(format!("hash password: {e}")))?;
 
     // Update password
     Repos
