@@ -294,6 +294,7 @@ pub fn run_workflow_docs(op: TransformOperation) -> TransformOperation {
 
 pub async fn cancel_run(
     auth: RequirePermissions<(WorkflowsExecute,)>,
+    origin: SyncOrigin,
     AxumPath(run_id): AxumPath<Uuid>,
 ) -> ApiResult<Json<RunActionAck>> {
     let pool = Repos.pool();
@@ -309,6 +310,17 @@ pub async fn cancel_run(
     }
     let prior = repository::cancel_cas(pool, run_id).await?;
     let _ = registry::cancel(run_id);
+    // A live run's runner task emits WorkflowRun when it observes the
+    // cancellation, but a durably-suspended (waiting) or queued (pending) run
+    // has no live task — emit directly so other devices' run lists update.
+    if prior.is_some() {
+        crate::modules::workflow::events::emit_workflow_run(
+            SyncAction::Update,
+            run_id,
+            auth.user.id,
+            origin.0,
+        );
+    }
     let body = RunActionAck {
         status: prior.unwrap_or_else(|| "already_terminal".to_string()),
         run_id,
@@ -345,6 +357,7 @@ pub struct SetTimeoutRequest {
 /// interval. The per-run token + output-byte caps stay as resource backstops.
 pub async fn set_run_timeout(
     auth: RequirePermissions<(WorkflowsExecute,)>,
+    origin: SyncOrigin,
     AxumPath(run_id): AxumPath<Uuid>,
     Json(req): Json<SetTimeoutRequest>,
 ) -> ApiResult<Json<RunActionAck>> {
@@ -369,6 +382,15 @@ pub async fn set_run_timeout(
             .min(crate::modules::workflow::runner::MAX_RUN_TIMEOUT_SECS)
     };
     let applied = registry::set_timeout(run_id, secs);
+    // Notify other devices so their run views reflect the new timeout.
+    if applied {
+        crate::modules::workflow::events::emit_workflow_run(
+            SyncAction::Update,
+            run_id,
+            auth.user.id,
+            origin.0,
+        );
+    }
     let body = RunActionAck {
         status: if applied { "updated".into() } else { "already_terminal".into() },
         run_id,
@@ -456,7 +478,9 @@ pub async fn delete_run(
         .into());
     }
     // Only terminal runs are deletable — cancel an in-flight run first.
-    if !matches!(row.status.as_str(), "completed" | "failed" | "cancelled") {
+    let terminal = crate::modules::workflow::models::WorkflowRunStatus::from_db_str(&row.status)
+        .is_some_and(|s| s.is_terminal());
+    if !terminal {
         return Err::<_, (StatusCode, AppError)>((AppError::new(
             StatusCode::CONFLICT,
             "WORKFLOW_RUN_NOT_TERMINAL",

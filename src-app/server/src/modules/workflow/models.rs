@@ -117,6 +117,20 @@ impl WorkflowRunStatus {
         }
     }
 
+    /// Parse the DB `status` text back into the enum. Returns `None` for an
+    /// unrecognized value (callers treat that as non-terminal / in-flight).
+    pub fn from_db_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "pending" => WorkflowRunStatus::Pending,
+            "running" => WorkflowRunStatus::Running,
+            "waiting" => WorkflowRunStatus::Waiting,
+            "completed" => WorkflowRunStatus::Completed,
+            "failed" => WorkflowRunStatus::Failed,
+            "cancelled" => WorkflowRunStatus::Cancelled,
+            _ => return None,
+        })
+    }
+
     /// A run in a terminal state will never transition again.
     pub fn is_terminal(&self) -> bool {
         matches!(
