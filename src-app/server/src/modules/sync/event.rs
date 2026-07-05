@@ -67,6 +67,12 @@ pub enum SyncEntity {
     /// `McpSession::call_tool`, so the per-server "Calls" tab refreshes live.
     /// Notify-only; the client refetches via `GET /api/mcp/tool-calls`.
     McpToolCall,
+    /// The caller's own default MCP settings for new conversations changed
+    /// (approval mode / auto-approved tools / disabled servers / loop
+    /// settings). Owner-scoped; notify-only — the client refetches
+    /// `GET /api/mcp/defaults` (gated `conversations::read`). `id` is
+    /// `Uuid::nil()` (a per-user singleton addressed by owner, not a uuid).
+    McpDefaults,
 
     // --- Admin-permission-scoped (delivered to holders of the read perm) ---
     /// Admin view of an LLM provider (full admin provider table).
@@ -118,6 +124,12 @@ pub enum SyncEntity {
     /// Deployment-wide literature search settings + connector config (singleton).
     /// Notify-only; the frontend refetches settings + the connector catalog.
     LitSearchSettings,
+    /// Deployment-wide MCP user policy (singleton `mcp_user_policy`): which
+    /// transports regular users may install + the enforced stdio sandbox
+    /// flavor + tool-call retention. Delivered to holders of `mcp_servers::read`
+    /// (the read-perm gating `GET /api/mcp/user-policy`); notify-only — each
+    /// recipient refetches the sanitized policy. `id` is `Uuid::nil()`.
+    McpUserPolicy,
 
     /// A user's bibliography library entry changed (add/import/verify/delete).
     /// Owner-scoped; notify-only — the client refetches `/api/citations`.

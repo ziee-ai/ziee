@@ -85,7 +85,13 @@ export const McpUserPolicy = defineStore('McpUserPolicy', {
       })
     },
   }),
-  init: ({ actions }) => {
+  init: ({ on, actions }) => {
+    // Cross-device sync. `load` self-gates on `mcp_servers::read` internally
+    // (returns early when the user lacks it), satisfying the no-403 reconnect
+    // rule — `sync:reconnect` fires for every store regardless of audience.
+    const reload = () => void actions.load()
+    on('sync:mcp_user_policy', reload)
+    on('sync:reconnect', reload)
     void actions.load()
   },
 })

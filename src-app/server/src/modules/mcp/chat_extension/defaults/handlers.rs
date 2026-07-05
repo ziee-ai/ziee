@@ -9,6 +9,7 @@ use crate::{
     modules::{
         chat::core::permissions::*,
         permissions::{extractors::RequirePermissions, with_permission},
+        sync::{publish as sync_publish, Audience, SyncAction, SyncEntity, SyncOrigin},
     },
 };
 
@@ -52,6 +53,7 @@ pub fn get_mcp_defaults_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_mcp_defaults(
     auth: RequirePermissions<(ConversationsEdit,)>,
+    origin: SyncOrigin,
     Json(request): Json<models::UpsertUserMcpDefaultsRequest>,
 ) -> ApiResult<Json<models::UserMcpDefaultsResponse>> {
     let defaults = repository::upsert_user_defaults(
@@ -63,6 +65,16 @@ pub async fn update_mcp_defaults(
         &request.loop_settings,
     )
     .await?;
+
+    // The user's default MCP settings are a per-user singleton; notify the
+    // owner's other devices so they refetch `GET /api/mcp/defaults`.
+    sync_publish(
+        SyncEntity::McpDefaults,
+        SyncAction::Update,
+        uuid::Uuid::nil(),
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((
         StatusCode::OK,

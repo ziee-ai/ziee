@@ -33509,6 +33509,11 @@
             "const": "mcp_tool_call"
           },
           {
+            "description": "The caller's own default MCP settings for new conversations changed\n (approval mode / auto-approved tools / disabled servers / loop\n settings). Owner-scoped; notify-only — the client refetches\n `GET /api/mcp/defaults` (gated `conversations::read`). `id` is\n `Uuid::nil()` (a per-user singleton addressed by owner, not a uuid).",
+            "type": "string",
+            "const": "mcp_defaults"
+          },
+          {
             "description": "Admin view of an LLM provider (full admin provider table).",
             "type": "string",
             "const": "llm_provider"
@@ -33607,6 +33612,11 @@
             "description": "Deployment-wide literature search settings + connector config (singleton).\n Notify-only; the frontend refetches settings + the connector catalog.",
             "type": "string",
             "const": "lit_search_settings"
+          },
+          {
+            "description": "Deployment-wide MCP user policy (singleton `mcp_user_policy`): which\n transports regular users may install + the enforced stdio sandbox\n flavor + tool-call retention. Delivered to holders of `mcp_servers::read`\n (the read-perm gating `GET /api/mcp/user-policy`); notify-only — each\n recipient refetches the sanitized policy. `id` is `Uuid::nil()`.",
+            "type": "string",
+            "const": "mcp_user_policy"
           },
           {
             "description": "A user's bibliography library entry changed (add/import/verify/delete).\n Owner-scoped; notify-only — the client refetches `/api/citations`.",
