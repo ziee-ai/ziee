@@ -787,12 +787,20 @@ impl Drop for RunCancelOnDrop {
         }
         // Registry signal is synchronous — fire immediately.
         let _ = registry::cancel(self.run_id);
-        // DB status CAS is async — spawn detached.
-        let pool = self.pool.clone();
-        let run_id = self.run_id;
-        tokio::spawn(async move {
-            let _ = repository::cancel_cas(&pool, run_id).await;
-        });
+        // DB status CAS is async — spawn detached. `tokio::spawn` panics if
+        // called outside a runtime, and a panic-in-drop aborts the process, so
+        // only spawn when a runtime handle is actually available (in practice
+        // the guard always lives inside an async tool-call future). If dropped
+        // off-runtime — e.g. during a synchronous teardown or panic-unwind —
+        // the synchronous registry signal above plus the run's wall-clock cap
+        // already bound the run, so skipping the CAS is a safe best-effort.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let pool = self.pool.clone();
+            let run_id = self.run_id;
+            handle.spawn(async move {
+                let _ = repository::cancel_cas(&pool, run_id).await;
+            });
+        }
     }
 }
 
