@@ -353,7 +353,7 @@ async fn invoke_capability(
         .get()
         .ok_or_else(|| AppError::internal_error("control base url not initialized"))?;
     let mut url = reqwest::Url::parse(&format!("{base}{path}"))
-        .map_err(|e| AppError::internal_error(format!("bad loopback url: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("parse loopback url: {e}")))?;
 
     if let Some(Value::Object(q)) = &args.query {
         let mut pairs = url.query_pairs_mut();
@@ -367,7 +367,7 @@ async fn invoke_capability(
     }
 
     let method = reqwest::Method::from_bytes(op.method.as_bytes())
-        .map_err(|e| AppError::internal_error(format!("bad method: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("parse method: {e}")))?;
     let mut request = HTTP_CLIENT.request(method, url);
 
     // Forward the caller's bearer so the real route re-authorizes as this user.
@@ -385,13 +385,13 @@ async fn invoke_capability(
     let resp = request
         .send()
         .await
-        .map_err(|e| AppError::internal_error(format!("loopback dispatch failed: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("loopback dispatch: {e}")))?;
 
     let status = resp.status();
     let bytes = resp
         .bytes()
         .await
-        .map_err(|e| AppError::internal_error(format!("reading response failed: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("read loopback response: {e}")))?;
 
     let (text_body, truncated) = if bytes.len() > MAX_RESULT_BYTES {
         (

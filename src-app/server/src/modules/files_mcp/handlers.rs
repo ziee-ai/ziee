@@ -287,17 +287,17 @@ async fn convert_document(
     let tmp = std::env::temp_dir().join(format!("ziee-convert-{}", Uuid::new_v4()));
     tokio::fs::create_dir_all(&tmp)
         .await
-        .map_err(|e| AppError::internal_error(format!("convert: mkdir: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("convert: mkdir: {e}")))?;
     let md_path = tmp.join("input.md");
     let pdf_path = tmp.join("output.pdf");
     let render = async {
         tokio::fs::write(&md_path, a.markdown.as_bytes())
             .await
-            .map_err(|e| AppError::internal_error(format!("convert: write: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("convert: write: {e}")))?;
         crate::modules::file::utils::pandoc::convert_to_pdf(&md_path, &pdf_path).await?;
         tokio::fs::read(&pdf_path)
             .await
-            .map_err(|e| AppError::internal_error(format!("convert: read pdf: {e}")))
+            .map_err(|e| AppError::internal_with_id(format!("convert: read pdf: {e}")))
     }
     .await;
     let _ = tokio::fs::remove_dir_all(&tmp).await;

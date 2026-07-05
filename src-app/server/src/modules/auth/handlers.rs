@@ -157,7 +157,7 @@ pub async fn register(
     let password_hash = password::hash_password(&req.password).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Failed to hash password: {}", e)),
+            AppError::internal_with_id(format!("hash password: {e}")),
         )
     })?;
 
@@ -274,7 +274,7 @@ pub async fn login(
         password::verify_password(&req.password, &hash_to_verify).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("Password verification error: {}", e)),
+                AppError::internal_with_id(format!("verify password: {e}")),
             )
         })?;
 
@@ -482,7 +482,7 @@ pub async fn refresh(
     let user_id = uuid::Uuid::parse_str(&claims.sub).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Invalid user ID in token: {}", e)),
+            AppError::internal_with_id(format!("parse user id from token: {e}")),
         )
     })?;
 
@@ -668,7 +668,7 @@ pub async fn logout(auth: JwtAuth, headers: HeaderMap) -> ApiResult<Response> {
     let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Invalid user ID in token: {}", e)),
+            AppError::internal_with_id(format!("parse user id from token: {e}")),
         )
     })?;
     refresh_tokens::revoke_all_for_user(Repos.pool(), user_id)
@@ -701,7 +701,7 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
     let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Invalid user ID in token: {}", e)),
+            AppError::internal_with_id(format!("parse user id from token: {e}")),
         )
     })?;
 
@@ -867,7 +867,7 @@ pub async fn change_password(
     let ok = password::verify_password(&req.current_password, current_hash).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Password verification error: {}", e)),
+            AppError::internal_with_id(format!("verify password: {e}")),
         )
     })?;
     if !ok {
@@ -888,7 +888,7 @@ pub async fn change_password(
     let new_hash = password::hash_password(&req.new_password).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Failed to hash password: {}", e)),
+            AppError::internal_with_id(format!("hash password: {e}")),
         )
     })?;
 
@@ -1065,7 +1065,7 @@ pub async fn oauth_authorize(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("OAuth initialization failed: {}", e)),
+                AppError::internal_with_id(format!("oauth init: {e}")),
             )
         })?;
 
@@ -1740,7 +1740,7 @@ pub async fn link_account(
     let ok = password::verify_password(&req.password, pw_hash).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Password verification failed: {}", e)),
+            AppError::internal_with_id(format!("verify password: {e}")),
         )
     })?;
     if !ok {

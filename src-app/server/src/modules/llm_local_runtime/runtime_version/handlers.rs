@@ -626,7 +626,7 @@ pub async fn check_for_updates(
         .await
         .map_err(|e| {
             tracing::error!("Failed to check for updates: {}", e);
-            AppError::internal_error(format!("Failed to check for updates: {}", e))
+            AppError::internal_with_id(format!("check for updates: {e}"))
         })?;
 
     let response = AvailableUpdatesResponse {
@@ -740,7 +740,7 @@ pub async fn sync_cache(
         .await
         .map_err(|e| {
             tracing::error!("Failed to sync cache: {}", e);
-            AppError::internal_error(format!("Failed to sync cache: {}", e))
+            AppError::internal_with_id(format!("sync cache: {e}"))
         })?;
 
     let response = SyncCacheResponse {

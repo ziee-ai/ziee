@@ -71,7 +71,7 @@ pub async fn setup_admin(
     let password_hash = password::hash_password(&req.password).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Failed to hash password: {}", e)),
+            AppError::internal_with_id(format!("hash password: {e}")),
         )
     })?;
 
