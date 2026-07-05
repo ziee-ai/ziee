@@ -38,10 +38,10 @@ export const SandboxFlavors = defineStore('SandboxFlavors', {
   actions: (set, get) => ({
     load: async () => {
       if (get().loading) return
-      // GET /api/code-sandbox/flavors is admin-only (mcp_servers_admin::read).
-      // A non-admin mounting a component reading this store would 403 — use the
-      // fallback labels instead; the saved value is validated server-side.
-      if (!hasPermissionNow(Permissions.McpServersAdminRead)) {
+      // GET /api/code-sandbox/flavors is gated by code_sandbox::environments::read.
+      // A user without it mounting a component reading this store would 403 — use
+      // the fallback labels instead; the saved value is validated server-side.
+      if (!hasPermissionNow(Permissions.CodeSandboxEnvironmentsRead)) {
         set(state => {
           state.selectOptions = FALLBACK_OPTIONS
           state.hostCommands = FALLBACK_HOST_COMMANDS
