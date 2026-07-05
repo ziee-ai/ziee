@@ -113,3 +113,97 @@ pub async fn generate_openapi_spec(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// End-to-end drive of `generate_openapi_spec` with a lazy (never-connected)
+    /// external pool — the same path `just openapi-regen` uses. Asserts the full
+    /// pipeline runs without a live DB (lazy pool + module-init-continue-on-error)
+    /// and emits BOTH a well-formed `openapi.json` (with populated `paths`) and
+    /// the sibling `types.ts`.
+    #[tokio::test]
+    async fn generates_spec_and_types_without_live_db() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path().join("data");
+        let out_dir = tmp.path().join("openapi");
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        // Minimal config (mirrors config/openapi-gen.yaml). The external DB URL
+        // is parsed but never connected — `connect_lazy` opens no socket and
+        // generation only walks the router, so :54321 need not be up.
+        let config_yaml = format!(
+            r#"app:
+  data_dir: "{data_dir}"
+
+postgresql:
+  use_embedded: false
+  external:
+    host: "127.0.0.1"
+    port: 54321
+    username: "postgres"
+    password: "password"
+    database: "postgres"
+  pool:
+    max_connections: 2
+    min_connections: 1
+    acquire_timeout_secs: 5
+    idle_timeout_secs: 30
+    max_lifetime_secs: 300
+
+server:
+  host: "127.0.0.1"
+  port: 0
+  api_prefix: "/api"
+
+logging:
+  level: "error"
+  format: "pretty"
+
+jwt:
+  secret: "test-secret-change-in-production-min-32-chars-long"
+  issuer: "ziee"
+  audience: "ziee-api"
+  access_token_expiry_hours: 24
+  refresh_token_expiry_days: 30
+
+update_check:
+  enabled: false
+"#,
+            data_dir = data_dir.display(),
+        );
+        let config_path = tmp.path().join("openapi-test.yaml");
+        std::fs::write(&config_path, config_yaml).unwrap();
+
+        generate_openapi_spec(
+            out_dir.to_str().unwrap(),
+            Some(config_path.to_str().unwrap().to_string()),
+        )
+        .await
+        .expect("openapi generation should succeed with a lazy pool");
+
+        // openapi.json exists and is a valid spec with a non-empty path set.
+        let spec_path = out_dir.join("openapi.json");
+        assert!(spec_path.exists(), "openapi.json must be written");
+        let spec: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&spec_path).unwrap()).unwrap();
+        assert!(
+            spec.get("openapi").and_then(|v| v.as_str()).is_some(),
+            "spec must carry an `openapi` version field"
+        );
+        let paths = spec
+            .get("paths")
+            .and_then(|p| p.as_object())
+            .expect("spec must have a paths object");
+        assert!(!paths.is_empty(), "module routes should register paths");
+
+        // types.ts is emitted alongside (at ../src/api-client/types.ts).
+        let types_path = out_dir.join("../src/api-client/types.ts");
+        assert!(types_path.exists(), "types.ts must be written");
+        assert!(
+            !std::fs::read_to_string(&types_path).unwrap().is_empty(),
+            "types.ts must be non-empty"
+        );
+    }
+}

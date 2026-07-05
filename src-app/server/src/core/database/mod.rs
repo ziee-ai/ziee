@@ -502,3 +502,48 @@ impl Drop for DatabaseCleanup {
 // Static instance to ensure cleanup on drop
 static _CLEANUP: std::sync::LazyLock<DatabaseCleanup> =
     std::sync::LazyLock::new(|| DatabaseCleanup);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// No `data/postmaster.pid` under the installation dir → there's nothing
+    /// running, so the stop is a clean no-op (never shells out to pg_ctl).
+    #[test]
+    fn stop_is_noop_when_no_postmaster_pid() {
+        let dir = tempfile::tempdir().unwrap();
+        // Note: no data/ dir created at all.
+        let res = stop_existing_postgres_instance(&dir.path().to_path_buf());
+        assert!(res.is_ok());
+    }
+
+    /// A stale `postmaster.pid` exists but the versioned `pg_ctl` binary is
+    /// absent → the function warns and returns Ok rather than erroring or
+    /// exiting (exercises the cross-platform `<dir>/<version>/bin/pg_ctl[.exe]`
+    /// path construction + existence check).
+    #[test]
+    fn stop_returns_ok_when_pg_ctl_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path().join("data");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::write(data_dir.join("postmaster.pid"), "12345\n").unwrap();
+
+        // The pg_ctl binary at <dir>/<POSTGRES_VERSION>/bin/pg_ctl does not
+        // exist, so the function must take the "warn + Ok" early return.
+        let res = stop_existing_postgres_instance(&dir.path().to_path_buf());
+        assert!(res.is_ok());
+
+        // The versioned bin path we skipped is the one it would have invoked.
+        let pg_ctl_exe = if cfg!(target_os = "windows") {
+            "pg_ctl.exe"
+        } else {
+            "pg_ctl"
+        };
+        let expected = dir
+            .path()
+            .join(POSTGRES_VERSION)
+            .join("bin")
+            .join(pg_ctl_exe);
+        assert!(!expected.exists());
+    }
+}
