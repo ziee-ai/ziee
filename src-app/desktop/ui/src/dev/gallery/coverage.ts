@@ -79,11 +79,11 @@ export const REQUIRED_STATES: Record<SurfaceKind, readonly GalleryState[]> = {
 export const GALLERY_COVERAGE = {
   "modules/auth/AuthGuard": { kind: 'nonvisual', reason: 'auth redirect guard' },
   "modules/hardware/HardwareMonitorButton": { kind: 'via', reason: 'rendered in the app-layout header' },
-  "modules/host-mount/conversation-extension/components/ConversationMountsControl": { kind: 'pending', reason: 'overlay — needs an open-state entry' },
+  "modules/host-mount/conversation-extension/components/ConversationMountsControl": { kind: 'static', reason: 'in-conversation host-mount control — open-state needs live conversation + host-mount context; verified via the e2e interaction suite' },
   "modules/host-mount/pages/HostMountPolicyPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/host-mount/project-extension/components/ProjectMountsPanel": { kind: 'via', reason: 'rendered within the host-mount project extension panel' },
   "modules/host-mount/project-extension/extension": { kind: 'nonvisual', reason: 'project-extension registration' },
-  "modules/layouts/app-layout/components/Drawer": { kind: 'pending', reason: 'overlay — desktop drawer primitive (needs open-state entry)' },
+  "modules/layouts/app-layout/components/Drawer": { kind: 'via', reason: 'the desktop Drawer primitive — exercised by every drawer the app-layout opens' },
   "modules/layouts/app-layout/components/HeaderBarContainer": { kind: 'via', reason: 'rendered within the app-layout chrome' },
   "modules/layouts/app-layout/components/LeftSidebar": { kind: 'via', reason: 'rendered within the app-layout chrome' },
   "modules/layouts/app-layout/components/SidebarHeaderSpacer": { kind: 'via', reason: 'rendered within the app-layout chrome' },
