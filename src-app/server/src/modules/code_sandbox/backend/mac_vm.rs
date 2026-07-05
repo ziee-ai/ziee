@@ -195,7 +195,7 @@ async fn ensure_test_vm(rootfs_squashfs: &Path) -> Result<Arc<VmHandle>, AppErro
     }
 
     let dir = runtime_dir()
-        .map_err(|e| AppError::internal_error(format!("test runtime dir: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("test runtime dir: {e}")))?;
     // Per-rootfs socket name so multiple test rootfs files can coexist.
     let key: String = rootfs_squashfs
         .file_name()
@@ -224,7 +224,7 @@ async fn ensure_test_vm(rootfs_squashfs: &Path) -> Result<Arc<VmHandle>, AppErro
     // in this pool entry — tier 4 tests don't write to /workspace.
     let workspace_host_path = dir.join(format!("test-vm-{key}-workspace"));
     std::fs::create_dir_all(&workspace_host_path)
-        .map_err(|e| AppError::internal_error(format!("mkdir test workspace: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("mkdir test workspace: {e}")))?;
 
     let cfg = serde_json::json!({
         "num_vcpus": 1,
@@ -238,7 +238,7 @@ async fn ensure_test_vm(rootfs_squashfs: &Path) -> Result<Arc<VmHandle>, AppErro
     });
     let cfg_path = dir.join(format!("test-vm-{key}.json"));
     std::fs::write(&cfg_path, serde_json::to_vec(&cfg).unwrap())
-        .map_err(|e| AppError::internal_error(format!("write test VM config: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("write test VM config: {e}")))?;
 
     // Spawn launcher with stderr piped so we can scan for the agent's
     // "listening on vsock port" readiness marker. The socket existing
@@ -251,7 +251,7 @@ async fn ensure_test_vm(rootfs_squashfs: &Path) -> Result<Arc<VmHandle>, AppErro
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| AppError::internal_error(format!("spawn test VM launcher: {e}")))?;
+        .map_err(|e| AppError::internal_with_id(format!("spawn test VM launcher: {e}")))?;
 
     // Wait for socket to appear AND agent to log readiness.
     let stderr = child.stderr.take().expect("piped stderr");
@@ -480,7 +480,7 @@ impl MacVmBackend {
             return Ok(h.clone());
         }
 
-        let dir = runtime_dir().map_err(|e| AppError::internal_error(format!("runtime dir: {e}")))?;
+        let dir = runtime_dir().map_err(|e| AppError::internal_with_id(format!("runtime dir: {e}")))?;
         // Socket path must fit in macOS AF_UNIX SUN_PATH (104 bytes).
         // Two pinned versions of the same flavor still can't collide on
         // a shared `vm-<flavor>.sock` during a swap-drain, so hash the
@@ -519,7 +519,7 @@ impl MacVmBackend {
         });
         let cfg_path = dir.join(format!("vm-{key_digest}.json"));
         std::fs::write(&cfg_path, serde_json::to_vec(&cfg).unwrap()).map_err(|e| {
-            AppError::internal_error(format!("write VM launch config: {e}"))
+            AppError::internal_with_id(format!("write VM launch config: {e}"))
         })?;
 
         // Gap #4: clear the env so the VMM process does not inherit the
@@ -538,7 +538,7 @@ impl MacVmBackend {
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| AppError::internal_error(format!("spawn VM launcher: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("spawn VM launcher: {e}")))?;
 
         // Reader task: forward stderr to ours (preserves diagnostic output)
         // AND signal when the agent logs readiness.
@@ -651,7 +651,7 @@ impl SandboxBackend for MacVmBackend {
         let cache = cache_dir(state);
         let outcome = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
             .await
-            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("rootfs fetch failed: {e}")))?;
 
         let guest_caps = HardeningCapabilities {
             bwrap_path: PathBuf::from(GUEST_BWRAP_PATH),
@@ -723,7 +723,7 @@ impl SandboxBackend for MacVmBackend {
         let cache = cache_dir(state);
         let fetched = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
             .await
-            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("rootfs fetch failed: {e}")))?;
         let disk = fetched.installed_path;
         let version = fetched.version;
 
@@ -899,7 +899,7 @@ impl SandboxBackend for MacVmBackend {
                     continue;
                 }
                 Err(e) => {
-                    return Err(AppError::internal_error(format!("connect VM socket: {e}")));
+                    return Err(AppError::internal_with_id(format!("connect VM socket: {e}")));
                 }
             }
         }
@@ -954,7 +954,7 @@ impl SandboxBackend for MacVmBackend {
         let _guard = InflightGuard(vm.clone());
         let stream = UnixStream::connect(&vm.socket_path)
             .await
-            .map_err(|e| AppError::internal_error(format!("connect test-VM socket: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("connect test-VM socket: {e}")))?;
         let run = super::vm_client::run_on_stream(stream, req, secs).await?;
         Ok(super::RawExecResult {
             exit_code: run.exit_code,
@@ -974,7 +974,7 @@ impl SandboxBackend for MacVmBackend {
         let cache = cache_dir(state);
         let fetched = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
             .await
-            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("rootfs fetch failed: {e}")))?;
         let disk = fetched.installed_path;
         let version = fetched.version;
         // Long-lived MCP session VM: no host-folder mounts.
@@ -988,7 +988,7 @@ impl SandboxBackend for MacVmBackend {
 
         let stream = UnixStream::connect(&vm.socket_path)
             .await
-            .map_err(|e| AppError::internal_error(format!("connect VM socket: {e}")))?;
+            .map_err(|e| AppError::internal_with_id(format!("connect VM socket: {e}")))?;
 
         let session = super::vm_long_lived::open_long_lived_with_guard(
             stream,
