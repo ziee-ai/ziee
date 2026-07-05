@@ -1109,6 +1109,31 @@ struct AccumulatedContent {
     redacted_data: Option<String>,
 }
 
+/// Reconstruct the provider `ContentBlock` that produced an accumulated block,
+/// so the extension registry can convert it back into `MessageContentData` at
+/// persist time (the reverse of the streamed-delta accumulation). Only the
+/// built-in text/thinking shapes are reconstructable here; extension-owned
+/// content types return `None` and persist via `get_accumulated_content`.
+fn accumulated_to_content_block(
+    accumulated: &AccumulatedContent,
+) -> Option<ai_providers::ContentBlock> {
+    match accumulated.content_type.as_str() {
+        "text" => Some(ai_providers::ContentBlock::Text {
+            text: accumulated.accumulated_text.clone(),
+        }),
+        // A redacted-thinking block carries opaque `data` (no text/signature);
+        // a normal thinking block carries text + an optional signature.
+        "thinking" => Some(match &accumulated.redacted_data {
+            Some(data) => ai_providers::ContentBlock::RedactedThinking { data: data.clone() },
+            None => ai_providers::ContentBlock::Thinking {
+                thinking: accumulated.accumulated_text.clone(),
+                signature: accumulated.signature.clone(),
+            },
+        }),
+        _ => None,
+    }
+}
+
 /// Delta accumulator - Manages delta accumulation in memory
 /// Writes to database ONLY when streaming finishes (memory accumulation strategy)
 struct DeltaAccumulator {
@@ -1297,27 +1322,66 @@ impl DeltaAccumulator {
                 continue;
             }
 
-            // Create MessageContentData from accumulated text
-            let content_data = match accumulated.content_type.as_str() {
-                "text" => MessageContentData::Text {
-                    text: accumulated.accumulated_text.clone(),
-                },
-                "thinking" => MessageContentData::Thinking {
-                    thinking: accumulated.accumulated_text.clone(),
-                    metadata: if accumulated.signature.is_some()
-                        || accumulated.redacted_data.is_some()
-                        || self.reasoning_tokens.is_some()
-                    {
-                        Some(crate::modules::chat::extensions::text::types::ThinkingMetadata {
-                            token_count: self.reasoning_tokens,
-                            signature: accumulated.signature.clone(),
-                            redacted_data: accumulated.redacted_data.clone(),
-                        })
-                    } else {
-                        None
+            // Prefer the extension registry to convert the reconstructed provider
+            // ContentBlock back into MessageContentData — the reverse of
+            // `convert_extension_content`. This keeps the persist path delegating
+            // to each extension's own converter (the text extension owns
+            // text/thinking/redacted-thinking) instead of hardcoding the mapping
+            // here. The inline `match` below is the fallback for a `ChatService`
+            // built without `with_extensions` (no registry attached), preserving
+            // the original behavior byte-for-byte.
+            let content_data = accumulated_to_content_block(accumulated)
+                .as_ref()
+                .and_then(|block| {
+                    self.extension_registry
+                        .as_ref()
+                        .and_then(|registry| registry.convert_from_content_block(block))
+                })
+                .map(|mut content| {
+                    // The stateless block converter can't see the
+                    // provider-reported reasoning-token count; restore it onto
+                    // thinking blocks so it still lands in the persisted metadata.
+                    if let MessageContentData::Thinking { metadata, .. } = &mut content {
+                        if let Some(tokens) = self.reasoning_tokens {
+                            metadata
+                                .get_or_insert_with(|| {
+                                    crate::modules::chat::extensions::text::types::ThinkingMetadata {
+                                        token_count: None,
+                                        signature: None,
+                                        redacted_data: None,
+                                    }
+                                })
+                                .token_count = Some(tokens);
+                        }
+                    }
+                    content
+                });
+
+            let content_data = match content_data {
+                Some(content) => content,
+                // No registry attached (or no extension claimed the block):
+                // fall back to the direct construction.
+                None => match accumulated.content_type.as_str() {
+                    "text" => MessageContentData::Text {
+                        text: accumulated.accumulated_text.clone(),
                     },
+                    "thinking" => MessageContentData::Thinking {
+                        thinking: accumulated.accumulated_text.clone(),
+                        metadata: if accumulated.signature.is_some()
+                            || accumulated.redacted_data.is_some()
+                            || self.reasoning_tokens.is_some()
+                        {
+                            Some(crate::modules::chat::extensions::text::types::ThinkingMetadata {
+                                token_count: self.reasoning_tokens,
+                                signature: accumulated.signature.clone(),
+                                redacted_data: accumulated.redacted_data.clone(),
+                            })
+                        } else {
+                            None
+                        },
+                    },
+                    _ => continue, // Skip unknown types (extensions handle their own)
                 },
-                _ => continue, // Skip unknown types (extensions handle their own)
             };
 
             // Serialize to JSON (flattened for Extension variants)
@@ -1732,6 +1796,41 @@ mod tests {
         ContentBlock::Text {
             text: s.to_string(),
         }
+    }
+
+    fn acc(content_type: &str, text: &str, sig: Option<&str>, redacted: Option<&str>) -> AccumulatedContent {
+        AccumulatedContent {
+            content_type: content_type.to_string(),
+            accumulated_text: text.to_string(),
+            signature: sig.map(str::to_string),
+            redacted_data: redacted.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn accumulated_to_content_block_reconstructs_provider_shapes() {
+        // Text → ContentBlock::Text.
+        assert!(matches!(
+            accumulated_to_content_block(&acc("text", "hi", None, None)),
+            Some(ContentBlock::Text { text }) if text == "hi"
+        ));
+
+        // Thinking with a signature → ContentBlock::Thinking carrying it.
+        assert!(matches!(
+            accumulated_to_content_block(&acc("thinking", "reasoning", Some("sig"), None)),
+            Some(ContentBlock::Thinking { thinking, signature })
+                if thinking == "reasoning" && signature.as_deref() == Some("sig")
+        ));
+
+        // Redacted-thinking data wins → ContentBlock::RedactedThinking.
+        assert!(matches!(
+            accumulated_to_content_block(&acc("thinking", "", None, Some("opaque"))),
+            Some(ContentBlock::RedactedThinking { data }) if data == "opaque"
+        ));
+
+        // Extension-owned types aren't reconstructable here (they persist via
+        // get_accumulated_content).
+        assert!(accumulated_to_content_block(&acc("tool_use", "", None, None)).is_none());
     }
 
 
