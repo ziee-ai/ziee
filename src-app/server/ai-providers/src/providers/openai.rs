@@ -1012,7 +1012,10 @@ impl AIProvider for OpenAIProvider {
         base_url: &str,
         upload: FileUpload,
     ) -> Result<Option<FileUploadResponse>, ProviderError> {
-        let client = super::http_client();
+        // Dedicated SSRF-guarded client (connect-time DNS-rebind guard +
+        // no_proxy): the request carries the provider api_key to a
+        // user-configured base_url. See `providers::upload_client`.
+        let client = super::upload_http_client();
 
         let file_part = reqwest::multipart::Part::bytes(upload.file_data)
             .file_name(upload.filename.clone())

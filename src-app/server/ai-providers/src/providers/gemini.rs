@@ -1009,7 +1009,12 @@ impl AIProvider for GeminiProvider {
         base_url: &str,
         upload: FileUpload,
     ) -> Result<Option<FileUploadResponse>, ProviderError> {
-        let client = super::http_client();
+        // Dedicated SSRF-guarded client (connect-time DNS-rebind guard +
+        // no_proxy): the request carries the provider api_key to a
+        // user-configured base_url. Both legs of the resumable upload run
+        // through it, so the step-2 upload URL returned by the provider is
+        // also connect-time guarded. See `providers::upload_client`.
+        let client = super::upload_http_client();
 
         // Gemini uses resumable upload protocol (2-step process)
         // Step 1: Initiate resumable upload and get upload URL
