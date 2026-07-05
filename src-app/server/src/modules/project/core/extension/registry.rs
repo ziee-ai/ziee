@@ -153,8 +153,7 @@ pub trait ProjectExtension: Send + Sync {
 
     /// Initialize extension (called once at startup).
     // Trait lifecycle hook (default no-op); driven by `initialize_all`, which
-    // isn't wired into startup yet. Retained as the designed extension API.
-    #[allow(dead_code)]
+    // the project module runs once at startup (see project/mod.rs::init).
     async fn initialize(&self, _pool: &PgPool) -> Result<(), AppError> {
         Ok(())
     }
@@ -178,10 +177,8 @@ impl ProjectExtensionRegistry {
         self.extensions.push(extension);
     }
 
-    /// Initialize all registered extensions.
-    // Not yet invoked at startup (no project extension needs init today);
-    // retained for symmetry with chat's ExtensionRegistry lifecycle.
-    #[allow(dead_code)]
+    /// Initialize all registered extensions. Run once at startup by
+    /// `project/mod.rs::init`, driving each extension's `initialize` hook.
     pub async fn initialize_all(&self, pool: &PgPool) -> Result<(), AppError> {
         for ext in &self.extensions {
             ext.initialize(pool).await?;

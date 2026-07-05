@@ -58,8 +58,25 @@ impl AppModule for ChatModule {
 
         // Auto-register extensions using generated code
         // Extensions are discovered at build time and registered in order based on METADATA.order
-        let registry = auto_register_extensions((*ctx.db_pool).clone(), ctx.config.clone());
-        self.extension_registry = Some(Arc::new(registry));
+        let registry = Arc::new(auto_register_extensions(
+            (*ctx.db_pool).clone(),
+            ctx.config.clone(),
+        ));
+
+        // Run each extension's one-time `initialize()` lifecycle hook (DB prep /
+        // cache warmup). `init` is sync but runs inside the tokio runtime, so we
+        // spawn it; it's best-effort — a failure is logged, not fatal.
+        {
+            let registry = registry.clone();
+            let pool = (*ctx.db_pool).clone();
+            tokio::spawn(async move {
+                if let Err(e) = registry.initialize_all(&pool).await {
+                    tracing::error!("Chat extension initialize_all failed: {}", e);
+                }
+            });
+        }
+
+        self.extension_registry = Some(registry);
 
         tracing::info!("Chat module initialized with auto-registered extensions");
         Ok(())

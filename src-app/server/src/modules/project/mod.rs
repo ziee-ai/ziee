@@ -95,6 +95,19 @@ impl AppModule for ProjectModule {
         let registry_arc = Arc::new(registry);
         self.extension_registry = Some(registry_arc.clone());
 
+        // Run each extension's one-time `initialize()` lifecycle hook (DB prep /
+        // cache warmup). `init` is sync but runs inside the tokio runtime, so we
+        // spawn it; it's best-effort — a failure is logged, not fatal.
+        {
+            let registry = registry_arc.clone();
+            let pool = (*ctx.db_pool).clone();
+            tokio::spawn(async move {
+                if let Err(e) = registry.initialize_all(&pool).await {
+                    tracing::error!("Project extension initialize_all failed: {}", e);
+                }
+            });
+        }
+
         // Expose the registry as a process-wide singleton so code paths
         // that don't receive it via axum Extension can fan out — notably
         // the project chat-extension, which runs inside chat's streaming

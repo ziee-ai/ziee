@@ -180,8 +180,8 @@ pub trait ChatExtension: Send + Sync {
 
     /// Initialize extension (called once at startup)
     // Extension-lifecycle hook: overridable by extensions and driven by
-    // `ExtensionRegistry::initialize_all`, which isn't wired into startup yet.
-    #[allow(dead_code)]
+    // `ExtensionRegistry::initialize_all`, which the chat module runs once at
+    // startup (see chat/mod.rs::init).
     async fn initialize(&self, _pool: &PgPool) -> Result<(), AppError> {
         Ok(())
     }
@@ -342,10 +342,8 @@ impl ExtensionRegistry {
         self.extensions.push(extension);
     }
 
-    /// Initialize all registered extensions
-    // Extension-lifecycle aggregator; not wired into server startup yet, so it
-    // (and the per-extension `initialize` hook it drives) has no caller today.
-    #[allow(dead_code)]
+    /// Initialize all registered extensions. Run once at startup by
+    /// `chat/mod.rs::init`, driving each extension's `initialize` hook.
     pub async fn initialize_all(&self, pool: &PgPool) -> Result<(), AppError> {
         for ext in &self.extensions {
             ext.initialize(pool).await?;
