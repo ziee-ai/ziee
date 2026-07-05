@@ -3,7 +3,7 @@
 This document specifies the build pipeline that lives in the **separate**
 `ziee-ai/hub` repository. It is not implementable in this repo. It exists
 here for cross-team coordination: when the upstream pipeline ships, the
-ziee-chat consumer in `hub_manager.rs` and the embedded seed under
+ziee consumer in `hub_manager.rs` and the embedded seed under
 `resources/hub-seed/` will be the consumers of its output.
 
 ## Schema versioning convention
@@ -19,14 +19,14 @@ the live date when the pipeline rebuilds.
 ## Goals
 
 1. Publish a **static, per-entry-versioned registry** as a GitHub Pages
-   site. The layout is the same one ziee-chat's `hub_manager.rs` consumes
+   site. The layout is the same one ziee's `hub_manager.rs` consumes
    (see `Pages layout` below).
 2. **Ingest the official MCP registry**
    (`https://registry.modelcontextprotocol.io/v0/servers`), filter to
    entries ziee can actually run, and merge them into the published
    catalog alongside ziee-native entries.
 3. **No cosign / signed-tarball** path. Trust = HTTPS to GitHub Pages.
-4. Provide a build snapshot that ziee-chat's `scripts/sync-hub-seed.sh`
+4. Provide a build snapshot that ziee's `scripts/sync-hub-seed.sh`
    (future) pulls from to regenerate `resources/hub-seed/`.
 
 ## Pages layout (what the build branch must serve)
@@ -65,7 +65,7 @@ the build emits JSON.
 
 A Rust binary OR a Node script (TBD by the hub repo's maintainers). The
 choices are equivalent — both have well-supported JSON Schema validators
-and HTTP clients. Recommend Rust for type-shared structs with ziee-chat.
+and HTTP clients. Recommend Rust for type-shared structs with ziee.
 
 The script performs five steps in order:
 
@@ -131,7 +131,7 @@ In `ziee-ai/hub`'s GitHub settings, enable Pages from the `gh-pages`
 branch. The default URL `https://ziee-ai.github.io/hub/` is what
 `hub_manager.rs`'s `DEFAULT_PAGES_BASE` resolves to.
 
-## ziee-chat seed sync
+## ziee seed sync
 
 A future `scripts/sync-hub-seed.sh` in this repo will:
 
@@ -164,7 +164,7 @@ mirroring the Pages layout to `resources/hub-seed/`.
   `1.0.0` → `1.0.1` flags it as "update available" for users with an
   installed `1.0.0`. The consumer never auto-updates — admins click
   through.
-- The seed in ziee-chat carries a snapshot's `hub_version`; the runtime
+- The seed in ziee carries a snapshot's `hub_version`; the runtime
   test `seed_index_version_matches_const` cross-checks that against
   the embedded constant so a manual seed edit can't drift silently.
 
@@ -175,9 +175,9 @@ Two `just` recipes cover the publisher + consumer ends of the pipeline:
 | Command (cwd)                           | What it does |
 |-----------------------------------------|--------------|
 | `just test-pages` (ziee-ai-hub)         | Runs the GitHub Pages workflow locally via `act` + Docker, asserts the produced `dist/` tree (item count, reverse-DNS names, MCP entries pass strict server.json shape). **Hard-fails** if Docker is missing or not running. |
-| `just test-hub` (ziee-chat)             | Runs the full hub-related integration suite (`hub::`, `assistant::`, `mcp::`, `llm_model::` filters) against the isolated `hubreg_build` Postgres DB. Saves a timestamped log per CLAUDE.md memory. **Hard-fails** if `tests/.env.test` is missing. |
-| `just check-hub` (ziee-chat)            | Compile gate: `cargo check -p ziee --all-targets`. Fast. |
-| `just tsc` (ziee-chat)                  | Compile gate: `npx tsc --noEmit` on both `src-app/ui` and `src-app/desktop/ui`. |
+| `just test-hub` (ziee)             | Runs the full hub-related integration suite (`hub::`, `assistant::`, `mcp::`, `llm_model::` filters) against the isolated `hubreg_build` Postgres DB. Saves a timestamped log per CLAUDE.md memory. **Hard-fails** if `tests/.env.test` is missing. |
+| `just check-hub` (ziee)            | Compile gate: `cargo check -p ziee --all-targets`. Fast. |
+| `just tsc` (ziee)                  | Compile gate: `npx tsc --noEmit` on both `src-app/ui` and `src-app/desktop/ui`. |
 
 Both repositories are self-hosting their own automation. No user input is
 required to run them; CI can shell out to the recipes directly.

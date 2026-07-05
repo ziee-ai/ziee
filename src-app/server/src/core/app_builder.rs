@@ -265,3 +265,57 @@ pub fn create_cors_layer(config: &Config) -> CorsLayer {
             .allow_headers(Any)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `create_modules` must instantiate EVERY registered module exactly once,
+    /// in ascending `order` (the init/route/event-registration sequence depends
+    /// on this ordering — e.g. the project chat-extension at order 8 must run
+    /// before the assistant extension at order 10).
+    #[test]
+    fn create_modules_instantiates_all_entries_in_order() {
+        // Expected: the linkme slice sorted by order (stable), by name.
+        let mut expected_entries: Vec<_> = MODULE_ENTRIES.iter().collect();
+        expected_entries.sort_by_key(|e| e.order);
+        let expected_names: Vec<&str> = expected_entries.iter().map(|e| e.name).collect();
+
+        let modules = create_modules();
+
+        // One module per registered entry — nothing dropped or duplicated.
+        assert_eq!(
+            modules.len(),
+            MODULE_ENTRIES.len(),
+            "create_modules must instantiate every registered module"
+        );
+
+        // Same names, in the same by-order sequence — proves the sort happened
+        // and each entry's constructor produced a module reporting its name.
+        let got_names: Vec<&str> = modules.iter().map(|m| m.name()).collect();
+        assert_eq!(got_names, expected_names);
+
+        // The reported orders are non-decreasing (defensive: catches a future
+        // regression where the sort key changes).
+        let orders: Vec<i32> = expected_entries.iter().map(|e| e.order).collect();
+        assert!(
+            orders.windows(2).all(|w| w[0] <= w[1]),
+            "modules must be ordered by ascending `order`"
+        );
+    }
+
+    /// Module names must be unique — two modules sharing a name would make the
+    /// order/route/event wiring ambiguous.
+    #[test]
+    fn module_names_are_unique() {
+        let modules = create_modules();
+        let mut names: Vec<&str> = modules.iter().map(|m| m.name()).collect();
+        names.sort_unstable();
+        let unique = {
+            let mut n = names.clone();
+            n.dedup();
+            n.len()
+        };
+        assert_eq!(unique, names.len(), "duplicate module name registered");
+    }
+}

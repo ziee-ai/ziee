@@ -557,17 +557,17 @@ impl HubCategory {
     }
 }
 
-/// Combined hub data structure (for file storage)
+/// Combined hub data structure — the one-shot load backing the models /
+/// assistants / mcp-servers catalog endpoints. Skills + workflows are NOT
+/// part of this shape: they're served directly off `catalog().items` (filtered
+/// by category) via their own endpoints, so including always-empty fields here
+/// would falsely advertise "no skills/workflows".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HubData {
     pub version: String,
     pub models: Vec<HubModel>,
     pub assistants: Vec<HubAssistant>,
     pub mcp_servers: Vec<HubMCPServer>,
-    #[serde(default)]
-    pub skills: Vec<HubSkill>,
-    #[serde(default)]
-    pub workflows: Vec<HubWorkflow>,
 }
 
 // ============================================================================

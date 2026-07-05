@@ -133,14 +133,21 @@ fn arg_uuid(args: &Value, key: &str) -> Option<Uuid> {
 
 /// Notify the caller's other devices that their bibliography changed
 /// (notify-and-refetch; owner-scoped). `id` is an affected entry id (or nil for
-/// a batch). origin None — MCP tool / REST mutation, not a tab-echoed one.
-pub(super) fn emit_library_changed(user_id: Uuid, action: SyncAction, id: Uuid) {
+/// a batch). `origin` is the mutating connection id (from a `SyncOrigin`
+/// extractor on the REST path) so the originating device skips the self-echo;
+/// pass `None` from the MCP-tool path, which has no request connection.
+pub(super) fn emit_library_changed(
+    user_id: Uuid,
+    action: SyncAction,
+    id: Uuid,
+    origin: Option<Uuid>,
+) {
     sync_publish(
         SyncEntity::BibliographyEntry,
         action,
         id,
         Audience::owner(user_id),
-        None,
+        origin,
     );
 }
 
@@ -223,7 +230,7 @@ async fn dispatch_tool_call(
             }
             let verb = if project_id.is_some() { "unlinked" } else { "deleted" };
             if removed > 0 {
-                emit_library_changed(user_id, SyncAction::Delete, Uuid::nil());
+                emit_library_changed(user_id, SyncAction::Delete, Uuid::nil(), None);
             }
             Ok(tool_result(
                 format!("{removed} citation(s) {verb}."),
@@ -247,7 +254,7 @@ async fn dispatch_tool_call(
                 out.push(add_one(&repo, user_id, project_id, it).await);
             }
             if out.iter().any(|r| r.entry_id.is_some()) {
-                emit_library_changed(user_id, SyncAction::Create, Uuid::nil());
+                emit_library_changed(user_id, SyncAction::Create, Uuid::nil(), None);
             }
             Ok(tool_result(summarize(&out), json!({ "results": out })))
         }
@@ -597,19 +604,41 @@ pub(super) async fn add_one(
     let surname = dedup::first_author_surname(&csl);
 
     // Dedup: DOI → PMID → exact fingerprint (link existing); else fuzzy review.
+    // A DB error on the lookup must NOT be treated as Ok(None) — that would
+    // silently fork to an insert and risk a spurious duplicate on a transient
+    // failure. Likewise the attach-to-project is a user-requested mutation, so
+    // its error is surfaced (not swallowed) as a failed item.
     if let Some(doi) = &resolved.doi {
-        if let Ok(Some(eid)) = repo.find_by_doi(user_id, doi).await {
-            if let Some(pid) = project_id {
-                let _ = repo.attach_to_project(pid, eid).await;
+        match repo.find_by_doi(user_id, doi).await {
+            Ok(Some(eid)) => {
+                if let Some(pid) = project_id {
+                    if let Err(e) = repo.attach_to_project(pid, eid).await {
+                        return failed(
+                            label.clone(),
+                            format!("citation matched an existing entry but attaching it to the project failed: {e}"),
+                        );
+                    }
+                }
+                return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
             }
-            return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
+            Ok(None) => {}
+            Err(e) => return failed(label.clone(), format!("dedup lookup failed: {e}")),
         }
     } else if let Some(pmid) = &resolved.pmid {
-        if let Ok(Some(eid)) = repo.find_by_pmid(user_id, pmid).await {
-            if let Some(pid) = project_id {
-                let _ = repo.attach_to_project(pid, eid).await;
+        match repo.find_by_pmid(user_id, pmid).await {
+            Ok(Some(eid)) => {
+                if let Some(pid) = project_id {
+                    if let Err(e) = repo.attach_to_project(pid, eid).await {
+                        return failed(
+                            label.clone(),
+                            format!("citation matched an existing entry but attaching it to the project failed: {e}"),
+                        );
+                    }
+                }
+                return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
             }
-            return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
+            Ok(None) => {}
+            Err(e) => return failed(label.clone(), format!("dedup lookup failed: {e}")),
         }
     }
 
@@ -623,11 +652,20 @@ pub(super) async fn add_one(
         None
     };
     if let Some(fp) = &fingerprint {
-        if let Ok(Some(eid)) = repo.find_by_fingerprint(user_id, fp).await {
-            if let Some(pid) = project_id {
-                let _ = repo.attach_to_project(pid, eid).await;
+        match repo.find_by_fingerprint(user_id, fp).await {
+            Ok(Some(eid)) => {
+                if let Some(pid) = project_id {
+                    if let Err(e) = repo.attach_to_project(pid, eid).await {
+                        return failed(
+                            label.clone(),
+                            format!("citation matched an existing entry but attaching it to the project failed: {e}"),
+                        );
+                    }
+                }
+                return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
             }
-            return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
+            Ok(None) => {}
+            Err(e) => return failed(label.clone(), format!("dedup lookup failed: {e}")),
         }
         // Fuzzy near-match → surface for review, do NOT auto-merge.
         if let Ok(cands) = repo.idless_candidates(user_id, year).await {
@@ -680,7 +718,12 @@ pub(super) async fn add_one(
         match repo.insert_entry(user_id, &new).await {
             Ok(entry) => {
                 if let Some(pid) = project_id {
-                    let _ = repo.attach_to_project(pid, entry.id).await;
+                    if let Err(e) = repo.attach_to_project(pid, entry.id).await {
+                        return failed(
+                            label,
+                            format!("citation added but attaching it to the project failed: {e}"),
+                        );
+                    }
                 }
                 return CitationItemResult {
                     input: label,
@@ -707,7 +750,12 @@ pub(super) async fn add_one(
                 };
                 if let Some(eid) = existing {
                     if let Some(pid) = project_id {
-                        let _ = repo.attach_to_project(pid, eid).await;
+                        if let Err(e) = repo.attach_to_project(pid, eid).await {
+                            return failed(
+                                label,
+                                format!("citation matched an existing entry but attaching it to the project failed: {e}"),
+                            );
+                        }
                     }
                     return linked(label, eid, resolved.status, &resolved.mismatch_fields);
                 }

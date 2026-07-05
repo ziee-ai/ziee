@@ -311,6 +311,7 @@ pub async fn get_hub_mcp_servers_version(
 pub async fn refresh_hub_models(
     _auth: RequirePermissions<(HubModelsRefresh,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<HubRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -327,6 +328,16 @@ pub async fn refresh_hub_models(
         );
     }
 
+    // Notify other devices so their hub-catalog store refetches the
+    // refreshed catalog (mirrors refresh_hub_catalog).
+    sync_publish(
+        SyncEntity::HubSettings,
+        SyncAction::Update,
+        Uuid::nil(),
+        Audience::perm::<HubCatalogRead>(),
+        origin.0,
+    );
+
     Ok((
         StatusCode::OK,
         Json(HubRefreshResponse {
@@ -341,6 +352,7 @@ pub async fn refresh_hub_models(
 pub async fn refresh_hub_assistants(
     _auth: RequirePermissions<(HubAssistantsRefresh,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<HubRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -356,6 +368,16 @@ pub async fn refresh_hub_assistants(
         );
     }
 
+    // Notify other devices so their hub-catalog store refetches the
+    // refreshed catalog (mirrors refresh_hub_catalog).
+    sync_publish(
+        SyncEntity::HubSettings,
+        SyncAction::Update,
+        Uuid::nil(),
+        Audience::perm::<HubCatalogRead>(),
+        origin.0,
+    );
+
     Ok((
         StatusCode::OK,
         Json(HubRefreshResponse {
@@ -370,6 +392,7 @@ pub async fn refresh_hub_assistants(
 pub async fn refresh_hub_mcp_servers(
     _auth: RequirePermissions<(HubMCPServersRefresh,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<HubRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -384,6 +407,16 @@ pub async fn refresh_hub_mcp_servers(
             HubEvent::mcp_servers_refreshed(old_version.clone(), new_version.clone()).into(),
         );
     }
+
+    // Notify other devices so their hub-catalog store refetches the
+    // refreshed catalog (mirrors refresh_hub_catalog).
+    sync_publish(
+        SyncEntity::HubSettings,
+        SyncAction::Update,
+        Uuid::nil(),
+        Audience::perm::<HubCatalogRead>(),
+        origin.0,
+    );
 
     Ok((
         StatusCode::OK,
@@ -493,6 +526,7 @@ async fn build_assistant_create_from_hub(
 pub async fn create_assistant_from_hub(
     auth: RequirePermissions<(HubAssistantsCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateAssistantFromHubRequest>,
 ) -> ApiResult<Json<AssistantFromHubResponse>> {
     // `replace_existing` is the Updates-tab "upgrade my install"
@@ -546,6 +580,15 @@ pub async fn create_assistant_from_hub(
                 Some(auth.user.id),
             ))
             .await;
+        // Notify other devices so the deleted duplicate drops from their
+        // assistant list.
+        sync_publish(
+            SyncEntity::Assistant,
+            SyncAction::Delete,
+            existing_id,
+            Audience::owner(auth.user.id),
+            origin.0,
+        );
     }
 
     event_bus.emit_async(
@@ -555,6 +598,16 @@ pub async fn create_assistant_from_hub(
             false,
         )
         .into(),
+    );
+
+    // Notify the user's other devices so the newly installed assistant
+    // appears there (mirrors the plain assistant-create path).
+    sync_publish(
+        SyncEntity::Assistant,
+        SyncAction::Create,
+        assistant.id,
+        Audience::owner(auth.user.id),
+        origin.0,
     );
 
     Ok((
@@ -579,6 +632,7 @@ pub async fn create_assistant_from_hub(
 pub async fn create_assistant_template_from_hub(
     _auth: RequirePermissions<(HubAssistantsCreate, AssistantsTemplateCreate)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateAssistantFromHubRequest>,
 ) -> ApiResult<Json<AssistantFromHubResponse>> {
     // Idempotency guard: look up the existing template install (if
@@ -622,6 +676,14 @@ pub async fn create_assistant_template_from_hub(
                 event_bus
                     .emit(AssistantEvent::deleted(existing_id, None))
                     .await;
+                // Drop the replaced template from every device's list.
+                sync_publish(
+                    SyncEntity::AssistantTemplate,
+                    SyncAction::Delete,
+                    existing_id,
+                    Audience::everyone(),
+                    origin.0,
+                );
             }
             Err(e) if e.status_code() == 404 => (),
             Err(e) => return Err(e.into()),
@@ -681,6 +743,16 @@ pub async fn create_assistant_template_from_hub(
             true,
         )
         .into(),
+    );
+
+    // Notify every device so the new template appears in their template
+    // list (mirrors the plain template-create path).
+    sync_publish(
+        SyncEntity::AssistantTemplate,
+        SyncAction::Create,
+        assistant.id,
+        Audience::everyone(),
+        origin.0,
     );
 
     Ok((
@@ -899,6 +971,7 @@ async fn build_mcp_server_create_from_hub(
 pub async fn create_mcp_server_from_hub(
     auth: RequirePermissions<(HubMcpServersCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateMcpServerFromHubRequest>,
 ) -> ApiResult<Json<McpServerFromHubResponse>> {
     // `replace_existing` is the Updates-tab "upgrade my user install"
@@ -1000,6 +1073,14 @@ pub async fn create_mcp_server_from_hub(
                 auth.user.id,
             ))
             .await;
+        // Drop the replaced install from the user's other devices.
+        sync_publish(
+            SyncEntity::McpServer,
+            SyncAction::Delete,
+            id,
+            Audience::owner(auth.user.id),
+            origin.0,
+        );
     }
     event_bus.emit_async(
         HubEvent::mcp_server_created_from_hub(
@@ -1008,6 +1089,16 @@ pub async fn create_mcp_server_from_hub(
             false,
         )
         .into(),
+    );
+
+    // Notify the user's other devices so the installed server appears
+    // there (mirrors the plain user MCP-create path).
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Create,
+        server.id,
+        Audience::owner(auth.user.id),
+        origin.0,
     );
 
     Ok((
@@ -1028,6 +1119,7 @@ pub async fn create_mcp_server_from_hub(
 pub async fn create_system_mcp_server_from_hub(
     _auth: RequirePermissions<(HubMcpServersCreate, McpServersAdminCreate)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateMcpServerFromHubRequest>,
 ) -> ApiResult<Json<McpServerFromHubResponse>> {
     // Idempotency guard: look up the existing system install (if any)
@@ -1269,6 +1361,15 @@ pub async fn create_system_mcp_server_from_hub(
         event_bus
             .emit(crate::modules::mcp::events::McpServerEvent::system_server_deleted(id))
             .await;
+        // Drop the replaced system server from the admin view (mirrors
+        // mcp/handlers/system.rs delete).
+        sync_publish(
+            SyncEntity::McpServerSystem,
+            SyncAction::Delete,
+            id,
+            Audience::perm::<crate::modules::mcp::permissions::McpServersAdminRead>(),
+            origin.0,
+        );
     }
     event_bus.emit_async(
         HubEvent::mcp_server_created_from_hub(
@@ -1277,6 +1378,24 @@ pub async fn create_system_mcp_server_from_hub(
             true,
         )
         .into(),
+    );
+
+    // Creating a system MCP server changes BOTH the admin table AND every
+    // user's accessible-server view — dual-publish (mirrors
+    // mcp/handlers/system.rs:130-131).
+    sync_publish(
+        SyncEntity::McpServerSystem,
+        SyncAction::Create,
+        server.id,
+        Audience::perm::<crate::modules::mcp::permissions::McpServersAdminRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::UserMcpServer,
+        SyncAction::Create,
+        server.id,
+        Audience::perm::<crate::modules::mcp::permissions::McpServersRead>(),
+        origin.0,
     );
 
     Ok((

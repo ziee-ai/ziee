@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::permissions::{RequirePermissions, with_permission};
-use crate::modules::sync::SyncAction;
+use crate::modules::sync::{SyncAction, SyncOrigin};
 
 use super::format::{self, ExportFormat};
 use super::models::{
@@ -62,6 +62,7 @@ pub fn list_citations_docs(op: TransformOperation) -> TransformOperation {
 
 pub async fn import_citations(
     auth: RequirePermissions<(CitationsManage,)>,
+    origin: SyncOrigin,
     Json(body): Json<ImportCitationsRequest>,
 ) -> ApiResult<Json<BatchReport>> {
     cap_check(body.items.len())?;
@@ -73,7 +74,7 @@ pub async fn import_citations(
         results.push(handlers::add_one(&repo, auth.user.id, body.project_id, it).await);
     }
     if results.iter().any(|r| r.entry_id.is_some()) {
-        handlers::emit_library_changed(auth.user.id, SyncAction::Create, uuid::Uuid::nil());
+        handlers::emit_library_changed(auth.user.id, SyncAction::Create, uuid::Uuid::nil(), origin.0);
     }
     Ok((StatusCode::OK, Json(BatchReport { results })))
 }
@@ -116,6 +117,7 @@ pub fn verify_citations_docs(op: TransformOperation) -> TransformOperation {
 /// stateless check of an arbitrary list), this updates the stored badges.
 pub async fn reverify_citations(
     auth: RequirePermissions<(CitationsManage,)>,
+    origin: SyncOrigin,
     Query(q): Query<ListCitationsQuery>,
 ) -> ApiResult<Json<BatchReport>> {
     handlers::verify_project_owned(auth.user.id, q.project_id).await?;
@@ -131,7 +133,7 @@ pub async fn reverify_citations(
         results.push(result.1);
     }
     if changed {
-        handlers::emit_library_changed(auth.user.id, SyncAction::Update, uuid::Uuid::nil());
+        handlers::emit_library_changed(auth.user.id, SyncAction::Update, uuid::Uuid::nil(), origin.0);
     }
     Ok((StatusCode::OK, Json(BatchReport { results })))
 }
@@ -148,11 +150,12 @@ pub fn reverify_citations_docs(op: TransformOperation) -> TransformOperation {
 
 pub async fn delete_citation(
     auth: RequirePermissions<(CitationsManage,)>,
+    origin: SyncOrigin,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<MutationResponse>> {
     let deleted = repo().delete_entry(auth.user.id, id).await?;
     if deleted {
-        handlers::emit_library_changed(auth.user.id, SyncAction::Delete, id);
+        handlers::emit_library_changed(auth.user.id, SyncAction::Delete, id, origin.0);
     }
     Ok((
         StatusCode::OK,
@@ -230,6 +233,7 @@ pub fn list_styles_docs(op: TransformOperation) -> TransformOperation {
 
 pub async fn attach_to_project(
     auth: RequirePermissions<(CitationsManage,)>,
+    origin: SyncOrigin,
     Path(project_id): Path<Uuid>,
     Json(body): Json<AttachCitationsRequest>,
 ) -> ApiResult<Json<MutationResponse>> {
@@ -243,7 +247,7 @@ pub async fn attach_to_project(
         .attach_many_to_project(auth.user.id, project_id, &body.entry_ids)
         .await?;
     if count > 0 {
-        handlers::emit_library_changed(auth.user.id, SyncAction::Update, uuid::Uuid::nil());
+        handlers::emit_library_changed(auth.user.id, SyncAction::Update, uuid::Uuid::nil(), origin.0);
     }
     Ok((
         StatusCode::OK,
@@ -264,11 +268,12 @@ pub fn attach_to_project_docs(op: TransformOperation) -> TransformOperation {
 
 pub async fn detach_from_project(
     auth: RequirePermissions<(CitationsManage,)>,
+    origin: SyncOrigin,
     Path((project_id, entry_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<MutationResponse>> {
     handlers::verify_project_owned(auth.user.id, Some(project_id)).await?;
     repo().detach_from_project(project_id, entry_id).await?;
-    handlers::emit_library_changed(auth.user.id, SyncAction::Update, entry_id);
+    handlers::emit_library_changed(auth.user.id, SyncAction::Update, entry_id, origin.0);
     Ok((
         StatusCode::OK,
         Json(MutationResponse {

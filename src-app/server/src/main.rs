@@ -12,7 +12,7 @@ use tokio::signal;
 
 #[derive(Parser, Debug)]
 #[command(name = "ziee")]
-#[command(version, about = "Ziee Chat backend server", long_about = None)]
+#[command(version, about = "ziee backend server", long_about = None)]
 struct Cli {
     /// Path to configuration file (overrides CONFIG_FILE env var)
     #[arg(long, value_name = "FILE")]
@@ -371,7 +371,7 @@ async fn main() {
         }
     };
 
-    tracing::info!("Ziee Chat backend server started successfully on {}", addr);
+    tracing::info!("ziee backend server started successfully on {}", addr);
 
     // Run server with graceful shutdown. into_make_service_with_connect_info
     // surfaces the TCP peer address so tower_governor's PeerIpKeyExtractor

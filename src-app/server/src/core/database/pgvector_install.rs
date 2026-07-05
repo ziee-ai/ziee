@@ -105,3 +105,100 @@ fn file_matches(path: &Path, embedded: &[u8]) -> io::Result<bool> {
         Err(e) => Err(e),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `file_matches` is the core of the idempotency guard: file absent →
+    /// false; present + same length → true; present + different length →
+    /// false (triggers a rewrite).
+    #[test]
+    fn file_matches_reflects_length_equality() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("blob.bin");
+
+        // Absent → false (must be written).
+        assert!(!file_matches(&path, b"hello").unwrap());
+
+        // Present, same length → true (skip write).
+        fs::write(&path, b"world").unwrap(); // 5 bytes, same len as "hello"
+        assert!(file_matches(&path, b"hello").unwrap());
+
+        // Present, different length → false (rewrite needed).
+        assert!(!file_matches(&path, b"hi").unwrap());
+    }
+
+    /// `mark_available` flips the boot flag that `is_available` reads. The
+    /// flag is monotonic within a process, so after marking it must read true.
+    #[test]
+    fn mark_available_is_observed_by_is_available() {
+        mark_available();
+        assert!(is_available());
+    }
+
+    /// A stubbed build (zero-byte embedded artifacts) must make `install_into`
+    /// fail with NotFound and a message pointing at the disabled memory
+    /// features — never silently "succeed" with empty files.
+    #[test]
+    fn install_into_rejects_stub_artifacts() {
+        if has_real_artifacts() {
+            // This build embedded real artifacts, so we can't exercise the
+            // stub branch here; the idempotency test below covers the real path.
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let err = install_into(dir.path()).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert!(err.to_string().contains("stub"));
+    }
+
+    /// Full install → re-install is idempotent, and the skip-when-length-matches
+    /// logic is real: a same-length tampered file is left alone (skipped) while
+    /// a different-length file is overwritten back to the embedded blob.
+    #[test]
+    fn install_into_is_idempotent_and_length_gated() {
+        if !has_real_artifacts() {
+            // Stub build — nothing real to install; the stub-rejection test
+            // covers this build shape.
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+
+        // First install writes the real artifacts.
+        install_into(dir.path()).unwrap();
+        let lib_dest = dir.path().join("lib").join(VECTOR_LIB_FILENAME);
+        let control_dest = dir
+            .path()
+            .join("share")
+            .join("extension")
+            .join("vector.control");
+        assert_eq!(fs::read(&lib_dest).unwrap(), VECTOR_LIB);
+        assert_eq!(fs::read(&control_dest).unwrap(), VECTOR_CONTROL);
+
+        // A second call is a no-op (all destinations already match) and must
+        // still succeed.
+        install_into(dir.path()).unwrap();
+        assert_eq!(fs::read(&lib_dest).unwrap(), VECTOR_LIB);
+
+        // Tamper with the SAME length → install must SKIP it (length matches),
+        // leaving the tampered bytes in place.
+        let same_len_garbage = vec![0xABu8; VECTOR_LIB.len()];
+        fs::write(&lib_dest, &same_len_garbage).unwrap();
+        install_into(dir.path()).unwrap();
+        assert_eq!(
+            fs::read(&lib_dest).unwrap(),
+            same_len_garbage,
+            "same-length file should be skipped, not rewritten"
+        );
+
+        // Tamper with a DIFFERENT length → install must REWRITE it back.
+        fs::write(&lib_dest, b"short").unwrap();
+        install_into(dir.path()).unwrap();
+        assert_eq!(
+            fs::read(&lib_dest).unwrap(),
+            VECTOR_LIB,
+            "different-length file should be overwritten with the embedded blob"
+        );
+    }
+}
