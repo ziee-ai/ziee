@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::common::ApiResult;
 use crate::core::{EventBus, Repos};
 use crate::modules::permissions::{RequirePermissions, with_permission};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 use super::super::events::McpServerEvent;
 use super::super::permissions::{McpServersRead, McpUserPolicyEdit};
@@ -52,6 +53,7 @@ pub fn get_user_policy_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_user_policy(
     auth: RequirePermissions<(McpUserPolicyEdit,)>,
+    origin: SyncOrigin,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<UpdateMcpUserPolicyRequest>,
 ) -> ApiResult<Json<McpUserPolicy>> {
@@ -68,6 +70,17 @@ pub async fn update_user_policy(
         policy.allowed_transports.clone(),
         policy.user_stdio_sandbox_flavor.clone(),
     ));
+
+    // The MCP user policy is a deployment-wide singleton read by every user
+    // holding `mcp_servers::read`; notify them so their devices refetch the
+    // (sanitized) policy via `GET /api/mcp/user-policy`.
+    sync_publish(
+        SyncEntity::McpUserPolicy,
+        SyncAction::Update,
+        uuid::Uuid::nil(),
+        Audience::perm::<McpServersRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(policy)))
 }

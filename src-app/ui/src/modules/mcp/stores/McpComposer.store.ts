@@ -1127,7 +1127,14 @@ export const McpComposer = defineStore('McpComposer', {
       // (with the persisted status) is used as the fallback.
     },
   }),
-  init: ({ actions }) => {
+  init: ({ on, actions }) => {
+    // Cross-device sync of the user's own MCP defaults. `loadUserDefaults`
+    // self-gates on `conversations::read` internally (returns early when the
+    // user lacks it), satisfying the no-403 reconnect rule — `sync:reconnect`
+    // fires for every store regardless of audience.
+    const reload = () => void actions.loadUserDefaults()
+    on('sync:mcp_defaults', reload)
+    on('sync:reconnect', reload)
     void actions.loadUserDefaults()
   },
 })
