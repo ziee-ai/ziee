@@ -316,8 +316,8 @@ pub trait ChatExtension: Send + Sync {
     /// Convert ContentBlock from LLM to MessageContentData (Extension variant)
     /// Return None if this extension doesn't handle this ContentBlock type
     // Extension content-conversion hook; driven by the registry aggregator of
-    // the same name, which has no in-tree caller yet.
-    #[allow(dead_code)]
+    // the same name, which the stream persist path (`DeltaAccumulator::finalize`)
+    // calls to turn accumulated provider blocks back into MessageContentData.
     fn convert_from_content_block(&self, _block: &ContentBlock) -> Option<MessageContentData> {
         None // Default: doesn't handle conversion
     }
@@ -598,10 +598,9 @@ impl ExtensionRegistry {
     }
 
     /// Convert ContentBlock to MessageContentData (Extension variant)
-    /// Tries each extension until one successfully converts the block
-    // Extension content-conversion aggregator; no in-tree caller wires this into
-    // the stream/persist path yet, so keep it as the registry's API surface.
-    #[allow(dead_code)]
+    /// Tries each extension until one successfully converts the block.
+    /// Called by `DeltaAccumulator::finalize` (stream persist path) to convert
+    /// accumulated provider blocks back into persistable MessageContentData.
     pub fn convert_from_content_block(&self, block: &ContentBlock) -> Option<MessageContentData> {
         for ext in &self.extensions {
             if let Some(content) = ext.convert_from_content_block(block) {
