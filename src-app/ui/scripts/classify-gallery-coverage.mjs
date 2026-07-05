@@ -66,22 +66,31 @@ const PAGE_FILES = new Set([
 
 const INTERACTION = /(Drawer|Dialog|Modal|Sheet|Popover|Menu)(\.|$)/
 const NONVISUAL = /(Provider|Context|Notifications?|Listener|Guard|Boundary|types|constants|Registry|\.store)$/i
+// Route-element pages that are auth/setup/redirect flows, not data pages.
+const FLOW = /(AuthPage|AuthCallbackPage|LinkAccountPage|SetupPage|MagicLinkPage|PhoneAuthPage|OnboardingPage)$/
 
 function classify(id) {
   const base = id.split('/').pop()
-  if (PAGE_FILES.has(id)) return `page(${JSON.stringify(id)})`
+  if (PAGE_FILES.has(id)) {
+    if (FLOW.test(base))
+      return `{ kind: 'flow', reason: 'auth/setup flow (no data grid)' }`
+    // Data pages: the required loaded/empty/error state set is the point.
+    return `{ kind: 'data-page', states: ['loaded', 'empty', 'error'] }`
+  }
   if (id.startsWith('components/ui/kit/') || id.startsWith('components/ui/shadcn/'))
-    return `via('kit-stories')`
+    return `{ kind: 'via', reason: 'kit-stories' }`
   if (id.startsWith('components/ui/'))
-    return `allow('ui primitive/util — rendered via kit consumers')`
+    return `{ kind: 'via', reason: 'ui primitive/util — rendered via kit consumers' }`
+  // Overlays require an `open` state, but open-state rendering isn't built yet —
+  // mark pending (the honest escape) rather than claim an undelivered state.
   if (INTERACTION.test(base))
-    return `pending('interaction-only — needs an open-state gallery entry')`
+    return `{ kind: 'pending', reason: 'overlay — needs an open-state entry (kind: overlay + states:[open])' }`
   if (NONVISUAL.test(base))
-    return `allow('non-visual — context/provider/listener/types')`
+    return `{ kind: 'nonvisual', reason: 'context/provider/listener/types' }`
   const m = /^modules\/([^/]+)\//.exec(id)
   const mod = m ? m[1] : 'app'
-  if (id.includes('/widgets/')) return `via('slot-widget in ${mod}')`
-  return `via('rendered within the ${mod} module page')`
+  if (id.includes('/widgets/')) return `{ kind: 'via', reason: 'slot-widget in ${mod}' }`
+  return `{ kind: 'via', reason: 'rendered within the ${mod} module page' }`
 }
 
 const surfaces = fs

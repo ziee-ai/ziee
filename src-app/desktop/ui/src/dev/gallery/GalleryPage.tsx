@@ -68,20 +68,23 @@ function ControlBar() {
   )
 }
 
-export function GalleryPage() {
+export function GalleryPage({
+  surface,
+  state,
+}: {
+  surface?: string
+  state?: string
+} = {}) {
   return (
     <div
       data-testid="gallery-root"
-      // overflow-x-hidden: the canvas chrome must not itself scroll horizontally
-      // (a stress component overflowing its OWN box is still captured per-section
-      // by Layer A's childOverflow + the Layer B section screenshot).
       className="min-h-full w-full overflow-x-hidden bg-background text-foreground"
     >
       <ControlBar />
       <div className="flex flex-col gap-6 p-6">
-        {/* Seeded desktop module pages — every route rendered via mock-API.
-            Kit component stories live in the web gallery (shared kit). */}
-        <GalleryPages />
+        {/* Seeded desktop module pages via mock-API (kit stories live in the web
+            gallery). Single-surface state mode via ?surface=&state=. */}
+        <GalleryPages only={surface} state={state} />
       </div>
     </div>
   )

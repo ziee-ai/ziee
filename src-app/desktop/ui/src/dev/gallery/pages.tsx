@@ -26,9 +26,18 @@ export const pageTestId = (id: string) => `gallery-page-${id}`
  * sourced from recorded fixtures. A route whose required param is unresolved is
  * skipped (and surfaced in COVERAGE.md) rather than rendered broken.
  */
+// Detail-route params come from recorded fixtures OR the URL (so an isolated
+// combo can pin a specific `conversationId` / `projectId` — see the singleton
+// isolation policy in SEEDED_GALLERY_PLAN.md). URL wins so each combo is pinned.
+function urlParams(): Record<string, string> {
+  const q = new URLSearchParams(window.location.search)
+  const out: Record<string, string> = {}
+  for (const [k, v] of q) out[k] = v
+  return out
+}
+
 const PARAM_VALUES: Record<string, string | undefined> = {
-  // Desktop routes use only optional params (e.g. magic-link `:token?`), filled
-  // as recorded fixtures land.
+  ...urlParams(), // conversationId / projectId / … for isolated detail combos
 }
 
 // Routes that are not reviewable page CONTENT (redirects, the gallery itself,
@@ -42,13 +51,20 @@ interface ResolvedPage {
   element: RouteConfig<any>['element']
 }
 
-/** path → stable slug for the testid (`/settings/llm-providers/:x?` → `settings-llm-providers`). */
+/**
+ * path → stable slug for the testid (`/settings/llm-providers/:x?` →
+ * `settings-llm-providers`). Routes with a REQUIRED param get a `-detail` suffix
+ * so a swap-type detail route (`/chat/:conversationId`) doesn't collide with its
+ * list route (`/chat`) — the two must be distinct enumeration entries.
+ */
 function slugFor(path: string): string {
+  const requiredParam = path.split('/').some(s => s.startsWith(':') && !s.endsWith('?'))
   const cleaned = path
     .replace(/\/:[^/?]+\??/g, '') // drop param segments
     .replace(/^\/+|\/+$/g, '')
     .replace(/\//g, '-')
-  return cleaned || 'root'
+  const base = cleaned || 'root'
+  return requiredParam ? `${base}-detail` : base
 }
 
 /** Fill a route path's params; return undefined if a REQUIRED param is unresolved. */
@@ -89,14 +105,30 @@ export function useResolvedPages(): ResolvedPage[] {
   return pages.sort((a, b) => a.id.localeCompare(b.id))
 }
 
-function PageFrame({ page, height = 720 }: { page: ResolvedPage; height?: number }): ReactNode {
+function PageFrame({
+  page,
+  state = 'loaded',
+  height = 720,
+}: {
+  page: ResolvedPage
+  state?: string
+  height?: number
+}): ReactNode {
   return (
     <section
       data-testid={pageTestId(page.id)}
+      data-gallery-state={state}
       className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-background"
     >
       <div className="flex flex-col gap-1">
-        <Title level={3}>{page.path}</Title>
+        <Title level={3}>
+          {page.path}
+          {state !== 'loaded' ? (
+            <Text tone="muted" className="ml-2 text-sm">
+              · {state}
+            </Text>
+          ) : null}
+        </Title>
         <Text tone="muted" className="text-sm">
           gallery-page-{page.id} · seeded via mock-API
         </Text>
@@ -128,13 +160,18 @@ function PageFrame({ page, height = 720 }: { page: ResolvedPage; height?: number
   )
 }
 
-/** Render every enumerated page. */
-export function GalleryPages() {
+/**
+ * Render pages. With no `only`, browses every enumerated page (loaded). With
+ * `only=<slug>`, renders just that surface in the given `state` (the data-state
+ * mode is set globally at bootstrap) — the per-combo screenshot target.
+ */
+export function GalleryPages({ only, state }: { only?: string; state?: string }) {
   const pages = useResolvedPages()
+  const shown = only ? pages.filter(p => p.id === only) : pages
   return (
     <>
-      {pages.map(page => (
-        <PageFrame key={page.id} page={page} />
+      {shown.map(page => (
+        <PageFrame key={page.id} page={page} state={state} />
       ))}
     </>
   )

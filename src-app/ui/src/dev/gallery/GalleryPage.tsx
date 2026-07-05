@@ -70,7 +70,13 @@ function ControlBar() {
   )
 }
 
-export function GalleryPage() {
+export function GalleryPage({
+  surface,
+  state,
+}: {
+  surface?: string
+  state?: string
+} = {}) {
   return (
     <div
       data-testid="gallery-root"
@@ -81,12 +87,19 @@ export function GalleryPage() {
     >
       <ControlBar />
       <div className="flex flex-col gap-6 p-6">
-        {/* Seeded module pages — every route rendered populated via mock-API. */}
-        <GalleryPages />
-        {/* Isolated kit component stories. */}
-        {ALL_STORIES.map(story => (
-          <StorySection key={story.id} story={story} />
-        ))}
+        {/* Single-surface state mode (?surface=&state=) renders ONE page in the
+            given data-state; the default browses every page loaded + the kit
+            component stories. */}
+        {surface ? (
+          <GalleryPages only={surface} state={state} />
+        ) : (
+          <>
+            <GalleryPages />
+            {ALL_STORIES.map(story => (
+              <StorySection key={story.id} story={story} />
+            ))}
+          </>
+        )}
       </div>
     </div>
   )

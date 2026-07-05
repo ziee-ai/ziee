@@ -99,6 +99,47 @@ let activeCassette: Cassette = {}
 let installed = false
 let originalFetch: typeof globalThis.fetch | undefined
 
+/**
+ * Data-state mode. The gallery renders the SAME surface under different modes to
+ * cover the states where most bugs hide (empty / error), by transforming the
+ * loaded cassette response rather than maintaining parallel fixtures:
+ *   - loaded : the recorded response, unchanged;
+ *   - empty  : every array in the response deep-emptied + counts zeroed → the
+ *              "no data yet" state;
+ *   - error  : a 500 for data endpoints (auth/bootstrap exempt so the page still
+ *              mounts authenticated and shows its error UI);
+ *   - delayed: the loaded response after a latency, to catch the loading state.
+ */
+export type MockMode = 'loaded' | 'empty' | 'error' | 'delayed'
+let activeMode: MockMode = 'loaded'
+export function setMockMode(mode: MockMode): void {
+  activeMode = mode
+}
+export function getMockMode(): MockMode {
+  return activeMode
+}
+
+// Endpoints that must keep working even in `error` mode so the page can mount as
+// an authenticated admin and render its OWN error state (not a login redirect).
+const ERROR_MODE_EXEMPT = [/\/auth\/me$/, /\/setup\/status$/, /\/health$/]
+
+const DELAY_MS = 700
+
+/** Deep-empty arrays + zero obvious counts, preserving object shape. */
+function toEmpty(value: unknown): unknown {
+  if (Array.isArray(value)) return []
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      if (Array.isArray(v)) out[k] = []
+      else if (typeof v === 'number' && /(total|count|pages|unread)/i.test(k)) out[k] = 0
+      else out[k] = toEmpty(v)
+    }
+    return out
+  }
+  return value
+}
+
 const jsonResponse = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data ?? null), {
     status,
@@ -189,6 +230,22 @@ export function installMockApi(cassette?: Cassette): void {
       return originalFetch!(input as RequestInfo, init)
     }
 
+    // Apply the data-state mode. GET reads carry the state; mutations (POST/PUT/
+    // DELETE) pass through so overlay forms can still "submit" against loaded data.
+    const isRead = method === 'GET'
+    const exempt = ERROR_MODE_EXEMPT.some(rx => rx.test(parsed.pathname))
+    if (isRead && !exempt) {
+      if (activeMode === 'error') {
+        return jsonResponse(
+          { error: 'Gallery error state', error_code: 'GALLERY_ERROR' },
+          500,
+        )
+      }
+      if (activeMode === 'delayed') {
+        await new Promise(r => setTimeout(r, DELAY_MS))
+      }
+    }
+
     const matched = matchRoute(method, parsed.pathname)
     if (!matched) {
       if (import.meta.env.DEV) {
@@ -227,10 +284,15 @@ export function installMockApi(cassette?: Cassette): void {
       body,
       method,
     }
-    const value =
+    let value =
       typeof entry === 'function'
         ? (entry as (c: MockRequestContext) => unknown)(ctx)
         : entry
+    // `empty` mode: return a valid, well-shaped empty response (arrays emptied,
+    // counts zeroed) — the state where "no data yet" bugs live.
+    if (isRead && !exempt && activeMode === 'empty') {
+      value = toEmpty(value)
+    }
     return jsonResponse(value)
   }
 }

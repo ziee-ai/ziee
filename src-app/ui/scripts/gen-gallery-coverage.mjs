@@ -82,6 +82,31 @@ const mode = process.argv.includes('--check')
     ? 'scaffold'
     : 'write'
 
+// Required-state sets per kind — must match coverage.ts REQUIRED_STATES.
+const REQUIRED = {
+  'data-page': ['loaded', 'empty', 'error'],
+  table: ['loaded', 'empty', 'error'],
+  form: ['empty', 'filled', 'invalid'],
+  overlay: ['open'],
+}
+
+/** Parse coverage.ts entries → { id: { kind, states } }. */
+function parseCoverage() {
+  if (!fs.existsSync(COVERAGE)) return {}
+  const src = fs.readFileSync(COVERAGE, 'utf-8')
+  const out = {}
+  const re = /"([^"]+)":\s*\{\s*kind:\s*'([^']+)'(?:[^}]*?states:\s*\[([^\]]*)\])?[^}]*\}/g
+  let m
+  while ((m = re.exec(src))) {
+    const [, id, kind, statesRaw] = m
+    const states = statesRaw
+      ? statesRaw.split(',').map(s => s.trim().replace(/'/g, '')).filter(Boolean)
+      : []
+    out[id] = { kind, states }
+  }
+  return out
+}
+
 if (mode === 'check') {
   const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf-8') : ''
   if (cur.trim() !== body.trim()) {
@@ -90,14 +115,31 @@ if (mode === 'check') {
     )
     process.exit(1)
   }
+  // Required-state-set gate: a surface whose kind requires states must declare
+  // them all (pending/static/nonvisual/flow/via are escapes).
+  const cov = parseCoverage()
+  const stateFailures = []
+  for (const [id, { kind, states }] of Object.entries(cov)) {
+    const req = REQUIRED[kind]
+    if (!req) continue
+    const missing = req.filter(s => !states.includes(s))
+    if (missing.length) stateFailures.push(`${id} (${kind}) missing: ${missing.join(', ')}`)
+  }
+  if (stateFailures.length) {
+    console.error(
+      `\n${stateFailures.length} surface(s) missing required states (evolve to the state set or use a pending/static escape):`,
+    )
+    for (const f of stateFailures) console.error(`  ✗ ${f}`)
+    process.exit(1)
+  }
   // Report (non-fatal) any surface still marked pending in coverage.ts.
   if (fs.existsSync(COVERAGE)) {
-    const cov = fs.readFileSync(COVERAGE, 'utf-8')
-    const pending = surfaces.filter(s =>
-      new RegExp(`${JSON.stringify(s)}\\s*:\\s*pending\\(`).test(cov),
-    )
+    const parsed = parseCoverage()
+    const byKind = {}
+    for (const { kind } of Object.values(parsed)) byKind[kind] = (byKind[kind] ?? 0) + 1
+    const pending = Object.entries(parsed).filter(([, v]) => v.kind === 'pending').map(([id]) => id)
     console.log(
-      `galleryCoverage.generated.ts up to date (${surfaces.length} surfaces; ${pending.length} pending).`,
+      `galleryCoverage.generated.ts up to date (${surfaces.length} surfaces; ${JSON.stringify(byKind)}).`,
     )
     if (pending.length) {
       console.log('pending surfaces (tracked TODO, not a failure):')

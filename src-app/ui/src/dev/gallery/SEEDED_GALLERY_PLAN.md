@@ -69,6 +69,62 @@ renders silently against a wrong shape.
 Tracked in `dev/gallery/COVERAGE.md` — the human-readable rollup (components
 covered/total, stores covered/total, pages covered/total, per workspace).
 
+## Multi-state model — states per surface, not one entry per surface
+
+A surface owns MULTIPLE named states, not a single entry. The registry is
+`Record<GallerySurface, { kind, states }>`; a screenshot id is
+`surface__state__theme`. States are produced intrinsically:
+
+1. **Data states via different cassettes** (the key one — most bugs live in
+   empty/error). The mock has a global `MockMode` (`mockApi.setMockMode`):
+   `loaded` (recorded), `empty` (arrays deep-emptied + counts zeroed), `error`
+   (500 for data endpoints; auth/bootstrap exempt so the page still mounts and
+   shows its OWN error UI), `delayed` (latency → loading state). The gallery is
+   URL-driven per combo: `?surface=<slug>&state=<mode>&auth=<seed>&theme=`.
+2. **Permission/role states** via auth seeds (`seed.ts` `AuthSeed`):
+   `admin` / `limited` (non-admin, minimal read perms) / `none` (logged out).
+3. **Open states** for overlays — render the drawer/dialog/menu open (tracked as
+   `pending` until the per-overlay opener lands).
+4. **Variant/disabled** explicit instances (kit stories).
+5. **Hover/focus** via Playwright pseudo-state forcing at screenshot time.
+
+## Required-state-set gate (state coverage enforcement — ties to F14)
+
+The gate evolved from "surface has ≥1 entry" to a REQUIRED STATE SET per kind:
+
+| kind | required states |
+|---|---|
+| `data-page` / `table` | loaded + empty + error |
+| `form` | empty + filled + invalid |
+| `overlay` | open |
+| `static` / `flow` / `via` / `nonvisual` / `pending` | none (escape hatches) |
+
+A surface whose declared `states` miss its kind's required set FAILS
+`check:gallery-coverage` (verified: dropping a data-page's `empty`/`error` fails).
+Rendering the empty/error states surfaces real bugs → logged in
+`GALLERY_FINDINGS.md`.
+
+## Singleton stores that swap on route param — isolation
+
+A per-entry `MemoryRouter` isolates the router, NOT global Zustand singletons.
+Route-param detail stores that are **single-active-and-swap** (`Chat`'s
+`conversation`/`messages`; `ProjectDetail`'s `project`) would BLEED if multiple
+of their entries were mounted on one canvas (all show the last-seeded id).
+Id-keyed stores (`WorkflowRuns` = `Record<workflowId,…>`) are safe.
+
+**Policy:** swap-type detail surfaces are rendered ONLY via the URL-isolation
+path (`?surface=&state=&conversationId=…`), one per FULL PAGE RELOAD → fresh
+singleton → zero bleed. They are never all-mounted on the browse canvas (they
+carry a required param the enumerator leaves unresolved, so they're skipped
+there by construction). Multiple conversation states (empty / long / tool-calls /
+branched / attachments) are separate combos, each its own `conversationId` +
+cassette, rendered sequentially.
+
+**Swap-TRANSITION correctness** — that navigating A→B clears A's stale
+`conversation`/`messages`/`project` — is a runtime interaction property. It is an
+**e2e/interaction test to add** (`tests/e2e/…/chat-nav-no-stale-state.spec.ts`),
+NOT a static screenshot; the gallery does not attempt to capture it.
+
 ## Coverage is an ENFORCED compile-time gate (not just COVERAGE.md)
 
 Modeled on `testIds.generated.ts`. Adding a page/component without a gallery

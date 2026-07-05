@@ -137,7 +137,8 @@
     "check:gallery-coverage": "node scripts/gen-gallery-coverage.mjs --check",
     "gen:gallery-crawl": "node scripts/gen-crawl-cassette.mjs",
     "check:gallery-crawl": "node scripts/gen-crawl-cassette.mjs --check",
-    "gallery:screenshots": "node scripts/capture-gallery-screenshots.mjs"
+    "gallery:screenshots": "node scripts/capture-gallery-screenshots.mjs",
+    "gallery:states": "node scripts/capture-gallery-states.mjs"
   },
   "type": "module",
   "types": "./dist/index.d.ts"

@@ -61,9 +61,65 @@ recorded `McpServer` objects are missing zero required fields.
   but the widget still won't live-update after an out-of-band change without an
   event.
 
+## Multi-state pass (empty / error via cassette-swapping)
+
+Rendering every data-page in `empty` and `error` modes (mock `MockMode`) — where
+most bugs hide — surfaced robustness gaps. **No render crashes** (0 ErrorBoundary
+catches across all 40 pages × empty/error; the 5 array guards above hold). The
+findings are handling gaps, logged not spot-fixed (they're a broad design pattern,
+not one-line crashes):
+
+- **Load error is indistinguishable from empty (F14 class)** — ~21 data-pages
+  render the SAME "No X yet" empty UI on a 500 as on genuinely-empty data, with
+  no error/retry affordance. Verified: `settings-users`, `settings-llm-providers`
+  ("No provider selected"), `settings-user-groups`, `settings-assistants`,
+  `settings-mcp-servers`, `projects`, `onboarding`, … An admin can't tell "the
+  server erred" from "there's nothing here". Recommended: a distinct error state
+  with retry when `store.error` is set.
+- **Unhandled promise rejection on load error** — ~14 stores let the api-client's
+  thrown error escape as an unhandled rejection in `error` mode (page still
+  renders, but `window.onerror`/`pageerror` fires: "Gallery error state"). The
+  load path should `catch` and set an error flag rather than re-throw. Not a
+  crash, but noise + a missed error-state opportunity.
+- **`hardware-monitor` renders blank** in empty/error (len 0) — no empty/error
+  state at all.
+
+These are tracked, not blocking: they need a per-page error-state design pass,
+not a mechanical fix.
+
+## Singleton stores that swap on route param (multi-state isolation)
+
+The per-entry `MemoryRouter` isolates the ROUTER but NOT global Zustand
+singletons. Audit of route-param-keyed stores:
+
+| Store | Shape | Bleed risk if all-mounted? |
+|---|---|---|
+| `Chat` (`core/stores/Chat.store`) | **single-active** `conversation` + `messages: Map<msgId,…>` that SWAP on `/chat/:conversationId` | **YES** — all mounted chat entries would show the last-seeded conversation |
+| `ProjectDetail` | **single-active** `project` that swaps on `/projects/:projectId` | **YES** |
+| `WorkflowRuns` | `runs: Record<workflowId, …>` — **id-keyed** | no (entries coexist) |
+
+**Isolation strategy (by construction):** swap-type detail surfaces
+(`/chat/:conversationId`, `/projects/:projectId`) are NEVER all-mounted on the
+browse canvas — they carry a REQUIRED route param that the browse enumerator
+leaves unresolved, so they're skipped there. They are rendered ONLY via the
+URL-isolation path (`?surface=&state=&conversationId=…`), where each combo is a
+FULL PAGE RELOAD → a fresh singleton → **zero cross-entry bleed**. Sequential
+per-combo rendering is the same mechanism the multi-state screenshots use.
+
+**Swap-TRANSITION correctness** (navigating A→B leaves no stale `conversation`/
+`messages`/`project` state) is a runtime interaction property — an **e2e test**,
+NOT a static screenshot. Flagged as a separate test to add (see
+SEEDED_GALLERY_PLAN.md); the gallery deliberately does not try to screenshot it.
+
 ## Summary
 
-- **Crashes found: 5. Fixed: 5. Remaining crashes: 0.**
+- **Crashes found: 5. Fixed: 5. Remaining render crashes: 0** (incl. across all
+  empty/error states).
+- Robustness gaps logged (not crashes): error≈empty (~21 pages), unhandled-
+  rejection-on-error (~14), `hardware-monitor` blank.
+- Singleton bleed risk: `Chat` + `ProjectDetail` (single-active-swap) — isolated
+  by rendering sequentially via URL, never all-mounted. `WorkflowRuns` id-keyed
+  (safe).
 - Empty-but-correct: 3 (redirect/guard routes).
 - Loose fixtures: 6 (openapi-valid, enum-widening — documented).
-- Pending overlays: 43 (interaction-only, tracked by the coverage gate).
+- Pending overlays: 41 (interaction-only, tracked by the coverage gate).

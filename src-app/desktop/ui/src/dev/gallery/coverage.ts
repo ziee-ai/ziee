@@ -19,56 +19,93 @@
  */
 import type { GallerySurface } from './galleryCoverage.generated'
 
-export type Coverage =
-  | { kind: 'page'; pageId: string }
-  | { kind: 'story'; storyId: string }
-  | { kind: 'via'; surface: string }
-  | { kind: 'allow'; reason: string }
-  | { kind: 'pending'; reason: string }
+/**
+ * A surface's KIND drives its REQUIRED STATE SET (enforced by the coverage gate,
+ * `gen-gallery-coverage.mjs --check`). A surface whose declared `states` miss its
+ * kind's required set fails the gate.
+ *
+ *   data-page / table → loaded + empty + error   (most bugs live in empty/error)
+ *   form              → empty + filled + invalid
+ *   overlay           → open
+ *   static / flow / via / nonvisual / pending → none required
+ *
+ * Escape hatch: a genuinely stateless surface uses `static`; a non-visual one
+ * uses `nonvisual`; both opt out of the required-state gate with a reason.
+ */
+export type SurfaceKind =
+  | 'data-page'
+  | 'table'
+  | 'form'
+  | 'overlay'
+  | 'static'
+  | 'flow'
+  | 'via'
+  | 'nonvisual'
+  | 'pending'
 
-export const page = (pageId: string): Coverage => ({ kind: 'page', pageId })
-export const story = (storyId: string): Coverage => ({ kind: 'story', storyId })
-export const via = (surface: string): Coverage => ({ kind: 'via', surface })
-export const allow = (reason: string): Coverage => ({ kind: 'allow', reason })
-export const pending = (reason: string): Coverage => ({ kind: 'pending', reason })
+/** Data-states rendered by swapping the mock cassette (see mockApi `MockMode`). */
+export type GalleryState =
+  | 'loaded'
+  | 'empty'
+  | 'error'
+  | 'delayed'
+  | 'open'
+  | 'filled'
+  | 'invalid'
 
-// Keep this object total over GallerySurface. The `// <<< scaffold-insert >>>`
-// marker is where `gen:gallery-coverage --scaffold` appends missing surfaces as
-// `pending(...)`; refine each into page/story/via/allow as coverage lands.
+export interface Coverage {
+  kind: SurfaceKind
+  /** Declared states for this surface (each a screenshot combo). */
+  states?: readonly GalleryState[]
+  /** Reason for via / nonvisual / pending / static opt-outs. */
+  reason?: string
+}
+
+/** Required state set per kind — the gate. Empty = no required states. */
+export const REQUIRED_STATES: Record<SurfaceKind, readonly GalleryState[]> = {
+  'data-page': ['loaded', 'empty', 'error'],
+  table: ['loaded', 'empty', 'error'],
+  form: ['empty', 'filled', 'invalid'],
+  overlay: ['open'],
+  static: [],
+  flow: [],
+  via: [],
+  nonvisual: [],
+  pending: [],
+}
+
+// Keep this object total over GallerySurface (the tsc gate). The node gate
+// (`gen-gallery-coverage.mjs --check`) additionally enforces REQUIRED_STATES.
 export const GALLERY_COVERAGE = {
-  "modules/auth/AuthGuard": allow('non-visual — auth redirect guard'),
-  "modules/hardware/HardwareMonitorButton": via('rendered in the app-layout header'),
-  "modules/host-mount/conversation-extension/components/ConversationMountsControl": pending('interaction-only — conversation host-mount control (needs open-state entry)'),
-  "modules/host-mount/pages/HostMountPolicyPage": page("modules/host-mount/pages/HostMountPolicyPage"),
-  "modules/host-mount/project-extension/components/ProjectMountsPanel": via('rendered within the host-mount project extension panel'),
-  "modules/host-mount/project-extension/extension": allow('non-visual — project-extension registration'),
-  "modules/layouts/app-layout/components/Drawer": pending('interaction-only — desktop drawer primitive (needs open-state entry)'),
-  "modules/layouts/app-layout/components/HeaderBarContainer": via('rendered within the app-layout chrome'),
-  "modules/layouts/app-layout/components/LeftSidebar": via('rendered within the app-layout chrome'),
-  "modules/layouts/app-layout/components/SidebarHeaderSpacer": via('rendered within the app-layout chrome'),
-  "modules/layouts/app-layout/components/SidebarToggleButton": via('rendered within the app-layout chrome'),
-  "modules/llm-provider/components/ProviderGroupAssignmentCard": via('rendered within the llm-provider settings page'),
-  "modules/memory/pages/MemoryCombinedPage": page("modules/memory/pages/MemoryCombinedPage"),
-  "modules/remote-access/pages/RemoteAccessPage": page("modules/remote-access/pages/RemoteAccessPage"),
-  "modules/settings/SettingsPage": via('desktop settings layout shell (renders each settings page as an outlet)'),
-  "modules/tunnel-auth/MagicLinkPage": page("modules/tunnel-auth/MagicLinkPage"),
-  "modules/tunnel-auth/PhoneAuthPage": page("modules/tunnel-auth/PhoneAuthPage"),
-  "modules/updater/components/UpdateBanner": via('rendered as a slot banner in the app-layout'),
-  "modules/updater/pages/AboutPage": page("modules/updater/pages/AboutPage"),
+  "modules/auth/AuthGuard": { kind: 'nonvisual', reason: 'auth redirect guard' },
+  "modules/hardware/HardwareMonitorButton": { kind: 'via', reason: 'rendered in the app-layout header' },
+  "modules/host-mount/conversation-extension/components/ConversationMountsControl": { kind: 'pending', reason: 'overlay — needs an open-state entry' },
+  "modules/host-mount/pages/HostMountPolicyPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
+  "modules/host-mount/project-extension/components/ProjectMountsPanel": { kind: 'via', reason: 'rendered within the host-mount project extension panel' },
+  "modules/host-mount/project-extension/extension": { kind: 'nonvisual', reason: 'project-extension registration' },
+  "modules/layouts/app-layout/components/Drawer": { kind: 'pending', reason: 'overlay — desktop drawer primitive (needs open-state entry)' },
+  "modules/layouts/app-layout/components/HeaderBarContainer": { kind: 'via', reason: 'rendered within the app-layout chrome' },
+  "modules/layouts/app-layout/components/LeftSidebar": { kind: 'via', reason: 'rendered within the app-layout chrome' },
+  "modules/layouts/app-layout/components/SidebarHeaderSpacer": { kind: 'via', reason: 'rendered within the app-layout chrome' },
+  "modules/layouts/app-layout/components/SidebarToggleButton": { kind: 'via', reason: 'rendered within the app-layout chrome' },
+  "modules/llm-provider/components/ProviderGroupAssignmentCard": { kind: 'via', reason: 'rendered within the llm-provider settings page' },
+  "modules/memory/pages/MemoryCombinedPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
+  "modules/remote-access/pages/RemoteAccessPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
+  "modules/settings/SettingsPage": { kind: 'via', reason: 'desktop settings layout shell (outlet)' },
+  "modules/tunnel-auth/MagicLinkPage": { kind: 'flow', reason: 'magic-link auth flow' },
+  "modules/tunnel-auth/PhoneAuthPage": { kind: 'flow', reason: 'phone auth flow' },
+  "modules/updater/components/UpdateBanner": { kind: 'via', reason: 'slot banner in the app-layout' },
+  "modules/updater/pages/AboutPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>
 
 // ── Rollup counts (used by COVERAGE.md + the coverage report) ────────────────
 export function coverageSummary() {
-  const counts: Record<Coverage['kind'], number> = {
-    page: 0,
-    story: 0,
-    via: 0,
-    allow: 0,
-    pending: 0,
+  const counts = {} as Record<SurfaceKind, number>
+  for (const v of Object.values(GALLERY_COVERAGE) as Coverage[]) {
+    counts[v.kind] = (counts[v.kind] ?? 0) + 1
   }
-  for (const v of Object.values(GALLERY_COVERAGE) as Coverage[]) counts[v.kind]++
   const total = Object.keys(GALLERY_COVERAGE).length
-  const covered = total - counts.pending
+  const covered = total - (counts.pending ?? 0)
   return { total, covered, ...counts }
 }
