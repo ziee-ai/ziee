@@ -20,15 +20,20 @@ import { goToNewChatPage } from './helpers/chat-helpers'
  */
 
 async function seedServer(apiURL: string, token: string, display: string) {
+  // http transport: user-owned *stdio* servers now 422 (MCP_SANDBOX_DISABLED)
+  // when code_sandbox is off (as in E2E), because the MCP user policy
+  // force-sandboxes them. http has no sandbox requirement and the multi-server
+  // selection surface under test is transport-agnostic. ZIEE_DISABLE_MCP_HEALTH_CHECK=1
+  // (fixture) keeps the fake URL from being auto-disabled.
+  const slug = display.toLowerCase().replace(/\s+/g, '-')
   const res = await fetch(`${apiURL}/api/mcp/servers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
-      name: `${display.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+      name: `${slug}-${Date.now()}`,
       display_name: display,
-      transport_type: 'stdio',
-      command: 'node',
-      args: ['server.js'],
+      transport_type: 'http',
+      url: `https://${slug}.example.invalid/mcp`,
       enabled: true,
     }),
   })

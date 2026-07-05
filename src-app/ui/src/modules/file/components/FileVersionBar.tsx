@@ -41,7 +41,14 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
 
   if (versions.length <= 1) return null
 
-  const headVersion = file.version
+  // Derive the head from the freshly-loaded, authoritative versions list rather
+  // than `file.version`: the passed FileEntity can lag behind an out-of-band
+  // edit (an MCP `rewrite_file` / another device) whose new head this bar's
+  // version load already reflects. `is_head` is the source of truth; fall back
+  // to the highest version number, then to `file.version`.
+  const headVersion =
+    versions.find((v) => v.is_head)?.version ??
+    versions.reduce((max, v) => Math.max(max, v.version), file.version)
   const current = selectedVersion ?? headVersion
   const isViewingOld = current !== headVersion
 

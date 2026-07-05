@@ -28,7 +28,12 @@ test.describe('MCP Config Modal — server toggle', () => {
     await assignProviderToAdministratorsGroup(apiURL, token, providerId)
     await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
 
-    // Seed a user MCP server (stdio) so it shows in the modal's server list.
+    // Seed a user MCP server so it shows in the modal's server list. Use an
+    // http transport: the MCP user policy now force-sandboxes user-owned
+    // *stdio* servers, which 422s (MCP_SANDBOX_DISABLED) when code_sandbox is
+    // off (as it is in E2E). http has no sandbox requirement, and the per-server
+    // toggle under test is transport-agnostic. The fixture sets
+    // ZIEE_DISABLE_MCP_HEALTH_CHECK=1 so the fake URL isn't auto-disabled.
     const display = `E2E Toggle Srv ${Date.now()}`
     const res = await fetch(`${apiURL}/api/mcp/servers`, {
       method: 'POST',
@@ -36,9 +41,8 @@ test.describe('MCP Config Modal — server toggle', () => {
       body: JSON.stringify({
         name: `e2e-toggle-${Date.now()}`,
         display_name: display,
-        transport_type: 'stdio',
-        command: 'node',
-        args: ['server.js'],
+        transport_type: 'http',
+        url: 'https://e2e-toggle.example.invalid/mcp',
         enabled: true,
       }),
     })
