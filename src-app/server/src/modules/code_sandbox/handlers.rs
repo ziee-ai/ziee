@@ -510,12 +510,15 @@ pub struct SandboxFlavorsResponse {
 
 /// GET /code-sandbox/flavors — powers the MCP server form's flavor
 /// picker AND the MCP user-policy admin card. Returns KNOWN_FLAVORS
-/// + the host command allowlist. Permission is `McpServersAdminRead`
-/// because both UI surfaces this endpoint serves are admin-only MCP
-/// management pages (cross-module dep is acceptable because the
-/// endpoint exists specifically for those MCP surfaces).
+/// + the host command allowlist. Permission is
+/// `CodeSandboxEnvironmentsRead` because the flavor catalog is
+/// code-sandbox-owned data; the MCP surfaces that consume it read it
+/// with the same code-sandbox read permission the sandbox settings
+/// page uses.
 pub async fn get_sandbox_flavors_handler(
-    _auth: RequirePermissions<(crate::modules::mcp::permissions::McpServersAdminRead,)>,
+    _auth: RequirePermissions<(
+        crate::modules::code_sandbox::permissions::CodeSandboxEnvironmentsRead,
+    )>,
 ) -> crate::common::ApiResult<Json<SandboxFlavorsResponse>> {
     let env = build_environments_response();
     let resp = SandboxFlavorsResponse {
@@ -531,7 +534,9 @@ pub async fn get_sandbox_flavors_handler(
 pub fn get_sandbox_flavors_docs(
     op: aide::transform::TransformOperation,
 ) -> aide::transform::TransformOperation {
-    with_permission::<(crate::modules::mcp::permissions::McpServersAdminRead,)>(op)
+    with_permission::<(
+        crate::modules::code_sandbox::permissions::CodeSandboxEnvironmentsRead,
+    )>(op)
         .id("CodeSandbox.listFlavors")
         .tag("Code Sandbox")
         .summary("List selectable sandbox rootfs flavors + host command allowlist")
