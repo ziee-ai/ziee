@@ -925,8 +925,12 @@ Mutating handlers call `publish as sync_publish` with
 `src-app/ui/src/core/sync/` = `SyncClient.ts` (SSE loop + epoch-guarded
 reconnect), `connection.ts` (header holder), `types.ts`, `index.ts`. There is
 **no** `registry.ts`, **no** per-module `sync.ts`, and **no** `registerSync`.
-Each module's Zustand store subscribes DIRECTLY in its `__init__.__store__` to
-`sync:<entity>` (+ `sync:reconnect`) and refetches.
+Each module's Zustand store subscribes DIRECTLY to `sync:<entity>`
+(+ `sync:reconnect`) and refetches. The subscription lives in the store's
+`init(ctx)` (the `defineExtensionStore` / `store-kit` authoring model,
+`src-app/ui/src/core/store-kit.ts`) — or, in stores not yet migrated by the
+in-progress store-kit sweep, in the legacy `__init__.__store__` magic key that
+`init(ctx)` replaces.
 
 - The SyncClient re-emits each frame onto the existing EventBus as a
   per-entity `sync:<entity>` event; each store's `sync:<entity>` subscription
