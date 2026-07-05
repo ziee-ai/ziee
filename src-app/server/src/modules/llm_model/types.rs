@@ -33,6 +33,9 @@ pub struct CreateLlmModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub engine_settings: Option<ModelEngineSettings>,
     pub file_format: FileFormat,
+    /// Optional runtime version to pin this model to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_runtime_version_id: Option<Uuid>,
 }
 
 /// Request to update an existing LLM model
@@ -59,6 +62,9 @@ pub struct UpdateLlmModelRequest {
     pub engine_settings: Option<ModelEngineSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_format: Option<FileFormat>,
+    /// Optional runtime version to pin this model to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_runtime_version_id: Option<Uuid>,
 }
 
 // Default implementation for UpdateLlmModelRequest

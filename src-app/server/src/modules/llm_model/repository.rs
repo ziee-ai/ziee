@@ -377,8 +377,8 @@ pub async fn create_llm_model(
         .map(|s| serde_json::to_value(s).unwrap());
 
     let row = sqlx::query!(
-        r#"INSERT INTO llm_models (id, provider_id, name, display_name, description, enabled, capabilities, parameters, engine_type, engine_settings, file_format)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        r#"INSERT INTO llm_models (id, provider_id, name, display_name, description, enabled, capabilities, parameters, engine_type, engine_settings, file_format, required_runtime_version_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id, provider_id, name, display_name, description, enabled, is_deprecated, is_active,
                    capabilities, parameters,
                    created_at, updated_at, file_size_bytes, validation_status, validation_issues,
@@ -395,6 +395,7 @@ pub async fn create_llm_model(
         request.engine_type.as_str(),
         engine_settings_json,
         request.file_format.as_str(),
+        request.required_runtime_version_id,
     )
     .fetch_one(pool)
     .await?;
@@ -450,6 +451,7 @@ pub async fn update_llm_model(
         && request.engine_type.is_none()
         && request.engine_settings.is_none()
         && request.file_format.is_none()
+        && request.required_runtime_version_id.is_none()
     {
         return get_llm_model_by_id(pool, model_id).await;
     }
@@ -554,6 +556,16 @@ pub async fn update_llm_model(
         sqlx::query!(
             "UPDATE llm_models SET file_format = $1, updated_at = NOW() WHERE id = $2",
             file_format.as_str(),
+            model_id
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    if let Some(required_runtime_version_id) = request.required_runtime_version_id {
+        sqlx::query!(
+            "UPDATE llm_models SET required_runtime_version_id = $1, updated_at = NOW() WHERE id = $2",
+            required_runtime_version_id,
             model_id
         )
         .execute(&mut *tx)

@@ -274,6 +274,7 @@ async fn create_model_with_files(
         engine_type: request.engine_type.unwrap_or(EngineType::Mistralrs),
         engine_settings: request.engine_settings,
         file_format: request.file_format,
+        required_runtime_version_id: None,
     };
 
     // Preflight: explicit duplicate-name check.
