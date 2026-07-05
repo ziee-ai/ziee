@@ -30,6 +30,8 @@ export function AuditLogSection() {
       <div className="mb-4 flex flex-nowrap items-center gap-2">
         <Text className="whitespace-nowrap">Show last</Text>
         <InputNumber
+          // standalone list filter (row-count limit), not a settings form field.
+          data-standalone-control
           data-testid="memory-audit-limit-input"
           min={1}
           max={500}

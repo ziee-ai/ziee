@@ -6,41 +6,58 @@
  * whether read-write mounts are permitted. Gated by `host_mount::manage`.
  */
 
-import { useEffect, useState } from 'react'
-import { Button, Card, MultiSelect, Switch, Paragraph, Text, message } from '@/components/ui'
+import { useEffect } from 'react'
+import {
+  Card,
+  Form,
+  FormField,
+  MultiSelect,
+  Switch,
+  message,
+  useForm,
+} from '@/components/ui'
 
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Stores } from '@/core/stores'
+
+type FormValues = {
+  enabled: boolean
+  allow_readwrite: boolean
+  allowed_prefixes: string[]
+}
 
 export function HostMountPolicyPage() {
   const { policy, loading, saving } = Stores.HostMountPolicy
 
-  const [enabled, setEnabled] = useState(true)
-  const [allowReadwrite, setAllowReadwrite] = useState(false)
-  const [prefixes, setPrefixes] = useState<string[]>([])
+  const form = useForm<FormValues>({
+    defaultValues: {
+      enabled: true,
+      allow_readwrite: false,
+      allowed_prefixes: [],
+    },
+  })
 
-  // Mirror the loaded policy into the editable form.
+  // Re-seed from the loaded policy only when the form has no unsaved edits
+  // (mirrors the WebSearchGlobalSection re-seed guard).
   useEffect(() => {
-    if (policy) {
-      setEnabled(policy.enabled)
-      setAllowReadwrite(policy.allow_readwrite)
-      setPrefixes(policy.allowed_prefixes ?? [])
+    if (policy && !form.formState.isDirty) {
+      form.reset({
+        enabled: policy.enabled,
+        allow_readwrite: policy.allow_readwrite,
+        allowed_prefixes: policy.allowed_prefixes ?? [],
+      })
     }
-  }, [policy])
+  }, [policy, form])
 
-  const dirty =
-    !!policy &&
-    (enabled !== policy.enabled ||
-      allowReadwrite !== policy.allow_readwrite ||
-      JSON.stringify(prefixes) !== JSON.stringify(policy.allowed_prefixes ?? []))
-
-  const save = async () => {
+  const onSubmit = async (v: FormValues) => {
     try {
       await Stores.HostMountPolicy.updatePolicy({
-        enabled,
-        allow_readwrite: allowReadwrite,
-        allowed_prefixes: prefixes,
+        enabled: v.enabled,
+        allow_readwrite: v.allow_readwrite,
+        allowed_prefixes: v.allowed_prefixes,
       })
+      form.reset(v) // saved → allow the next store update to re-seed
       message.success('Saved host-mount policy')
     } catch {
       message.error('Failed to save host-mount policy')
@@ -52,57 +69,69 @@ export function HostMountPolicyPage() {
       title="Host Mount Policy"
       subtitle="Control whether folders from this machine can be mounted into the code sandbox, and which paths are allowed."
     >
-      <Card loading={loading && !policy} className="mb-4" data-test-section="host-mount-policy" data-testid="desktop-hostmount-policy-card">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Text strong>Allow host-folder mounting</Text>
-              <Paragraph type="secondary" className="!mb-0">
-                When off, no host folders are mounted into the sandbox on any
-                project or conversation.
-              </Paragraph>
-            </div>
-            <Switch checked={enabled} onChange={setEnabled} aria-label="Allow host-folder mounting" data-testid="desktop-hostmount-policy-enabled-switch" />
-          </div>
+      <Card
+        loading={loading && !policy}
+        data-test-section="host-mount-policy"
+        data-testid="desktop-hostmount-policy-card"
+        footer={
+          <SettingsFormActions
+            onSave={form.handleSubmit(onSubmit)}
+            onCancel={() => form.reset()}
+            saving={saving}
+            saveDisabled={!form.formState.isDirty}
+            saveTestid="desktop-hostmount-policy-save-btn"
+            cancelTestid="desktop-hostmount-policy-cancel-btn"
+          />
+        }
+      >
+        <Form
+          data-testid="desktop-hostmount-policy-form"
+          form={form}
+          layout="horizontal"
+          onSubmit={onSubmit}
+        >
+          <FormField
+            name="enabled"
+            label="Allow host-folder mounting"
+            valuePropName="checked"
+            description="When off, no host folders are mounted into the sandbox on any project or conversation."
+          >
+            <Switch
+              aria-label="Allow host-folder mounting"
+              data-testid="desktop-hostmount-policy-enabled-switch"
+            />
+          </FormField>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Text strong>Allow read-write mounts</Text>
-              <Paragraph type="secondary" className="!mb-0">
-                Off by default — mounts are read-only. Enabling this lets the
-                sandbox modify the real files in mounted folders.
-              </Paragraph>
-            </div>
-            <Switch checked={allowReadwrite} onChange={setAllowReadwrite} aria-label="Allow read-write mounts" data-testid="desktop-hostmount-policy-readwrite-switch" />
-          </div>
+          <FormField
+            name="allow_readwrite"
+            label="Allow read-write mounts"
+            valuePropName="checked"
+            description="Off by default — mounts are read-only. Enabling this lets the sandbox modify the real files in mounted folders."
+          >
+            <Switch
+              aria-label="Allow read-write mounts"
+              data-testid="desktop-hostmount-policy-readwrite-switch"
+            />
+          </FormField>
 
-          <div>
-            <Text strong>Allowed path prefixes</Text>
-            <Paragraph type="secondary" className="!mb-2">
-              A folder is only mountable if its path starts with one of these.
-              Leave empty to allow any path (typical for a single-user desktop).
-            </Paragraph>
+          <FormField
+            name="allowed_prefixes"
+            label="Allowed path prefixes"
+            description="A folder is only mountable if its path starts with one of these. Leave empty to allow any path (typical for a single-user desktop)."
+          >
             <MultiSelect
               options={[]}
               allowCreate
               tokenSeparators={[',']}
-              value={prefixes}
-              onChange={setPrefixes}
               placeholder="/Users/me/data"
               searchPlaceholder="Type a path prefix"
               emptyText="No prefixes added"
-              removeLabel={(label) => `Remove ${label}`}
+              removeLabel={label => `Remove ${label}`}
               aria-label="Allowed path prefixes"
               data-testid="desktop-hostmount-policy-prefixes-select"
             />
-          </div>
-
-          <div className="flex justify-end">
-            <Button onClick={save} loading={saving} disabled={!dirty} data-testid="desktop-hostmount-policy-save-btn">
-              Save
-            </Button>
-          </div>
-        </div>
+          </FormField>
+        </Form>
       </Card>
     </SettingsPageContainer>
   )

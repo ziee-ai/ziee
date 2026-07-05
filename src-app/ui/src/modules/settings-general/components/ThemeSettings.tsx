@@ -1,5 +1,12 @@
 import { Check } from 'lucide-react'
-import { Button, Card, Flex, Select, Text } from '@/components/ui'
+import { Button, Card, Select } from '@/components/ui'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldTitle,
+} from '@/components/ui/shadcn/field'
 import { Stores } from '@/core/stores'
 import type { ThemePreference } from '@/modules/config-client/ConfigClient.store'
 import {
@@ -18,46 +25,40 @@ export function ThemeSettings() {
 
   return (
     <Card title="Appearance" data-testid="settingsgen-appearance-card">
-      <Flex vertical gap="middle" className="min-w-0">
-        <Flex justify="between" align="start" wrap gap="small" className="min-w-0">
-          <div className="flex-1 min-w-80">
-            <Text strong>Theme</Text>
-            <div>
-              <Text type="secondary">
-                Choose your preferred theme or match the OS theme.
-              </Text>
-            </div>
-          </div>
-          <div className="flex-shrink-0">
-            <Select
-              data-testid="settingsgen-theme-select"
-              aria-label="Theme"
-              className="min-w-[120px]"
-              value={themePreference}
-              onChange={handleChange}
-              options={[
-                { value: 'light', label: 'Light' },
-                { value: 'dark', label: 'Dark' },
-                { value: 'system', label: 'System' },
-              ]}
-            />
-          </div>
-        </Flex>
+      {/* Instant-apply settings (no form state) → the shadcn Field row API:
+          label + description on the left, the control on the right. FieldGroup
+          supplies the uniform inter-row gap. */}
+      <FieldGroup>
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle>Theme</FieldTitle>
+            <FieldDescription>
+              Choose your preferred theme or match the OS theme.
+            </FieldDescription>
+          </FieldContent>
+          <Select
+            data-testid="settingsgen-theme-select"
+            aria-label="Theme"
+            className="min-w-[120px]"
+            value={themePreference}
+            onChange={handleChange}
+            options={[
+              { value: 'light', label: 'Light' },
+              { value: 'dark', label: 'Dark' },
+              { value: 'system', label: 'System' },
+            ]}
+          />
+        </Field>
 
-        <Flex justify="between" align="start" wrap gap="small" className="min-w-0">
-          <div className="flex-1 min-w-80">
-            <Text strong>Accent color</Text>
-            <div>
-              <Text type="secondary">
-                Used for buttons, links, focus rings, and selected items.
-              </Text>
-            </div>
-          </div>
-          <Flex
-            gap="small"
-            wrap
-            align="center"
-            className="flex-shrink-0"
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle>Accent color</FieldTitle>
+            <FieldDescription>
+              Used for buttons, links, focus rings, and selected items.
+            </FieldDescription>
+          </FieldContent>
+          <div
+            className="flex flex-wrap gap-2 items-center"
             data-testid="settingsgen-accent-picker"
           >
             {ACCENT_ORDER.map(id => {
@@ -70,23 +71,28 @@ export function ThemeSettings() {
                   variant="ghost"
                   aria-label={`${def.label} accent`}
                   data-testid={`settingsgen-accent-${id}`}
-                  onClick={() => Stores.ConfigClient.setAccentPreset(id as AccentPreset)}
+                  onClick={() =>
+                    Stores.ConfigClient.setAccentPreset(id as AccentPreset)
+                  }
                   // genuinely-dynamic: the swatch shows the preset's own color.
                   data-allow-custom-color
                   style={{ backgroundColor: `hsl(${def.light.primary})` }}
                   className={cn(
                     // inline bg wins over ghost's hover bg, so signal hover via scale instead.
                     'size-7 rounded-full border border-border/40 transition-transform hover:scale-110',
-                    selected && 'ring-2 ring-offset-2 ring-offset-background ring-foreground',
+                    selected &&
+                      'ring-2 ring-offset-2 ring-offset-background ring-foreground',
                   )}
                 >
-                  {selected && <Check className="size-4 text-white" aria-hidden />}
+                  {selected && (
+                    <Check className="size-4 text-white" aria-hidden />
+                  )}
                 </Button>
               )
             })}
-          </Flex>
-        </Flex>
-      </Flex>
+          </div>
+        </Field>
+      </FieldGroup>
     </Card>
   )
 }

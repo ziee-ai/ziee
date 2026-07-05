@@ -49,9 +49,10 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
-    "check": "tsc && npm run lint:guardrails && npm run lint:colors",
+    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run lint:settings-field",
     "lint:guardrails": "biome lint --only=style/noRestrictedImports src",
     "lint:colors": "node ../../ui/scripts/lint-hardcoded-colors.mjs",
+    "lint:settings-field": "node ../../ui/scripts/lint-settings-field.mjs",
     "dev": "vite",
     "format": "biome format --write ./src",
     "format:check": "biome check ./src",

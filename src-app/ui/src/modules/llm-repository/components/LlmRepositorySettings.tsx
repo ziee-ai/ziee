@@ -138,6 +138,8 @@ export function LlmRepositorySettings() {
       actions.push(
         <Switch
           key="enable"
+          // standalone list-row enable toggle, not a settings form field.
+          data-standalone-control
           data-testid={`llmrepo-toggle-${repository.id}`}
           className="!mr-2"
           checked={repository.enabled}
