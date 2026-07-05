@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react'
-import { Button, Empty, List, Confirm, Space, Tag, Text, Link } from '@/components/ui'
+import { Button, Empty, List, Confirm, Space, Tag, Text, Link, message } from '@/components/ui'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Permissions } from '@/api-client/types'
@@ -52,7 +52,10 @@ export function WorkflowRunsList({
   const handleDelete = async (runId: string) => {
     try {
       await Stores.WorkflowRuns.deleteRun(runId, workflowId)
-    } catch (e) {
+    } catch {
+      // The store re-throws on failure (the row is only removed after the API
+      // succeeds, so there is nothing to roll back) — surface the failure.
+      message.error('Failed to delete run')
     }
   }
 
@@ -67,7 +70,7 @@ export function WorkflowRunsList({
       data-testid="wf-runs-list"
       rowKey={run => run.id}
       size="sm"
-      loading={!!loading[workflowId] && items.length === 0}
+      loading={!!loading[workflowId]}
       dataSource={items}
       renderItem={(run) => (
         <div
