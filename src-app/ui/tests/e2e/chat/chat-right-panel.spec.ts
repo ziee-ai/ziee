@@ -21,6 +21,7 @@ import {
   closePanelTab,
   closeEntirePanel,
   panelButton,
+  panelViewToggle,
 } from './helpers/file-panel-helpers'
 
 /**
@@ -281,8 +282,8 @@ test.describe('Chat - Right Panel + File Viewers', () => {
       ).toBeVisible()
 
       // Header toggle buttons present (file has text_page_count > 0).
-      await expect(panelButton(page, 'Rendered view')).toBeVisible()
-      const rawBtn = panelButton(page, 'Raw view')
+      await expect(panelViewToggle(page, 'rendered')).toBeVisible()
+      const rawBtn = panelViewToggle(page, 'raw')
       await expect(rawBtn).toBeVisible()
 
       // Switch to raw — the source markdown characters appear as plain text
@@ -345,7 +346,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
 
     // Switching to raw replaces the table with RawCodeView showing the
     // original comma-delimited source.
-    await panelButton(page, 'Raw view').click()
+    await panelViewToggle(page, 'raw').click()
     await expect(panelBody.locator('[data-testid="raw-code-view"]')).toBeVisible({ timeout: 5000 })
     await expect(panelBody.getByText('name,age,city', { exact: false })).toBeVisible()
   })
@@ -373,8 +374,8 @@ test.describe('Chat - Right Panel + File Viewers', () => {
 
       // Plain text has no rendered/compiled form so the header does NOT
       // include a Rendered/Raw toggle — just Copy + Download.
-      await expect(panelButton(page, 'Rendered view')).toHaveCount(0)
-      await expect(panelButton(page, 'Raw view')).toHaveCount(0)
+      await expect(panelViewToggle(page, 'rendered')).toHaveCount(0)
+      await expect(panelViewToggle(page, 'raw')).toHaveCount(0)
       await expect(panelButton(page, 'Copy')).toBeVisible()
       await expect(panelButton(page, 'Download')).toBeVisible()
 
@@ -426,8 +427,8 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     // Header chrome contract for ImageHeader: Download only.
     await expect(panelButton(page, 'Download')).toBeVisible()
     await expect(panelButton(page, 'Copy')).toHaveCount(0)
-    await expect(panelButton(page, 'Rendered view')).toHaveCount(0)
-    await expect(panelButton(page, 'Raw view')).toHaveCount(0)
+    await expect(panelViewToggle(page, 'rendered')).toHaveCount(0)
+    await expect(panelViewToggle(page, 'raw')).toHaveCount(0)
   })
 
   test('viewer: PDF renders preview pages; header has Download only', async ({
@@ -457,8 +458,8 @@ test.describe('Chat - Right Panel + File Viewers', () => {
 
     await expect(panelButton(page, 'Download')).toBeVisible()
     await expect(panelButton(page, 'Copy')).toHaveCount(0)
-    await expect(panelButton(page, 'Rendered view')).toHaveCount(0)
-    await expect(panelButton(page, 'Raw view')).toHaveCount(0)
+    await expect(panelViewToggle(page, 'rendered')).toHaveCount(0)
+    await expect(panelViewToggle(page, 'raw')).toHaveCount(0)
   })
 
   test('viewer: XLSX renders a sheet table; header has Download only', async ({
@@ -499,8 +500,8 @@ test.describe('Chat - Right Panel + File Viewers', () => {
 
     await expect(panelButton(page, 'Download')).toBeVisible()
     await expect(panelButton(page, 'Copy')).toHaveCount(0)
-    await expect(panelButton(page, 'Rendered view')).toHaveCount(0)
-    await expect(panelButton(page, 'Raw view')).toHaveCount(0)
+    await expect(panelViewToggle(page, 'rendered')).toHaveCount(0)
+    await expect(panelViewToggle(page, 'raw')).toHaveCount(0)
   })
 
   test('viewer: HTML renders inside an iframe; raw toggle switches to source', async ({
@@ -524,7 +525,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     ).toBeVisible({ timeout: 10000 })
 
     // Toggle to raw — iframe goes away, RawCodeView with HTML source appears.
-    await panelButton(page, 'Raw view').click()
+    await panelViewToggle(page, 'raw').click()
     await expect(panelBody.locator('[data-testid="raw-code-view"]')).toBeVisible({ timeout: 5000 })
     await expect(panelBody.locator('iframe')).toHaveCount(0)
     await expect(panelBody.getByText('<!DOCTYPE html>', { exact: false })).toBeVisible()
@@ -575,8 +576,8 @@ test.describe('Chat - Right Panel + File Viewers', () => {
 
     // No Eye/Code toggle buttons in the chrome — RawToggle was hidden
     // because text_page_count === 0 for image files.
-    await expect(panelButton(page, 'Rendered view')).toHaveCount(0)
-    await expect(panelButton(page, 'Raw view')).toHaveCount(0)
+    await expect(panelViewToggle(page, 'rendered')).toHaveCount(0)
+    await expect(panelViewToggle(page, 'raw')).toHaveCount(0)
   })
 
   test('safety-net: panel tabs persist across page reload (linchpin of snapshot/rehydrate)', async ({

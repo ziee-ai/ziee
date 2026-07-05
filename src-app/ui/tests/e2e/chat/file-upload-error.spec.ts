@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToNewChatPage } from './helpers/chat-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — file upload ERROR + CANCEL through the chat composer (File.store
@@ -33,7 +34,7 @@ test.describe('Chat — file upload error + cancel', () => {
     await goToNewChatPage(page, baseURL)
 
     // Attach a file via the composer "+" menu → native file chooser.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
+    await byTestId(page, 'chat-input-add-btn').click()
     const [fileChooser] = await Promise.all([
       page.waitForEvent('filechooser'),
       page.getByText('Attach files or photos').click(),
@@ -44,16 +45,18 @@ test.describe('Chat — file upload error + cancel', () => {
       buffer: Buffer.from('content that will fail to upload'),
     })
 
-    // The upload fails → the error FileCard renders (ERROR badge).
-    const errorCard = page
-      .locator('[data-testid="file-card-uploading"]')
-      .filter({ hasText: 'ERROR' })
+    // The upload fails → the errored FileCard renders. The composer uses the
+    // square FileCard variant, whose error state carries no "ERROR" text — the
+    // kit <Attachment> marks the error with data-state="error" instead.
+    const errorCard = page.locator(
+      '[data-testid="file-card-uploading"][data-state="error"][data-filename="broken-upload.txt"]',
+    )
     await expect(errorCard.first()).toBeVisible({ timeout: 30000 })
 
     // Cancel/remove the errored upload → the card disappears.
-    await errorCard.first().getByRole('button').last().click()
+    await errorCard.first().getByTestId('file-card-cancel-btn').click()
     await expect(
-      page.locator('[data-testid="file-card-uploading"]').filter({ hasText: 'ERROR' }),
+      page.locator('[data-testid="file-card-uploading"][data-state="error"]'),
     ).toHaveCount(0, { timeout: 10000 })
   })
 })

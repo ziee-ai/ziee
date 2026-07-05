@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { byTestId } from '../testid'
 import { loginAsAdmin } from '../../common/auth-helpers'
@@ -17,6 +18,33 @@ import {
   mockUserMessage,
   mockAssistantElicitationMessage,
 } from '../helpers/sse-mock-helpers'
+
+/**
+ * The elicitation date / date-time field is the kit <DatePicker> — a Button that
+ * opens a Popover-hosted react-day-picker calendar, NOT a fillable text input
+ * (so `.fill()` throws "not an <input>"). Pick a date by opening the calendar,
+ * navigating from the currently-shown month (today) to the target month via the
+ * prev/next nav buttons, then clicking the day cell (each carries
+ * data-day="M/D/YYYY" in the en-US test locale).
+ */
+async function pickDateViaCalendar(
+  page: Page,
+  fieldTestId: string,
+  year: number,
+  month: number, // 1-12
+  day: number,
+) {
+  await page.locator(`[data-testid="${fieldTestId}"]`).first().click()
+  const popover = page.locator('[data-slot="popover-content"]')
+  await expect(popover).toBeVisible({ timeout: 5000 })
+  const now = new Date()
+  const delta = (year - now.getFullYear()) * 12 + (month - 1 - now.getMonth())
+  const navName = delta < 0 ? /previous month/i : /next month/i
+  for (let i = 0; i < Math.abs(delta); i++) {
+    await popover.getByRole('button', { name: navName }).click()
+  }
+  await popover.locator(`[data-day="${month}/${day}/${year}"]`).click()
+}
 
 /**
  * Elicitation form submit roundtrip — end-to-end UI flow:
@@ -94,10 +122,7 @@ test.describe('Elicitation form — submit / decline / cancel roundtrip', () => 
       properties: { day: { type: 'string', format: 'date', title: 'Day' } },
     })
 
-    const picker = page.locator('[data-testid="elicitation-field-day"]').first()
-    await picker.fill('2026-05-19')
-    await page.keyboard.press('Enter')
-    await page.waitForTimeout(300)
+    await pickDateViaCalendar(page, 'elicitation-field-day', 2026, 5, 19)
 
     await page.locator('[data-testid="elicitation-submit"]').first().click()
     await expect(
@@ -118,10 +143,7 @@ test.describe('Elicitation form — submit / decline / cancel roundtrip', () => 
       properties: { when: { type: 'string', format: 'date-time', title: 'When' } },
     })
 
-    const picker = page.locator('[data-testid="elicitation-field-when"]').first()
-    await picker.fill('2026-05-19 14:30:00')
-    await page.keyboard.press('Enter')
-    await page.waitForTimeout(300)
+    await pickDateViaCalendar(page, 'elicitation-field-when', 2026, 5, 19)
 
     await page.locator('[data-testid="elicitation-submit"]').first().click()
     await expect(
@@ -129,8 +151,14 @@ test.describe('Elicitation form — submit / decline / cancel roundtrip', () => 
     ).toBeVisible({ timeout: 5000 })
 
     const body = capture.responses()[0].body as { content?: Record<string, string> }
-    // Full ISO 8601: 2026-05-19T14:30:00.000Z (or with offset — assert ISO-shape)
-    expect(body.content?.when).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/)
+    // ISO-8601 shape. The kit DatePicker is date-only (no time picker), so the
+    // date-time field emits `yyyy-MM-dd'T'HH:mm:ss` with the time at T00:00:00
+    // and NO timezone suffix (a documented limitation — see the FLAG in
+    // ElicitationFormContent). Assert the ISO shape with an OPTIONAL zone.
+    expect(body.content?.when).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/,
+    )
+    expect(body.content?.when).toContain('2026-05-19T00:00:00')
   })
 
   test('accept card displays submitted values', async ({ page, testInfra }) => {

@@ -90,11 +90,15 @@ export const FileVersions = defineStore('FileVersions', {
               s.versionTextLoadingSet = ls
             })
             try {
-              const blob = await ApiClient.File.textVersion({
+              const res = await ApiClient.File.textVersion({
                 file_id: fileId,
                 version: String(version),
               })
-              const text = await blob.text()
+              // The api-client returns a string for text/* responses (the
+              // typed `Blob` is nominal); guard like File.store's text loaders
+              // so calling `.text()` on a plain string doesn't throw.
+              const text =
+                typeof res === 'string' ? res : await (res as Blob).text()
               set(s => {
                 const m = new Map(s.versionTextCache)
                 m.set(key, text)

@@ -150,6 +150,14 @@ function VirtualTable<T>({
     [],
   )
 
+  // OverlayScrollbars creates its viewport in a mount effect, which can land
+  // AFTER the virtualizer's mount-time observer read `getScrollElement()` (→
+  // null). Without a subsequent render, react-virtual never re-attaches to the
+  // now-ready viewport and renders ZERO rows (empty tbody with only a computed
+  // height). Flip a state flag once OverlayScrollbars initializes to force one
+  // re-render; the virtualizer then re-reads the scroll element and renders.
+  const [, setScrollReady] = React.useState(false)
+
   const keyOf = (record: T, i: number) =>
     typeof rowKey === 'function' ? rowKey(record, i) : String((record as Record<string, unknown>)[rowKey])
 
@@ -167,6 +175,7 @@ function VirtualTable<T>({
       ref={osRef}
       axis="both"
       autoHide="leave"
+      events={{ initialized: () => setScrollReady(true) }}
       style={{ maxHeight }}
       className="w-full rounded-md border border-border bg-background"
     >

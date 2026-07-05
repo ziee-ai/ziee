@@ -1,6 +1,7 @@
 import { Page, expect } from '@playwright/test'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { byTestId } from '../../testid'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -56,10 +57,11 @@ export const FILE_ASSETS = {
 export async function attachFileViaUI(page: Page, absoluteFilePath: string): Promise<void> {
   const filename = path.basename(absoluteFilePath)
 
-  // The + dropdown contains the "Attach files or photos" menu item, which
-  // wraps an AntD <Upload> component. Clicking it triggers the native file
-  // chooser; we capture it via Playwright's fileChooser event.
-  await page.getByRole('button', { name: 'Add attachment' }).click()
+  // The + dropdown ("Add tools & files", data-testid chat-input-add-btn)
+  // contains the "Attach files or photos" menu item, which wraps an <Upload>
+  // component. Clicking it triggers the native file chooser; we capture it via
+  // Playwright's fileChooser event.
+  await byTestId(page, 'chat-input-add-btn').click()
   const [fileChooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     page.getByText('Attach files or photos').click(),
@@ -179,4 +181,16 @@ export async function closeEntirePanel(page: Page): Promise<void> {
  */
 export function panelButton(page: Page, name: string) {
   return page.locator('[data-testid="chat-right-panel"]').getByRole('button', { name })
+}
+
+/**
+ * The rendered/raw view toggle is a kit <Segmented> (base-ui Tabs), NOT two
+ * separate buttons anymore — each option is a Tabs trigger whose label span
+ * carries data-testid `file-viewer-rendered-btn` / `file-viewer-raw-btn`.
+ * Returns the option locator scoped to the right panel; works for both
+ * visibility/count assertions and `.click()` (the click bubbles to the trigger).
+ */
+export function panelViewToggle(page: Page, mode: 'rendered' | 'raw') {
+  const id = mode === 'rendered' ? 'file-viewer-rendered-btn' : 'file-viewer-raw-btn'
+  return page.locator(`[data-testid="chat-right-panel"] [data-testid="${id}"]`)
 }

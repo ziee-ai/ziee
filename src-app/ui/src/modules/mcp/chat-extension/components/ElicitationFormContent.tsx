@@ -125,13 +125,15 @@ function buildFieldZodSchema(fieldSchema: FieldSchema, required: boolean): z.Zod
       s = s.min(fieldSchema.minItems, `Select at least ${fieldSchema.minItems} item(s)`)
     if (fieldSchema.maxItems != null)
       s = s.max(fieldSchema.maxItems, `Select at most ${fieldSchema.maxItems} item(s)`)
-    schema = required ? s.min(1, `${label} is required`) : s.optional()
+    schema = required
+      ? z.preprocess((v) => v ?? [], s.min(1, `${label} is required`))
+      : s.optional()
     return schema
   }
 
   if (isSelectField) {
     schema = required
-      ? z.string().min(1, `${label} is required`)
+      ? z.preprocess((v) => v ?? '', z.string().min(1, `${label} is required`))
       : z.string().optional()
     return schema
   }
@@ -166,7 +168,14 @@ function buildFieldZodSchema(fieldSchema: FieldSchema, required: boolean): z.Zod
   if (fieldSchema.format === 'email') s = s.email('Enter a valid email address')
   if (fieldSchema.format === 'uri') s = s.url('Enter a valid URL')
 
-  schema = required ? s.min(1, `${label} is required`) : s.optional()
+  // A required field left untouched holds `undefined` (its default), which would
+  // otherwise fail with zod's raw type error ("expected string, received
+  // undefined") instead of the intended "<label> is required". Coerce nullish →
+  // '' first so `min(1)` produces the friendly required message. Only applied to
+  // required fields, so a successful (non-empty) submit is unaffected.
+  schema = required
+    ? z.preprocess((v) => v ?? '', s.min(1, `${label} is required`))
+    : s.optional()
   return schema
 }
 
