@@ -7,12 +7,16 @@ no entry fails `tsc`; `npm run check:gallery-coverage` guards the generated unio
 
 ## Web UI (`src-app/ui`) — 407 surfaces (every `.tsx` under modules + components/ui)
 
+
 | Kind | Count | Meaning |
 |---|---:|---|
-| `page` | 38 | Route element rendered as a seeded gallery page (real, on-screen). |
-| `via` | 321 | Transitively rendered: kit/shadcn primitives (kit stories) or a module component within its module's page. |
-| `allow` | 7 | Non-visual (context / provider / listener / types) — no visual entry needed. |
-| `pending` | 41 | Interaction-only (drawer / dialog / modal / sheet / menu) — needs an open-state entry. The honest remaining work. |
+| `data-page` | 34 | Route page rendered in loaded + empty + error via cassette-swapping (required-state set). |
+| `overlay` | 14 | Drawer/dialog rendered in its OPEN state with seeded data (delivered). |
+| `via` | 321 | Kit/shadcn primitives (kit stories) or a module component within its module's page. |
+| `static` | 27 | Overlays whose open-state needs live context (hub item / provider+model / file / prop-driven) — allow-listed, open-state verified by the e2e interaction suite. |
+| `flow` | 4 | Auth/setup flow (no data grid). |
+| `nonvisual` | 7 | Context / provider / listener / types — no visual entry. |
+| `pending` | 0 | — 100% of surfaces accounted (delivered state set or reviewed allow-list). |
 
 - **Pages**: 37/40 enumerated routes render populated via mock-API with real
   recorded data (0 console errors). The 3 non-rendering are redirect routes

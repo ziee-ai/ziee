@@ -16,12 +16,14 @@ import { Text, Title } from '@/components/ui'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { Loading } from '@/core/components/Loading'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import { Suspense, useEffect } from 'react'
 import { useRoutesStore } from '@/modules/router/stores'
 import type { RouteConfig } from '@/modules/router/types'
 import {
   firstEnabledRemoteProviderId,
   llmProvidersList,
 } from './fixtures/llm-providers'
+import { type OverlayEntry, overlayBySlug } from './overlays'
 
 export const pageTestId = (id: string) => `gallery-page-${id}`
 
@@ -165,13 +167,48 @@ function PageFrame({
   )
 }
 
+/** Renders an overlay in its OPEN state: fires the store open action on mount,
+ *  then renders the component (which portals its Sheet/Dialog to the body). */
+function OverlayFrame({ entry }: { entry: OverlayEntry }) {
+  useEffect(() => {
+    entry.open()
+  }, [entry])
+  const Component = entry.component
+  return (
+    <section
+      data-testid={pageTestId(entry.slug)}
+      data-gallery-state="open"
+      className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-background"
+    >
+      <div className="flex flex-col gap-1">
+        <Title level={3}>
+          {entry.title}
+          <Text tone="muted" className="ml-2 text-sm">
+            · open
+          </Text>
+        </Title>
+        <Text tone="muted" className="text-sm">
+          gallery-page-{entry.slug} · overlay open-state
+        </Text>
+      </div>
+      <AppErrorBoundary label={`overlay-${entry.slug}`} fallback={() => null}>
+        <Suspense fallback={<Loading />}>
+          <Component />
+        </Suspense>
+      </AppErrorBoundary>
+    </section>
+  )
+}
+
 /**
  * Render pages. With no `only`, browses every enumerated page (loaded). With
- * `only=<slug>`, renders just that surface in the given `state` (the data-state
- * mode is set globally at bootstrap) — the per-combo screenshot target.
+ * `only=<slug>`, renders just that surface in the given `state` — a page in a
+ * data-state, or an overlay (`overlay-*` slug) in its open state.
  */
 export function GalleryPages({ only, state }: { only?: string; state?: string }) {
   const pages = useResolvedPages()
+  const overlay = only ? overlayBySlug(only) : undefined
+  if (overlay) return <OverlayFrame entry={overlay} />
   const shown = only ? pages.filter(p => p.id === only) : pages
   return (
     <>
