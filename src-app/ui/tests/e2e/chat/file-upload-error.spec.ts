@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { goToNewChatPage } from './helpers/chat-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — file upload ERROR + CANCEL through the chat composer (File.store
@@ -33,7 +34,7 @@ test.describe('Chat — file upload error + cancel', () => {
     await goToNewChatPage(page, baseURL)
 
     // Attach a file via the composer "+" menu → native file chooser.
-    await page.getByRole('button', { name: 'Add attachment' }).click()
+    await byTestId(page, 'chat-input-add-btn').click()
     const [fileChooser] = await Promise.all([
       page.waitForEvent('filechooser'),
       page.getByText('Attach files or photos').click(),

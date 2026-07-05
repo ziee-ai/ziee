@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import { byTestId } from '../testid'
 
 /**
  * E2E — the chat composer "+" dropdown menu (ChatInput.tsx toolbar_plus_items
@@ -32,7 +33,7 @@ test.describe('Chat — composer "+" dropdown', () => {
     await page.waitForSelector('textarea[placeholder*="Type your message"]', { timeout: 30000 })
 
     // Open the "+" dropdown.
-    await page.getByRole('button', { name: 'Add attachment' }).first().click()
+    await byTestId(page, 'chat-input-add-btn').first().click()
 
     // All three extension menu items render.
     await expect(page.getByText('Attach files or photos')).toBeVisible({ timeout: 10000 })
