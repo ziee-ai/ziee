@@ -581,13 +581,6 @@ impl McpRepository {
     }
 
     // Group assignment operations
-    // Superseded at the handler layer by get_system_servers_for_group; kept as
-    // the raw group→servers query. Narrow allow (was module blanket).
-    #[allow(dead_code)]
-    pub async fn get_group_mcp_servers(&self, group_id: Uuid) -> Result<Vec<Uuid>, AppError> {
-        get_group_mcp_servers(&self.pool, group_id).await
-    }
-
     pub async fn get_system_servers_for_group(
         &self,
         group_id: Uuid,
@@ -601,15 +594,6 @@ impl McpRepository {
 
     pub async fn remove_from_group(&self, server_id: Uuid, group_id: Uuid) -> Result<(), AppError> {
         remove_mcp_server_from_group(&self.pool, server_id, group_id).await
-    }
-
-    #[allow(dead_code)] // bulk group→servers setter; not currently routed (see above)
-    pub async fn set_group_servers(
-        &self,
-        group_id: Uuid,
-        server_ids: Vec<Uuid>,
-    ) -> Result<(), AppError> {
-        set_group_mcp_servers(&self.pool, group_id, server_ids).await
     }
 
     pub async fn get_server_groups(&self, server_id: Uuid) -> Result<Vec<Uuid>, AppError> {
@@ -1677,13 +1661,15 @@ pub async fn list_system_mcp_servers(
         FROM mcp_servers
         WHERE is_system = true
           -- Hide the built-ins configured elsewhere (files, memory, elicitation,
-          -- web_search, tool_result, lit_search, citations): they have no editable
-          -- surface on this page (web_search/lit_search use their own settings
-          -- pages; citations is per-user, configured on Settings → Citations), so
-          -- they never appear here. Excluding them in SQL (not client-side) also
-          -- keeps the pagination total/label honest. The other built-ins
+          -- web_search, tool_result, lit_search, citations, skill_mcp,
+          -- workflow_mcp): they have no editable surface on this page
+          -- (web_search/lit_search use their own settings pages; citations is
+          -- per-user, configured on Settings → Citations; skill_mcp/workflow_mcp
+          -- are zero-config loopback built-ins), so they never appear here.
+          -- Excluding them in SQL (not client-side) also keeps the pagination
+          -- total/label honest. The other built-ins
           -- (filesystem/fetch/browser/git/code_sandbox) remain visible.
-          AND id NOT IN ($5, $6, $7, $8, $9, $10, $11)
+          AND id NOT IN ($5, $6, $7, $8, $9, $10, $11, $12, $13)
           AND ($3::text IS NULL
                OR name ILIKE '%' || $3 || '%'
                OR display_name ILIKE '%' || $3 || '%'
@@ -1703,6 +1689,8 @@ pub async fn list_system_mcp_servers(
         crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
         crate::modules::lit_search::lit_search_server_id(),
         crate::modules::citations::citations_server_id(),
+        crate::modules::skill_mcp::skill_mcp_server_id(),
+        crate::modules::workflow_mcp::workflow_mcp_server_id(),
     )
     .fetch_all(pool)
     .await?;
@@ -1750,8 +1738,9 @@ pub async fn list_system_mcp_servers(
         WHERE is_system = true
           -- Match the rows query: exclude the built-ins configured elsewhere
           -- (files, memory, elicitation, web_search, tool_result, lit_search,
-          -- citations) so the pagination total stays in sync with the page.
-          AND id NOT IN ($3, $4, $5, $6, $7, $8, $9)
+          -- citations, skill_mcp, workflow_mcp) so the pagination total stays in
+          -- sync with the page.
+          AND id NOT IN ($3, $4, $5, $6, $7, $8, $9, $10, $11)
           AND ($1::text IS NULL
                OR name ILIKE '%' || $1 || '%'
                OR display_name ILIKE '%' || $1 || '%'
@@ -1767,6 +1756,8 @@ pub async fn list_system_mcp_servers(
         crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
         crate::modules::lit_search::lit_search_server_id(),
         crate::modules::citations::citations_server_id(),
+        crate::modules::skill_mcp::skill_mcp_server_id(),
+        crate::modules::workflow_mcp::workflow_mcp_server_id(),
     )
     .fetch_one(pool)
     .await?
@@ -1811,7 +1802,12 @@ pub async fn update_system_mcp_server(
         || existing.id == crate::modules::tool_result_mcp::tool_result_mcp_server_id()
         // citations is config-elsewhere too (per-user library on Settings →
         // Citations); its mcp row has no editable surface, so it's immutable.
-        || existing.id == crate::modules::citations::citations_server_id();
+        || existing.id == crate::modules::citations::citations_server_id()
+        // skill_mcp / workflow_mcp are zero-config loopback built-ins (headers
+        // '{}', no editable surface); an admin PUT must not be able to change
+        // their url/transport and break load_skill / workflow tool dispatch.
+        || existing.id == crate::modules::skill_mcp::skill_mcp_server_id()
+        || existing.id == crate::modules::workflow_mcp::workflow_mcp_server_id();
     // NOTE: control is intentionally NOT in this immutable set (like bio_mcp) —
     // it is shown on the System MCP page so admins can toggle `enabled` (and the
     // runtime auto-attach honors that column immediately). The boot upsert
@@ -2031,24 +2027,6 @@ pub async fn delete_system_mcp_server_in_tx(
 // Group Assignment Operations
 // =====================================================
 
-/// Get server IDs assigned to a group
-// Called only by the same-named (not-routed) repo method; kept as the raw
-// query. Narrow allow (was module blanket).
-#[allow(dead_code)]
-pub async fn get_group_mcp_servers(pool: &PgPool, group_id: Uuid) -> Result<Vec<Uuid>, AppError> {
-    let server_ids = sqlx::query!(
-        "SELECT mcp_server_id FROM user_group_mcp_servers WHERE group_id = $1",
-        group_id
-    )
-    .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(|row| row.mcp_server_id)
-    .collect();
-
-    Ok(server_ids)
-}
-
 /// Get full system MCP server details for a group (for UI widgets)
 pub async fn get_system_servers_for_group(
     pool: &PgPool,
@@ -2167,55 +2145,6 @@ pub async fn remove_mcp_server_from_group(
     if result.rows_affected() == 0 {
         return Err(AppError::not_found("Server assignment"));
     }
-
-    Ok(())
-}
-
-/// Set group's MCP servers (replaces all assignments)
-#[allow(dead_code)] // called only by the not-routed set_group_servers method; real query
-pub async fn set_group_mcp_servers(
-    pool: &PgPool,
-    group_id: Uuid,
-    server_ids: Vec<Uuid>,
-) -> Result<(), AppError> {
-    // Start transaction
-    let mut tx = pool.begin().await?;
-
-    // Verify all servers are system servers
-    for server_id in &server_ids {
-        let server = sqlx::query!("SELECT is_system FROM mcp_servers WHERE id = $1", server_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(|| AppError::not_found("Server"))?;
-
-        if !server.is_system {
-            return Err(AppError::bad_request(
-                "INVALID_SERVER",
-                "Only system servers can be assigned to groups",
-            ));
-        }
-    }
-
-    // Delete all existing assignments
-    sqlx::query!(
-        "DELETE FROM user_group_mcp_servers WHERE group_id = $1",
-        group_id
-    )
-    .execute(&mut *tx)
-    .await?;
-
-    // Insert new assignments
-    for server_id in server_ids {
-        sqlx::query!(
-            "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id) VALUES ($1, $2)",
-            group_id,
-            server_id
-        )
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    tx.commit().await?;
 
     Ok(())
 }
