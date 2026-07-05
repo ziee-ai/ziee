@@ -638,17 +638,11 @@ impl HubManager {
         let models = self.list_models().await?;
         let assistants = self.list_assistants().await?;
         let mcp_servers = self.list_mcp_servers().await?;
-        // Phase 8: skills + workflows. list_skills/list_workflows ship in B3/B4;
-        // for the foundation pass they're empty so the existing catalog APIs stay green.
-        let skills = Vec::new();
-        let workflows = Vec::new();
         Ok(HubData {
             version: catalog.hub_version,
             models,
             assistants,
             mcp_servers,
-            skills,
-            workflows,
         })
     }
 

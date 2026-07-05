@@ -75,15 +75,6 @@ impl HubRepository {
         list_installed_entities(&self.pool, user_id, include_system).await
     }
 
-    /// The admin-pinned catalog version (without leading `v`), or None
-    /// when tracking latest. Reads the hub_settings singleton.
-    // Real DB-backed API (hub_settings.pinned_version) not yet wired to a
-    // route; kept as the repository surface. Narrow allow (was module blanket).
-    #[allow(dead_code)]
-    pub async fn get_pinned_version(&self) -> Result<Option<String>, AppError> {
-        get_pinned_version(&self.pool).await
-    }
-
     /// Look up the `hub_entities` row for a hub-installed TEMPLATE
     /// assistant (matched by hub_id with `created_by IS NULL`).
     /// Returns Some(entity_id) when a template install already exists
@@ -160,14 +151,6 @@ impl HubRepository {
         get_system_mcp_install_ids(&self.pool).await
     }
 
-    /// Set (or clear, with None) the admin-pinned catalog version.
-    #[allow(dead_code)] // pairs with get_pinned_version; real API, not yet routed
-    pub async fn set_pinned_version(
-        &self,
-        version: Option<&str>,
-    ) -> Result<(), AppError> {
-        set_pinned_version(&self.pool, version).await
-    }
 }
 
 /// Row returned by `list_installed_entities` — one tracked hub
@@ -717,31 +700,6 @@ pub async fn find_system_mcp_install(
 }
 
 /// Read the pinned catalog version from the hub_settings singleton.
-// Only called by the (not-yet-routed) repo method of the same name; kept as the
-// real hub_settings query. Narrow allow (was module blanket).
-#[allow(dead_code)]
-pub async fn get_pinned_version(pool: &PgPool) -> Result<Option<String>, AppError> {
-    let row = sqlx::query!("SELECT pinned_version FROM hub_settings WHERE id = TRUE")
-        .fetch_optional(pool)
-        .await?;
-    Ok(row.and_then(|r| r.pinned_version))
-}
-
-/// Set or clear the pinned catalog version on the hub_settings singleton.
-#[allow(dead_code)] // pairs with get_pinned_version free fn; real API, not yet routed
-pub async fn set_pinned_version(
-    pool: &PgPool,
-    version: Option<&str>,
-) -> Result<(), AppError> {
-    sqlx::query!(
-        "UPDATE hub_settings SET pinned_version = $1, updated_at = NOW() WHERE id = TRUE",
-        version
-    )
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
 /// Delete hub tracking record
 pub async fn delete_hub_tracking(
     pool: &PgPool,
