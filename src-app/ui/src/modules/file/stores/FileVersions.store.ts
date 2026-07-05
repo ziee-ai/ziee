@@ -1,6 +1,7 @@
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import type { FileVersion } from '@/api-client/types'
+import { type FileVersion, Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 import { Stores } from '@/core/stores'
 
@@ -22,6 +23,9 @@ export const FileVersions = defineStore('FileVersions', {
   },
   actions: (set, get) => {
     const loadVersions = async (fileId: string): Promise<void> => {
+      // `sync:reconnect` fires for every store regardless of audience; skip the
+      // refetch for users without `files::read` (the endpoint would 403).
+      if (!hasPermissionNow(Permissions.FilesRead)) return
       set(s => {
         const ls = new Set(s.versionsLoadingSet)
         ls.add(fileId)

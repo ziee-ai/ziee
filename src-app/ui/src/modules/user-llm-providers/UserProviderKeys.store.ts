@@ -1,4 +1,6 @@
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 
 /**
@@ -14,6 +16,9 @@ export const UserProviderKeys = defineStore('UserProviderKeys', {
   },
   actions: (set, get) => {
     const loadKeys = async () => {
+      // `sync:reconnect` fires for every store regardless of audience; skip the
+      // refetch for users without `profile::read` (the endpoint would 403).
+      if (!hasPermissionNow(Permissions.ProfileRead)) return
       if (get().initialized) return
       const response = await ApiClient.LlmProvider.listUserApiKeys(undefined, undefined)
       const keysMap: Record<string, { masked_key: string }> = {}
@@ -38,6 +43,18 @@ export const UserProviderKeys = defineStore('UserProviderKeys', {
         }
       },
     }
+  },
+  init: ({ on, set, actions }) => {
+    // Cross-device sync: a key saved/removed on another device (or a missed
+    // event across a dropped stream) invalidates this per-provider cache. Reset
+    // `initialized` so the guarded loadKeys() actually refetches; loadKeys() is
+    // permission-gated internally (profile::read).
+    const reload = () => {
+      set({ initialized: false })
+      void actions.loadKeys()
+    }
+    on('sync:api_key', reload)
+    on('sync:reconnect', reload)
   },
 })
 

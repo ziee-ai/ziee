@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api-client'
-import type { CoreMemoryBlock } from '@/api-client/types'
+import { type CoreMemoryBlock, Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 
 export const CoreMemoryBlocks = defineStore('CoreMemoryBlocks', {
@@ -12,6 +13,9 @@ export const CoreMemoryBlocks = defineStore('CoreMemoryBlocks', {
   },
   actions: set => ({
     load: async (assistantId: string) => {
+      // `sync:reconnect` fires for every store regardless of audience; skip the
+      // refetch for users without `memory::core::read` (the endpoint would 403).
+      if (!hasPermissionNow(Permissions.CoreMemoryRead)) return
       set(s => {
         s.loadingByAssistant[assistantId] = true
         s.error = null
@@ -74,7 +78,8 @@ export const CoreMemoryBlocks = defineStore('CoreMemoryBlocks', {
     },
   }),
   init: ({ on, get, actions }) => {
-    // No dedicated sync entity — refresh open editors on reconnect / core-memory sync.
+    // Refresh open editors on reconnect / core-memory sync. load() is
+    // permission-gated internally (memory::core::read).
     const reloadAll = () => {
       Object.keys(get().blocksByAssistant).forEach(id => void actions.load(id))
     }
