@@ -17,6 +17,7 @@ use crate::{
             ConversationSummarizationModeResponse, UpdateConversationSummarizationModeRequest,
             is_valid_summarization_mode,
         },
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 
@@ -59,6 +60,7 @@ pub fn get_conversation_summarization_mode_docs(op: TransformOperation) -> Trans
 pub async fn put_conversation_summarization_mode(
     auth: RequirePermissions<(ConversationsEdit,)>,
     Path(conversation_id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(req): Json<UpdateConversationSummarizationModeRequest>,
 ) -> ApiResult<Json<ConversationSummarizationModeResponse>> {
     if !is_valid_summarization_mode(&req.summarization_mode) {
@@ -82,6 +84,16 @@ pub async fn put_conversation_summarization_mode(
     }
     repo.set_conversation_summarization_mode(conversation_id, &req.summarization_mode)
         .await?;
+    // The per-conversation summarization-mode pill is a synced surface;
+    // refresh sync:conversation listeners on the owner's other devices so a
+    // second device viewing this conversation doesn't stay stale.
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     let summarization_mode = if req.summarization_mode == DEFAULT_SUMMARIZATION_MODE {
         DEFAULT_SUMMARIZATION_MODE.to_string()
     } else {

@@ -182,6 +182,17 @@ pub async fn attach_conversation(
         Audience::owner(auth.user.id),
         origin.0,
     );
+    // The conversation itself moved into a project → its unfiled-list
+    // membership changed. Refresh sync:conversation listeners (e.g. the
+    // RecentConversations widget) on the owner's other devices, matching the
+    // PUT /conversations/{id} path.
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -283,6 +294,16 @@ pub async fn detach_conversation(
         SyncEntity::Project,
         SyncAction::Update,
         project_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
+    // The conversation became unfiled → it reappears in the unfiled
+    // RecentConversations list. Refresh sync:conversation listeners on the
+    // owner's other devices, matching the PUT /conversations/{id} path.
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation_id,
         Audience::owner(auth.user.id),
         origin.0,
     );

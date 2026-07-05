@@ -821,6 +821,26 @@ impl Deployment for LocalDeployment {
             Err(AppError::not_found("Process not found"))
         }
     }
+
+    /// P2: Subscribe to live logs. Unlike the trait default (which hands
+    /// back a closed receiver), this returns a live subscription to the
+    /// running process's `log_broadcast` sender plus a snapshot of the
+    /// already-captured buffer for initial replay, so the SSE endpoint
+    /// streams new lines as `capture_logs` emits them.
+    async fn subscribe_logs(
+        &self,
+        model_id: Uuid,
+    ) -> AppResult<(tokio::sync::broadcast::Receiver<String>, Vec<String>)> {
+        let processes = self.processes.read().await;
+
+        if let Some(proc_info) = processes.get(&model_id) {
+            let snapshot: Vec<String> = proc_info.logs.iter().cloned().collect();
+            let rx = proc_info.log_broadcast.subscribe();
+            Ok((rx, snapshot))
+        } else {
+            Err(AppError::not_found("Process not found"))
+        }
+    }
 }
 
 #[cfg(test)]
