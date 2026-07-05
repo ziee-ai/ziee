@@ -132,7 +132,9 @@ pub async fn get_skill_body(
         .ok_or_else(|| AppError::not_found("Skill"))?;
     let path = std::path::Path::new(&skill.extracted_path).join(&skill.entry_point);
     let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
-        AppError::internal_error(format!(
+        // Log the server-side path + io error under a trace_id; the client sees
+        // only a generic message (never the filesystem layout / raw io detail).
+        AppError::internal_with_id(format!(
             "skill: read {} body at {}: {e}",
             skill.name,
             path.display()
