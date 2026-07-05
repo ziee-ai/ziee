@@ -12,9 +12,11 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub enum ProjectEvent {
-    // Emit-only: these lifecycle variants are published but no subscriber reads
-    // their payloads yet (see the module header). ConversationAttached/Detached
-    // below ARE consumed, so the allow is scoped to these three.
+    // Emit-only: every variant here is published but no subscriber reads its
+    // payload yet (see the module header). The attach/detach side effects run
+    // through the separate `fire_on_conversation_attached`/`_detached`
+    // extension-hook path in the handlers, NOT by reading these events, so the
+    // `#[allow(dead_code)]` covers all five until a real subscriber lands.
     #[allow(dead_code)]
     Created { project_id: Uuid, user_id: Uuid },
     #[allow(dead_code)]
@@ -24,6 +26,7 @@ pub enum ProjectEvent {
     /// A conversation has been attached to (or re-attached across) a
     /// project. Emitted by `POST /projects/{id}/conversations/{conv_id}`.
     /// The MCP snapshot has already been refreshed when this fires.
+    #[allow(dead_code)]
     ConversationAttached {
         conversation_id: Uuid,
         project_id: Uuid,
@@ -33,6 +36,7 @@ pub enum ProjectEvent {
     /// A conversation has been detached from its project. Emitted by
     /// `DELETE /projects/{id}/conversations/{conv_id}`. The MCP
     /// snapshot row has already been cleared.
+    #[allow(dead_code)]
     ConversationDetached {
         conversation_id: Uuid,
         project_id: Uuid,

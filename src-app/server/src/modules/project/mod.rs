@@ -56,15 +56,6 @@ impl ProjectModule {
         }
     }
 
-    /// Read-only access to the registry. Used by the duplicate handler
-    /// to fire the per-extension `on_project_duplicated` hook inside the
-    /// project's duplicate transaction.
-    // Accessor for the duplicate handler's on_project_duplicated hook; that
-    // wiring isn't active yet, so no caller today.
-    #[allow(dead_code)]
-    pub fn extension_registry(&self) -> Option<Arc<ProjectExtensionRegistry>> {
-        self.extension_registry.clone()
-    }
 }
 
 impl AppModule for ProjectModule {
