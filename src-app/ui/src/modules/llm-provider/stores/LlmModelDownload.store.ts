@@ -2,8 +2,10 @@ import { ApiClient } from '@/api-client'
 import {
   type DownloadFromRepositoryRequest,
   type DownloadInstance,
+  type DownloadProgressUpdate,
   Permissions,
   type RepositoryFileListResponse,
+  type SSEDownloadProgressConnectedData,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
@@ -19,7 +21,9 @@ let sseAbortController: AbortController | null = null
 let isSubscriptionSetup = false
 
 // Load existing downloads from server.
-const loadExistingDownloads = async (set: any): Promise<void> => {
+const loadExistingDownloads = async (
+  set: (partial: { downloads: DownloadInstance[] }) => void,
+): Promise<void> => {
   // Permission-gate the shell-eager-load fetch: the store init fires for every
   // authenticated user; without the gate non-admins 403 on every page render.
   if (!hasPermissionNow(Permissions.LlmModelsDownloadsRead)) return
@@ -63,8 +67,10 @@ export const LlmModelDownload = defineStore('LlmModelDownload', {
               sseAbortController = abortController
               set({ sseConnected: true, sseError: null, reconnectAttempts: 0 })
             },
-            connected: (_data: { message?: string }) => {},
-            update: (updates: any[]) => {
+            // No client-side action needed on the connection handshake; the
+            // `__init` callback above already flipped `sseConnected`.
+            connected: (_data: SSEDownloadProgressConnectedData) => {},
+            update: (updates: DownloadProgressUpdate[]) => {
               // Snapshot pre-update status by id. The terminal emits must fire
               // EXACTLY ONCE per download — keying off "prev !== current AND
               // current is terminal" guarantees that.
@@ -73,13 +79,13 @@ export const LlmModelDownload = defineStore('LlmModelDownload', {
                 prevState.downloads.map(d => [d.id, d.status]),
               )
               // Refresh providers of newly completed downloads.
-              const newlyCompleted = updates.filter((u: any) => u.status === 'completed')
+              const newlyCompleted = updates.filter(u => u.status === 'completed')
               if (newlyCompleted.length > 0) {
                 const providerIds = [
                   ...new Set(
                     newlyCompleted
-                      .map((d: any) => d.provider_id)
-                      .filter((id: string | undefined): id is string => !!id),
+                      .map(d => d.provider_id)
+                      .filter((id): id is string => !!id),
                   ),
                 ]
                 for (const providerId of providerIds) {
@@ -87,7 +93,7 @@ export const LlmModelDownload = defineStore('LlmModelDownload', {
                 }
               }
               // Emit terminal-transition events for rows that FLIPPED this tick.
-              for (const u of updates as any[]) {
+              for (const u of updates) {
                 if (!u.id || typeof u.status !== 'string') continue
                 const prev = prevStatusById.get(u.id)
                 if (prev === u.status) continue
@@ -116,8 +122,13 @@ export const LlmModelDownload = defineStore('LlmModelDownload', {
               }
               set(state => {
                 const updatedDownloads = state.downloads.map(download => {
-                  const update = updates.find((u: any) => u.id === download.id)
-                  return update ? { ...download, ...update } : download
+                  const update = updates.find(u => u.id === download.id)
+                  // The SSE update is a partial patch of the same download row;
+                  // its `status` is a plain string on the wire, so re-assert the
+                  // DownloadInstance shape after merging.
+                  return update
+                    ? ({ ...download, ...update } as DownloadInstance)
+                    : download
                 })
                 // Drop cancelled + completed. Failed rows stay so the card can
                 // render the failure + Retry until dismissed/retried.
