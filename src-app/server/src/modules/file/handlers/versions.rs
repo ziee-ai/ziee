@@ -99,6 +99,7 @@ pub async fn get_version(
 pub async fn restore_version(
     auth: RequirePermissions<(FilesUpload,)>,
     Path(file_id): Path<Uuid>,
+    origin: crate::modules::sync::SyncOrigin,
     Json(req): Json<RestoreVersionRequest>,
 ) -> ApiResult<Json<File>> {
     let user_id = auth.user.id;
@@ -131,8 +132,8 @@ pub async fn restore_version(
         .restore_version(file_id, req.version, "user".to_string(), None)
         .await?;
 
-    // Sync: a restore changes the head.
-    crate::modules::file::sync::publish_file_changed(user_id, file_id);
+    // Sync: a restore changes the head. Skip the originating device's echo.
+    crate::modules::file::sync::publish_file_changed_with_origin(user_id, file_id, origin.0);
 
     // Document RAG: a restore makes a different version the head → re-index.
     crate::modules::file_rag::ingest::spawn_reindex(user_id, file_id);

@@ -27,3 +27,16 @@ pub fn publish_file_changed_with_origin(user_id: Uuid, file_id: Uuid, origin_con
 pub fn publish_file_changed(user_id: Uuid, file_id: Uuid) {
     publish_file_changed_with_origin(user_id, file_id, None);
 }
+
+/// Notify the owner's other devices that a file was deleted so their file/
+/// version lists drop it. `origin_conn` is the originating SSE connection
+/// (skipped for self-echo) when known.
+pub fn publish_file_deleted_with_origin(user_id: Uuid, file_id: Uuid, origin_conn: Option<Uuid>) {
+    publish(
+        SyncEntity::File,
+        SyncAction::Delete,
+        file_id,
+        Audience::owner(user_id),
+        origin_conn,
+    );
+}

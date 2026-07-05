@@ -15,6 +15,7 @@ use crate::modules::file::storage::manager::get_file_storage;
 use crate::modules::file::types::{FileListResponse, PaginationQuery, PreviewQuery, TextPageQuery};
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::openapi::with_permission;
+use crate::modules::sync::SyncOrigin;
 use uuid::Uuid;
 
 /// List user's files
@@ -181,6 +182,7 @@ pub async fn get_text_content(
 pub async fn delete_file(
     auth: RequirePermissions<(FilesDelete,)>,
     Path(file_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     let user_id = auth.user.id;
 
@@ -193,6 +195,9 @@ pub async fn delete_file(
     for blob_id in blob_ids {
         storage.delete_all(user_id, blob_id).await?;
     }
+
+    // Notify the owner's other devices so their file/version lists drop it.
+    crate::modules::file::sync::publish_file_deleted_with_origin(user_id, file_id, origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

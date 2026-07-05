@@ -160,7 +160,7 @@ pub async fn upload_and_attach_file(
 
     // 3. Upload via the shared core (validates size, MIME, quota,
     //    zip-bombs; creates the files row + storage entries).
-    let file = upload_file_inner(auth.user.id, multipart).await?;
+    let file = upload_file_inner(auth.user.id, multipart, origin.0).await?;
 
     // 4. Arm a Drop guard that fires if we exit this function before
     //    disarming it — covers BOTH the attach-failure case (B2) AND
