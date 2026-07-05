@@ -53,13 +53,21 @@ pub fn set_base_url(base: String) {
 /// One shared client for the loopback dispatch (per guidelines §2). Loopback
 /// only, but we still bound it and refuse redirects (a REST route should not
 /// 3xx us off-host).
-static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+///
+/// Built lazily on the FIRST request, so a build failure maps to an AppError at
+/// the dispatch site rather than panicking the worker. reqwest's build is
+/// near-infallible (only TLS-backend init can fail) and deterministic, so
+/// caching the `None` is fine.
+static HTTP_CLIENT: LazyLock<Option<reqwest::Client>> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(120))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .expect("control_mcp: failed to build loopback HTTP client")
+        .map_err(|e| {
+            tracing::error!(error = %e, "control_mcp: failed to build loopback HTTP client");
+        })
+        .ok()
 });
 
 #[debug_handler]
@@ -368,7 +376,10 @@ async fn invoke_capability(
 
     let method = reqwest::Method::from_bytes(op.method.as_bytes())
         .map_err(|e| AppError::internal_error(format!("bad method: {e}")))?;
-    let mut request = HTTP_CLIENT.request(method, url);
+    let client = HTTP_CLIENT
+        .as_ref()
+        .ok_or_else(|| AppError::internal_error("control_mcp loopback client unavailable"))?;
+    let mut request = client.request(method, url);
 
     // Forward the caller's bearer so the real route re-authorizes as this user.
     if let Some(auth_header) = headers.get("authorization").or_else(|| headers.get("Authorization")) {

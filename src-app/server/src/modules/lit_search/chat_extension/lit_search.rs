@@ -32,22 +32,34 @@ pub struct LitSearchExtension {
     // other chat extensions; not read yet.
     #[allow(dead_code)]
     pool: PgPool,
+    /// Deploy-level kill switch (`lit_search.enabled` in config). When false the
+    /// extension never attaches, regardless of the DB row — see `should_attach`.
+    config_enabled: bool,
 }
 
 impl LitSearchExtension {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, config_enabled: bool) -> Self {
+        Self { pool, config_enabled }
     }
 
     /// True when literature search is enabled (all default sources work keyless,
     /// so `enabled` is the whole gate; CORE self-skips when unkeyed).
     ///
-    /// ALSO gated on the built-in MCP server row existing + enabled — so the
-    /// deploy-level kill switch (`lit_search.enabled=false` → `mod.rs::init`
-    /// never upserts the row) suppresses the nudge/flag too. Without this we'd
-    /// inject "you can call literature_search" while the tool is never attached
-    /// (the model is told it has a tool it doesn't). Mirrors bio_mcp's gate.
+    /// Gated FIRST on the deploy-level kill switch (`lit_search.enabled=false` in
+    /// config). `mod.rs::init` skips the row UPSERT when the switch is off, but a
+    /// row upserted on a PREVIOUS boot survives — so checking only the DB row let
+    /// queries keep egressing after an operator flipped the switch off. Threading
+    /// the config flag here honors the kill switch on every boot. Mirrors
+    /// control_mcp's `self.enabled`.
+    ///
+    /// ALSO gated on the built-in MCP server row existing + enabled — so a fresh
+    /// deployment that never booted with the switch on also suppresses the
+    /// nudge/flag. Without this we'd inject "you can call literature_search" while
+    /// the tool is never attached (the model is told it has a tool it doesn't).
     async fn should_attach(&self) -> Result<bool, AppError> {
+        if !self.config_enabled {
+            return Ok(false);
+        }
         let row_enabled = Repos
             .mcp
             .get_any_server(crate::modules::lit_search::lit_search_server_id())

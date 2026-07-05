@@ -26,11 +26,17 @@ const BIO_UNTRUSTED_NOTE: &str = "## Biomedical tool results\n\
 pub struct BioMcpExtension {
     #[allow(dead_code)]
     pool: PgPool,
+    /// Deploy-level kill switch (`bio_mcp.enabled` in config). When false the
+    /// extension never attaches, regardless of the DB row — see `before_llm_call`.
+    config_enabled: bool,
 }
 
 impl BioMcpExtension {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, config_enabled: bool) -> Self {
+        Self {
+            pool,
+            config_enabled,
+        }
     }
 }
 
@@ -52,6 +58,16 @@ impl ChatExtension for BioMcpExtension {
         let tool_capable =
             crate::modules::file::available_files::model_supports_tools(&context.metadata).await;
         if !tool_capable {
+            return Ok(BeforeLlmAction::Continue);
+        }
+
+        // Deploy-level kill switch (`bio_mcp.enabled=false` in config). `mod.rs::init`
+        // skips the row UPSERT when off, but a row upserted on a PREVIOUS boot
+        // survives — so checking only the DB row let bio queries keep egressing
+        // (and the sidecar keep spawning) after an operator flipped the switch
+        // off. Honor the config flag on every boot. Mirrors control_mcp's
+        // `self.enabled`.
+        if !self.config_enabled {
             return Ok(BeforeLlmAction::Continue);
         }
 
@@ -116,7 +132,7 @@ mod tests {
     /// it never reaches the DB enable-gate.
     #[tokio::test]
     async fn before_llm_call_skips_non_tool_capable_model() {
-        let ext = BioMcpExtension::new(lazy_pool());
+        let ext = BioMcpExtension::new(lazy_pool(), true);
 
         let mut metadata = HashMap::new();
         metadata.insert(
@@ -169,7 +185,7 @@ mod tests {
         if !crate::core::is_repos_initialized() {
             crate::core::init_repositories(lazy_pool());
         }
-        let ext = BioMcpExtension::new(lazy_pool());
+        let ext = BioMcpExtension::new(lazy_pool(), true);
 
         let mut metadata = HashMap::new();
         metadata.insert(
