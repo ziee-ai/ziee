@@ -75,7 +75,7 @@ export function WorkflowRunDialog({
   const [modelId, setModelId] = useState<string | undefined>(undefined)
   const [captureLogs, setCaptureLogs] = useState(false)
 
-  const { providers, selectedModelId } = Stores.ModelPicker
+  const { providers, selectedModelId, loading: modelsLoading } = Stores.ModelPicker
 
   // Grouped model options from the user's accessible providers (used for a
   // standalone run, where the model isn't snapshotted from a conversation).
@@ -219,7 +219,11 @@ export function WorkflowRunDialog({
             value={modelId}
             onChange={setModelId}
             options={modelOptions}
-            placeholder="Select a model"
+            // Spinner + aria-busy while the accessible providers/models resolve
+            // (they load after the dialog opens); once loaded, an empty list
+            // surfaces the placeholder rather than a stuck empty control.
+            loading={modelsLoading && modelOptions.length === 0}
+            placeholder={modelsLoading && modelOptions.length === 0 ? 'Loading models…' : 'Select a model'}
             popupMatchSelectWidth={false}
           />
         </div>
@@ -232,7 +236,7 @@ export function WorkflowRunDialog({
       </div>
       {conversationId && (
         <div className="mt-2 flex items-center gap-2">
-          <CheckCircle className="size-4 text-success" />
+          <CheckCircle className="size-4 text-success" aria-hidden />
           <Text type="secondary" className="text-xs">
             Output posts back to the current conversation
           </Text>

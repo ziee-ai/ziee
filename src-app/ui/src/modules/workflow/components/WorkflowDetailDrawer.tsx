@@ -97,6 +97,7 @@ export function WorkflowDetailDrawer() {
         Stores.WorkflowDrawer.close()
       }}
       size={480}
+      titleText={workflow.display_name || workflow.name}
       title={
         <Space>
           <Title level={5} className="!m-0">
@@ -192,7 +193,7 @@ export function WorkflowDetailDrawer() {
                     Steps
                   </Text>
                   {steps.length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="flex flex-col gap-3">
                       {steps.map((s, i) => (
                         <div key={i} className="flex flex-col gap-1">
                           <Space size={8}>

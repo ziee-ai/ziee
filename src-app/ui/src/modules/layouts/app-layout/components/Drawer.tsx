@@ -18,6 +18,12 @@ export interface DrawerProps {
   open?: boolean
   onClose?: () => void
   title?: React.ReactNode
+  /**
+   * Accessible name for the dialog when `title` is a non-string node (Radix
+   * requires a `Dialog.Title`; a node can't be introspected for its text).
+   * Ignored for string titles (the visible heading is used directly).
+   */
+  titleText?: string
   placement?: Placement
   /** Panel size on the resize axis: a px number, or legacy 'default'(378)/'large'(736). */
   size?: number | 'default' | 'large'
@@ -66,6 +72,7 @@ export const Drawer: React.FC<DrawerProps> = ({
   open,
   onClose,
   title,
+  titleText,
   placement = 'right',
   size,
   width,
@@ -264,7 +271,20 @@ export const Drawer: React.FC<DrawerProps> = ({
                   <span className="text-xl"><IoIosArrowBack aria-hidden="true" /></span>
                 </Button>
               )}
-              {typeof title === 'string' ? <Title level={5} className="!m-0">{title}</Title> : title}
+              {typeof title === 'string' ? (
+                // The visible heading IS the dialog's accessible name.
+                <DialogPrimitive.Title asChild>
+                  <Title level={5} className="!m-0">{title}</Title>
+                </DialogPrimitive.Title>
+              ) : (
+                // A node title can't be introspected for text — render it
+                // visually and label the dialog via an sr-only Title so Radix
+                // still gets an accessible name (aria-labelledby).
+                <>
+                  <DialogPrimitive.Title className="sr-only">{titleText ?? 'Drawer'}</DialogPrimitive.Title>
+                  {title}
+                </>
+              )}
               {extra != null && <div className="ml-auto">{extra}</div>}
             </div>
           )}

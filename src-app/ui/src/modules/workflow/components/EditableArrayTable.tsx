@@ -212,6 +212,14 @@ export function EditableArrayTable({
         const useVirtual =
           arrayUi.virtual === true || fields.length >= VIRTUAL_ROW_THRESHOLD
 
+        // Reconcile the selection against the rows currently in the list: a
+        // form reset (dialog reopen) or an external mutation swaps the rhf
+        // field ids, leaving stale entries in `selectedKeys`. Deriving the
+        // in-view selection keeps the toolbar count/enabled-state honest
+        // without a render-phase setState.
+        const selectedInView = fields.filter(f => selectedKeys.includes(f.id))
+        const selectedCount = selectedInView.length
+
         const atMax = maxRows !== undefined && fields.length >= maxRows
         const canRemoveBelowMin =
           schema.minItems === undefined || fields.length > schema.minItems
@@ -263,14 +271,14 @@ export function EditableArrayTable({
 
         return (
           <div className="flex flex-col gap-2">
-            {(bulkCol || selectedKeys.length > 0) && (
+            {(bulkCol || selectedCount > 0) && (
               <Space wrap>
                 {bulkCol && (
                   <>
                     <Button
                       data-testid="wf-array-bulk-set-on-btn"
                       size="default"
-                      disabled={disabled || selectedKeys.length === 0}
+                      disabled={disabled || selectedCount === 0}
                       onClick={() => bulkSet(true)}
                     >
                       Set {bulkCol.field.title || bulkCol.key} on
@@ -278,7 +286,7 @@ export function EditableArrayTable({
                     <Button
                       data-testid="wf-array-bulk-set-off-btn"
                       size="default"
-                      disabled={disabled || selectedKeys.length === 0}
+                      disabled={disabled || selectedCount === 0}
                       onClick={() => bulkSet(false)}
                     >
                       Set {bulkCol.field.title || bulkCol.key} off
@@ -288,14 +296,14 @@ export function EditableArrayTable({
                 <Button variant="destructive"
                   data-testid="wf-array-bulk-delete-btn"
                   size="default"
-                  disabled={disabled || selectedKeys.length === 0}
+                  disabled={disabled || selectedCount === 0}
                   onClick={bulkDelete}
                 >
                   Delete selected
                 </Button>
-                {selectedKeys.length > 0 && (
+                {selectedCount > 0 && (
                   <Text className="text-xs text-muted-foreground">
-                    {selectedKeys.length} selected
+                    {selectedCount} selected
                   </Text>
                 )}
               </Space>
@@ -478,12 +486,18 @@ export function EditableArrayTable({
 }
 
 /** Build a blank row, seeding each column from its `default` (so a new row
- *  starts valid where possible). */
+ *  starts valid where possible). Text/enum columns seed to `''` rather than
+ *  `undefined` so their inputs are controlled from the first render (an
+ *  `undefined`→typed transition trips React's uncontrolled→controlled warning);
+ *  numeric columns stay `undefined` so InputNumber renders empty. */
 function newRow(cols: ColumnDef[]): Record<string, unknown> {
   const row: Record<string, unknown> = {}
-  for (const col of cols) {
-    row[col.key] =
-      col.field.default ?? (col.field.type === 'boolean' ? false : undefined)
+  for (const { field, key } of cols) {
+    let fallback: unknown
+    if (field.type === 'boolean') fallback = false
+    else if (field.type === 'number' || field.type === 'integer') fallback = undefined
+    else fallback = ''
+    row[key] = field.default ?? fallback
   }
   return row
 }

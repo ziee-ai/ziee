@@ -464,13 +464,12 @@ export function WorkflowElicitForm({
       icon={<PenLine className="size-4" />}
       title="Input required"
       description={
-        <div className="mt-2">
+        <div className="mt-2 flex flex-col gap-2">
           <Text className="text-sm">{elicitation.message}</Text>
           <Form
             data-testid="wf-elicit-form"
             form={form}
             layout="vertical"
-            className="mt-3"
             onSubmit={() => {
               // Submit is triggered via handleClickSubmit below; this no-op
               // handler satisfies the kit Form's required onSubmit prop and
@@ -483,7 +482,7 @@ export function WorkflowElicitForm({
             )}
           </Form>
           {error && (
-            <Alert data-testid="wf-elicit-error-alert" tone="error" title={error} className="!mb-2 mt-2" />
+            <Alert data-testid="wf-elicit-error-alert" tone="error" title={error} />
           )}
           <Button
             data-testid="wf-elicit-submit-btn"
@@ -493,7 +492,7 @@ export function WorkflowElicitForm({
             onClick={() => {
               void handleClickSubmit()
             }}
-            className="mt-2"
+            className="self-start"
           >
             Submit
           </Button>
