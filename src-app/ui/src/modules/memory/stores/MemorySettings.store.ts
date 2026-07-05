@@ -3,6 +3,8 @@ import type {
   UpdateUserMemorySettingsRequest,
   UserMemorySettings,
 } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 import { emitMemorySettingsUpdated } from '@/modules/memory/events'
 
@@ -27,6 +29,9 @@ export const MemorySettings = defineStore('MemorySettings', {
   },
   actions: set => {
     const load = async () => {
+      // `sync:reconnect` fires for every store regardless of audience; skip the
+      // refetch for users without `memory::read` (the endpoint would 403).
+      if (!hasPermissionNow(Permissions.MemoryRead)) return
       set(s => {
         s.loading = true
         s.error = null
@@ -77,7 +82,7 @@ export const MemorySettings = defineStore('MemorySettings', {
     }
   },
   init: ({ on, actions }) => {
-    // Per-user singleton — refetch it. No permission self-gate needed.
+    // Per-user singleton — refetch it. `load()` is permission-gated internally.
     const reload = () => void actions.load()
     on('sync:memory_settings', reload)
     on('sync:reconnect', reload)

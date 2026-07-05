@@ -91,7 +91,7 @@ export const Onboarding = defineStore('Onboarding', {
       })
     },
   }),
-  init: ({ watch, set, actions }) => {
+  init: ({ watch, on, set, actions }) => {
     // Onboarding depends on auth (allowed direction). Watch the USER ID (not
     // isAuthenticated) so a user *switch* — which keeps isAuthenticated=true —
     // still re-fires. Watch the RAW auth store: going through the Stores.Auth
@@ -112,6 +112,16 @@ export const Onboarding = defineStore('Onboarding', {
       },
       { fireImmediately: true },
     )
+    // Cross-device sync: progress advancing on another device (or a missed
+    // event across a dropped stream) refetches here. No permission self-gate —
+    // `GET /api/onboarding/progress` is JwtAuth-only (no perm), and both
+    // triggers only fire on an authenticated SSE stream, so there's no 403 to
+    // guard against. Only refetch if we already have an identity loaded.
+    const reload = () => {
+      if (useAuthStore.getState().user?.id) void actions.loadProgress()
+    }
+    on('sync:onboarding', reload)
+    on('sync:reconnect', reload)
   },
 })
 

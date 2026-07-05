@@ -5,6 +5,8 @@ import type {
   UpdateMemoryRequest,
   UserMemory,
 } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 import {
   emitMemoryAllCleared,
@@ -33,6 +35,9 @@ export const Memories = defineStore('Memories', {
   },
   actions: (set, get) => {
     const load = async (page?: number, pageSize?: number) => {
+      // `sync:reconnect` fires for every store regardless of audience; skip the
+      // refetch for users without `memory::read` (the endpoint would 403).
+      if (!hasPermissionNow(Permissions.MemoryRead)) return
       const state = get()
       const nextPage = page ?? state.currentPage
       const nextPageSize = pageSize ?? state.pageSize
@@ -211,7 +216,7 @@ export const Memories = defineStore('Memories', {
   init: ({ on, actions }) => {
     // Paginated list; load() reloads the current page (surfacing remote
     // creates/edits/deletes on it; a bulk-clear arrives as a nil-id Delete).
-    // No permission self-gate needed.
+    // load() is permission-gated internally.
     const reload = () => void actions.load()
     on('sync:memory', reload)
     on('sync:reconnect', reload)

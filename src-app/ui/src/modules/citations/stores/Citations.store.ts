@@ -4,6 +4,8 @@ import type {
   BibliographyEntry,
   CitationInput,
 } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 
 export const Citations = defineStore('Citations', {
@@ -19,6 +21,9 @@ export const Citations = defineStore('Citations', {
   },
   actions: (set, get) => {
     const loadEntries = async (projectId?: string | null) => {
+      // `sync:reconnect` fires for every store regardless of audience; skip the
+      // refetch for users without `citations::use` (the endpoint would 403).
+      if (!hasPermissionNow(Permissions.CitationsUse)) return
       const pid = projectId !== undefined ? projectId : get().projectId
       set(s => {
         s.loading = true
