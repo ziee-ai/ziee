@@ -251,11 +251,57 @@ update_check: { enabled: false }
     if (!token) throw new Error('no access_token in login response')
     log('logged in')
 
+    // Load showcase.sql (chat conversation data) so the chat recorder can record
+    // real multi-state conversations. Owner = the admin we just created.
+    const me = await getJson(`${base}/api/auth/me`, token)
+    const ownerId = me.user.id
+    try {
+      execFileSync(
+        'psql',
+        [
+          `postgresql://postgres:password@127.0.0.1:${pgPort}/postgres`,
+          // NOT ON_ERROR_STOP: a few rows (e.g. mcp_tool_calls referencing a
+          // server_id absent on a fresh boot) fail their FK — skip them and keep
+          // loading the conversations/messages/branches we need.
+          '-v', `owner=${ownerId}`,
+          '-f', path.join(SERVER_DIR, 'seeds/showcase/showcase.sql'),
+        ],
+        { stdio: ['ignore', 'ignore', 'ignore'] },
+      )
+      log('showcase.sql loaded (best-effort)')
+    } catch (e) {
+      log(`showcase load failed (chat cassettes will be empty): ${e.message}`)
+    }
+
     // 4. Record. Each recorder returns { file, data }.
     const recorders = {
       auth: async () => {
         const me = await getJson(`${base}/api/auth/me`, token)
         return { 'auth.json': { me } }
+      },
+      // Chat multi-state: record the conversation-detail endpoints for the
+      // showcase conversations (rich/tool-calls/elicitation), each keyed by id
+      // so the gallery can render distinct conversation states in isolation.
+      chat: async () => {
+        const conversations = await getJson(
+          `${base}/api/conversations?page=1&per_page=100`,
+          token,
+        )
+        const convIds = (conversations.conversations ?? []).map(c => c.id)
+        const byId = {}
+        for (const id of convIds) {
+          try {
+            byId[id] = {
+              conversation: await getJson(`${base}/api/conversations/${id}`, token),
+              messages: await getJson(`${base}/api/conversations/${id}/messages`, token),
+              branches: await getJson(`${base}/api/conversations/${id}/branches`, token),
+            }
+          } catch (e) {
+            log(`  chat ${id} -> ${e.message}`)
+          }
+        }
+        log(`  recorded ${Object.keys(byId).length} conversation(s)`)
+        return { 'chat.json': { conversations, byId } }
       },
       // Broad crawl: every SAFE paramless GET → its live response. Feeds the
       // generic crawl cassette so list/settings pages across all modules

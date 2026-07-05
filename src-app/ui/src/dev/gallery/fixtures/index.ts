@@ -5,10 +5,12 @@
  */
 import type { Cassette } from '../mockApi'
 import { authCassette } from './auth'
+import { chatCassette } from './chat'
 import { crawlCassette } from './crawl.generated'
 import { llmProvidersCassette } from './llm-providers'
 
 export { adminUser, adminMe, adminPermissions } from './auth'
+export { showcaseConversationIds } from './chat'
 
 // Broad crawl first; hand-authored per-module fixtures LAST so they win (they
 // carry richer, purpose-seeded data + query/path-param resolvers).
@@ -16,4 +18,5 @@ export const GALLERY_CASSETTE: Cassette = {
   ...crawlCassette,
   ...authCassette,
   ...llmProvidersCassette,
+  ...chatCassette,
 }

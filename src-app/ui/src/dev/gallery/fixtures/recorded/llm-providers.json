@@ -2,7 +2,7 @@
   "providers": {
     "providers": [
       {
-        "id": "4e354794-586d-459d-bfcb-5efc883d1125",
+        "id": "166ae531-73b6-4013-85cb-e40d4e7f0e1d",
         "name": "Anthropic",
         "provider_type": "anthropic",
         "enabled": true,
@@ -15,11 +15,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:12.559777Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:38.516856Z"
       },
       {
-        "id": "79a64c72-03fb-452a-96e0-6d6380aa80ae",
+        "id": "3c165eb1-17c8-411b-b4d7-17b95559b8de",
         "name": "DeepSeek",
         "provider_type": "deepseek",
         "enabled": true,
@@ -32,11 +32,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:12.628201Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:38.616582Z"
       },
       {
-        "id": "f0e6e0d3-e394-4871-97ea-4ca004d9758c",
+        "id": "5975d26b-a497-4095-86bc-cae435778c5c",
         "name": "Google Gemini",
         "provider_type": "gemini",
         "enabled": true,
@@ -49,11 +49,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:12.613279Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:38.596991Z"
       },
       {
-        "id": "ea4e8ebb-4308-43f2-8fd4-34f9582646b9",
+        "id": "85ec5652-ecd8-4507-a300-9eb7b6661b2e",
         "name": "Groq",
         "provider_type": "groq",
         "enabled": false,
@@ -66,15 +66,15 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:09.429305Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:33.338153Z"
       },
       {
-        "id": "beae81d4-3699-4ba3-a42d-7884238193ef",
+        "id": "b483e1d4-1186-41a3-aa80-a860fe38443c",
         "name": "Local",
         "provider_type": "local",
         "enabled": false,
-        "base_url": "http://127.0.0.1:35281/api/local-llm/v1",
+        "base_url": "http://127.0.0.1:46311/api/local-llm/v1",
         "built_in": true,
         "proxy_settings": {
           "enabled": false,
@@ -83,11 +83,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:09.746294Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:34.455976Z"
       },
       {
-        "id": "491cf114-b2c5-428c-a864-b9e98ce8f9c1",
+        "id": "518eb310-7dbe-4caf-a608-0746e7731a74",
         "name": "Mistral AI",
         "provider_type": "mistral",
         "enabled": false,
@@ -100,11 +100,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:09.429305Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:33.338153Z"
       },
       {
-        "id": "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e",
+        "id": "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c",
         "name": "OpenAI",
         "provider_type": "openai",
         "enabled": true,
@@ -117,8 +117,8 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:12.596131Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:38.568503Z"
       }
     ],
     "total": 7,
@@ -126,11 +126,11 @@
     "per_page": 50
   },
   "modelsByProvider": {
-    "4e354794-586d-459d-bfcb-5efc883d1125": {
+    "166ae531-73b6-4013-85cb-e40d4e7f0e1d": {
       "models": [
         {
-          "id": "a32a1f24-eebc-4fcd-b820-013455d8f8ea",
-          "provider_id": "4e354794-586d-459d-bfcb-5efc883d1125",
+          "id": "5a470fd4-2dc4-4b5b-b125-dc0270821846",
+          "provider_id": "166ae531-73b6-4013-85cb-e40d4e7f0e1d",
           "name": "claude-opus-4-8",
           "display_name": "Claude Opus 4.8",
           "enabled": true,
@@ -146,14 +146,14 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         },
         {
-          "id": "25775103-c37b-4e06-9b94-952c0b3762e0",
-          "provider_id": "4e354794-586d-459d-bfcb-5efc883d1125",
+          "id": "02b31573-1172-4ac7-a92e-e8a727c5dabe",
+          "provider_id": "166ae531-73b6-4013-85cb-e40d4e7f0e1d",
           "name": "claude-sonnet-5",
           "display_name": "Claude Sonnet 5",
           "enabled": true,
@@ -169,14 +169,14 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         },
         {
-          "id": "fba12e8d-ddd3-4469-aecf-71ade8fa5419",
-          "provider_id": "4e354794-586d-459d-bfcb-5efc883d1125",
+          "id": "bee428a8-45bc-4a8e-80f6-f7aa7c8240a7",
+          "provider_id": "166ae531-73b6-4013-85cb-e40d4e7f0e1d",
           "name": "claude-haiku-4-5",
           "display_name": "Claude Haiku 4.5",
           "enabled": true,
@@ -192,8 +192,8 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         }
@@ -202,11 +202,11 @@
       "page": 1,
       "per_page": 100
     },
-    "79a64c72-03fb-452a-96e0-6d6380aa80ae": {
+    "3c165eb1-17c8-411b-b4d7-17b95559b8de": {
       "models": [
         {
-          "id": "98936bc4-8c9f-4d26-80f6-79d261a2c419",
-          "provider_id": "79a64c72-03fb-452a-96e0-6d6380aa80ae",
+          "id": "512a06c8-f88e-48ef-b80b-f12d75b9b108",
+          "provider_id": "3c165eb1-17c8-411b-b4d7-17b95559b8de",
           "name": "deepseek-chat",
           "display_name": "DeepSeek Chat",
           "enabled": true,
@@ -222,8 +222,8 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         }
@@ -232,11 +232,11 @@
       "page": 1,
       "per_page": 100
     },
-    "f0e6e0d3-e394-4871-97ea-4ca004d9758c": {
+    "5975d26b-a497-4095-86bc-cae435778c5c": {
       "models": [
         {
-          "id": "1aabfdcf-cd82-4b9f-b5ca-aa83794b910d",
-          "provider_id": "f0e6e0d3-e394-4871-97ea-4ca004d9758c",
+          "id": "6ba44ada-d15b-4a3f-a6dd-45203b5dbc85",
+          "provider_id": "5975d26b-a497-4095-86bc-cae435778c5c",
           "name": "gemini-2.5-pro",
           "display_name": "Gemini 2.5 Pro",
           "enabled": true,
@@ -252,14 +252,14 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         },
         {
-          "id": "5c06f0c0-1707-477f-8737-7dde2e48774d",
-          "provider_id": "f0e6e0d3-e394-4871-97ea-4ca004d9758c",
+          "id": "4c916c64-e342-40f8-94ba-71e483ef7b08",
+          "provider_id": "5975d26b-a497-4095-86bc-cae435778c5c",
           "name": "gemini-2.5-flash",
           "display_name": "Gemini 2.5 Flash",
           "enabled": true,
@@ -275,8 +275,8 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         }
@@ -285,29 +285,29 @@
       "page": 1,
       "per_page": 100
     },
-    "ea4e8ebb-4308-43f2-8fd4-34f9582646b9": {
+    "85ec5652-ecd8-4507-a300-9eb7b6661b2e": {
       "models": [],
       "total": 0,
       "page": 1,
       "per_page": 100
     },
-    "beae81d4-3699-4ba3-a42d-7884238193ef": {
+    "b483e1d4-1186-41a3-aa80-a860fe38443c": {
       "models": [],
       "total": 0,
       "page": 1,
       "per_page": 100
     },
-    "491cf114-b2c5-428c-a864-b9e98ce8f9c1": {
+    "518eb310-7dbe-4caf-a608-0746e7731a74": {
       "models": [],
       "total": 0,
       "page": 1,
       "per_page": 100
     },
-    "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e": {
+    "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c": {
       "models": [
         {
-          "id": "a61a3679-0bfe-4e97-bb4a-d5f687f08a53",
-          "provider_id": "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e",
+          "id": "57ce83ef-083f-4078-b516-047f1c08f7d9",
+          "provider_id": "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c",
           "name": "gpt-4o",
           "display_name": "GPT-4o",
           "enabled": true,
@@ -323,14 +323,14 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         },
         {
-          "id": "63ac53fd-9d60-4b11-920e-a356d3bbae10",
-          "provider_id": "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e",
+          "id": "15b4ff5e-846c-40ff-ad46-c863e9cf3f77",
+          "provider_id": "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c",
           "name": "gpt-4o-mini",
           "display_name": "GPT-4o mini",
           "enabled": true,
@@ -346,14 +346,14 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         },
         {
-          "id": "f9f481eb-92a2-4fa3-b0d3-efced12b7047",
-          "provider_id": "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e",
+          "id": "6f8f92ab-8600-4afb-9944-3e3e50985023",
+          "provider_id": "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c",
           "name": "text-embedding-3-large",
           "display_name": "Embedding 3 Large",
           "enabled": true,
@@ -369,8 +369,8 @@
             "image_generator": false
           },
           "parameters": {},
-          "created_at": "2026-07-05T15:32:12Z",
-          "updated_at": "2026-07-05T15:32:12Z",
+          "created_at": "2026-07-05T20:15:38Z",
+          "updated_at": "2026-07-05T20:15:38Z",
           "engine_type": "mistralrs",
           "file_format": "safetensors"
         }
@@ -383,7 +383,7 @@
   "groups": {
     "groups": [
       {
-        "id": "970f79b5-2ec2-486c-a2d8-1395402159a9",
+        "id": "86283a8b-366a-47d7-8d63-d5054ed45fb3",
         "name": "Administrators",
         "description": "System administrators with full access to all features",
         "permissions": [
@@ -397,11 +397,11 @@
         "is_system": true,
         "is_active": true,
         "is_default": false,
-        "created_at": "2026-07-05T15:32:09.411279Z",
-        "updated_at": "2026-07-05T15:32:09.577347Z"
+        "created_at": "2026-07-05T20:15:33.320075Z",
+        "updated_at": "2026-07-05T20:15:33.487163Z"
       },
       {
-        "id": "847b5d89-1769-4311-a6da-04226ecc3cba",
+        "id": "9b96a9cc-a240-4966-834c-bb3aa41464ef",
         "name": "Users",
         "description": "Default group for all users",
         "permissions": [
@@ -459,8 +459,8 @@
         "is_system": true,
         "is_active": true,
         "is_default": true,
-        "created_at": "2026-07-05T15:32:09.411279Z",
-        "updated_at": "2026-07-05T15:32:09.660165Z"
+        "created_at": "2026-07-05T20:15:33.320075Z",
+        "updated_at": "2026-07-05T20:15:33.571472Z"
       }
     ],
     "total": 2,
@@ -469,12 +469,12 @@
     "total_pages": 1
   },
   "groupsByProvider": {
-    "4e354794-586d-459d-bfcb-5efc883d1125": [],
-    "79a64c72-03fb-452a-96e0-6d6380aa80ae": [],
-    "f0e6e0d3-e394-4871-97ea-4ca004d9758c": [],
-    "ea4e8ebb-4308-43f2-8fd4-34f9582646b9": [],
-    "beae81d4-3699-4ba3-a42d-7884238193ef": [],
-    "491cf114-b2c5-428c-a864-b9e98ce8f9c1": [],
-    "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e": []
+    "166ae531-73b6-4013-85cb-e40d4e7f0e1d": [],
+    "3c165eb1-17c8-411b-b4d7-17b95559b8de": [],
+    "5975d26b-a497-4095-86bc-cae435778c5c": [],
+    "85ec5652-ecd8-4507-a300-9eb7b6661b2e": [],
+    "b483e1d4-1186-41a3-aa80-a860fe38443c": [],
+    "518eb310-7dbe-4caf-a608-0746e7731a74": [],
+    "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c": []
   }
 }

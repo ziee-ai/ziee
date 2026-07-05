@@ -1,6 +1,6 @@
 {
   "Assistant.getDefault": {
-    "id": "31207d65-b206-47cb-a481-a207ff9914f1",
+    "id": "0df871b9-a46b-41bb-9b93-b3c998d72c2b",
     "name": "Default Assistant",
     "description": "General-purpose AI assistant for everyday tasks",
     "instructions": "You are a helpful, harmless, and honest AI assistant. Provide clear, accurate, and concise responses to user queries. If you are unsure about something, say so rather than making up information.",
@@ -12,15 +12,15 @@
     "is_template": true,
     "is_default": true,
     "enabled": true,
-    "created_at": "2026-07-05T15:32:09Z",
-    "updated_at": "2026-07-05T15:32:09Z"
+    "created_at": "2026-07-05T20:15:33Z",
+    "updated_at": "2026-07-05T20:15:33Z"
   },
   "Assistant.list": {
     "assistants": [],
     "total": 0
   },
   "AssistantTemplate.getDefault": {
-    "id": "31207d65-b206-47cb-a481-a207ff9914f1",
+    "id": "0df871b9-a46b-41bb-9b93-b3c998d72c2b",
     "name": "Default Assistant",
     "description": "General-purpose AI assistant for everyday tasks",
     "instructions": "You are a helpful, harmless, and honest AI assistant. Provide clear, accurate, and concise responses to user queries. If you are unsure about something, say so rather than making up information.",
@@ -32,13 +32,13 @@
     "is_template": true,
     "is_default": true,
     "enabled": true,
-    "created_at": "2026-07-05T15:32:09Z",
-    "updated_at": "2026-07-05T15:32:09Z"
+    "created_at": "2026-07-05T20:15:33Z",
+    "updated_at": "2026-07-05T20:15:33Z"
   },
   "AssistantTemplate.list": {
     "assistants": [
       {
-        "id": "31207d65-b206-47cb-a481-a207ff9914f1",
+        "id": "0df871b9-a46b-41bb-9b93-b3c998d72c2b",
         "name": "Default Assistant",
         "description": "General-purpose AI assistant for everyday tasks",
         "instructions": "You are a helpful, harmless, and honest AI assistant. Provide clear, accurate, and concise responses to user queries. If you are unsure about something, say so rather than making up information.",
@@ -50,8 +50,8 @@
         "is_template": true,
         "is_default": true,
         "enabled": true,
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:33Z",
+        "updated_at": "2026-07-05T20:15:33Z"
       }
     ],
     "total": 1
@@ -61,7 +61,7 @@
   },
   "AuthProviders.list": [
     {
-      "id": "687d9bf1-f987-4b5a-b431-08d7455dd79d",
+      "id": "23fe9935-1399-40d5-a245-55c0f0262160",
       "name": "apple",
       "provider_type": "apple",
       "enabled": false,
@@ -75,11 +75,11 @@
         "services_id": "",
         "team_id": ""
       },
-      "created_at": "2026-07-05T15:32:09.518698Z",
-      "updated_at": "2026-07-05T15:32:09.518698Z"
+      "created_at": "2026-07-05T20:15:33.428163Z",
+      "updated_at": "2026-07-05T20:15:33.428163Z"
     },
     {
-      "id": "634bd2d8-5159-458e-a36c-65acf8ec21e9",
+      "id": "1f7103bd-2c70-438a-9aa0-bc1265b93578",
       "name": "google",
       "provider_type": "oidc",
       "enabled": false,
@@ -102,11 +102,11 @@
           "profile"
         ]
       },
-      "created_at": "2026-07-05T15:32:09.518698Z",
-      "updated_at": "2026-07-05T15:32:09.518698Z"
+      "created_at": "2026-07-05T20:15:33.428163Z",
+      "updated_at": "2026-07-05T20:15:33.428163Z"
     },
     {
-      "id": "f2f4fe84-24c8-46ad-bfa5-475ba2f13eec",
+      "id": "3d7e633b-01ff-43c8-aec6-be15008ec17d",
       "name": "microsoft",
       "provider_type": "oidc",
       "enabled": false,
@@ -128,8 +128,8 @@
           "profile"
         ]
       },
-      "created_at": "2026-07-05T15:32:09.518698Z",
-      "updated_at": "2026-07-05T15:32:09.518698Z"
+      "created_at": "2026-07-05T20:15:33.428163Z",
+      "updated_at": "2026-07-05T20:15:33.428163Z"
     }
   ],
   "Chat.getUserLlmProviders": {
@@ -156,8 +156,8 @@
     "mac_vm_vcpus": 2,
     "mac_vm_ram_mib": 2048,
     "vm_max_concurrent_execs": 3,
-    "created_at": "2026-07-05T15:32:09.506769Z",
-    "updated_at": "2026-07-05T15:32:09.506769Z"
+    "created_at": "2026-07-05T20:15:33.415431Z",
+    "updated_at": "2026-07-05T20:15:33.415431Z"
   },
   "CodeSandbox.listFlavors": {
     "available": [
@@ -185,12 +185,167 @@
     ]
   },
   "Conversation.list": {
-    "conversations": [],
-    "total": 0
+    "conversations": [
+      {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "title": "Rendering Showcase — every block type",
+        "active_branch_id": "22222222-2222-2222-2222-222222222222",
+        "created_at": "2026-07-01T12:00:00Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "message_count": 51
+      }
+    ],
+    "total": 1
   },
   "File.list": {
-    "files": [],
-    "total": 0,
+    "files": [
+      {
+        "id": "f1000000-0000-0000-0000-000000000001",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "filename": "chart.png",
+        "file_size": 6381,
+        "mime_type": "image/png",
+        "checksum": "379cf6ce7d18a41a347600c4f04b2abf267f076e62fe59550746c2f38d663e64",
+        "has_thumbnail": false,
+        "preview_page_count": 0,
+        "text_page_count": 0,
+        "processing_metadata": {},
+        "created_by": "llm",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "version": 1,
+        "current_version_id": "f1000000-0000-0000-0000-000000000001",
+        "blob_version_id": "f1000000-0000-0000-0000-000000000001"
+      },
+      {
+        "id": "f1000000-0000-0000-0000-000000000002",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "filename": "photo.jpg",
+        "file_size": 8309,
+        "mime_type": "image/jpeg",
+        "checksum": "4f513b3e982d7d061652dd1afcb4d456fffae2174d80bec90f35319f0f9808b7",
+        "has_thumbnail": false,
+        "preview_page_count": 0,
+        "text_page_count": 0,
+        "processing_metadata": {},
+        "created_by": "user",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "version": 1,
+        "current_version_id": "f1000000-0000-0000-0000-000000000002",
+        "blob_version_id": "f1000000-0000-0000-0000-000000000002"
+      },
+      {
+        "id": "f1000000-0000-0000-0000-000000000003",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "filename": "workbook.xlsx",
+        "file_size": 6641,
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "checksum": "392d315220993aa6f35e510235b7c8d27da08ae0986d85d6a328d62e9e87b472",
+        "has_thumbnail": false,
+        "preview_page_count": 0,
+        "text_page_count": 0,
+        "processing_metadata": {},
+        "created_by": "user",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "version": 1,
+        "current_version_id": "f1000000-0000-0000-0000-000000000003",
+        "blob_version_id": "f1000000-0000-0000-0000-000000000003"
+      },
+      {
+        "id": "f1000000-0000-0000-0000-000000000004",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "filename": "data.csv",
+        "file_size": 133,
+        "mime_type": "text/csv",
+        "checksum": "24b7ad6666ae8408548fc598bbf8a2aac2b555ec9d3b7a753772706bca62add5",
+        "has_thumbnail": false,
+        "preview_page_count": 0,
+        "text_page_count": 0,
+        "processing_metadata": {},
+        "created_by": "user",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "version": 1,
+        "current_version_id": "f1000000-0000-0000-0000-000000000004",
+        "blob_version_id": "f1000000-0000-0000-0000-000000000004"
+      },
+      {
+        "id": "f1000000-0000-0000-0000-000000000005",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "filename": "report.pdf",
+        "file_size": 631,
+        "mime_type": "application/pdf",
+        "checksum": "265e064806529bb6d8f8154a53183dfaa404da867ca37b710282b91b16a144cb",
+        "has_thumbnail": false,
+        "preview_page_count": 0,
+        "text_page_count": 0,
+        "processing_metadata": {},
+        "created_by": "user",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "version": 1,
+        "current_version_id": "f1000000-0000-0000-0000-000000000005",
+        "blob_version_id": "f1000000-0000-0000-0000-000000000005"
+      },
+      {
+        "id": "f1000000-0000-0000-0000-000000000006",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "filename": "script.py",
+        "file_size": 261,
+        "mime_type": "text/x-python",
+        "checksum": "d04d007fd6bd8aaaf7ed89f00811430ff5ca1a3a6e80dc0cb1615f78f1ebce57",
+        "has_thumbnail": false,
+        "preview_page_count": 0,
+        "text_page_count": 0,
+        "processing_metadata": {},
+        "created_by": "user",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "version": 1,
+        "current_version_id": "f1000000-0000-0000-0000-000000000006",
+        "blob_version_id": "f1000000-0000-0000-0000-000000000006"
+      },
+      {
+        "id": "f1000000-0000-0000-0000-000000000007",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "filename": "notes.md",
+        "file_size": 292,
+        "mime_type": "text/markdown",
+        "checksum": "c73434bbe224db0d228d8457dd695a83ac7c72febe806a179a75154acf955217",
+        "has_thumbnail": false,
+        "preview_page_count": 0,
+        "text_page_count": 0,
+        "processing_metadata": {},
+        "created_by": "user",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "version": 1,
+        "current_version_id": "f1000000-0000-0000-0000-000000000007",
+        "blob_version_id": "f1000000-0000-0000-0000-000000000007"
+      },
+      {
+        "id": "f1000000-0000-0000-0000-000000000008",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "filename": "large.txt",
+        "file_size": 86400,
+        "mime_type": "text/plain",
+        "checksum": "e5f6bc1fcec698fc465f6c45d4af098c1b1a734782770f3a9d7e61daaa8cc8a9",
+        "has_thumbnail": false,
+        "preview_page_count": 0,
+        "text_page_count": 0,
+        "processing_metadata": {},
+        "created_by": "user",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z",
+        "version": 1,
+        "current_version_id": "f1000000-0000-0000-0000-000000000008",
+        "blob_version_id": "f1000000-0000-0000-0000-000000000008"
+      }
+    ],
+    "total": 8,
     "page": 1,
     "per_page": 100
   },
@@ -209,7 +364,7 @@
     "fts_rrf_k": 60,
     "fts_candidate_multiplier": 4,
     "fts_min_rank": 0,
-    "updated_at": "2026-07-05T15:32:09.617980Z"
+    "updated_at": "2026-07-05T20:15:33.527793Z"
   },
   "Hardware.info": {
     "hardware": {
@@ -224,7 +379,7 @@
         "architecture": "x86_64",
         "cores": 192,
         "threads": 192,
-        "base_frequency": 1479
+        "base_frequency": 1500
       },
       "memory": {
         "total_ram": 3246432366592,
@@ -476,7 +631,7 @@
   ],
   "Hub.getAssistantsVersion": {
     "version": "2.0.0",
-    "last_updated": "2026-07-05T15:32:09.784373805+00:00"
+    "last_updated": "2026-07-05T20:15:34.998310507+00:00"
   },
   "Hub.getCatalog": {
     "schema_version": 2,
@@ -976,7 +1131,7 @@
       "workflows": 10
     },
     "source": "seed",
-    "last_refreshed": "2026-07-05T15:32:09.784373805+00:00"
+    "last_refreshed": "2026-07-05T20:15:34.998310507+00:00"
   },
   "Hub.getInstalled": {
     "catalog_version": "2.0.0",
@@ -1184,7 +1339,7 @@
   ],
   "Hub.getMCPServersVersion": {
     "version": "2.0.0",
-    "last_updated": "2026-07-05T15:32:09.784373805+00:00"
+    "last_updated": "2026-07-05T20:15:34.998310507+00:00"
   },
   "Hub.getModels": [
     {
@@ -1728,7 +1883,7 @@
   ],
   "Hub.getModelsVersion": {
     "version": "2.0.0",
-    "last_updated": "2026-07-05T15:32:09.784373805+00:00"
+    "last_updated": "2026-07-05T20:15:34.998310507+00:00"
   },
   "LitSearch.getConnectors": {
     "connectors": [
@@ -1847,7 +2002,7 @@
     "per_source_limit": 50,
     "request_timeout_secs": 30,
     "completeness_estimate_enabled": true,
-    "updated_at": "2026-07-05T15:32:09.623181Z"
+    "updated_at": "2026-07-05T20:15:33.533065Z"
   },
   "LitSearch.listUserKeys": {
     "connectors": [
@@ -1900,8 +2055,8 @@
   "LlmModel.list": {
     "models": [
       {
-        "id": "a32a1f24-eebc-4fcd-b820-013455d8f8ea",
-        "provider_id": "4e354794-586d-459d-bfcb-5efc883d1125",
+        "id": "5a470fd4-2dc4-4b5b-b125-dc0270821846",
+        "provider_id": "166ae531-73b6-4013-85cb-e40d4e7f0e1d",
         "name": "claude-opus-4-8",
         "display_name": "Claude Opus 4.8",
         "enabled": true,
@@ -1917,14 +2072,14 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       },
       {
-        "id": "25775103-c37b-4e06-9b94-952c0b3762e0",
-        "provider_id": "4e354794-586d-459d-bfcb-5efc883d1125",
+        "id": "02b31573-1172-4ac7-a92e-e8a727c5dabe",
+        "provider_id": "166ae531-73b6-4013-85cb-e40d4e7f0e1d",
         "name": "claude-sonnet-5",
         "display_name": "Claude Sonnet 5",
         "enabled": true,
@@ -1940,14 +2095,14 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       },
       {
-        "id": "fba12e8d-ddd3-4469-aecf-71ade8fa5419",
-        "provider_id": "4e354794-586d-459d-bfcb-5efc883d1125",
+        "id": "bee428a8-45bc-4a8e-80f6-f7aa7c8240a7",
+        "provider_id": "166ae531-73b6-4013-85cb-e40d4e7f0e1d",
         "name": "claude-haiku-4-5",
         "display_name": "Claude Haiku 4.5",
         "enabled": true,
@@ -1963,14 +2118,14 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       },
       {
-        "id": "a61a3679-0bfe-4e97-bb4a-d5f687f08a53",
-        "provider_id": "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e",
+        "id": "57ce83ef-083f-4078-b516-047f1c08f7d9",
+        "provider_id": "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c",
         "name": "gpt-4o",
         "display_name": "GPT-4o",
         "enabled": true,
@@ -1986,14 +2141,14 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       },
       {
-        "id": "63ac53fd-9d60-4b11-920e-a356d3bbae10",
-        "provider_id": "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e",
+        "id": "15b4ff5e-846c-40ff-ad46-c863e9cf3f77",
+        "provider_id": "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c",
         "name": "gpt-4o-mini",
         "display_name": "GPT-4o mini",
         "enabled": true,
@@ -2009,14 +2164,14 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       },
       {
-        "id": "f9f481eb-92a2-4fa3-b0d3-efced12b7047",
-        "provider_id": "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e",
+        "id": "6f8f92ab-8600-4afb-9944-3e3e50985023",
+        "provider_id": "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c",
         "name": "text-embedding-3-large",
         "display_name": "Embedding 3 Large",
         "enabled": true,
@@ -2032,14 +2187,14 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       },
       {
-        "id": "1aabfdcf-cd82-4b9f-b5ca-aa83794b910d",
-        "provider_id": "f0e6e0d3-e394-4871-97ea-4ca004d9758c",
+        "id": "6ba44ada-d15b-4a3f-a6dd-45203b5dbc85",
+        "provider_id": "5975d26b-a497-4095-86bc-cae435778c5c",
         "name": "gemini-2.5-pro",
         "display_name": "Gemini 2.5 Pro",
         "enabled": true,
@@ -2055,14 +2210,14 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       },
       {
-        "id": "5c06f0c0-1707-477f-8737-7dde2e48774d",
-        "provider_id": "f0e6e0d3-e394-4871-97ea-4ca004d9758c",
+        "id": "4c916c64-e342-40f8-94ba-71e483ef7b08",
+        "provider_id": "5975d26b-a497-4095-86bc-cae435778c5c",
         "name": "gemini-2.5-flash",
         "display_name": "Gemini 2.5 Flash",
         "enabled": true,
@@ -2078,14 +2233,14 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       },
       {
-        "id": "98936bc4-8c9f-4d26-80f6-79d261a2c419",
-        "provider_id": "79a64c72-03fb-452a-96e0-6d6380aa80ae",
+        "id": "512a06c8-f88e-48ef-b80b-f12d75b9b108",
+        "provider_id": "3c165eb1-17c8-411b-b4d7-17b95559b8de",
         "name": "deepseek-chat",
         "display_name": "DeepSeek Chat",
         "enabled": true,
@@ -2101,8 +2256,8 @@
           "image_generator": false
         },
         "parameters": {},
-        "created_at": "2026-07-05T15:32:12Z",
-        "updated_at": "2026-07-05T15:32:12Z",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z",
         "engine_type": "mistralrs",
         "file_format": "safetensors"
       }
@@ -2117,7 +2272,7 @@
   "LlmProvider.list": {
     "providers": [
       {
-        "id": "4e354794-586d-459d-bfcb-5efc883d1125",
+        "id": "166ae531-73b6-4013-85cb-e40d4e7f0e1d",
         "name": "Anthropic",
         "provider_type": "anthropic",
         "enabled": true,
@@ -2130,11 +2285,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:12.559777Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:38.516856Z"
       },
       {
-        "id": "79a64c72-03fb-452a-96e0-6d6380aa80ae",
+        "id": "3c165eb1-17c8-411b-b4d7-17b95559b8de",
         "name": "DeepSeek",
         "provider_type": "deepseek",
         "enabled": true,
@@ -2147,11 +2302,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:12.628201Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:38.616582Z"
       },
       {
-        "id": "f0e6e0d3-e394-4871-97ea-4ca004d9758c",
+        "id": "5975d26b-a497-4095-86bc-cae435778c5c",
         "name": "Google Gemini",
         "provider_type": "gemini",
         "enabled": true,
@@ -2164,11 +2319,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:12.613279Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:38.596991Z"
       },
       {
-        "id": "ea4e8ebb-4308-43f2-8fd4-34f9582646b9",
+        "id": "85ec5652-ecd8-4507-a300-9eb7b6661b2e",
         "name": "Groq",
         "provider_type": "groq",
         "enabled": false,
@@ -2181,15 +2336,15 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:09.429305Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:33.338153Z"
       },
       {
-        "id": "beae81d4-3699-4ba3-a42d-7884238193ef",
+        "id": "b483e1d4-1186-41a3-aa80-a860fe38443c",
         "name": "Local",
         "provider_type": "local",
         "enabled": false,
-        "base_url": "http://127.0.0.1:35281/api/local-llm/v1",
+        "base_url": "http://127.0.0.1:46311/api/local-llm/v1",
         "built_in": true,
         "proxy_settings": {
           "enabled": false,
@@ -2198,11 +2353,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:09.746294Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:34.455976Z"
       },
       {
-        "id": "491cf114-b2c5-428c-a864-b9e98ce8f9c1",
+        "id": "518eb310-7dbe-4caf-a608-0746e7731a74",
         "name": "Mistral AI",
         "provider_type": "mistral",
         "enabled": false,
@@ -2215,11 +2370,11 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:09.429305Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:33.338153Z"
       },
       {
-        "id": "cb8e5a09-8c1c-4675-a2e3-019e8c1d613e",
+        "id": "f5e699f7-5dc0-4f99-9161-79d35e3fcc2c",
         "name": "OpenAI",
         "provider_type": "openai",
         "enabled": true,
@@ -2232,8 +2387,8 @@
           "no_proxy": "",
           "ignore_ssl_certificates": false
         },
-        "created_at": "2026-07-05T15:32:09.429305Z",
-        "updated_at": "2026-07-05T15:32:12.596131Z"
+        "created_at": "2026-07-05T20:15:33.338153Z",
+        "updated_at": "2026-07-05T20:15:38.568503Z"
       }
     ],
     "total": 7,
@@ -2246,7 +2401,7 @@
   "LlmRepository.list": {
     "repositories": [
       {
-        "id": "ce81a799-38ba-465c-bab0-dd34bd29a430",
+        "id": "05456e64-8661-4ba0-9237-63c9d2948cc3",
         "name": "GitHub",
         "url": "https://github.com",
         "auth_type": "bearer_token",
@@ -2255,12 +2410,12 @@
         },
         "enabled": true,
         "built_in": true,
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z",
+        "created_at": "2026-07-05T20:15:33Z",
+        "updated_at": "2026-07-05T20:15:33Z",
         "last_health_check_status": "untested"
       },
       {
-        "id": "aab11d00-4bc3-4530-b7a1-e4c0d5e9c76f",
+        "id": "5c867c42-dc58-41e8-86b2-0e36be64c819",
         "name": "Hugging Face Hub",
         "url": "https://huggingface.co",
         "auth_type": "api_key",
@@ -2269,8 +2424,8 @@
         },
         "enabled": true,
         "built_in": true,
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z",
+        "created_at": "2026-07-05T20:15:33Z",
+        "updated_at": "2026-07-05T20:15:33Z",
         "last_health_check_status": "untested"
       }
     ],
@@ -2291,14 +2446,36 @@
     "idle_unload_secs": 1800,
     "auto_start_timeout_secs": 30,
     "drain_timeout_secs": 30,
-    "created_at": "2026-07-05T15:32:09.548648Z",
-    "updated_at": "2026-07-05T15:32:09.548648Z"
+    "created_at": "2026-07-05T20:15:33.458227Z",
+    "updated_at": "2026-07-05T20:15:33.458227Z"
   },
   "Mcp.getDefaults": {},
   "McpServer.listAccessible": {
     "servers": [
       {
-        "id": "5d5fe0b9-d301-4369-bf82-ab1efe662593",
+        "id": "e0000000-0000-0000-0000-0000000000e1",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "name": "weather-api",
+        "display_name": "Weather API (external)",
+        "enabled": true,
+        "is_system": false,
+        "is_built_in": false,
+        "transport_type": "http",
+        "args": [],
+        "url": "https://example.com/mcp",
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T20:15:38Z",
+        "updated_at": "2026-07-05T20:15:38Z"
+      },
+      {
+        "id": "83bc99cc-ce81-4f8f-b394-7d89289523c8",
         "name": "fetch",
         "display_name": "Web Fetch",
         "description": "Fetch content from web URLs",
@@ -2318,11 +2495,11 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:33Z",
+        "updated_at": "2026-07-05T20:15:33Z"
       }
     ],
-    "total": 1,
+    "total": 2,
     "page": 1,
     "per_page": 100,
     "total_pages": 1
@@ -2339,7 +2516,7 @@
         "is_built_in": true,
         "transport_type": "http",
         "args": [],
-        "url": "http://127.0.0.1:35281/api/control/mcp",
+        "url": "http://127.0.0.1:46311/api/control/mcp",
         "environment_variables_entries": [],
         "headers_entries": [],
         "timeout_seconds": 30,
@@ -2349,8 +2526,8 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:35Z",
+        "updated_at": "2026-07-05T20:15:35Z"
       },
       {
         "id": "23e9b29d-6082-5567-a3cb-96ffc0adf0e5",
@@ -2362,7 +2539,7 @@
         "is_built_in": true,
         "transport_type": "http",
         "args": [],
-        "url": "http://127.0.0.1:35281/api/bio/mcp",
+        "url": "http://127.0.0.1:46311/api/bio/mcp",
         "environment_variables_entries": [],
         "headers_entries": [],
         "timeout_seconds": 120,
@@ -2372,11 +2549,11 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:35Z",
+        "updated_at": "2026-07-05T20:15:35Z"
       },
       {
-        "id": "2baeb057-0b84-41df-85df-6e74cbf42ec2",
+        "id": "e80aeda5-929d-4480-9963-9f43ff2162c3",
         "name": "browser",
         "display_name": "Browser Automation",
         "description": "Automate browser interactions",
@@ -2396,11 +2573,11 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:33Z",
+        "updated_at": "2026-07-05T20:15:33Z"
       },
       {
-        "id": "d526df5f-3874-44ad-9615-602dfbc83d7a",
+        "id": "1e9d6978-cc93-495a-a45b-6efc51ac1431",
         "name": "filesystem",
         "display_name": "Filesystem Access",
         "description": "Access local filesystem operations",
@@ -2421,11 +2598,11 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:33Z",
+        "updated_at": "2026-07-05T20:15:33Z"
       },
       {
-        "id": "f157f2bb-13e2-46b4-9cca-e47f9f828fd8",
+        "id": "cb9f3d9d-2b86-47b4-bf4f-7dd45064c357",
         "name": "git",
         "display_name": "Git Operations",
         "description": "Git repository operations",
@@ -2446,8 +2623,8 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:33Z",
+        "updated_at": "2026-07-05T20:15:33Z"
       },
       {
         "id": "82e9cfc4-b299-538e-93db-534a1ba14801",
@@ -2459,7 +2636,7 @@
         "is_built_in": true,
         "transport_type": "http",
         "args": [],
-        "url": "http://127.0.0.1:35281/api/skills/mcp",
+        "url": "http://127.0.0.1:46311/api/skills/mcp",
         "environment_variables_entries": [],
         "headers_entries": [],
         "timeout_seconds": 30,
@@ -2469,11 +2646,11 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:35Z",
+        "updated_at": "2026-07-05T20:15:35Z"
       },
       {
-        "id": "5d5fe0b9-d301-4369-bf82-ab1efe662593",
+        "id": "83bc99cc-ce81-4f8f-b394-7d89289523c8",
         "name": "fetch",
         "display_name": "Web Fetch",
         "description": "Fetch content from web URLs",
@@ -2493,8 +2670,8 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:33Z",
+        "updated_at": "2026-07-05T20:15:33Z"
       },
       {
         "id": "5df3420c-4a5a-59c3-8f99-37a47e7469d6",
@@ -2506,7 +2683,7 @@
         "is_built_in": true,
         "transport_type": "http",
         "args": [],
-        "url": "http://127.0.0.1:35281/api/workflows/mcp",
+        "url": "http://127.0.0.1:46311/api/workflows/mcp",
         "environment_variables_entries": [],
         "headers_entries": [],
         "timeout_seconds": 30,
@@ -2516,8 +2693,8 @@
         "run_in_sandbox": false,
         "sandbox_flavor": "full",
         "last_health_check_status": "untested",
-        "created_at": "2026-07-05T15:32:09Z",
-        "updated_at": "2026-07-05T15:32:09Z"
+        "created_at": "2026-07-05T20:15:35Z",
+        "updated_at": "2026-07-05T20:15:35Z"
       }
     ],
     "total": 8,
@@ -2537,7 +2714,7 @@
       "http"
     ],
     "tool_call_retention_days": 90,
-    "updated_at": "2026-07-05T15:32:09Z"
+    "updated_at": "2026-07-05T20:15:33Z"
   },
   "Memory.list": {
     "items": [],
@@ -2562,7 +2739,7 @@
     "fts_rrf_k": 60,
     "fts_candidate_multiplier": 4,
     "fts_min_rank": 0,
-    "updated_at": "2026-07-05T15:32:09.527406Z"
+    "updated_at": "2026-07-05T20:15:33.436907Z"
   },
   "MemoryAdmin.rebuildStatus": {
     "in_progress": false,
@@ -2570,20 +2747,30 @@
   },
   "MemoryAudit.list": [],
   "MemorySettings.get": {
-    "user_id": "98d61fda-be66-4089-9002-066b806a5a41",
+    "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
     "extraction_enabled": false,
     "retrieval_enabled": false,
     "max_memories": 1000,
-    "created_at": "2026-07-05T15:32:15.983564Z",
-    "updated_at": "2026-07-05T15:32:15.983564Z"
+    "created_at": "2026-07-05T20:15:41.537322Z",
+    "updated_at": "2026-07-05T20:15:41.537322Z"
   },
   "Onboarding.getProgress": {
     "completed_guide_ids": [],
     "completed_step_ids": []
   },
   "Project.list": {
-    "projects": [],
-    "total": 0
+    "projects": [
+      {
+        "id": "90000000-0000-0000-0000-000000000001",
+        "user_id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
+        "name": "UI Showcase",
+        "description": "Demo project that hosts the showcase conversation.",
+        "instructions": "You are a rendering test fixture. Prefer rich, varied formatting.",
+        "created_at": "2026-07-05T20:15:38.391820Z",
+        "updated_at": "2026-07-05T20:15:38.391820Z"
+      }
+    ],
+    "total": 1
   },
   "RuntimeVersion.list": {
     "versions": []
@@ -2600,13 +2787,13 @@
   "Skill.list": {
     "skills": [
       {
-        "id": "593f231e-7d12-488f-9817-c0cf5a558328",
+        "id": "48426f49-75ad-49e3-bce9-5f412f71e1ac",
         "name": "io.github.ziee/configure-code-sandbox",
         "version": "0.1.0",
         "display_name": "configure-code-sandbox",
         "description": "Enable + configure ziee's bwrap-isolated code execution sandbox. Use when the user wants the LLM to run code, install Python packages, or asks about sandbox flavors.",
         "when_to_use": "User asks about code execution, sandbox, bwrap, \"can the LLM run my script\", flavor downloads, Python in chat.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/configure-code-sandbox",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/configure-code-sandbox",
         "bundle_sha256": "c77bcd96d3fe674fd95e771442d0324c4bb80713914637a3c80bfd345ffdfeeb",
         "bundle_size_bytes": 2454,
         "file_count": 1,
@@ -2624,17 +2811,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.797120Z",
-        "updated_at": "2026-07-05T15:32:09.797120Z"
+        "created_at": "2026-07-05T20:15:35.026991Z",
+        "updated_at": "2026-07-05T20:15:35.026991Z"
       },
       {
-        "id": "59f138a8-3c8b-490c-912f-17c55530acaa",
+        "id": "efd39b1f-d859-4b2d-96af-d3a4c81dffa1",
         "name": "io.github.ziee/configure-llm-providers",
         "version": "0.1.0",
         "display_name": "configure-llm-providers",
         "description": "Configure LLM providers (Anthropic, OpenAI, Groq, Ollama, local) in ziee. Use when the user mentions adding an API key, switching models, getting \"no providers configured\" errors, or asks how to use a specific model.",
         "when_to_use": "User asks about LLM provider setup, API key configuration, \"how do I add my key\", connecting Ollama, picking a model, or seeing \"no model selected\" warnings.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/configure-llm-providers",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/configure-llm-providers",
         "bundle_sha256": "6a507ba61af0a36c556b74f044703493345b69bb4af40cb2301e7f093f338066",
         "bundle_size_bytes": 2426,
         "file_count": 1,
@@ -2652,17 +2839,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.800616Z",
-        "updated_at": "2026-07-05T15:32:09.800616Z"
+        "created_at": "2026-07-05T20:15:35.030725Z",
+        "updated_at": "2026-07-05T20:15:35.030725Z"
       },
       {
-        "id": "d718b2a3-4f20-4e7a-ae85-5b055a6a0443",
+        "id": "3c99c5cb-7e71-42b9-aeba-45c670a9b53e",
         "name": "io.github.ziee/configure-mcp-servers",
         "version": "0.1.0",
         "display_name": "configure-mcp-servers",
         "description": "Install + configure MCP servers in ziee. Use when the user wants to add a tool to the LLM (filesystem, web search, github, etc.) or asks about MCP.",
         "when_to_use": "User mentions MCP, adding tools, \"how do I let the LLM read files\", filesystem access, web search integration, github tools.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/configure-mcp-servers",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/configure-mcp-servers",
         "bundle_sha256": "e3afd2c35c0afdeffbe0c88b34adbfcbfee16819427da6ed18c18c7cf69e8f74",
         "bundle_size_bytes": 2212,
         "file_count": 1,
@@ -2680,17 +2867,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.802414Z",
-        "updated_at": "2026-07-05T15:32:09.802414Z"
+        "created_at": "2026-07-05T20:15:35.032474Z",
+        "updated_at": "2026-07-05T20:15:35.032474Z"
       },
       {
-        "id": "58e167b3-69c3-417f-8294-101461689626",
+        "id": "08358b09-cf9d-40e0-97ae-31385aae748d",
         "name": "io.github.ziee/create-skill",
         "version": "0.1.0",
         "display_name": "create-skill",
         "description": "Author a new skill for ziee (Agent Skills standard -- works in Claude Code too). Use when the user wants to create, edit, or share a skill.",
         "when_to_use": "User asks \"how do I make a skill\", wants to create knowledge for the LLM, asks about SKILL.md, mentions Agent Skills spec.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/create-skill",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/create-skill",
         "bundle_sha256": "5dd56d5d472b9de3d11198d136db06fb804cd26cd77d12df53918831309a2a3f",
         "bundle_size_bytes": 2261,
         "file_count": 1,
@@ -2708,17 +2895,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.804498Z",
-        "updated_at": "2026-07-05T15:32:09.804498Z"
+        "created_at": "2026-07-05T20:15:35.034060Z",
+        "updated_at": "2026-07-05T20:15:35.034060Z"
       },
       {
-        "id": "bafd7973-41a9-4a54-b23d-6e537446326d",
+        "id": "6fa3e921-1c75-4eee-9f5b-7b6d72e2fd99",
         "name": "io.github.ziee/create-workflow",
         "version": "0.1.0",
         "display_name": "create-workflow",
         "description": "Author a new workflow for ziee (declarative YAML DAG with llm / llm_map / sandbox / elicit step kinds). Use when the user wants to create, edit, or test a workflow.",
         "when_to_use": "User asks \"how do I make a workflow\", wants to chain LLM calls, mentions workflow.yaml, asks about steps, kind, llm_map, sandbox steps.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/create-workflow",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/create-workflow",
         "bundle_sha256": "60e4c7c5315ba83ecc4cbaade49cffaced3c69769940d817fea8d50101f2bf6a",
         "bundle_size_bytes": 3026,
         "file_count": 1,
@@ -2736,17 +2923,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.806511Z",
-        "updated_at": "2026-07-05T15:32:09.806511Z"
+        "created_at": "2026-07-05T20:15:35.035733Z",
+        "updated_at": "2026-07-05T20:15:35.035733Z"
       },
       {
-        "id": "07185fc9-ca59-4b14-b892-120d01f11b51",
+        "id": "d4bc3c45-a5a5-46d1-add8-096cde747460",
         "name": "io.github.ziee/hub-installation",
         "version": "0.1.0",
         "display_name": "hub-installation",
         "description": "Browse + install models, assistants, MCP servers, skills, workflows from the ziee hub. Use when the user asks about the hub, installing something from a catalog, or finding tools to extend ziee.",
         "when_to_use": "User mentions hub, registry, catalog, browsing tools, installing skills/workflows/MCP servers, \"where do I find more X\".",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/hub-installation",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/hub-installation",
         "bundle_sha256": "b8ee764bd62bd7cbce93ed0173c3d04a8a8018462894a4e99bb01cfde49bfaa3",
         "bundle_size_bytes": 2425,
         "file_count": 1,
@@ -2764,17 +2951,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.808222Z",
-        "updated_at": "2026-07-05T15:32:09.808222Z"
+        "created_at": "2026-07-05T20:15:35.037327Z",
+        "updated_at": "2026-07-05T20:15:35.037327Z"
       },
       {
-        "id": "e5b42af7-862f-4cfc-ad0b-12333864c707",
+        "id": "66b3a55f-b68b-4db1-903c-9efb617ba0bf",
         "name": "io.github.ziee/install-samtools-bcftools",
         "version": "0.1.0",
         "display_name": "install-samtools-bcftools",
         "description": "Install samtools and bcftools (SAM/BAM/CRAM/VCF/BCF processing) into the code sandbox via bioconda. Use when the user works with sequencing alignment or variant files and these tools aren't installed.",
         "when_to_use": "User mentions BAM/SAM/CRAM/VCF/BCF files, read alignments, variant calling, \"samtools\", \"bcftools\", \"index my BAM\", pileup, or genomics file conversion.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/install-samtools-bcftools",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/install-samtools-bcftools",
         "bundle_sha256": "933d3de5bf0ef5af2dcaaac4909db4e954b152f3155754e738d95675ea8e564a",
         "bundle_size_bytes": 1848,
         "file_count": 1,
@@ -2792,17 +2979,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.810038Z",
-        "updated_at": "2026-07-05T15:32:09.810038Z"
+        "created_at": "2026-07-05T20:15:35.038937Z",
+        "updated_at": "2026-07-05T20:15:35.038937Z"
       },
       {
-        "id": "bf34571e-3e75-4a4d-bcfd-a8173e604935",
+        "id": "5b541ed1-bb4a-4988-8434-3a18411e5507",
         "name": "io.github.ziee/manage-projects",
         "version": "0.1.0",
         "display_name": "manage-projects",
         "description": "Create/manage chat projects in ziee -- group conversations + attach reference files + set per-project assistant + MCP defaults. Use when the user wants to organize conversations or attach files to multiple chats at once.",
         "when_to_use": "User mentions projects, wants to attach files, organize conversations, set defaults for related chats.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/manage-projects",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/manage-projects",
         "bundle_sha256": "3ec898b7f2a2431d559f0f07a0c743312b8dd676c8520be6ecee19bf8dda9f81",
         "bundle_size_bytes": 2240,
         "file_count": 1,
@@ -2820,17 +3007,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.811394Z",
-        "updated_at": "2026-07-05T15:32:09.811394Z"
+        "created_at": "2026-07-05T20:15:35.041072Z",
+        "updated_at": "2026-07-05T20:15:35.041072Z"
       },
       {
-        "id": "0f31aeb6-dae6-4438-8133-9d2fca334346",
+        "id": "939cf5f6-4fa3-4c8f-8ee0-3bd6a3bff2de",
         "name": "io.github.ziee/rnaseq-toolkit",
         "version": "0.1.0",
         "display_name": "rnaseq-toolkit",
         "description": "Install a bulk RNA-seq toolkit (STAR, salmon, HISAT2, featureCounts/subread, samtools) into the code sandbox via bioconda. Use when the user runs RNA-seq alignment or quantification and the tools aren't installed.",
         "when_to_use": "User mentions RNA-seq, transcript quantification, read alignment for expression, STAR, salmon, HISAT2, featureCounts, subread, or \"FASTQ to counts\".",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/rnaseq-toolkit",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/rnaseq-toolkit",
         "bundle_sha256": "b483fa398d0206eac360664f63e2c06f198f7309e88566eb8ac1cd10c7e4ee6d",
         "bundle_size_bytes": 1743,
         "file_count": 1,
@@ -2848,17 +3035,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.814368Z",
-        "updated_at": "2026-07-05T15:32:09.814368Z"
+        "created_at": "2026-07-05T20:15:35.043636Z",
+        "updated_at": "2026-07-05T20:15:35.043636Z"
       },
       {
-        "id": "e7a0d439-56fa-4d90-9a8b-b7c2610e0457",
+        "id": "95aee459-d5a8-47a8-a70d-61a3c2dd4e55",
         "name": "io.github.ziee/setup-datascience-env",
         "version": "0.1.0",
         "display_name": "setup-datascience-env",
         "description": "Bootstrap a persistent Python data-science environment (numpy/pandas/scipy/matplotlib/scikit-learn) inside the code sandbox using micromamba. Use when the user wants Python data analysis, plotting, or scientific computing in chat and the needed packages aren't already installed.",
         "when_to_use": "User asks to analyze a CSV/dataframe, plot data, run pandas/numpy/scipy/sklearn, or \"set up a Python environment\". Run this before reaching for those libraries if an import fails.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/setup-datascience-env",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/setup-datascience-env",
         "bundle_sha256": "a608028801dc074bbb6d1d7aea7b5816721be1aa965b552e9cf8ca94972637ce",
         "bundle_size_bytes": 2499,
         "file_count": 1,
@@ -2876,17 +3063,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.820354Z",
-        "updated_at": "2026-07-05T15:32:09.820354Z"
+        "created_at": "2026-07-05T20:15:35.045969Z",
+        "updated_at": "2026-07-05T20:15:35.045969Z"
       },
       {
-        "id": "3adcf262-a155-41aa-a08b-1ba8222d773d",
+        "id": "565eafe6-4e5e-45f9-9ffd-75329bab3b02",
         "name": "io.github.ziee/set-up-memory",
         "version": "0.1.0",
         "display_name": "set-up-memory",
         "description": "Enable + use ziee's per-user persistent memory (mem0-style fact storage with vector retrieval). Use when the user wants the LLM to remember things across conversations.",
         "when_to_use": "User mentions \"remember this\", asks why the LLM forgot something, wants persistent context, or asks about the memory feature.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/set-up-memory",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/set-up-memory",
         "bundle_sha256": "7c3ce65a18315b2a1ae1a946eb971e6d6ffe2e79af2466a6678574ccfc80773c",
         "bundle_size_bytes": 1977,
         "file_count": 1,
@@ -2904,17 +3091,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.817220Z",
-        "updated_at": "2026-07-05T15:32:09.817220Z"
+        "created_at": "2026-07-05T20:15:35.044855Z",
+        "updated_at": "2026-07-05T20:15:35.044855Z"
       },
       {
-        "id": "e872c353-51b3-43ab-ba3c-4362b54d6847",
+        "id": "5345ebc9-6fd2-4be5-8c5e-a8656de1b0e9",
         "name": "io.github.ziee/troubleshoot-workflow-run",
         "version": "0.1.0",
         "display_name": "troubleshoot-workflow-run",
         "description": "Diagnose a failed workflow run using log resources + the error structure. Use when a workflow tool call returned is_error or a run failed.",
         "when_to_use": "User reports \"my workflow failed\", asks why a tool errored, mentions a workflow run that didn't produce expected output, or the LLM just got an is_error tool_result from a workflow tool call.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/troubleshoot-workflow-run",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/troubleshoot-workflow-run",
         "bundle_sha256": "8f4cf8f1af5a270669f77ba61e75653f28d17b05fa9c7f562528930c0d5df4d3",
         "bundle_size_bytes": 3385,
         "file_count": 1,
@@ -2932,17 +3119,17 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.822957Z",
-        "updated_at": "2026-07-05T15:32:09.822957Z"
+        "created_at": "2026-07-05T20:15:35.047782Z",
+        "updated_at": "2026-07-05T20:15:35.047782Z"
       },
       {
-        "id": "dbd3b594-2057-44fe-b666-6bf39a7e2e77",
+        "id": "839d63d3-0e39-4af8-8f7f-f1448b6e8a3e",
         "name": "io.github.ziee/use-assistants",
         "version": "0.1.0",
         "display_name": "use-assistants",
         "description": "Use + create assistants in ziee -- preset combinations of system prompt + model + parameters. Use when the user wants a specialized chat persona or asks about assistants.",
         "when_to_use": "User mentions assistant, wants a persona, asks \"what's the difference between chat and assistant\", wants to save a prompt as a reusable assistant.",
-        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-nA3cXw/app-data/skills/builtin/use-assistants",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-Le7tQX/app-data/skills/builtin/use-assistants",
         "bundle_sha256": "08e68723c729f395c60c0b872ebd786666f92f1a7673a2d89d26cf8ca3fa5aac",
         "bundle_size_bytes": 2043,
         "file_count": 1,
@@ -2960,8 +3147,8 @@
         "scope": "built_in",
         "enabled": true,
         "is_dev": false,
-        "created_at": "2026-07-05T15:32:09.824438Z",
-        "updated_at": "2026-07-05T15:32:09.824438Z"
+        "created_at": "2026-07-05T20:15:35.049383Z",
+        "updated_at": "2026-07-05T20:15:35.049383Z"
       }
     ]
   },
@@ -2973,21 +3160,21 @@
     "enabled": true,
     "summarize_after_tokens": 12000,
     "summarizer_keep_recent_tokens": 3000,
-    "updated_at": "2026-07-05T15:32:09.588489Z"
+    "updated_at": "2026-07-05T20:15:33.498359Z"
   },
   "User.list": {
     "users": [
       {
-        "id": "98d61fda-be66-4089-9002-066b806a5a41",
+        "id": "a5d6fdad-b3b1-4d5a-bd5d-25223536e415",
         "username": "admin",
         "email": "admin@gallery.dev",
         "email_verified": false,
         "is_active": true,
         "is_admin": true,
         "permissions": [],
-        "created_at": "2026-07-05T15:32:10.950371Z",
-        "updated_at": "2026-07-05T15:32:12.535677Z",
-        "last_login_at": "2026-07-05T15:32:12.535677Z"
+        "created_at": "2026-07-05T20:15:36.773292Z",
+        "updated_at": "2026-07-05T20:15:38.315029Z",
+        "last_login_at": "2026-07-05T20:15:38.315029Z"
       }
     ],
     "total": 1,
@@ -2998,7 +3185,7 @@
   "UserGroup.list": {
     "groups": [
       {
-        "id": "970f79b5-2ec2-486c-a2d8-1395402159a9",
+        "id": "86283a8b-366a-47d7-8d63-d5054ed45fb3",
         "name": "Administrators",
         "description": "System administrators with full access to all features",
         "permissions": [
@@ -3012,11 +3199,11 @@
         "is_system": true,
         "is_active": true,
         "is_default": false,
-        "created_at": "2026-07-05T15:32:09.411279Z",
-        "updated_at": "2026-07-05T15:32:09.577347Z"
+        "created_at": "2026-07-05T20:15:33.320075Z",
+        "updated_at": "2026-07-05T20:15:33.487163Z"
       },
       {
-        "id": "847b5d89-1769-4311-a6da-04226ecc3cba",
+        "id": "9b96a9cc-a240-4966-834c-bb3aa41464ef",
         "name": "Users",
         "description": "Default group for all users",
         "permissions": [
@@ -3074,8 +3261,8 @@
         "is_system": true,
         "is_active": true,
         "is_default": true,
-        "created_at": "2026-07-05T15:32:09.411279Z",
-        "updated_at": "2026-07-05T15:32:09.660165Z"
+        "created_at": "2026-07-05T20:15:33.320075Z",
+        "updated_at": "2026-07-05T20:15:33.571472Z"
       }
     ],
     "total": 2,
@@ -3122,7 +3309,7 @@
     "fetch_max_bytes": 5242880,
     "fetch_max_chars": 40000,
     "request_timeout_secs": 20,
-    "updated_at": "2026-07-05T15:32:09.613916Z"
+    "updated_at": "2026-07-05T20:15:33.523656Z"
   },
   "WebSearch.listUserKeys": {
     "providers": [

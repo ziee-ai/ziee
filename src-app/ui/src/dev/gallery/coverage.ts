@@ -231,7 +231,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/extensions/text/extension": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/extensions/title/extension": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/pages/ChatHistoryPage": { kind: 'via', reason: 'rendered within the chat module page' },
-  "modules/chat/pages/ConversationPage": { kind: 'via', reason: 'rendered within the chat module page' },
+  "modules/chat/pages/ConversationPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/chat/pages/NewChatPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/chat/widgets/RecentConversationsWidget": { kind: 'via', reason: 'slot-widget in chat' },
   "modules/citations/components/CitationCard": { kind: 'via', reason: 'rendered within the citations module page' },

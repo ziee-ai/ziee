@@ -26,6 +26,22 @@ pattern and only avoided crashing because their list endpoints were crawled as
 real arrays. All five hardened for consistency — a rendered list must never
 assume the response field is an array.
 
+### File-render crashes on a missing filename (surfaced by the rich chat conversation)
+
+Rendering the showcase "every block type" conversation (47 messages, file
+attachments) crashed the WHOLE conversation on a file block whose `filename` was
+undefined:
+
+| # | Site | Bug | Fix |
+|---|---|---|---|
+| 6 | `file/registry/fileViewerRegistry.ts::scoreSupport` | `filename.split('.')` on undefined → crashed the viewer resolver for every file | `filename?.split(...)` + guard |
+| 7 | `file/components/FileCard.tsx` (×3: lines 125/194/255) | `file.filename.split('.')` / `uploadProgress.filename.split('.')` on undefined | `?.split(...)` |
+
+Both are genuine defensive bugs — a file card / viewer resolver must not crash
+the surrounding render when a file block arrives without a filename (some
+tool/message payloads carry only a mime type). After the guards, the rich
+conversation renders fully (markdown, code, tool results, attachments, branches).
+
 **Result: 0 crashes across all 40 web + 44 desktop rendered pages, 0 console errors.**
 
 ## Empty-but-correct (NOT bugs)

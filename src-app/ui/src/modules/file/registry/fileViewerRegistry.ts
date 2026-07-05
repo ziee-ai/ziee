@@ -20,8 +20,10 @@ function scoreSupport(
   mimeType?: string,
 ): number | null {
   if (rule.ext !== undefined) {
-    const ext = filename.split('.').pop()?.toLowerCase()
-    if (ext === rule.ext.toLowerCase()) return rule.priority ?? 0
+    // Defensive: a file block can arrive without a filename (some tool/message
+    // payloads only carry a mime type) — don't crash the whole render on `.split`.
+    const ext = filename?.split('.').pop()?.toLowerCase()
+    if (ext && ext === rule.ext.toLowerCase()) return rule.priority ?? 0
   }
   if (rule.mime !== undefined && mimeType) {
     if (rule.mime.endsWith('/*')) {

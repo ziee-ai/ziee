@@ -1,0 +1,1956 @@
+{
+  "conversations": {
+    "conversations": [
+      {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "user_id": "bda50b72-a7fe-4acd-be23-554600364edd",
+        "title": "Rendering Showcase — every block type",
+        "active_branch_id": "22222222-2222-2222-2222-222222222222",
+        "created_at": "2026-07-01T12:00:00Z",
+        "updated_at": "2026-07-05T20:16:49.877613Z",
+        "message_count": 51
+      }
+    ],
+    "total": 1
+  },
+  "byId": {
+    "11111111-1111-1111-1111-111111111111": {
+      "conversation": {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "user_id": "bda50b72-a7fe-4acd-be23-554600364edd",
+        "title": "Rendering Showcase — every block type",
+        "active_branch_id": "22222222-2222-2222-2222-222222222222",
+        "created_at": "2026-07-01T12:00:00Z",
+        "updated_at": "2026-07-05T20:16:49.877613Z"
+      },
+      "messages": [
+        {
+          "id": "30000000-0000-0000-0000-000000000001",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000001",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:01Z",
+          "contents": [
+            {
+              "id": "9a655bf7-caf0-4c8a-9a30-6a22fbd635e4",
+              "message_id": "30000000-0000-0000-0000-000000000001",
+              "content_type": "text",
+              "content": {
+                "text": "Show me **every** markdown formatting feature you can render.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000002",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000002",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:02Z",
+          "contents": [
+            {
+              "id": "f56c4ab2-ad66-433b-8fe9-08bb412b61a9",
+              "message_id": "30000000-0000-0000-0000-000000000002",
+              "content_type": "text",
+              "content": {
+                "text": "# Heading 1\n## Heading 2\n### Heading 3\n#### Heading 4\n##### Heading 5\n###### Heading 6\n\nInline styles: **bold**, *italic*, ***bold italic***, ~~strikethrough~~, `inline code`, and a [link](https://example.com).\n\n> Blockquote level 1\n>> Nested blockquote level 2\n>>> Level 3 with `code` inside.\n\nUnordered list:\n- Item one\n- Item two\n  - Nested item 2a\n  - Nested item 2b\n    - Deeper 2b-i\n\nOrdered list:\n1. First\n2. Second\n   1. Second-a\n   2. Second-b\n\nTask list:\n- [x] Done task\n- [ ] Pending task\n- [ ] Another pending\n\nA simple table:\n\n| Name | Role | Score |\n|------|------|-------|\n| Ada  | Lead | 99    |\n| Bob  | Dev  | 87    |\n\nA wide / complex table:\n\n| ID | Metric | Q1 | Q2 | Q3 | Q4 | Trend | Owner | Notes |\n|----|--------|----|----|----|----|-------|-------|-------|\n| 1  | Revenue| 120| 200| 160| 280| up    | NA    | strong close |\n| 2  | Costs  | 74 | 71 | 69 | 66 | down  | Ops   | efficiency gains |\n| 3  | Margin | 46 | 129| 91 | 214| up    | Fin   | *see footnote[^1]* |\n\n---\n\nInline image (may 401 offline — exercises the `<img>` layout):\n![alt text](https://raw.githubusercontent.com/phibya/ziee-chat/main/does-not-exist.png)\n\nHere is a footnote reference[^1] and a second[^2].\n\n[^1]: This is the first footnote definition.\n[^2]: The second footnote, with `code` and a [link](https://example.com).\n",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000003",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000003",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:03Z",
+          "contents": [
+            {
+              "id": "a7eea597-427f-4a50-a405-5dce6b9b14e8",
+              "message_id": "30000000-0000-0000-0000-000000000003",
+              "content_type": "text",
+              "content": {
+                "text": "Now show fenced code blocks in many languages, plus one very long block.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000004",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000004",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:04Z",
+          "contents": [
+            {
+              "id": "e0782349-4500-4d86-a0d8-14127cf147b4",
+              "message_id": "30000000-0000-0000-0000-000000000004",
+              "content_type": "text",
+              "content": {
+                "text": "Code in several languages:\n\n```rust\nfn main() {\n    let xs: Vec<i32> = (0..5).map(|x| x * x).collect();\n    println!(\"{:?}\", xs);\n}\n```\n\n```python\ndef fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```\n\n```typescript\nconst greet = (name: string): string => `Hello, ${name}!`\nconsole.log(greet(\"world\"))\n```\n\n```sql\nSELECT u.id, count(*) AS n\nFROM users u JOIN messages m ON m.user_id = u.id\nGROUP BY u.id ORDER BY n DESC;\n```\n\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\nfor f in *.txt; do wc -l \"$f\"; done\n```\n\n```json\n{ \"ok\": true, \"items\": [1, 2, 3], \"nested\": { \"a\": null } }\n```\n\n```yaml\nservice:\n  name: ziee\n  ports: [5173, 3000]\n  flags: { debug: true }\n```\n\n```diff\n- const old = 1\n+ const updated = 2\n```\n\n```html\n<button class=\"btn\" onclick=\"run()\">Run</button>\n```\n",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "f710e9b9-b989-489f-a353-bc2d1b34f908",
+              "message_id": "30000000-0000-0000-0000-000000000004",
+              "content_type": "text",
+              "content": {
+                "text": "A long code block to test vertical scrolling / max-height:\n\n```python\n# 60+ lines of filler to force a scroll region\ndef line_000(): return 0\ndef line_001(): return 1\ndef line_002(): return 2\ndef line_003(): return 3\ndef line_004(): return 4\ndef line_005(): return 5\ndef line_006(): return 6\ndef line_007(): return 7\ndef line_008(): return 8\ndef line_009(): return 9\ndef line_010(): return 10\ndef line_011(): return 11\ndef line_012(): return 12\ndef line_013(): return 13\ndef line_014(): return 14\ndef line_015(): return 15\ndef line_016(): return 16\ndef line_017(): return 17\ndef line_018(): return 18\ndef line_019(): return 19\ndef line_020(): return 20\ndef line_021(): return 21\ndef line_022(): return 22\ndef line_023(): return 23\ndef line_024(): return 24\ndef line_025(): return 25\ndef line_026(): return 26\ndef line_027(): return 27\ndef line_028(): return 28\ndef line_029(): return 29\ndef line_030(): return 30\ndef line_031(): return 31\ndef line_032(): return 32\ndef line_033(): return 33\ndef line_034(): return 34\ndef line_035(): return 35\ndef line_036(): return 36\ndef line_037(): return 37\ndef line_038(): return 38\ndef line_039(): return 39\ndef line_040(): return 40\nif __name__ == \"__main__\":\n    print(sum(f() for f in [line_000, line_001, line_002, line_003]))\n```\n",
+                "type": "text"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000005",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000005",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:05Z",
+          "contents": [
+            {
+              "id": "566378a1-0a1f-455b-835f-4afa3f9f083e",
+              "message_id": "30000000-0000-0000-0000-000000000005",
+              "content_type": "text",
+              "content": {
+                "text": "Show LaTeX math, a Mermaid diagram, and a long prose block.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000006",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000006",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:06Z",
+          "contents": [
+            {
+              "id": "70ad8460-6006-43e7-a2c1-5ecabb6e9750",
+              "message_id": "30000000-0000-0000-0000-000000000006",
+              "content_type": "text",
+              "content": {
+                "text": "Inline math: the mass–energy relation is $E = mc^2$, and Euler's identity $e^{i\\pi} + 1 = 0$.\n\nBlock math:\n\n$$\n\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}\n$$\n\n$$\n\\frac{\\partial}{\\partial t}\\Psi = \\hat{H}\\Psi\n$$\n\nA Mermaid flowchart:\n\n```mermaid\nflowchart TD\n    A[User message] --> B{Tool needed?}\n    B -->|yes| C[tool_use]\n    C --> D[tool_result]\n    D --> E[Assistant reply]\n    B -->|no| E\n```\n\nA Mermaid sequence diagram:\n\n```mermaid\nsequenceDiagram\n    participant U as User\n    participant S as Server\n    participant M as MCP\n    U->>S: send message\n    S->>M: call_tool\n    M-->>S: tool_result\n    S-->>U: streamed reply\n```\n",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "75666231-8baa-45a6-97e0-d31b1b3ec0b9",
+              "message_id": "30000000-0000-0000-0000-000000000006",
+              "content_type": "text",
+              "content": {
+                "text": "**Long prose block (scroll / wrap test).** Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nSed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.\n\nNeque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur.",
+                "type": "text"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000040",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000040",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:06.100Z",
+          "contents": [
+            {
+              "id": "8c8caccd-46c0-48de-8650-a437618fe1a1",
+              "message_id": "30000000-0000-0000-0000-000000000040",
+              "content_type": "text",
+              "content": {
+                "text": "Now the edge cases — cover every markdown construct you can.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000041",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000041",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:06.200Z",
+          "contents": [
+            {
+              "id": "76993f4e-8ce7-4bb8-bfa6-68eca274a748",
+              "message_id": "30000000-0000-0000-0000-000000000041",
+              "content_type": "text",
+              "content": {
+                "text": "### Links & images\n\nInline link with title: [hover me](https://example.com \"Link title\").\nReference-style link: [ref link][ref1] and collapsed [ref1][].\nAutolink: <https://example.com/auto>. Bare URL (GFM autolink): https://example.com/bare.\nEmail autolink: <hello@example.com>.\nImage with title: ![alt](https://example.com/x.png \"Image title\").\nImage as a link: [![alt](https://example.com/thumb.png)](https://example.com).\n\n[ref1]: https://example.com/reference\n",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "192c8f07-1fa1-4a75-9311-49dc4bd8164a",
+              "message_id": "30000000-0000-0000-0000-000000000041",
+              "content_type": "text",
+              "content": {
+                "text": "### Table alignment & cell formatting\n\n| Left | Center | Right |\n|:-----|:------:|------:|\n| a    | **b**  | 1     |\n| `c`  |        | 22    |\n| ~~d~~| [e](https://example.com) | a \\| b |\n\nAn empty cell is above (row 2, center). The last cell has an escaped pipe.\n",
+                "type": "text"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "8b357a0e-f903-4258-8dba-7a5d231b5108",
+              "message_id": "30000000-0000-0000-0000-000000000041",
+              "content_type": "text",
+              "content": {
+                "text": "### List variants\n\nOrdered starting at 5:\n5. five\n6. six\n\nMarker variants:\n* star item\n+ plus item\n- dash item\n\nLoose list (blank lines → wrapped in `<p>`):\n\n- first\n\n- second\n\nList item containing a nested code block and a blockquote:\n\n- item with code:\n  ```\n  nested fenced code inside a list item\n  ```\n  > and a blockquote inside the same item\n",
+                "type": "text"
+              },
+              "sequence_order": 2,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "ab34b7a1-fa24-4f4b-b1b9-56019edb8df6",
+              "message_id": "30000000-0000-0000-0000-000000000041",
+              "content_type": "text",
+              "content": {
+                "text": "### Inline breaks, escapes, entities, raw inline HTML\n\nHard line break (two trailing spaces) →\nthis is on a new line.\nBackslash line break →\\\nalso a new line.\n\nEscaped characters: \\*not italic\\*, \\# not a heading, \\`not code\\`, 1\\. not a list.\n\nHTML entities: &copy; &amp; &lt; &gt; &mdash; &hearts; &#8734;\n\nSub/super: H<sub>2</sub>O and E = mc<sup>2</sup>. Key: press <kbd>Ctrl</kbd>+<kbd>C</kbd>.\nHighlight: <mark>marked text</mark>. Abbrev: <abbr title=\"HyperText Markup Language\">HTML</abbr>.\nForced break next<br>and after the br.\n",
+                "type": "text"
+              },
+              "sequence_order": 3,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "9584b9b2-e254-4d5a-8157-6533375b88a9",
+              "message_id": "30000000-0000-0000-0000-000000000041",
+              "content_type": "text",
+              "content": {
+                "text": "### GFM alerts (callouts)\n\n> [!NOTE]\n> Useful information the user should know.\n\n> [!TIP]\n> Helpful advice for doing things better.\n\n> [!IMPORTANT]\n> Key information the user needs.\n\n> [!WARNING]\n> Urgent info needing immediate attention.\n\n> [!CAUTION]\n> Advises about risks or negative outcomes.\n",
+                "type": "text"
+              },
+              "sequence_order": 4,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "962c1f3e-f70b-409b-93fb-54b42ea26510",
+              "message_id": "30000000-0000-0000-0000-000000000041",
+              "content_type": "text",
+              "content": {
+                "text": "### Raw HTML blocks\n\n<details>\n<summary>Click to expand</summary>\n\nHidden content revealed on expand — including **markdown** inside.\n\n</details>\n\n<table>\n  <tr><th>HTML th</th><th>Col 2</th></tr>\n  <tr><td>cell</td><td>cell</td></tr>\n</table>\n",
+                "type": "text"
+              },
+              "sequence_order": 5,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000042",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000042",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:06.300Z",
+          "contents": [
+            {
+              "id": "4956d41b-d377-4729-9479-1da137376ab4",
+              "message_id": "30000000-0000-0000-0000-000000000042",
+              "content_type": "text",
+              "content": {
+                "text": "Setext heading level 1\n======================\n\nSetext heading level 2\n----------------------\n\nIndented (4-space) code block:\n\n    def indented():\n        return \"code via 4-space indent\"\n\nFenced with `~~~` (so the body can contain triple backticks):\n\n~~~markdown\nHere is ```inline triple backtick``` inside a tilde fence.\n~~~\n\nCode span with backticks inside: `` a ` b ``.\n\nThematic break variants:\n\n***\n\n___\n",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "2ccbd0c2-13e2-41b3-a260-3d2cf1dedc0e",
+              "message_id": "30000000-0000-0000-0000-000000000042",
+              "content_type": "text",
+              "content": {
+                "text": "### Emoji, overflow, consecutive blocks\n\nUnicode emoji: 🎉 ✅ 🚀 — and shortcode form (if supported): :tada: :rocket:.\n\nVery long unbroken token (horizontal-overflow test):\nsupercalifragilisticexpialidocioussupercalifragilisticexpialidocioussupercalifragilisticexpialidocious\n\nVery long URL (wrap/overflow test):\nhttps://example.com/very/long/path/that/keeps/going/and/going/segment/segment/segment/segment/segment/segment/segment?with=query&and=more&params=here\n\nTwo fenced blocks back-to-back:\n\n```json\n{\"first\": true}\n```\n```json\n{\"second\": true}\n```\n",
+                "type": "text"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "b725ac42-3523-4c81-bff2-ba69119bcd05",
+              "message_id": "30000000-0000-0000-0000-000000000042",
+              "content_type": "text",
+              "content": {
+                "text": "### Math edge cases & blockquote content\n\nAligned environment:\n\n$$\n\\begin{aligned}\na &= b + c \\\\\n  &= d + e + f\n\\end{aligned}\n$$\n\nMatrix:\n\n$$\nM = \\begin{bmatrix} 1 & 0 \\\\ 0 & 1 \\end{bmatrix}\n$$\n\nInline with text macro: $f(x) = \\text{sinc}(x) = \\frac{\\sin \\pi x}{\\pi x}$.\n\nA blockquote containing a heading, a list, and code:\n\n> #### Quoted heading\n> - quoted list item\n> - second item\n>\n> ```python\n> print(\"code inside a blockquote\")\n> ```\n",
+                "type": "text"
+              },
+              "sequence_order": 2,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000007",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000007",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:07Z",
+          "contents": [
+            {
+              "id": "ba4f65e8-de6c-4341-9c53-748b41a98c21",
+              "message_id": "30000000-0000-0000-0000-000000000007",
+              "content_type": "text",
+              "content": {
+                "text": "Think step by step, then answer: what is 17 * 23?",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000008",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000008",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:08Z",
+          "contents": [
+            {
+              "id": "5a971edc-1508-4402-b3b5-448c993fd296",
+              "message_id": "30000000-0000-0000-0000-000000000008",
+              "content_type": "thinking",
+              "content": {
+                "metadata": {
+                  "token_count": 48
+                },
+                "thinking": "Let me compute 17 * 23. 17 * 20 = 340, and 17 * 3 = 51, so 340 + 51 = 391. Double-check: 23 * 17 = 23 * 10 + 23 * 7 = 230 + 161 = 391. Consistent.",
+                "type": "thinking"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "123495e7-e46a-4c65-a763-60d08350850d",
+              "message_id": "30000000-0000-0000-0000-000000000008",
+              "content_type": "text",
+              "content": {
+                "text": "**17 × 23 = 391.**",
+                "type": "text"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000009",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000009",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:09Z",
+          "contents": [
+            {
+              "id": "c8ab11d3-63e3-488a-adc2-3223d79ddcca",
+              "message_id": "30000000-0000-0000-0000-000000000009",
+              "content_type": "text",
+              "content": {
+                "text": "Run a quick script that prints output and saves a chart.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000000a",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-00000000000a",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:10Z",
+          "contents": [
+            {
+              "id": "7c57f4a8-cddf-437f-a93c-2093debe3349",
+              "message_id": "30000000-0000-0000-0000-00000000000a",
+              "content_type": "text",
+              "content": {
+                "text": "I'll run it in the sandbox.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "08515fc0-8a41-47e7-8fb1-14adffb75808",
+              "message_id": "30000000-0000-0000-0000-00000000000a",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_sandbox_1",
+                "input": {
+                  "command": "python plot.py",
+                  "timeout_ms": 30000
+                },
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "type": "tool_use"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "012ef2db-15c0-4802-ad9b-759b07731f68",
+              "message_id": "30000000-0000-0000-0000-00000000000a",
+              "content_type": "tool_result",
+              "content": {
+                "content": "exit_code: 0\n--- stdout ---\nRendered 4 bars. Saved chart.png (640x400).\n--- stderr ---\nmatplotlib: using Agg backend",
+                "is_error": false,
+                "name": "execute_command",
+                "resource_links": [
+                  {
+                    "file_id": "f1000000-0000-0000-0000-000000000001",
+                    "is_saved": true,
+                    "mime_type": "image/png",
+                    "name": "chart.png",
+                    "size": 6381,
+                    "uri": "/api/files/f1000000-0000-0000-0000-000000000001"
+                  }
+                ],
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "structured_content": {
+                  "duration_ms": 812,
+                  "exit_code": 0,
+                  "stderr_bytes": 28,
+                  "stdout_bytes": 54
+                },
+                "tool_use_id": "toolu_sandbox_1",
+                "type": "tool_result"
+              },
+              "sequence_order": 2,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "40c9776d-faac-4aa6-adbc-876bd6e5080a",
+              "message_id": "30000000-0000-0000-0000-00000000000a",
+              "content_type": "text",
+              "content": {
+                "text": "Done — the chart is attached above.",
+                "type": "text"
+              },
+              "sequence_order": 3,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000000b",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-00000000000b",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:11Z",
+          "contents": [
+            {
+              "id": "5f62fae2-37a9-43e8-a407-c80f587d3c23",
+              "message_id": "30000000-0000-0000-0000-00000000000b",
+              "content_type": "text",
+              "content": {
+                "text": "Search the web for \"pgvector HNSW tuning\".",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000000c",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-00000000000c",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:12Z",
+          "contents": [
+            {
+              "id": "496957bd-95ec-4613-bf73-8f51bf533076",
+              "message_id": "30000000-0000-0000-0000-00000000000c",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_web_1",
+                "input": {
+                  "max_results": 3,
+                  "query": "pgvector HNSW tuning"
+                },
+                "name": "web_search",
+                "server_id": "d1a783dc-631e-570b-aba6-fee5497728b2",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "28eb1468-0174-47b1-92f5-ec42b2c5270f",
+              "message_id": "30000000-0000-0000-0000-00000000000c",
+              "content_type": "tool_result",
+              "content": {
+                "content": "Top results:\n1. Tuning HNSW in pgvector — m, ef_construction, ef_search tradeoffs.\n2. Benchmarking recall vs latency for vector indexes.\n3. When to prefer IVFFlat over HNSW.",
+                "is_error": false,
+                "name": "web_search",
+                "server_id": "d1a783dc-631e-570b-aba6-fee5497728b2",
+                "structured_content": {
+                  "provider": "searxng",
+                  "results": [
+                    {
+                      "snippet": "m and ef_construction control graph quality...",
+                      "title": "Tuning HNSW in pgvector",
+                      "url": "https://example.com/hnsw"
+                    },
+                    {
+                      "snippet": "higher ef_search improves recall...",
+                      "title": "Recall vs latency",
+                      "url": "https://example.com/bench"
+                    },
+                    {
+                      "snippet": "IVFFlat trains faster but...",
+                      "title": "IVFFlat vs HNSW",
+                      "url": "https://example.com/ivf"
+                    }
+                  ]
+                },
+                "tool_use_id": "toolu_web_1",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000000d",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-00000000000d",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:13Z",
+          "contents": [
+            {
+              "id": "1458509c-2d8e-4f69-8ba9-911c478721aa",
+              "message_id": "30000000-0000-0000-0000-00000000000d",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_fetch_1",
+                "input": {
+                  "url": "https://example.com/hnsw"
+                },
+                "name": "fetch_url",
+                "server_id": "d1a783dc-631e-570b-aba6-fee5497728b2",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "fbd10ecc-1328-452f-b2c4-3d4688ef505a",
+              "message_id": "30000000-0000-0000-0000-00000000000d",
+              "content_type": "tool_result",
+              "content": {
+                "content": "# Tuning HNSW in pgvector\n\nSet `m` (default 16) and `ef_construction` (default 64) at index build time.\nRaise `hnsw.ef_search` at query time to trade latency for recall.",
+                "is_error": false,
+                "name": "fetch_url",
+                "server_id": "d1a783dc-631e-570b-aba6-fee5497728b2",
+                "structured_content": {
+                  "char_count": 180,
+                  "final_url": "https://example.com/hnsw"
+                },
+                "tool_use_id": "toolu_fetch_1",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000000e",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-00000000000e",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:14Z",
+          "contents": [
+            {
+              "id": "43282fd1-1214-4860-9076-c56807be6b4c",
+              "message_id": "30000000-0000-0000-0000-00000000000e",
+              "content_type": "text",
+              "content": {
+                "text": "Find recent literature on \"CRISPR base editing off-target\".",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000000f",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-00000000000f",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:15Z",
+          "contents": [
+            {
+              "id": "f0c70656-8ecf-49ea-a315-ec31cb26f79b",
+              "message_id": "30000000-0000-0000-0000-00000000000f",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_lit_1",
+                "input": {
+                  "max_results": 2,
+                  "query": "CRISPR base editing off-target",
+                  "year_from": 2023
+                },
+                "name": "literature_search",
+                "server_id": "5bf27612-ac1b-5141-985b-e2e8ac36ca2d",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "e0f67cd8-e42e-4d48-89a9-3fb3635c28ba",
+              "message_id": "30000000-0000-0000-0000-00000000000f",
+              "content_type": "tool_result",
+              "content": {
+                "content": "2 records (europepmc, crossref). Completeness ~ moderate.",
+                "is_error": false,
+                "name": "literature_search",
+                "server_id": "5bf27612-ac1b-5141-985b-e2e8ac36ca2d",
+                "structured_content": {
+                  "after_dedup": 2,
+                  "completeness": {
+                    "caveat": "adjunct to systematic search",
+                    "estimate": "moderate",
+                    "method": "source-overlap"
+                  },
+                  "degraded_sources": [],
+                  "identified": {
+                    "crossref": 1,
+                    "europepmc": 1
+                  },
+                  "query": "CRISPR base editing off-target",
+                  "records": [
+                    {
+                      "abstract_text": "We profile genome-wide off-target activity of adenine and cytosine base editors...",
+                      "authors": [
+                        "Lee",
+                        "Gomez"
+                      ],
+                      "cited_by_count": 12,
+                      "doi": "10.1000/beditor.2024",
+                      "is_preprint": false,
+                      "relevance": 0.94,
+                      "source": "europepmc",
+                      "source_ids": [
+                        "PMC123"
+                      ],
+                      "title": "Base editing off-target profiling",
+                      "venue": "Nature Methods",
+                      "year": 2024
+                    },
+                    {
+                      "authors": [
+                        "Ng"
+                      ],
+                      "cited_by_count": 44,
+                      "doi": "10.1000/crispr.2023",
+                      "is_preprint": false,
+                      "relevance": 0.88,
+                      "source": "crossref",
+                      "source_ids": [
+                        "doi:10.1000/crispr.2023"
+                      ],
+                      "title": "Genome-wide specificity of adenine base editors",
+                      "venue": "Cell",
+                      "year": 2023
+                    }
+                  ]
+                },
+                "tool_use_id": "toolu_lit_1",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000010",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000010",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:16Z",
+          "contents": [
+            {
+              "id": "57306ed5-f1ab-4878-9d8e-58851bd9cf6e",
+              "message_id": "30000000-0000-0000-0000-000000000010",
+              "content_type": "text",
+              "content": {
+                "text": "Remember that I prefer SI units, then recall my preferences.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000011",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000011",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:17Z",
+          "contents": [
+            {
+              "id": "9c641829-bb1f-44f3-9ca5-6e36474a4afe",
+              "message_id": "30000000-0000-0000-0000-000000000011",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_mem_1",
+                "input": {
+                  "content": "User prefers SI units."
+                },
+                "name": "remember",
+                "server_id": "16e2eeb0-46ed-5588-af8a-e973349f99a1",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "29880edc-5e3a-4baa-8686-b975e3a0815e",
+              "message_id": "30000000-0000-0000-0000-000000000011",
+              "content_type": "tool_result",
+              "content": {
+                "content": "Stored memory #1.",
+                "is_error": false,
+                "name": "remember",
+                "server_id": "16e2eeb0-46ed-5588-af8a-e973349f99a1",
+                "tool_use_id": "toolu_mem_1",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "d97fb603-21b2-4596-8150-4c89f8412f2e",
+              "message_id": "30000000-0000-0000-0000-000000000011",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_mem_2",
+                "input": {
+                  "query": "preferences"
+                },
+                "name": "recall",
+                "server_id": "16e2eeb0-46ed-5588-af8a-e973349f99a1",
+                "type": "tool_use"
+              },
+              "sequence_order": 2,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "88f8b3f1-90ec-4901-8b1d-14f3004e73ca",
+              "message_id": "30000000-0000-0000-0000-000000000011",
+              "content_type": "tool_result",
+              "content": {
+                "content": "1 memory: \"User prefers SI units.\"",
+                "is_error": false,
+                "name": "recall",
+                "server_id": "16e2eeb0-46ed-5588-af8a-e973349f99a1",
+                "structured_content": {
+                  "memories": [
+                    {
+                      "id": 1,
+                      "score": 0.91,
+                      "text": "User prefers SI units."
+                    }
+                  ]
+                },
+                "tool_use_id": "toolu_mem_2",
+                "type": "tool_result"
+              },
+              "sequence_order": 3,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "d7c03700-fa5a-405e-bda4-50f4f11b1bd6",
+              "message_id": "30000000-0000-0000-0000-000000000011",
+              "content_type": "text",
+              "content": {
+                "text": "Noted — I'll use **SI units** going forward.",
+                "type": "text"
+              },
+              "sequence_order": 4,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000012",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000012",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:18Z",
+          "contents": [
+            {
+              "id": "ce9daac6-de72-4197-8f5d-be0aecbe545a",
+              "message_id": "30000000-0000-0000-0000-000000000012",
+              "content_type": "text",
+              "content": {
+                "text": "Format the base-editing paper as APA.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000013",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000013",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:19Z",
+          "contents": [
+            {
+              "id": "0fa28cc0-5f60-461c-b22a-d687949464be",
+              "message_id": "30000000-0000-0000-0000-000000000013",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_cit_1",
+                "input": {
+                  "items": [
+                    {
+                      "doi": "10.1000/beditor.2024"
+                    }
+                  ],
+                  "style": "apa"
+                },
+                "name": "format_citations",
+                "server_id": "011e52cb-2d06-5e6b-8f4c-41076519f167",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "366060a7-2bb0-473f-8762-fc30d1fea5e7",
+              "message_id": "30000000-0000-0000-0000-000000000013",
+              "content_type": "tool_result",
+              "content": {
+                "content": "Lee, & Gomez. (2024). Base editing off-target profiling.",
+                "is_error": false,
+                "name": "format_citations",
+                "server_id": "011e52cb-2d06-5e6b-8f4c-41076519f167",
+                "tool_use_id": "toolu_cit_1",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000014",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000014",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:20Z",
+          "contents": [
+            {
+              "id": "7e9f0fd8-e682-44b1-a283-785e297925d7",
+              "message_id": "30000000-0000-0000-0000-000000000014",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_ctl_1",
+                "input": {
+                  "method": "GET",
+                  "path": "/api/conversations?per_page=1"
+                },
+                "name": "call_api",
+                "server_id": "d878787e-aa48-5f16-a31f-673052083f34",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "1a1254e2-5743-4caf-9035-45ec88f06b37",
+              "message_id": "30000000-0000-0000-0000-000000000014",
+              "content_type": "tool_result",
+              "content": {
+                "content": "{ \"total\": 1, \"items\": [ { \"title\": \"Rendering Showcase\" } ] }",
+                "is_error": false,
+                "name": "call_api",
+                "server_id": "d878787e-aa48-5f16-a31f-673052083f34",
+                "structured_content": {
+                  "status": 200
+                },
+                "tool_use_id": "toolu_ctl_1",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000015",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000015",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:21Z",
+          "contents": [
+            {
+              "id": "6c4b94c0-5292-4646-af01-077b13adb7f1",
+              "message_id": "30000000-0000-0000-0000-000000000015",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_gtr_1",
+                "input": {
+                  "max_chars": 200,
+                  "offset": 0,
+                  "tool_use_id": "toolu_web_1"
+                },
+                "name": "get_tool_result",
+                "server_id": "62c47165-bcf4-5daf-b778-8eff985ac943",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "b2f6ea94-88a4-4856-9043-327da6c0fd20",
+              "message_id": "30000000-0000-0000-0000-000000000015",
+              "content_type": "tool_result",
+              "content": {
+                "content": "Top results:\\n1. Tuning HNSW in pgvector...",
+                "is_error": false,
+                "name": "get_tool_result",
+                "server_id": "62c47165-bcf4-5daf-b778-8eff985ac943",
+                "tool_use_id": "toolu_gtr_1",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000016",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000016",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:22Z",
+          "contents": [
+            {
+              "id": "e7a21673-4809-4a47-a52a-bef20d575fdd",
+              "message_id": "30000000-0000-0000-0000-000000000016",
+              "content_type": "text",
+              "content": {
+                "text": "Run a command that fails.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000017",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000017",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:23Z",
+          "contents": [
+            {
+              "id": "44e0a781-69a7-48ed-bc2f-01042eee2bc0",
+              "message_id": "30000000-0000-0000-0000-000000000017",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_sandbox_err",
+                "input": {
+                  "command": "cat /nope",
+                  "timeout_ms": 5000
+                },
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "53b852d8-7f6c-438f-86f8-e7c5694c578c",
+              "message_id": "30000000-0000-0000-0000-000000000017",
+              "content_type": "tool_result",
+              "content": {
+                "content": "exit_code: 1\n--- stderr ---\ncat: /nope: No such file or directory",
+                "is_error": true,
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "structured_content": {
+                  "exit_code": 1
+                },
+                "tool_use_id": "toolu_sandbox_err",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000018",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000018",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:24Z",
+          "contents": [
+            {
+              "id": "00a24871-4f89-447a-988d-df9b9c5e8881",
+              "message_id": "30000000-0000-0000-0000-000000000018",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_cancelled",
+                "input": {
+                  "command": "sleep 999",
+                  "timeout_ms": 1000
+                },
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "2c495720-08a4-48d2-ba85-6b946f081366",
+              "message_id": "30000000-0000-0000-0000-000000000018",
+              "content_type": "tool_result",
+              "content": {
+                "content": "Cancelled by user before completion.",
+                "is_error": true,
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "tool_use_id": "toolu_cancelled",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000019",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000019",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:25Z",
+          "contents": [
+            {
+              "id": "f122d854-1b9f-4cb8-84f3-b17465ba15cb",
+              "message_id": "30000000-0000-0000-0000-000000000019",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_big",
+                "input": {
+                  "command": "seq 1 100000"
+                },
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "8b1a5162-b644-408e-a84c-81787adfe36b",
+              "message_id": "30000000-0000-0000-0000-000000000019",
+              "content_type": "tool_result",
+              "content": {
+                "content": "1\n2\n3\n... [output truncated — 99,940 lines omitted] ...\nFull result available via get_tool_result(tool_use_id=\"toolu_big\").",
+                "is_error": false,
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "structured_content": {
+                  "total_lines": 100000,
+                  "truncated": true
+                },
+                "tool_use_id": "toolu_big",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000043",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000043",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:25.100Z",
+          "contents": [
+            {
+              "id": "2bd651af-7b3a-45d6-8cbd-f28826bd2859",
+              "message_id": "30000000-0000-0000-0000-000000000043",
+              "content_type": "text",
+              "content": {
+                "text": "Export the analysis as several files.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000044",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000044",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:25.200Z",
+          "contents": [
+            {
+              "id": "8b9fa8bb-9891-4ade-ae63-ae32005db2d8",
+              "message_id": "30000000-0000-0000-0000-000000000044",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_multi",
+                "input": {
+                  "command": "python export_all.py"
+                },
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "7a500fdc-615b-4151-b760-67af26ed9a1f",
+              "message_id": "30000000-0000-0000-0000-000000000044",
+              "content_type": "tool_result",
+              "content": {
+                "content": "Wrote 4 artifacts: chart.png, report.pdf, data.csv, workbook.xlsx",
+                "is_error": false,
+                "name": "execute_command",
+                "resource_links": [
+                  {
+                    "file_id": "f1000000-0000-0000-0000-000000000001",
+                    "is_saved": true,
+                    "mime_type": "image/png",
+                    "name": "chart.png",
+                    "size": 6381,
+                    "uri": "/api/files/f1000000-0000-0000-0000-000000000001"
+                  },
+                  {
+                    "file_id": "f1000000-0000-0000-0000-000000000005",
+                    "is_saved": true,
+                    "mime_type": "application/pdf",
+                    "name": "report.pdf",
+                    "size": 631,
+                    "uri": "/api/files/f1000000-0000-0000-0000-000000000005"
+                  },
+                  {
+                    "file_id": "f1000000-0000-0000-0000-000000000004",
+                    "is_saved": true,
+                    "mime_type": "text/csv",
+                    "name": "data.csv",
+                    "size": 133,
+                    "uri": "/api/files/f1000000-0000-0000-0000-000000000004"
+                  },
+                  {
+                    "file_id": "f1000000-0000-0000-0000-000000000003",
+                    "is_saved": true,
+                    "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "name": "workbook.xlsx",
+                    "size": 6641,
+                    "uri": "/api/files/f1000000-0000-0000-0000-000000000003"
+                  }
+                ],
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "tool_use_id": "toolu_multi",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000045",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000045",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:25.300Z",
+          "contents": [
+            {
+              "id": "dc693228-0559-4ad0-8340-19b4238fffa7",
+              "message_id": "30000000-0000-0000-0000-000000000045",
+              "content_type": "text",
+              "content": {
+                "text": "What is the weather in Tokyo?",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000046",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000046",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:25.400Z",
+          "contents": [
+            {
+              "id": "f2e71d71-2fde-4beb-ab8b-ae5b424db9b7",
+              "message_id": "30000000-0000-0000-0000-000000000046",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_ext",
+                "input": {
+                  "city": "Tokyo",
+                  "units": "metric"
+                },
+                "name": "get_weather",
+                "server_id": "e0000000-0000-0000-0000-0000000000e1",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "b770513e-7377-412a-8eda-a88e4215e64c",
+              "message_id": "30000000-0000-0000-0000-000000000046",
+              "content_type": "tool_result",
+              "content": {
+                "content": "Tokyo: 24°C, partly cloudy.",
+                "is_error": false,
+                "name": "get_weather",
+                "server_id": "e0000000-0000-0000-0000-0000000000e1",
+                "structured_content": {
+                  "condition": "partly cloudy",
+                  "temp_c": 24
+                },
+                "tool_use_id": "toolu_ext",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000047",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000047",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:25.500Z",
+          "contents": [
+            {
+              "id": "22d85416-b1b4-4032-a77a-1d9f000d4643",
+              "message_id": "30000000-0000-0000-0000-000000000047",
+              "content_type": "text",
+              "content": {
+                "text": "Kicking off a long-running job (no result block — pending state):",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "38947c96-e0e1-4830-9903-4cab729868b0",
+              "message_id": "30000000-0000-0000-0000-000000000047",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_pending",
+                "input": {
+                  "command": "python train.py"
+                },
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "type": "tool_use"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000048",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000048",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:25.600Z",
+          "contents": [
+            {
+              "id": "d810624c-c316-4995-9b7e-1470884f1be0",
+              "message_id": "30000000-0000-0000-0000-000000000048",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_timeout",
+                "input": {},
+                "name": "list_workspace",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "type": "tool_use"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "095af710-85d2-4419-90eb-a9714aaefe7a",
+              "message_id": "30000000-0000-0000-0000-000000000048",
+              "content_type": "tool_result",
+              "content": {
+                "content": "Tool call timed out after 30s.",
+                "is_error": true,
+                "name": "list_workspace",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "tool_use_id": "toolu_timeout",
+                "type": "tool_result"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000001a",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-00000000001a",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:26Z",
+          "contents": [
+            {
+              "id": "688b9c72-082b-444f-892d-692c156ec008",
+              "message_id": "30000000-0000-0000-0000-00000000001a",
+              "content_type": "image",
+              "content": {
+                "alt_text": "Bar chart PNG",
+                "source": {
+                  "file_id": "f1000000-0000-0000-0000-000000000001",
+                  "type": "file"
+                },
+                "type": "image"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "5fe245a5-20ac-4eae-b3a4-69a98d5ab547",
+              "message_id": "30000000-0000-0000-0000-00000000001a",
+              "content_type": "image",
+              "content": {
+                "alt_text": "Gradient JPG",
+                "source": {
+                  "file_id": "f1000000-0000-0000-0000-000000000002",
+                  "type": "file"
+                },
+                "type": "image"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "68d06668-5312-4b1a-af4b-e29414e7f1e2",
+              "message_id": "30000000-0000-0000-0000-00000000001a",
+              "content_type": "text",
+              "content": {
+                "text": "What do these two images show?",
+                "type": "text"
+              },
+              "sequence_order": 2,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000001b",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-00000000001b",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:27Z",
+          "contents": [
+            {
+              "id": "3c6ef1fc-d5d3-4066-bca4-0cfb03b3da5d",
+              "message_id": "30000000-0000-0000-0000-00000000001b",
+              "content_type": "text",
+              "content": {
+                "text": "The first is a quarterly bar chart (PNG); the second is a color gradient (JPG).",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000001c",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-00000000001c",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:28Z",
+          "contents": [
+            {
+              "id": "54ca747a-c977-4c46-9ccb-94e1d3c6e072",
+              "message_id": "30000000-0000-0000-0000-00000000001c",
+              "content_type": "file_attachment",
+              "content": {
+                "file_id": "f1000000-0000-0000-0000-000000000005",
+                "file_size": 631,
+                "filename": "report.pdf",
+                "mime_type": "application/pdf",
+                "type": "file_attachment"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "345d0ab9-9aea-4406-8ab1-0a504762e560",
+              "message_id": "30000000-0000-0000-0000-00000000001c",
+              "content_type": "file_attachment",
+              "content": {
+                "file_id": "f1000000-0000-0000-0000-000000000004",
+                "file_size": 133,
+                "filename": "data.csv",
+                "mime_type": "text/csv",
+                "type": "file_attachment"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "7ff6793d-c493-47e7-9446-6ede619d22b1",
+              "message_id": "30000000-0000-0000-0000-00000000001c",
+              "content_type": "file_attachment",
+              "content": {
+                "file_id": "f1000000-0000-0000-0000-000000000003",
+                "file_size": 6641,
+                "filename": "workbook.xlsx",
+                "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "type": "file_attachment"
+              },
+              "sequence_order": 2,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "89423f2d-435a-4ada-b9d7-c695a1d70676",
+              "message_id": "30000000-0000-0000-0000-00000000001c",
+              "content_type": "file_attachment",
+              "content": {
+                "file_id": "f1000000-0000-0000-0000-000000000006",
+                "file_size": 261,
+                "filename": "script.py",
+                "mime_type": "text/x-python",
+                "type": "file_attachment"
+              },
+              "sequence_order": 3,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "21ac825a-b408-4008-a476-fa3699ac8afe",
+              "message_id": "30000000-0000-0000-0000-00000000001c",
+              "content_type": "file_attachment",
+              "content": {
+                "file_id": "f1000000-0000-0000-0000-000000000007",
+                "file_size": 292,
+                "filename": "notes.md",
+                "mime_type": "text/markdown",
+                "type": "file_attachment"
+              },
+              "sequence_order": 4,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "decf8f1b-8d91-40a2-b16d-55ffb02aee50",
+              "message_id": "30000000-0000-0000-0000-00000000001c",
+              "content_type": "file_attachment",
+              "content": {
+                "file_id": "f1000000-0000-0000-0000-000000000008",
+                "file_size": 86400,
+                "filename": "large.txt",
+                "mime_type": "text/plain",
+                "type": "file_attachment"
+              },
+              "sequence_order": 5,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "dfcf5d3f-a43b-4fa2-a6e1-15927bfec406",
+              "message_id": "30000000-0000-0000-0000-00000000001c",
+              "content_type": "text",
+              "content": {
+                "text": "Here are several files — the xlsx has multiple sheets.",
+                "type": "text"
+              },
+              "sequence_order": 6,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000001d",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-00000000001d",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:29Z",
+          "contents": [
+            {
+              "id": "9e99ad47-9254-4b33-ad0b-4bcfb01dae91",
+              "message_id": "30000000-0000-0000-0000-00000000001d",
+              "content_type": "text",
+              "content": {
+                "text": "Received: a PDF, a CSV, a 3-sheet workbook (**Summary / Regions / Raw**), a Python file, a markdown file, and a large text file.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000001e",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-00000000001e",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:30Z",
+          "contents": [
+            {
+              "id": "69da97a1-714b-47ce-b4e4-eb325e18e767",
+              "message_id": "30000000-0000-0000-0000-00000000001e",
+              "content_type": "text",
+              "content": {
+                "text": "Summarize data.csv and regenerate the chart in one step.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000001f",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-00000000001f",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:31Z",
+          "contents": [
+            {
+              "id": "c981ed06-8d84-42ed-bd91-a4f3a0dd0b8f",
+              "message_id": "30000000-0000-0000-0000-00000000001f",
+              "content_type": "text",
+              "content": {
+                "text": "Reading the CSV and re-plotting:",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "ced76d75-04f4-4668-b1f4-3e0d4e8e91ca",
+              "message_id": "30000000-0000-0000-0000-00000000001f",
+              "content_type": "tool_use",
+              "content": {
+                "id": "toolu_mixed",
+                "input": {
+                  "command": "python summarize.py data.csv"
+                },
+                "name": "execute_command",
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "type": "tool_use"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "dc798828-d9a9-4efa-af80-735bcc64e836",
+              "message_id": "30000000-0000-0000-0000-00000000001f",
+              "content_type": "tool_result",
+              "content": {
+                "content": "5 genes; highest expression MYC (9.88). Chart saved.",
+                "is_error": false,
+                "name": "execute_command",
+                "resource_links": [
+                  {
+                    "file_id": "f1000000-0000-0000-0000-000000000001",
+                    "is_saved": true,
+                    "mime_type": "image/png",
+                    "name": "chart.png",
+                    "size": 6381,
+                    "uri": "/api/files/f1000000-0000-0000-0000-000000000001"
+                  }
+                ],
+                "server_id": "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd",
+                "tool_use_id": "toolu_mixed",
+                "type": "tool_result"
+              },
+              "sequence_order": 2,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "9a5d7e33-d203-4e16-8d7d-2fe2fb5858bd",
+              "message_id": "30000000-0000-0000-0000-00000000001f",
+              "content_type": "text",
+              "content": {
+                "text": "**MYC** has the highest expression (9.88). Updated chart above.",
+                "type": "text"
+              },
+              "sequence_order": 3,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000020",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000020",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:32Z",
+          "contents": [
+            {
+              "id": "81edfe17-dba5-4e95-b7b6-21d3bb69532a",
+              "message_id": "30000000-0000-0000-0000-000000000020",
+              "content_type": "elicitation_request",
+              "content": {
+                "elicitation_id": "elic-0001",
+                "message": "Which output format do you want for the export?",
+                "requested_schema": {
+                  "properties": {
+                    "format": {
+                      "enum": [
+                        "csv",
+                        "json",
+                        "xlsx"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "response_content": {
+                  "format": "xlsx"
+                },
+                "server": "Code Sandbox",
+                "status": "accepted",
+                "type": "elicitation_request"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000049",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000049",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:32.100Z",
+          "contents": [
+            {
+              "id": "217d741b-58a1-4af8-bbdf-cdd14074b33c",
+              "message_id": "30000000-0000-0000-0000-000000000049",
+              "content_type": "elicitation_request",
+              "content": {
+                "elicitation_id": "elic-0002",
+                "message": "Enter a filename for the export:",
+                "requested_schema": {
+                  "properties": {
+                    "filename": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "filename"
+                  ],
+                  "type": "object"
+                },
+                "server": "Code Sandbox",
+                "status": "pending",
+                "type": "elicitation_request"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-00000000004a",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-00000000004a",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:32.200Z",
+          "contents": [
+            {
+              "id": "ebd38245-bb75-4acf-8ea6-14116f6979b8",
+              "message_id": "30000000-0000-0000-0000-00000000004a",
+              "content_type": "elicitation_request",
+              "content": {
+                "elicitation_id": "elic-0003",
+                "message": "Allow the tool to delete temporary files?",
+                "requested_schema": {
+                  "properties": {
+                    "confirm": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "server": "Code Sandbox",
+                "status": "declined",
+                "type": "elicitation_request"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000021",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-000000000021",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:33Z",
+          "contents": [
+            {
+              "id": "48823aee-f461-4a0e-8986-e55e0176309d",
+              "message_id": "30000000-0000-0000-0000-000000000021",
+              "content_type": "text",
+              "content": {
+                "text": "Give me a long, streamed explanation of vector databases.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-000000000022",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-000000000022",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:00:34Z",
+          "contents": [
+            {
+              "id": "df6e05ef-d2e8-4338-80e1-476571d4fd32",
+              "message_id": "30000000-0000-0000-0000-000000000022",
+              "content_type": "text",
+              "content": {
+                "text": "Vector databases store high-dimensional embeddings and retrieve by similarity rather than exact match. Here is the long version.\n\n## 1. Embeddings\nAn embedding maps text, images, or audio into a fixed-length vector such that semantically similar inputs land near each other. Distance metrics are typically cosine, inner product, or L2.\n\n## 2. Indexes\nBrute-force search is exact but O(n). Approximate indexes trade a little recall for large speedups:\n\n- **HNSW** — a navigable small-world graph; excellent recall/latency, higher memory.\n- **IVFFlat** — clusters vectors into lists; cheaper to build, tune `lists` + `probes`.\n- **PQ / OPQ** — compress vectors to cut memory, at some accuracy cost.\n\n## 3. Tuning\nFor HNSW, `m` and `ef_construction` set graph quality at build time; `ef_search` trades latency for recall at query time. Measure recall@k against a ground-truth set before shipping.\n\n## 4. Operational notes\nRe-embed when you change models — vectors from different models are not comparable. Keep the original text so you can re-index. Watch index build memory on large tables, and consider partial indexes for multi-tenant data.\n\n## 5. When NOT to use one\nIf your corpus is tiny, a linear scan in Postgres is simpler and exact. Vector search shines at scale and for fuzzy semantic recall, not for precise keyword lookups (use full-text search or a trigram index there).\n\nThat is the whirlwind tour — ask about any layer for a deeper dive.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-0000000000f0",
+          "role": "user",
+          "originated_from_id": "30000000-0000-0000-0000-0000000000f0",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:01:40Z",
+          "contents": [
+            {
+              "id": "2049e4b0-3803-42ad-9eb2-3f036076ebc3",
+              "message_id": "30000000-0000-0000-0000-0000000000f0",
+              "content_type": "text",
+              "content": {
+                "text": "Here's the function I mentioned — can you spot the off-by-one?\n\n```python\ndef moving_average(xs, k):\n    out = []\n    for i in range(len(xs)):\n        window = xs[i - k:i]      # is this the right slice?\n        out.append(sum(window) / k)\n    return out\n```\n\nI attached the CSV it chokes on and the full script.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "c5b6cbcf-7651-4ac9-b273-c2d60bcba034",
+              "message_id": "30000000-0000-0000-0000-0000000000f0",
+              "content_type": "file_attachment",
+              "content": {
+                "file_id": "f1000000-0000-0000-0000-000000000004",
+                "file_size": 133,
+                "filename": "data.csv",
+                "mime_type": "text/csv",
+                "type": "file_attachment"
+              },
+              "sequence_order": 1,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            },
+            {
+              "id": "06e8cfd6-6d0a-439b-be1e-f7c15af971b2",
+              "message_id": "30000000-0000-0000-0000-0000000000f0",
+              "content_type": "file_attachment",
+              "content": {
+                "file_id": "f1000000-0000-0000-0000-000000000006",
+                "file_size": 261,
+                "filename": "script.py",
+                "mime_type": "text/x-python",
+                "type": "file_attachment"
+              },
+              "sequence_order": 2,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        },
+        {
+          "id": "30000000-0000-0000-0000-0000000000f1",
+          "role": "assistant",
+          "originated_from_id": "30000000-0000-0000-0000-0000000000f1",
+          "edit_count": 0,
+          "created_at": "2026-07-01T12:01:41Z",
+          "contents": [
+            {
+              "id": "ed835dd6-71b6-485a-8f46-c382fa82d031",
+              "message_id": "30000000-0000-0000-0000-0000000000f1",
+              "content_type": "text",
+              "content": {
+                "text": "Good eye — it's the first window. When `i < k`, `xs[i - k:i]` wraps to the tail via negative indices, so early averages are wrong. Two fixes:\n\n```python\n# 1) skip the warm-up\nfor i in range(k, len(xs) + 1):\n    window = xs[i - k:i]\n\n# 2) or pad, if you want a same-length output\n```\n\nUse option 1 unless you need `len(out) == len(xs)`.",
+                "type": "text"
+              },
+              "sequence_order": 0,
+              "created_at": "2026-07-05T20:16:49.884839Z",
+              "updated_at": "2026-07-05T20:16:49.884839Z"
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "id": "55555555-5555-5555-5555-555555555555",
+          "conversation_id": "11111111-1111-1111-1111-111111111111",
+          "parent_branch_id": "22222222-2222-2222-2222-222222222222",
+          "created_from_message_id": "30000000-0000-0000-0000-000000000002",
+          "fork_level": "assistant",
+          "created_at": "2026-07-01T12:00:02Z"
+        },
+        {
+          "id": "44444444-4444-4444-4444-444444444444",
+          "conversation_id": "11111111-1111-1111-1111-111111111111",
+          "parent_branch_id": "22222222-2222-2222-2222-222222222222",
+          "created_from_message_id": "30000000-0000-0000-0000-000000000001",
+          "fork_level": "user",
+          "created_at": "2026-07-01T12:00:01Z"
+        },
+        {
+          "id": "22222222-2222-2222-2222-222222222222",
+          "conversation_id": "11111111-1111-1111-1111-111111111111",
+          "fork_level": "user",
+          "created_at": "2026-07-01T12:00:00Z"
+        }
+      ]
+    }
+  }
+}
