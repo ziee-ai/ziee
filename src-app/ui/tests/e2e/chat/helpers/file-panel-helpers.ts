@@ -182,3 +182,15 @@ export async function closeEntirePanel(page: Page): Promise<void> {
 export function panelButton(page: Page, name: string) {
   return page.locator('[data-testid="chat-right-panel"]').getByRole('button', { name })
 }
+
+/**
+ * The rendered/raw view toggle is a kit <Segmented> (base-ui Tabs), NOT two
+ * separate buttons anymore — each option is a Tabs trigger whose label span
+ * carries data-testid `file-viewer-rendered-btn` / `file-viewer-raw-btn`.
+ * Returns the option locator scoped to the right panel; works for both
+ * visibility/count assertions and `.click()` (the click bubbles to the trigger).
+ */
+export function panelViewToggle(page: Page, mode: 'rendered' | 'raw') {
+  const id = mode === 'rendered' ? 'file-viewer-rendered-btn' : 'file-viewer-raw-btn'
+  return page.locator(`[data-testid="chat-right-panel"] [data-testid="${id}"]`)
+}
