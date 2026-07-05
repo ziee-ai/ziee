@@ -3,10 +3,13 @@
 pub mod anthropic;
 pub mod gemini;
 pub mod openai;
+mod upload_client;
 
 pub use anthropic::AnthropicProvider;
 pub use gemini::GeminiProvider;
 pub use openai::OpenAIProvider;
+
+pub(crate) use upload_client::upload_http_client;
 
 use reqwest::Client;
 use std::sync::OnceLock;
