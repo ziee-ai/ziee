@@ -37,6 +37,18 @@ pub struct InstanceStatusResponse {
     pub uptime_seconds: Option<i64>,
 }
 
+/// Result of clearing a model's `failed` (flap / restart-cap) state so
+/// auto-start can retry it.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ClearFailedResponse {
+    pub model_id: Uuid,
+    /// True when the model was actually in the `failed` state and has been
+    /// reset; false when it wasn't failed (the call is then a no-op).
+    pub cleared: bool,
+    /// The model's runtime state after the call (`stopped` when cleared).
+    pub state: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct HealthCheckResponse {
     pub healthy: bool,

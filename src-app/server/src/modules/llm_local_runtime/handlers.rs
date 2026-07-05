@@ -334,6 +334,67 @@ pub fn restart_model_instance_docs(op: aide::transform::TransformOperation) -> a
         .response::<200, Json<InstanceResponse>>()
 }
 
+/// Clear a model's `failed` runtime state (set by the flap / restart-cap
+/// give-up in the auto-start crash path) so the proxy will attempt to start it
+/// again. Resets the in-memory health state machine to `stopped` and clears the
+/// persisted `failed` row; a subsequent proxy request (or explicit start) then
+/// re-spawns the engine from a clean slate.
+pub async fn clear_failed_instance(
+    _auth: RequirePermissions<(LocalRuntimeManage,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Path(model_id): Path<Uuid>,
+) -> ApiResult<Json<ClearFailedResponse>> {
+    // Reset the in-memory state machine (Failed -> Stopped). Returns whether it
+    // was actually failed so we only persist + emit on a real transition.
+    let cleared = super::auto_start::clear_failed(model_id).await;
+
+    if cleared {
+        // Persist the reset for UI / operator visibility. Scoped to a row that
+        // is actually `failed` so a concurrent (re)start isn't clobbered.
+        let _ = sqlx::query!(
+            "UPDATE llm_runtime_instances
+             SET state = 'stopped', state_changed_at = NOW(), last_failure_reason = NULL
+             WHERE model_id = $1 AND state = 'failed'",
+            model_id,
+        )
+        .execute(Repos.pool())
+        .await;
+
+        // Surface the transition. Best-effort: a row may not exist for a model
+        // that never persisted a running instance (in-memory state still gates
+        // re-spawns), in which case there's no instance id to attach.
+        if let Some(instance) = Repos.local_runtime.get_instance_by_model(model_id).await? {
+            event_bus.emit_async(
+                LlmLocalRuntimeEvent::instance_status_changed(
+                    instance.id,
+                    model_id,
+                    "failed".to_string(),
+                    "stopped".to_string(),
+                )
+                .into(),
+            );
+        }
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(ClearFailedResponse {
+            model_id,
+            cleared,
+            state: if cleared { "stopped".to_string() } else { "not_failed".to_string() },
+        }),
+    ))
+}
+
+pub fn clear_failed_instance_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    use crate::modules::permissions::with_permission;
+    with_permission::<(LocalRuntimeManage,)>(op)
+        .id("LocalRuntime.clearFailed")
+        .description("Clear a model's failed runtime state so it can be started again")
+        .tag("LocalRuntime")
+        .response::<200, Json<ClearFailedResponse>>()
+}
+
 /// Swap a model onto another version **of the same engine** (the engine type
 /// itself cannot change). Pins the model's `required_runtime_version_id`; if
 /// the model is currently running, restarts it on the new version so the

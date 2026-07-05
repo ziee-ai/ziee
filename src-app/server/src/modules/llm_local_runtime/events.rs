@@ -82,10 +82,9 @@ impl LlmLocalRuntimeEvent {
         }
     }
 
-    /// Create an InstanceStatusChanged event
-    // Scaffolding: status transitions are surfaced via the sync/SSE path, not
-    // through this event helper yet.
-    #[allow(dead_code)]
+    /// Create an InstanceStatusChanged event. Emitted by the admin
+    /// `clear-failed` endpoint (failed -> stopped); the enum is also the vehicle
+    /// for future health-state surfacing.
     pub fn instance_status_changed(
         instance_id: Uuid,
         model_id: Uuid,

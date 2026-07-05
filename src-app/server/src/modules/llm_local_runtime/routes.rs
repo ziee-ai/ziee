@@ -27,6 +27,10 @@ pub fn llm_local_runtime_router() -> ApiRouter {
             post_with(restart_model_instance, restart_model_instance_docs),
         )
         .api_route(
+            "/local-runtime/models/{model_id}/clear-failed",
+            post_with(clear_failed_instance, clear_failed_instance_docs),
+        )
+        .api_route(
             "/local-runtime/models/{model_id}/runtime-version",
             post_with(swap_model_runtime_version, swap_model_runtime_version_docs),
         )
