@@ -106,6 +106,14 @@ impl ChatExtension for SkillExtension {
             return Ok(BeforeLlmAction::Continue);
         }
 
+        // A non-tool-capable model can't call `load_skill` / `read_skill_file`,
+        // so skip BOTH the listing (which instructs the model to call them) and
+        // the attach flag — injecting the listing alone would tell the model to
+        // use tools it can never see. Check tool-capability BEFORE injecting.
+        if !crate::modules::file::available_files::model_supports_tools(&context.metadata).await {
+            return Ok(BeforeLlmAction::Continue);
+        }
+
         let body = render_listing(&entries);
         request.messages.insert(
             0,
@@ -117,14 +125,11 @@ impl ChatExtension for SkillExtension {
 
         // Attach the built-in `skill_mcp` server so the model can actually call
         // the `load_skill` / `read_skill_file` tools the listing tells it to
-        // use — but only for tool-capable models (a non-tool model can't call
-        // them). Mirrors the web_search / lit_search / citations flag contract;
+        // use. Mirrors the web_search / lit_search / citations flag contract;
         // `auto_attach_builtin_ids` reads `ATTACH_FLAG`.
-        if crate::modules::file::available_files::model_supports_tools(&context.metadata).await {
-            context
-                .metadata
-                .insert(super::ATTACH_FLAG.to_string(), serde_json::json!("true"));
-        }
+        context
+            .metadata
+            .insert(super::ATTACH_FLAG.to_string(), serde_json::json!("true"));
 
         Ok(BeforeLlmAction::Continue)
     }
