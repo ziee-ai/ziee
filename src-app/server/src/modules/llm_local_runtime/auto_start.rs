@@ -157,7 +157,7 @@ pub(crate) async fn resolve_model_inputs(
     )
     .fetch_optional(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("auto_start: query model: {e}")))?
+    .map_err(|e| AppError::database_error(e))?
     .ok_or_else(|| AppError::not_found("model not found"))?;
 
     let files = sqlx::query!(
@@ -166,7 +166,7 @@ pub(crate) async fn resolve_model_inputs(
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("auto_start: query files: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
 
     let model_path = if !files.is_empty() {
         // Prefer a .gguf file (deterministically — the first shard for a
@@ -280,7 +280,7 @@ async fn probe_liveness(pool: &PgPool, model_id: Uuid) -> Result<Liveness, AppEr
     )
     .fetch_optional(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("auto_start: check running: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
 
     let Some(row) = row else {
         return Ok(Liveness::NotRunning);
@@ -336,7 +336,7 @@ async fn persist_instance(
     )
     .fetch_one(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("auto_start: provider_id: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
 
     let _ = pid; // pid isn't currently a column; reserve for future use
     sqlx::query!(
@@ -357,7 +357,7 @@ async fn persist_instance(
     )
     .execute(pool)
     .await
-    .map_err(|e| AppError::internal_error(format!("auto_start: insert instance: {e}")))?;
+    .map_err(|e| AppError::database_error(e))?;
     Ok(())
 }
 

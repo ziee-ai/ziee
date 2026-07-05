@@ -37,7 +37,7 @@ impl ImageProcessor {
         let mut cursor = Cursor::new(&mut buffer);
 
         img.write_to(&mut cursor, ImageFormat::Jpeg)
-            .map_err(|e| AppError::internal_error(format!("Failed to encode JPEG: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         Ok(buffer)
     }
@@ -61,7 +61,7 @@ impl ImageGenerator for ImageProcessor {
     ) -> Result<ProcessingResult, AppError> {
         // Load image
         let img = image::load_from_memory(data)
-            .map_err(|e| AppError::internal_error(format!("Failed to load image: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let (width, height) = img.dimensions();
 

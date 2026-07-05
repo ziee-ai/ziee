@@ -35,17 +35,17 @@ impl OfficeProcessor {
                 .mode(0o600)
                 .open(&temp_path)
                 .map_err(|e| {
-                    AppError::internal_error(format!("Failed to create temp file: {}", e))
+                    AppError::internal_with_id(e)
                 })?;
             use std::io::Write;
             file.write_all(data).map_err(|e| {
-                AppError::internal_error(format!("Failed to write temp file: {}", e))
+                AppError::internal_with_id(e)
             })?;
         }
         #[cfg(not(unix))]
         {
             fs::write(&temp_path, data).map_err(|e| {
-                AppError::internal_error(format!("Failed to write temp file: {}", e))
+                AppError::internal_with_id(e)
             })?;
         }
 
@@ -115,7 +115,7 @@ impl ContentProcessor for OfficeProcessor {
                 // Create temp directory for PDF output
                 let temp_dir = std::env::temp_dir().join(format!("office_text_pdf_{}", Uuid::new_v4()));
                 fs::create_dir_all(&temp_dir)
-                    .map_err(|e| AppError::internal_error(format!("Failed to create temp dir: {}", e)))?;
+                    .map_err(|e| AppError::internal_with_id(e))?;
 
                 let temp_pdf = temp_dir.join("document.pdf");
 
@@ -131,7 +131,7 @@ impl ContentProcessor for OfficeProcessor {
                         let pdf_data = fs::read(&temp_pdf)
                             .map_err(|e| {
                                 let _ = fs::remove_dir_all(&temp_dir);
-                                AppError::internal_error(format!("Failed to read generated PDF: {}", e))
+                                AppError::internal_with_id(e)
                             })?;
 
                         // Use PDF processor to extract text per-page
@@ -282,7 +282,7 @@ impl ImageGenerator for OfficeProcessor {
         let temp_path = Self::write_temp_file(data, extension)?;
         let temp_dir = std::env::temp_dir().join(format!("office_pdf_{}", Uuid::new_v4()));
         fs::create_dir_all(&temp_dir).map_err(|e| {
-            AppError::internal_error(format!("Failed to create temp dir: {}", e))
+            AppError::internal_with_id(e)
         })?;
         let temp_pdf = temp_dir.join("document.pdf");
 
@@ -294,7 +294,7 @@ impl ImageGenerator for OfficeProcessor {
             Ok(_) => {
                 let pdf_data = fs::read(&temp_pdf).map_err(|e| {
                     let _ = fs::remove_dir_all(&temp_dir);
-                    AppError::internal_error(format!("Failed to read generated PDF: {}", e))
+                    AppError::internal_with_id(e)
                 })?;
 
                 let processing_result = PdfProcessor

@@ -29,7 +29,7 @@ impl SpreadsheetImageGenerator {
 
         // Decode JPEG
         let img = image::load_from_memory(image_data)
-            .map_err(|e| AppError::internal_error(format!("Failed to decode image: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         // Convert to RGB first (to ensure resize returns RGB)
         let rgb_img = img.to_rgb8();
@@ -56,7 +56,7 @@ impl SpreadsheetImageGenerator {
         // Encode to JPEG
         let mut jpeg_data = Vec::new();
         thumbnail.write_to(&mut std::io::Cursor::new(&mut jpeg_data), image::ImageFormat::Jpeg)
-            .map_err(|e| AppError::internal_error(format!("Failed to encode thumbnail: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         Ok(jpeg_data)
     }
@@ -76,7 +76,7 @@ impl SpreadsheetImageGenerator {
         // Load font
         let font_data = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/fonts/DejaVuSansMono.ttf"));
         let font = FontRef::try_from_slice(font_data)
-            .map_err(|e| AppError::internal_error(format!("Failed to load font: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let scale = PxScale::from(FONT_SIZE);
         let text_color = Rgb([40, 40, 40]);
@@ -192,7 +192,7 @@ impl SpreadsheetImageGenerator {
                 IMAGE_HEIGHT,
                 image::ExtendedColorType::Rgb8,
             )
-            .map_err(|e| AppError::internal_error(format!("Failed to encode JPEG: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         Ok(jpeg_data)
     }
@@ -201,7 +201,7 @@ impl SpreadsheetImageGenerator {
     fn extract_xlsx_sheets(data: &[u8]) -> Result<Vec<(String, Vec<Vec<String>>)>, AppError> {
         let cursor = Cursor::new(data);
         let mut workbook: Xlsx<_> = open_workbook_from_rs(cursor)
-            .map_err(|e| AppError::internal_error(format!("Failed to open XLSX: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let mut sheets = Vec::new();
 
@@ -228,7 +228,7 @@ impl SpreadsheetImageGenerator {
     fn extract_xls_sheets(data: &[u8]) -> Result<Vec<(String, Vec<Vec<String>>)>, AppError> {
         let cursor = Cursor::new(data);
         let mut workbook: Xls<_> = open_workbook_from_rs(cursor)
-            .map_err(|e| AppError::internal_error(format!("Failed to open XLS: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let mut sheets = Vec::new();
 
@@ -255,7 +255,7 @@ impl SpreadsheetImageGenerator {
     fn extract_ods_sheets(data: &[u8]) -> Result<Vec<(String, Vec<Vec<String>>)>, AppError> {
         let cursor = Cursor::new(data);
         let mut workbook: Ods<_> = open_workbook_from_rs(cursor)
-            .map_err(|e| AppError::internal_error(format!("Failed to open ODS: {}", e)))?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let mut sheets = Vec::new();
 

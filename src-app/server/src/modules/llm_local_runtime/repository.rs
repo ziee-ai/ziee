@@ -63,7 +63,7 @@ impl LocalRuntimeRepository {
             {
                 return AppError::conflict("Runtime instance");
             }
-            AppError::internal_error(format!("Failed to create runtime instance: {}", e))
+            AppError::database_error(e)
         })?;
 
         Ok(record.id)
@@ -97,7 +97,7 @@ impl LocalRuntimeRepository {
                 && db_err.is_unique_violation() {
                     return AppError::conflict("Runtime instance");
                 }
-            AppError::internal_error(format!("Failed to create runtime instance: {}", e))
+            AppError::database_error(e)
         })?;
 
         Ok(record.id)
@@ -127,7 +127,7 @@ impl LocalRuntimeRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
-            AppError::internal_error(format!("Failed to get runtime instance: {}", e))
+            AppError::database_error(e)
         })?;
 
         Ok(instance)
@@ -158,7 +158,7 @@ impl LocalRuntimeRepository {
             .execute(&self.pool)
             .await
             .map_err(|e| {
-                AppError::internal_error(format!("Failed to update instance status: {}", e))
+                AppError::database_error(e)
             })?;
 
             if result.rows_affected() == 0 {
@@ -183,7 +183,7 @@ impl LocalRuntimeRepository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            AppError::internal_error(format!("Failed to update instance status: {}", e))
+            AppError::database_error(e)
         })?;
 
         if result.rows_affected() == 0 {
@@ -208,7 +208,7 @@ impl LocalRuntimeRepository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            AppError::internal_error(format!("Failed to delete runtime instance: {}", e))
+            AppError::database_error(e)
         })?;
 
         if result.rows_affected() == 0 {
@@ -243,7 +243,7 @@ impl LocalRuntimeRepository {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| {
-            AppError::internal_error(format!("Failed to get provider instances: {}", e))
+            AppError::database_error(e)
         })?;
 
         Ok(instances)
@@ -267,7 +267,7 @@ impl LocalRuntimeRepository {
         )
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| AppError::internal_error(format!("runtime_settings: get: {e}")))
+        .map_err(|e| AppError::database_error(e))
     }
 
     /// Update the singleton runtime-settings row (PATCH-style COALESCE
@@ -318,7 +318,7 @@ impl LocalRuntimeRepository {
         )
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| AppError::internal_error(format!("runtime_settings: update: {e}")))
+        .map_err(|e| AppError::database_error(e))
     }
 
 }
