@@ -62,6 +62,11 @@ export async function attachFileViaUI(page: Page, absoluteFilePath: string): Pro
   // component. Clicking it triggers the native file chooser; we capture it via
   // Playwright's fileChooser event.
   await byTestId(page, 'chat-input-add-btn').click()
+  // The + dropdown (aria-label "Add tools & files", stable testid
+  // `chat-input-add-btn`) contains the "Attach files or photos" menu item.
+  // Clicking that item triggers the native file chooser; we capture it via
+  // Playwright's fileChooser event.
+  await page.locator('[data-testid="chat-input-add-btn"]').click()
   const [fileChooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     page.getByText('Attach files or photos').click(),

@@ -223,7 +223,13 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
         <div
           className={
             viewer?.inlineFill
-              ? 'overflow-hidden'
+              ? // inlineFill viewers (the tabular data grid) get a definite,
+                // bounded height + scroll. Small grids render as a plain table
+                // (all rows present, scrolls within this box); large grids
+                // switch to row virtualization, which needs a measurable
+                // viewport height — a bare content-sized box collapses to 0 and
+                // renders no data rows.
+                'overflow-auto h-[min(360px,55vh)]'
               : 'overflow-auto max-h-[600px]'
           }
           data-testid="inline-file-preview-body"

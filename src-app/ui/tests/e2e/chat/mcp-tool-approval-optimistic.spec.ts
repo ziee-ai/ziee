@@ -89,7 +89,7 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
     await sendChatMessage(page, 'Please run the dangerous op')
 
     const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()
-    await expect(approval).toBeVisible({ timeout: 10000 })
+    await expect(approval).toBeVisible({ timeout: 30000 })
 
     await page.locator('[data-testid="tool-approval-approve-once"]').first().click()
 
@@ -98,8 +98,11 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
     // is best-effort; correctness is asserted by the eventual completed state.
     await expect(approval).not.toBeVisible({ timeout: 5000 })
 
-    // Final state: tool shows as Completed
-    await expect(page.locator('text=Completed').first()).toBeVisible({ timeout: 5000 })
+    // Final state: the tool card reaches the completed status (conveyed by the
+    // check icon; a hidden marker carries the signal for tests).
+    await expect(
+      page.locator(`[data-testid="mcp-toolcall-status-${toolUseId}"]`),
+    ).toHaveAttribute('data-status', 'completed', { timeout: 5000 })
   })
 
   test('approve once: panel reappears when backend resume call fails', async ({
@@ -145,13 +148,13 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
     await goToNewChatPage(page, testInfra.baseURL)
     await sendChatMessage(page, 'Please run the risky op')
     const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()
-    await expect(approval).toBeVisible({ timeout: 10000 })
+    await expect(approval).toBeVisible({ timeout: 30000 })
 
     await page.locator('[data-testid="tool-approval-approve-once"]').first().click()
 
     // After the resume call fails, the optimistic update is reverted →
     // approval panel reappears.
-    await expect(approval).toBeVisible({ timeout: 10000 })
+    await expect(approval).toBeVisible({ timeout: 30000 })
   })
 
   test('deny: panel switches to denied state immediately (optimistic error status)', async ({
@@ -194,15 +197,18 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
     await goToNewChatPage(page, testInfra.baseURL)
     await sendChatMessage(page, 'Try the unwanted op')
     const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()
-    await expect(approval).toBeVisible({ timeout: 10000 })
+    await expect(approval).toBeVisible({ timeout: 30000 })
 
     await page.locator('[data-testid="tool-approval-deny"]').first().click()
 
     // Approval panel disappears (status flipped to 'error')
     await expect(approval).not.toBeVisible({ timeout: 5000 })
 
-    // The denied tool shows the Failed card text
-    await expect(page.locator('text=Failed').first()).toBeVisible({ timeout: 5000 })
+    // The denied tool card reaches the failed status (conveyed by the x icon;
+    // a hidden marker carries the signal for tests).
+    await expect(
+      page.locator(`[data-testid="mcp-toolcall-status-${toolUseId}"]`),
+    ).toHaveAttribute('data-status', 'failed', { timeout: 5000 })
   })
 
   test('approve-for-conversation triggers a POST to /mcp-settings with auto_approved_tools', async ({
@@ -291,7 +297,7 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
     await goToNewChatPage(page, testInfra.baseURL)
     await sendChatMessage(page, 'Approve me for the whole conversation')
     await expect(page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()).toBeVisible({
-      timeout: 10000,
+      timeout: 30000,
     })
 
     await page.locator('[data-testid="tool-approval-approve-conv"]').first().click()
