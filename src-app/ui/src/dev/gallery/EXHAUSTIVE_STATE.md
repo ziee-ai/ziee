@@ -63,7 +63,7 @@ script — the fast `npm run check` keeps the Part-1 tsc parity gate.
 
 ```bash
 GALLERY_COVERAGE=1 npm run dev -- --port 1466 --strictPort   # instrumented server
-npm run gallery:coverage -- --url=http://localhost:1466/dev-gallery.html
+npm run gallery:coverage -- --url=http://localhost:1466/gallery.html
 npm run gallery:coverage:gate                                # CI gate
 ```
 

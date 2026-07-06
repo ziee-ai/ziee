@@ -9,6 +9,7 @@ import { chatCassette } from './chat'
 import { citationsCassette } from './citations'
 import { crawlCassette } from './crawl.generated'
 import { llmProvidersCassette } from './llm-providers'
+import { projectDeepCassette } from './project-deep'
 
 export { adminUser, adminMe, adminPermissions } from './auth'
 export { showcaseConversationIds } from './chat'
@@ -21,4 +22,5 @@ export const GALLERY_CASSETTE: Cassette = {
   ...llmProvidersCassette,
   ...chatCassette,
   ...citationsCassette,
+  ...projectDeepCassette,
 }

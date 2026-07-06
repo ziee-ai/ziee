@@ -1,7 +1,7 @@
 /**
  * Standalone (backend-free) entry for the component gallery.
  *
- * Served by the Vite dev server at `/dev-gallery.html` (Vite root is `src/`).
+ * Served by the Vite dev server at `/gallery.html` (Vite root is `src/`).
  * Unlike the in-app `/dev/gallery` route, this does NOT boot the module system,
  * auth, or any backend call — it registers ONLY the `ConfigClient` store (which
  * the app `ThemeProvider` reads) and mounts the real `ThemeProvider` + gallery.
@@ -15,28 +15,30 @@ import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { GalleryPage } from './GalleryPage'
 import { seedGallery, type AuthSeed } from './seed'
 import { setMockMode, type MockMode } from './mockApi'
-import { OVERLAY_ENTRIES } from './overlays'
-import { DEEP_STATE_SLUGS } from './deepStates'
-import { SEEDED_SURFACE_SLUGS } from './seededSurfaces'
+import {
+  DEEP_SLUGS,
+  OVERLAY_SLUGS,
+  SEEDED_SLUGS,
+  listAllSurfaces,
+} from './surfaces'
 import '@/index.css'
 
-// Runtime manifest for the runtime-health pass. Page slugs are enumerated from
-// the rendered DOM (they only exist after the router store populates), but the
-// overlay open-states are interaction-only surfaces never present on the browse
-// canvas — expose their slugs statically so the health script can drive each via
-// `?surface=<slug>&state=open` without hard-coding the list.
+// Runtime manifest for the runtime-health + capture + coverage passes. Page
+// slugs are enumerated from the rendered DOM (they only exist after the router
+// store populates); the overlay / deep / seeded classes are interaction-only
+// surfaces never on the browse canvas, so expose their slugs statically. The
+// per-class globals are kept for back-compat; `__GALLERY_LIST_ALL_SURFACES__` is
+// the SINGLE source every tool now enumerates through (see `surfaces.ts`) so no
+// capture/coverage pass can silently skip a whole surface class.
 ;(window as unknown as { __GALLERY_OVERLAYS__?: string[] }).__GALLERY_OVERLAYS__ =
-  OVERLAY_ENTRIES.map(o => o.slug)
-// Deep active-conversation states (streaming / right-panel / elicitation / …) are
-// likewise interaction-only surfaces never on the browse canvas — expose their
-// slugs so the health + coverage passes drive each via `?surface=<slug>`.
+  OVERLAY_SLUGS
 ;(window as unknown as { __GALLERY_DEEP_STATES__?: string[] }).__GALLERY_DEEP_STATES__ =
-  DEEP_STATE_SLUGS
-// Seeded surfaces (real pages/components rendered with a mount-time store seed to
-// reach loaded-then-error / seeded-empty branches the GET-only pass can't) are
-// likewise interaction-only — expose their slugs for the coverage + health passes.
+  DEEP_SLUGS
 ;(window as unknown as { __GALLERY_SEEDED__?: string[] }).__GALLERY_SEEDED__ =
-  SEEDED_SURFACE_SLUGS
+  SEEDED_SLUGS
+;(
+  window as unknown as { __GALLERY_LIST_ALL_SURFACES__?: typeof listAllSurfaces }
+).__GALLERY_LIST_ALL_SURFACES__ = listAllSurfaces
 
 // Surfaces whose CONTENT only renders under a specific auth seed, so a capture
 // that drives `?surface=<slug>` without an explicit `&auth=` still gets the

@@ -36,6 +36,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isRuntimeBaselined } from '../src/dev/gallery/runtime-baseline.js'
+import { enumerateSurfaces } from './lib/gallery-surfaces.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const GALLERY_DIR = path.resolve(__dirname, '../src/dev/gallery')
@@ -48,7 +49,7 @@ const arg = (n, d) =>
 const flag = n => process.argv.includes(`--${n}`)
 
 const PORT = process.env.GALLERY_PORT || '1420'
-const BASE = arg('url', `http://localhost:${PORT}/dev-gallery.html`)
+const BASE = arg('url', `http://localhost:${PORT}/gallery.html`)
 const OUT = arg('out', GALLERY_DIR)
 const STATES = arg('states', 'loaded,empty,error').split(',').filter(Boolean)
 const THEMES = arg('themes', 'light,dark').split(',').filter(Boolean)
@@ -343,34 +344,28 @@ function inPageAudit() {
 async function main() {
   const browser = await chromium.launch()
 
-  // 1. Enumerate page slugs + overlays from a browse render.
+  // 1. Enumerate EVERY surface class from the single source (browse render).
   const enumPage = await browser.newPage({
     viewport: { width: 1280, height: 900 },
   })
-  await enumPage.goto(BASE, { waitUntil: 'networkidle' })
-  await enumPage.waitForTimeout(2000)
-  const pageSlugs = []
-  for (const s of await enumPage
-    .locator('[data-testid^="gallery-page-"]')
-    .all()) {
-    pageSlugs.push(
-      (await s.getAttribute('data-testid')).replace('gallery-page-', ''),
-    )
-  }
-  const overlaySlugs = await enumPage.evaluate(
-    () => window.__GALLERY_OVERLAYS__ ?? [],
-  )
+  const classes = await enumerateSurfaces(enumPage, BASE)
   await enumPage.close()
 
-  // 2. Build the surface × state matrix.
+  // 2. Build the surface × state matrix. Pages get the data-state set; the
+  //    interaction-only classes (overlay/deep/seeded) render once via
+  //    `?surface=<slug>` (state is ignored by the mock for those).
   const cells = []
-  for (const slug of pageSlugs)
+  for (const slug of classes.pages)
     for (const state of STATES) cells.push({ surface: slug, state, kind: 'page' })
-  for (const slug of overlaySlugs)
+  for (const slug of classes.overlays)
     cells.push({ surface: slug, state: 'open', kind: 'overlay' })
+  for (const slug of classes.deep)
+    cells.push({ surface: slug, state: 'deep', kind: 'deep' })
+  for (const slug of classes.seeded)
+    cells.push({ surface: slug, state: 'seeded', kind: 'seeded' })
 
   console.log(
-    `runtime-health: ${pageSlugs.length} pages × ${STATES.length} states + ${overlaySlugs.length} overlays = ${cells.length} surface/state cells × ${THEMES.length} themes\n`,
+    `runtime-health: ${classes.pages.length} pages × ${STATES.length} states + ${classes.overlays.length} overlays + ${classes.deep.length} deep + ${classes.seeded.length} seeded = ${cells.length} surface/state cells × ${THEMES.length} themes\n`,
   )
 
   const findings = []
@@ -445,7 +440,15 @@ async function main() {
     const url = `${BASE}?surface=${cell.surface}&state=${cell.state}&theme=${theme}`
     try {
       await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
-      await p.waitForTimeout(cell.state === 'error' ? 1100 : 800)
+      // deep/seeded surfaces run a mount-time store seed (a few seconds) before
+      // their reviewable state settles; pages/overlays settle fast.
+      const settle =
+        cell.kind === 'deep' || cell.kind === 'seeded'
+          ? 2600
+          : cell.state === 'error'
+            ? 1100
+            : 800
+      await p.waitForTimeout(settle)
       const audit = await p.evaluate(inPageAudit)
       for (const f of audit) record(cell, theme, f)
     } catch (e) {

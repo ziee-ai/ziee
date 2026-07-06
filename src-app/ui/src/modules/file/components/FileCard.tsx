@@ -13,6 +13,9 @@ import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 
 function formatFileSize(bytes: number): string {
+  // A missing / malformed size (undefined, null, NaN) must never render as
+  // "NaN GB" — show nothing instead.
+  if (!Number.isFinite(bytes)) return ''
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`

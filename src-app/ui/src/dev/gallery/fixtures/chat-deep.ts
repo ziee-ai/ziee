@@ -117,6 +117,10 @@ const toolFailed: DeepBundle = {
       },
       {
         type: 'tool_result',
+        // `tool_use_id` links this result to its `tool_use` block above — without
+        // it the historical `McpToolUseRenderer` can't pair them, so it falls back
+        // to the neutral wrench instead of the is_error red X.
+        tool_use_id: 'toolu_failed_1',
         content:
           'exit_code: 1\n--- stderr ---\nERROR: Could not find a version that satisfies the requirement nonexistent-pkg-xyz\nERROR: No matching distribution found for nonexistent-pkg-xyz',
         is_error: true,
@@ -156,18 +160,128 @@ const attachments: DeepBundle = {
   branches: [],
 }
 
+// A DEDICATED short conversation ending in a PENDING elicitation, so the live
+// answerable form is front-and-center (the showcase's pending elicitation block
+// is buried deep in its 47-message thread, and its `elic-0001` block is already
+// `accepted`). The block's own `status: 'pending'` is what renders the form.
+const ELICITATION_ID = 'dee90004-0000-4000-8000-000000000004'
+export const LIVE_ELICITATION_ID = 'elic-live-0001'
+const elicitation: DeepBundle = {
+  conversation: conversation(ELICITATION_ID, 'Elicitation — awaiting input'),
+  messages: [
+    message(`${ELICITATION_ID}-m1`, 'user', [
+      { type: 'text', text: 'Export the results — pick whatever format is best.' },
+    ]),
+    {
+      // Built manually (elicitation_request isn't in the MessageContentData union;
+      // the mcp extension likewise casts it) — an assistant turn whose single block
+      // is a pending elicitation the ElicitationFormContent renderer turns into a form.
+      id: `${ELICITATION_ID}-m2`,
+      role: 'assistant',
+      contents: [
+        {
+          id: `${ELICITATION_ID}-m2-c0`,
+          message_id: `${ELICITATION_ID}-m2`,
+          content_type: 'elicitation_request',
+          content: {
+            type: 'elicitation_request',
+            status: 'pending',
+            elicitation_id: LIVE_ELICITATION_ID,
+            message_id: `${ELICITATION_ID}-m2`,
+            message: 'Which output format do you want for the export?',
+            server: 'Code Sandbox',
+            requested_schema: {
+              type: 'object',
+              properties: {
+                format: {
+                  type: 'string',
+                  enum: ['csv', 'json', 'xlsx'],
+                  title: 'Format',
+                },
+                include_headers: { type: 'boolean', title: 'Include headers' },
+              },
+              required: ['format'],
+            },
+          },
+          sequence_order: 0,
+          created_at: NOW,
+          updated_at: NOW,
+        } as unknown as MessageContent,
+      ],
+      originated_from_id: '',
+      edit_count: 0,
+      created_at: NOW,
+      model_id: 'claude-opus-4-8',
+    },
+  ],
+  branches: [],
+}
+
+/** The pending elicitation seeded into McpComposer so the form is also a LIVE
+ *  entry (freshest status) — matches the dedicated bundle's block id. */
+export const liveElicitation: SSEChatStreamMcpElicitationRequiredData = {
+  elicitation_id: LIVE_ELICITATION_ID,
+  message: 'Which output format do you want for the export?',
+  server: 'Code Sandbox',
+  requested_schema: {
+    type: 'object',
+    properties: {
+      format: { type: 'string', enum: ['csv', 'json', 'xlsx'], title: 'Format' },
+      include_headers: { type: 'boolean', title: 'Include headers' },
+    },
+    required: ['format'],
+  },
+}
+
+// A DEDICATED short conversation whose last assistant message is a fork point, so
+// the BranchNavigator (< 1 / 3 >) renders on a VISIBLE message. `forkPoints` is
+// computed by `loadBranches` from an intricate parent/child branch graph; the
+// deep-state seeds it DIRECTLY (a store field — the transient-seed pattern) so the
+// navigator is deterministic without hand-crafting that graph.
+const BRANCHED_ID = 'dee90005-0000-4000-8000-000000000005'
+/** The three sibling branch ids for the branched surface (first = active). */
+export const BRANCHED_BRANCH_IDS = [
+  'dee90005-0000-4000-8000-0000000000b1',
+  'dee90005-0000-4000-8000-0000000000b2',
+  'dee90005-0000-4000-8000-0000000000b3',
+]
+/** The message id the BranchNavigator anchors to (the last assistant message). */
+export const BRANCHED_ANCHOR_MESSAGE_ID = `${BRANCHED_ID}-m2`
+const branched: DeepBundle = {
+  conversation: {
+    ...conversation(BRANCHED_ID, 'Branched — edit / regenerate'),
+    active_branch_id: BRANCHED_BRANCH_IDS[0],
+  },
+  messages: [
+    message(`${BRANCHED_ID}-m1`, 'user', [
+      { type: 'text', text: 'Give me a one-sentence summary of the SELECT trial.' },
+    ]),
+    message(BRANCHED_ANCHOR_MESSAGE_ID, 'assistant', [
+      {
+        type: 'text',
+        text: 'SELECT showed semaglutide cut major adverse cardiovascular events by 20% (HR 0.80, 95% CI 0.72–0.90) in patients with obesity and established CVD.',
+      },
+    ]),
+  ],
+  branches: [],
+}
+
 /** Deep bundles keyed by conversation id — merged into the chat cassette so the
  *  gallery renders each via the REAL Conversation.get / Message.getHistory path. */
 export const chatDeepById: Record<string, DeepBundle> = {
   [TOOL_RUNNING_ID]: toolRunning,
   [TOOL_FAILED_ID]: toolFailed,
   [ATTACHMENTS_ID]: attachments,
+  [ELICITATION_ID]: elicitation,
+  [BRANCHED_ID]: branched,
 }
 
 export const CHAT_DEEP_CONVERSATION_IDS = {
   toolRunning: TOOL_RUNNING_ID,
   toolFailed: TOOL_FAILED_ID,
   attachments: ATTACHMENTS_ID,
+  elicitation: ELICITATION_ID,
+  branched: BRANCHED_ID,
 } as const
 
 // ── transient-state seeds (driven through the real store by deepStates.tsx) ──

@@ -38,7 +38,7 @@ export const GALLERY_VIEWPORTS: GalleryViewport[] = [
 
 export const GALLERY_PATH = '/dev/gallery'
 /** Standalone (backend-free) Vite entry served in dev. */
-export const GALLERY_STANDALONE_PATH = '/dev-gallery.html'
+export const GALLERY_STANDALONE_PATH = '/gallery.html'
 
 export type GalleryDir = 'ltr' | 'rtl'
 export const GALLERY_DIRS: GalleryDir[] = ['ltr', 'rtl']

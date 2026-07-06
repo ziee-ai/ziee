@@ -7,7 +7,7 @@
  */
 import type { Page } from '@playwright/test'
 
-export const STANDALONE_PATH = '/dev-gallery.html'
+export const STANDALONE_PATH = '/gallery.html'
 
 /**
  * Layer B (pixel screenshots) needs blessed, environment-specific baselines, so

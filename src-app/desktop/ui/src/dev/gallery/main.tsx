@@ -1,7 +1,7 @@
 /**
  * Standalone (backend-free) entry for the component gallery.
  *
- * Served by the Vite dev server at `/dev-gallery.html` (Vite root is `src/`).
+ * Served by the Vite dev server at `/gallery.html` (Vite root is `src/`).
  * Unlike the in-app `/dev/gallery` route, this does NOT boot the module system,
  * auth, or any backend call — it registers ONLY the `ConfigClient` store (which
  * the app `ThemeProvider` reads) and mounts the real `ThemeProvider` + gallery.
@@ -15,16 +15,29 @@ import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { GalleryPage } from './GalleryPage'
 import { seedGallery, type AuthSeed } from './seed'
 import { setMockMode, type MockMode } from './mockApi'
+import {
+  DEEP_SLUGS,
+  OVERLAY_SLUGS,
+  SEEDED_SLUGS,
+  listAllSurfaces,
+} from './surfaces'
 import '@/index.css'
 
-// Runtime manifest for the runtime-health pass (mirrors the web gallery). The
-// desktop gallery is PAGE-focused — kit component stories + interaction-only
-// overlay open-states live in the web workspace — so there are no extra overlay
-// surfaces to drive here. Page slugs are still enumerated from the rendered DOM
-// by the health script; this empty manifest just tells it there are no
-// `?surface=<slug>&state=open` overlay cells on this canvas.
+// Runtime manifest for the runtime-health + capture + coverage passes (mirrors
+// the web gallery). The desktop gallery is PAGE-focused — kit component stories +
+// interaction-only overlay/deep/seeded surfaces live in the web workspace — so
+// those classes are empty here. Page slugs are enumerated from the rendered DOM;
+// `__GALLERY_LIST_ALL_SURFACES__` is the SINGLE source the tooling enumerates
+// through (see `surfaces.ts`), identical in shape to the web workspace.
 ;(window as unknown as { __GALLERY_OVERLAYS__?: string[] }).__GALLERY_OVERLAYS__ =
-  []
+  OVERLAY_SLUGS
+;(window as unknown as { __GALLERY_DEEP_STATES__?: string[] }).__GALLERY_DEEP_STATES__ =
+  DEEP_SLUGS
+;(window as unknown as { __GALLERY_SEEDED__?: string[] }).__GALLERY_SEEDED__ =
+  SEEDED_SLUGS
+;(
+  window as unknown as { __GALLERY_LIST_ALL_SURFACES__?: typeof listAllSurfaces }
+).__GALLERY_LIST_ALL_SURFACES__ = listAllSurfaces
 
 // Surfaces whose CONTENT only renders under a specific auth seed, so a capture
 // that drives `?surface=<slug>` without an explicit `&auth=` still gets the

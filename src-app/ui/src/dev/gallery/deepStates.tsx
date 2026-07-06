@@ -19,13 +19,14 @@ import { Loading } from '@/core/components/Loading'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
-import { setSseCassette } from './mockApi'
 import {
+  BRANCHED_ANCHOR_MESSAGE_ID,
+  BRANCHED_BRANCH_IDS,
   CHAT_DEEP_CONVERSATION_IDS,
   SHOWCASE_CONVERSATION_ID,
   STREAMING_MESSAGE_ID,
   literaturePanelData,
-  pendingElicitation,
+  liveElicitation,
   rightPanelFile,
   streamingCassette,
 } from './fixtures/chat-deep'
@@ -64,21 +65,50 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
     slug: 'deep-chat-streaming',
     title: 'Conversation — streaming (live generation)',
     conversationId: SHOWCASE_CONVERSATION_ID,
-    note: 'mid-generation: streamingMessage assembled token-by-token via the real applyStreamFrame reducer',
+    note: 'mid-generation: a streamingMessage carrying the accumulated deltas, left visibly streaming (isStreaming)',
     setup: async () => {
-      // Register the recorded SSE frames so the mechanism is exercised/available;
-      // then drive the SAME frames through the real reducer directly (robust —
-      // the gallery does not boot the auth-gated ChatStreamClient).
-      setSseCassette(
-        streamingCassette.map(f => ({ event: f.type, data: { conversationId: SHOWCASE_CONVERSATION_ID, event: f } })),
-      )
       await whenLoaded(SHOWCASE_CONVERSATION_ID)
-      for (const frame of streamingCassette) {
-        await chat().applyStreamFrame(SHOWCASE_CONVERSATION_ID, frame)
-        await tick(250)
+      // Build the mid-generation state DIRECTLY (idempotent `setState` replace)
+      // rather than replaying the recorded frames token-by-token through
+      // `applyStreamFrame`. React StrictMode invokes effects twice in dev, and
+      // the reducer's APPEND semantics double/interleave under a concurrent
+      // re-invocation → garbled, duplicated text. A single deterministic replace
+      // produces the same visible mid-stream state and is re-invocation-safe.
+      const fullText = streamingCassette
+        .filter(f => f.type === 'content')
+        .flatMap(f => f.content ?? [])
+        .map(c => c.delta)
+        .join('')
+      const now = new Date().toISOString()
+      const streamingMessage = {
+        id: STREAMING_MESSAGE_ID,
+        role: 'assistant' as const,
+        contents: [
+          {
+            id: `${STREAMING_MESSAGE_ID}-c0`,
+            message_id: STREAMING_MESSAGE_ID,
+            content_type: 'text',
+            content: { type: 'text', text: fullText },
+            sequence_order: 0,
+            created_at: now,
+            updated_at: now,
+          },
+        ],
+        originated_from_id: '',
+        edit_count: 0,
+        created_at: now,
+        model_id: 'claude-opus-4-8',
       }
-      // Leave it mid-stream (no `complete`) so isStreaming stays true.
-      useChatStore.setState({ isStreaming: true, streamingMessageId: STREAMING_MESSAGE_ID })
+      useChatStore.setState(s => {
+        const messages = new Map(s.messages)
+        messages.set(STREAMING_MESSAGE_ID, streamingMessage as never)
+        return {
+          messages,
+          streamingMessage: streamingMessage as never,
+          streamingMessageId: STREAMING_MESSAGE_ID,
+          isStreaming: true,
+        }
+      })
     },
   },
   {
@@ -143,11 +173,13 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
   {
     slug: 'deep-chat-elicitation',
     title: 'Conversation — elicitation prompt pending',
-    conversationId: SHOWCASE_CONVERSATION_ID,
-    note: 'the elicitation_request block flips to a live, answerable form',
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.elicitation,
+    note: 'a dedicated conversation ending in a pending elicitation_request → the live, answerable form',
     setup: async () => {
-      await whenLoaded(SHOWCASE_CONVERSATION_ID)
-      useMcpComposerStore.getState().addElicitationRequest(pendingElicitation)
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.elicitation)
+      // The block's own `status: 'pending'` already renders the form; seeding the
+      // McpComposer live entry (matching id) makes it the freshest-status source too.
+      useMcpComposerStore.getState().addElicitationRequest(liveElicitation)
     },
   },
   {
@@ -188,9 +220,19 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
   {
     slug: 'deep-chat-branched',
     title: 'Conversation — branched (edit/regenerate branches)',
-    conversationId: SHOWCASE_CONVERSATION_ID,
-    note: 'the showcase conversation carries edit + regenerate branches → BranchNavigator',
-    setup: () => whenLoaded(SHOWCASE_CONVERSATION_ID),
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.branched,
+    note: 'a fork point on the (visible) last assistant message → the BranchNavigator < 1 / 3 >',
+    setup: async () => {
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.branched)
+      // `forkPoints` is normally derived by loadBranches from a parent/child branch
+      // graph; seed it directly (a store field) so the navigator renders on the
+      // visible anchor message without hand-crafting that graph.
+      useChatStore.setState(s => {
+        const forkPoints = new Map(s.forkPoints)
+        forkPoints.set(BRANCHED_ANCHOR_MESSAGE_ID, [...BRANCHED_BRANCH_IDS])
+        return { forkPoints }
+      })
+    },
   },
   {
     slug: 'deep-chat-long',

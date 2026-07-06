@@ -37,12 +37,19 @@ import {
   lazyNamed,
   lazyProps,
   holdPatch,
+  holdForever,
   whenTrue,
 } from './seeded/helpers'
 import {
   firstEnabledRemoteProviderId,
   llmProvidersList,
 } from './fixtures/llm-providers'
+import {
+  DEEP_PROJECT_ID,
+  deepProject,
+  deepProjectConversations,
+  deepProjectFiles,
+} from './fixtures/project-deep'
 // Per-shard entry lists (parallel grind). Each shard owns ONLY its own file;
 // this aggregator is integrator-owned. Add a shard import + spread below.
 import { shard1Seeded } from './seeded/shard1'
@@ -53,8 +60,101 @@ import { shard5Seeded } from './seeded/shard5'
 
 export type { SeededSurfaceEntry }
 
+/**
+ * Seed the ProjectDetail + ProjectFiles stores for the full-page
+ * `ProjectDetailPage` surface. `loadProject` fires on mount (setting loading +
+ * loading conversations from the thin cassette); `holdPatch` re-asserts the rich
+ * fixture over it so the loaded page renders its populated form.
+ */
+async function seedProjectDetail(patch: {
+  project: typeof deepProject | null
+  conversations?: (typeof deepProjectConversations)[number][]
+  files?: (typeof deepProjectFiles)[number][]
+  error?: string | null
+}): Promise<void> {
+  const { ProjectDetail } = await import(
+    '@/modules/projects/stores/ProjectDetail.store'
+  )
+  const { ProjectFiles } = await import(
+    '@/modules/file/project-extension/stores/ProjectFiles.store'
+  )
+  await holdPatch(() => {
+    ProjectDetail.store.setState({
+      project: patch.project,
+      loading: false,
+      error: patch.error ?? null,
+      conversations: patch.conversations ?? [],
+      conversationsLoading: false,
+      conversationsLoadingMore: false,
+      conversationsHasMore: false,
+      conversationsError: null,
+    } as any)
+    ProjectFiles.store.setState({
+      currentProjectId: patch.project?.id ?? null,
+      files: patch.files ?? [],
+      filesLoading: false,
+      error: null,
+    } as any)
+  })
+}
+
 /** Integrator-owned entries (batches 1-3). Shard entries are concatenated below. */
 const integratorSeeded: SeededSurfaceEntry[] = [
+  // ── FULL-PAGE ProjectDetailPage — the priority life-science surface. The
+  // enumerated `/projects/:projectId` page renders from a thin cassette (no
+  // conversations, no files); these seed the REAL ProjectDetail + ProjectFiles
+  // stores so the populated page (instructions, conversation list, knowledge
+  // files) is reviewable. loaded(rich) / empty / error. ────────────────────────
+  {
+    slug: 'deep-project-detail',
+    title: 'Project detail — loaded (rich)',
+    note: 'a fully-populated project: instructions + description + a conversation list + attached knowledge files',
+    path: '/projects/:projectId',
+    initialPath: `/projects/${DEEP_PROJECT_ID}`,
+    component: lazyNamed(
+      () => import('@/modules/projects/pages/ProjectDetailPage'),
+      'ProjectDetailPage',
+    ),
+    setup: () =>
+      seedProjectDetail({
+        project: deepProject,
+        conversations: deepProjectConversations,
+        files: deepProjectFiles,
+      }),
+  },
+  {
+    slug: 'deep-project-detail-empty',
+    title: 'Project detail — empty (no chats, no files)',
+    note: 'a loaded project with zero conversations + zero knowledge files → the empty affordances',
+    path: '/projects/:projectId',
+    initialPath: `/projects/${DEEP_PROJECT_ID}`,
+    component: lazyNamed(
+      () => import('@/modules/projects/pages/ProjectDetailPage'),
+      'ProjectDetailPage',
+    ),
+    setup: () =>
+      seedProjectDetail({
+        project: { ...deepProject, description: undefined, instructions: undefined },
+        conversations: [],
+        files: [],
+      }),
+  },
+  {
+    slug: 'deep-project-detail-error',
+    title: 'Project detail — load error',
+    note: 'load settled with no project → the recoverable "Failed to load project" Result',
+    path: '/projects/:projectId',
+    initialPath: `/projects/${DEEP_PROJECT_ID}`,
+    component: lazyNamed(
+      () => import('@/modules/projects/pages/ProjectDetailPage'),
+      'ProjectDetailPage',
+    ),
+    setup: () =>
+      seedProjectDetail({
+        project: null,
+        error: 'The project could not be loaded.',
+      }),
+  },
   // ── file_rag admin: 5 section cards share Stores.FileRagAdmin. Once settings
   // load, seeding `.error` flips every section's inline save-error alert. ──────
   {
@@ -645,12 +745,14 @@ const integratorSeeded: SeededSurfaceEntry[] = [
   {
     slug: 'seeded-chat-history-list',
     title: 'Chat history — list shown (loading)',
-    note: 'conversations.length>0 || loading || error → the ConversationList container',
+    note: 'loading && !isInitialized → the ConversationList load spinner (container mounted via the loading arm)',
     path: '/chat-history',
     initialPath: '/chat-history',
+    // ChatHistoryPage is a DEFAULT export — `lazyNamed(…, 'ChatHistoryPage')`
+    // resolved to `undefined` (blank via the boundary). Load the default.
     component: lazyNamed(
       () => import('@/modules/chat/pages/ChatHistoryPage'),
-      'ChatHistoryPage',
+      'default',
     ),
     setup: async () => {
       const { ChatHistory } = await import(
@@ -659,16 +761,20 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       const { AppLayout } = await import(
         '@/modules/layouts/app-layout/AppLayout.store'
       )
-      // The uncovered arm on :143 is the `nativeScroll ? '' : 'overflow-hidden'`
-      // className ternary — the `nativeScroll===true` side (default is false).
-      // Seed nativeScroll AND a persistent `error` so the container div mounts.
-      await holdPatch(() => {
+      // ChatHistoryPage refetches on mount (which flips loading/isInitialized as
+      // it resolves), so a one-shot seed races into a blank window: `loading`
+      // (mid-fetch) with a seeded `isInitialized:true` matches NEITHER the error
+      // arm (needs !loading) NOR the spinner arm (needs !isInitialized) → blank.
+      // Assert a persistent loading state (`holdForever`) so the container mounts
+      // via the loading arm (also covering the `nativeScroll===true` :143 ternary)
+      // and ConversationList deterministically shows its load spinner.
+      holdForever(() => {
         AppLayout.store.setState({ nativeScroll: true } as any)
         ChatHistory.store.setState({
-          loading: false,
-          isInitialized: true,
+          loading: true,
+          isInitialized: false,
           conversations: [],
-          error: 'Failed to load conversations.',
+          error: null,
         } as any)
       })
     },

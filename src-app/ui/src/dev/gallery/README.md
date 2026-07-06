@@ -18,10 +18,13 @@ It's three layers over one shared canvas — the **gallery**:
 
 - **In-app route** `/dev/gallery` (gated on `import.meta.env.DEV` — never ships)
   for manual review inside the real app shell. Module: `src/modules/dev-gallery/`.
-- **Standalone, backend-free** entry `/dev-gallery.html` — registers only the
+- **Standalone, backend-free** entry `/gallery.html` — registers only the
   `ConfigClient` store and renders the gallery under the real `ThemeProvider`.
   This is what the Playwright layers drive (no Postgres, no `cargo run`).
-- URL matrix: `/dev-gallery.html?theme=dark&accent=teal` re-renders the WHOLE
+  Also reachable at the pretty URL **`/gallery`**; the pre-rename path
+  `/dev-gallery.html` still resolves (a dev-server alias — see
+  `plugins/vite-plugin-gallery-alias.js`).
+- URL matrix: `/gallery.html?theme=dark&accent=teal` re-renders the WHOLE
   gallery under that combo. A control bar (theme + accent Select) does the same
   for eyeballing.
 - Add a component: drop a `GalleryStory` into the matching `stories/*.story.tsx`
