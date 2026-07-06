@@ -14,7 +14,7 @@ Cross-cutting rules every agent must follow:
   the container's testid — give the CONTAINER a testid and the rows are covered.
 - Never import `antd`, never use raw `<button>/<input>/<select>/<textarea>` (Biome blocks both).
 
-65 components documented.
+66 components documented.
 
 ## Accordion _(discriminated union — see source for variant-specific props)_
 
@@ -450,6 +450,28 @@ _No always-required props._
 | `icon` | `ReactNode` |  |
 | `image` | `ReactNode` | Custom illustration (legacy `image`), shown larger than `icon`. Takes precedence over icon. |
 | `title` | `ReactNode` |  |
+
+</details>
+
+## ErrorState
+
+**Required:**
+
+| prop | type | notes |
+|---|---|---|
+| `data-testid` | `string` | Test selector — REQUIRED, forwarded onto the alert root (i18n-safe). |
+| `resource` | `string` | Names the resource that failed to load; the title renders "Couldn't load {resource}". REQUIRED — the error must always name the resource,… |
+
+<details><summary>Optional props (6)</summary>
+
+| prop | type | notes |
+|---|---|---|
+| `className` | `string | undefined` |  |
+| `description` | `ReactNode` | Optional HUMAN one-liner shown under the title. NEVER raw error text, transport state ("SSE disconnected; reconnecting…"), or a placehold… |
+| `details` | `ReactNode` | Technical detail (raw error string, transport state) revealed only behind a "Details" disclosure — never rendered inline as the description. |
+| `onRetry` | `(() => void) | undefined` | Re-invokes the section's fetch. Renders the "Try again" button. Omit only when no re-fetch is meaningful. |
+| `retryLabel` | `string | undefined` | Retry button label. Default "Try again". |
+| `variant` | `"inline" | "page" | undefined` | `inline` (fills a card section — default) or `page` (centered in an otherwise-empty route, e.g. a single-source page). |
 
 </details>
 

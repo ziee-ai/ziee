@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **306** surfaces carry at least one renderable-state signal.
-- **1674** signals total: 1317 branch, 106 empty, 68 error, 97 loading, 84 overlay, 2 panel.
+- **307** surfaces carry at least one renderable-state signal.
+- **1690** signals total: 1324 branch, 107 empty, 76 error, 97 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 82 |
 | `empty` | 86 |
-| `error` | 56 |
+| `error` | 62 |
 | `open` | 71 |
 | `panel-open` | 2 |
 
@@ -222,6 +222,18 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `title != null` | 24 |
 | branch | `description != null` | 25 |
 | branch | `children != null` | 27 |
+
+### `components/ui/kit/error-state`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `hasActions` | 75 |
+| branch | `onRetry != null` | 77 |
+| branch | `details != null` | 86 |
+| branch | `details != null && showDetails` | 98 |
+| branch | `variant === 'page'` | 109 |
 
 ### `components/ui/kit/form`
 
@@ -679,29 +691,31 @@ Required states: `open`
 
 ### `modules/assistant/pages/AssistantsSettings`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 127 |
-| empty | `assistants.length === 0` | 129 |
-| branch | `assistant.is_default` | 149 |
-| branch | `!assistant.enabled` | 152 |
-| branch | `index < assistants.length - 1` | 175 |
-| branch | `assistants.length > 0` | 183 |
+| loading | `loading` | 130 |
+| error | `error && assistants.length === 0` | 132 |
+| empty | `assistants.length === 0` | 140 |
+| branch | `assistant.is_default` | 160 |
+| branch | `!assistant.enabled` | 163 |
+| branch | `index < assistants.length - 1` | 186 |
+| branch | `assistants.length > 0` | 194 |
 
 ### `modules/assistant/pages/UserAssistantsSettings`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 127 |
-| empty | `assistants.length === 0` | 129 |
-| branch | `assistant.is_default` | 147 |
-| branch | `!assistant.enabled` | 150 |
-| branch | `index < assistants.length - 1` | 178 |
-| branch | `assistants.length > 0` | 186 |
+| loading | `loading` | 131 |
+| error | `error && assistants.length === 0` | 133 |
+| empty | `assistants.length === 0` | 141 |
+| branch | `assistant.is_default` | 159 |
+| branch | `!assistant.enabled` | 162 |
+| branch | `index < assistants.length - 1` | 190 |
+| branch | `assistants.length > 0` | 198 |
 
 ### `modules/auth-providers/components/AuthProviderEditDrawer`
 
@@ -1202,12 +1216,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 96 |
-| branch | `pinnedVersion` | 212 |
-| branch | `downloadedFlavors.length > 0` | 221 |
-| branch | `lastSwap && lastSwap.draining_mounts > 0` | 239 |
-| error | `error` | 259 |
-| loading | `loading && groups.length === 0` | 261 |
+| branch | `!canRead` | 97 |
+| branch | `pinnedVersion` | 213 |
+| branch | `downloadedFlavors.length > 0` | 222 |
+| branch | `lastSwap && lastSwap.draining_mounts > 0` | 240 |
+| branch | `sseError` | 263 |
+| loading | `loading && groups.length === 0` | 272 |
+| error | `error && groups.length === 0` | 274 |
+| error | `error` | 284 |
 
 ### `modules/code-sandbox/components/_rootfsShared`
 
@@ -1633,24 +1649,24 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `usageLoading` | 66 |
-| branch | `!sseConnected && !usageLoading` | 73 |
-| branch | `!currentUsage` | 84 |
-| branch | `currentUsage.cpu.temperature` | 96 |
-| branch | `currentUsage.cpu.frequency` | 101 |
-| branch | `!currentUsage` | 112 |
-| branch | `hardwareLoading` | 135 |
-| branch | `hardwareError && !hardwareInfo` | 143 |
-| branch | `currentUsage` | 167 |
-| branch | `currentUsage` | 173 |
-| empty | `!currentUsage?.gpu_devices \|\| currentUsage.gpu_devices.length === 0` | 183 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 204 |
-| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 219 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 228 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 240 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 254 |
-| branch | `gpuUsage.temperature !== undefined` | 272 |
-| branch | `gpuUsage.power_usage !== undefined` | 277 |
+| branch | `usageLoading` | 55 |
+| branch | `!sseConnected && !usageLoading` | 62 |
+| branch | `!currentUsage` | 73 |
+| branch | `currentUsage.cpu.temperature` | 85 |
+| branch | `currentUsage.cpu.frequency` | 90 |
+| branch | `!currentUsage` | 101 |
+| branch | `hardwareLoading` | 124 |
+| branch | `hardwareError && !hardwareInfo` | 132 |
+| branch | `currentUsage` | 157 |
+| branch | `currentUsage` | 163 |
+| empty | `!currentUsage?.gpu_devices \|\| currentUsage.gpu_devices.length === 0` | 173 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 194 |
+| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 209 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 218 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 230 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 244 |
+| branch | `gpuUsage.temperature !== undefined` | 262 |
+| branch | `gpuUsage.power_usage !== undefined` | 267 |
 
 ### `modules/hardware/HardwareMonitorButton`
 
@@ -1666,40 +1682,40 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canMonitor` | 40 |
-| branch | `hardwareLoading` | 63 |
-| branch | `hardwareError && !hardwareInfo` | 71 |
-| branch | `hardwareInfo?.operating_system.kernel_version` | 102 |
-| branch | `hardwareInfo?.cpu.threads` | 128 |
-| branch | `hardwareInfo?.cpu.base_frequency` | 131 |
-| branch | `hardwareInfo?.cpu.max_frequency` | 138 |
-| branch | `currentUsage` | 146 |
-| branch | `currentUsage.cpu.temperature` | 159 |
-| branch | `currentUsage.cpu.frequency` | 164 |
-| branch | `hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0` | 188 |
-| branch | `currentUsage` | 200 |
-| empty | `!hardwareInfo?.gpu_devices \|\| hardwareInfo.gpu_devices.length === 0` | 227 |
-| branch | `gpu.memory` | 257 |
-| branch | `gpu.vendor?.includes('Apple')` | 266 |
-| branch | `gpu.driver_version` | 274 |
-| branch | `gpu.vendor?.includes('Apple') && hardwareInfo?.memory` | 284 |
-| branch | `gpu.compute_capabilities.vulkan_support !== undefined` | 321 |
-| branch | `gpuUsage` | 332 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 334 |
-| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 349 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 356 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 366 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 385 |
-| branch | `gpu.vendor?.includes('Apple')` | 397 |
-| branch | `gpuUsage && (gpuUsage.utilization_percentage !== undefined \|\| gpuUsage.memory_used !== undefined \|\| gpuUsage.temperature !== undefined \|\| gpuUsage.power_usage !` | 408 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 418 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 431 |
-| branch | `gpuUsage.memory_used !== undefined` | 444 |
-| branch | `gpuUsage.temperature !== undefined` | 454 |
-| branch | `gpuUsage.power_usage !== undefined` | 464 |
-| branch | `canMonitor && !sseConnected && !usageLoading` | 509 |
-| branch | `usageLoading` | 514 |
-| branch | `currentUsage` | 520 |
+| branch | `!canMonitor` | 38 |
+| branch | `hardwareLoading` | 54 |
+| branch | `hardwareError && !hardwareInfo` | 62 |
+| branch | `hardwareInfo?.operating_system.kernel_version` | 94 |
+| branch | `hardwareInfo?.cpu.threads` | 120 |
+| branch | `hardwareInfo?.cpu.base_frequency` | 123 |
+| branch | `hardwareInfo?.cpu.max_frequency` | 130 |
+| branch | `currentUsage` | 138 |
+| branch | `currentUsage.cpu.temperature` | 151 |
+| branch | `currentUsage.cpu.frequency` | 156 |
+| branch | `hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0` | 180 |
+| branch | `currentUsage` | 192 |
+| empty | `!hardwareInfo?.gpu_devices \|\| hardwareInfo.gpu_devices.length === 0` | 219 |
+| branch | `gpu.memory` | 249 |
+| branch | `gpu.vendor?.includes('Apple')` | 258 |
+| branch | `gpu.driver_version` | 266 |
+| branch | `gpu.vendor?.includes('Apple') && hardwareInfo?.memory` | 276 |
+| branch | `gpu.compute_capabilities.vulkan_support !== undefined` | 313 |
+| branch | `gpuUsage` | 324 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 326 |
+| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 341 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 348 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 358 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 377 |
+| branch | `gpu.vendor?.includes('Apple')` | 389 |
+| branch | `gpuUsage && (gpuUsage.utilization_percentage !== undefined \|\| gpuUsage.memory_used !== undefined \|\| gpuUsage.temperature !== undefined \|\| gpuUsage.power_usage !` | 400 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 410 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 423 |
+| branch | `gpuUsage.memory_used !== undefined` | 436 |
+| branch | `gpuUsage.temperature !== undefined` | 446 |
+| branch | `gpuUsage.power_usage !== undefined` | 456 |
+| branch | `canMonitor && !sseConnected && !usageLoading` | 501 |
+| branch | `usageLoading` | 506 |
+| branch | `currentUsage` | 512 |
 
 ### `modules/hub/HubPage`
 
@@ -2177,21 +2193,22 @@ Required states: `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!platform \|\| !arch` | 87 |
-| branch | `isChecking && !updateCheck` | 156 |
-| branch | `!updateCheck` | 158 |
-| empty | `readyUpstream.length === 0` | 162 |
-| branch | `readyUpstream.length > 10` | 177 |
-| branch | `loadingGpu && !gpu` | 196 |
-| branch | `!gpu` | 204 |
-| branch | `loadingGpu && !gpu` | 222 |
-| branch | `!gpu` | 230 |
-| branch | `v.size_bytes != null && !v.installed` | 274 |
-| branch | `isLatest` | 279 |
-| branch | `v.installed` | 280 |
-| branch | `v.prerelease` | 281 |
-| branch | `progress` | 300 |
-| error | `failed && progress?.error` | 301 |
+| branch | `!platform \|\| !arch` | 88 |
+| branch | `isChecking && !updateCheck` | 157 |
+| branch | `updateError && !updateCheck` | 159 |
+| branch | `!updateCheck` | 169 |
+| empty | `readyUpstream.length === 0` | 173 |
+| branch | `readyUpstream.length > 10` | 188 |
+| branch | `loadingGpu && !gpu` | 207 |
+| branch | `!gpu` | 215 |
+| branch | `loadingGpu && !gpu` | 233 |
+| branch | `!gpu` | 241 |
+| branch | `v.size_bytes != null && !v.installed` | 285 |
+| branch | `isLatest` | 290 |
+| branch | `v.installed` | 291 |
+| branch | `v.prerelease` | 292 |
+| branch | `progress` | 311 |
+| error | `failed && progress?.error` | 312 |
 
 ### `modules/llm-local-runtime/components/InstalledVersionsCard`
 
@@ -2200,9 +2217,10 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | empty | `loadingVersions && engineVersions.length === 0` | 100 |
-| empty | `engineVersions.length === 0` | 102 |
-| branch | `i > 0` | 111 |
-| branch | `engineUsage?.unresolved && engineUsage.unresolved.length > 0` | 128 |
+| empty | `versionsError && engineVersions.length === 0` | 102 |
+| empty | `engineVersions.length === 0` | 110 |
+| branch | `i > 0` | 119 |
+| branch | `engineUsage?.unresolved && engineUsage.unresolved.length > 0` | 136 |
 
 ### `modules/llm-local-runtime/components/LiveLogsPanel`
 
@@ -2215,12 +2233,13 @@ Required states: `empty`
 
 ### `modules/llm-local-runtime/components/RuntimeConfigCard`
 
-Required states: _(branch-only — proven via dynamic coverage)_
+Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `loadingSettings && !settings` | 71 |
-| branch | `canManage` | 83 |
+| branch | `loadingSettings && !settings` | 68 |
+| error | `error && !settings` | 79 |
+| branch | `canManage` | 97 |
 
 ### `modules/llm-local-runtime/components/RuntimeVersionCard`
 
@@ -2311,17 +2330,18 @@ Required states: `open`
 
 ### `modules/llm-provider/components/LlmProviderSettings`
 
-Required states: `delayed`
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 137 |
-| branch | `!currentProvider` | 143 |
-| branch | `currentProvider.provider_type === 'local'` | 153 |
-| branch | `!windowMinSize.sm` | 164 |
-| branch | `windowMinSize.sm` | 182 |
-| branch | `item.key === 'add-provider'` | 192 |
-| branch | `currentProvider` | 216 |
+| loading | `loading` | 140 |
+| error | `error && providers.length === 0` | 146 |
+| branch | `!currentProvider` | 158 |
+| branch | `currentProvider.provider_type === 'local'` | 168 |
+| branch | `!windowMinSize.sm` | 179 |
+| branch | `windowMinSize.sm` | 197 |
+| branch | `item.key === 'add-provider'` | 207 |
+| branch | `currentProvider` | 231 |
 
 ### `modules/llm-provider/components/LocalProviderSettings`
 
@@ -2991,9 +3011,10 @@ Required states: `delayed`, `empty`, `error`
 | kind | condition | line |
 |---|---|---|
 | loading | `loading` | 46 |
-| empty | `providers.length === 0` | 54 |
-| error | `error` | 104 |
-| branch | `(currentProvider.api_key_configured \|\| hasUserKey)` | 140 |
+| error | `error && providers.length === 0` | 56 |
+| empty | `providers.length === 0` | 76 |
+| error | `error` | 126 |
+| branch | `(currentProvider.api_key_configured \|\| hasUserKey)` | 170 |
 
 ### `modules/onboarding/guides/getting-started/components/McpServersStep`
 
@@ -3175,13 +3196,14 @@ Required states: `delayed`, `empty`
 
 ### `modules/projects/pages/ProjectsListPage`
 
-Required states: `delayed`
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `projects.length > 0` | 94 |
-| branch | `hasMore` | 125 |
-| loading | `loading` | 136 |
+| branch | `projects.length > 0` | 95 |
+| branch | `hasMore` | 126 |
+| loading | `loading` | 137 |
+| error | `error` | 141 |
 
 ### `modules/router/components/RouterComponent`
 
@@ -3414,25 +3436,26 @@ Required states: `delayed`, `empty`, `error`
 | branch | `!selectedId` | 77 |
 | loading | `loading` | 113 |
 | error | `error` | 121 |
-| empty | `providers.length === 0` | 126 |
-| branch | `!currentProvider` | 142 |
-| branch | `hasUserKey` | 161 |
-| branch | `currentProvider.api_key_configured` | 163 |
-| branch | `hasUserKey` | 193 |
-| branch | `!windowMinSize.sm` | 212 |
-| branch | `windowMinSize.sm && providers.length > 0` | 230 |
-| branch | `currentProvider` | 239 |
+| empty | `providers.length === 0` | 135 |
+| branch | `!currentProvider` | 151 |
+| branch | `hasUserKey` | 170 |
+| branch | `currentProvider.api_key_configured` | 172 |
+| branch | `hasUserKey` | 202 |
+| branch | `!windowMinSize.sm` | 221 |
+| branch | `windowMinSize.sm && providers.length > 0` | 239 |
+| branch | `currentProvider` | 248 |
 
 ### `modules/user-llm-providers/chat-extension/components/ModelSelector`
 
-Required states: _(branch-only — proven via dynamic coverage)_
+Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `providerNeedsApiKey(provider)` | 61 |
-| branch | `!value` | 86 |
-| branch | `model` | 92 |
-| branch | `pendingProviderForKey` | 124 |
+| branch | `providerNeedsApiKey(provider)` | 55 |
+| branch | `!value` | 80 |
+| branch | `model` | 86 |
+| error | `error && providers.length === 0` | 107 |
+| branch | `pendingProviderForKey` | 140 |
 
 ### `modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal`
 

@@ -1,6 +1,6 @@
 import { RotateCw } from 'lucide-react'
 import { Fragment, useEffect } from 'react'
-import { Button, Card, Separator, Empty, Flex, Spin, Tag, Text, message } from '@/components/ui'
+import { Button, Card, Separator, Empty, ErrorState, Flex, Spin, Tag, Text, message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -32,7 +32,7 @@ import { VersionModelsBlock } from './VersionModelsBlock'
  * model lists + the unresolved set).
  */
 export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
-  const { versions, loading: loadingVersions } = Stores.RuntimeVersion
+  const { versions, loading: loadingVersions, error: versionsError } = Stores.RuntimeVersion
   const { usage, loading: loadingUsage } = Stores.RuntimeModelUsage
   const canManage = usePermission(Permissions.LocalRuntimeManage)
   const canViewLogs = usePermission(Permissions.LocalRuntimeLogs)
@@ -99,6 +99,14 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
     >
       {loadingVersions && engineVersions.length === 0 ? (
         <Spin label="Loading" />
+      ) : versionsError && engineVersions.length === 0 ? (
+        <ErrorState
+          resource="installed versions"
+          description="The installed engine versions couldn't be loaded."
+          details={versionsError}
+          onRetry={handleRefresh}
+          data-testid={`llmrt-installed-error-${engine}`}
+        />
       ) : engineVersions.length === 0 ? (
         <Empty
           description="No versions installed yet — install one below."

@@ -8,6 +8,7 @@ import {
   zodResolver,
   InputNumber,
   Spin,
+  ErrorState,
   message,
 } from '@/components/ui'
 import { Stores } from '@/core/stores'
@@ -52,19 +53,15 @@ export function RuntimeConfigCard() {
     }
   }, [settings, form])
 
-  useEffect(() => {
-    if (error) {
-      message.error(error)
-      Stores.RuntimeConfig.clearError()
-    }
-  }, [error])
-
   const handleSave = async (values: Schema) => {
     try {
       await Stores.RuntimeConfig.saveSettings(values)
       message.success('Runtime settings saved')
-    } catch {
-      // validation / save error already surfaced via the error effect
+    } catch (e) {
+      // Save is user-initiated → a toast is the right feedback here.
+      message.error(
+        e instanceof Error ? e.message : 'Failed to save runtime settings',
+      )
     }
   }
 
@@ -72,6 +69,23 @@ export function RuntimeConfigCard() {
     return (
       <Card title="Runtime configuration" data-testid="llmrt-runtime-config-card">
         <Spin label="Loading" />
+      </Card>
+    )
+  }
+
+  // A load failure must persist an in-place ErrorState — NOT a raw-string
+  // toast that evaporates, and NOT the form rendered with placeholder
+  // defaults as if the settings had loaded.
+  if (error && !settings) {
+    return (
+      <Card title="Runtime configuration" data-testid="llmrt-runtime-config-card">
+        <ErrorState
+          resource="runtime configuration"
+          description="The runtime configuration couldn't be loaded."
+          details={error}
+          onRetry={() => Stores.RuntimeConfig.loadSettings()}
+          data-testid="llmrt-runtime-config-error"
+        />
       </Card>
     )
   }

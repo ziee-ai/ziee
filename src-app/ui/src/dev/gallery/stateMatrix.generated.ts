@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 306 surfaces carry renderable-state signals; 1674 signals total.
+// 307 surfaces carry renderable-state signals; 1690 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -172,6 +172,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "title != null", line: 24 },
       { kind: "branch", condition: "description != null", line: 25 },
       { kind: "branch", condition: "children != null", line: 27 },
+    ],
+  },
+  "components/ui/kit/error-state": {
+    surface: "components/ui/kit/error-state",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "hasActions", line: 75 },
+      { kind: "branch", condition: "onRetry != null", line: 77 },
+      { kind: "branch", condition: "details != null", line: 86 },
+      { kind: "branch", condition: "details != null && showDetails", line: 98 },
+      { kind: "branch", condition: "variant === 'page'", line: 109 },
     ],
   },
   "components/ui/kit/form": {
@@ -586,26 +597,28 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/assistant/pages/AssistantsSettings": {
     surface: "modules/assistant/pages/AssistantsSettings",
-    requiredStates: ["delayed","empty"],
+    requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "loading", condition: "loading", line: 127 },
-      { kind: "empty", condition: "assistants.length === 0", line: 129 },
-      { kind: "branch", condition: "assistant.is_default", line: 149 },
-      { kind: "branch", condition: "!assistant.enabled", line: 152 },
-      { kind: "branch", condition: "index < assistants.length - 1", line: 175 },
-      { kind: "branch", condition: "assistants.length > 0", line: 183 },
+      { kind: "loading", condition: "loading", line: 130 },
+      { kind: "error", condition: "error && assistants.length === 0", line: 132 },
+      { kind: "empty", condition: "assistants.length === 0", line: 140 },
+      { kind: "branch", condition: "assistant.is_default", line: 160 },
+      { kind: "branch", condition: "!assistant.enabled", line: 163 },
+      { kind: "branch", condition: "index < assistants.length - 1", line: 186 },
+      { kind: "branch", condition: "assistants.length > 0", line: 194 },
     ],
   },
   "modules/assistant/pages/UserAssistantsSettings": {
     surface: "modules/assistant/pages/UserAssistantsSettings",
-    requiredStates: ["delayed","empty"],
+    requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "loading", condition: "loading", line: 127 },
-      { kind: "empty", condition: "assistants.length === 0", line: 129 },
-      { kind: "branch", condition: "assistant.is_default", line: 147 },
-      { kind: "branch", condition: "!assistant.enabled", line: 150 },
-      { kind: "branch", condition: "index < assistants.length - 1", line: 178 },
-      { kind: "branch", condition: "assistants.length > 0", line: 186 },
+      { kind: "loading", condition: "loading", line: 131 },
+      { kind: "error", condition: "error && assistants.length === 0", line: 133 },
+      { kind: "empty", condition: "assistants.length === 0", line: 141 },
+      { kind: "branch", condition: "assistant.is_default", line: 159 },
+      { kind: "branch", condition: "!assistant.enabled", line: 162 },
+      { kind: "branch", condition: "index < assistants.length - 1", line: 190 },
+      { kind: "branch", condition: "assistants.length > 0", line: 198 },
     ],
   },
   "modules/auth-providers/components/AuthProviderEditDrawer": {
@@ -1060,12 +1073,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/code-sandbox/components/SandboxRootfsVersionsSection",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!canRead", line: 96 },
-      { kind: "branch", condition: "pinnedVersion", line: 212 },
-      { kind: "branch", condition: "downloadedFlavors.length > 0", line: 221 },
-      { kind: "branch", condition: "lastSwap && lastSwap.draining_mounts > 0", line: 239 },
-      { kind: "error", condition: "error", line: 259 },
-      { kind: "loading", condition: "loading && groups.length === 0", line: 261 },
+      { kind: "branch", condition: "!canRead", line: 97 },
+      { kind: "branch", condition: "pinnedVersion", line: 213 },
+      { kind: "branch", condition: "downloadedFlavors.length > 0", line: 222 },
+      { kind: "branch", condition: "lastSwap && lastSwap.draining_mounts > 0", line: 240 },
+      { kind: "branch", condition: "sseError", line: 263 },
+      { kind: "loading", condition: "loading && groups.length === 0", line: 272 },
+      { kind: "error", condition: "error && groups.length === 0", line: 274 },
+      { kind: "error", condition: "error", line: 284 },
     ],
   },
   "modules/code-sandbox/components/_rootfsShared": {
@@ -1454,24 +1469,24 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/hardware/HardwareMonitor",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "usageLoading", line: 66 },
-      { kind: "branch", condition: "!sseConnected && !usageLoading", line: 73 },
-      { kind: "branch", condition: "!currentUsage", line: 84 },
-      { kind: "branch", condition: "currentUsage.cpu.temperature", line: 96 },
-      { kind: "branch", condition: "currentUsage.cpu.frequency", line: 101 },
-      { kind: "branch", condition: "!currentUsage", line: 112 },
-      { kind: "branch", condition: "hardwareLoading", line: 135 },
-      { kind: "branch", condition: "hardwareError && !hardwareInfo", line: 143 },
-      { kind: "branch", condition: "currentUsage", line: 167 },
-      { kind: "branch", condition: "currentUsage", line: 173 },
-      { kind: "empty", condition: "!currentUsage?.gpu_devices || currentUsage.gpu_devices.length === 0", line: 183 },
-      { kind: "branch", condition: "gpuUsage.utilization_percentage !== undefined", line: 204 },
-      { kind: "branch", condition: "(gpuUsage.memory_usage_percentage !== undefined || (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))", line: 219 },
-      { kind: "branch", condition: "gpuUsage.memory_usage_percentage !== undefined", line: 228 },
-      { kind: "branch", condition: "gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined", line: 240 },
-      { kind: "branch", condition: "gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined", line: 254 },
-      { kind: "branch", condition: "gpuUsage.temperature !== undefined", line: 272 },
-      { kind: "branch", condition: "gpuUsage.power_usage !== undefined", line: 277 },
+      { kind: "branch", condition: "usageLoading", line: 55 },
+      { kind: "branch", condition: "!sseConnected && !usageLoading", line: 62 },
+      { kind: "branch", condition: "!currentUsage", line: 73 },
+      { kind: "branch", condition: "currentUsage.cpu.temperature", line: 85 },
+      { kind: "branch", condition: "currentUsage.cpu.frequency", line: 90 },
+      { kind: "branch", condition: "!currentUsage", line: 101 },
+      { kind: "branch", condition: "hardwareLoading", line: 124 },
+      { kind: "branch", condition: "hardwareError && !hardwareInfo", line: 132 },
+      { kind: "branch", condition: "currentUsage", line: 157 },
+      { kind: "branch", condition: "currentUsage", line: 163 },
+      { kind: "empty", condition: "!currentUsage?.gpu_devices || currentUsage.gpu_devices.length === 0", line: 173 },
+      { kind: "branch", condition: "gpuUsage.utilization_percentage !== undefined", line: 194 },
+      { kind: "branch", condition: "(gpuUsage.memory_usage_percentage !== undefined || (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))", line: 209 },
+      { kind: "branch", condition: "gpuUsage.memory_usage_percentage !== undefined", line: 218 },
+      { kind: "branch", condition: "gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined", line: 230 },
+      { kind: "branch", condition: "gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined", line: 244 },
+      { kind: "branch", condition: "gpuUsage.temperature !== undefined", line: 262 },
+      { kind: "branch", condition: "gpuUsage.power_usage !== undefined", line: 267 },
     ],
   },
   "modules/hardware/HardwareMonitorButton": {
@@ -1485,40 +1500,40 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/hardware/HardwareSettings",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!canMonitor", line: 40 },
-      { kind: "branch", condition: "hardwareLoading", line: 63 },
-      { kind: "branch", condition: "hardwareError && !hardwareInfo", line: 71 },
-      { kind: "branch", condition: "hardwareInfo?.operating_system.kernel_version", line: 102 },
-      { kind: "branch", condition: "hardwareInfo?.cpu.threads", line: 128 },
-      { kind: "branch", condition: "hardwareInfo?.cpu.base_frequency", line: 131 },
-      { kind: "branch", condition: "hardwareInfo?.cpu.max_frequency", line: 138 },
-      { kind: "branch", condition: "currentUsage", line: 146 },
-      { kind: "branch", condition: "currentUsage.cpu.temperature", line: 159 },
-      { kind: "branch", condition: "currentUsage.cpu.frequency", line: 164 },
-      { kind: "branch", condition: "hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0", line: 188 },
-      { kind: "branch", condition: "currentUsage", line: 200 },
-      { kind: "empty", condition: "!hardwareInfo?.gpu_devices || hardwareInfo.gpu_devices.length === 0", line: 227 },
-      { kind: "branch", condition: "gpu.memory", line: 257 },
-      { kind: "branch", condition: "gpu.vendor?.includes('Apple')", line: 266 },
-      { kind: "branch", condition: "gpu.driver_version", line: 274 },
-      { kind: "branch", condition: "gpu.vendor?.includes('Apple') && hardwareInfo?.memory", line: 284 },
-      { kind: "branch", condition: "gpu.compute_capabilities.vulkan_support !== undefined", line: 321 },
-      { kind: "branch", condition: "gpuUsage", line: 332 },
-      { kind: "branch", condition: "gpuUsage.utilization_percentage !== undefined", line: 334 },
-      { kind: "branch", condition: "(gpuUsage.memory_usage_percentage !== undefined || (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))", line: 349 },
-      { kind: "branch", condition: "gpuUsage.memory_usage_percentage !== undefined", line: 356 },
-      { kind: "branch", condition: "gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined", line: 366 },
-      { kind: "branch", condition: "gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined", line: 385 },
-      { kind: "branch", condition: "gpu.vendor?.includes('Apple')", line: 397 },
-      { kind: "branch", condition: "gpuUsage && (gpuUsage.utilization_percentage !== undefined || gpuUsage.memory_used !== undefined || gpuUsage.temperature !== undefined || gpuUsage.power_usage !", line: 408 },
-      { kind: "branch", condition: "gpuUsage.utilization_percentage !== undefined", line: 418 },
-      { kind: "branch", condition: "gpuUsage.memory_usage_percentage !== undefined", line: 431 },
-      { kind: "branch", condition: "gpuUsage.memory_used !== undefined", line: 444 },
-      { kind: "branch", condition: "gpuUsage.temperature !== undefined", line: 454 },
-      { kind: "branch", condition: "gpuUsage.power_usage !== undefined", line: 464 },
-      { kind: "branch", condition: "canMonitor && !sseConnected && !usageLoading", line: 509 },
-      { kind: "branch", condition: "usageLoading", line: 514 },
-      { kind: "branch", condition: "currentUsage", line: 520 },
+      { kind: "branch", condition: "!canMonitor", line: 38 },
+      { kind: "branch", condition: "hardwareLoading", line: 54 },
+      { kind: "branch", condition: "hardwareError && !hardwareInfo", line: 62 },
+      { kind: "branch", condition: "hardwareInfo?.operating_system.kernel_version", line: 94 },
+      { kind: "branch", condition: "hardwareInfo?.cpu.threads", line: 120 },
+      { kind: "branch", condition: "hardwareInfo?.cpu.base_frequency", line: 123 },
+      { kind: "branch", condition: "hardwareInfo?.cpu.max_frequency", line: 130 },
+      { kind: "branch", condition: "currentUsage", line: 138 },
+      { kind: "branch", condition: "currentUsage.cpu.temperature", line: 151 },
+      { kind: "branch", condition: "currentUsage.cpu.frequency", line: 156 },
+      { kind: "branch", condition: "hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0", line: 180 },
+      { kind: "branch", condition: "currentUsage", line: 192 },
+      { kind: "empty", condition: "!hardwareInfo?.gpu_devices || hardwareInfo.gpu_devices.length === 0", line: 219 },
+      { kind: "branch", condition: "gpu.memory", line: 249 },
+      { kind: "branch", condition: "gpu.vendor?.includes('Apple')", line: 258 },
+      { kind: "branch", condition: "gpu.driver_version", line: 266 },
+      { kind: "branch", condition: "gpu.vendor?.includes('Apple') && hardwareInfo?.memory", line: 276 },
+      { kind: "branch", condition: "gpu.compute_capabilities.vulkan_support !== undefined", line: 313 },
+      { kind: "branch", condition: "gpuUsage", line: 324 },
+      { kind: "branch", condition: "gpuUsage.utilization_percentage !== undefined", line: 326 },
+      { kind: "branch", condition: "(gpuUsage.memory_usage_percentage !== undefined || (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))", line: 341 },
+      { kind: "branch", condition: "gpuUsage.memory_usage_percentage !== undefined", line: 348 },
+      { kind: "branch", condition: "gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined", line: 358 },
+      { kind: "branch", condition: "gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined", line: 377 },
+      { kind: "branch", condition: "gpu.vendor?.includes('Apple')", line: 389 },
+      { kind: "branch", condition: "gpuUsage && (gpuUsage.utilization_percentage !== undefined || gpuUsage.memory_used !== undefined || gpuUsage.temperature !== undefined || gpuUsage.power_usage !", line: 400 },
+      { kind: "branch", condition: "gpuUsage.utilization_percentage !== undefined", line: 410 },
+      { kind: "branch", condition: "gpuUsage.memory_usage_percentage !== undefined", line: 423 },
+      { kind: "branch", condition: "gpuUsage.memory_used !== undefined", line: 436 },
+      { kind: "branch", condition: "gpuUsage.temperature !== undefined", line: 446 },
+      { kind: "branch", condition: "gpuUsage.power_usage !== undefined", line: 456 },
+      { kind: "branch", condition: "canMonitor && !sseConnected && !usageLoading", line: 501 },
+      { kind: "branch", condition: "usageLoading", line: 506 },
+      { kind: "branch", condition: "currentUsage", line: 512 },
     ],
   },
   "modules/hub/HubPage": {
@@ -1964,21 +1979,22 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/llm-local-runtime/components/AvailableVersionsCard",
     requiredStates: ["empty","error"],
     signals: [
-      { kind: "branch", condition: "!platform || !arch", line: 87 },
-      { kind: "branch", condition: "isChecking && !updateCheck", line: 156 },
-      { kind: "branch", condition: "!updateCheck", line: 158 },
-      { kind: "empty", condition: "readyUpstream.length === 0", line: 162 },
-      { kind: "branch", condition: "readyUpstream.length > 10", line: 177 },
-      { kind: "branch", condition: "loadingGpu && !gpu", line: 196 },
-      { kind: "branch", condition: "!gpu", line: 204 },
-      { kind: "branch", condition: "loadingGpu && !gpu", line: 222 },
-      { kind: "branch", condition: "!gpu", line: 230 },
-      { kind: "branch", condition: "v.size_bytes != null && !v.installed", line: 274 },
-      { kind: "branch", condition: "isLatest", line: 279 },
-      { kind: "branch", condition: "v.installed", line: 280 },
-      { kind: "branch", condition: "v.prerelease", line: 281 },
-      { kind: "branch", condition: "progress", line: 300 },
-      { kind: "error", condition: "failed && progress?.error", line: 301 },
+      { kind: "branch", condition: "!platform || !arch", line: 88 },
+      { kind: "branch", condition: "isChecking && !updateCheck", line: 157 },
+      { kind: "branch", condition: "updateError && !updateCheck", line: 159 },
+      { kind: "branch", condition: "!updateCheck", line: 169 },
+      { kind: "empty", condition: "readyUpstream.length === 0", line: 173 },
+      { kind: "branch", condition: "readyUpstream.length > 10", line: 188 },
+      { kind: "branch", condition: "loadingGpu && !gpu", line: 207 },
+      { kind: "branch", condition: "!gpu", line: 215 },
+      { kind: "branch", condition: "loadingGpu && !gpu", line: 233 },
+      { kind: "branch", condition: "!gpu", line: 241 },
+      { kind: "branch", condition: "v.size_bytes != null && !v.installed", line: 285 },
+      { kind: "branch", condition: "isLatest", line: 290 },
+      { kind: "branch", condition: "v.installed", line: 291 },
+      { kind: "branch", condition: "v.prerelease", line: 292 },
+      { kind: "branch", condition: "progress", line: 311 },
+      { kind: "error", condition: "failed && progress?.error", line: 312 },
     ],
   },
   "modules/llm-local-runtime/components/InstalledVersionsCard": {
@@ -1986,9 +2002,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["empty"],
     signals: [
       { kind: "empty", condition: "loadingVersions && engineVersions.length === 0", line: 100 },
-      { kind: "empty", condition: "engineVersions.length === 0", line: 102 },
-      { kind: "branch", condition: "i > 0", line: 111 },
-      { kind: "branch", condition: "engineUsage?.unresolved && engineUsage.unresolved.length > 0", line: 128 },
+      { kind: "empty", condition: "versionsError && engineVersions.length === 0", line: 102 },
+      { kind: "empty", condition: "engineVersions.length === 0", line: 110 },
+      { kind: "branch", condition: "i > 0", line: 119 },
+      { kind: "branch", condition: "engineUsage?.unresolved && engineUsage.unresolved.length > 0", line: 136 },
     ],
   },
   "modules/llm-local-runtime/components/LiveLogsPanel": {
@@ -2001,10 +2018,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/llm-local-runtime/components/RuntimeConfigCard": {
     surface: "modules/llm-local-runtime/components/RuntimeConfigCard",
-    requiredStates: [],
+    requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "loadingSettings && !settings", line: 71 },
-      { kind: "branch", condition: "canManage", line: 83 },
+      { kind: "branch", condition: "loadingSettings && !settings", line: 68 },
+      { kind: "error", condition: "error && !settings", line: 79 },
+      { kind: "branch", condition: "canManage", line: 97 },
     ],
   },
   "modules/llm-local-runtime/components/RuntimeVersionCard": {
@@ -2090,15 +2108,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/llm-provider/components/LlmProviderSettings": {
     surface: "modules/llm-provider/components/LlmProviderSettings",
-    requiredStates: ["delayed"],
+    requiredStates: ["delayed","error"],
     signals: [
-      { kind: "loading", condition: "loading", line: 137 },
-      { kind: "branch", condition: "!currentProvider", line: 143 },
-      { kind: "branch", condition: "currentProvider.provider_type === 'local'", line: 153 },
-      { kind: "branch", condition: "!windowMinSize.sm", line: 164 },
-      { kind: "branch", condition: "windowMinSize.sm", line: 182 },
-      { kind: "branch", condition: "item.key === 'add-provider'", line: 192 },
-      { kind: "branch", condition: "currentProvider", line: 216 },
+      { kind: "loading", condition: "loading", line: 140 },
+      { kind: "error", condition: "error && providers.length === 0", line: 146 },
+      { kind: "branch", condition: "!currentProvider", line: 158 },
+      { kind: "branch", condition: "currentProvider.provider_type === 'local'", line: 168 },
+      { kind: "branch", condition: "!windowMinSize.sm", line: 179 },
+      { kind: "branch", condition: "windowMinSize.sm", line: 197 },
+      { kind: "branch", condition: "item.key === 'add-provider'", line: 207 },
+      { kind: "branch", condition: "currentProvider", line: 231 },
     ],
   },
   "modules/llm-provider/components/LocalProviderSettings": {
@@ -2720,9 +2739,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["delayed","empty","error"],
     signals: [
       { kind: "loading", condition: "loading", line: 46 },
-      { kind: "empty", condition: "providers.length === 0", line: 54 },
-      { kind: "error", condition: "error", line: 104 },
-      { kind: "branch", condition: "(currentProvider.api_key_configured || hasUserKey)", line: 140 },
+      { kind: "error", condition: "error && providers.length === 0", line: 56 },
+      { kind: "empty", condition: "providers.length === 0", line: 76 },
+      { kind: "error", condition: "error", line: 126 },
+      { kind: "branch", condition: "(currentProvider.api_key_configured || hasUserKey)", line: 170 },
     ],
   },
   "modules/onboarding/guides/getting-started/components/McpServersStep": {
@@ -2892,11 +2912,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/projects/pages/ProjectsListPage": {
     surface: "modules/projects/pages/ProjectsListPage",
-    requiredStates: ["delayed"],
+    requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "projects.length > 0", line: 94 },
-      { kind: "branch", condition: "hasMore", line: 125 },
-      { kind: "loading", condition: "loading", line: 136 },
+      { kind: "branch", condition: "projects.length > 0", line: 95 },
+      { kind: "branch", condition: "hasMore", line: 126 },
+      { kind: "loading", condition: "loading", line: 137 },
+      { kind: "error", condition: "error", line: 141 },
     ],
   },
   "modules/router/components/RouterComponent": {
@@ -3109,24 +3130,25 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!selectedId", line: 77 },
       { kind: "loading", condition: "loading", line: 113 },
       { kind: "error", condition: "error", line: 121 },
-      { kind: "empty", condition: "providers.length === 0", line: 126 },
-      { kind: "branch", condition: "!currentProvider", line: 142 },
-      { kind: "branch", condition: "hasUserKey", line: 161 },
-      { kind: "branch", condition: "currentProvider.api_key_configured", line: 163 },
-      { kind: "branch", condition: "hasUserKey", line: 193 },
-      { kind: "branch", condition: "!windowMinSize.sm", line: 212 },
-      { kind: "branch", condition: "windowMinSize.sm && providers.length > 0", line: 230 },
-      { kind: "branch", condition: "currentProvider", line: 239 },
+      { kind: "empty", condition: "providers.length === 0", line: 135 },
+      { kind: "branch", condition: "!currentProvider", line: 151 },
+      { kind: "branch", condition: "hasUserKey", line: 170 },
+      { kind: "branch", condition: "currentProvider.api_key_configured", line: 172 },
+      { kind: "branch", condition: "hasUserKey", line: 202 },
+      { kind: "branch", condition: "!windowMinSize.sm", line: 221 },
+      { kind: "branch", condition: "windowMinSize.sm && providers.length > 0", line: 239 },
+      { kind: "branch", condition: "currentProvider", line: 248 },
     ],
   },
   "modules/user-llm-providers/chat-extension/components/ModelSelector": {
     surface: "modules/user-llm-providers/chat-extension/components/ModelSelector",
-    requiredStates: [],
+    requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "providerNeedsApiKey(provider)", line: 61 },
-      { kind: "branch", condition: "!value", line: 86 },
-      { kind: "branch", condition: "model", line: 92 },
-      { kind: "branch", condition: "pendingProviderForKey", line: 124 },
+      { kind: "branch", condition: "providerNeedsApiKey(provider)", line: 55 },
+      { kind: "branch", condition: "!value", line: 80 },
+      { kind: "branch", condition: "model", line: 86 },
+      { kind: "error", condition: "error && providers.length === 0", line: 107 },
+      { kind: "branch", condition: "pendingProviderForKey", line: 140 },
     ],
   },
   "modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal": {
@@ -3596,7 +3618,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 297 keys.
+ * 303 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3625,8 +3647,10 @@ export type RequiredState =
   | "modules/assistant/components/AssistantFormDrawer:open"
   | "modules/assistant/pages/AssistantsSettings:delayed"
   | "modules/assistant/pages/AssistantsSettings:empty"
+  | "modules/assistant/pages/AssistantsSettings:error"
   | "modules/assistant/pages/UserAssistantsSettings:delayed"
   | "modules/assistant/pages/UserAssistantsSettings:empty"
+  | "modules/assistant/pages/UserAssistantsSettings:error"
   | "modules/auth-providers/components/AuthProviderEditDrawer:error"
   | "modules/auth-providers/components/AuthProviderEditDrawer:open"
   | "modules/auth-providers/components/AuthProvidersListSection:delayed"
@@ -3744,6 +3768,7 @@ export type RequiredState =
   | "modules/llm-local-runtime/components/AvailableVersionsCard:error"
   | "modules/llm-local-runtime/components/InstalledVersionsCard:empty"
   | "modules/llm-local-runtime/components/LiveLogsPanel:empty"
+  | "modules/llm-local-runtime/components/RuntimeConfigCard:error"
   | "modules/llm-local-runtime/components/VersionModelsBlock:empty"
   | "modules/llm-local-runtime/components/drawers/RuntimeDownloadDrawer:open"
   | "modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer:delayed"
@@ -3753,6 +3778,7 @@ export type RequiredState =
   | "modules/llm-provider/components/LlmModelsSection:empty"
   | "modules/llm-provider/components/LlmProviderDrawer:open"
   | "modules/llm-provider/components/LlmProviderSettings:delayed"
+  | "modules/llm-provider/components/LlmProviderSettings:error"
   | "modules/llm-provider/components/LocalProviderSettings:delayed"
   | "modules/llm-provider/components/RemoteProviderSettings:empty"
   | "modules/llm-provider/components/downloads/DownloadsSection:empty"
@@ -3831,6 +3857,7 @@ export type RequiredState =
   | "modules/projects/pages/ProjectDetailPage:delayed"
   | "modules/projects/pages/ProjectDetailPage:empty"
   | "modules/projects/pages/ProjectsListPage:delayed"
+  | "modules/projects/pages/ProjectsListPage:error"
   | "modules/server-update/AboutSettings:error"
   | "modules/skill/components/ConversationSkillsPanel:delayed"
   | "modules/skill/components/ConversationSkillsPanel:empty"
@@ -3849,6 +3876,7 @@ export type RequiredState =
   | "modules/user-llm-providers/UserLlmProvidersPage:delayed"
   | "modules/user-llm-providers/UserLlmProvidersPage:empty"
   | "modules/user-llm-providers/UserLlmProvidersPage:error"
+  | "modules/user-llm-providers/chat-extension/components/ModelSelector:error"
   | "modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal:open"
   | "modules/user-profile/UserProfileWidget:delayed"
   | "modules/user/components/group/EditUserGroupDrawer:open"
@@ -3925,8 +3953,10 @@ export const REQUIRED_STATE_KEYS = [
   "modules/assistant/components/AssistantFormDrawer:open",
   "modules/assistant/pages/AssistantsSettings:delayed",
   "modules/assistant/pages/AssistantsSettings:empty",
+  "modules/assistant/pages/AssistantsSettings:error",
   "modules/assistant/pages/UserAssistantsSettings:delayed",
   "modules/assistant/pages/UserAssistantsSettings:empty",
+  "modules/assistant/pages/UserAssistantsSettings:error",
   "modules/auth-providers/components/AuthProviderEditDrawer:error",
   "modules/auth-providers/components/AuthProviderEditDrawer:open",
   "modules/auth-providers/components/AuthProvidersListSection:delayed",
@@ -4044,6 +4074,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/llm-local-runtime/components/AvailableVersionsCard:error",
   "modules/llm-local-runtime/components/InstalledVersionsCard:empty",
   "modules/llm-local-runtime/components/LiveLogsPanel:empty",
+  "modules/llm-local-runtime/components/RuntimeConfigCard:error",
   "modules/llm-local-runtime/components/VersionModelsBlock:empty",
   "modules/llm-local-runtime/components/drawers/RuntimeDownloadDrawer:open",
   "modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer:delayed",
@@ -4053,6 +4084,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/llm-provider/components/LlmModelsSection:empty",
   "modules/llm-provider/components/LlmProviderDrawer:open",
   "modules/llm-provider/components/LlmProviderSettings:delayed",
+  "modules/llm-provider/components/LlmProviderSettings:error",
   "modules/llm-provider/components/LocalProviderSettings:delayed",
   "modules/llm-provider/components/RemoteProviderSettings:empty",
   "modules/llm-provider/components/downloads/DownloadsSection:empty",
@@ -4131,6 +4163,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/projects/pages/ProjectDetailPage:delayed",
   "modules/projects/pages/ProjectDetailPage:empty",
   "modules/projects/pages/ProjectsListPage:delayed",
+  "modules/projects/pages/ProjectsListPage:error",
   "modules/server-update/AboutSettings:error",
   "modules/skill/components/ConversationSkillsPanel:delayed",
   "modules/skill/components/ConversationSkillsPanel:empty",
@@ -4149,6 +4182,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/user-llm-providers/UserLlmProvidersPage:delayed",
   "modules/user-llm-providers/UserLlmProvidersPage:empty",
   "modules/user-llm-providers/UserLlmProvidersPage:error",
+  "modules/user-llm-providers/chat-extension/components/ModelSelector:error",
   "modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal:open",
   "modules/user-profile/UserProfileWidget:delayed",
   "modules/user/components/group/EditUserGroupDrawer:open",

@@ -3,6 +3,7 @@ import {
   Button,
   Dropdown,
   Empty,
+  ErrorState,
   Text,
   Title,
   Flex,
@@ -33,13 +34,15 @@ export function LlmProviderSettings() {
 
   const currentProvider = providers.find(p => p.id === providerId)
 
-  // Show errors
+  // A mutation failure while providers are on screen → toast + clear. A cold
+  // load failure (no data) persists as the in-place ErrorState below rather
+  // than being toasted away into a silent "No provider selected" empty state.
   useEffect(() => {
-    if (error) {
+    if (error && providers.length > 0) {
       message.error(error)
       Stores.LlmProvider.clearLlmProviderStoreError()
     }
-  }, [error])
+  }, [error, providers.length])
 
   // Handle URL parameter and provider selection
   useEffect(() => {
@@ -137,6 +140,18 @@ export function LlmProviderSettings() {
     if (loading) {
       return (
         <Loading />
+      )
+    }
+
+    if (error && providers.length === 0) {
+      return (
+        <ErrorState
+          resource="LLM providers"
+          description="The configured LLM providers couldn't be loaded."
+          details={error}
+          onRetry={() => Stores.LlmProvider.loadLlmProviders(true)}
+          data-testid="llm-provider-settings-error"
+        />
       )
     }
 

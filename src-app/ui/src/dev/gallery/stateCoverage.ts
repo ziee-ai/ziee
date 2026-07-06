@@ -347,6 +347,12 @@ export const STATE_COVERAGE = {
   "modules/workflow/components/admin/AdminWorkflowsPage:delayed": { via: 'page-state-mode' },
   "modules/workflow/components/admin/AdminWorkflowsPage:open": { skip: true, reason: "data-page surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer:open": { via: 'overlay' },
+  "modules/assistant/pages/AssistantsSettings:error": { via: 'page-state-mode' },
+  "modules/assistant/pages/UserAssistantsSettings:error": { via: 'page-state-mode' },
+  "modules/llm-local-runtime/components/RuntimeConfigCard:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
+  "modules/llm-provider/components/LlmProviderSettings:error": { via: 'page-state-mode' },
+  "modules/projects/pages/ProjectsListPage:error": { via: 'page-state-mode' },
+  "modules/user-llm-providers/chat-extension/components/ModelSelector:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 
