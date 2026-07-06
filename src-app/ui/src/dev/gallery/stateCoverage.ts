@@ -20,7 +20,12 @@
  *       'page-state-mode'  the page is browsed in this data-state via the
  *                          `?surface=&state=` mock-mode path (capture-gallery-states);
  *       'overlay'          an open-state overlay entry (overlays.tsx);
- *       'deep:<slug>'      a chat deep-state entry (deepStates.tsx).
+ *       'deep:<slug>'      a chat deep-state entry (deepStates.tsx);
+ *       'interaction:<slug>' an INTERACTION recipe (interactions.ts) drives a
+ *                          post-mount user action (click-to-edit, expand, focus,
+ *                          hover) via `?surface=<slug>&interact=<name>` — the
+ *                          delivery for states gated behind a real interaction,
+ *                          which the mount-only pass otherwise had to allow-list.
  *   - { skip, reason } — an ALLOW-LISTED gap, excused in code. Used for `via`
  *                        components whose state renders only inside their parent
  *                        page (the branch is proven by Part 2 runtime coverage,
@@ -226,7 +231,7 @@ export const STATE_COVERAGE = {
   "modules/llm-repository/components/LlmRepositorySettings:error": { via: 'page-state-mode' },
   "modules/mcp/chat-extension/components/McpMenuItem:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/mcp/chat-extension/components/McpStatusRow:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
-  "modules/mcp/chat-extension/extension:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
+  "modules/mcp/chat-extension/extension:error": { via: 'interaction:deep-chat-mcp-toolcall-error' },
   "modules/mcp/components/McpConfigModal:empty": { skip: true, reason: "static surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/mcp/components/McpConfigModal:open": { skip: true, reason: "static surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/mcp/components/common/KeyValueSecretEditor:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },

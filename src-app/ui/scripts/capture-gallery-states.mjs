@@ -54,12 +54,28 @@ for (const cell of cells) {
     const url = cellUrl(BASE, cell, { theme })
     try {
       await p.goto(url, { waitUntil: 'networkidle' })
-      // Seeded/deep surfaces run a mount-time store seed (~a few s); pages settle faster.
-      await p.waitForTimeout(cls === 'page' ? (state === 'error' ? 1500 : 1200) : 2500)
-      const sec = p.locator(`[data-testid="gallery-page-${slug}"]`)
+      if (cls === 'interaction') {
+        // The frame drives the recipe after mount + a settle window, then stamps
+        // <body data-gallery-interact-done>. Wait for that signal (bounded), so the
+        // shot captures the DRIVEN state, not the pre-interaction surface.
+        await p
+          .waitForSelector('body[data-gallery-interact-done]', { timeout: 12000 })
+          .catch(() => {})
+        await p.waitForTimeout(400)
+      } else {
+        // Seeded/deep surfaces run a mount-time store seed (~a few s); pages settle faster.
+        await p.waitForTimeout(cls === 'page' ? (state === 'error' ? 1500 : 1200) : 2500)
+      }
       const dir = path.join(OUT, theme)
       fs.mkdirSync(dir, { recursive: true })
-      await sec.screenshot({ path: path.join(dir, `${slug}__${state}.png`) })
+      // Interaction states can portal outside the frame (drawers/dialogs) — shoot
+      // the full page; the base classes shoot their bounded frame section.
+      if (cls === 'interaction') {
+        await p.screenshot({ path: path.join(dir, `${slug}__${state}.png`), fullPage: true })
+      } else {
+        const sec = p.locator(`[data-testid="gallery-page-${slug}"]`)
+        await sec.screenshot({ path: path.join(dir, `${slug}__${state}.png`) })
+      }
       shots++
       // Only report crashes; a page rendering empty/error UI cleanly is fine.
       if (theme === 'light') {

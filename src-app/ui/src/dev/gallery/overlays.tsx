@@ -13,6 +13,7 @@ import { Stores } from '@/core/stores'
 import { dialog } from '@/components/ui'
 import { adminUser } from './fixtures/auth'
 import { llmProvidersList, llmGroupsList } from './fixtures/llm-providers'
+import type { InteractionRecipe } from './interactions'
 
 export interface OverlayEntry {
   /** Gallery slug → `?surface=<slug>&state=open`; also the section testid. */
@@ -24,6 +25,9 @@ export interface OverlayEntry {
   component: LazyExoticComponent<ComponentType>
   /** Seed + fire the store open action (runs on mount). */
   open: () => void
+  /** Interaction recipes driven after the overlay opens (focus an input, submit
+   *  invalid, …). Driven via `?surface=<slug>&interact=<name>`. */
+  interactions?: InteractionRecipe[]
 }
 
 const provider = llmProvidersList.providers[0]
@@ -52,6 +56,23 @@ export const OVERLAY_ENTRIES: OverlayEntry[] = [
       'CreateUserDrawer',
     ),
     open: () => Stores.CreateUserDrawer.openCreateUserDrawer(),
+    interactions: [
+      {
+        name: 'focus-input',
+        note: 'focus the username field → the :focus-visible ring (drives G7: ring clipping / offset in a dense drawer form)',
+        steps: async d => {
+          await d.focus('user-create-username-input')
+        },
+      },
+      {
+        name: 'submit-invalid',
+        note: 'submit the empty form → inline required-field validation (G6 error state per input)',
+        steps: async d => {
+          await d.click('user-create-submit-button')
+          await d.wait(300)
+        },
+      },
+    ],
   },
   {
     slug: 'overlay-edit-user-drawer',
@@ -92,6 +113,16 @@ export const OVERLAY_ENTRIES: OverlayEntry[] = [
       'AssignGroupDrawer',
     ),
     open: () => Stores.AssignGroupDrawer.openAssignGroupDrawer(adminUser),
+    interactions: [
+      {
+        name: 'submit-empty',
+        note: 'submit with no group selected → the handleAssignGroup empty-selection guard (AssignGroupDrawer.tsx:63)',
+        steps: async d => {
+          await d.click('user-assign-group-submit-button')
+          await d.wait(200)
+        },
+      },
+    ],
   },
   {
     slug: 'overlay-user-groups-drawer',

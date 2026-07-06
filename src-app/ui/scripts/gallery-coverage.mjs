@@ -94,6 +94,14 @@ async function visit(holder, url, acc) {
       // (~4.5s) — a late-mounting component (slow chunk under the full pass) needs
       // the seed still asserting when it first renders, so wait 5.5s on a surface.
       await page.waitForTimeout(url.includes('surface=') ? 6500 : 5000)
+      // Interaction URLs drive a post-mount recipe; wait for its done-signal so the
+      // now-exercised branch is present in this render's __coverage__.
+      if (url.includes('interact=')) {
+        await page
+          .waitForSelector('body[data-gallery-interact-done]', { timeout: 12000 })
+          .catch(() => {})
+        await page.waitForTimeout(400)
+      }
       const cov = await page.evaluate(() => window.__coverage__ || null)
       if (!cov) throw new Error('no __coverage__ (is GALLERY_COVERAGE=1 on the server?)')
       mergeInto(acc, cov)
@@ -243,16 +251,20 @@ async function main() {
   const holder = { b: null }
   const acc = {}
   console.log('=== gallery branch-coverage pass ===')
-  const { pages, overlays, deep, seeded } = await enumerateSlugs(holder)
-  console.log(`enumerated ${pages.length} pages, ${overlays.length} overlays, ${deep.length} deep states, ${seeded.length} seeded surfaces`)
+  const { pages, overlays, deep, seeded, interactions = [] } = await enumerateSlugs(holder)
+  console.log(`enumerated ${pages.length} pages, ${overlays.length} overlays, ${deep.length} deep states, ${seeded.length} seeded surfaces, ${interactions.length} interaction recipes`)
 
   let done = 0
-  const total = 1 + pages.length * STATES.length + overlays.length + deep.length + seeded.length
+  const total =
+    1 + pages.length * STATES.length + overlays.length + deep.length + seeded.length + interactions.length
   const tick = () => { if (++done % 15 === 0) console.log(`  …${done}/${total} combos`) }
   await visit(holder, BASE, acc); tick() // browse (all pages, loaded)
   for (const slug of pages)
     for (const st of STATES) { await visit(holder, `${BASE}?surface=${slug}&state=${st}`, acc); tick() }
   for (const slug of [...overlays, ...deep, ...seeded]) { await visit(holder, `${BASE}?surface=${slug}`, acc); tick() }
+  // Interaction recipes: drive the post-mount action so the interaction-gated
+  // branch is exercised (the de-allowlisted arms live here).
+  for (const it of interactions) { await visit(holder, `${BASE}?surface=${it.slug}&interact=${it.name}`, acc); tick() }
   try { await holder.b?.close() } catch {}
 
   fs.writeFileSync(OUT_RAW, JSON.stringify(acc))

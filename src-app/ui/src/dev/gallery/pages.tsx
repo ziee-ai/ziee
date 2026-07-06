@@ -26,6 +26,7 @@ import {
 import { type OverlayEntry, overlayBySlug } from './overlays'
 import { DeepStateFrame, deepStateBySlug } from './deepStates'
 import { SeededSurfaceFrame, seededSurfaceBySlug } from './seededSurfaces'
+import { useRunInteraction } from './interactions'
 
 export const pageTestId = (id: string) => `gallery-page-${id}`
 
@@ -196,6 +197,8 @@ function OverlayFrame({ entry }: { entry: OverlayEntry }) {
   useEffect(() => {
     entry.open()
   }, [entry])
+  // Overlays portal on mount; give the recipe a moment for the portal to paint.
+  useRunInteraction(entry.interactions, 700)
   const Component = entry.component
   return (
     <section
