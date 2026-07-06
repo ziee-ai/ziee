@@ -11,7 +11,7 @@
 ## Summary
 
 - 626 instrumented surface files rendered.
-- **200** STATE gaps not allow-listed — the actionable queue.
+- **138** STATE gaps not allow-listed — the actionable queue.
 - 9044 generic branch forks not allow-listed (informational).
 
 ## State-level gaps (actionable)
@@ -22,34 +22,16 @@
 |---|---|---|
 | 94 | overlay | `<AlertDialog key={it.id} open onOpenChange={(o) => { if (!o) close(it, false) }}>` |
 
-### `components/ui/kit/multi-select.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 131 | empty | `{filtered.length === 0 && !canCreate ? (` |
-| 131 | empty | `{filtered.length === 0 && !canCreate ? (` |
-| 132 | empty | `<div className="py-6 text-center text-sm text-muted-foreground">{emptyText}</div>` |
-| 133 | empty | `) : filtered.length === 0 ? null : (` |
-| 133 | empty | `) : filtered.length === 0 ? null : (` |
-| 134 | empty | `<div ref={scrollRef} role="listbox" aria-multiselectable id={listboxId} className="max-h-72 overflow-auto p-1">` |
-
 ### `components/ui/kit/sheet.tsx`
 
 | line | state | condition |
 |---|---|---|
 | 106 | loading | `? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>` |
 
-### `components/ui/kit/tree.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 242 | loading | `? <Loader2 className="size-4 shrink-0 animate-spin opacity-70" aria-hidden />` |
-
 ### `modules/assistant/chat-extension/components/AssistantMenuItem.tsx`
 
 | line | state | condition |
 |---|---|---|
-| 36 | empty | `{availableAssistants.length === 0 && (` |
 | 37 | empty | `<div className="px-3 py-1.5 text-sm text-muted-foreground">` |
 
 ### `modules/auth/AuthGuard.tsx`
@@ -98,35 +80,6 @@
 |---|---|---|
 | 19 | loading | `if (!loading && messagesArray.length === 0) {` |
 
-### `modules/chat/core/components/ChatRightPanel.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 110 | empty | `if (focusable.length === 0) return` |
-
-### `modules/chat/core/extensions/registry.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 472 | empty | `if (extensions.length === 0) return null` |
-| 505 | empty | `if (extensions.length === 0) {` |
-| 793 | empty | `if (!registered \|\| registered.length === 0) {` |
-
-### `modules/chat/core/extensions/slots.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 30 | empty | `return fallback ? <>{fallback}</> : null` |
-
-### `modules/chat/core/utils/StreamdownErrorBoundary.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 34 | error | `if (!(err instanceof Error)) return false` |
-| 35 | error | `const m = err.message ?? ''` |
-| 35 | error | `const m = err.message ?? ''` |
-| 76 | error | `if (this.state.error) {` |
-
 ### `modules/chat/core/utils/useStreamdownComponents.tsx`
 
 | line | state | condition |
@@ -148,12 +101,6 @@
 | 108 | loading | `if (!loading && !conversation) {` |
 | 142 | error | `<div className="w-full max-w-4xl mx-auto px-4 pt-4">` |
 
-### `modules/citations/components/ImportCitationsModal.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 54 | empty | `if (items.length === 0) return` |
-
 ### `modules/citations/project-extension/components/ProjectBibliographyInlinePreview.tsx`
 
 | line | state | condition |
@@ -173,20 +120,6 @@
 | line | state | condition |
 |---|---|---|
 | 128 | error | `<Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error \|\| validationError} />` |
-
-### `modules/file/chat-extension/components/FileUploadArea.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 51 | empty | `const dropped = Array.from(e.dataTransfer?.files ?? [])` |
-| 51 | empty | `const dropped = Array.from(e.dataTransfer?.files ?? [])` |
-| 52 | empty | `if (dropped.length === 0) return` |
-
-### `modules/file/chat-extension/extension.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 272 | empty | `if (fileContents.length === 0) return` |
 
 ### `modules/file/components/FileCard.tsx`
 
@@ -212,27 +145,10 @@
 
 | line | state | condition |
 |---|---|---|
-| 80 | empty | `if (!projectId \|\| selectedFileIds.size === 0) return` |
-| 80 | empty | `if (!projectId \|\| selectedFileIds.size === 0) return` |
-| 80 | empty | `if (!projectId \|\| selectedFileIds.size === 0) return` |
-| 104 | empty | `if (!projectId \|\| incoming.length === 0) return` |
-| 104 | empty | `if (!projectId \|\| incoming.length === 0) return` |
-| 104 | empty | `if (!projectId \|\| incoming.length === 0) return` |
-| 105 | empty | `if (atCap) {` |
-| 121 | empty | `if (accepted.length === 0) return` |
 | 256 | empty | `uploadingRows.length === 0 ? null : (` |
 | 257 | empty | `<div className="flex flex-col mb-3 gap-2">` |
 | 282 | empty | `) : files.length === 0 ? (` |
 | 283 | empty | `<Empty` |
-
-### `modules/file/viewers/markdown/body.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 90 | error | `if (!(err instanceof Error)) return false` |
-| 91 | error | `const m = err.message ?? ''` |
-| 91 | error | `const m = err.message ?? ''` |
-| 135 | error | `if (this.state.error) {` |
 
 ### `modules/file/viewers/pdf/body.tsx`
 
@@ -271,36 +187,6 @@
 |---|---|---|
 | 111 | empty | `if (localProviders.length === 0) {` |
 | 693 | overlay | `model={showDetails ? model : null}` |
-
-### `modules/layouts/app-layout/AppLayout.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 433 | overlay | `{windowMinSize.xs && (` |
-| 434 | overlay | `<Sheet` |
-
-### `modules/layouts/app-layout/components/Drawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 107 | empty | `if (closeDir === 0 \|\| e.touches.length !== 1) return` |
-| 107 | empty | `if (closeDir === 0 \|\| e.touches.length !== 1) return` |
-| 107 | empty | `if (closeDir === 0 \|\| e.touches.length !== 1) return` |
-| 293 | empty | `{noBodyScrollWrap ? body : <DivScrollY className="flex w-full h-full">{body}</DivScrollY>}` |
-
-### `modules/layouts/app-layout/components/ResizeHandle.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 122 | empty | `if (!targets.length) return` |
-| 131 | empty | `if (grow === 0) return` |
-| 156 | empty | `if (!targets.length) return` |
-
-### `modules/literature/components/LiteratureScreeningPanel.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 92 | empty | `if (selected.size === 0) return` |
 
 ### `modules/literature/components/LiteratureToolResultCard.tsx`
 
@@ -379,25 +265,11 @@
 | 35 | loading | `if (!currentProvider && (loading \|\| !isInitialized)) {` |
 | 35 | loading | `if (!currentProvider && (loading \|\| !isInitialized)) {` |
 
-### `modules/llm-provider/components/RemoteProviderSettings.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 61 | empty | `if (Object.keys(pendingSettings).length === 0) return` |
-
 ### `modules/llm-provider/widgets/LLMProviderGroupWidget.tsx`
 
 | line | state | condition |
 |---|---|---|
 | 57 | error | `<Text type="danger" className="text-xs">` |
-
-### `modules/mcp/chat-extension/components/McpMenuItem.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 23 | loading | `if (enabledServers.length === 0 && !loading) {` |
-| 23 | loading | `if (enabledServers.length === 0 && !loading) {` |
-| 23 | loading | `if (enabledServers.length === 0 && !loading) {` |
 
 ### `modules/mcp/chat-extension/extension.tsx`
 
@@ -411,12 +283,6 @@
 |---|---|---|
 | 172 | empty | `{fields.length === 0 && (` |
 | 173 | empty | `<Text type="secondary" className="text-xs">` |
-
-### `modules/mcp/components/common/McpServerDrawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 475 | error | `if (hasError) return null` |
 
 ### `modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx`
 
@@ -453,15 +319,6 @@
 |---|---|---|
 | 215 | overlay | `data-testid={existing ? 'memory-core-block-edit-dialog' : 'memory-core-block-create-dialog'}` |
 
-### `modules/memory/components/sections/MyMemoriesSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 436 | overlay | `error instanceof Error ? error.message : 'Failed to add memory.',` |
-| 436 | overlay | `error instanceof Error ? error.message : 'Failed to add memory.',` |
-| 530 | overlay | `error instanceof Error ? error.message : 'Failed to update memory.',` |
-| 530 | overlay | `error instanceof Error ? error.message : 'Failed to update memory.',` |
-
 ### `modules/onboarding/OnboardingRedirect.tsx`
 
 | line | state | condition |
@@ -491,14 +348,6 @@
 | 129 | loading | `if (loading) return` |
 | 168 | overlay | `title={isEdit ? 'Edit Project' : 'New Project'}` |
 
-### `modules/projects/core/extensions/slots.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 36 | empty | `if (renderers.length === 0) {` |
-| 37 | empty | `return fallback ? <>{fallback}</> : null` |
-| 37 | empty | `return fallback ? <>{fallback}</> : null` |
-
 ### `modules/summarization/chat-extension/components/SummarizationStatusPill.tsx`
 
 | line | state | condition |
@@ -512,12 +361,6 @@
 | 86 | loading | `if (isInitializing \|\| isLoading) {` |
 | 86 | loading | `if (isInitializing \|\| isLoading) {` |
 | 86 | loading | `if (isInitializing \|\| isLoading) {` |
-
-### `modules/user/components/user/AssignGroupDrawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 63 | empty | `if (groupIds.length === 0) return` |
 
 ### `modules/workflow/components/DryRunPreviewDialog.tsx`
 
@@ -540,21 +383,6 @@
 | line | state | condition |
 |---|---|---|
 | 28 | empty | `if (artifacts.length === 0) return null` |
-
-### `modules/workflow/components/StepLogExpander.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 76 | loading | `<Spin size="sm" label="Loading log" />` |
-| 77 | error | `) : error ? (` |
-| 78 | error | `<Paragraph data-testid="wf-step-log-empty" type="secondary" className="text-xs">` |
-
-### `modules/workflow/components/StepOutputExpander.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 72 | loading | `if (loading) return <Spin size="sm" label="Loading" />` |
-| 73 | error | `if (error) {` |
 
 ### `modules/workflow/components/WorkflowElicitForm.tsx`
 
