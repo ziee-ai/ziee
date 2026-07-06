@@ -1947,3 +1947,24 @@ If you find yourself increasing timeouts from 1s → 5s → 10s, this indicates 
 ---
 
 **Last Updated:** 2025-01-08
+
+---
+
+## Agent Feature-Lifecycle (binding for coding agents)
+
+All nontrivial feature/bugfix work by coding agents MUST follow the 8-phase
+`/feature-lifecycle` skill (`.claude/skills/feature-lifecycle/`): plan →
+plan-audit (against the codebase) → explicit test enumeration (every plan item
+↔ test IDs) → up-front decisions (zero TBD before implementation) → implement
+with a drift-convergence loop → blind multi-angle audit with full
+`git diff main...HEAD` hunk coverage → fix/re-audit to convergence → only then
+integration + e2e per the enumerated tests. Phase artifacts live in
+`.lifecycle/<feature>/` on the branch; `.claude/lifecycle/lifecycle-check.mjs`
+gates every phase (`--phase N` must exit 0 before phase N+1; agents may not
+self-certify). Run `scripts/install-agent-hooks.sh` once per clone to install
+the pre-push hook that enforces `lifecycle-check --all` on lifecycle branches.
+
+Design-system skills for UI work (also committed): `shadcn-component-discovery`
+(reuse-first), `shadcn-component-review`, `frontend-ui-engineering`,
+`design-taste-frontend`, `design-variant-tournament` (best-of-N for new
+flagship surfaces).

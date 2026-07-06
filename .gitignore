@@ -52,7 +52,17 @@ src-app/server/vendor/pgvector/pg_config_wrapper/
 
 # Claude Code local state + docs — never tracked (settings, agents,
 # worktrees, scheduled-task lock, and any architecture notes under here).
-.claude/
+# .claude is machine-local EXCEPT the committed agent infra below
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/feature-lifecycle/
+!.claude/skills/design-variant-tournament/
+!.claude/skills/shadcn-component-discovery/
+!.claude/skills/shadcn-component-review/
+!.claude/skills/frontend-ui-engineering/
+!.claude/skills/design-taste-frontend/
+!.claude/lifecycle/
 
 # Transient server build/packaging staging (server-release.yml + nfpm smoke).
 /dist/
