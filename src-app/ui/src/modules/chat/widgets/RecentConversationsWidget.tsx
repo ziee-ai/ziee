@@ -101,10 +101,21 @@ export function RecentConversationsWidget() {
     {
       type: 'group',
       label: 'Recent chats',
-      children: recentConversations.map(c => ({
-        key: c.id,
-        label: <ConversationRowLabel conversation={c} />,
-      })),
+      children: recentConversations.map(c => {
+        const title = c.title || 'Untitled Conversation'
+        return {
+          key: c.id,
+          title,
+          label: (
+            <span className="truncate" title={title}>
+              {title}
+            </span>
+          ),
+          // Actions render as a SIBLING of the row button (see Menu `actions`) —
+          // a <button> may not contain the dropdown's own <button>.
+          actions: <ConversationRowActions conversation={c} />,
+        }
+      }),
     },
   ]
 
@@ -135,15 +146,16 @@ export function RecentConversationsWidget() {
 }
 
 /**
- * Renders one Menu item's label: the conversation title + a hover-only
- * actions button anchored to the right. The actions button hosts a
- * dropdown with extension contributions (project: open/add/remove,
- * future: …) and the always-present Delete entry.
+ * Renders one Menu row's hover-only actions button (a sibling of the row's
+ * navigate <button>, NOT a child of it — nesting a <button> in a <button> is
+ * invalid HTML). The actions button hosts a dropdown with extension
+ * contributions (project: open/add/remove, future: …) and the always-present
+ * Delete entry.
  *
- * The button has `onClick={e => e.stopPropagation()}` so opening the
- * dropdown does NOT also fire the Menu's row-click navigate.
+ * The wrapper has `onClick={e => e.stopPropagation()}` so opening the dropdown
+ * does NOT bubble up to any ancestor row handler.
  */
-function ConversationRowLabel({
+function ConversationRowActions({
   conversation,
 }: {
   conversation: ConversationResponse
@@ -190,62 +202,52 @@ function ConversationRowLabel({
     },
   ]
 
-  // `group` + `[&:hover_.row-actions]:opacity-100` makes the actions
-  // button fade in on row hover without a stateful onMouseEnter dance.
+  // The `group/menu-row` group lives on the Menu row <li> (see the Menu `actions`
+  // slot); these actions fade in on row hover/focus without a stateful onMouseEnter.
   return (
-    <div className="group flex items-center justify-between gap-2">
-      <span
-        className="truncate"
-        title={conversation.title || 'Untitled Conversation'}
-      >
-        {conversation.title || 'Untitled Conversation'}
-      </span>
-      <div
-        className={
-          'row-actions flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100 ' +
-          'transition-opacity duration-150'
-        }
-        // Keep the button visible while its dropdown is open OR while
-        // a delete is in flight — `opacity-0` would otherwise hide it
-        // mid-interaction. Inline style wins over the Tailwind class
-        // because it sets the same property.
-        style={
-          menuOpen || keepMenuOpen || deleting ? { opacity: 1 } : undefined
-        }
-        onClick={e => e.stopPropagation()}
-      >
-        {/* One styled tooltip only: put the kit Tooltip on the span (not the
-            Button) so its trigger is a DIFFERENT node from the Dropdown trigger,
-            AND set data-tooltip-wrapped on the Button to kill its own auto-tooltip
-            (icon-only + aria-label). Two overlapping Base-UI tooltips is what
-            thrashed; a single one on a sibling node coexists with the menu. */}
-        <Tooltip title="Conversation options">
-          <span className="inline-flex">
-            <Dropdown
-              data-testid={`chat-recent-row-menu-${conversation.id}`}
-              items={menuItems}
-              side="bottom"
-              align="end"
-              open={menuOpen || keepMenuOpen}
-              onOpenChange={open => {
-                if (!open && keepMenuOpen) return
-                setMenuOpen(open)
-              }}
-            >
-              <Button
-                data-testid={`chat-recent-row-actions-btn-${conversation.id}`}
-                variant="ghost"
-                size="icon"
-                icon={<MoreVertical />}
-                loading={deleting}
-                className="w-[22px] h-[22px] p-0"
-                aria-label="Conversation options"
-                data-tooltip-wrapped=""
-              />
-            </Dropdown>
-          </span>
-        </Tooltip>
-      </div>
+    <div
+      className={
+        'row-actions flex-shrink-0 opacity-0 group-hover/menu-row:opacity-100 group-focus-within/menu-row:opacity-100 hover-none:opacity-100 ' +
+        'transition-opacity duration-150'
+      }
+      // Keep the button visible while its dropdown is open OR while
+      // a delete is in flight — `opacity-0` would otherwise hide it
+      // mid-interaction. Inline style wins over the Tailwind class
+      // because it sets the same property.
+      style={menuOpen || keepMenuOpen || deleting ? { opacity: 1 } : undefined}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* One styled tooltip only: put the kit Tooltip on the span (not the
+          Button) so its trigger is a DIFFERENT node from the Dropdown trigger,
+          AND set data-tooltip-wrapped on the Button to kill its own auto-tooltip
+          (icon-only + aria-label). Two overlapping Base-UI tooltips is what
+          thrashed; a single one on a sibling node coexists with the menu. */}
+      <Tooltip title="Conversation options">
+        <span className="inline-flex">
+          <Dropdown
+            data-testid={`chat-recent-row-menu-${conversation.id}`}
+            items={menuItems}
+            side="bottom"
+            align="end"
+            open={menuOpen || keepMenuOpen}
+            onOpenChange={open => {
+              if (!open && keepMenuOpen) return
+              setMenuOpen(open)
+            }}
+          >
+            <Button
+              data-testid={`chat-recent-row-actions-btn-${conversation.id}`}
+              variant="ghost"
+              size="icon"
+              icon={<MoreVertical />}
+              loading={deleting}
+              className="w-[22px] h-[22px] p-0"
+              aria-label="Conversation options"
+              data-tooltip-wrapped=""
+            />
+          </Dropdown>
+        </span>
+      </Tooltip>
       {/* Extension overlays (modals, popconfirms). Render alongside
           the row trigger; menu items above toggle their state. */}
       {overlays}

@@ -15,6 +15,12 @@ export type MenuItem =
       /** Explicit accessible name — REQUIRED for a non-string label in `collapsed` mode
        *  (the label is hidden then). Preferred over the label/key fallbacks. */
       title?: string
+      /** Trailing controls (e.g. a "…" actions dropdown) rendered as a SIBLING of the
+       *  item's <button>, never inside it — a <button> may not contain another
+       *  interactive control (invalid HTML + a React hydration error). Reveal-on-hover
+       *  is the caller's concern via the `group/menu-row` group set on the row <li>.
+       *  Ignored in `collapsed` mode (no room on an icon rail). */
+      actions?: React.ReactNode
     }
 
 // legacy Menu (navigation subset): vertical/horizontal item list with single selection.
@@ -84,8 +90,12 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
         const selected = selectedSet.has(item.key)
         // Never nameless in collapsed mode: explicit title → string label → the key.
         const name = item.title ?? labelText(item.label) ?? item.key
+        // Trailing actions render as a SIBLING of the button (a <button> can't nest an
+        // interactive control). `group/menu-row` on the <li> lets those actions reveal
+        // on row hover/focus. Suppressed on the collapsed icon rail.
+        const hasActions = item.actions != null && !collapsed
         return (
-          <li key={item.key}>
+          <li key={item.key} className={cn(hasActions && 'group/menu-row flex items-center')}>
             <button
               type="button"
               disabled={item.disabled || locked}
@@ -96,7 +106,8 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
               title={collapsed ? name : undefined}
               onClick={() => onSelect?.(item.key)}
               className={cn(
-                'flex w-full min-w-0 items-center gap-2 rounded-md text-sm',
+                'flex min-w-0 items-center gap-2 rounded-md text-sm',
+                hasActions ? 'flex-1' : 'w-full',
                 collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
                 'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50',
                 selected ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-accent/60',
@@ -106,6 +117,9 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
               {/* truncate long labels instead of overflowing the rail. */}
               {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
             </button>
+            {hasActions && (
+              <div className="shrink-0 flex items-center pr-1">{item.actions}</div>
+            )}
           </li>
         )
       })}
