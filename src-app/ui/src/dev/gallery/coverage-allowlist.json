@@ -1,26 +1,22 @@
 {
   "__doc__": "PART 2 branch-coverage allow-list. Key = '<surface-file>:<line>' (optionally ':<arm>'); value = reason. An uncovered render branch listed here is excused (an unreachable defensive default, a platform/viewport-only path, an interaction/handler-only arm, or a branch a headless MOUNT render legitimately can't reach). Everything else must be exercised by a gallery entry. Each reason is specific + defensible; NONE masks a state a seeded surface could render.",
-
   "components/ui/kit/multi-select.tsx:131": "Popover-open empty/no-match arms: the listbox renders only while the MultiSelect popover is OPEN (a click) with zero filtered options — unreachable by the mount-only coverage pass.",
   "components/ui/kit/multi-select.tsx:132": "Popover-open empty text — see :131 (open-popover interaction).",
   "components/ui/kit/multi-select.tsx:133": "Popover-open no-match arm — see :131 (open-popover interaction).",
   "components/ui/kit/multi-select.tsx:134": "Popover-open listbox — see :131 (open-popover interaction).",
   "components/ui/kit/tree.tsx:242": "Lazy-load spinner for a node whose async loadData is in-flight; internal loadingKeys state is set only on the expand-toggle click — mount-only render never toggles it.",
-
   "modules/layouts/app-layout/AppLayout.tsx:433": "Mobile-only sidebar Sheet (windowMinSize.xs); the coverage pass renders desktop 1280x900, so xs is never true.",
   "modules/layouts/app-layout/AppLayout.tsx:434": "Mobile-only sidebar Sheet body — see :433 (mobile viewport).",
   "modules/layouts/app-layout/components/Drawer.tsx:107": "onTouchStart swipe-to-close guard (closeDir===0 || touches.length!==1); requires a touch gesture — no mount render fires it.",
-  "modules/layouts/app-layout/components/Drawer.tsx:293": "noBodyScrollWrap prop-config variant (not a data-state); the default (wrapped) path is covered, the unwrapped arm is only chosen by a caller that opts out.",
+  "modules/layouts/app-layout/components/Drawer.tsx:293": "Prop-config structural variant: `noBodyScrollWrap ? body : <DivScrollY>` — a wrapper toggle on the layout Drawer, not a data-state; the shell always passes the default (wrapped) path.",
   "modules/layouts/app-layout/components/ResizeHandle.tsx:122": "Guard inside the resize keydown handler (!targets.length); requires an active keyboard-resize interaction.",
   "modules/layouts/app-layout/components/ResizeHandle.tsx:131": "Guard inside the resize handler (grow===0, key not handled); requires an active resize interaction.",
   "modules/layouts/app-layout/components/ResizeHandle.tsx:156": "Guard inside the pointer-drag resize handler (!targets.length); requires an active drag.",
-
   "modules/workflow/components/StepLogExpander.tsx:76": "Log loading spinner; the log fetch (local useState) starts only after the expander is clicked open — interaction-gated.",
   "modules/workflow/components/StepLogExpander.tsx:77": "Log error arm — see :76 (post-expand fetch failure).",
   "modules/workflow/components/StepLogExpander.tsx:78": "Log empty arm — see :76 (post-expand fetch).",
   "modules/workflow/components/StepOutputExpander.tsx:72": "Output loading spinner; body() runs only when the expander is open + its fetch is in-flight (local state set on the expand click) — interaction-gated.",
   "modules/workflow/components/StepOutputExpander.tsx:73": "Output error arm — see :72 (post-expand fetch failure).",
-
   "modules/file/chat-extension/components/FileUploadArea.tsx:51": "Inside the onDrop handler (Array.from(dataTransfer.files ?? [])); requires a real drag-and-drop drop event.",
   "modules/file/chat-extension/components/FileUploadArea.tsx:52": "onDrop empty-files guard (dropped.length===0 return); requires a drop event carrying zero files.",
   "modules/file/chat-extension/extension.tsx:272": "Handler guard (fileContents.length===0 return) inside the paste/attach path; requires the attach event.",
@@ -33,40 +29,32 @@
   "modules/citations/components/ImportCitationsModal.tsx:54": "Import handler empty guard (items.length===0 return); requires the import submit with no parsed items.",
   "modules/user/components/user/AssignGroupDrawer.tsx:63": "handleAssignGroup empty guard (groupIds.length===0 return); requires a form submit with no groups selected.",
   "modules/chat/core/components/ChatRightPanel.tsx:110": "focus-trap keydown guard (focusable.length===0 return); requires a Tab keydown with no focusable descendants.",
-
   "modules/chat/core/utils/StreamdownErrorBoundary.tsx:34": "React error-boundary predicate on a thrown non-Error; requires a descendant render to throw — not reachable without an actual render error.",
   "modules/chat/core/utils/StreamdownErrorBoundary.tsx:35": "Error-boundary message extraction — see :34 (requires a thrown error).",
   "modules/chat/core/utils/StreamdownErrorBoundary.tsx:76": "Error-boundary fallback render (this.state.error); requires a caught descendant throw.",
   "modules/file/viewers/markdown/body.tsx:90": "Markdown error-boundary predicate on a thrown non-Error; requires a descendant render throw.",
   "modules/file/viewers/markdown/body.tsx:91": "Markdown error-boundary message extraction — see :90.",
   "modules/file/viewers/markdown/body.tsx:135": "Markdown error-boundary fallback render; requires a caught descendant throw.",
-
   "modules/memory/components/sections/MyMemoriesSection.tsx:436": "message.error inside the add-memory mutation catch; a toast on a failed POST — the mount-only pass issues no mutation.",
   "modules/memory/components/sections/MyMemoriesSection.tsx:530": "message.error inside the update-memory mutation catch; a toast on a failed PUT — no mutation is issued.",
-
-  "modules/mcp/chat-extension/components/McpMenuItem.tsx:23": "Renders inside the chat composer PlusDropdown context (usePlusDropdown); the empty arm returns null when no MCP servers are enabled — reachable only with that provider mounted + zero enabled servers, an interaction-only composer state.",
-  "modules/assistant/chat-extension/components/AssistantMenuItem.tsx:36": "Renders inside the chat composer PlusDropdown context (usePlusDropdown); the empty arm needs that provider mounted with zero available assistants — interaction-only composer state.",
-
+  "modules/mcp/chat-extension/components/McpMenuItem.tsx:23": "Provider-context-gated: usePlusDropdown() requires the chat-composer PlusDropdown provider (throws without it); the empty arm returns null when no MCP servers are enabled — not reachable by a standalone mount.",
+  "modules/assistant/chat-extension/components/AssistantMenuItem.tsx:36": "Provider-context-gated: usePlusDropdown() requires the chat-composer PlusDropdown provider; the empty arm needs that provider mounted with zero available assistants.",
   "modules/chat/core/extensions/registry.tsx:472": "Zero-extension defensive fallback (extensions.length===0 return null); the loaded gallery always registers >=1 conversation-card-trailing extension, so this arm is a defensive default.",
   "modules/chat/core/extensions/registry.tsx:505": "Zero-extension defensive fallback (extensions.length===0 return); always >=1 registered in the loaded gallery.",
   "modules/chat/core/extensions/registry.tsx:793": "No-renderer defensive fallback for an unknown content type (!registered || length===0 return null); every content type used in the gallery has a registered renderer.",
   "modules/chat/core/extensions/slots.tsx:30": "ExtensionSlot no-renderer fallback (fallback ? <>{fallback}</> : null); every slot rendered in the gallery has >=1 registered renderer.",
   "modules/projects/core/extensions/slots.tsx:36": "Project ExtensionSlot no-renderer fallback (renderers.length===0); every slot rendered has >=1 renderer.",
   "modules/projects/core/extensions/slots.tsx:37": "Project ExtensionSlot fallback-vs-null arm — see :36 (no-renderer defensive default).",
-
-  "modules/mcp/components/common/McpServerDrawer.tsx:475": "Defensive `if (hasError) return null` inside the drawer body; the drawer only opens for a successfully-loaded server, so this guard is a defensive early-return.",
-
+  "modules/mcp/components/common/McpServerDrawer.tsx:475": "Save-handler validation guard (`if(hasError) return null` after URL-validation setFieldError); requires an invalid-form submit inside the drawer — an interaction, not a mount render.",
   "modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.tsx:73": "Defensive `${selectedGroup?.name || ''}` title fallback; a seeded group always has a name, so the empty-name arm is an unreachable defensive default.",
   "modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx:76": "Defensive `${selectedGroup?.name || ''}` title fallback; a seeded group always has a name.",
   "modules/chat/core/utils/useStreamdownComponents.tsx:144": "Renders an <img> only for a root-relative markdown image src (![](/path)); a content-specific arm keyed on markdown shape, not a UI data-state — no seeded assistant message carries a root-relative image.",
-
   "modules/memory/components/CoreMemoryBlocksEditor.tsx:215": "The create/edit block dialog opens only on a button click (create) or a row's edit action; an interaction-only overlay, not a mount data-state.",
   "modules/summarization/chat-extension/components/SummarizationStatusPill.tsx:145": "Loading spinner driven by a local useState set only inside the in-flight setRemote mutation handler; requires a dropdown-select that fires a hanging mutation — not store-seedable.",
   "modules/projects/components/AddToProjectModal.tsx:108": "Error text from a local useState set only in the handleOk mutation catch; requires a combobox-select + confirm with a failing attachConversation — mutation-catch, not a mount state.",
   "modules/projects/components/AddToProjectModal.tsx:109": "See :108 (handleOk mutation-catch error).",
   "modules/onboarding/OnboardingRedirect.tsx:45": "Early `return` guard INSIDE the mount effect (isInitializing); the component renders null and the guard is effect-internal control flow, not a render branch.",
   "modules/onboarding/OnboardingRedirect.tsx:46": "Early `return` guard inside the mount effect (!isAuthenticated || !user); effect-internal, renders null — not a render branch.",
-
   "components/ui/kit/dialog-host.tsx:94": "The `onOpenChange={(o)=>{if(!o)close()}}` arm fires only when the AlertDialog is dismissed (Escape/overlay click) — a close interaction, not a mount render.",
   "components/ui/kit/sheet.tsx:106": "The `loadingLabel ?? ''` fallback is unreachable — the SheetProps union requires `loadingLabel: string` whenever `loading: true`; the non-loading `: children` arm renders in every other open Sheet.",
   "modules/assistant/chat-extension/components/AssistantMenuItem.tsx:37": "Empty-assistants text inside the PlusDropdown-context menu item (see :36); reachable only with that composer provider mounted and zero available assistants — interaction-only.",
@@ -82,9 +70,7 @@
   "modules/file/project-extension/components/ProjectFilesManagePanel.tsx:257": "The `uploadingRows.length === 0 ? null : (…)` non-null arm (the in-progress upload preview); requires files actively uploading — an upload interaction. The empty (`null`) side is covered by seeded-s2 project-files.",
   "modules/citations/project-extension/components/ProjectBibliographyManagePanel.tsx:74": "Loading `<Spin>` gated on a LOCAL useState (`const [loading,setLoading]=useState`) set inside the panel's own fetch effect — no store handle to seed, and the mock fetch resolves faster than a render commits; the loaded/empty state is covered by seeded-s4-project-bib-manage-empty.",
   "modules/chat/pages/ChatHistoryPage.tsx:143": "The `nativeScroll ? '' : 'overflow-hidden'` className variant on the history container; nativeScroll is a device touch-scroll mode flag (default false) — a CSS-config arm, not a data-state, and the default path renders in every combo.",
-  "modules/mcp/chat-extension/extension.tsx:69": "Live MCP-composer tool-call terminal-status marker (McpToolCallUI, `status==='completed'||'error'`); the composer renders in-flight tool calls during active generation — a completed/errored status is a transient live-composer state, distinct from the persisted tool_use/tool_result message blocks the deep-chat states cover.",
-  "modules/mcp/chat-extension/extension.tsx:70": "See :69 (live-composer tool-call terminal-status marker).",
-  "modules/mcp/chat-extension/extension.tsx:132": "Live MCP-composer tool-call error Alert (`toolCall.error`); transient live-composer error state — see :69.",
-  "modules/mcp/chat-extension/extension.tsx:133": "See :132 (live-composer tool-call error Alert).",
-  "modules/mcp/chat-extension/extension.tsx:294": "Live MCP-composer aggregate `hasError` icon (CircleX); transient live-composer state — see :69."
+  "modules/mcp/chat-extension/extension.tsx:132": "Tool-call error Alert rendered ONLY inside the `{isExpanded && …}` detail panel (extension.tsx:112); isExpanded is local useState toggled by the card expand click — an interaction. The tool-call card + status marker themselves are covered by deep-chat-mcp-toolcall-error.",
+  "modules/mcp/chat-extension/extension.tsx:133": "See :132 (error Alert inside the expand-click detail panel).",
+  "modules/mcp/chat-extension/extension.tsx:294": "Aggregate `hasError` CircleX icon in the tool-run summary path; a composite over a run's tool blocks that the single-seeded-tool-call deep states don't assemble — the per-call completed/error markers are covered by deep-chat-mcp-toolcall-*."
 }
