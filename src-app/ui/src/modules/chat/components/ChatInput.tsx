@@ -75,16 +75,18 @@ export function ChatInput({
           <ExtensionSlot name="input_area_suffix" />
         </div>
 
-        {/* Toolbar */}
-        <div className="flex justify-between items-center px-2 pt-1 pb-2">
-          {/* Left: + dropdown + other toolbar actions */}
-          <div className="flex items-center gap-1">
+        {/* Toolbar — the left (secondary) group yields space first so the right
+            send group is never clipped on narrow widths (chat panel or mobile). */}
+        <div className="flex justify-between items-center gap-2 px-2 pt-1 pb-2">
+          {/* Left: + dropdown + other toolbar actions. `min-w-0 flex-1` lets the
+              keyboard-tips text truncate instead of pushing Send off the edge. */}
+          <div className="flex items-center gap-1 min-w-0 flex-1">
             {/* Tooltip anchors to the wrapper span (a distinct DOM node), not
                 the Popover-trigger button — two triggers on ONE node thrash and
                 flicker. The button suppresses its own aria-label auto-tooltip via
                 data-tooltip-wrapped so only the span's tooltip shows. */}
             <Tooltip content="Add tools & files">
-              <span className="inline-flex">
+              <span className="inline-flex shrink-0">
                 <Popover
                   open={plusOpen}
                   onOpenChange={setPlusOpen}
@@ -108,11 +110,12 @@ export function ChatInput({
                 </Popover>
               </span>
             </Tooltip>
-            <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1" />
+            <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1 min-w-0" />
           </div>
 
-          {/* Right: model selector + send button */}
-          <div className="flex items-center gap-2">
+          {/* Right: model selector + send button. `shrink-0` keeps Send fully
+              visible; the model selector caps its own width internally. */}
+          <div className="flex items-center gap-2 shrink-0">
             <ExtensionSlot name="toolbar_model" />
             <Button
               data-testid="chat-input-send-btn"

@@ -184,11 +184,14 @@ export function HubPage() {
       {/* Page Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full gap-2">
-          <Title level={4} className="!m-0 !leading-tight truncate">
+          <Title level={4} className="!m-0 !leading-tight shrink-0">
             Hub
           </Title>
-          <Flex align="center" className="gap-2">
-            {versionTag}
+          <Flex align="center" className="gap-2 min-w-0">
+            {/* The version tag is a non-critical build marker (its info is in the
+                tooltip); on the narrowest widths it yields so the title + section
+                dropdown stay fully legible instead of the title crushing to "H…". */}
+            {!minSize.xs && versionTag}
             {/* Mobile: refresh icon + the section dropdown (the left menu is
                 hidden). Desktop keeps both on the left side-menu instead. */}
             {useMobileLayout && (

@@ -133,12 +133,17 @@ export function GroupListItem({
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <div className={'flex-1 min-w-48'}>
-              <Flex className="gap-2 items-center">
+              {/* flex-wrap so the status pill reflows onto its own line on
+                  narrow widths instead of clipping "Active" → "Ac". The badge +
+                  label stay together as one nowrap unit across the wrap. */}
+              <Flex className="gap-2 items-center flex-wrap">
                 <Users aria-hidden="true" />
                 <Text className="font-medium">{group.name}</Text>
                 {group.is_system && <Tag variant="outline" tone="warning" data-testid={`user-group-system-tag-${group.id}`}>System</Tag>}
-                <Badge color={group.is_active ? 'green' : 'red'} data-testid={`user-group-active-badge-${group.id}`} />
-                <Text data-testid={`user-group-status-text-${group.id}`}>{group.is_active ? 'Active' : 'Inactive'}</Text>
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  <Badge color={group.is_active ? 'green' : 'red'} data-testid={`user-group-active-badge-${group.id}`} />
+                  <Text data-testid={`user-group-status-text-${group.id}`}>{group.is_active ? 'Active' : 'Inactive'}</Text>
+                </span>
               </Flex>
             </div>
             <div className={'flex flex-wrap gap-1 items-center justify-end'}>
