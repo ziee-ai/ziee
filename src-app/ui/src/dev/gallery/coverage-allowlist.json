@@ -58,5 +58,12 @@
 
   "modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.tsx:73": "Defensive `${selectedGroup?.name || ''}` title fallback; a seeded group always has a name, so the empty-name arm is an unreachable defensive default.",
   "modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx:76": "Defensive `${selectedGroup?.name || ''}` title fallback; a seeded group always has a name.",
-  "modules/chat/core/utils/useStreamdownComponents.tsx:144": "Renders an <img> only for a root-relative markdown image src (![](/path)); a content-specific arm keyed on markdown shape, not a UI data-state — no seeded assistant message carries a root-relative image."
+  "modules/chat/core/utils/useStreamdownComponents.tsx:144": "Renders an <img> only for a root-relative markdown image src (![](/path)); a content-specific arm keyed on markdown shape, not a UI data-state — no seeded assistant message carries a root-relative image.",
+
+  "modules/memory/components/CoreMemoryBlocksEditor.tsx:215": "The create/edit block dialog opens only on a button click (create) or a row's edit action; an interaction-only overlay, not a mount data-state.",
+  "modules/summarization/chat-extension/components/SummarizationStatusPill.tsx:145": "Loading spinner driven by a local useState set only inside the in-flight setRemote mutation handler; requires a dropdown-select that fires a hanging mutation — not store-seedable.",
+  "modules/projects/components/AddToProjectModal.tsx:108": "Error text from a local useState set only in the handleOk mutation catch; requires a combobox-select + confirm with a failing attachConversation — mutation-catch, not a mount state.",
+  "modules/projects/components/AddToProjectModal.tsx:109": "See :108 (handleOk mutation-catch error).",
+  "modules/onboarding/OnboardingRedirect.tsx:45": "Early `return` guard INSIDE the mount effect (isInitializing); the component renders null and the guard is effect-internal control flow, not a render branch.",
+  "modules/onboarding/OnboardingRedirect.tsx:46": "Early `return` guard inside the mount effect (!isAuthenticated || !user); effect-internal, renders null — not a render branch."
 }
