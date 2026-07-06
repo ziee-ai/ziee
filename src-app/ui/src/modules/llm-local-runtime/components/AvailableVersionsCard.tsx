@@ -78,6 +78,15 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
   const platform = updateCheck?.platform ?? gpu?.platform
   const arch = updateCheck?.arch ?? gpu?.arch
 
+  // When the version feed itself failed to load, the card already shows a
+  // persistent ErrorState below. GPU detection is a SEPARATE request that
+  // retries with backoff (~6s) — leaving the Platform/Available-backends rows
+  // spinning stacked ON TOP of that error reads as broken ("never spinner-on-
+  // error"). Treat the rows as not-loading in that posture: they collapse to
+  // `null` (no gpu yet) or show detected data if it arrived, never a spinner.
+  const feedFailed = !!updateError && !updateCheck
+  const gpuLoading = loadingGpu && !feedFailed
+
   // Only show binaries actually published for this host (filters out
   // tags whose release pipeline is still building).
   const readyUpstream = (updateCheck?.versions ?? []).filter(
@@ -149,8 +158,8 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
       }
     >
       <Flex vertical className="gap-4">
-        <PlatformRow gpu={gpu} loadingGpu={loadingGpu} />
-        <BackendsRow gpu={gpu} loadingGpu={loadingGpu} />
+        <PlatformRow gpu={gpu} loadingGpu={gpuLoading} />
+        <BackendsRow gpu={gpu} loadingGpu={gpuLoading} />
 
         <Separator className="!my-2" />
 

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 307 surfaces carry renderable-state signals; 1706 signals total.
+// 307 surfaces carry renderable-state signals; 1707 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -88,8 +88,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "(title != null || extra != null)", line: 39 },
       { kind: "branch", condition: "title != null", line: 41 },
-      { kind: "loading", condition: "skeleton", line: 50 },
-      { kind: "branch", condition: "footer != null", line: 60 },
+      { kind: "loading", condition: "skeleton", line: 56 },
+      { kind: "branch", condition: "footer != null", line: 66 },
     ],
   },
   "components/ui/kit/checkbox": {
@@ -1983,22 +1983,22 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/llm-local-runtime/components/AvailableVersionsCard",
     requiredStates: ["empty","error"],
     signals: [
-      { kind: "branch", condition: "!platform || !arch", line: 88 },
-      { kind: "branch", condition: "isChecking && !updateCheck", line: 157 },
-      { kind: "branch", condition: "updateError && !updateCheck", line: 159 },
-      { kind: "branch", condition: "!updateCheck", line: 169 },
-      { kind: "empty", condition: "readyUpstream.length === 0", line: 173 },
-      { kind: "branch", condition: "readyUpstream.length > 10", line: 188 },
-      { kind: "branch", condition: "loadingGpu && !gpu", line: 207 },
-      { kind: "branch", condition: "!gpu", line: 215 },
-      { kind: "branch", condition: "loadingGpu && !gpu", line: 233 },
-      { kind: "branch", condition: "!gpu", line: 241 },
-      { kind: "branch", condition: "v.size_bytes != null && !v.installed", line: 285 },
-      { kind: "branch", condition: "isLatest", line: 290 },
-      { kind: "branch", condition: "v.installed", line: 291 },
-      { kind: "branch", condition: "v.prerelease", line: 292 },
-      { kind: "branch", condition: "progress", line: 311 },
-      { kind: "error", condition: "failed && progress?.error", line: 312 },
+      { kind: "branch", condition: "!platform || !arch", line: 97 },
+      { kind: "branch", condition: "isChecking && !updateCheck", line: 166 },
+      { kind: "branch", condition: "updateError && !updateCheck", line: 168 },
+      { kind: "branch", condition: "!updateCheck", line: 178 },
+      { kind: "empty", condition: "readyUpstream.length === 0", line: 182 },
+      { kind: "branch", condition: "readyUpstream.length > 10", line: 197 },
+      { kind: "branch", condition: "loadingGpu && !gpu", line: 216 },
+      { kind: "branch", condition: "!gpu", line: 224 },
+      { kind: "branch", condition: "loadingGpu && !gpu", line: 242 },
+      { kind: "branch", condition: "!gpu", line: 250 },
+      { kind: "branch", condition: "v.size_bytes != null && !v.installed", line: 294 },
+      { kind: "branch", condition: "isLatest", line: 299 },
+      { kind: "branch", condition: "v.installed", line: 300 },
+      { kind: "branch", condition: "v.prerelease", line: 301 },
+      { kind: "branch", condition: "progress", line: 320 },
+      { kind: "error", condition: "failed && progress?.error", line: 321 },
     ],
   },
   "modules/llm-local-runtime/components/InstalledVersionsCard": {
@@ -2320,11 +2320,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "repo?.built_in", line: 99 },
       { kind: "error", condition: "error && repositories.length === 0", line: 228 },
       { kind: "empty", condition: "repositories.length === 0", line: 238 },
-      { kind: "branch", condition: "repository.built_in", line: 258 },
-      { kind: "branch", condition: "!repository.enabled", line: 263 },
-      { kind: "branch", condition: "repository.last_health_check_status === 'unhealthy'", line: 301 },
-      { kind: "branch", condition: "index < repositories.length - 1", line: 324 },
-      { kind: "branch", condition: "totalRepositories > 0", line: 333 },
+      { kind: "branch", condition: "repository.built_in", line: 263 },
+      { kind: "branch", condition: "!repository.enabled", line: 268 },
+      { kind: "branch", condition: "repository.last_health_check_status === 'unhealthy'", line: 306 },
+      { kind: "branch", condition: "index < repositories.length - 1", line: 329 },
+      { kind: "branch", condition: "totalRepositories > 0", line: 338 },
     ],
   },
   "modules/mcp/chat-extension/components/ElicitationFormContent": {
@@ -3296,12 +3296,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/user/components/user/UsersSettings",
     requiredStates: ["empty","open"],
     signals: [
-      { kind: "overlay", condition: "<Confirm open>", line: 113 },
-      { kind: "branch", condition: "loadingUsers", line: 235 },
-      { kind: "empty", condition: "users.length === 0", line: 237 },
-      { kind: "branch", condition: "usersError", line: 238 },
-      { kind: "branch", condition: "index < users.length - 1", line: 290 },
-      { kind: "branch", condition: "users.length > 0", line: 296 },
+      { kind: "empty", condition: "users.length === 0", line: 66 },
+      { kind: "overlay", condition: "<Confirm open>", line: 119 },
+      { kind: "branch", condition: "loadingUsers", line: 241 },
+      { kind: "empty", condition: "users.length === 0", line: 243 },
+      { kind: "branch", condition: "usersError", line: 244 },
+      { kind: "branch", condition: "index < users.length - 1", line: 296 },
+      { kind: "branch", condition: "users.length > 0", line: 302 },
     ],
   },
   "modules/web-search/components/WebSearchGlobalSection": {

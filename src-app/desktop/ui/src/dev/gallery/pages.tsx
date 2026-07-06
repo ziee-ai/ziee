@@ -22,6 +22,27 @@ import type { RouteConfig } from '@/modules/router/types'
 export const pageTestId = (id: string) => `gallery-page-${id}`
 
 /**
+ * Fallback for a per-surface error boundary. Renders a DETECTABLE marker
+ * (`data-testid="gallery-crash"`) so the capture layer can assert on a REAL
+ * boundary render in the settled DOM instead of guessing from a transient
+ * `console.error` (a logged fetch failure isn't a crash; a boundary still
+ * showing this at settle IS). `label` identifies which surface threw.
+ * Previously `() => null`, which left a crash indistinguishable from a blank
+ * page and undetectable in the DOM.
+ */
+function galleryCrashFallback(label: string) {
+  return (error: Error) => (
+    <div
+      data-testid="gallery-crash"
+      data-crash-label={label}
+      className="flex h-full w-full items-center justify-center p-4 text-center text-sm text-destructive"
+    >
+      Surface crashed: {error.message}
+    </div>
+  )
+}
+
+/**
  * Concrete values for required route params (`:conversationId`, `:projectId`, …)
  * sourced from recorded fixtures. A route whose required param is unresolved is
  * skipped (and surfaced in COVERAGE.md) rather than rendered broken.
@@ -137,7 +158,7 @@ function PageFrame({
         className="w-full overflow-hidden rounded-md border border-border bg-background"
         style={{ height }}
       >
-        <AppErrorBoundary label={`page-${page.id}`} fallback={() => null}>
+        <AppErrorBoundary label={`page-${page.id}`} fallback={galleryCrashFallback(`page-${page.id}`)}>
           <MemoryRouter initialEntries={[page.initialPath]}>
             <Routes>
               {/* LazyComponentRenderer materializes every route.element form

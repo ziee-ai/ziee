@@ -249,7 +249,12 @@ export function LlmRepositorySettings() {
                     <div className="flex items-start gap-3 flex-wrap">
                       {/* Repository Info */}
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">
+                        {/* flex-wrap (not -reverse): when the row is too
+                            narrow the action controls wrap BELOW their
+                            repository label, keeping label-then-actions order
+                            instead of floating above it (mirrors the
+                            AuthProvidersListSection fix). */}
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <div className="flex-1 min-w-48">
                             <Flex align="center" gap="small">
                               <Text className="font-medium">

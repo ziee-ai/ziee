@@ -38,13 +38,6 @@ for (const slug of slugs) {
   for (const state of STATES) {
     for (const theme of THEMES) {
       const p = await browser.newPage({ viewport: { width: 1280, height: 900 } })
-      const errs = new Set()
-      p.on('console', m => {
-        if (m.type() !== 'error') return
-        const t = m.text()
-        if (/\[AppErrorBoundary \[page-/.test(t)) errs.add('CRASH: ' + t.replace(/\s+/g, ' ').slice(0, 120))
-      })
-      p.on('pageerror', e => errs.add('CRASH: ' + e.message.slice(0, 120)))
       const url = `${BASE}?surface=${slug}&state=${state}&theme=${theme}`
       try {
         await p.goto(url, { waitUntil: 'networkidle' })
@@ -54,10 +47,18 @@ for (const slug of slugs) {
         fs.mkdirSync(dir, { recursive: true })
         await sec.screenshot({ path: path.join(dir, `${slug}__${state}.png`) })
         shots++
-        // Only report crashes; a page rendering empty/error UI cleanly is fine.
+        // Only count a REAL ErrorBoundary render: after the DOM has settled the
+        // per-surface boundary's fallback (`data-testid="gallery-crash"`) is
+        // still present. This is deliberately NOT keyed off `console.error` — a
+        // store logging a failed fetch in error-mode is expected, not a crash;
+        // only a boundary that CAUGHT a render throw and is still showing its
+        // fallback at settle is a genuine crash.
         if (theme === 'light') {
-          const crashes = [...errs].filter(e => e.startsWith('CRASH'))
-          if (crashes.length) findings.push({ slug, state, crashes })
+          const crash = sec.locator('[data-testid="gallery-crash"]')
+          if (await crash.count()) {
+            const label = await crash.first().getAttribute('data-crash-label')
+            findings.push({ slug, state, crashes: ['CRASH: ' + (label || slug)] })
+          }
         }
       } catch (e) {
         findings.push({ slug, state, crashes: ['NAV: ' + e.message.slice(0, 80)] })

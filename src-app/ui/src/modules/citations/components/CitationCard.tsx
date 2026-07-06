@@ -85,10 +85,15 @@ export function CitationCard({
         {meta && <Text type="secondary">{meta}</Text>}
         {entry.doi && (
           <Paragraph className="m-0">
+            {/* break-all so a long DOI wraps inside the card instead of
+                overflowing its right edge on a narrow (mobile) viewport —
+                DOIs are unbroken `/`- and `.`-joined strings with no natural
+                wrap opportunities. */}
             <a
               href={`https://doi.org/${entry.doi}`}
               target="_blank"
               rel="noreferrer"
+              className="break-all"
             >
               doi:{entry.doi}
             </a>

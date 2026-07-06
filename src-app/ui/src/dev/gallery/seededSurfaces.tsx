@@ -776,6 +776,40 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       )
     },
   },
+  // ── /hardware-monitor cold-load ERROR. The metrics shadow above seeds a full
+  // snapshot so it can only ever show the loaded charts; the error branch
+  // (`hardwareError && !hardwareInfo` → ErrorState) is otherwise unreachable in
+  // the gallery because the shadow owns the `hardware-monitor` slug. Seed a
+  // load failure (no hardwareInfo) so the real ErrorState is reviewable. ───────
+  {
+    slug: 'seeded-hardware-monitor-error',
+    title: 'Hardware monitor — load error',
+    note: 'hardwareError && !hardwareInfo → the in-place "Couldn\'t load hardware monitor" ErrorState (the cold hardware-info GET failed).',
+    path: '/hardware-monitor',
+    initialPath: '/hardware-monitor',
+    component: lazyNamed(
+      () => import('@/modules/hardware/HardwareMonitor'),
+      'HardwareMonitor',
+    ),
+    setup: async () => {
+      const { Hardware } = await import('@/modules/hardware/Hardware.store')
+      // holdPatch re-asserts the failure so the store's init loadHardwareInfo()
+      // (which succeeds against the loaded cassette) can't clobber it back to a
+      // healthy state.
+      await holdPatch(() =>
+        Hardware.store.setState({
+          hardwareInfo: null,
+          hardwareInitialized: false,
+          hardwareLoading: false,
+          hardwareError: 'Internal server error',
+          currentUsage: null,
+          usageLoading: false,
+          sseConnected: false,
+          sseConnecting: false,
+        } as any),
+      )
+    },
+  },
   // ── SHADOW: /auth/link-account form. The page shows a "Missing link token"
   // error banner whenever `?link_token=` is absent — which is EVERY enumerated
   // state (the route carries no token), so the review saw the error banner

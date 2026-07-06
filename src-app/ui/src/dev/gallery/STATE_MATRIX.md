@@ -8,7 +8,7 @@
 ## Summary
 
 - **307** surfaces carry at least one renderable-state signal.
-- **1706** signals total: 1325 branch, 108 empty, 94 error, 93 loading, 84 overlay, 2 panel.
+- **1707** signals total: 1325 branch, 109 empty, 94 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -129,8 +129,8 @@ Required states: `delayed`
 |---|---|---|
 | branch | `(title != null \|\| extra != null)` | 39 |
 | branch | `title != null` | 41 |
-| loading | `skeleton` | 50 |
-| branch | `footer != null` | 60 |
+| loading | `skeleton` | 56 |
+| branch | `footer != null` | 66 |
 
 ### `components/ui/kit/checkbox`
 
@@ -2197,22 +2197,22 @@ Required states: `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!platform \|\| !arch` | 88 |
-| branch | `isChecking && !updateCheck` | 157 |
-| branch | `updateError && !updateCheck` | 159 |
-| branch | `!updateCheck` | 169 |
-| empty | `readyUpstream.length === 0` | 173 |
-| branch | `readyUpstream.length > 10` | 188 |
-| branch | `loadingGpu && !gpu` | 207 |
-| branch | `!gpu` | 215 |
-| branch | `loadingGpu && !gpu` | 233 |
-| branch | `!gpu` | 241 |
-| branch | `v.size_bytes != null && !v.installed` | 285 |
-| branch | `isLatest` | 290 |
-| branch | `v.installed` | 291 |
-| branch | `v.prerelease` | 292 |
-| branch | `progress` | 311 |
-| error | `failed && progress?.error` | 312 |
+| branch | `!platform \|\| !arch` | 97 |
+| branch | `isChecking && !updateCheck` | 166 |
+| branch | `updateError && !updateCheck` | 168 |
+| branch | `!updateCheck` | 178 |
+| empty | `readyUpstream.length === 0` | 182 |
+| branch | `readyUpstream.length > 10` | 197 |
+| branch | `loadingGpu && !gpu` | 216 |
+| branch | `!gpu` | 224 |
+| branch | `loadingGpu && !gpu` | 242 |
+| branch | `!gpu` | 250 |
+| branch | `v.size_bytes != null && !v.installed` | 294 |
+| branch | `isLatest` | 299 |
+| branch | `v.installed` | 300 |
+| branch | `v.prerelease` | 301 |
+| branch | `progress` | 320 |
+| error | `failed && progress?.error` | 321 |
 
 ### `modules/llm-local-runtime/components/InstalledVersionsCard`
 
@@ -2560,11 +2560,11 @@ Required states: `empty`, `error`
 | branch | `repo?.built_in` | 99 |
 | error | `error && repositories.length === 0` | 228 |
 | empty | `repositories.length === 0` | 238 |
-| branch | `repository.built_in` | 258 |
-| branch | `!repository.enabled` | 263 |
-| branch | `repository.last_health_check_status === 'unhealthy'` | 301 |
-| branch | `index < repositories.length - 1` | 324 |
-| branch | `totalRepositories > 0` | 333 |
+| branch | `repository.built_in` | 263 |
+| branch | `!repository.enabled` | 268 |
+| branch | `repository.last_health_check_status === 'unhealthy'` | 306 |
+| branch | `index < repositories.length - 1` | 329 |
+| branch | `totalRepositories > 0` | 338 |
 
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
@@ -3617,12 +3617,13 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| overlay | `<Confirm open>` | 113 |
-| branch | `loadingUsers` | 235 |
-| empty | `users.length === 0` | 237 |
-| branch | `usersError` | 238 |
-| branch | `index < users.length - 1` | 290 |
-| branch | `users.length > 0` | 296 |
+| empty | `users.length === 0` | 66 |
+| overlay | `<Confirm open>` | 119 |
+| branch | `loadingUsers` | 241 |
+| empty | `users.length === 0` | 243 |
+| branch | `usersError` | 244 |
+| branch | `index < users.length - 1` | 296 |
+| branch | `users.length > 0` | 302 |
 
 ### `modules/web-search/components/WebSearchGlobalSection`
 
