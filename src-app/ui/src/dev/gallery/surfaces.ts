@@ -17,8 +17,12 @@
  * new surface class can never again be missed by one tool but not another.
  */
 import { OVERLAY_ENTRIES } from './overlays'
-import { DEEP_STATE_SLUGS } from './deepStates'
-import { SEEDED_SURFACE_SLUGS } from './seededSurfaces'
+import { DEEP_STATE_ENTRIES, DEEP_STATE_SLUGS } from './deepStates'
+import { SEEDED_SURFACE_ENTRIES, SEEDED_SURFACE_SLUGS } from './seededSurfaces'
+import {
+  type InteractionManifestEntry,
+  buildInteractionManifest,
+} from './interactions'
 
 export interface GallerySurfaceClasses {
   /** Data-state pages (browse canvas) — driven via `?surface=&state=`. */
@@ -29,12 +33,24 @@ export interface GallerySurfaceClasses {
   deep: string[]
   /** Seeded real-component surfaces — driven via `?surface=<slug>`. */
   seeded: string[]
+  /** Interaction recipes — driven via `?surface=<slug>&interact=<name>`; each is a
+   *  post-mount user action (click-to-edit, expand, focus, hover) that renders an
+   *  interaction-gated state the mount-only pass never shows. */
+  interactions: InteractionManifestEntry[]
 }
 
 /** Static (interaction-only) surface slug lists, from the entry arrays. */
 export const OVERLAY_SLUGS: string[] = OVERLAY_ENTRIES.map(o => o.slug)
 export const DEEP_SLUGS: string[] = DEEP_STATE_SLUGS
 export const SEEDED_SLUGS: string[] = SEEDED_SURFACE_SLUGS
+
+/** Flat interaction manifest across all interaction-bearing entry classes. */
+export const INTERACTION_MANIFEST: InteractionManifestEntry[] =
+  buildInteractionManifest([
+    ...OVERLAY_ENTRIES,
+    ...DEEP_STATE_ENTRIES,
+    ...SEEDED_SURFACE_ENTRIES,
+  ])
 
 /**
  * Enumerate EVERY gallery surface across all four classes. Pages are read from
@@ -61,5 +77,6 @@ export function listAllSurfaces(): GallerySurfaceClasses {
     overlays: OVERLAY_SLUGS,
     deep: DEEP_SLUGS,
     seeded: SEEDED_SLUGS,
+    interactions: INTERACTION_MANIFEST,
   }
 }

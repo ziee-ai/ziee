@@ -17,6 +17,7 @@ import { seedGallery, type AuthSeed } from './seed'
 import { setMockMode, type MockMode } from './mockApi'
 import {
   DEEP_SLUGS,
+  INTERACTION_MANIFEST,
   OVERLAY_SLUGS,
   SEEDED_SLUGS,
   listAllSurfaces,
@@ -36,6 +37,9 @@ import '@/index.css'
   DEEP_SLUGS
 ;(window as unknown as { __GALLERY_SEEDED__?: string[] }).__GALLERY_SEEDED__ =
   SEEDED_SLUGS
+;(
+  window as unknown as { __GALLERY_INTERACTIONS__?: typeof INTERACTION_MANIFEST }
+).__GALLERY_INTERACTIONS__ = INTERACTION_MANIFEST
 ;(
   window as unknown as { __GALLERY_LIST_ALL_SURFACES__?: typeof listAllSurfaces }
 ).__GALLERY_LIST_ALL_SURFACES__ = listAllSurfaces

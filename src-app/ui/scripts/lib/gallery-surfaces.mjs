@@ -29,28 +29,33 @@ export async function enumerateSurfaces(page, base) {
         overlays: r.overlays || [],
         deep: r.deep || [],
         seeded: r.seeded || [],
+        interactions: r.interactions || [],
       }
     }
     // Fallback for an older gallery bundle without the unified function.
     const overlays = window.__GALLERY_OVERLAYS__ || []
     const deep = window.__GALLERY_DEEP_STATES__ || []
     const seeded = window.__GALLERY_SEEDED__ || []
+    const interactions = window.__GALLERY_INTERACTIONS__ || []
     const special = new Set([...overlays, ...deep, ...seeded])
     const pages = Array.from(
       document.querySelectorAll('[data-testid^="gallery-page-"]'),
     )
       .map(el => (el.getAttribute('data-testid') || '').replace('gallery-page-', ''))
       .filter(id => id && !special.has(id))
-    return { pages: [...new Set(pages)], overlays, deep, seeded }
+    return { pages: [...new Set(pages)], overlays, deep, seeded, interactions }
   })
 }
 
 /**
  * Flatten the surface classes into a list of CAPTURE CELLS — one screenshot each.
  * Pages get the full data-state set (`states`); the interaction-only classes each
- * render once via `?surface=<slug>` (their single natural state).
+ * render once via `?surface=<slug>`. Each interaction recipe adds ONE MORE cell:
+ * the base surface driven through that recipe (`?surface=<slug>&interact=<name>`),
+ * shot as `<slug>__<name>.png` — the interaction-gated state the base never shows.
  *
- * Each cell: `{ slug, cls, state }` where `cls ∈ page|overlay|deep|seeded`.
+ * Each cell: `{ slug, cls, state, interact? }` where
+ * `cls ∈ page|overlay|deep|seeded|interaction`.
  */
 export function captureCells(classes, { states = ['loaded', 'empty', 'error'] } = {}) {
   const cells = []
@@ -59,6 +64,8 @@ export function captureCells(classes, { states = ['loaded', 'empty', 'error'] } 
   for (const slug of classes.overlays) cells.push({ slug, cls: 'overlay', state: 'open' })
   for (const slug of classes.deep) cells.push({ slug, cls: 'deep', state: 'deep' })
   for (const slug of classes.seeded) cells.push({ slug, cls: 'seeded', state: 'seeded' })
+  for (const it of classes.interactions || [])
+    cells.push({ slug: it.slug, cls: 'interaction', state: it.name, interact: it.name })
   return cells
 }
 
@@ -67,9 +74,10 @@ export function cellUrl(base, cell, { theme } = {}) {
   const p = new URLSearchParams()
   p.set('surface', cell.slug)
   // Only data-state pages honor `&state=`; overlays open on mount, deep/seeded
-  // seed their own transient state.
+  // seed their own transient state; interaction cells drive a named recipe.
   if (cell.cls === 'page') p.set('state', cell.state)
   else if (cell.cls === 'overlay') p.set('state', 'open')
+  if (cell.interact) p.set('interact', cell.interact)
   if (theme) p.set('theme', theme)
   return `${base}?${p.toString()}`
 }
@@ -80,6 +88,7 @@ export function surfaceCount(classes) {
     classes.pages.length +
     classes.overlays.length +
     classes.deep.length +
-    classes.seeded.length
+    classes.seeded.length +
+    (classes.interactions || []).length
   )
 }

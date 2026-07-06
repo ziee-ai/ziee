@@ -93,6 +93,21 @@ bug-finding patterns from visual-testing prior art (Chromatic / EightShapes):
   (per-section shots never captured these).
 - **Interactive states** (`states.spec.ts`): drives real `.hover()`/`.focus()`
   on key controls, asserts the focus ring doesn't overflow, and snapshots them.
+- **Interaction recipes** (`interactions.ts`): the highest-yield addition — most
+  real UI bugs live in INTERACTION-GATED states (click-to-edit inline forms,
+  hover/focus reveals, approval prompts, expanded modes) the mount-only pass never
+  renders. An entry (overlay / deep / seeded) may carry
+  `interactions?: Array<{ name, steps: (driver) => Promise<void> }>`; the frame
+  drives that recipe after mount via `?surface=<slug>&interact=<name>`, then stamps
+  `data-gallery-interact-done`. The capture pipeline shoots `<slug>__<name>.png` and
+  the branch-coverage pass counts the now-exercised branch as delivered
+  (`via: 'interaction:<slug>'` in `stateCoverage.ts`) instead of allow-listing it.
+  The driver is pure DOM (portable across Playwright captures + a human opening the
+  same URL in the vite gallery). **Interaction-gated branches are no longer
+  allow-listable when driveable** — see `DEFECT_TAXONOMY.md` process rule 6.
+  Priority recipes: chat-header rename (the A10 collapsed-input bug), provider-name
+  rename, tool-call expand → error panel, message hover/focus actions, form
+  focus-ring (G7) + submit-invalid (G6), tool-approval prompt.
 - **Full Button matrix** (variant × size + per-variant disabled/loading),
   **Tabs editable** (add/close cards), **Tree checkable**, and the 8 components
   the audit found missing (Space, Layout, ScrollArea, Image, Upload, Attachment,

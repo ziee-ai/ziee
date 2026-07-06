@@ -19,6 +19,7 @@ import { Loading } from '@/core/components/Loading'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
+import { type InteractionRecipe, useRunInteraction } from './interactions'
 import {
   BRANCHED_ANCHOR_MESSAGE_ID,
   BRANCHED_BRANCH_IDS,
@@ -46,6 +47,10 @@ export interface DeepStateEntry {
   note: string
   /** Seed the transient state through the real store (runs after mount). */
   setup?: () => void | Promise<void>
+  /** Interaction recipes: drive real user actions after mount to render the
+   *  interaction-gated states (click-to-edit, expand, hover) this surface hides
+   *  behind a click. Driven via `?surface=<slug>&interact=<name>`. */
+  interactions?: InteractionRecipe[]
 }
 
 const chat = () => useChatStore.getState()
@@ -162,6 +167,43 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
         error: 'Tool call failed: exit code 1.',
       })
     },
+    interactions: [
+      {
+        // The tool-call card's error Alert + expanded detail panel render ONLY
+        // inside `{isExpanded && …}` (mcp/chat-extension/extension.tsx:112) — a
+        // click on the details chevron. This is exactly the interaction the
+        // coverage-allowlist excused for extension.tsx:132/133; the recipe drives
+        // it so the branch is exercised (de-allowlisted) + the expanded state shot.
+        name: 'expand-details',
+        note: 'click the tool-call details chevron → the expanded error Alert + arguments panel (extension.tsx:112/132/133)',
+        steps: async d => {
+          await d.click('mcp-toolcall-details-btn-toolu_failed_1')
+          await d.wait(300)
+        },
+      },
+    ],
+  },
+  {
+    // Priority "must render" state: the inline tool-approval prompt. Seeding a
+    // McpComposer toolCall in `pending_approval` for the running conversation's
+    // tool_use block makes McpToolCallUI render ToolCallPendingApprovalContent —
+    // the "Tool Approval Required" Alert + approve/deny buttons (a state the
+    // mount-only pass never showed; the C9/C10 icon-alignment bug family lives here).
+    slug: 'deep-chat-tool-approval',
+    title: 'Conversation — tool approval pending',
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.toolRunning,
+    note: 'McpComposer toolCall in pending_approval → the inline "Tool Approval Required" prompt (approve-once / approve-conv / deny)',
+    setup: async () => {
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolRunning)
+      useMcpComposerStore.getState().addToolCall({
+        tool_use_id: 'toolu_running_1',
+        server: 'code_sandbox',
+        server_id: 'a1b2c3d4-0000-5000-8000-000000000001',
+        tool_name: 'execute_command',
+        status: 'pending_approval',
+        input: { command: 'ls -la /workspace' },
+      })
+    },
   },
   {
     slug: 'deep-chat-attachments',
@@ -240,6 +282,32 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
     conversationId: SHOWCASE_CONVERSATION_ID,
     note: '47-message showcase history — scroll + lazy-preview behavior',
     setup: () => whenLoaded(SHOWCASE_CONVERSATION_ID),
+    interactions: [
+      {
+        // THE flagship interaction bug: the conversation-header inline rename form.
+        // Clicking the pencil sets TitleEditor.isEditing → the `<Form>` swaps in.
+        // KNOWN BUG (A10): the inline rename form renders VERTICAL and the input
+        // collapses to invisible width — a state the mount-only pass never showed.
+        name: 'rename',
+        note: 'click the header edit pencil → the inline rename Form (A10: input collapses to invisible width / vertical layout)',
+        steps: async d => {
+          await d.click('chat-title-edit-btn')
+          await d.waitFor('chat-title-input', 3000)
+          await d.wait(300)
+        },
+      },
+      {
+        // MessageActions is `opacity-0 group-hover/group-focus-within:opacity-100`.
+        // A synthetic pointer event can't fire CSS :hover, but focusing a button in
+        // the row triggers `focus-within` → the same reveal (G2 hover/G7 focus ring).
+        name: 'message-actions',
+        note: 'focus a message action → the hover/focus-revealed action row (copy / edit / regenerate) becomes visible',
+        steps: async d => {
+          await d.focus('chat-message-copy-btn')
+          await d.wait(300)
+        },
+      },
+    ],
   },
 ]
 
@@ -256,6 +324,9 @@ export function DeepStateFrame({ entry }: { entry: DeepStateEntry }): ReactNode 
   useEffect(() => {
     void entry.setup?.()
   }, [entry])
+  // Deep surfaces need their seed + the lazy ConversationPage to settle before an
+  // interaction can find its target, so give the recipe a longer settle window.
+  useRunInteraction(entry.interactions, 1200)
   return (
     <section
       data-testid={deepTestId(entry.slug)}

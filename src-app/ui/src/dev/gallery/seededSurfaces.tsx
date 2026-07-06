@@ -31,6 +31,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { Text, Title } from '@/components/ui'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { Loading } from '@/core/components/Loading'
+import { useRunInteraction } from './interactions'
 import {
   type SeededSurfaceEntry,
   lazyCompose,
@@ -98,8 +99,51 @@ async function seedProjectDetail(patch: {
   })
 }
 
+const RENAME_PROVIDER = llmProvidersList.providers[0]
+
 /** Integrator-owned entries (batches 1-3). Shard entries are concatenated below. */
 const integratorSeeded: SeededSurfaceEntry[] = [
+  // ── ProviderHeader inline RENAME form — an INTERACTION-gated surface. The header
+  //    renders the name as a Title with an edit (pencil) button; clicking it swaps
+  //    in the inline `layout="inline"` rename Form. The `rename` recipe drives that
+  //    click so the capture pass shoots the inline form (the A10 collapsed-input /
+  //    vertical-form bug family — same as chat TitleEditor). ──────────────────────
+  {
+    slug: 'seeded-interact-provider-header',
+    title: 'Provider header — inline rename (interaction)',
+    note: 'click the edit pencil → the inline provider-name rename form (A10 / vertical-form bug family)',
+    path: '/settings/llm-providers/:providerId',
+    initialPath: `/settings/llm-providers/${RENAME_PROVIDER?.id ?? 'p1'}`,
+    component: lazyNamed(
+      () => import('@/modules/llm-provider/components/ProviderHeader'),
+      'ProviderHeader',
+    ),
+    setup: async () => {
+      const { LlmProviderStoreDef } = await import(
+        '@/modules/llm-provider/stores/LlmProvider.store'
+      )
+      // Keep the provider seeded so ProviderHeader's find(id) resolves through the
+      // recipe's click (holdForever: the lazy chunk may mount after a fixed hold).
+      holdForever(() =>
+        LlmProviderStoreDef.store.setState({
+          providers: llmProvidersList.providers,
+          loading: false,
+          isInitialized: true,
+        } as any),
+      )
+    },
+    interactions: [
+      {
+        name: 'rename',
+        note: 'click edit → inline rename form appears (renders the collapsed-input / vertical-form bug visible)',
+        steps: async d => {
+          await d.click('llm-provider-header-edit-name-btn')
+          await d.waitFor('llm-provider-header-name-input', 3000)
+          await d.wait(300)
+        },
+      },
+    ],
+  },
   // ── FULL-PAGE ProjectDetailPage — the priority life-science surface. The
   // enumerated `/projects/:projectId` page renders from a thin cassette (no
   // conversations, no files); these seed the REAL ProjectDetail + ProjectFiles
@@ -973,6 +1017,7 @@ export function SeededSurfaceFrame({
   useEffect(() => {
     void entry.setup?.()
   }, [entry])
+  useRunInteraction(entry.interactions, 1200)
   const Component = entry.component
   return (
     <section
