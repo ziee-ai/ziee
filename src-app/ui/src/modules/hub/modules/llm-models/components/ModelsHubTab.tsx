@@ -1,6 +1,6 @@
 import { Eraser, Search } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { MultiSelect, Select, Text, Button, Input } from '@/components/ui'
+import { MultiSelect, Select, Text, Button, Input, ErrorState } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
@@ -79,12 +79,14 @@ export function ModelsHubTab() {
   // Show error state
   if (error && models.length === 0) {
     return (
-      <div className="text-center py-12">
-        <Text type="danger">Failed to load models: {error}</Text>
-        <div className="mt-4">
-          <Button onClick={() => Stores.HubModels.loadModels()} data-testid="hub-models-retry-btn">Retry</Button>
-        </div>
-      </div>
+      <ErrorState
+        variant="page"
+        resource="hub models"
+        description="The hub catalog couldn't be loaded. Check your connection and try again."
+        details={error}
+        onRetry={() => Stores.HubModels.loadModels()}
+        data-testid="hub-models-error"
+      />
     )
   }
 

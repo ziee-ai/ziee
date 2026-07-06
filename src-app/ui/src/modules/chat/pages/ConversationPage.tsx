@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { Alert } from '@/components/ui'
+import { Alert, ErrorState } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { MessageList } from '@/modules/chat/components/MessageList'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
@@ -104,16 +104,31 @@ export default function ConversationPage() {
     )
   }
 
-  // Error state
+  // No conversation to show. A load FAILURE (the store set `error`) is a
+  // transient/permission problem → offer a persistent retry, not the misleading
+  // "deleted" copy. A clean miss (no error) is a genuine not-found.
   if (!loading && !conversation) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
-        <Alert
-          data-testid="chat-conversation-not-found-alert"
-          tone="error"
-          title="Conversation not found"
-          description="This conversation may have been deleted or you don't have access to it."
-        />
+        {error ? (
+          <ErrorState
+            resource="conversation"
+            description="This conversation couldn't be loaded. Check your connection and try again."
+            details={error}
+            onRetry={() =>
+              conversationId && Stores.Chat.loadConversation(conversationId)
+            }
+            className="max-w-md"
+            data-testid="chat-conversation-error"
+          />
+        ) : (
+          <Alert
+            data-testid="chat-conversation-not-found-alert"
+            tone="error"
+            title="Conversation not found"
+            description="This conversation may have been deleted or you don't have access to it."
+          />
+        )}
       </div>
     )
   }

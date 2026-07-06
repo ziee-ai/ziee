@@ -162,24 +162,24 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isTunneledView` | 118 |
-| loading | `loading && !status` | 145 |
-| branch | `!status` | 153 |
-| error | `error` | 185 |
-| branch | `status.auth_token_set` | 237 |
-| branch | `status.ngrok_domain` | 282 |
-| branch | `!tunnelReady` | 338 |
-| branch | `tunnelReady && !tunnelConnected` | 346 |
-| branch | `status.auto_start_tunnel && status.last_error` | 348 |
-| branch | `!status.auto_start_tunnel && status.last_error` | 370 |
-| branch | `tunnelConnected && status.public_url` | 378 |
-| branch | `magicLink` | 399 |
-| branch | `status.password_auth_enabled` | 423 |
-| branch | `v.new_password !== v.confirm` | 499 |
-| branch | `v && needsRotationToEnable` | 533 |
-| branch | `status.password_auth_enabled && status.password_rotated` | 556 |
-| branch | `showChangePassword` | 567 |
-| branch | `needsRotationToEnable` | 574 |
+| branch | `isTunneledView` | 122 |
+| loading | `loading && !status` | 146 |
+| branch | `!status` | 154 |
+| error | `error` | 186 |
+| branch | `status.auth_token_set` | 239 |
+| branch | `status.ngrok_domain` | 293 |
+| branch | `!tunnelReady` | 363 |
+| branch | `tunnelReady && !tunnelConnected` | 371 |
+| branch | `status.auto_start_tunnel && status.last_error` | 373 |
+| branch | `!status.auto_start_tunnel && status.last_error` | 395 |
+| branch | `tunnelConnected && status.public_url` | 404 |
+| branch | `magicLink` | 425 |
+| branch | `status.password_auth_enabled` | 459 |
+| branch | `v.new_password !== v.confirm` | 538 |
+| branch | `v && needsRotationToEnable` | 579 |
+| branch | `status.password_auth_enabled && status.password_rotated` | 601 |
+| branch | `showChangePassword` | 612 |
+| branch | `needsRotationToEnable` | 619 |
 
 ### `modules/settings/SettingsPage`
 

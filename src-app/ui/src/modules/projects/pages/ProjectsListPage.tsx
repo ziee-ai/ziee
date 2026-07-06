@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Spin, Text, Title, message } from '@/components/ui'
+import { Button, Spin, Text, Title, message, ErrorState } from '@/components/ui'
 import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -31,14 +31,15 @@ export function ProjectsListPage() {
     action: 'duplicate' | 'delete'
   } | null>(null)
 
-  // Surface mutation/load failures to the user before clearing, so a
-  // failed duplicate/delete isn't swallowed silently.
+  // Toast only user-action failures (a failed duplicate/delete against
+  // already-loaded data). A failed initial LOAD renders as a persistent
+  // ErrorState below, not toast-only.
   useEffect(() => {
-    if (error) {
+    if (error && projects.length > 0) {
       message.error(error)
       Stores.Projects.clearProjectsError()
     }
-  }, [error])
+  }, [error, projects.length])
 
   const handleCreate = () => Stores.ProjectDrawer.openProjectDrawer(null)
   const handleEdit = (project: Project) =>
@@ -136,6 +137,16 @@ export function ProjectsListPage() {
         ) : loading ? (
           <div className="flex justify-center py-12 m-auto">
             <Spin label="Loading projects" />
+          </div>
+        ) : error ? (
+          <div className="w-full max-w-4xl m-auto px-3 py-12">
+            <ErrorState
+              resource="projects"
+              description="Your projects couldn't be loaded. Check your connection and try again."
+              details={error}
+              onRetry={() => void Stores.Projects.loadProjects(true)}
+              data-testid="project-list-error"
+            />
           </div>
         ) : (
           <div className="text-center py-12 m-auto" data-testid="project-list-empty">

@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Progress, Spin, Tag, Text, message } from '@/components/ui'
+import { Button, Card, ErrorState, Progress, Spin, Tag, Text, message } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
@@ -29,9 +29,12 @@ export function HardwareMonitor() {
     }
   }, [])
 
-  // Show errors
+  // A primary hardware-info LOAD failure renders as a persistent ErrorState
+  // below (not toast-only); only toast a hardware error while info is already
+  // shown (a refresh). Live-monitoring errors keep their toast — the
+  // connection-status card is their persistent surface.
   useEffect(() => {
-    if (hardwareError) {
+    if (hardwareError && hardwareInfo) {
       message.error(`Hardware Error: ${hardwareError}`)
     }
     if (usageError) {
@@ -40,7 +43,7 @@ export function HardwareMonitor() {
     if (sseError) {
       message.error(`Connection Error: ${sseError}`)
     }
-  }, [hardwareError, usageError, sseError])
+  }, [hardwareError, usageError, sseError, hardwareInfo])
 
   const handleManualConnect = async () => {
     try {
@@ -143,11 +146,12 @@ export function HardwareMonitor() {
   if (hardwareError && !hardwareInfo) {
     return (
       <div className="p-3">
-        <Alert
-          data-testid="hardware-unavailable-alert"
-          title="Hardware Monitor Unavailable"
-          description={hardwareError}
-          tone="error"
+        <ErrorState
+          resource="hardware monitor"
+          description="Your hardware information couldn't be loaded. Check your connection and try again."
+          details={hardwareError}
+          onRetry={() => void Stores.Hardware.loadHardwareInfo()}
+          data-testid="hardware-monitor-error"
         />
       </div>
     )

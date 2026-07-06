@@ -1,4 +1,4 @@
-import { Alert, Spin } from '@/components/ui'
+import { ErrorState, Spin } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { WebSearchGlobalSection } from './WebSearchGlobalSection'
@@ -28,20 +28,31 @@ export function WebSearchSettingsPage() {
       </SettingsPageContainer>
     )
   }
+  // Primary load failed (no settings to show) → replace the sections with a
+  // persistent, retryable ErrorState instead of a raw-error banner stacked
+  // above empty sections.
+  if (error && !settings) {
+    return (
+      <SettingsPageContainer
+        title="Web Search"
+        subtitle="Configure web search + page fetch: the provider fallback chain, API keys, and request caps. Connected-only — fetched/searched content is treated as untrusted data."
+      >
+        <ErrorState
+          variant="page"
+          resource="web search settings"
+          description="The web search settings couldn't be loaded. Check your connection and try again."
+          details={error}
+          onRetry={() => void Stores.WebSearchAdmin.load()}
+          data-testid="websearch-settings-error"
+        />
+      </SettingsPageContainer>
+    )
+  }
   return (
     <SettingsPageContainer
       title="Web Search"
       subtitle="Configure web search + page fetch: the provider fallback chain, API keys, and request caps. Connected-only — fetched/searched content is treated as untrusted data."
     >
-      {error && (
-        <Alert
-          data-testid="websearch-settings-error-alert"
-          tone="error"
-          title="Failed to load web search settings"
-          description={error}
-          className="mb-3"
-        />
-      )}
       <WebSearchGlobalSection />
       <WebSearchProvidersSection />
     </SettingsPageContainer>

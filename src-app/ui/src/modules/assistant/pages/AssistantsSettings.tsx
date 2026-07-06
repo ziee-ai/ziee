@@ -9,6 +9,7 @@ import {
   Tag,
   Text,
   message,
+  ErrorState,
 } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
@@ -34,13 +35,15 @@ export function AssistantsSettings() {
   const canEdit = usePermission(Permissions.AssistantsTemplateEdit)
   const canDelete = usePermission(Permissions.AssistantsTemplateDelete)
 
-  // Show errors
+  // Toast only user-action failures (a mutation against already-loaded data).
+  // A load failure renders as a persistent ErrorState below, so it must NOT be
+  // toast-only.
   useEffect(() => {
-    if (error) {
+    if (error && assistants.length > 0) {
       message.error(error)
       Stores.TemplateAssistants.clearTemplateAssistantsStoreError()
     }
-  }, [error, message])
+  }, [error, assistants.length])
 
   const handleDelete = async (assistant: Assistant) => {
     try {
@@ -127,9 +130,24 @@ export function AssistantsSettings() {
           {loading ? (
             <Loading />
           ) : assistants.length === 0 ? (
-            <div>
-              <Empty data-testid="template-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />
-            </div>
+            error ? (
+              <ErrorState
+                resource="assistant templates"
+                description="The template assistants couldn't be loaded. Check your connection and try again."
+                details={error}
+                onRetry={() =>
+                  Stores.TemplateAssistants.loadTemplateAssistants(
+                    storePage,
+                    storePageSize,
+                  )
+                }
+                data-testid="template-assistants-error"
+              />
+            ) : (
+              <div>
+                <Empty data-testid="template-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />
+              </div>
+            )
           ) : (
             <div>
               {assistants.map((assistant, index) => (

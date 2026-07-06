@@ -7,6 +7,7 @@ import {
   Title,
   Flex,
   message,
+  ErrorState,
 } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
@@ -33,13 +34,14 @@ export function LlmProviderSettings() {
 
   const currentProvider = providers.find(p => p.id === providerId)
 
-  // Show errors
+  // Toast only user-action failures (a mutation against already-loaded data).
+  // A failed LOAD renders as a persistent ErrorState below, not toast-only.
   useEffect(() => {
-    if (error) {
+    if (error && providers.length > 0) {
       message.error(error)
       Stores.LlmProvider.clearLlmProviderStoreError()
     }
-  }, [error])
+  }, [error, providers.length])
 
   // Handle URL parameter and provider selection
   useEffect(() => {
@@ -137,6 +139,18 @@ export function LlmProviderSettings() {
     if (loading) {
       return (
         <Loading />
+      )
+    }
+
+    if (error && providers.length === 0) {
+      return (
+        <ErrorState
+          resource="LLM providers"
+          description="Your LLM providers couldn't be loaded. Check your connection and try again."
+          details={error}
+          onRetry={() => void Stores.LlmProvider.loadLlmProviders(true)}
+          data-testid="llm-provider-settings-error"
+        />
       )
     }
 

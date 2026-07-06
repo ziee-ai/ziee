@@ -5,6 +5,7 @@ import {
   Card,
   Confirm,
   Empty,
+  ErrorState,
   Flex,
   Separator,
   Spin,
@@ -162,32 +163,31 @@ export function AuthProvidersListSection() {
           </Can>
         }
       >
-        {error && (
-          <Alert
-            tone="error"
-            data-testid="authprov-list-error-alert"
-            title={error}
-            onClose={() => {}}
-            closeLabel="Close"
-            className="mb-3"
-          />
-        )}
-
         {loading && providers.length === 0 ? (
           <div className="flex justify-center py-6">
             <Spin label="Loading" />
           </div>
         ) : providers.length === 0 ? (
-          <Empty
-            data-testid="authprov-empty"
-            description="No providers yet"
-            image={<Lock className="text-4xl opacity-50" />}
-          >
-            <Text type="secondary">
-              Use the + button to add Google, Microsoft, Apple, or a custom
-              OIDC IdP.
-            </Text>
-          </Empty>
+          error ? (
+            <ErrorState
+              resource="auth providers"
+              description="The configured providers couldn't be loaded. Check your connection and try again."
+              details={error}
+              onRetry={() => void Stores.AuthProvidersAdmin.loadProviders()}
+              data-testid="authprov-list-error"
+            />
+          ) : (
+            <Empty
+              data-testid="authprov-empty"
+              description="No providers yet"
+              image={<Lock className="text-4xl opacity-50" />}
+            >
+              <Text type="secondary">
+                Use the + button to add Google, Microsoft, Apple, or a custom
+                OIDC IdP.
+              </Text>
+            </Empty>
+          )
         ) : (
           <Flex className="flex-col gap-4">
             <div>

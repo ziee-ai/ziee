@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   Empty,
+  ErrorState,
   Progress,
   Result,
   Separator,
@@ -159,6 +160,41 @@ const alertStory: GalleryStory = {
             title="Closable"
             closeLabel="Dismiss"
             onClose={noop}
+          />
+        </div>
+      ),
+    },
+  ],
+}
+
+const errorStateStory: GalleryStory = {
+  id: 'error-state',
+  title: 'ErrorState',
+  cases: [
+    {
+      key: 'variants',
+      label: 'Inline + page',
+      render: () => (
+        <div className="flex flex-col gap-4 w-96">
+          <ErrorState
+            data-testid="g-error-state-inline"
+            resource="citations"
+            description="Your bibliography couldn't be loaded. Check your connection and try again."
+            details={'GALLERY_ERROR: request failed with status 500'}
+            onRetry={noop}
+          />
+          <ErrorState
+            data-testid="g-error-state-noretry"
+            resource="hardware information"
+            description="Hardware monitoring isn't available on this host."
+          />
+          <ErrorState
+            data-testid="g-error-state-page"
+            variant="page"
+            resource="web search settings"
+            description="The web search settings couldn't be loaded. Check your connection and try again."
+            details={'GALLERY_ERROR: request failed with status 500'}
+            onRetry={noop}
           />
         </div>
       ),
@@ -529,6 +565,7 @@ export const displayStories: GalleryStory[] = [
   tagStory,
   badgeStory,
   alertStory,
+  errorStateStory,
   avatarStory,
   progressStory,
   spinnerStory,

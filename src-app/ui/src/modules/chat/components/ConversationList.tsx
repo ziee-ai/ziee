@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Alert, Card, Button, Text, Empty, Flex, Confirm, Input, message } from '@/components/ui'
+import { Card, Button, Text, Empty, ErrorState, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
@@ -24,7 +24,6 @@ interface ConversationListProps {
 export function ConversationList({ getSearchBoxContainer }: ConversationListProps) {
   const [, forceRender] = useState({})
   const [localSearchQuery, setLocalSearchQuery] = useState('')
-  const [errorDismissed, setErrorDismissed] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
   const { nativeScroll } = Stores.AppLayout
 
@@ -48,13 +47,6 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
       forceRender({})
     }
   }, [getSearchBoxContainer])
-
-  // Reset dismiss state when a new error arrives
-  useEffect(() => {
-    if (error) {
-      setErrorDismissed(false)
-    }
-  }, [error])
 
   // Debounce search query
   useEffect(() => {
@@ -183,33 +175,32 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
           </div>
         )}
 
-        {/* Inline error display */}
-        {error && !errorDismissed && (
-          <div className="px-3">
-            <Alert
-              data-testid="chat-history-error-alert"
-              tone="error"
-              title={error}
-              onClose={() => setErrorDismissed(true)}
-              closeLabel="Dismiss"
-            />
-          </div>
-        )}
-
         {/* Conversation list */}
         <DivScrollY nativeFlow className="flex-1 w-full flex-col !py-3 overflow-x-visible">
           <div className="gap-2 max-w-4xl w-full self-center overflow-x-visible">
             {visibleConversations.length === 0 && !loading ? (
-              <Card data-testid="chat-history-empty-card" className="!mx-3">
-                <Empty
-                  data-testid="chat-history-empty"
-                  description={
-                    searchQuery
-                      ? 'No conversations found matching your search'
-                      : 'No chat history yet'
-                  }
-                />
-              </Card>
+              error ? (
+                <div className="px-3">
+                  <ErrorState
+                    resource="chat history"
+                    description="Your chat history couldn't be loaded. Check your connection and try again."
+                    details={error}
+                    onRetry={() => Stores.ChatHistory.loadConversations()}
+                    data-testid="chat-history-error"
+                  />
+                </div>
+              ) : (
+                <Card data-testid="chat-history-empty-card" className="!mx-3">
+                  <Empty
+                    data-testid="chat-history-empty"
+                    description={
+                      searchQuery
+                        ? 'No conversations found matching your search'
+                        : 'No chat history yet'
+                    }
+                  />
+                </Card>
+              )
             ) : (
               <div className="space-y-3 overflow-x-visible">
                 {loading && !isInitialized ? (
