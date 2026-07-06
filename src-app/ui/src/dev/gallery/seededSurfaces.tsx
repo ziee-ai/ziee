@@ -16,97 +16,31 @@
  * exact channel deepStates/overlays already use. Driven one-per-page-load via
  * `?surface=<slug>` so each seeded singleton store never bleeds across entries.
  */
-import {
-  type ComponentType,
-  type LazyExoticComponent,
-  type ReactNode,
-  Suspense,
-  lazy,
-  useEffect,
-} from 'react'
+import { type ReactNode, Suspense, useEffect } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { Text, Title } from '@/components/ui'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { Loading } from '@/core/components/Loading'
+import {
+  type SeededSurfaceEntry,
+  lazyCompose,
+  lazyNamed,
+  lazyProps,
+  holdPatch,
+  whenTrue,
+} from './seeded/helpers'
+// Per-shard entry lists (parallel grind). Each shard owns ONLY its own file;
+// this aggregator is integrator-owned. Add a shard import + spread below.
+import { shard1Seeded } from './seeded/shard1'
+import { shard2Seeded } from './seeded/shard2'
+import { shard3Seeded } from './seeded/shard3'
+import { shard4Seeded } from './seeded/shard4'
+import { shard5Seeded } from './seeded/shard5'
 
-export interface SeededSurfaceEntry {
-  /** Gallery slug → `?surface=<slug>`; also the section testid. */
-  slug: string
-  /** Human title for the frame. */
-  title: string
-  /** One-line note about the seeded state this reaches. */
-  note: string
-  /** Route path the component is mounted under (for useParams/useNavigate). */
-  path: string
-  /** Concrete initial path (params filled). */
-  initialPath: string
-  /** The real component to render. */
-  component: LazyExoticComponent<ComponentType>
-  /** Seed the transient state through the real store (runs after mount). */
-  setup?: () => void | Promise<void>
-}
+export type { SeededSurfaceEntry }
 
-const lazyNamed = (loader: () => Promise<any>, name: string) =>
-  lazy(() => loader().then(m => ({ default: m[name] })))
-
-/** Lazy-load a named export and render it with fixed props (for prop-taking components). */
-const lazyProps = (
-  loader: () => Promise<any>,
-  name: string,
-  props: Record<string, unknown>,
-): LazyExoticComponent<ComponentType> =>
-  lazy(async () => {
-    const C = (await loader())[name] as ComponentType<any>
-    return { default: () => <C {...props} /> }
-  })
-
-/** Compose several named exports into one rendered column (for multi-section pages). */
-const lazyCompose = (
-  parts: { loader: () => Promise<any>; name: string }[],
-): LazyExoticComponent<ComponentType> =>
-  lazy(async () => {
-    const mods = await Promise.all(parts.map(p => p.loader()))
-    const Comps = mods.map((m, i) => m[parts[i].name] as ComponentType)
-    return {
-      default: () => (
-        <div className="flex flex-col gap-4 p-4">
-          {Comps.map((C, i) => (
-            <C key={i} />
-          ))}
-        </div>
-      ),
-    }
-  })
-
-const tick = (ms = 80) => new Promise(r => setTimeout(r, ms))
-
-/** Poll until `pred()` is true (store finished its loaded-cassette load), capped. */
-export async function whenTrue(pred: () => boolean, tries = 60): Promise<void> {
-  for (let i = 0; i < tries; i++) {
-    if (pred()) return
-    await tick(60)
-  }
-}
-
-/**
- * Re-apply a store patch a few times over ~1.2s. Stores auto-load on init and
- * some re-subscribe, so a one-shot `setState` seed can be clobbered by a
- * late-arriving load (which resets `error`/`loading`). Re-asserting the patch
- * keeps the seeded branch rendered long enough to be both DOM-visible and — more
- * importantly — counted by the istanbul render pass.
- */
-export async function holdPatch(
-  apply: () => void,
-  times = 10,
-  gap = 250,
-): Promise<void> {
-  for (let i = 0; i < times; i++) {
-    apply()
-    await tick(gap)
-  }
-}
-
-export const SEEDED_SURFACE_ENTRIES: SeededSurfaceEntry[] = [
+/** Integrator-owned entries (batches 1-3). Shard entries are concatenated below. */
+const integratorSeeded: SeededSurfaceEntry[] = [
   // ── file_rag admin: 5 section cards share Stores.FileRagAdmin. Once settings
   // load, seeding `.error` flips every section's inline save-error alert. ──────
   {
@@ -654,6 +588,15 @@ export const SEEDED_SURFACE_ENTRIES: SeededSurfaceEntry[] = [
       { runId: 'run-1', stepId: 'step-1', artifacts: [] },
     ),
   },
+]
+
+export const SEEDED_SURFACE_ENTRIES: SeededSurfaceEntry[] = [
+  ...integratorSeeded,
+  ...shard1Seeded,
+  ...shard2Seeded,
+  ...shard3Seeded,
+  ...shard4Seeded,
+  ...shard5Seeded,
 ]
 
 export const seededSurfaceBySlug = (slug: string) =>
