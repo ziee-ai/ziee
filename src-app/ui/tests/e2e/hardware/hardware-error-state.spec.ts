@@ -2,13 +2,14 @@ import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { byTestId } from '../testid'
 
-// audit id all-c72d44950b93 — the hardware error states were never triggered:
-// HardwareSettings.tsx fires `message.error("Hardware Error: …")` on a failed
-// hardware fetch (lines 56-66) AND, when there is no hardware info to show,
-// renders the "Hardware Information Unavailable" error Alert (lines 76-87).
-// We force GET /api/hardware to fail so both surfaces appear.
+// audit id all-c72d44950b93 — the hardware error state was never triggered:
+// HardwareSettings.tsx, when there is no hardware info to show, renders a
+// persistent, retryable <ErrorState> (the durable error surface). The toast is
+// now gated to a refresh failure (hardwareInfo already present), so an
+// initial-load failure surfaces the ErrorState only. We force GET /api/hardware
+// to fail so it appears.
 test.describe('Hardware settings error state', () => {
-  test('a failed hardware fetch shows the error toast and the unavailable Alert', async ({
+  test('a failed hardware fetch shows the persistent error state', async ({
     page,
     testInfra,
   }) => {
@@ -27,10 +28,11 @@ test.describe('Hardware settings error state', () => {
 
     await page.goto(`${baseURL}/settings/hardware`)
 
-    // With no hardware info to fall back on, the page renders the
-    // "Hardware Information Unavailable" error Alert (the durable error surface).
-    await expect(byTestId(page, 'hardware-settings-unavailable-alert')).toBeVisible({
+    // With no hardware info to fall back on, the page renders the persistent
+    // ErrorState (the durable error surface) with a "Try again" action.
+    await expect(byTestId(page, 'hardware-settings-error')).toBeVisible({
       timeout: 15000,
     })
+    await expect(byTestId(page, 'hardware-settings-error-retry')).toBeVisible()
   })
 })
