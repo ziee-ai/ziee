@@ -169,31 +169,46 @@ const alertStory: GalleryStory = {
 
 const errorStateStory: GalleryStory = {
   id: 'error-state',
-  title: 'ErrorState',
+  title: 'Error state',
   cases: [
     {
-      key: 'variants',
-      label: 'Inline + page',
+      key: 'inline',
+      label: 'Inline (with retry + details)',
       render: () => (
-        <div className="flex flex-col gap-4 w-96">
+        <div className="w-96">
           <ErrorState
             data-testid="g-error-state-inline"
-            resource="citations"
-            description="Your bibliography couldn't be loaded. Check your connection and try again."
-            details={'GALLERY_ERROR: request failed with status 500'}
+            resource="skills"
+            description="Something went wrong while loading your skills."
+            details="500 Internal Server Error"
             onRetry={noop}
           />
+        </div>
+      ),
+    },
+    {
+      key: 'no-retry',
+      label: 'No retry',
+      render: () => (
+        <div className="w-96">
           <ErrorState
-            data-testid="g-error-state-noretry"
-            resource="hardware information"
-            description="Hardware monitoring isn't available on this host."
+            data-testid="g-error-state-no-retry"
+            resource="the audit log"
+            description="This resource can't be re-fetched right now."
           />
+        </div>
+      ),
+    },
+    {
+      key: 'page',
+      label: 'Page variant',
+      render: () => (
+        <div className="h-72 w-full border border-border rounded-md">
           <ErrorState
             data-testid="g-error-state-page"
             variant="page"
-            resource="web search settings"
-            description="The web search settings couldn't be loaded. Check your connection and try again."
-            details={'GALLERY_ERROR: request failed with status 500'}
+            resource="the hub catalog"
+            description="We couldn't reach the hub. Check your connection and try again."
             onRetry={noop}
           />
         </div>
@@ -347,6 +362,7 @@ const emptyStory: GalleryStory = {
     },
   ],
 }
+
 
 const resultStory: GalleryStory = {
   id: 'result',
@@ -565,12 +581,12 @@ export const displayStories: GalleryStory[] = [
   tagStory,
   badgeStory,
   alertStory,
-  errorStateStory,
   avatarStory,
   progressStory,
   spinnerStory,
   statisticStory,
   emptyStory,
+  errorStateStory,
   resultStory,
   separatorStory,
   skeletonStory,

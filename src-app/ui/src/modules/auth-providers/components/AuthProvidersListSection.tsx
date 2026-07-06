@@ -195,7 +195,10 @@ export function AuthProvidersListSection() {
                 <div key={row.id} data-testid={`authprov-row-${row.id}`}>
                   <div className="flex items-start gap-3 flex-wrap">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">
+                      {/* flex-wrap (not -reverse): when the row is too narrow the
+                          action controls wrap BELOW their provider label, keeping
+                          label-then-actions order instead of floating above it. */}
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <div className="flex-1 min-w-48">
                           <Flex align="center" gap="small">
                             <Text className="font-medium">{row.name}</Text>

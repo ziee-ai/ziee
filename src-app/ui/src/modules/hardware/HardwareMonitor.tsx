@@ -13,9 +13,7 @@ export function HardwareMonitor() {
     hardwareError,
     currentUsage,
     usageLoading,
-    usageError,
     sseConnected,
-    sseError,
   } = Stores.Hardware
 
   // Initialize hardware monitoring on component mount
@@ -29,21 +27,9 @@ export function HardwareMonitor() {
     }
   }, [])
 
-  // A primary hardware-info LOAD failure renders as a persistent ErrorState
-  // below (not toast-only); only toast a hardware error while info is already
-  // shown (a refresh). Live-monitoring errors keep their toast — the
-  // connection-status card is their persistent surface.
-  useEffect(() => {
-    if (hardwareError && hardwareInfo) {
-      message.error(`Hardware Error: ${hardwareError}`)
-    }
-    if (usageError) {
-      message.error(`Usage Monitoring Error: ${usageError}`)
-    }
-    if (sseError) {
-      message.error(`Connection Error: ${sseError}`)
-    }
-  }, [hardwareError, usageError, sseError, hardwareInfo])
+  // Live-monitoring transport state is surfaced persistently by the
+  // connection-status card below — NOT by raw-string toasts. A cold
+  // hardware-info load failure is shown as the in-place ErrorState below.
 
   const handleManualConnect = async () => {
     try {

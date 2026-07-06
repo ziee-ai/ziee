@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Spin, Text, Title, message, ErrorState } from '@/components/ui'
+import { Button, ErrorState, Spin, Text, Title, message } from '@/components/ui'
 import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -31,9 +31,9 @@ export function ProjectsListPage() {
     action: 'duplicate' | 'delete'
   } | null>(null)
 
-  // Toast only user-action failures (a failed duplicate/delete against
-  // already-loaded data). A failed initial LOAD renders as a persistent
-  // ErrorState below, not toast-only.
+  // A mutation failure (duplicate/delete) while projects are on screen →
+  // toast + clear. A cold load failure (no data) persists as the in-place
+  // ErrorState below instead of being toasted away into a silent empty state.
   useEffect(() => {
     if (error && projects.length > 0) {
       message.error(error)
@@ -139,7 +139,7 @@ export function ProjectsListPage() {
             <Spin label="Loading projects" />
           </div>
         ) : error ? (
-          <div className="w-full max-w-4xl m-auto px-3 py-12">
+          <div className="w-full max-w-4xl self-center px-3 pt-3">
             <ErrorState
               resource="projects"
               description="Your projects couldn't be loaded. Check your connection and try again."

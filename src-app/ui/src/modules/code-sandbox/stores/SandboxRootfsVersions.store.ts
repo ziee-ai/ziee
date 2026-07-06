@@ -78,7 +78,13 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
     /** Outcome of the last set-pin call. */
     lastSwap: null as SwapOutcome | null,
     loading: false,
+    /** Data-load failure (the rootfs-status GET). Rendered as a destructive
+     * ErrorState. NEVER holds SSE/transport state — that lives in `sseError`. */
     error: null as string | null,
+    /** Live-progress SSE transport state (disconnect/reconnect/permanent
+     * failure). Kept OUT of `error` so a background reconnect blip never
+     * surfaces as a raw destructive "SSE disconnected…" string in user copy. */
+    sseError: null as string | null,
     actions: {} as Record<string, ActionState>,
     /** Live install task state, keyed by `<version>::<arch>::<flavor>::<package>`. */
     installTasks: {} as Record<string, InstallTaskState>,
@@ -140,7 +146,7 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
             connected: (_d: SSEInstallConnectedData) => {
               set(s => {
                 s.sseConnected = true
-                s.error = null
+                s.sseError = null
               })
             },
             taskStarted: (t: InstallTaskState) => {
@@ -215,7 +221,7 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
             error: (msg: string) => {
               set(s => {
                 s.sseConnected = false
-                s.error = msg
+                s.sseError = msg
               })
             },
             default: (_event: string, _data: unknown) => {},
@@ -230,7 +236,7 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
         sseReconnectAttempts += 1
         if (sseReconnectAttempts < SSE_MAX_RECONNECT_ATTEMPTS) {
           set(s => {
-            s.error = `SSE disconnected; reconnecting (attempt ${sseReconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})`
+            s.sseError = `SSE disconnected; reconnecting (attempt ${sseReconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})`
           })
           sseReconnectTimer = setTimeout(() => {
             sseReconnectTimer = null
@@ -238,7 +244,7 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
           }, SSE_RECONNECT_DELAY_MS)
         } else {
           set(s => {
-            s.error =
+            s.sseError =
               e instanceof Error
                 ? `SSE failed after ${SSE_MAX_RECONNECT_ATTEMPTS} attempts: ${e.message}`
                 : `SSE failed after ${SSE_MAX_RECONNECT_ATTEMPTS} attempts`

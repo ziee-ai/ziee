@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Select, message } from '@/components/ui'
+import { useState, useMemo } from 'react'
+import { Button, Select, Tooltip } from '@/components/ui'
 import { TriangleAlert } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { ProviderWithModels } from '@/api-client/types'
@@ -34,12 +34,6 @@ function providerNeedsApiKey(
 export function ModelSelector() {
   const { selectedModelId, providers, error, loading } = Stores.ModelPicker
   const { sending } = Stores.Chat
-
-  // Surface provider-load failures (the store captured `error` but nothing
-  // rendered it, so the picker silently showed an empty dropdown).
-  useEffect(() => {
-    if (error) message.error(error)
-  }, [error])
 
   const [pendingProviderForKey, setPendingProviderForKey] = useState<{
     providerId: string
@@ -105,6 +99,28 @@ export function ModelSelector() {
   const handleKeyProvided = (modelId: string) => {
     setPendingProviderForKey(null)
     Stores.ModelPicker.setModelId(modelId)
+  }
+
+  // Provider load failed and there's nothing to pick from: a persistent,
+  // in-place retry affordance (never a toast that evaporates). Kept compact
+  // to fit the composer toolbar; the full ErrorState card is for sections.
+  if (error && providers.length === 0) {
+    return (
+      <div data-testid="model-selector">
+        <Tooltip content="Couldn't load models. Click to try again.">
+          <Button
+            variant="ghost"
+            icon={<TriangleAlert className="text-destructive" />}
+            onClick={() => void Stores.ModelPicker.loadProviders()}
+            loading={loading}
+            data-testid="ullm-model-retry"
+            className="text-[15px] max-w-[160px] text-destructive"
+          >
+            Models unavailable
+          </Button>
+        </Tooltip>
+      </div>
+    )
   }
 
   return (

@@ -3,11 +3,11 @@ import {
   Button,
   Dropdown,
   Empty,
+  ErrorState,
   Text,
   Title,
   Flex,
   message,
-  ErrorState,
 } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
@@ -34,8 +34,9 @@ export function LlmProviderSettings() {
 
   const currentProvider = providers.find(p => p.id === providerId)
 
-  // Toast only user-action failures (a mutation against already-loaded data).
-  // A failed LOAD renders as a persistent ErrorState below, not toast-only.
+  // A mutation failure while providers are on screen → toast + clear. A cold
+  // load failure (no data) persists as the in-place ErrorState below rather
+  // than being toasted away into a silent "No provider selected" empty state.
   useEffect(() => {
     if (error && providers.length > 0) {
       message.error(error)

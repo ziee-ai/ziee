@@ -1,5 +1,5 @@
 import { Import } from 'lucide-react'
-import { Button, Empty, Flex, Text } from '@/components/ui'
+import { Button, Empty, ErrorState, Flex, Text } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { useEffect, useState } from 'react'
 import { Permissions } from '@/api-client/types'
@@ -17,7 +17,7 @@ import { AdminSkillGroupAssignment } from './AdminSkillGroupAssignment'
  * (scope dropdown on the hub card) or via local import.
  */
 export function AdminSkillsPage() {
-  const { systemSkills, loading } = Stores.SystemSkill
+  const { systemSkills, loading, error } = Stores.SystemSkill
   const { multiUserMode } = Stores.AppMode
   const [importOpen, setImportOpen] = useState(false)
 
@@ -49,7 +49,9 @@ export function AdminSkillsPage() {
           </Can>
         </Flex>
 
-        {loading && <Text type="secondary">Loading system skills...</Text>}
+        {loading && !error && (
+          <Text type="secondary">Loading system skills...</Text>
+        )}
 
         <div className="flex flex-col gap-3">
           {pagedSkills.map(skill => (
@@ -92,8 +94,19 @@ export function AdminSkillsPage() {
           ))}
         </div>
 
-        {!loading && systemSkills.length === 0 && (
-          <Empty description="No system skills installed" className="!mt-12" data-testid="skill-admin-empty" />
+        {error && systemSkills.length === 0 ? (
+          <ErrorState
+            resource="system skills"
+            description="Something went wrong while loading system skills."
+            details={error}
+            onRetry={() => Stores.SystemSkill.loadSystemSkills()}
+            data-testid="skill-admin-error"
+          />
+        ) : (
+          !loading &&
+          systemSkills.length === 0 && (
+            <Empty description="No system skills installed" className="!mt-12" data-testid="skill-admin-empty" />
+          )
         )}
 
         {total > 0 && (

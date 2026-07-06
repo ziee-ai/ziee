@@ -25,9 +25,7 @@ export default function HardwareSettings() {
     hardwareError,
     currentUsage,
     usageLoading,
-    usageError,
     sseConnected,
-    sseError,
   } = Stores.Hardware
 
   const canMonitor = usePermission(Permissions.HardwareMonitor)
@@ -47,21 +45,11 @@ export default function HardwareSettings() {
     }
   }, [canMonitor])
 
-  // A primary hardware-info LOAD failure renders as a persistent ErrorState
-  // below (not toast-only), so only toast a hardware error that occurred while
-  // info is already shown (a refresh). Live-monitoring errors keep their toast —
-  // the connection-status card is their persistent surface.
-  useEffect(() => {
-    if (hardwareError && hardwareInfo) {
-      message.error(`Hardware Error: ${hardwareError}`)
-    }
-    if (usageError) {
-      message.error(`Usage Monitoring Error: ${usageError}`)
-    }
-    if (sseError) {
-      message.error(`Connection Error: ${sseError}`)
-    }
-  }, [hardwareError, usageError, sseError, hardwareInfo])
+  // Live-monitoring transport state (usage/SSE) is surfaced persistently by
+  // the connection-status card below — NOT by raw-string toasts. A cold
+  // hardware-info load failure is shown as the in-place ErrorState below.
+  // (The previous effect toasted all three raw error strings, double-signalling
+  // the load failure and leaking transport state as user copy.)
 
   if (hardwareLoading) {
     return (

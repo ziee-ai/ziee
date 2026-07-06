@@ -3,7 +3,7 @@ import {
   Button,
   Space,
   Spin,
-  Alert,
+  ErrorState,
   Tag,
   Flex,
   Dropdown,
@@ -119,7 +119,16 @@ export default function UserLlmProvidersPage() {
   }
 
   if (error) {
-    return <Alert tone="error" data-testid="ullm-error-alert" title={error} className="m-6" />
+    return (
+      <ErrorState
+        variant="page"
+        resource="AI providers"
+        description="Your available AI providers couldn't be loaded."
+        details={error}
+        onRetry={() => Stores.UserLlmProviders.load()}
+        data-testid="ullm-error-alert"
+      />
+    )
   }
 
   const renderContent = () => {

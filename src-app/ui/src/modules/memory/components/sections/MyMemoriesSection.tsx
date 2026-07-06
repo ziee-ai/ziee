@@ -6,6 +6,7 @@ import {
   Descriptions,
   Dropdown,
   Empty,
+  ErrorState,
   Flex,
   Form,
   FormField,
@@ -64,6 +65,7 @@ export function MyMemoriesSection() {
     // down the desktop combined Memory page). Default to an empty list.
     memories = [],
     loading,
+    error,
     searchQuery,
     kindFilter,
     sourceFilter,
@@ -194,7 +196,15 @@ export function MyMemoriesSection() {
         />
       </Flex>
 
-      {loading && filtered.length === 0 ? (
+      {error && filtered.length === 0 ? (
+        <ErrorState
+          resource="memories"
+          description="Something went wrong while loading your memories."
+          details={error}
+          onRetry={() => Stores.Memories.load()}
+          data-testid="memory-error"
+        />
+      ) : loading && filtered.length === 0 ? (
         <div className="flex justify-center py-6">
           <Spin label="Loading" />
         </div>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApiKeysStepStore } from './ApiKeysStep.store'
 import {
   Spin,
-  Alert,
+  ErrorState,
   Button,
   Tag,
   Flex,
@@ -47,6 +47,28 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
     return (
       <div className="flex justify-center mt-8">
         <Spin label="Loading" />
+      </div>
+    )
+  }
+
+  // A load failure must not masquerade as the "no providers enabled" empty
+  // state — surface it with a retry so setup isn't silently blocked.
+  if (error && providers.length === 0) {
+    return (
+      <div className="max-w-lg" data-testid="onboarding-apikeys-error">
+        <div className="flex items-center gap-3 mb-4">
+          <Plug className="text-3xl text-primary" />
+          <Title level={3} className="!mb-0">
+            AI Providers
+          </Title>
+        </div>
+        <ErrorState
+          resource="AI providers"
+          description="The available AI providers couldn't be loaded."
+          details={error}
+          onRetry={() => Stores.ApiKeysStep.loadProviders()}
+          data-testid="onboarding-apikeys-error-alert"
+        />
       </div>
     )
   }
@@ -102,7 +124,15 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
       </Paragraph>
 
       {error && (
-        <Alert data-testid="onboarding-apikeys-error-alert" tone="error" title={error} className="mb-3" />
+        <div className="mb-3">
+          <ErrorState
+            resource="AI providers"
+            description="Couldn't refresh the provider list."
+            details={error}
+            onRetry={() => Stores.ApiKeysStep.loadProviders()}
+            data-testid="onboarding-apikeys-refresh-error-alert"
+          />
+        </div>
       )}
 
       {/* Two-column layout */}

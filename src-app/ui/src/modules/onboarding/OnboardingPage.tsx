@@ -145,8 +145,10 @@ export default function OnboardingPage() {
     <div className="flex flex-col md:flex-row h-dvh overflow-hidden bg-background">
       {/* Left pane: guide list. On small screens it collapses into a
           height-capped, scrollable strip above the step viewer (the
-          two-pane row stacks vertically below the md breakpoint). */}
-      <div className="w-full md:w-64 flex-shrink-0 max-h-44 md:max-h-none border-b md:border-r overflow-y-auto p-4 flex flex-col gap-2 border-border bg-card">
+          two-pane row stacks vertically below the md breakpoint). The mobile
+          cap (max-h-64) must exceed a single card's height so the guide card
+          isn't clipped mid-content into the step pane; extra guides scroll. */}
+      <div className="w-full md:w-64 flex-shrink-0 max-h-64 md:max-h-none border-b md:border-r overflow-y-auto p-4 flex flex-col gap-2 border-border bg-card">
         <div className="flex items-center gap-2 mb-2">
           <Book className="text-lg" />
           <Text strong>Onboarding</Text>

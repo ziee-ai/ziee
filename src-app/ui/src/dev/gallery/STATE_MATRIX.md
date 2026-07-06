@@ -8,7 +8,7 @@
 ## Summary
 
 - **307** surfaces carry at least one renderable-state signal.
-- **1686** signals total: 1323 branch, 106 empty, 74 error, 97 loading, 84 overlay, 2 panel.
+- **1706** signals total: 1325 branch, 108 empty, 94 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 82 |
 | `empty` | 86 |
-| `error` | 61 |
+| `error` | 73 |
 | `open` | 71 |
 | `panel-open` | 2 |
 
@@ -696,25 +696,28 @@ Required states: `delayed`, `empty`, `error`
 | kind | condition | line |
 |---|---|---|
 | loading | `loading` | 130 |
-| empty | `assistants.length === 0` | 132 |
-| error | `error` | 133 |
-| branch | `assistant.is_default` | 167 |
-| branch | `!assistant.enabled` | 170 |
-| branch | `index < assistants.length - 1` | 193 |
-| branch | `assistants.length > 0` | 201 |
+| error | `error && assistants.length === 0` | 132 |
+| empty | `assistants.length === 0` | 140 |
+| error | `error` | 141 |
+| branch | `assistant.is_default` | 175 |
+| branch | `!assistant.enabled` | 178 |
+| branch | `index < assistants.length - 1` | 201 |
+| branch | `assistants.length > 0` | 209 |
 
 ### `modules/assistant/pages/UserAssistantsSettings`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 127 |
-| empty | `assistants.length === 0` | 129 |
-| branch | `assistant.is_default` | 147 |
-| branch | `!assistant.enabled` | 150 |
-| branch | `index < assistants.length - 1` | 178 |
-| branch | `assistants.length > 0` | 186 |
+| error | `error && assistants.length === 0` | 131 |
+| loading | `loading` | 141 |
+| error | `error && assistants.length === 0` | 143 |
+| empty | `assistants.length === 0` | 151 |
+| branch | `assistant.is_default` | 169 |
+| branch | `!assistant.enabled` | 172 |
+| branch | `index < assistants.length - 1` | 200 |
+| branch | `assistants.length > 0` | 208 |
 
 ### `modules/auth-providers/components/AuthProviderEditDrawer`
 
@@ -751,10 +754,10 @@ Required states: `delayed`, `empty`, `error`, `open`
 | loading | `loading && providers.length === 0` | 166 |
 | empty | `providers.length === 0` | 170 |
 | error | `error` | 171 |
-| branch | `!row.enabled` | 202 |
-| branch | `row.last_test_ok === false` | 225 |
-| branch | `index < providers.length - 1` | 244 |
-| overlay | `<AuthProviderEditDrawer open>` | 254 |
+| branch | `!row.enabled` | 205 |
+| branch | `row.last_test_ok === false` | 228 |
+| branch | `index < providers.length - 1` | 247 |
+| overlay | `<AuthProviderEditDrawer open>` | 257 |
 
 ### `modules/auth/AuthCallbackPage`
 
@@ -821,7 +824,7 @@ Required states: `delayed`, `empty`, `error`
 | branch | `n.includes('microsoft') \|\| n.includes('entra') \|\| n.includes('azure')` | 19 |
 | loading | `isLoading \|\| !hasLoaded` | 43 |
 | error | `error` | 51 |
-| empty | `!providers \|\| providers.length === 0` | 63 |
+| empty | `!providers \|\| providers.length === 0` | 64 |
 
 ### `modules/auth/RegisterForm`
 
@@ -860,7 +863,7 @@ Required states: `open`
 | kind | condition | line |
 |---|---|---|
 | branch | `sending \|\| isStreaming \|\| disabled \|\| isBlockedByExtension` | 39 |
-| overlay | `<Popover open>` | 88 |
+| overlay | `<Popover open>` | 90 |
 
 ### `modules/chat/components/ChatMessage`
 
@@ -1217,12 +1220,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 96 |
-| branch | `pinnedVersion` | 212 |
-| branch | `downloadedFlavors.length > 0` | 221 |
-| branch | `lastSwap && lastSwap.draining_mounts > 0` | 239 |
-| error | `error` | 259 |
-| loading | `loading && groups.length === 0` | 261 |
+| branch | `!canRead` | 97 |
+| branch | `pinnedVersion` | 213 |
+| branch | `downloadedFlavors.length > 0` | 222 |
+| branch | `lastSwap && lastSwap.draining_mounts > 0` | 240 |
+| branch | `sseError` | 263 |
+| loading | `loading && groups.length === 0` | 272 |
+| error | `error && groups.length === 0` | 274 |
+| error | `error` | 284 |
 
 ### `modules/code-sandbox/components/_rootfsShared`
 
@@ -1648,24 +1653,24 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `usageLoading` | 69 |
-| branch | `!sseConnected && !usageLoading` | 76 |
-| branch | `!currentUsage` | 87 |
-| branch | `currentUsage.cpu.temperature` | 99 |
-| branch | `currentUsage.cpu.frequency` | 104 |
-| branch | `!currentUsage` | 115 |
-| branch | `hardwareLoading` | 138 |
-| branch | `hardwareError && !hardwareInfo` | 146 |
-| branch | `currentUsage` | 171 |
-| branch | `currentUsage` | 177 |
-| empty | `!currentUsage?.gpu_devices \|\| currentUsage.gpu_devices.length === 0` | 187 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 208 |
-| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 223 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 232 |
+| branch | `usageLoading` | 55 |
+| branch | `!sseConnected && !usageLoading` | 62 |
+| branch | `!currentUsage` | 73 |
+| branch | `currentUsage.cpu.temperature` | 85 |
+| branch | `currentUsage.cpu.frequency` | 90 |
+| branch | `!currentUsage` | 101 |
+| branch | `hardwareLoading` | 124 |
+| branch | `hardwareError && !hardwareInfo` | 132 |
+| branch | `currentUsage` | 157 |
+| branch | `currentUsage` | 163 |
+| empty | `!currentUsage?.gpu_devices \|\| currentUsage.gpu_devices.length === 0` | 173 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 194 |
+| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 209 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 218 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 230 |
 | branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 244 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 258 |
-| branch | `gpuUsage.temperature !== undefined` | 276 |
-| branch | `gpuUsage.power_usage !== undefined` | 281 |
+| branch | `gpuUsage.temperature !== undefined` | 262 |
+| branch | `gpuUsage.power_usage !== undefined` | 267 |
 
 ### `modules/hardware/HardwareMonitorButton`
 
@@ -1681,40 +1686,40 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canMonitor` | 40 |
-| branch | `hardwareLoading` | 66 |
-| branch | `hardwareError && !hardwareInfo` | 74 |
-| branch | `hardwareInfo?.operating_system.kernel_version` | 106 |
-| branch | `hardwareInfo?.cpu.threads` | 132 |
-| branch | `hardwareInfo?.cpu.base_frequency` | 135 |
-| branch | `hardwareInfo?.cpu.max_frequency` | 142 |
-| branch | `currentUsage` | 150 |
-| branch | `currentUsage.cpu.temperature` | 163 |
-| branch | `currentUsage.cpu.frequency` | 168 |
-| branch | `hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0` | 192 |
-| branch | `currentUsage` | 204 |
-| empty | `!hardwareInfo?.gpu_devices \|\| hardwareInfo.gpu_devices.length === 0` | 231 |
-| branch | `gpu.memory` | 261 |
-| branch | `gpu.vendor?.includes('Apple')` | 270 |
-| branch | `gpu.driver_version` | 278 |
-| branch | `gpu.vendor?.includes('Apple') && hardwareInfo?.memory` | 288 |
-| branch | `gpu.compute_capabilities.vulkan_support !== undefined` | 325 |
-| branch | `gpuUsage` | 336 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 338 |
-| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 353 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 360 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 370 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 389 |
-| branch | `gpu.vendor?.includes('Apple')` | 401 |
-| branch | `gpuUsage && (gpuUsage.utilization_percentage !== undefined \|\| gpuUsage.memory_used !== undefined \|\| gpuUsage.temperature !== undefined \|\| gpuUsage.power_usage !` | 412 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 422 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 435 |
-| branch | `gpuUsage.memory_used !== undefined` | 448 |
-| branch | `gpuUsage.temperature !== undefined` | 458 |
-| branch | `gpuUsage.power_usage !== undefined` | 468 |
-| branch | `canMonitor && !sseConnected && !usageLoading` | 513 |
-| branch | `usageLoading` | 518 |
-| branch | `currentUsage` | 524 |
+| branch | `!canMonitor` | 38 |
+| branch | `hardwareLoading` | 54 |
+| branch | `hardwareError && !hardwareInfo` | 62 |
+| branch | `hardwareInfo?.operating_system.kernel_version` | 94 |
+| branch | `hardwareInfo?.cpu.threads` | 120 |
+| branch | `hardwareInfo?.cpu.base_frequency` | 123 |
+| branch | `hardwareInfo?.cpu.max_frequency` | 130 |
+| branch | `currentUsage` | 138 |
+| branch | `currentUsage.cpu.temperature` | 151 |
+| branch | `currentUsage.cpu.frequency` | 156 |
+| branch | `hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0` | 180 |
+| branch | `currentUsage` | 192 |
+| empty | `!hardwareInfo?.gpu_devices \|\| hardwareInfo.gpu_devices.length === 0` | 219 |
+| branch | `gpu.memory` | 249 |
+| branch | `gpu.vendor?.includes('Apple')` | 258 |
+| branch | `gpu.driver_version` | 266 |
+| branch | `gpu.vendor?.includes('Apple') && hardwareInfo?.memory` | 276 |
+| branch | `gpu.compute_capabilities.vulkan_support !== undefined` | 313 |
+| branch | `gpuUsage` | 324 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 326 |
+| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 341 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 348 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 358 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 377 |
+| branch | `gpu.vendor?.includes('Apple')` | 389 |
+| branch | `gpuUsage && (gpuUsage.utilization_percentage !== undefined \|\| gpuUsage.memory_used !== undefined \|\| gpuUsage.temperature !== undefined \|\| gpuUsage.power_usage !` | 400 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 410 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 423 |
+| branch | `gpuUsage.memory_used !== undefined` | 436 |
+| branch | `gpuUsage.temperature !== undefined` | 446 |
+| branch | `gpuUsage.power_usage !== undefined` | 456 |
+| branch | `canMonitor && !sseConnected && !usageLoading` | 501 |
+| branch | `usageLoading` | 506 |
+| branch | `currentUsage` | 512 |
 
 ### `modules/hub/HubPage`
 
@@ -1724,12 +1729,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `currentTabSlot` | 144 |
 | branch | `hubVersion` | 152 |
-| branch | `useMobileLayout` | 194 |
-| branch | `canRefresh` | 196 |
-| branch | `!useMobileLayout` | 233 |
-| branch | `canRefresh` | 242 |
-| branch | `urlSegmentIsForbidden` | 262 |
-| branch | `currentTabSlot` | 289 |
+| branch | `useMobileLayout` | 197 |
+| branch | `canRefresh` | 199 |
+| branch | `!useMobileLayout` | 236 |
+| branch | `canRefresh` | 245 |
+| branch | `urlSegmentIsForbidden` | 265 |
+| branch | `currentTabSlot` | 292 |
 
 ### `modules/hub/modules/assistants/components/AssistantDetailsDrawer`
 
@@ -2192,21 +2197,22 @@ Required states: `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!platform \|\| !arch` | 87 |
-| branch | `isChecking && !updateCheck` | 156 |
-| branch | `!updateCheck` | 158 |
-| empty | `readyUpstream.length === 0` | 162 |
-| branch | `readyUpstream.length > 10` | 177 |
-| branch | `loadingGpu && !gpu` | 196 |
-| branch | `!gpu` | 204 |
-| branch | `loadingGpu && !gpu` | 222 |
-| branch | `!gpu` | 230 |
-| branch | `v.size_bytes != null && !v.installed` | 274 |
-| branch | `isLatest` | 279 |
-| branch | `v.installed` | 280 |
-| branch | `v.prerelease` | 281 |
-| branch | `progress` | 300 |
-| error | `failed && progress?.error` | 301 |
+| branch | `!platform \|\| !arch` | 88 |
+| branch | `isChecking && !updateCheck` | 157 |
+| branch | `updateError && !updateCheck` | 159 |
+| branch | `!updateCheck` | 169 |
+| empty | `readyUpstream.length === 0` | 173 |
+| branch | `readyUpstream.length > 10` | 188 |
+| branch | `loadingGpu && !gpu` | 207 |
+| branch | `!gpu` | 215 |
+| branch | `loadingGpu && !gpu` | 233 |
+| branch | `!gpu` | 241 |
+| branch | `v.size_bytes != null && !v.installed` | 285 |
+| branch | `isLatest` | 290 |
+| branch | `v.installed` | 291 |
+| branch | `v.prerelease` | 292 |
+| branch | `progress` | 311 |
+| error | `failed && progress?.error` | 312 |
 
 ### `modules/llm-local-runtime/components/InstalledVersionsCard`
 
@@ -2215,9 +2221,10 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | empty | `loadingVersions && engineVersions.length === 0` | 100 |
-| empty | `engineVersions.length === 0` | 102 |
-| branch | `i > 0` | 111 |
-| branch | `engineUsage?.unresolved && engineUsage.unresolved.length > 0` | 128 |
+| empty | `versionsError && engineVersions.length === 0` | 102 |
+| empty | `engineVersions.length === 0` | 110 |
+| branch | `i > 0` | 119 |
+| branch | `engineUsage?.unresolved && engineUsage.unresolved.length > 0` | 136 |
 
 ### `modules/llm-local-runtime/components/LiveLogsPanel`
 
@@ -2230,12 +2237,13 @@ Required states: `empty`
 
 ### `modules/llm-local-runtime/components/RuntimeConfigCard`
 
-Required states: _(branch-only — proven via dynamic coverage)_
+Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `loadingSettings && !settings` | 71 |
-| branch | `canManage` | 83 |
+| branch | `loadingSettings && !settings` | 68 |
+| error | `error && !settings` | 79 |
+| branch | `canManage` | 97 |
 
 ### `modules/llm-local-runtime/components/RuntimeVersionCard`
 
@@ -2330,14 +2338,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 139 |
-| error | `error && providers.length === 0` | 145 |
-| branch | `!currentProvider` | 157 |
-| branch | `currentProvider.provider_type === 'local'` | 167 |
-| branch | `!windowMinSize.sm` | 178 |
-| branch | `windowMinSize.sm` | 196 |
-| branch | `item.key === 'add-provider'` | 206 |
-| branch | `currentProvider` | 230 |
+| loading | `loading` | 140 |
+| error | `error && providers.length === 0` | 146 |
+| branch | `!currentProvider` | 158 |
+| branch | `currentProvider.provider_type === 'local'` | 168 |
+| branch | `!windowMinSize.sm` | 179 |
+| branch | `windowMinSize.sm` | 197 |
+| branch | `item.key === 'add-provider'` | 207 |
+| branch | `currentProvider` | 231 |
 
 ### `modules/llm-provider/components/LocalProviderSettings`
 
@@ -2544,18 +2552,19 @@ Required states: `open`
 
 ### `modules/llm-repository/components/LlmRepositorySettings`
 
-Required states: `empty`
+Required states: `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!Stores.LlmRepository.llmRepositoryHasCredentials(repository)` | 46 |
-| branch | `repo?.built_in` | 97 |
-| empty | `repositories.length === 0` | 226 |
-| branch | `repository.built_in` | 246 |
-| branch | `!repository.enabled` | 251 |
-| branch | `repository.last_health_check_status === 'unhealthy'` | 289 |
-| branch | `index < repositories.length - 1` | 312 |
-| branch | `totalRepositories > 0` | 321 |
+| branch | `!Stores.LlmRepository.llmRepositoryHasCredentials(repository)` | 48 |
+| branch | `repo?.built_in` | 99 |
+| error | `error && repositories.length === 0` | 228 |
+| empty | `repositories.length === 0` | 238 |
+| branch | `repository.built_in` | 258 |
+| branch | `!repository.enabled` | 263 |
+| branch | `repository.last_health_check_status === 'unhealthy'` | 301 |
+| branch | `index < repositories.length - 1` | 324 |
+| branch | `totalRepositories > 0` | 333 |
 
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
@@ -2767,11 +2776,12 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `systemServersLoading` | 82 |
-| branch | `(searchTerm \|\| statusFilter !== 'all')` | 128 |
-| branch | `multiUserMode` | 165 |
-| empty | `filteredServers.length === 0` | 173 |
-| branch | `systemServersTotal > 0` | 183 |
+| branch | `systemServersLoading && !systemServersError` | 83 |
+| branch | `(searchTerm \|\| statusFilter !== 'all')` | 129 |
+| branch | `multiUserMode` | 166 |
+| empty | `systemServersError && filteredServers.length === 0` | 174 |
+| empty | `filteredServers.length === 0` | 188 |
+| branch | `systemServersTotal > 0` | 199 |
 
 ### `modules/mcp/components/user/McpServersSettings`
 
@@ -2838,25 +2848,27 @@ Required states: `delayed`, `open`
 
 ### `modules/memory/components/sections/AuditLogSection`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
 | branch | `!canRead` | 20 |
-| loading | `loading` | 52 |
-| empty | `entries.length === 0` | 56 |
-| branch | `v` | 127 |
+| error | `error && entries.length === 0` | 52 |
+| loading | `loading` | 60 |
+| empty | `entries.length === 0` | 64 |
+| branch | `v` | 135 |
 
 ### `modules/memory/components/sections/CoreMemorySection`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
 | branch | `!canRead` | 25 |
-| loading | `loading` | 37 |
-| empty | `assistants.length === 0` | 39 |
-| branch | `assistantId` | 62 |
+| error | `error && assistants.length === 0` | 37 |
+| loading | `loading` | 45 |
+| empty | `assistants.length === 0` | 47 |
+| branch | `assistantId` | 70 |
 
 ### `modules/memory/components/sections/ExtractionSection`
 
@@ -2899,34 +2911,36 @@ Required states: `error`
 
 ### `modules/memory/components/sections/MyMemoriesSection`
 
-Required states: `delayed`, `empty`, `open`
+Required states: `delayed`, `empty`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 88 |
-| branch | `canWrite` | 110 |
-| branch | `canWrite` | 123 |
-| loading | `loading && filtered.length === 0` | 197 |
-| empty | `filtered.length === 0` | 201 |
-| branch | `canWrite` | 214 |
-| branch | `index < filtered.length - 1` | 308 |
-| branch | `totalMemories > 0` | 317 |
-| branch | `canWrite` | 332 |
-| overlay | `<CreateMemoryDrawer open>` | 334 |
-| overlay | `<Drawer open>` | 442 |
-| branch | `!row` | 523 |
-| overlay | `<Drawer open>` | 536 |
+| branch | `!canRead` | 90 |
+| branch | `canWrite` | 112 |
+| branch | `canWrite` | 125 |
+| error | `error && filtered.length === 0` | 199 |
+| loading | `loading && filtered.length === 0` | 207 |
+| empty | `filtered.length === 0` | 211 |
+| branch | `canWrite` | 224 |
+| branch | `index < filtered.length - 1` | 318 |
+| branch | `totalMemories > 0` | 327 |
+| branch | `canWrite` | 342 |
+| overlay | `<CreateMemoryDrawer open>` | 344 |
+| overlay | `<Drawer open>` | 452 |
+| branch | `!row` | 533 |
+| overlay | `<Drawer open>` | 546 |
 
 ### `modules/memory/components/sections/PreferencesSection`
 
-Required states: `delayed`
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 69 |
-| loading | `loading \|\| !settings` | 73 |
-| branch | `adminDisabled` | 101 |
-| branch | `canWrite` | 112 |
+| branch | `!canRead` | 70 |
+| error | `error && !settings` | 74 |
+| loading | `loading \|\| !settings` | 88 |
+| branch | `adminDisabled` | 116 |
+| branch | `canWrite` | 127 |
 
 ### `modules/memory/components/sections/RebuildStatusSection`
 
@@ -2984,9 +2998,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!guide` | 78 |
 | branch | `!guide` | 105 |
-| branch | `isCompleted` | 181 |
-| branch | `nextError` | 215 |
-| branch | `StepComponent` | 225 |
+| branch | `isCompleted` | 183 |
+| branch | `nextError` | 217 |
+| branch | `StepComponent` | 227 |
 
 ### `modules/onboarding/OnboardingRedirect`
 
@@ -3007,9 +3021,10 @@ Required states: `delayed`, `empty`, `error`
 | kind | condition | line |
 |---|---|---|
 | loading | `loading` | 46 |
-| empty | `providers.length === 0` | 54 |
-| error | `error` | 104 |
-| branch | `(currentProvider.api_key_configured \|\| hasUserKey)` | 140 |
+| error | `error && providers.length === 0` | 56 |
+| empty | `providers.length === 0` | 76 |
+| error | `error` | 126 |
+| branch | `(currentProvider.api_key_configured \|\| hasUserKey)` | 170 |
 
 ### `modules/onboarding/guides/getting-started/components/McpServersStep`
 
@@ -3338,15 +3353,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/skill/components/SkillsList`
 
-Required states: `delayed`, `open`
+Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 54 |
+| error | `loading && !error` | 54 |
 | branch | `skill.description` | 83 |
 | branch | `skills.length > 0` | 94 |
-| loading | `!loading && skills.length === 0` | 109 |
-| overlay | `<ImportSkillDialog open>` | 118 |
+| error | `error && skills.length === 0` | 109 |
+| loading | `!loading && skills.length === 0` | 118 |
+| overlay | `<ImportSkillDialog open>` | 129 |
 
 ### `modules/skill/components/admin/AdminSkillGroupAssignment`
 
@@ -3358,16 +3374,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/skill/components/admin/AdminSkillsPage`
 
-Required states: `delayed`, `open`
+Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 52 |
-| branch | `skill.description` | 81 |
-| branch | `multiUserMode` | 88 |
-| loading | `!loading && systemSkills.length === 0` | 95 |
-| branch | `total > 0` | 99 |
-| overlay | `<ImportSkillDialog open>` | 113 |
+| error | `loading && !error` | 52 |
+| branch | `skill.description` | 83 |
+| branch | `multiUserMode` | 90 |
+| error | `error && systemSkills.length === 0` | 97 |
+| loading | `!loading && systemSkills.length === 0` | 106 |
+| branch | `total > 0` | 112 |
+| overlay | `<ImportSkillDialog open>` | 126 |
 
 ### `modules/skill/widgets/GroupSystemSkillsAssignmentDrawer`
 
@@ -3431,25 +3448,26 @@ Required states: `delayed`, `empty`, `error`
 | branch | `!selectedId` | 77 |
 | loading | `loading` | 113 |
 | error | `error` | 121 |
-| empty | `providers.length === 0` | 126 |
-| branch | `!currentProvider` | 142 |
-| branch | `hasUserKey` | 161 |
-| branch | `currentProvider.api_key_configured` | 163 |
-| branch | `hasUserKey` | 193 |
-| branch | `!windowMinSize.sm` | 212 |
-| branch | `windowMinSize.sm && providers.length > 0` | 230 |
-| branch | `currentProvider` | 239 |
+| empty | `providers.length === 0` | 135 |
+| branch | `!currentProvider` | 151 |
+| branch | `hasUserKey` | 170 |
+| branch | `currentProvider.api_key_configured` | 172 |
+| branch | `hasUserKey` | 202 |
+| branch | `!windowMinSize.sm` | 221 |
+| branch | `windowMinSize.sm && providers.length > 0` | 239 |
+| branch | `currentProvider` | 248 |
 
 ### `modules/user-llm-providers/chat-extension/components/ModelSelector`
 
-Required states: _(branch-only — proven via dynamic coverage)_
+Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `providerNeedsApiKey(provider)` | 61 |
-| branch | `!value` | 86 |
-| branch | `model` | 92 |
-| branch | `pendingProviderForKey` | 124 |
+| branch | `providerNeedsApiKey(provider)` | 55 |
+| branch | `!value` | 80 |
+| branch | `model` | 86 |
+| error | `error && providers.length === 0` | 107 |
+| branch | `pendingProviderForKey` | 140 |
 
 ### `modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal`
 
@@ -3511,8 +3529,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `group.is_system` | 139 |
-| branch | `registeredWidgets.length > 0` | 167 |
+| branch | `group.is_system` | 142 |
+| branch | `registeredWidgets.length > 0` | 172 |
 
 ### `modules/user/components/group/GroupMembersDrawer`
 
@@ -3873,27 +3891,29 @@ Required states: `delayed`, `error`, `open`
 
 ### `modules/workflow/components/WorkflowsList`
 
-Required states: `delayed`, `open`
+Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 40 |
+| error | `loading && !error` | 40 |
 | branch | `workflow.description` | 62 |
-| loading | `!loading && workflows.length === 0` | 71 |
-| overlay | `<ImportWorkflowDialog open>` | 80 |
+| error | `error && workflows.length === 0` | 71 |
+| loading | `!loading && workflows.length === 0` | 80 |
+| overlay | `<ImportWorkflowDialog open>` | 91 |
 
 ### `modules/workflow/components/admin/AdminWorkflowsPage`
 
-Required states: `delayed`, `open`
+Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 54 |
-| branch | `workflow.description` | 76 |
-| branch | `multiUserMode` | 83 |
-| loading | `!loading && systemWorkflows.length === 0` | 91 |
-| branch | `total > 0` | 99 |
-| overlay | `<ImportWorkflowDialog open>` | 113 |
+| error | `loading && !error` | 54 |
+| branch | `workflow.description` | 78 |
+| branch | `multiUserMode` | 85 |
+| error | `error && systemWorkflows.length === 0` | 93 |
+| loading | `!loading && systemWorkflows.length === 0` | 102 |
+| branch | `total > 0` | 112 |
+| overlay | `<ImportWorkflowDialog open>` | 126 |
 
 ### `modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer`
 

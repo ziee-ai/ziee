@@ -1,5 +1,5 @@
 import { Import as ImportIcon, Workflow as WorkflowIcon } from 'lucide-react'
-import { Button, Card, Empty, Flex, Text } from '@/components/ui'
+import { Button, Card, Empty, ErrorState, Flex, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
@@ -15,7 +15,7 @@ import { WorkflowScopeBadge } from './WorkflowScopeBadge'
  * drawer (steps + run / dry-run / test).
  */
 export function WorkflowsList() {
-  const { workflows, loading } = Stores.Workflow
+  const { workflows, loading, error } = Stores.Workflow
   const [importOpen, setImportOpen] = useState(false)
 
   return (
@@ -37,7 +37,7 @@ export function WorkflowsList() {
           </Can>
         </Flex>
 
-        {loading && <Text type="secondary">Loading workflows...</Text>}
+        {loading && !error && <Text type="secondary">Loading workflows...</Text>}
 
         <div className="flex flex-col gap-3">
           {workflows.map(workflow => (
@@ -68,12 +68,23 @@ export function WorkflowsList() {
           ))}
         </div>
 
-        {!loading && workflows.length === 0 && (
-          <Empty
-            data-testid="wf-list-empty"
-            description="No workflows installed yet — browse the Hub to install one"
-            className="!mt-12"
+        {error && workflows.length === 0 ? (
+          <ErrorState
+            resource="workflows"
+            description="Something went wrong while loading your workflows."
+            details={error}
+            onRetry={() => Stores.Workflow.loadWorkflows()}
+            data-testid="wf-list-error"
           />
+        ) : (
+          !loading &&
+          workflows.length === 0 && (
+            <Empty
+              data-testid="wf-list-empty"
+              description="No workflows installed yet — browse the Hub to install one"
+              className="!mt-12"
+            />
+          )
         )}
 
         <WorkflowDetailDrawer />

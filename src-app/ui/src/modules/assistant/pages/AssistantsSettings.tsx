@@ -5,11 +5,11 @@ import {
   Descriptions,
   Separator,
   Empty,
+  ErrorState,
   Confirm,
   Tag,
   Text,
   message,
-  ErrorState,
 } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
@@ -35,9 +35,9 @@ export function AssistantsSettings() {
   const canEdit = usePermission(Permissions.AssistantsTemplateEdit)
   const canDelete = usePermission(Permissions.AssistantsTemplateDelete)
 
-  // Toast only user-action failures (a mutation against already-loaded data).
-  // A load failure renders as a persistent ErrorState below, so it must NOT be
-  // toast-only.
+  // A mutation failure while the list is populated → toast + clear. A cold
+  // load failure (no data) persists as the in-place ErrorState below rather
+  // than being toasted away into a silent empty state.
   useEffect(() => {
     if (error && assistants.length > 0) {
       message.error(error)
@@ -129,6 +129,14 @@ export function AssistantsSettings() {
         >
           {loading ? (
             <Loading />
+          ) : error && assistants.length === 0 ? (
+            <ErrorState
+              resource="assistant templates"
+              description="The template assistants couldn't be loaded."
+              details={error}
+              onRetry={() => Stores.TemplateAssistants.loadTemplateAssistants(storePage, storePageSize)}
+              data-testid="template-assistants-error"
+            />
           ) : assistants.length === 0 ? (
             error ? (
               <ErrorState
