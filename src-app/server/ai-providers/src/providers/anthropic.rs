@@ -1009,7 +1009,10 @@ impl AIProvider for AnthropicProvider {
         base_url: &str,
         provider_file_id: &str,
     ) -> Result<(), ProviderError> {
-        let client = super::http_client();
+        // Dedicated SSRF-guarded client (connect-time DNS-rebind guard +
+        // no_proxy): like upload_file, this request carries the provider
+        // api_key to a user-configured base_url. See `providers::upload_client`.
+        let client = super::upload_http_client();
 
         let response = client
             .delete(format!("{}/files/{}", base_url, provider_file_id))
