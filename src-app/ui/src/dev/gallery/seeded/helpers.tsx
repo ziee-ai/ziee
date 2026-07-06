@@ -97,3 +97,17 @@ export async function holdPatch(
     await tick(gap)
   }
 }
+
+/**
+ * Assert a store patch on a PERMANENT interval (every 150ms, never cleared — dies
+ * on page navigation). Use for LOADING arms whose component lazy-mounts at an
+ * unpredictable time under the full pass: a fixed-duration `holdPatch` can end
+ * before a slow-loading chunk first renders, so the loading arm never commits
+ * true. A forever-interval keeps the seed asserting whenever the component
+ * finally mounts, making mount-timing irrelevant. (The surface renders one per
+ * page-load, so the leaked interval is reclaimed on navigation.)
+ */
+export function holdForever(apply: () => void): void {
+  apply()
+  setInterval(apply, 150)
+}

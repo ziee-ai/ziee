@@ -12,7 +12,7 @@
  */
 import { lazy } from 'react'
 import type { SeededSurfaceEntry } from './helpers'
-import { holdPatch, lazyNamed, lazyProps } from './helpers'
+import { holdForever, holdPatch, lazyNamed, lazyProps } from './helpers'
 
 // A generic non-terminal `now` timestamp for seeded fixtures.
 const NOW = new Date().toISOString()
@@ -270,10 +270,13 @@ export const shard3Seeded: SeededSurfaceEntry[] = [
       const { LlmProviderStoreDef } = await import(
         '@/modules/llm-provider/stores/LlmProvider.store'
       )
-      await holdPatch(() =>
+      // holdForever (not holdPatch): this lazy component can mount after a fixed
+      // hold window ends under the full pass, so assert on a permanent interval.
+      holdForever(() =>
         LlmProviderStoreDef.store.setState({
           loading: true,
           isInitialized: false,
+          providers: [],
         } as any),
       )
     },

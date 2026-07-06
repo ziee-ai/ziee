@@ -10,7 +10,7 @@
  * Shard 5 scope: chat (non-widget), auth, projects, user*, summarization,
  * onboarding. See /data/pbya/ziee/tmp/gapgrind-shards.md for the gap list.
  */
-import { lazyNamed, lazyProps, holdPatch, whenTrue } from './helpers'
+import { lazyNamed, lazyProps, holdForever, holdPatch, whenTrue } from './helpers'
 import type { SeededSurfaceEntry } from './helpers'
 
 export const shard5Seeded: SeededSurfaceEntry[] = [
@@ -135,7 +135,9 @@ export const shard5Seeded: SeededSurfaceEntry[] = [
     ),
     setup: async () => {
       const { Auth } = await import('@/modules/auth/Auth.store')
-      await holdPatch(() =>
+      // holdForever (not holdPatch): the widget can mount after a fixed hold
+      // window ends under the full pass, so assert on a permanent interval.
+      holdForever(() =>
         Auth.store.setState({
           user: null,
           isInitializing: true,

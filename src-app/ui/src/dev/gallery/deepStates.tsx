@@ -96,6 +96,44 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
     setup: () => whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolFailed),
   },
   {
+    // Live MCP-composer tool-call in COMPLETED status: seeding McpComposer.toolCalls
+    // for the running conversation's tool_use block id makes McpToolCallUI render
+    // the completed status marker (mcp/chat-extension/extension.tsx:69/70).
+    slug: 'deep-chat-mcp-toolcall-completed',
+    title: 'Conversation — MCP tool call completed',
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.toolRunning,
+    note: 'McpComposer toolCall in completed status → the sr-only completed marker',
+    setup: async () => {
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolRunning)
+      useMcpComposerStore.getState().addToolCall({
+        tool_use_id: 'toolu_running_1',
+        server: 'code_sandbox',
+        tool_name: 'execute_command',
+        status: 'completed',
+        result: { ok: true },
+      })
+    },
+  },
+  {
+    // Live MCP-composer tool-call in ERROR status: seeds McpComposer.toolCalls for
+    // the failed conversation's tool_use id → McpToolCallUI renders the error Alert
+    // (extension.tsx:132/133) + the aggregate hasError icon (:294).
+    slug: 'deep-chat-mcp-toolcall-error',
+    title: 'Conversation — MCP tool call errored',
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.toolFailed,
+    note: 'McpComposer toolCall in error status → the error Alert + CircleX icon',
+    setup: async () => {
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolFailed)
+      useMcpComposerStore.getState().addToolCall({
+        tool_use_id: 'toolu_failed_1',
+        server: 'code_sandbox',
+        tool_name: 'execute_command',
+        status: 'error',
+        error: 'Tool call failed: exit code 1.',
+      })
+    },
+  },
+  {
     slug: 'deep-chat-attachments',
     title: 'Conversation — message with attachments',
     conversationId: CHAT_DEEP_CONVERSATION_IDS.attachments,

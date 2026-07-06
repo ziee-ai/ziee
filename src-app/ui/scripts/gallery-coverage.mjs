@@ -92,7 +92,7 @@ async function visit(holder, url, acc) {
       // mount. Seeded surfaces lazy-load a real component THEN hold a store seed
       // (~4.5s) — a late-mounting component (slow chunk under the full pass) needs
       // the seed still asserting when it first renders, so wait 5.5s on a surface.
-      await page.waitForTimeout(url.includes('surface=') ? 5500 : 5000)
+      await page.waitForTimeout(url.includes('surface=') ? 6500 : 5000)
       const cov = await page.evaluate(() => window.__coverage__ || null)
       if (!cov) throw new Error('no __coverage__ (is GALLERY_COVERAGE=1 on the server?)')
       mergeInto(acc, cov)

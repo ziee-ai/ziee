@@ -12,7 +12,7 @@
 
 - 626 instrumented surface files rendered.
 - **2** STATE gaps not allow-listed — the actionable queue.
-- 8596 generic branch forks not allow-listed (informational).
+- 8592 generic branch forks not allow-listed (informational).
 
 ## State-level gaps (actionable)
 
@@ -39,9 +39,9 @@
 | `modules/layouts/app-layout/AppLayout.tsx` | 142 |
 | `modules/file/stores/File.store.ts` | 113 |
 | `modules/hub/modules/llm-models/components/ModelHubCard.tsx` | 113 |
-| `modules/auth/Auth.store.ts` | 111 |
 | `modules/chat/core/extensions/registry.tsx` | 111 |
 | `modules/workflow/components/workflowElicitSchema.ts` | 108 |
+| `modules/auth/Auth.store.ts` | 107 |
 | `components/ui/kit/multi-select.tsx` | 106 |
 | `modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer.tsx` | 105 |
 | `modules/llm-repository/components/LlmRepositoryDrawer.tsx` | 100 |
