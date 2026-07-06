@@ -1127,7 +1127,10 @@ impl AIProvider for GeminiProvider {
         base_url: &str,
         provider_file_id: &str,
     ) -> Result<(), ProviderError> {
-        let client = super::http_client();
+        // Dedicated SSRF-guarded client (connect-time DNS-rebind guard +
+        // no_proxy): like upload_file, this request carries the provider
+        // api_key to a user-configured base_url. See `providers::upload_client`.
+        let client = super::upload_http_client();
 
         // provider_file_id could be:
         // - Full URL: "https://generativelanguage.googleapis.com/v1beta/files/abc123"
