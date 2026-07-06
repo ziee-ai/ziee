@@ -139,7 +139,7 @@ const ACTION_SIDE_TOKENS = [
 // The in-page geometry audit. Self-contained (serialized into the page).
 // Returns { findings:[{cls,severity?,selector,detail,nums}], actionSides:[{action,side,selector}] }.
 // ───────────────────────────────────────────────────────────────────────────
-function inPageGeometry({ classesArg, contextTestids, actionTokens }) {
+function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
   const run = c => !classesArg.length || classesArg.includes(c)
   const findings = []
   const push = (cls, selector, detail, nums, severity) =>
@@ -915,7 +915,7 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens }) {
           const spans = Array.from(pre.querySelectorAll('span')).filter(s => textOf(s))
           const colors = new Set(spans.map(s => cs(s).color))
           if (spans.length === 0 || colors.size <= 1) {
-            push('L3', selectorFor(pre), `language-tagged code block has ${spans.length} token spans / ${colors.size} colors — highlighting not applied (single-color plaintext)${PREVIEW ? ' [preview-build]' : ' [dev-serve]'}`, { spans: spans.length, colors: colors.size })
+            push('L3', selectorFor(pre), `language-tagged code block has ${spans.length} token spans / ${colors.size} colors — highlighting not applied (single-color plaintext)${preview ? ' [preview-build]' : ' [dev-serve]'}`, { spans: spans.length, colors: colors.size })
             break
           }
         }
@@ -990,10 +990,13 @@ async function main() {
   })
   const { pages, overlays, deep, seeded } = await enumerateSurfaces(browser)
 
+  // Optional surface filter (substring match) for fast iteration on a few surfaces.
+  const surfaceFilter = arg('surfaces', '').split(',').map(s => s.trim()).filter(Boolean)
+  const keep = s => !surfaceFilter.length || surfaceFilter.some(f => s.includes(f))
   const cells = []
-  for (const s of pages) for (const st of PAGE_STATES) cells.push({ surface: s, state: st })
-  for (const s of [...seeded, ...deep]) cells.push({ surface: s, state: 'seeded' })
-  for (const s of overlays) cells.push({ surface: s, state: 'open' })
+  for (const s of pages) if (keep(s)) for (const st of PAGE_STATES) cells.push({ surface: s, state: st })
+  for (const s of [...seeded, ...deep]) if (keep(s)) cells.push({ surface: s, state: 'seeded' })
+  for (const s of overlays) if (keep(s)) cells.push({ surface: s, state: 'open' })
 
   const jobs = []
   for (const c of cells) for (const vp of VIEWPORTS) jobs.push({ c, vp })
@@ -1008,6 +1011,7 @@ async function main() {
     classesArg: CLASS_FILTER,
     contextTestids: CONTEXT_TESTIDS,
     actionTokens: ACTION_SIDE_TOKENS,
+    preview: PREVIEW,
   }
   async function runJob({ c, vp }) {
     const p = await browser.newPage({ viewport: { width: vp.width, height: vp.height } })

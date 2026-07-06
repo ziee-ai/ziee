@@ -268,12 +268,59 @@ const branched: DeepBundle = {
 
 /** Deep bundles keyed by conversation id — merged into the chat cassette so the
  *  gallery renders each via the REAL Conversation.get / Message.getHistory path. */
+// A RENDERING SHOWCASE: one assistant message whose markdown exercises every
+// rich-content renderer — block + inline math (KaTeX), a mermaid diagram, a
+// syntax-highlighted code fence (Shiki), and a pipe table. Feeds the Layer-1
+// content-rendering detectors (L1 math, L2 mermaid, L3 highlight, L4 table): the
+// audit reports whether each renders or degrades to raw text (and whether a
+// failure is gallery-only, e.g. Shiki under a preview build, or a real app bug).
+export const RENDERING_SHOWCASE_ID = 'dee90006-0000-4000-8000-000000000006'
+const renderingShowcase: DeepBundle = {
+  conversation: conversation(RENDERING_SHOWCASE_ID, 'Rendering showcase — math / mermaid / code'),
+  messages: [
+    message(`${RENDERING_SHOWCASE_ID}-m1`, 'user', [
+      { type: 'text', text: 'Show me a block equation, a diagram, a code block, and a table.' },
+    ]),
+    message(`${RENDERING_SHOWCASE_ID}-m2`, 'assistant', [
+      {
+        type: 'text',
+        text: [
+          'Block math:',
+          '',
+          '$$E = mc^2$$',
+          '',
+          'Inline math: the hypotenuse satisfies $a^2 + b^2 = c^2$.',
+          '',
+          '```mermaid',
+          'graph TD',
+          '  A[Start] --> B{Decision}',
+          '  B -->|yes| C[Done]',
+          '  B -->|no| A',
+          '```',
+          '',
+          '```python',
+          'def greet(name: str) -> str:',
+          '    return f"Hello, {name}!"',
+          '```',
+          '',
+          '| Trial | HR | 95% CI |',
+          '| --- | --- | --- |',
+          '| SELECT | 0.80 | 0.72–0.90 |',
+          '| LEADER | 0.87 | 0.78–0.97 |',
+        ].join('\n'),
+      },
+    ]),
+  ],
+  branches: [],
+}
+
 export const chatDeepById: Record<string, DeepBundle> = {
   [TOOL_RUNNING_ID]: toolRunning,
   [TOOL_FAILED_ID]: toolFailed,
   [ATTACHMENTS_ID]: attachments,
   [ELICITATION_ID]: elicitation,
   [BRANCHED_ID]: branched,
+  [RENDERING_SHOWCASE_ID]: renderingShowcase,
 }
 
 export const CHAT_DEEP_CONVERSATION_IDS = {

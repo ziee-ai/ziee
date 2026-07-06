@@ -20,7 +20,7 @@ import {
 } from '@/components/ui'
 
 const UPGRADE_COMMAND =
-  'curl -fsSL https://github.com/phibya/ziee-chat-new/releases/latest/download/install.sh | sh'
+  'curl -fsSL https://github.com/ziee-ai/ziee/releases/latest/download/install.sh | sh'
 
 export default function AboutSettings() {
   const {

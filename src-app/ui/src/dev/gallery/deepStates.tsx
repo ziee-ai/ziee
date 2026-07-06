@@ -24,6 +24,7 @@ import {
   BRANCHED_ANCHOR_MESSAGE_ID,
   BRANCHED_BRANCH_IDS,
   CHAT_DEEP_CONVERSATION_IDS,
+  RENDERING_SHOWCASE_ID,
   SHOWCASE_CONVERSATION_ID,
   STREAMING_MESSAGE_ID,
   literaturePanelData,
@@ -257,6 +258,48 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
         type: 'literature',
         data: literaturePanelData,
       })
+    },
+  },
+  {
+    // MULTI-tab right panel: opening two tabs surfaces the real tab STRIP (a
+    // horizontal tablist with >1 tab) so the strip detectors have a target —
+    // A8 (row-child vertical centering) + I5 (wrong-scroll-axis). A single-tab
+    // panel renders no strip.
+    slug: 'deep-chat-right-panel-multi',
+    title: 'Conversation — right panel, multiple tabs',
+    conversationId: SHOWCASE_CONVERSATION_ID,
+    note: 'two right-panel tabs (file + literature) → the tab strip; drives A8/I5',
+    setup: async () => {
+      await whenLoaded(SHOWCASE_CONVERSATION_ID)
+      useFileStore.setState(s => ({
+        selectedFiles: new Map(s.selectedFiles).set(rightPanelFile.id, rightPanelFile),
+        messageFilesCache: new Map(s.messageFilesCache).set(rightPanelFile.id, rightPanelFile),
+      }))
+      chat().displayInRightPanel({
+        id: 'panel-file-1',
+        title: rightPanelFile.filename,
+        type: 'file',
+        data: { fileId: rightPanelFile.id },
+      })
+      chat().displayInRightPanel({
+        id: literaturePanelData.sessionId,
+        title: 'Literature screening',
+        type: 'literature',
+        data: literaturePanelData,
+      })
+    },
+  },
+  {
+    // RENDERING SHOWCASE: a conversation whose one assistant message carries
+    // math / mermaid / a highlighted code fence / a table. Feeds the Layer-1
+    // content-rendering detectors (L1/L2/L3/L4) so the audit reports whether each
+    // rich renderer works in the gallery or degrades to raw text.
+    slug: 'deep-chat-rendering-showcase',
+    title: 'Conversation — rendering showcase (math/mermaid/code/table)',
+    conversationId: RENDERING_SHOWCASE_ID,
+    note: 'math (KaTeX) + mermaid + highlighted code + table → drives L1/L2/L3/L4',
+    setup: async () => {
+      await whenLoaded(RENDERING_SHOWCASE_ID)
     },
   },
   {
