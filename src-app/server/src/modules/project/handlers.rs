@@ -39,6 +39,9 @@ pub struct PaginationQuery {
     pub page: Option<i64>,
     /// Items per page. Defaults to 20, clamped to [1, 100].
     pub limit: Option<i64>,
+    /// Case-insensitive substring filter on project name/description.
+    /// Blank/whitespace-only is treated as "no filter".
+    pub search: Option<String>,
 }
 
 /// Upper bound on the page number a caller can request. With
@@ -66,13 +69,25 @@ impl<'de> Deserialize<'de> for PaginationQuery {
         struct Raw {
             page: Option<i64>,
             limit: Option<i64>,
+            search: Option<String>,
         }
         let raw = Raw::deserialize(d)?;
         Ok(PaginationQuery {
             page: raw.page,
             limit: raw.limit,
+            search: raw.search,
         })
     }
+}
+
+/// Normalize a raw `search` query value: trim, and treat a blank/whitespace-only
+/// term as "no filter" (`None`). Extracted from the handler body so it's
+/// Tier-1 unit-testable independently of the HTTP layer. Mirrors the mcp
+/// list-search convention (`mcp/handlers/user.rs`).
+fn normalize_search(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 // =====================================================
@@ -241,9 +256,10 @@ pub async fn list_projects(
     Query(query): Query<PaginationQuery>,
 ) -> ApiResult<Json<ProjectListResponse>> {
     let (page, limit) = query.resolved();
+    let search = normalize_search(query.search.as_deref());
     let response = Repos
         .project
-        .list_for_user(auth.user.id, page, limit)
+        .list_for_user(auth.user.id, page, limit, search.as_deref())
         .await?;
     Ok((StatusCode::OK, Json(response)))
 }
@@ -556,5 +572,32 @@ mod tests {
         // is kept (the DB stores the raw string). Validator's contract:
         // "trim() must produce ≥ 1 char". The "Foo" inside satisfies it.
         assert!(validate_project_name("  Foo  ").is_ok());
+    }
+
+    // ─── search query wiring (project-search) ─────────────────────
+
+    /// TEST-1 — `PaginationQuery` deserializes the `search` field so the
+    /// extractor actually carries it.
+    #[test]
+    fn pagination_query_deserializes_search() {
+        let q: PaginationQuery =
+            serde_json::from_value(serde_json::json!({ "search": "foo" })).unwrap();
+        assert_eq!(q.search.as_deref(), Some("foo"));
+
+        let none: PaginationQuery =
+            serde_json::from_value(serde_json::json!({ "page": 1 })).unwrap();
+        assert_eq!(none.search, None);
+    }
+
+    /// TEST-2 — `normalize_search` trims and maps blank/whitespace to
+    /// `None` (the "no filter" convention), non-blank to the trimmed term.
+    #[test]
+    fn normalize_search_trims_and_blanks_to_none() {
+        assert_eq!(normalize_search(None), None);
+        assert_eq!(normalize_search(Some("")), None);
+        assert_eq!(normalize_search(Some("   ")), None);
+        assert_eq!(normalize_search(Some("\t\n")), None);
+        assert_eq!(normalize_search(Some("  foo ")).as_deref(), Some("foo"));
+        assert_eq!(normalize_search(Some("roadmap")).as_deref(), Some("roadmap"));
     }
 }

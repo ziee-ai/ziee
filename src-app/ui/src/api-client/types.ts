@@ -3634,6 +3634,11 @@ export interface PaginationQuery4 {
   limit?: number
   /** Page number (1-indexed). Defaults to 1. */
   page?: number
+  /**
+   * Case-insensitive substring filter on project name/description.
+   *  Blank/whitespace-only is treated as "no filter".
+   */
+  search?: string
 }
 
 export interface PaginationQuery5 {
@@ -6967,8 +6972,8 @@ export type ApiEndpointParameters = {
   'Project.forConversation': { conversation_id: string }
   'Project.get': { id: string }
   'Project.getMcpSettings': { id: string }
-  'Project.list': { limit?: number; page?: number }
-  'Project.listConversations': { id: string; limit?: number; page?: number }
+  'Project.list': { limit?: number; page?: number; search?: string }
+  'Project.listConversations': { id: string; limit?: number; page?: number; search?: string }
   'Project.listFiles': { id: string }
   'Project.update': { id: string } & UpdateProjectRequest
   'Project.updateMcpSettings': { id: string } & ProjectMcpSettingsRequest
