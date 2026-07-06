@@ -89,8 +89,8 @@ export async function whenTrue(pred: () => boolean, tries = 60): Promise<void> {
  */
 export async function holdPatch(
   apply: () => void,
-  times = 10,
-  gap = 250,
+  times = 18,
+  gap = 190,
 ): Promise<void> {
   for (let i = 0; i < times; i++) {
     apply()

@@ -29,6 +29,10 @@ import {
   holdPatch,
   whenTrue,
 } from './seeded/helpers'
+import {
+  firstEnabledRemoteProviderId,
+  llmProvidersList,
+} from './fixtures/llm-providers'
 // Per-shard entry lists (parallel grind). Each shard owns ONLY its own file;
 // this aggregator is integrator-owned. Add a shard import + spread below.
 import { shard1Seeded } from './seeded/shard1'
@@ -412,13 +416,15 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       )
     },
   },
-  // ── LlmModelsSection: models loading (route param providerId). ───────────────
+  // ── LlmModelsSection: models loading. The section early-returns unless a
+  // REAL provider (from the loaded cassette) matches the route param, so pin the
+  // param to the first enabled provider id and key llmModelsLoading to it. ─────
   {
     slug: 'seeded-llm-models-loading',
     title: 'LLM models section — loading',
     note: 'llmModelsLoading[providerId] → the <Loading/> block',
     path: '/gallery/:providerId',
-    initialPath: '/gallery/prov-1',
+    initialPath: `/gallery/${firstEnabledRemoteProviderId ?? llmProvidersList.providers[0]?.id ?? 'p1'}`,
     component: lazyNamed(
       () => import('@/modules/llm-provider/components/LlmModelsSection'),
       'LlmModelsSection',
@@ -427,9 +433,14 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       const { LlmProviderStoreDef } = await import(
         '@/modules/llm-provider/stores/LlmProvider.store'
       )
+      const pid =
+        firstEnabledRemoteProviderId ?? llmProvidersList.providers[0]?.id ?? 'p1'
+      await whenTrue(
+        () => LlmProviderStoreDef.store.getState().providers.length > 0,
+      )
       await holdPatch(() =>
         LlmProviderStoreDef.store.setState({
-          llmModelsLoading: { 'prov-1': true },
+          llmModelsLoading: { [pid]: true },
         } as any),
       )
     },
@@ -588,6 +599,38 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       { runId: 'run-1', stepId: 'step-1', artifacts: [] },
     ),
   },
+  // ── HardwareMonitor: no GPU devices → the "GPU Usage" empty card. currentUsage
+  // arrives via the live hardware SSE (not a GET), so seed it on the store. ─────
+  {
+    slug: 'seeded-hardware-no-gpu',
+    title: 'Hardware monitor — no GPU',
+    note: '!currentUsage.gpu_devices.length → the GPU-empty card',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(
+      () => import('@/modules/hardware/HardwareMonitor'),
+      'HardwareMonitor',
+    ),
+    setup: async () => {
+      const { Hardware } = await import('@/modules/hardware/Hardware.store')
+      await holdPatch(() =>
+        Hardware.store.setState({
+          currentUsage: {
+            cpu: { usage_percentage: 12 },
+            memory: {
+              available_ram: 8_000_000_000,
+              used_ram: 8_000_000_000,
+              usage_percentage: 50,
+            },
+            gpu_devices: [],
+            timestamp: new Date().toISOString(),
+          },
+          usageLoading: false,
+          usageError: null,
+        } as any),
+      )
+    },
+  },
   // ── ChatHistoryPage: the list-shown arm (conversations>0 || loading || error). ─
   {
     slug: 'seeded-chat-history-list',
@@ -603,14 +646,21 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       const { ChatHistory } = await import(
         '@/modules/chat/stores/ChatHistory.store'
       )
-      await holdPatch(() =>
-        ChatHistory.store.setState({
-          loading: true,
-          isInitialized: false,
-          conversations: [],
-          error: null,
-        } as any),
+      const { AppLayout } = await import(
+        '@/modules/layouts/app-layout/AppLayout.store'
       )
+      // The uncovered arm on :143 is the `nativeScroll ? '' : 'overflow-hidden'`
+      // className ternary — the `nativeScroll===true` side (default is false).
+      // Seed nativeScroll AND a persistent `error` so the container div mounts.
+      await holdPatch(() => {
+        AppLayout.store.setState({ nativeScroll: true } as any)
+        ChatHistory.store.setState({
+          loading: false,
+          isInitialized: true,
+          conversations: [],
+          error: 'Failed to load conversations.',
+        } as any)
+      })
     },
   },
 ]
