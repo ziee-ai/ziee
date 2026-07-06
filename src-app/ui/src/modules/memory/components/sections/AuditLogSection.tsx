@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Card, Empty, InputNumber, Spin } from '@/components/ui'
+import { Button, Card, Empty, ErrorState, InputNumber, Spin } from '@/components/ui'
 import { Table, Tag, Text, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -14,7 +14,7 @@ const READ_PERM = Permissions.MemoryRead
  */
 export function AuditLogSection() {
   const canRead = usePermission(READ_PERM)
-  const { entries, loading, limit } = Stores.MemoryAudit
+  const { entries, loading, limit, error } = Stores.MemoryAudit
   const [pendingLimit, setPendingLimit] = useState<number>(limit)
 
   if (!canRead) return null
@@ -49,7 +49,15 @@ export function AuditLogSection() {
         </Button>
       </div>
 
-      {loading ? (
+      {error && entries.length === 0 ? (
+        <ErrorState
+          resource="the audit log"
+          description="Something went wrong while loading your memory audit log."
+          details={error}
+          onRetry={() => Stores.MemoryAudit.load()}
+          data-testid="memory-audit-error"
+        />
+      ) : loading ? (
         <div className="flex justify-center py-6">
           <Spin label="Loading" />
         </div>

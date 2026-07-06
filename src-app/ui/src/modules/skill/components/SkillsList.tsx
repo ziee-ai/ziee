@@ -1,6 +1,6 @@
 import { Import as ImportIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Button, Card, Empty, Flex, Text } from '@/components/ui'
+import { Button, Card, Empty, ErrorState, Flex, Text } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
@@ -18,7 +18,7 @@ import { SkillScopeBadge } from './SkillScopeBadge'
  * the read/manage surface.
  */
 export function SkillsList() {
-  const { skills, loading } = Stores.Skill
+  const { skills, loading, error } = Stores.Skill
   const [importOpen, setImportOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -51,7 +51,7 @@ export function SkillsList() {
           </Can>
         </Flex>
 
-        {loading && <Text type="secondary">Loading skills...</Text>}
+        {loading && !error && <Text type="secondary">Loading skills...</Text>}
 
         <div className="flex flex-col gap-3">
           {pagedSkills.map(skill => (
@@ -106,12 +106,23 @@ export function SkillsList() {
           />
         )}
 
-        {!loading && skills.length === 0 && (
-          <Empty
-            description="No skills installed yet — browse the Hub to install one"
-            className="!mt-12"
-            data-testid="skill-list-empty"
+        {error && skills.length === 0 ? (
+          <ErrorState
+            resource="skills"
+            description="Something went wrong while loading your skills."
+            details={error}
+            onRetry={() => Stores.Skill.loadSkills()}
+            data-testid="skill-list-error"
           />
+        ) : (
+          !loading &&
+          skills.length === 0 && (
+            <Empty
+              description="No skills installed yet — browse the Hub to install one"
+              className="!mt-12"
+              data-testid="skill-list-empty"
+            />
+          )
         )}
 
         <SkillDetailDrawer />

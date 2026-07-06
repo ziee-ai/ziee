@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 307 surfaces carry renderable-state signals; 1690 signals total.
+// 307 surfaces carry renderable-state signals; 1701 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -612,13 +612,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/assistant/pages/UserAssistantsSettings",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "loading", condition: "loading", line: 131 },
-      { kind: "error", condition: "error && assistants.length === 0", line: 133 },
-      { kind: "empty", condition: "assistants.length === 0", line: 141 },
-      { kind: "branch", condition: "assistant.is_default", line: 159 },
-      { kind: "branch", condition: "!assistant.enabled", line: 162 },
-      { kind: "branch", condition: "index < assistants.length - 1", line: 190 },
-      { kind: "branch", condition: "assistants.length > 0", line: 198 },
+      { kind: "error", condition: "error && assistants.length === 0", line: 130 },
+      { kind: "loading", condition: "loading", line: 140 },
+      { kind: "error", condition: "error && assistants.length === 0", line: 142 },
+      { kind: "empty", condition: "assistants.length === 0", line: 150 },
+      { kind: "branch", condition: "assistant.is_default", line: 168 },
+      { kind: "branch", condition: "!assistant.enabled", line: 171 },
+      { kind: "branch", condition: "index < assistants.length - 1", line: 199 },
+      { kind: "branch", condition: "assistants.length > 0", line: 207 },
     ],
   },
   "modules/auth-providers/components/AuthProviderEditDrawer": {
@@ -717,7 +718,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "n.includes('microsoft') || n.includes('entra') || n.includes('azure')", line: 19 },
       { kind: "loading", condition: "isLoading || !hasLoaded", line: 43 },
       { kind: "error", condition: "error", line: 51 },
-      { kind: "empty", condition: "!providers || providers.length === 0", line: 63 },
+      { kind: "empty", condition: "!providers || providers.length === 0", line: 64 },
     ],
   },
   "modules/auth/RegisterForm": {
@@ -2310,16 +2311,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/llm-repository/components/LlmRepositorySettings": {
     surface: "modules/llm-repository/components/LlmRepositorySettings",
-    requiredStates: ["empty"],
+    requiredStates: ["empty","error"],
     signals: [
-      { kind: "branch", condition: "!Stores.LlmRepository.llmRepositoryHasCredentials(repository)", line: 46 },
-      { kind: "branch", condition: "repo?.built_in", line: 97 },
-      { kind: "empty", condition: "repositories.length === 0", line: 226 },
-      { kind: "branch", condition: "repository.built_in", line: 246 },
-      { kind: "branch", condition: "!repository.enabled", line: 251 },
-      { kind: "branch", condition: "repository.last_health_check_status === 'unhealthy'", line: 289 },
-      { kind: "branch", condition: "index < repositories.length - 1", line: 312 },
-      { kind: "branch", condition: "totalRepositories > 0", line: 321 },
+      { kind: "branch", condition: "!Stores.LlmRepository.llmRepositoryHasCredentials(repository)", line: 48 },
+      { kind: "branch", condition: "repo?.built_in", line: 99 },
+      { kind: "error", condition: "error && repositories.length === 0", line: 228 },
+      { kind: "empty", condition: "repositories.length === 0", line: 238 },
+      { kind: "branch", condition: "repository.built_in", line: 258 },
+      { kind: "branch", condition: "!repository.enabled", line: 263 },
+      { kind: "branch", condition: "repository.last_health_check_status === 'unhealthy'", line: 301 },
+      { kind: "branch", condition: "index < repositories.length - 1", line: 324 },
+      { kind: "branch", condition: "totalRepositories > 0", line: 333 },
     ],
   },
   "modules/mcp/chat-extension/components/ElicitationFormContent": {
@@ -2518,11 +2520,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/components/system/SystemMcpServersPage",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "systemServersLoading", line: 82 },
-      { kind: "branch", condition: "(searchTerm || statusFilter !== 'all')", line: 128 },
-      { kind: "branch", condition: "multiUserMode", line: 165 },
-      { kind: "empty", condition: "filteredServers.length === 0", line: 173 },
-      { kind: "branch", condition: "systemServersTotal > 0", line: 183 },
+      { kind: "branch", condition: "systemServersLoading && !systemServersError", line: 83 },
+      { kind: "branch", condition: "(searchTerm || statusFilter !== 'all')", line: 129 },
+      { kind: "branch", condition: "multiUserMode", line: 166 },
+      { kind: "empty", condition: "systemServersError && filteredServers.length === 0", line: 174 },
+      { kind: "empty", condition: "filteredServers.length === 0", line: 188 },
+      { kind: "branch", condition: "systemServersTotal > 0", line: 199 },
     ],
   },
   "modules/mcp/components/user/McpServersSettings": {
@@ -2585,22 +2588,24 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/memory/components/sections/AuditLogSection": {
     surface: "modules/memory/components/sections/AuditLogSection",
-    requiredStates: ["delayed","empty"],
+    requiredStates: ["delayed","empty","error"],
     signals: [
       { kind: "branch", condition: "!canRead", line: 20 },
-      { kind: "loading", condition: "loading", line: 52 },
-      { kind: "empty", condition: "entries.length === 0", line: 56 },
-      { kind: "branch", condition: "v", line: 127 },
+      { kind: "error", condition: "error && entries.length === 0", line: 52 },
+      { kind: "loading", condition: "loading", line: 60 },
+      { kind: "empty", condition: "entries.length === 0", line: 64 },
+      { kind: "branch", condition: "v", line: 135 },
     ],
   },
   "modules/memory/components/sections/CoreMemorySection": {
     surface: "modules/memory/components/sections/CoreMemorySection",
-    requiredStates: ["delayed","empty"],
+    requiredStates: ["delayed","empty","error"],
     signals: [
       { kind: "branch", condition: "!canRead", line: 25 },
-      { kind: "loading", condition: "loading", line: 37 },
-      { kind: "empty", condition: "assistants.length === 0", line: 39 },
-      { kind: "branch", condition: "assistantId", line: 62 },
+      { kind: "error", condition: "error && assistants.length === 0", line: 37 },
+      { kind: "loading", condition: "loading", line: 45 },
+      { kind: "empty", condition: "assistants.length === 0", line: 47 },
+      { kind: "branch", condition: "assistantId", line: 70 },
     ],
   },
   "modules/memory/components/sections/ExtractionSection": {
@@ -2641,31 +2646,33 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/memory/components/sections/MyMemoriesSection": {
     surface: "modules/memory/components/sections/MyMemoriesSection",
-    requiredStates: ["delayed","empty","open"],
+    requiredStates: ["delayed","empty","error","open"],
     signals: [
-      { kind: "branch", condition: "!canRead", line: 88 },
-      { kind: "branch", condition: "canWrite", line: 110 },
-      { kind: "branch", condition: "canWrite", line: 123 },
-      { kind: "loading", condition: "loading && filtered.length === 0", line: 197 },
-      { kind: "empty", condition: "filtered.length === 0", line: 201 },
-      { kind: "branch", condition: "canWrite", line: 214 },
-      { kind: "branch", condition: "index < filtered.length - 1", line: 308 },
-      { kind: "branch", condition: "totalMemories > 0", line: 317 },
-      { kind: "branch", condition: "canWrite", line: 332 },
-      { kind: "overlay", condition: "<CreateMemoryDrawer open>", line: 334 },
-      { kind: "overlay", condition: "<Drawer open>", line: 442 },
-      { kind: "branch", condition: "!row", line: 523 },
-      { kind: "overlay", condition: "<Drawer open>", line: 536 },
+      { kind: "branch", condition: "!canRead", line: 90 },
+      { kind: "branch", condition: "canWrite", line: 112 },
+      { kind: "branch", condition: "canWrite", line: 125 },
+      { kind: "error", condition: "error && filtered.length === 0", line: 199 },
+      { kind: "loading", condition: "loading && filtered.length === 0", line: 207 },
+      { kind: "empty", condition: "filtered.length === 0", line: 211 },
+      { kind: "branch", condition: "canWrite", line: 224 },
+      { kind: "branch", condition: "index < filtered.length - 1", line: 318 },
+      { kind: "branch", condition: "totalMemories > 0", line: 327 },
+      { kind: "branch", condition: "canWrite", line: 342 },
+      { kind: "overlay", condition: "<CreateMemoryDrawer open>", line: 344 },
+      { kind: "overlay", condition: "<Drawer open>", line: 452 },
+      { kind: "branch", condition: "!row", line: 533 },
+      { kind: "overlay", condition: "<Drawer open>", line: 546 },
     ],
   },
   "modules/memory/components/sections/PreferencesSection": {
     surface: "modules/memory/components/sections/PreferencesSection",
-    requiredStates: ["delayed"],
+    requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!canRead", line: 69 },
-      { kind: "loading", condition: "loading || !settings", line: 73 },
-      { kind: "branch", condition: "adminDisabled", line: 101 },
-      { kind: "branch", condition: "canWrite", line: 112 },
+      { kind: "branch", condition: "!canRead", line: 70 },
+      { kind: "error", condition: "error && !settings", line: 74 },
+      { kind: "loading", condition: "loading || !settings", line: 88 },
+      { kind: "branch", condition: "adminDisabled", line: 116 },
+      { kind: "branch", condition: "canWrite", line: 127 },
     ],
   },
   "modules/memory/components/sections/RebuildStatusSection": {
@@ -3046,13 +3053,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/skill/components/SkillsList": {
     surface: "modules/skill/components/SkillsList",
-    requiredStates: ["delayed","open"],
+    requiredStates: ["delayed","error","open"],
     signals: [
-      { kind: "loading", condition: "loading", line: 54 },
+      { kind: "error", condition: "loading && !error", line: 54 },
       { kind: "branch", condition: "skill.description", line: 83 },
       { kind: "branch", condition: "skills.length > 0", line: 94 },
-      { kind: "loading", condition: "!loading && skills.length === 0", line: 109 },
-      { kind: "overlay", condition: "<ImportSkillDialog open>", line: 118 },
+      { kind: "error", condition: "error && skills.length === 0", line: 109 },
+      { kind: "loading", condition: "!loading && skills.length === 0", line: 118 },
+      { kind: "overlay", condition: "<ImportSkillDialog open>", line: 129 },
     ],
   },
   "modules/skill/components/admin/AdminSkillGroupAssignment": {
@@ -3064,14 +3072,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/skill/components/admin/AdminSkillsPage": {
     surface: "modules/skill/components/admin/AdminSkillsPage",
-    requiredStates: ["delayed","open"],
+    requiredStates: ["delayed","error","open"],
     signals: [
-      { kind: "loading", condition: "loading", line: 52 },
-      { kind: "branch", condition: "skill.description", line: 81 },
-      { kind: "branch", condition: "multiUserMode", line: 88 },
-      { kind: "loading", condition: "!loading && systemSkills.length === 0", line: 95 },
-      { kind: "branch", condition: "total > 0", line: 99 },
-      { kind: "overlay", condition: "<ImportSkillDialog open>", line: 113 },
+      { kind: "error", condition: "loading && !error", line: 52 },
+      { kind: "branch", condition: "skill.description", line: 83 },
+      { kind: "branch", condition: "multiUserMode", line: 90 },
+      { kind: "error", condition: "error && systemSkills.length === 0", line: 97 },
+      { kind: "loading", condition: "!loading && systemSkills.length === 0", line: 106 },
+      { kind: "branch", condition: "total > 0", line: 112 },
+      { kind: "overlay", condition: "<ImportSkillDialog open>", line: 126 },
     ],
   },
   "modules/skill/widgets/GroupSystemSkillsAssignmentDrawer": {
@@ -3539,24 +3548,26 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/workflow/components/WorkflowsList": {
     surface: "modules/workflow/components/WorkflowsList",
-    requiredStates: ["delayed","open"],
+    requiredStates: ["delayed","error","open"],
     signals: [
-      { kind: "loading", condition: "loading", line: 40 },
+      { kind: "error", condition: "loading && !error", line: 40 },
       { kind: "branch", condition: "workflow.description", line: 62 },
-      { kind: "loading", condition: "!loading && workflows.length === 0", line: 71 },
-      { kind: "overlay", condition: "<ImportWorkflowDialog open>", line: 80 },
+      { kind: "error", condition: "error && workflows.length === 0", line: 71 },
+      { kind: "loading", condition: "!loading && workflows.length === 0", line: 80 },
+      { kind: "overlay", condition: "<ImportWorkflowDialog open>", line: 91 },
     ],
   },
   "modules/workflow/components/admin/AdminWorkflowsPage": {
     surface: "modules/workflow/components/admin/AdminWorkflowsPage",
-    requiredStates: ["delayed","open"],
+    requiredStates: ["delayed","error","open"],
     signals: [
-      { kind: "loading", condition: "loading", line: 54 },
-      { kind: "branch", condition: "workflow.description", line: 76 },
-      { kind: "branch", condition: "multiUserMode", line: 83 },
-      { kind: "loading", condition: "!loading && systemWorkflows.length === 0", line: 91 },
-      { kind: "branch", condition: "total > 0", line: 99 },
-      { kind: "overlay", condition: "<ImportWorkflowDialog open>", line: 113 },
+      { kind: "error", condition: "loading && !error", line: 54 },
+      { kind: "branch", condition: "workflow.description", line: 78 },
+      { kind: "branch", condition: "multiUserMode", line: 85 },
+      { kind: "error", condition: "error && systemWorkflows.length === 0", line: 93 },
+      { kind: "loading", condition: "!loading && systemWorkflows.length === 0", line: 102 },
+      { kind: "branch", condition: "total > 0", line: 112 },
+      { kind: "overlay", condition: "<ImportWorkflowDialog open>", line: 126 },
     ],
   },
   "modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer": {
@@ -3618,7 +3629,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 303 keys.
+ * 312 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3797,6 +3808,7 @@ export type RequiredState =
   | "modules/llm-provider/widgets/LLMProviderGroupWidget:error"
   | "modules/llm-repository/components/LlmRepositoryDrawer:open"
   | "modules/llm-repository/components/LlmRepositorySettings:empty"
+  | "modules/llm-repository/components/LlmRepositorySettings:error"
   | "modules/mcp/chat-extension/components/McpMenuItem:delayed"
   | "modules/mcp/chat-extension/components/McpStatusRow:empty"
   | "modules/mcp/chat-extension/extension:error"
@@ -3823,14 +3835,18 @@ export type RequiredState =
   | "modules/memory/components/CoreMemoryBlocksEditor:open"
   | "modules/memory/components/sections/AuditLogSection:delayed"
   | "modules/memory/components/sections/AuditLogSection:empty"
+  | "modules/memory/components/sections/AuditLogSection:error"
   | "modules/memory/components/sections/CoreMemorySection:delayed"
   | "modules/memory/components/sections/CoreMemorySection:empty"
+  | "modules/memory/components/sections/CoreMemorySection:error"
   | "modules/memory/components/sections/FullTextSearchSection:open"
   | "modules/memory/components/sections/MemorySection:error"
   | "modules/memory/components/sections/MyMemoriesSection:delayed"
   | "modules/memory/components/sections/MyMemoriesSection:empty"
+  | "modules/memory/components/sections/MyMemoriesSection:error"
   | "modules/memory/components/sections/MyMemoriesSection:open"
   | "modules/memory/components/sections/PreferencesSection:delayed"
+  | "modules/memory/components/sections/PreferencesSection:error"
   | "modules/memory/components/sections/SemanticSearchSection:empty"
   | "modules/memory/components/sections/SemanticSearchSection:open"
   | "modules/memory/pages/MemoryAdminPage:delayed"
@@ -3866,8 +3882,10 @@ export type RequiredState =
   | "modules/skill/components/SkillConversationDrawer:open"
   | "modules/skill/components/SkillDetailDrawer:open"
   | "modules/skill/components/SkillsList:delayed"
+  | "modules/skill/components/SkillsList:error"
   | "modules/skill/components/SkillsList:open"
   | "modules/skill/components/admin/AdminSkillsPage:delayed"
+  | "modules/skill/components/admin/AdminSkillsPage:error"
   | "modules/skill/components/admin/AdminSkillsPage:open"
   | "modules/skill/widgets/GroupSystemSkillsAssignmentDrawer:open"
   | "modules/summarization/chat-extension/components/SummarizationStatusPill:delayed"
@@ -3920,8 +3938,10 @@ export type RequiredState =
   | "modules/workflow/components/WorkflowTestsPanel:error"
   | "modules/workflow/components/WorkflowTestsPanel:open"
   | "modules/workflow/components/WorkflowsList:delayed"
+  | "modules/workflow/components/WorkflowsList:error"
   | "modules/workflow/components/WorkflowsList:open"
   | "modules/workflow/components/admin/AdminWorkflowsPage:delayed"
+  | "modules/workflow/components/admin/AdminWorkflowsPage:error"
   | "modules/workflow/components/admin/AdminWorkflowsPage:open"
   | "modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer:open"
 
@@ -4103,6 +4123,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/llm-provider/widgets/LLMProviderGroupWidget:error",
   "modules/llm-repository/components/LlmRepositoryDrawer:open",
   "modules/llm-repository/components/LlmRepositorySettings:empty",
+  "modules/llm-repository/components/LlmRepositorySettings:error",
   "modules/mcp/chat-extension/components/McpMenuItem:delayed",
   "modules/mcp/chat-extension/components/McpStatusRow:empty",
   "modules/mcp/chat-extension/extension:error",
@@ -4129,14 +4150,18 @@ export const REQUIRED_STATE_KEYS = [
   "modules/memory/components/CoreMemoryBlocksEditor:open",
   "modules/memory/components/sections/AuditLogSection:delayed",
   "modules/memory/components/sections/AuditLogSection:empty",
+  "modules/memory/components/sections/AuditLogSection:error",
   "modules/memory/components/sections/CoreMemorySection:delayed",
   "modules/memory/components/sections/CoreMemorySection:empty",
+  "modules/memory/components/sections/CoreMemorySection:error",
   "modules/memory/components/sections/FullTextSearchSection:open",
   "modules/memory/components/sections/MemorySection:error",
   "modules/memory/components/sections/MyMemoriesSection:delayed",
   "modules/memory/components/sections/MyMemoriesSection:empty",
+  "modules/memory/components/sections/MyMemoriesSection:error",
   "modules/memory/components/sections/MyMemoriesSection:open",
   "modules/memory/components/sections/PreferencesSection:delayed",
+  "modules/memory/components/sections/PreferencesSection:error",
   "modules/memory/components/sections/SemanticSearchSection:empty",
   "modules/memory/components/sections/SemanticSearchSection:open",
   "modules/memory/pages/MemoryAdminPage:delayed",
@@ -4172,8 +4197,10 @@ export const REQUIRED_STATE_KEYS = [
   "modules/skill/components/SkillConversationDrawer:open",
   "modules/skill/components/SkillDetailDrawer:open",
   "modules/skill/components/SkillsList:delayed",
+  "modules/skill/components/SkillsList:error",
   "modules/skill/components/SkillsList:open",
   "modules/skill/components/admin/AdminSkillsPage:delayed",
+  "modules/skill/components/admin/AdminSkillsPage:error",
   "modules/skill/components/admin/AdminSkillsPage:open",
   "modules/skill/widgets/GroupSystemSkillsAssignmentDrawer:open",
   "modules/summarization/chat-extension/components/SummarizationStatusPill:delayed",
@@ -4226,8 +4253,10 @@ export const REQUIRED_STATE_KEYS = [
   "modules/workflow/components/WorkflowTestsPanel:error",
   "modules/workflow/components/WorkflowTestsPanel:open",
   "modules/workflow/components/WorkflowsList:delayed",
+  "modules/workflow/components/WorkflowsList:error",
   "modules/workflow/components/WorkflowsList:open",
   "modules/workflow/components/admin/AdminWorkflowsPage:delayed",
+  "modules/workflow/components/admin/AdminWorkflowsPage:error",
   "modules/workflow/components/admin/AdminWorkflowsPage:open",
   "modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer:open",
 ] as const

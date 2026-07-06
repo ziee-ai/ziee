@@ -61,6 +61,14 @@ export const Onboarding = defineStore('Onboarding', {
           draft.completedStepIds = progress.completed_step_ids
           draft.loaded = true
         })
+      } catch (error) {
+        // Progress is a non-blocking enhancement: the guides themselves come
+        // from module slots, so the page still renders with defaults (start at
+        // the first step). Swallow the failure — an uncaught rejection here
+        // would otherwise bubble to the ErrorBoundary and blank the wizard.
+        if (token === loadToken) {
+          console.error('Failed to load onboarding progress:', error)
+        }
       } finally {
         if (token === loadToken)
           set(draft => {

@@ -7,13 +7,14 @@ import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
 import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
-import { Button, Card, Flex, Text, Input, Select, Tabs } from '@/components/ui'
+import { Button, Card, ErrorState, Flex, Text, Input, Select, Tabs } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 
 export function SystemMcpServersPage() {
   const {
     systemServers,
     systemServersLoading,
+    systemServersError,
     systemServersTotal,
     systemServersPage,
     systemServersPageSize,
@@ -79,7 +80,7 @@ export function SystemMcpServersPage() {
               label: 'Servers',
               children: (
                 <div className="flex flex-col gap-3">
-        {systemServersLoading && (
+        {systemServersLoading && !systemServersError && (
           <Text type="secondary">Loading system servers...</Text>
         )}
         {/* Search and Filters */}
@@ -170,14 +171,29 @@ export function SystemMcpServersPage() {
           ))}
         </div>
 
-        {filteredServers.length === 0 && (
-          <div className="text-center py-12" data-testid="mcp-system-empty">
-            <Text type="secondary">
-              {searchTerm || statusFilter !== 'all'
-                ? 'No servers match your search criteria'
-                : 'No system MCP servers configured'}
-            </Text>
-          </div>
+        {systemServersError && filteredServers.length === 0 ? (
+          <ErrorState
+            resource="MCP servers"
+            description="Something went wrong while loading system MCP servers."
+            details={systemServersError}
+            onRetry={() =>
+              Stores.SystemMcpServer.loadSystemServers(
+                systemServersPage,
+                systemServersPageSize,
+              )
+            }
+            data-testid="mcp-system-error"
+          />
+        ) : (
+          filteredServers.length === 0 && (
+            <div className="text-center py-12" data-testid="mcp-system-empty">
+              <Text type="secondary">
+                {searchTerm || statusFilter !== 'all'
+                  ? 'No servers match your search criteria'
+                  : 'No system MCP servers configured'}
+              </Text>
+            </div>
+          )
         )}
 
         {systemServersTotal > 0 && (

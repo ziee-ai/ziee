@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, Empty, Combobox, Spin, Paragraph } from '@/components/ui'
+import { Card, Empty, ErrorState, Combobox, Spin, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -14,7 +14,7 @@ const READ_PERM = Permissions.CoreMemoryRead
  */
 export function CoreMemorySection() {
   const canRead = usePermission(READ_PERM)
-  const { assistants: assistantsMap, loading } = Stores.UserAssistants
+  const { assistants: assistantsMap, loading, error } = Stores.UserAssistants
   const [assistantId, setAssistantId] = useState<string | null>(null)
 
   const assistants = useMemo(
@@ -34,7 +34,15 @@ export function CoreMemorySection() {
       </Paragraph>
 
       <div className="mb-4">
-        {loading ? (
+        {error && assistants.length === 0 ? (
+          <ErrorState
+            resource="assistants"
+            description="Something went wrong while loading your assistants."
+            details={error}
+            onRetry={() => Stores.UserAssistants.loadUserAssistants()}
+            data-testid="memory-core-error"
+          />
+        ) : loading ? (
           <Spin label="Loading assistants" />
         ) : assistants.length === 0 ? (
           <Empty

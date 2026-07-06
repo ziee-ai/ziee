@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  ErrorState,
   Flex,
   Form,
   FormField,
@@ -43,7 +44,7 @@ type FormValues = z.infer<typeof schema>
 export function PreferencesSection() {
   const canRead = usePermission(READ_PERM)
   const canWrite = usePermission(WRITE_PERM)
-  const { settings, loading, saving } = Stores.MemorySettings
+  const { settings, loading, saving, error } = Stores.MemorySettings
   const { settings: adminSettings } = Stores.MemoryAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -69,6 +70,20 @@ export function PreferencesSection() {
   if (!canRead) return null
 
   const adminDisabled = adminSettings && !adminSettings.enabled
+
+  if (error && !settings) {
+    return (
+      <Card title="Preferences" data-testid="memory-prefs-card">
+        <ErrorState
+          resource="memory preferences"
+          description="Something went wrong while loading your memory preferences."
+          details={error}
+          onRetry={() => Stores.MemorySettings.load()}
+          data-testid="memory-prefs-error"
+        />
+      </Card>
+    )
+  }
 
   if (loading || !settings) {
     return (

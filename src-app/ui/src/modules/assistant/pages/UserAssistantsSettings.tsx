@@ -14,7 +14,6 @@ import {
 } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
-import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { AddButton } from '@/modules/settings/components/AddButton'
@@ -128,7 +127,17 @@ export function UserAssistantsSettings() {
             </Can>
           }
         >
-          {loading ? (
+          {error && assistants.length === 0 ? (
+            <ErrorState
+              resource="assistants"
+              description="Something went wrong while loading your assistants."
+              details={error}
+              onRetry={() =>
+                Stores.UserAssistants.loadUserAssistants(storePage, storePageSize)
+              }
+              data-testid="user-assistants-error"
+            />
+          ) : loading ? (
             <Loading />
           ) : error && assistants.length === 0 ? (
             <ErrorState
