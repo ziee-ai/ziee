@@ -42,6 +42,7 @@
     "jsdom": "^28.0.0",
     "pg": "^8.21.0",
     "selenium-webdriver": "^4.27.0",
+    "ts-morph": "^28.0.0",
     "typescript": "~6.0.3",
     "vite": "^8.0.14",
     "vitest": "^4.0.0"
@@ -49,11 +50,13 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
-    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run check:gallery-coverage && npm run check:gallery-crawl && npm run gallery:check-fixtures",
+    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run check:gallery-coverage && npm run check:gallery-crawl && npm run gallery:check-fixtures && npm run check:state-matrix",
     "lint:guardrails": "biome lint --only=style/noRestrictedImports src",
     "lint:colors": "node ../../ui/scripts/lint-hardcoded-colors.mjs",
     "gen:gallery-coverage": "node scripts/gen-gallery-coverage.mjs",
     "check:gallery-coverage": "node scripts/gen-gallery-coverage.mjs --check",
+    "gen:state-matrix": "node scripts/gen-state-matrix.mjs",
+    "check:state-matrix": "node scripts/gen-state-matrix.mjs --check",
     "gen:gallery-crawl": "node scripts/gen-crawl-cassette.mjs",
     "check:gallery-crawl": "node scripts/gen-crawl-cassette.mjs --check",
     "gallery:record": "node scripts/record-gallery-fixtures.mjs",
