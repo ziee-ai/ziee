@@ -581,7 +581,6 @@ export const displayStories: GalleryStory[] = [
   tagStory,
   badgeStory,
   alertStory,
-  errorStateStory,
   avatarStory,
   progressStory,
   spinnerStory,

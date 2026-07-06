@@ -147,9 +147,9 @@ export function LlmProviderSettings() {
       return (
         <ErrorState
           resource="LLM providers"
-          description="The configured LLM providers couldn't be loaded."
+          description="Your LLM providers couldn't be loaded. Check your connection and try again."
           details={error}
-          onRetry={() => Stores.LlmProvider.loadLlmProviders(true)}
+          onRetry={() => void Stores.LlmProvider.loadLlmProviders(true)}
           data-testid="llm-provider-settings-error"
         />
       )

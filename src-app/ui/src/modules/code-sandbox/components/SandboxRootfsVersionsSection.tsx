@@ -208,14 +208,16 @@ export function SandboxRootfsVersionsSection() {
   return (
     <Flex vertical className="gap-3">
       <Flex align="center" justify="between" wrap className="gap-2">
-        <div>
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 min-w-0">
           <Text strong>Currently default: </Text>
           {pinnedVersion ? (
             <Tag variant="outline" tone="info" icon={<Star />} data-testid="default-chip">
               v{pinnedVersion}
             </Tag>
           ) : (
-            <Tag variant="outline" data-testid="default-chip">
+            // Long status copy: allow it to wrap within the tag instead of
+            // clipping past the card edge on mobile.
+            <Tag variant="outline" className="!whitespace-normal max-w-full" data-testid="default-chip">
               Not yet set (defaults on first reachable GitHub call)
             </Tag>
           )}

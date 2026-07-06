@@ -63,11 +63,11 @@ export default function HardwareSettings() {
     return (
       <SettingsPageContainer title="Hardware">
         <ErrorState
-          data-testid="hardware-settings-unavailable-alert"
           resource="hardware information"
-          description="This machine's hardware details couldn't be loaded."
+          description="Your hardware information couldn't be loaded. Check your connection and try again."
           details={hardwareError}
-          onRetry={() => Stores.Hardware.loadHardwareInfo()}
+          onRetry={() => void Stores.Hardware.loadHardwareInfo()}
+          data-testid="hardware-settings-error"
         />
       </SettingsPageContainer>
     )

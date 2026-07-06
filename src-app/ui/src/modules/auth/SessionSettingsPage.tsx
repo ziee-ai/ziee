@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import {
   Alert,
   Card,
+  ErrorState,
   Form,
   FormField,
   InputNumber,
@@ -74,17 +75,26 @@ export function SessionSettingsPage() {
     )
   }
 
+  // Primary load failed (no settings to show) → replace the form with a
+  // persistent, retryable ErrorState. A later save failure keeps `settings`
+  // and is surfaced by the toast in onSubmit, not here.
+  if (error && !settings) {
+    return (
+      <SettingsPageContainer title="Sessions" subtitle={subtitle}>
+        <ErrorState
+          variant="page"
+          resource="session settings"
+          description="The session settings couldn't be loaded. Check your connection and try again."
+          details={error}
+          onRetry={() => void Stores.SessionSettings.load()}
+          data-testid="session-settings-error"
+        />
+      </SettingsPageContainer>
+    )
+  }
+
   return (
     <SettingsPageContainer title="Sessions" subtitle={subtitle}>
-      {error && (
-        <Alert
-          data-testid="session-settings-error-alert"
-          tone="error"
-          title="Failed to load session settings"
-          description={error}
-          className="mb-3"
-        />
-      )}
       <Card
         data-testid="session-settings-card"
         title="Token lifetimes"

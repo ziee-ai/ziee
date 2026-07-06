@@ -8,7 +8,7 @@
 # What it does:
 #   1. Resolves the target DB (DATABASE_URL env, else the embedded dev PG).
 #   2. Resolves the OWNER user (OWNER env, else the root admin: is_admin=true).
-#   3. Generates the file assets if missing (generate_files.py).
+#   3. Generates the file assets if missing (generate-files.mjs).
 #   4. Copies each asset into the file store:  <FILES_DIR>/originals/<owner>/<id>.<ext>
 #   5. Runs showcase.sql with -v owner=<uuid>.
 #   6. PROCESSES the files through the live API so they get real thumbnails,
@@ -25,7 +25,7 @@
 # leaves the files raw (re-run with the server up to fill them in). Set
 # SKIP_FILE_PROCESSING=1 to skip it entirely.
 #
-# Requirements: psql, python3 (+ Pillow & openpyxl for asset generation), curl,
+# Requirements: psql, node (asset generation via generate-files.mjs), curl,
 # and a server that has BOOTED against this DB at least once (so the built-in
 # mcp_servers rows referenced by tool_use blocks exist) and a completed
 # first-run setup (so a root admin user exists). Step 6 additionally needs the
@@ -69,7 +69,7 @@ echo "==> owner user: $OWNER_ID"
 # ---- 3. generate assets if missing -----------------------------------------
 if [[ ! -f "$HERE/files/chart.png" ]]; then
   echo "==> generating file assets"
-  python3 "$HERE/generate_files.py"
+  node "$HERE/generate-files.mjs"
 fi
 
 # ---- 4. copy bytes into the file store -------------------------------------
@@ -126,7 +126,7 @@ process_files() {
   if [[ -z "$token" ]]; then
     token="$(curl -s -X POST "$API_URL/api/auth/login" -H 'Content-Type: application/json' \
       -d "{\"username\":\"${ADMIN_USERNAME:-admin}\",\"password\":\"${ADMIN_PASSWORD:-Password123!}\"}" \
-      | python3 -c 'import sys,json;print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)"
+      | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{console.log(JSON.parse(d).access_token||"")}catch{console.log("")}})' 2>/dev/null)"
   fi
   if [[ -z "$token" ]]; then
     echo "==> WARN: admin login failed — skipping file processing."
@@ -136,7 +136,7 @@ process_files() {
   # Uploader's user id = where the API writes NEW artifacts on disk (its own dir).
   local uploader
   uploader="$(curl -s "$API_URL/api/auth/me" -H "Authorization: Bearer $token" \
-    | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("id") or d.get("user",{}).get("id",""))' 2>/dev/null)"
+    | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const o=JSON.parse(d);console.log(o.id||(o.user&&o.user.id)||"")}catch{console.log("")}})' 2>/dev/null)"
   [[ -z "$uploader" ]] && uploader="$OWNER_ID"
   echo "==> processing files via $API_URL"
   local entry name seed new resp done_flag su du kind sd dd
@@ -145,7 +145,7 @@ process_files() {
     done_flag="$(psql_do -c "SELECT has_thumbnail FROM files WHERE id='$seed';" 2>/dev/null)"
     if [[ "$done_flag" == "t" ]]; then echo "    $name -> already processed, skip"; continue; fi
     resp="$(curl -s -X POST "$API_URL/api/files/upload" -H "Authorization: Bearer $token" -F "file=@$HERE/files/$name")"
-    new="$(echo "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null)"
+    new="$(echo "$resp" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{console.log(JSON.parse(d).id||"")}catch{console.log("")}})' 2>/dev/null)"
     if [[ -z "$new" ]]; then echo "    WARN: upload failed for $name: ${resp:0:120}"; continue; fi
     # graft processing columns SEED <- NEW
     psql_do -c "UPDATE files s SET has_thumbnail=n.has_thumbnail, preview_page_count=n.preview_page_count, text_page_count=n.text_page_count, processing_metadata=n.processing_metadata FROM files n WHERE s.id='$seed' AND n.id='$new';" >/dev/null 2>&1

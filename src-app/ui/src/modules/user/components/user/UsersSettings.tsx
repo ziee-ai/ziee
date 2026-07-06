@@ -11,6 +11,7 @@ import {
   Separator,
   Text,
   Confirm,
+  ErrorState,
 } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
@@ -52,9 +53,12 @@ export function UsersSettings() {
   const canDelete = usePermission(Permissions.UsersDelete)
   const canToggleStatus = usePermission(Permissions.UsersToggleStatus)
 
-  // Show errors
+  // Toast only user-action failures. A failed users LOAD renders as a
+  // persistent ErrorState below (not toast-only), so only toast a users error
+  // that occurred against already-loaded data (a mutation). groupsError always
+  // originates from a drawer mutation, so it still toasts.
   useEffect(() => {
-    if (usersError) {
+    if (usersError && users.length > 0) {
       message.error(usersError)
       Stores.Users.clearError()
     }
@@ -62,7 +66,7 @@ export function UsersSettings() {
       message.error(groupsError)
       Stores.UserGroups.clearError()
     }
-  }, [usersError, groupsError])
+  }, [usersError, groupsError, users.length])
 
   const handleToggleActive = async (userId: string) => {
     try {
@@ -231,9 +235,19 @@ export function UsersSettings() {
             {loadingUsers ? (
               <Loading label="Loading users" />
             ) : users.length === 0 ? (
-              <div>
-                <Empty description="No users yet" data-testid="user-list-empty" />
-              </div>
+              usersError ? (
+                <ErrorState
+                  resource="users"
+                  description="The user list couldn't be loaded. Check your connection and try again."
+                  details={usersError}
+                  onRetry={() => Stores.Users.loadUsers(storePage, storePageSize)}
+                  data-testid="user-list-error"
+                />
+              ) : (
+                <div>
+                  <Empty description="No users yet" data-testid="user-list-empty" />
+                </div>
+              )
             ) : (
               <div>
                 {users.map((user, index) => (
@@ -251,8 +265,11 @@ export function UsersSettings() {
                               <Badge tone={user.is_active ? 'success' : 'error'} data-testid={`user-status-badge-${user.id}`}>{user.is_active ? 'Active' : 'Inactive'}</Badge>
                             </Flex>
                           </div>
+                          {/* Left-align the wrapped action list on mobile
+                              so a lone wrapped action (e.g. "Groups") isn't
+                              orphaned right; right-align inline from sm up. */}
                           <div
-                            className={'flex flex-wrap gap-1 items-center justify-end'}
+                            className={'flex flex-wrap gap-1 items-center justify-start sm:justify-end'}
                           >
                             {getUserActions(user)}
                           </div>

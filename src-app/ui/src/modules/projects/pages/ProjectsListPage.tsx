@@ -142,9 +142,9 @@ export function ProjectsListPage() {
           <div className="w-full max-w-4xl self-center px-3 pt-3">
             <ErrorState
               resource="projects"
-              description="Your projects couldn't be loaded."
+              description="Your projects couldn't be loaded. Check your connection and try again."
               details={error}
-              onRetry={() => Stores.Projects.loadProjects(true)}
+              onRetry={() => void Stores.Projects.loadProjects(true)}
               data-testid="project-list-error"
             />
           </div>

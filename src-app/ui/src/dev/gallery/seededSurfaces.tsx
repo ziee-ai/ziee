@@ -15,6 +15,16 @@
  * the transient piece through the REAL store (`Store.store.setState(...)`) — the
  * exact channel deepStates/overlays already use. Driven one-per-page-load via
  * `?surface=<slug>` so each seeded singleton store never bleeds across entries.
+ *
+ * A seeded slug MAY intentionally SHADOW an enumerated page slug (a seeded entry
+ * is resolved before the enumerated page in `GalleryPages`): use this when the
+ * enumerated route is structurally unreviewable in the GET-only harness — a
+ * route whose content lives in its LAYOUT redirect (`/settings` → the settings
+ * landing), whose live data arrives over SSE not a JSON GET (`/hardware-monitor`
+ * usage), or that needs a query param the browse enumerator can't fill
+ * (`/auth/link-account?link_token=…`). The seeded entry renders the real page in
+ * its reviewable state; the enumerated (blank) form stays only on the browse
+ * canvas, where per-surface capture never lands.
  */
 import { type ReactNode, Suspense, useEffect } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -662,6 +672,126 @@ const integratorSeeded: SeededSurfaceEntry[] = [
         } as any)
       })
     },
+  },
+  // ── SHADOW: /settings landing. The enumerated `/settings` route's element is
+  // `() => null` — its real content (the settings nav + a redirect to the first
+  // section) lives in `SettingsLayoutDef`, which the page grid doesn't apply, so
+  // the enumerated surface is blank. Render `SettingsPage` (the nav shell) inside
+  // its own router landed on a section so the genuine settings landing chrome is
+  // reviewable. ────────────────────────────────────────────────────────────────
+  {
+    slug: 'settings',
+    title: 'Settings landing (nav shell)',
+    note: '/settings redirects to the first section via SettingsLayout; the page grid renders the null index element. This renders SettingsPage on the first section so the real settings nav chrome is reviewable.',
+    // Mount SettingsPage under the frame's OWN router (no nested MemoryRouter —
+    // React Router forbids that) at a concrete section so its redirect effect is
+    // a no-op and the nav menu + header render. The section Outlet has no child
+    // route (each section is reviewed as its own enumerated surface), so the
+    // content area is intentionally empty — the point is the nav shell.
+    path: '/settings/:section',
+    initialPath: '/settings/general',
+    component: lazyNamed(
+      () => import('@/modules/settings/SettingsPage'),
+      'default',
+    ),
+  },
+  // ── SHADOW: /hardware-monitor live metrics. Usage data arrives over the
+  // `/api/hardware/stream` SSE connection, not a JSON GET, so the GET-only loaded
+  // cassette leaves `currentUsage` null → "Waiting for usage data…". Seed a
+  // realistic snapshot (CPU/mem/GPU) so the charts render. ──────────────────────
+  {
+    slug: 'hardware-monitor',
+    title: 'Hardware monitor — live metrics',
+    note: 'currentUsage arrives over SSE (not a JSON GET); seed a realistic usage snapshot so the CPU/memory/GPU charts render instead of "Waiting for usage data…".',
+    path: '/hardware-monitor',
+    initialPath: '/hardware-monitor',
+    component: lazyNamed(
+      () => import('@/modules/hardware/HardwareMonitor'),
+      'HardwareMonitor',
+    ),
+    setup: async () => {
+      const { Hardware } = await import('@/modules/hardware/Hardware.store')
+      await holdPatch(() =>
+        Hardware.store.setState({
+          hardwareInfo: {
+            cpu: {
+              architecture: 'x86_64',
+              model: 'AMD Ryzen 9 7950X',
+              cores: 16,
+              threads: 32,
+              base_frequency: 4500,
+              max_frequency: 5700,
+            },
+            gpu_devices: [
+              {
+                device_id: 'gpu-0',
+                name: 'NVIDIA GeForce RTX 4090',
+                vendor: 'NVIDIA',
+                memory: 25757220864,
+                driver_version: '550.90.07',
+                compute_capabilities: {} as any,
+              },
+            ],
+            memory: { total_ram: 68719476736, total_swap: 8589934592 },
+            operating_system: {
+              architecture: 'x86_64',
+              name: 'Linux',
+              version: '24.04',
+              kernel_version: '6.8.0',
+            },
+          },
+          hardwareInitialized: true,
+          hardwareLoading: false,
+          hardwareError: null,
+          currentUsage: {
+            cpu: { usage_percentage: 37.4, temperature: 58, frequency: 4820 },
+            gpu_devices: [
+              {
+                device_id: 'gpu-0',
+                device_name: 'NVIDIA GeForce RTX 4090',
+                utilization_percentage: 72,
+                memory_total: 25757220864,
+                memory_used: 14200000000,
+                memory_usage_percentage: 55.1,
+                temperature: 64,
+                power_usage: 285,
+              },
+            ],
+            memory: {
+              total_ram: 68719476736,
+              used_ram: 28051503104,
+              available_ram: 40667973632,
+              usage_percentage: 40.8,
+              used_swap: 0,
+              available_swap: 8589934592,
+            } as any,
+            timestamp: new Date().toISOString(),
+          },
+          usageLoading: false,
+          usageError: null,
+          sseConnected: true,
+          sseConnecting: false,
+          sseError: null,
+        } as any),
+      )
+    },
+  },
+  // ── SHADOW: /auth/link-account form. The page shows a "Missing link token"
+  // error banner whenever `?link_token=` is absent — which is EVERY enumerated
+  // state (the route carries no token), so the review saw the error banner
+  // mislabeled as the "empty" state. Mount it WITH a token so the real link-your-
+  // accounts form renders; the missing-token banner is a genuinely separate
+  // state, not "empty". ────────────────────────────────────────────────────────
+  {
+    slug: 'auth-link-account',
+    title: 'Link account — password confirm form',
+    note: 'the page shows a missing-token error banner without ?link_token=; mount with a token so the real form renders (the banner is a separate state, not "empty").',
+    path: '/auth/link-account',
+    initialPath: '/auth/link-account?link_token=gallery-demo-link-token',
+    component: lazyNamed(
+      () => import('@/modules/auth/LinkAccountPage'),
+      'LinkAccountPage',
+    ),
   },
 ]
 

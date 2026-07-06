@@ -138,9 +138,24 @@ export function AssistantsSettings() {
               data-testid="template-assistants-error"
             />
           ) : assistants.length === 0 ? (
-            <div>
-              <Empty data-testid="template-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />
-            </div>
+            error ? (
+              <ErrorState
+                resource="assistant templates"
+                description="The template assistants couldn't be loaded. Check your connection and try again."
+                details={error}
+                onRetry={() =>
+                  Stores.TemplateAssistants.loadTemplateAssistants(
+                    storePage,
+                    storePageSize,
+                  )
+                }
+                data-testid="template-assistants-error"
+              />
+            ) : (
+              <div>
+                <Empty data-testid="template-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />
+              </div>
+            )
           ) : (
             <div>
               {assistants.map((assistant, index) => (

@@ -1,6 +1,6 @@
 import { Search, Eraser } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { Combobox, MultiSelect, Text, Button, Input } from '@/components/ui'
+import { Combobox, MultiSelect, Text, Button, Input, ErrorState } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
@@ -74,14 +74,14 @@ export function AssistantsHubTab() {
   // Show error state
   if (error && assistants.length === 0) {
     return (
-      <div className="text-center py-12">
-        <Text type="danger">Failed to load assistants: {error}</Text>
-        <div className="mt-4">
-          <Button onClick={() => Stores.HubAssistants.loadAssistants()} data-testid="hub-assistants-retry-btn">
-            Retry
-          </Button>
-        </div>
-      </div>
+      <ErrorState
+        variant="page"
+        resource="hub assistants"
+        description="The hub catalog couldn't be loaded. Check your connection and try again."
+        details={error}
+        onRetry={() => Stores.HubAssistants.loadAssistants()}
+        data-testid="hub-assistants-error"
+      />
     )
   }
 

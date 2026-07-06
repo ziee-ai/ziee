@@ -10,6 +10,7 @@ import {
   Textarea,
   Tooltip,
   message,
+  ErrorState,
 } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { z } from 'zod'
@@ -54,13 +55,14 @@ export function UserGroupsSettings() {
   })
   const canCreate = usePermission(Permissions.GroupsCreate)
 
-  // Show errors
+  // Toast only user-action failures (a mutation against already-loaded data).
+  // A load failure renders as a persistent ErrorState below, not toast-only.
   useEffect(() => {
-    if (error) {
+    if (error && groups.length > 0) {
       message.error(error)
       Stores.UserGroups.clearError()
     }
-  }, [error])
+  }, [error, groups.length])
 
   const handleCreateGroup = async (values: CreateGroupFormValues) => {
     try {
@@ -131,7 +133,17 @@ export function UserGroupsSettings() {
       {loadingGroups ? (
         <Loading />
       ) : groups.length === 0 ? (
-        <Empty description="No user groups yet" data-testid="user-groups-empty" />
+        error ? (
+          <ErrorState
+            resource="user groups"
+            description="The user groups couldn't be loaded. Check your connection and try again."
+            details={error}
+            onRetry={() => Stores.UserGroups.loadUserGroups(storePage, storePageSize)}
+            data-testid="user-groups-error"
+          />
+        ) : (
+          <Empty description="No user groups yet" data-testid="user-groups-empty" />
+        )
       ) : (
         // Each GroupListItem already renders its own <Card>, so
         // dropping the outer wrapping card makes every group a

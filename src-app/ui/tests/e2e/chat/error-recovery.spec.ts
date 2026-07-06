@@ -5,9 +5,10 @@ import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 /**
  * E2E — chat error-RECOVERY paths.
  *
- *  1. Conversation-list load failure surfaces a dismissable error Alert
- *     (`ConversationList.tsx:188`, fed by `ChatHistory.store` setting
- *     `error: 'Failed to load conversations'`).
+ *  1. Conversation-list load failure surfaces a persistent, retryable
+ *     <ErrorState> (`ConversationList.tsx`, fed by `ChatHistory.store` setting
+ *     `error: 'Failed to load conversations'`); "Try again" re-fetches and
+ *     recovers.
  *  2. A failed regenerate (the underlying send POST 500s) must not leave the
  *     composer stuck "streaming" — `Chat.store.sendMessage`'s catch clears
  *     `sending`/`isStreaming`, so the Send button re-enables
@@ -15,7 +16,7 @@ import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
  */
 
 test.describe('Chat — error recovery', () => {
-  test('a failed conversations load shows a dismissable error alert', async ({
+  test('a failed conversations load shows a persistent error state that retries', async ({
     page,
     testInfra,
   }) => {
@@ -23,7 +24,8 @@ test.describe('Chat — error recovery', () => {
 
     // Fail the conversations list GET from the start so the first
     // loadConversations() flips the store into its error state.
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route, req) => {
+    const failRoute = /\/api\/conversations(\?.*)?$/
+    await page.route(failRoute, async (route, req) => {
       if (req.method() === 'GET') {
         return route.fulfill({
           status: 500,
@@ -37,13 +39,16 @@ test.describe('Chat — error recovery', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/chats`)
 
-    // The sidebar conversation list surfaces the error Alert.
-    const alert = byTestId(page, 'chat-history-error-alert')
-    await expect(alert.first()).toBeVisible({ timeout: 30000 })
+    // The conversation list surfaces a persistent ErrorState (not toast-only).
+    await expect(byTestId(page, 'chat-history-error').first()).toBeVisible({
+      timeout: 30000,
+    })
 
-    // It is dismissable (closable Alert) → disappears on close.
-    await alert.first().getByRole('button').click()
-    await expect(byTestId(page, 'chat-history-error-alert')).toHaveCount(0, {
+    // "Try again" re-fetches. Stop failing the GET, then retry → the error
+    // state clears and the list recovers (empty, no conversations seeded).
+    await page.unroute(failRoute)
+    await byTestId(page, 'chat-history-error-retry').first().click()
+    await expect(byTestId(page, 'chat-history-error')).toHaveCount(0, {
       timeout: 10000,
     })
   })

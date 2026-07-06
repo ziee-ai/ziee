@@ -147,7 +147,7 @@ export function McpServerCard({
             * environments). */}
           <div className="mb-3 flex items-center gap-2 flex-wrap">
             <div className="flex-1 min-w-48">
-              <Flex className="gap-2 items-center">
+              <Flex className="gap-2 items-center flex-wrap">
                 <Text className="font-semibold text-base">{server.display_name}</Text>
                 {!isEditable && server.is_system && (
                   <Tag variant="outline" tone="info" data-testid="mcp-server-system-tag">System</Tag>
@@ -339,14 +339,21 @@ export function McpServerCard({
             {/* Transport Information */}
             <div className="mb-2">
               {server.url && (
-                <>
-                  <Text type="secondary" className="text-xs mr-2">
+                <div className="flex items-baseline gap-1 min-w-0">
+                  <Text type="secondary" className="text-xs shrink-0">
                     URL:
                   </Text>
-                  <Text type="secondary" className="text-xs truncate">
+                  {/* flex-1 + min-w-0 lets the value shrink and ellipsis
+                      instead of clipping past the card edge on mobile; the
+                      full URL stays available via the title tooltip. */}
+                  <Text
+                    type="secondary"
+                    className="text-xs truncate flex-1 min-w-0"
+                    title={server.url}
+                  >
                     {server.url}
                   </Text>
-                </>
+                </div>
               )}
               {server.command && (
                 <Card size="sm" className={'!mt-2'} data-testid="mcp-server-command-card">
