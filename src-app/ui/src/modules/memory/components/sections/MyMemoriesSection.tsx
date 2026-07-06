@@ -153,6 +153,7 @@ export function MyMemoriesSection() {
         className="mb-3"
       >
         <Input
+          data-standalone-control
           placeholder="Search content"
           allowClear
           onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
@@ -160,6 +161,7 @@ export function MyMemoriesSection() {
           data-testid="memory-search-input"
         />
         <Select
+          data-standalone-control
           placeholder="Kind"
           value={kindFilter ?? undefined}
           onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
@@ -174,6 +176,7 @@ export function MyMemoriesSection() {
           ]}
         />
         <Select
+          data-standalone-control
           placeholder="Source"
           value={sourceFilter ?? undefined}
           onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}

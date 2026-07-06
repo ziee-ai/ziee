@@ -114,9 +114,10 @@ export function McpServersSettings() {
       subtitle="Manage Model Context Protocol servers for enhanced tool capabilities"
     >
       <div className="flex flex-col gap-3">
-        {/* Search and Filters */}
+        {/* Search and Filters — standalone list controls, not form fields. */}
         <div className="flex gap-2 flex-wrap">
           <Input
+            data-standalone-control
             placeholder="Search servers..."
             prefix={<Search />}
             value={searchTerm}
@@ -127,6 +128,7 @@ export function McpServersSettings() {
             data-testid="mcp-settings-search-input"
           />
           <Select
+            data-standalone-control
             placeholder="Filter by status"
             value={statusFilter}
             onChange={setStatusFilter}
