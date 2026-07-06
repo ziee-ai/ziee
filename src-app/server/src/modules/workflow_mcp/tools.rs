@@ -1333,8 +1333,8 @@ mod tests {
     #[test]
     fn slug_maps_separators_to_underscore() {
         assert_eq!(
-            slug_for_name("io.github.phibya/research-summarize-write"),
-            "wf_io_github_phibya_research-summarize-write"
+            slug_for_name("io.github.ziee-ai/research-summarize-write"),
+            "wf_io_github_ziee-ai_research-summarize-write"
         );
         assert_eq!(slug_for_name("local.dev/x"), "wf_local_dev_x");
         // hyphens are preserved (legal in Anthropic's regex).
@@ -1343,7 +1343,7 @@ mod tests {
 
     #[test]
     fn composed_name_under_cap_accepted() {
-        let slug = slug_for_name("io.github.phibya/research-summarize-write");
+        let slug = slug_for_name("io.github.ziee-ai/research-summarize-write");
         let name = checked_composed_name(&slug).expect("fits");
         assert!(name.len() <= MCP_TOOL_NAME_CAP);
         assert!(name.starts_with(&workflow_mcp_server_id().to_string()));
@@ -1373,7 +1373,7 @@ mod tests {
         assert_eq!(err.error_code(), "WORKFLOW_TOOL_NAME_TOO_LONG");
 
         // A short, ordinary name installs fine.
-        check_install_slug_len("io.github.phibya/research-summarize-write")
+        check_install_slug_len("io.github.ziee-ai/research-summarize-write")
             .expect("short name accepted");
     }
 

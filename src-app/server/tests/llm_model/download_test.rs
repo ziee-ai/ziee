@@ -570,7 +570,7 @@ async fn first_auth_required_hf_model(
     // surface `min_ziee_version`, so the skip list lives here as a
     // hard-coded fixture exclusion. Update when the seed changes.
     // Matches the reverse-DNS `name` field on the catalog item.
-    const INCOMPATIBLE_FIXTURE_NAMES: &[&str] = &["io.github.phibya/deepseek-r1-70b"];
+    const INCOMPATIBLE_FIXTURE_NAMES: &[&str] = &["io.github.ziee-ai/deepseek-r1-70b"];
 
     // Auth + source-registry live on `sources[].environmentVariables[]`
     // (isRequired+isSecret) and `sources[].registryType` — not on

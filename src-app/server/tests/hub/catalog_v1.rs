@@ -11,12 +11,12 @@ use crate::common::test_helpers::create_user_with_permissions;
 const SEED_VERSION: &str = "2.0.0";
 
 // The seed mirrors ziee-ai/hub's published `dist/` — 7 models +
-// 5 assistants + 6 mcp-servers + 1 skill + 9 workflows = 28 entries.
+// 5 assistants + 6 mcp-servers + 1 skill + 10 workflows = 29 entries.
 // (ziee's 10 capability skills are now built-in, embedded in the binary,
 // NOT hub-distributed; the hub ships one generic example skill,
 // io.github.ziee/effective-prompting.)
 // Bump when the seed snapshot is refreshed.
-const SEED_ITEM_COUNT: usize = 28;
+const SEED_ITEM_COUNT: usize = 29;
 
 // =====================================================================
 // /hub/version + /hub/index — anyone with read can call
@@ -25,7 +25,7 @@ const SEED_ITEM_COUNT: usize = 28;
 #[tokio::test]
 async fn version_endpoint_returns_seed_catalog_metadata() {
     let server = TestServer::start().await;
-    let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    let user = create_user_with_permissions(&server, "reader", &["hub::catalog::read"]).await;
 
     let response = reqwest::Client::new()
         .get(server.api_url("/hub/version"))
@@ -50,13 +50,13 @@ async fn version_endpoint_returns_seed_catalog_metadata() {
     // ziee's 10 capability skills are now built-in (not hub); the hub ships
     // one generic example skill (io.github.ziee/effective-prompting).
     assert_eq!(counts["skills"], 1);
-    assert_eq!(counts["workflows"], 9);
+    assert_eq!(counts["workflows"], 10);
 }
 
 #[tokio::test]
 async fn index_endpoint_lists_seed_items() {
     let server = TestServer::start().await;
-    let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    let user = create_user_with_permissions(&server, "reader", &["hub::catalog::read"]).await;
 
     let response = reqwest::Client::new()
         .get(server.api_url("/hub/index"))
@@ -84,8 +84,8 @@ async fn index_endpoint_lists_seed_items() {
     // Spot-check known ids — the seed is fixed at v2.0.0.
     // IndexItem uses `name` (reverse-DNS); there is no `id` field.
     let ids: Vec<&str> = items.iter().filter_map(|i| i["name"].as_str()).collect();
-    assert!(ids.contains(&"io.github.phibya/code-reviewer"), "missing code-reviewer in {ids:?}");
-    assert!(ids.contains(&"io.github.phibya/llama-3-1-8b-instruct"));
+    assert!(ids.contains(&"io.github.ziee-ai/code-reviewer"), "missing code-reviewer in {ids:?}");
+    assert!(ids.contains(&"io.github.ziee-ai/llama-3-1-8b-instruct"));
     assert!(ids.contains(&"io.github.github/mcp"));
 
     // Every seeded item ships a per-entry `version` string (the source
@@ -120,11 +120,11 @@ async fn index_endpoint_requires_auth() {
 #[tokio::test]
 async fn manifest_endpoint_returns_model_json() {
     let server = TestServer::start().await;
-    let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    let user = create_user_with_permissions(&server, "reader", &["hub::catalog::read"]).await;
     // Manifest lookup is by reverse-DNS `name` (URL-encoded `/`).
     let response = reqwest::Client::new()
         .get(server.api_url(
-            "/hub/manifest/io.github.phibya%2Fllama-3-1-8b-instruct?category=model",
+            "/hub/manifest/io.github.ziee-ai%2Fllama-3-1-8b-instruct?category=model",
         ))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
@@ -134,7 +134,7 @@ async fn manifest_endpoint_returns_model_json() {
     let payload: Json = response.json().await.expect("parse json");
     // HubManifest is a typed struct: { category, model?, assistant?, mcp_server? }.
     assert_eq!(payload["category"], "model");
-    assert_eq!(payload["model"]["name"], "io.github.phibya/llama-3-1-8b-instruct");
+    assert_eq!(payload["model"]["name"], "io.github.ziee-ai/llama-3-1-8b-instruct");
     // There is no model-wide `file_format`; check the first source.
     assert_eq!(payload["model"]["sources"][0]["fileFormat"], "safetensors");
     assert!(
@@ -190,7 +190,7 @@ async fn catalog_read_cannot_refresh() {
 #[tokio::test]
 async fn manifest_endpoint_404s_unknown_id() {
     let server = TestServer::start().await;
-    let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    let user = create_user_with_permissions(&server, "reader", &["hub::catalog::read"]).await;
     // Manifest lookup is by reverse-DNS `name`. A well-formed-but-
     // unknown name should return 404; the bare slug `does-not-exist`
     // would be rejected by `is_safe_name` as 400 (covered by
@@ -209,7 +209,7 @@ async fn manifest_endpoint_404s_unknown_id() {
 #[tokio::test]
 async fn manifest_endpoint_400s_unsafe_id() {
     let server = TestServer::start().await;
-    let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    let user = create_user_with_permissions(&server, "reader", &["hub::catalog::read"]).await;
     // Path-traversal attempt — URL encoding `..` so it survives axum routing.
     let response = reqwest::Client::new()
         .get(server.api_url("/hub/manifest/..%2Fetc%2Fpasswd?category=model"))
@@ -313,7 +313,7 @@ async fn installed_endpoint_lists_all_tracked_entities() {
     // reverse-DNS form directly.
     sqlx::query(
         "INSERT INTO hub_entities (id, entity_type, entity_id, hub_id, hub_category, hub_version)
-         VALUES ($1, 'assistant', $2, 'io.github.phibya/code-reviewer', 'assistant', '0.0.0-test')",
+         VALUES ($1, 'assistant', $2, 'io.github.ziee-ai/code-reviewer', 'assistant', '0.0.0-test')",
     )
     .bind(Uuid::new_v4())
     .bind(entity_id)
@@ -332,7 +332,7 @@ async fn installed_endpoint_lists_all_tracked_entities() {
     let body: Json = response.json().await.expect("parse json");
     let items = body["items"].as_array().expect("items array");
     assert_eq!(items.len(), 1, "expected exactly one installed row, got {items:?}");
-    assert_eq!(items[0]["hub_id"], "io.github.phibya/code-reviewer");
+    assert_eq!(items[0]["hub_id"], "io.github.ziee-ai/code-reviewer");
     assert_eq!(items[0]["installed_version"], "0.0.0-test");
     // Per-entry version stamp: code-reviewer ships at 1.0.0 in the seed
     // (NOT the catalog-wide hub_version 2.0.0).

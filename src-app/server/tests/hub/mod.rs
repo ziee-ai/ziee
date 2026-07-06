@@ -1891,7 +1891,7 @@ async fn test_create_model_from_hub() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.phibya/llama-3-1-8b-instruct"))
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.ziee-ai/llama-3-1-8b-instruct"))
         .expect("compatible model 'llama-3-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("name").and_then(|v| v.as_str()).unwrap();
 
@@ -2037,7 +2037,7 @@ async fn test_create_model_from_hub_requires_permission() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.phibya/llama-3-1-8b-instruct"))
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.ziee-ai/llama-3-1-8b-instruct"))
         .expect("compatible model 'llama-3-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("name").and_then(|v| v.as_str()).unwrap();
 
@@ -2160,7 +2160,7 @@ async fn test_create_model_from_hub_invalid_provider_id() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.phibya/llama-3-1-8b-instruct"))
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.ziee-ai/llama-3-1-8b-instruct"))
         .expect("compatible model 'llama-3-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("name").and_then(|v| v.as_str()).unwrap();
 
@@ -2340,7 +2340,7 @@ async fn test_duplicate_download_prevention() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.phibya/llama-3-1-8b-instruct"))
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.ziee-ai/llama-3-1-8b-instruct"))
         .expect("compatible model 'llama-3-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("name").and_then(|v| v.as_str()).unwrap();
 
@@ -2890,7 +2890,7 @@ async fn test_create_model_from_hub_requires_llm_models_create() {
 
     let url = server.api_url("/hub/models/download");
     let request_body = serde_json::json!({
-        "hub_id": "io.github.phibya/llama-3-1-8b-instruct",
+        "hub_id": "io.github.ziee-ai/llama-3-1-8b-instruct",
         "provider_id": uuid::Uuid::new_v4(),
         "enabled": true
     });

@@ -1,0 +1,65 @@
+{
+  "$schema": "/schemas/2026-06-12/model.schema.json",
+  "name": "io.github.ziee-ai/deepseek-r1-70b",
+  "version": "1.0.0",
+  "display_name": "DeepSeek-R1 70B",
+  "description": "Large reasoning model. Flagged as requiring a future ziee-chat for its tensor-parallel runtime support \u2014 used to exercise the compat gate.",
+  "repository": {
+    "url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+    "source": "huggingface",
+    "id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+  },
+  "sources": [
+    {
+      "registryType": "huggingface",
+      "identifier": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+      "version": "main",
+      "fileFormat": "safetensors",
+      "runtimeHint": "mistralrs",
+      "contextLength": 65536,
+      "environmentVariables": [
+        {
+          "name": "HUGGINGFACE_API_KEY",
+          "description": "Hugging Face access token with download access to this gated model.",
+          "isSecret": true,
+          "isRequired": true
+        }
+      ],
+      "quantizations": [
+        {
+          "name": "f16",
+          "mainFile": "model.safetensors",
+          "sizeGb": 140.0,
+          "isDefault": true
+        }
+      ]
+    }
+  ],
+  "dependencies": [],
+  "capabilities": {
+    "chat": true,
+    "tools": true,
+    "vision": false,
+    "audio": false,
+    "text_embedding": false,
+    "image_generator": false,
+    "code_interpreter": true
+  },
+  "tags": [
+    "reasoning",
+    "large",
+    "instruct"
+  ],
+  "recommended_parameters": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 40,
+    "repeat_penalty": 1.05,
+    "context_size": 65536
+  },
+  "language_support": [
+    "en",
+    "zh"
+  ],
+  "license": "MIT"
+}
