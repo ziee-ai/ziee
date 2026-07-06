@@ -24,9 +24,10 @@ async fn list(server: &TestServer, user: &TestUser, search: Option<&str>) -> ser
     resp.json().await.unwrap()
 }
 
-/// Minimal percent-encoding for the few chars our test terms use (space).
+/// Minimal percent-encoding for the few chars our test terms use. Encode `%`
+/// first (→ %25) so a literal-percent term round-trips to the server, then space.
 fn urlencoding(s: &str) -> String {
-    s.replace(' ', "%20")
+    s.replace('%', "%25").replace(' ', "%20")
 }
 
 fn names(body: &serde_json::Value) -> Vec<String> {
@@ -121,4 +122,68 @@ async fn search_is_ownership_scoped() {
     let body = list(&server, &user_a, Some("road")).await;
     assert_eq!(body["total"], 0, "Alice must not see Bob's matching project");
     assert!(body["projects"].as_array().unwrap().is_empty());
+}
+
+/// GET /projects with explicit search + limit (raw, for pagination assertions).
+async fn list_paged(
+    server: &TestServer,
+    user: &TestUser,
+    search: &str,
+    limit: i64,
+) -> serde_json::Value {
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/projects?search={search}&limit={limit}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    resp.json().await.unwrap()
+}
+
+/// TEST-8 — the filtered `total` (COUNT) reflects the FULL matching set even
+/// when the page is truncated by `limit` (COUNT ignores LIMIT). This is the
+/// pagination-consistency case the first test round missed.
+#[tokio::test]
+async fn filtered_total_survives_page_truncation() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "user", helpers::full_project_permissions()).await;
+
+    helpers::create_project(&server, &user, "Report Q1").await;
+    helpers::create_project(&server, &user, "Report Q2").await;
+    helpers::create_project(&server, &user, "Report Q3").await;
+    helpers::create_project(&server, &user, "Unrelated").await;
+
+    let body = list_paged(&server, &user, "report", 2).await;
+    assert_eq!(body["total"], 3, "COUNT reflects all 3 matches, ignoring LIMIT");
+    assert_eq!(
+        body["projects"].as_array().unwrap().len(),
+        2,
+        "page is truncated to limit=2"
+    );
+}
+
+/// TEST-9 — a term matching MULTIPLE projects returns all of them; and LIKE
+/// metacharacters in the term are treated as wildcards (not escaped), matching
+/// the mcp convention (DEC-7) — documented here rather than left implicit.
+#[tokio::test]
+async fn multi_match_and_wildcard_metacharacters() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "user", helpers::full_project_permissions()).await;
+
+    helpers::create_project(&server, &user, "Repair log").await;
+    helpers::create_project(&server, &user, "Report doc").await;
+    helpers::create_project(&server, &user, "Design notes").await;
+
+    // "re" is a substring of both "Repair" and "Report" (case-insensitive).
+    let multi = list(&server, &user, Some("re")).await;
+    assert_eq!(multi["total"], 2, "'re' matches Repair + Report");
+    let mut got = names(&multi);
+    got.sort();
+    assert_eq!(got, vec!["Repair log".to_string(), "Report doc".to_string()]);
+
+    // A bare '%' term is an unescaped ILIKE wildcard → matches everything the
+    // user owns (still scoped to their own rows). Encodes the DEC-7 behavior.
+    let wildcard = list(&server, &user, Some("%")).await;
+    assert_eq!(wildcard["total"], 3, "'%' is a wildcard, matches all own projects");
 }

@@ -3634,11 +3634,6 @@ export interface PaginationQuery4 {
   limit?: number
   /** Page number (1-indexed). Defaults to 1. */
   page?: number
-  /**
-   * Case-insensitive substring filter on project name/description.
-   *  Blank/whitespace-only is treated as "no filter".
-   */
-  search?: string
 }
 
 export interface PaginationQuery5 {
@@ -3784,6 +3779,24 @@ export interface Project {
 export interface ProjectFileListResponse {
   files: File[]
   total: number
+}
+
+/**
+ * Query params for `GET /projects`: pagination + optional name/description
+ *  search. A DEDICATED type (not the shared `PaginationQuery`) so the `search`
+ *  param appears only on this endpoint's OpenAPI — mirrors the per-endpoint
+ *  query-struct convention in `mcp/handlers/user.rs` (blind-audit FIX-A).
+ */
+export interface ProjectListQuery {
+  /** Items per page. Defaults to 20, clamped to [1, 100]. */
+  limit?: number
+  /** Page number (1-indexed). Defaults to 1. */
+  page?: number
+  /**
+   * Case-insensitive substring filter on project name/description.
+   *  Blank/whitespace-only is treated as "no filter".
+   */
+  search?: string
 }
 
 /** List response. */
@@ -6973,7 +6986,7 @@ export type ApiEndpointParameters = {
   'Project.get': { id: string }
   'Project.getMcpSettings': { id: string }
   'Project.list': { limit?: number; page?: number; search?: string }
-  'Project.listConversations': { id: string; limit?: number; page?: number; search?: string }
+  'Project.listConversations': { id: string; limit?: number; page?: number }
   'Project.listFiles': { id: string }
   'Project.update': { id: string } & UpdateProjectRequest
   'Project.updateMcpSettings': { id: string } & ProjectMcpSettingsRequest

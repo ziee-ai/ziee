@@ -12,6 +12,8 @@ the module, integration in `tests/project/`, and the openapi golden lib test.
 - **TEST-5** (tier: integration) [covers: ITEM-2, ITEM-3] file: `src-app/server/tests/project/search_test.rs` — asserts: no-filter baseline — `?search=` (blank) and no `search` param both return ALL of the user's projects with the correct `total`, proving blank normalizes to "no predicate".
 - **TEST-6** (tier: integration) [covers: ITEM-3] file: `src-app/server/tests/project/search_test.rs` — asserts: ownership scoping — user B owns a "Roadmap" project; user A's `search=road` returns 0 (the predicate never widens the existing `user_id = $1` scope).
 - **TEST-7** (tier: unit) [covers: ITEM-4] file: `src-app/server/src/openapi/emit_ts.rs` — asserts: the `types_ts_parity` golden test passes — the committed `openapi.json`/`types.ts` regenerate identically, proving the spec was regenerated in lockstep with the new `search` query param.
+- **TEST-8** (tier: integration) [covers: ITEM-3] file: `src-app/server/tests/project/search_test.rs` — asserts: filtered pagination consistency — with 3 matching projects and `?search=report&limit=2`, `total==3` (COUNT reflects the full match set) while `projects.len()==2` (page truncated by LIMIT). *(added in FIX_ROUND-1 from the tests-quality audit.)*
+- **TEST-9** (tier: integration) [covers: ITEM-3] file: `src-app/server/tests/project/search_test.rs` — asserts: a multi-matching term returns all matches; and a bare `%` term behaves as an unescaped ILIKE wildcard (matches all of the user's own projects), documenting DEC-7. *(added in FIX_ROUND-1 from the tests-quality audit.)*
 
 ## Coverage matrix
 
@@ -19,5 +21,5 @@ the module, integration in `tests/project/`, and the openapi golden lib test.
 |------|-------|
 | ITEM-1 | TEST-1 |
 | ITEM-2 | TEST-2, TEST-5 |
-| ITEM-3 | TEST-3, TEST-4, TEST-5, TEST-6 |
+| ITEM-3 | TEST-3, TEST-4, TEST-5, TEST-6, TEST-8, TEST-9 |
 | ITEM-4 | TEST-7 |

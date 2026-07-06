@@ -39,9 +39,6 @@ pub struct PaginationQuery {
     pub page: Option<i64>,
     /// Items per page. Defaults to 20, clamped to [1, 100].
     pub limit: Option<i64>,
-    /// Case-insensitive substring filter on project name/description.
-    /// Blank/whitespace-only is treated as "no filter".
-    pub search: Option<String>,
 }
 
 /// Upper bound on the page number a caller can request. With
@@ -69,10 +66,51 @@ impl<'de> Deserialize<'de> for PaginationQuery {
         struct Raw {
             page: Option<i64>,
             limit: Option<i64>,
-            search: Option<String>,
         }
         let raw = Raw::deserialize(d)?;
         Ok(PaginationQuery {
+            page: raw.page,
+            limit: raw.limit,
+        })
+    }
+}
+
+/// Query params for `GET /projects`: pagination + optional name/description
+/// search. A DEDICATED type (not the shared `PaginationQuery`) so the `search`
+/// param appears only on this endpoint's OpenAPI — mirrors the per-endpoint
+/// query-struct convention in `mcp/handlers/user.rs` (blind-audit FIX-A).
+#[derive(Debug, schemars::JsonSchema)]
+pub struct ProjectListQuery {
+    /// Page number (1-indexed). Defaults to 1.
+    pub page: Option<i64>,
+    /// Items per page. Defaults to 20, clamped to [1, 100].
+    pub limit: Option<i64>,
+    /// Case-insensitive substring filter on project name/description.
+    /// Blank/whitespace-only is treated as "no filter".
+    pub search: Option<String>,
+}
+
+impl ProjectListQuery {
+    /// Resolve the clamped (page, limit) pair (identical clamps to
+    /// `PaginationQuery::resolved`, so `(page-1) * limit` cannot overflow).
+    pub fn resolved(&self) -> (i64, i64) {
+        (
+            self.page.unwrap_or(1).clamp(1, PROJECT_MAX_PAGE),
+            self.limit.unwrap_or(20).clamp(1, PROJECT_MAX_LIMIT),
+        )
+    }
+}
+
+impl<'de> Deserialize<'de> for ProjectListQuery {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Raw {
+            page: Option<i64>,
+            limit: Option<i64>,
+            search: Option<String>,
+        }
+        let raw = Raw::deserialize(d)?;
+        Ok(ProjectListQuery {
             page: raw.page,
             limit: raw.limit,
             search: raw.search,
@@ -253,7 +291,7 @@ pub fn create_project_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn list_projects(
     auth: RequirePermissions<(ProjectsRead,)>,
-    Query(query): Query<PaginationQuery>,
+    Query(query): Query<ProjectListQuery>,
 ) -> ApiResult<Json<ProjectListResponse>> {
     let (page, limit) = query.resolved();
     let search = normalize_search(query.search.as_deref());
@@ -576,15 +614,15 @@ mod tests {
 
     // ─── search query wiring (project-search) ─────────────────────
 
-    /// TEST-1 — `PaginationQuery` deserializes the `search` field so the
+    /// TEST-1 — `ProjectListQuery` deserializes the `search` field so the
     /// extractor actually carries it.
     #[test]
-    fn pagination_query_deserializes_search() {
-        let q: PaginationQuery =
+    fn project_list_query_deserializes_search() {
+        let q: ProjectListQuery =
             serde_json::from_value(serde_json::json!({ "search": "foo" })).unwrap();
         assert_eq!(q.search.as_deref(), Some("foo"));
 
-        let none: PaginationQuery =
+        let none: ProjectListQuery =
             serde_json::from_value(serde_json::json!({ "page": 1 })).unwrap();
         assert_eq!(none.search, None);
     }
