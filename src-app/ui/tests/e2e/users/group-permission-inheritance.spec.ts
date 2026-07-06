@@ -72,7 +72,7 @@ test.describe('Users — group permission inheritance', () => {
     await page.goto(`${baseURL}/settings/hardware`)
     await expect(
       byTestId(page, 'hardware-os-card')
-        .or(byTestId(page, 'hardware-settings-unavailable-alert')),
+        .or(byTestId(page, 'hardware-settings-error')),
     ).toBeVisible({ timeout: 30000 })
   })
 })

@@ -1,4 +1,4 @@
-import { Alert, Tabs } from '@/components/ui'
+import { ErrorState, Tabs } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { LitSearchGlobalSection } from './LitSearchGlobalSection'
@@ -11,21 +11,27 @@ import { LitSearchConnectorsSection } from './LitSearchConnectorsSection'
  * built-in MCP server row is hidden from the System MCP page.
  */
 export function LitSearchSettingsPage() {
-  const { error } = Stores.LitSearchAdmin
-  return (
-    <SettingsPageContainer
-      title="Literature Search"
-      subtitle="Search scholarly literature (Europe PMC, Crossref, Semantic Scholar, PubMed, arXiv, CORE), screen results, and fetch open-access full text. Connected-only — results are treated as untrusted data and this is an adjunct to systematic searching."
-    >
-      {error && (
-        <Alert
-          tone="error"
-          title="Failed to load literature search settings"
-          description={error}
-          className="mb-3"
-          data-testid="lit-settings-error-alert"
+  const { error, settings } = Stores.LitSearchAdmin
+  const subtitle =
+    'Search scholarly literature (Europe PMC, Crossref, Semantic Scholar, PubMed, arXiv, CORE), screen results, and fetch open-access full text. Connected-only — results are treated as untrusted data and this is an adjunct to systematic searching.'
+  // Primary load failed (no settings) → replace the tabs with a persistent,
+  // retryable ErrorState instead of a raw-error banner stacked above them.
+  if (error && !settings) {
+    return (
+      <SettingsPageContainer title="Literature Search" subtitle={subtitle}>
+        <ErrorState
+          variant="page"
+          resource="literature search settings"
+          description="The literature search settings couldn't be loaded. Check your connection and try again."
+          details={error}
+          onRetry={() => void Stores.LitSearchAdmin.load()}
+          data-testid="lit-settings-error"
         />
-      )}
+      </SettingsPageContainer>
+    )
+  }
+  return (
+    <SettingsPageContainer title="Literature Search" subtitle={subtitle}>
       <Tabs
         defaultValue="general"
         data-testid="lit-settings-tabs"

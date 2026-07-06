@@ -133,11 +133,11 @@ export function HardwareMonitor() {
     return (
       <div className="p-3">
         <ErrorState
-          data-testid="hardware-unavailable-alert"
           resource="hardware monitor"
-          description="Live hardware monitoring couldn't be loaded for this machine."
+          description="Your hardware information couldn't be loaded. Check your connection and try again."
           details={hardwareError}
-          onRetry={() => Stores.Hardware.loadHardwareInfo()}
+          onRetry={() => void Stores.Hardware.loadHardwareInfo()}
+          data-testid="hardware-monitor-error"
         />
       </div>
     )

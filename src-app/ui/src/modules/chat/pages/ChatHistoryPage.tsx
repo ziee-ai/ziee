@@ -136,9 +136,9 @@ export default function ChatHistoryPage() {
           </div>
         )}
         {/* Show ConversationList if there are conversations, loading, or a
-         * load error to surface — ConversationList owns the error Alert, so it
-         * must mount on error even when the list is empty (otherwise a failed
-         * load silently falls through to the empty state). */}
+         * load error to surface — ConversationList owns the persistent
+         * ErrorState, so it must mount on error even when the list is empty
+         * (otherwise a failed load silently falls through to the empty state). */}
         {(conversations.length > 0 || loading || error) && (
           <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
             <DivScrollY nativeFlow className={cn('flex flex-col', nativeScroll ? '' : 'h-full')}>

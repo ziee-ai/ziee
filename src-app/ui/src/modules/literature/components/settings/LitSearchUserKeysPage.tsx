@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Alert,
   Button,
   Card,
   Empty,
+  ErrorState,
   Flex,
   Form,
   FormField,
@@ -82,16 +82,6 @@ export function LitSearchUserKeysPage() {
       title="Literature Keys"
       subtitle="Set your own API keys for literature-search sources. Your key is used before the shared deployment key; leave a source blank to use the shared key."
     >
-      {error && (
-        <Alert
-          data-testid="litsearch-user-keys-error-alert"
-          tone="error"
-          title="Failed to load your literature keys"
-          description={error}
-          className="mb-3"
-        />
-      )}
-
       <Card
         data-testid="litsearch-user-keys-card"
         title="Your connector keys"
@@ -112,10 +102,20 @@ export function LitSearchUserKeysPage() {
             <Spin label="Loading your keys" />
           </div>
         ) : connectors.length === 0 ? (
-          <Empty
-            data-testid="litsearch-user-keys-empty"
-            description="No literature sources accept a personal API key on this deployment."
-          />
+          error ? (
+            <ErrorState
+              resource="your literature keys"
+              description="Your connector keys couldn't be loaded. Check your connection and try again."
+              details={error}
+              onRetry={() => void Stores.LitSearchUserKeys.load()}
+              data-testid="litsearch-user-keys-error"
+            />
+          ) : (
+            <Empty
+              data-testid="litsearch-user-keys-empty"
+              description="No literature sources accept a personal API key on this deployment."
+            />
+          )
         ) : (
           <>
             <Paragraph type="secondary" className="text-sm">

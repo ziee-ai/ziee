@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Alert,
   Button,
   Card,
   Empty,
+  ErrorState,
   Flex,
   Form,
   FormField,
@@ -83,16 +83,6 @@ export function WebSearchUserKeysPage() {
       title="Web Search Keys"
       subtitle="Set your own API keys for web-search providers. Your key is used before the shared deployment key; leave a provider blank to use the shared key."
     >
-      {error && (
-        <Alert
-          data-testid="websearch-user-keys-error-alert"
-          tone="error"
-          title="Failed to load your web search keys"
-          description={error}
-          className="mb-3"
-        />
-      )}
-
       <Card
         data-testid="websearch-user-keys-card"
         title="Your provider keys"
@@ -113,10 +103,20 @@ export function WebSearchUserKeysPage() {
             <Spin label="Loading your keys" />
           </div>
         ) : providers.length === 0 ? (
-          <Empty
-            data-testid="websearch-user-keys-empty"
-            description="No web-search providers accept a personal API key on this deployment."
-          />
+          error ? (
+            <ErrorState
+              resource="your web search keys"
+              description="Your provider keys couldn't be loaded. Check your connection and try again."
+              details={error}
+              onRetry={() => void Stores.WebSearchUserKeys.load()}
+              data-testid="websearch-user-keys-error"
+            />
+          ) : (
+            <Empty
+              data-testid="websearch-user-keys-empty"
+              description="No web-search providers accept a personal API key on this deployment."
+            />
+          )
         ) : (
           <>
             <Paragraph type="secondary" className="text-sm">

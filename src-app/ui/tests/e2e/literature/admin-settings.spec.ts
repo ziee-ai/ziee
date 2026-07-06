@@ -355,11 +355,11 @@ test.describe('Literature search admin settings', () => {
     await expect.poll(() => state.connectorPatches['core']?.api_key).toBe('')
   })
 
-  test('shows an error Alert when settings fail to load', async ({ page, testInfra }) => {
+  test('shows an error state when settings fail to load', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
     // Settings endpoint hard-fails → the store surfaces `error`, which the
-    // page renders as an error Alert above the cards.
+    // page renders as a persistent ErrorState in place of the cards.
     await page.route(/\/api\/lit-search\/settings$/, async route =>
       route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'boom' }) }),
     )
@@ -368,7 +368,7 @@ test.describe('Literature search admin settings', () => {
     )
 
     await page.goto(`${baseURL}/settings/literature`)
-    await expect(byTestId(page, 'lit-settings-error-alert')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-settings-error')).toBeVisible({ timeout: 10000 })
   })
 
   test('caps form saves max_results / per-source / timeout', async ({ page, testInfra }) => {
@@ -413,8 +413,8 @@ test.describe('Literature search admin settings', () => {
   })
 
   // audit id bfae0a63e1633179 — the page's load-error branch
-  // (LitSearchSettingsPage.tsx:20-28, the error Alert) had no E2E scenario.
-  test('shows the error Alert when settings fail to load', async ({ page, testInfra }) => {
+  // (LitSearchSettingsPage.tsx, the persistent ErrorState) had no E2E scenario.
+  test('shows the error state when settings fail to load', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
 
@@ -442,6 +442,6 @@ test.describe('Literature search admin settings', () => {
     })
 
     await gotoLiterature(page, baseURL)
-    await expect(byTestId(page, 'lit-settings-error-alert')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'lit-settings-error')).toBeVisible({ timeout: 10000 })
   })
 })

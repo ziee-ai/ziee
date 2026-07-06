@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import {
   Alert,
   Card,
+  ErrorState,
   Form,
   FormField,
   useForm,
@@ -97,11 +98,12 @@ export function SummarizationSettingsSection() {
   if (error && !settings) {
     return (
       <Card title="Summarization" data-testid="summ-settings-error-card">
-        <Alert
-          tone="error"
-          data-testid="summ-settings-error-alert"
-          title="Failed to load summarization settings"
-          description={error}
+        <ErrorState
+          resource="summarization settings"
+          description="The summarization settings couldn't be loaded. Check your connection and try again."
+          details={error}
+          onRetry={() => void Stores.SummarizationAdmin.load()}
+          data-testid="summ-settings-error"
         />
       </Card>
     )

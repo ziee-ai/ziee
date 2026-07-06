@@ -4,6 +4,7 @@ import {
   Input,
   Select,
   Text,
+  ErrorState,
 } from '@/components/ui'
 import { Search, Eraser } from 'lucide-react'
 import { AddButton } from '@/modules/settings/components/AddButton'
@@ -39,12 +40,14 @@ export function McpServersSettings() {
   const policyAllowsAdd =
     (mcpUserPolicy?.allowed_transports?.length ?? 0) > 0
 
+  // Toast only user-action failures (a mutation against already-loaded data).
+  // A failed LOAD renders as a persistent ErrorState below, not toast-only.
   useEffect(() => {
-    if (error) {
+    if (error && servers.length > 0) {
       message.error(error)
       Stores.McpServer.clearMcpError()
     }
-  }, [error, message])
+  }, [error, servers.length])
 
   const handleAddServer = () => {
     Stores.McpServerDrawer.openMcpServerDrawer(undefined, 'create')
@@ -88,22 +91,17 @@ export function McpServersSettings() {
         title="MCP Servers"
         subtitle="Manage Model Context Protocol servers for enhanced tool capabilities"
       >
-        <div className="text-center py-12">
-          <Text type="danger">Failed to load MCP servers: {error}</Text>
-          <div className="mt-4">
-            <Button
-              data-testid="mcp-settings-retry-btn"
-              onClick={() => {
-                Stores.McpServer.loadMcpServers().catch((err: Error) => {
-                  console.error('Failed to load MCP servers:', err)
-                  message.error('Failed to load MCP servers')
-                })
-              }}
-            >
-              Retry
-            </Button>
-          </div>
-        </div>
+        <ErrorState
+          resource="MCP servers"
+          description="Your MCP servers couldn't be loaded. Check your connection and try again."
+          details={error}
+          onRetry={() => {
+            Stores.McpServer.loadMcpServers().catch((err: Error) => {
+              console.error('Failed to load MCP servers:', err)
+            })
+          }}
+          data-testid="mcp-settings-error"
+        />
       </SettingsPageContainer>
     )
   }

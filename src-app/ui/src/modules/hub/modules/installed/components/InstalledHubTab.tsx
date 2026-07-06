@@ -5,6 +5,7 @@ import {
   Card,
   Separator,
   Empty,
+  ErrorState,
   Flex,
   Confirm,
   Spin,
@@ -215,11 +216,12 @@ export function InstalledHubTab() {
   if (error && items.length === 0) {
     return (
       <div className="px-3 pt-3">
-        <Empty
-          data-testid="hub-installed-error-empty"
-          description={
-            <Text type="secondary">Couldn't load installed list: {error}</Text>
-          }
+        <ErrorState
+          resource="installed items"
+          description="Your installed hub items couldn't be loaded. Check your connection and try again."
+          details={error}
+          onRetry={() => void Stores.HubInstalled.loadInstalled()}
+          data-testid="hub-installed-error"
         />
       </div>
     )

@@ -1,5 +1,5 @@
 import { useState, useMemo, lazy, Suspense, ChangeEvent } from 'react'
-import { Button, Input, MultiSelect, Combobox, Text } from '@/components/ui'
+import { Button, Input, MultiSelect, Combobox, Text, ErrorState } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Search, Eraser } from 'lucide-react'
 import { Stores } from '@/core/stores'
@@ -90,14 +90,14 @@ export function McpServersHubTab() {
   // Show error state
   if (error && servers.length === 0) {
     return (
-      <div className="text-center py-12">
-        <Text tone="danger">Failed to load MCP servers: {error}</Text>
-        <div className="mt-4">
-          <Button onClick={() => Stores.HubMcpServers.loadServers()} data-testid="hub-mcp-retry-btn">
-            Retry
-          </Button>
-        </div>
-      </div>
+      <ErrorState
+        variant="page"
+        resource="hub MCP servers"
+        description="The hub catalog couldn't be loaded. Check your connection and try again."
+        details={error}
+        onRetry={() => Stores.HubMcpServers.loadServers()}
+        data-testid="hub-mcp-error"
+      />
     )
   }
 
