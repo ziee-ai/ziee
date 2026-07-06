@@ -11,8 +11,8 @@
 ## Summary
 
 - 626 instrumented surface files rendered.
-- **235** STATE gaps not allow-listed — the actionable queue.
-- 9104 generic branch forks not allow-listed (informational).
+- **200** STATE gaps not allow-listed — the actionable queue.
+- 9044 generic branch forks not allow-listed (informational).
 
 ## State-level gaps (actionable)
 
@@ -21,8 +21,6 @@
 | line | state | condition |
 |---|---|---|
 | 94 | overlay | `<AlertDialog key={it.id} open onOpenChange={(o) => { if (!o) close(it, false) }}>` |
-| 95 | overlay | `<AlertDialogContent data-testid={it.testid} {...(it.description == null ? { 'aria-describedby': undefined } : {})}>` |
-| 95 | overlay | `<AlertDialogContent data-testid={it.testid} {...(it.description == null ? { 'aria-describedby': undefined } : {})}>` |
 
 ### `components/ui/kit/multi-select.tsx`
 
@@ -40,21 +38,12 @@
 | line | state | condition |
 |---|---|---|
 | 106 | loading | `? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>` |
-| 106 | loading | `? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>` |
-| 106 | loading | `? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>` |
 
 ### `components/ui/kit/tree.tsx`
 
 | line | state | condition |
 |---|---|---|
 | 242 | loading | `? <Loader2 className="size-4 shrink-0 animate-spin opacity-70" aria-hidden />` |
-
-### `components/ui/shadcn/field.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 203 | error | `error?.message && <li key={index}>{error.message}</li>` |
-| 203 | error | `error?.message && <li key={index}>{error.message}</li>` |
 
 ### `modules/assistant/chat-extension/components/AssistantMenuItem.tsx`
 
@@ -158,17 +147,6 @@
 | 101 | loading | `if (loading && !conversation) {` |
 | 108 | loading | `if (!loading && !conversation) {` |
 | 142 | error | `<div className="w-full max-w-4xl mx-auto px-4 pt-4">` |
-
-### `modules/chat/widgets/RecentConversationsWidget.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 58 | loading | `if (loading && !isInitialized) {` |
-| 58 | loading | `if (loading && !isInitialized) {` |
-| 58 | loading | `if (loading && !isInitialized) {` |
-| 69 | loading | `if (!loading && recentConversations.length === 0) {` |
-| 69 | loading | `if (!loading && recentConversations.length === 0) {` |
-| 69 | loading | `if (!loading && recentConversations.length === 0) {` |
 
 ### `modules/citations/components/ImportCitationsModal.tsx`
 
@@ -342,12 +320,6 @@
 | 301 | error | `{failed && progress?.error && (` |
 | 302 | error | `<Text type="secondary">{progress.error}</Text>` |
 
-### `modules/llm-local-runtime/components/LiveLogsPanel.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 68 | empty | `<Empty description="No log output yet" data-testid={`llmrt-live-logs-empty-${modelId}`} />` |
-
 ### `modules/llm-local-runtime/components/VersionModelsBlock.tsx`
 
 | line | state | condition |
@@ -413,14 +385,6 @@
 |---|---|---|
 | 61 | empty | `if (Object.keys(pendingSettings).length === 0) return` |
 
-### `modules/llm-provider/components/widgets/DownloadIndicatorWidget.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 87 | empty | `if (activeDownloads.length === 0 && failedDownloads.length === 0) {` |
-| 87 | empty | `if (activeDownloads.length === 0 && failedDownloads.length === 0) {` |
-| 87 | empty | `if (activeDownloads.length === 0 && failedDownloads.length === 0) {` |
-
 ### `modules/llm-provider/widgets/LLMProviderGroupWidget.tsx`
 
 | line | state | condition |
@@ -453,12 +417,6 @@
 | line | state | condition |
 |---|---|---|
 | 475 | error | `if (hasError) return null` |
-
-### `modules/mcp/components/common/McpToolCallsTab.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 111 | error | `<Text type="danger" data-testid="mcp-tool-calls-error">` |
 
 ### `modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx`
 
@@ -493,14 +451,6 @@
 
 | line | state | condition |
 |---|---|---|
-| 80 | loading | `{blocks.length === 0 && loading ? (` |
-| 80 | loading | `{blocks.length === 0 && loading ? (` |
-| 81 | loading | `<div className="flex justify-center py-6">` |
-| 84 | loading | `) : blocks.length === 0 && !loading ? (` |
-| 84 | loading | `) : blocks.length === 0 && !loading ? (` |
-| 84 | loading | `) : blocks.length === 0 && !loading ? (` |
-| 85 | loading | `<Empty description="No blocks yet" data-testid="memory-core-blocks-empty" />` |
-| 215 | overlay | `data-testid={existing ? 'memory-core-block-edit-dialog' : 'memory-core-block-create-dialog'}` |
 | 215 | overlay | `data-testid={existing ? 'memory-core-block-edit-dialog' : 'memory-core-block-create-dialog'}` |
 
 ### `modules/memory/components/sections/MyMemoriesSection.tsx`
@@ -548,18 +498,6 @@
 | 36 | empty | `if (renderers.length === 0) {` |
 | 37 | empty | `return fallback ? <>{fallback}</> : null` |
 | 37 | empty | `return fallback ? <>{fallback}</> : null` |
-
-### `modules/skill/components/ConversationSkillsPanel.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 43 | loading | `if (loading && !available) {` |
-| 43 | loading | `if (loading && !available) {` |
-| 43 | loading | `if (loading && !available) {` |
-| 49 | error | `if (error && !available) {` |
-| 49 | error | `if (error && !available) {` |
-| 49 | error | `if (error && !available) {` |
-| 68 | empty | `if (allRows.length === 0) {` |
 
 ### `modules/summarization/chat-extension/components/SummarizationStatusPill.tsx`
 
@@ -640,14 +578,6 @@
 | 307 | empty | `{steps.length === 0 && !terminal && (` |
 | 308 | empty | `<Text type="secondary" className="text-xs">` |
 
-### `modules/workflow/components/WorkflowRunsList.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 62 | loading | `if (!loading[workflowId] && items.length === 0) {` |
-| 62 | loading | `if (!loading[workflowId] && items.length === 0) {` |
-| 62 | loading | `if (!loading[workflowId] && items.length === 0) {` |
-
 ### `modules/workflow/components/WorkflowTestsPanel.tsx`
 
 | line | state | condition |
@@ -691,7 +621,7 @@
 | `modules/llm-provider/components/llm-models/AddLocalLlmModelUploadDrawer.tsx` | 83 |
 | `modules/workflow/stores/WorkflowRun.store.ts` | 82 |
 | `modules/mcp/components/McpConfigModal.tsx` | 80 |
-| `modules/llm-provider/components/LlmModelsSection.tsx` | 76 |
 | `modules/mcp/chat-extension/components/ElicitationFormContent.tsx` | 75 |
+| `modules/llm-provider/components/LlmModelsSection.tsx` | 74 |
 | `modules/llm-local-runtime/components/AvailableVersionsCard.tsx` | 66 |
 | `modules/file/components/FileCard.tsx` | 65 |
