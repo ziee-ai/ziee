@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { ApiClient } from '@/api-client'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
+import { STREAMDOWN_PLUGINS } from '@/components/common/streamdownPlugins'
 
 interface StepOutputExpanderProps {
   runId: string
@@ -88,7 +89,7 @@ export function StepOutputExpander({
     return (
       <div className="overflow-auto max-h-80 text-sm">
         <StreamdownErrorBoundary fallbackText={content}>
-          <Streamdown shikiTheme={['github-light', 'github-dark']}>
+          <Streamdown shikiTheme={['github-light', 'github-dark']} plugins={STREAMDOWN_PLUGINS}>
             {content}
           </Streamdown>
         </StreamdownErrorBoundary>

@@ -15,6 +15,7 @@ import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { useResourceLinkContent } from '../../hooks/useResourceLinkContent'
 import { RawCodeView } from '../shared/RawCodeView'
 import { getSource } from '../shared/source'
+import { STREAMDOWN_PLUGINS } from '@/components/common/streamdownPlugins'
 // ----- Inlined from @/modules/chat/core/utils/ (generic utilities, no chat deps) -----
 
 function isLocalImageUrl(url: string): boolean {
@@ -201,6 +202,7 @@ export function MarkdownBody(props: FileViewerSlotProps) {
         <StreamdownErrorBoundary fallbackText={content}>
           <Streamdown
             shikiTheme={SHIKI_THEME}
+            plugins={STREAMDOWN_PLUGINS}
             urlTransform={streamdownUrlTransform}
             components={SAFE_IMG_COMPONENTS}
           >

@@ -18,6 +18,7 @@ import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
+import { STREAMDOWN_PLUGINS } from '@/components/common/streamdownPlugins'
 import { SkillScopeBadge } from './SkillScopeBadge'
 
 /** Build a readable markdown summary from the skill's persisted
@@ -221,7 +222,7 @@ export function SkillDetailDrawer() {
 
         <div className="overflow-auto">
           <StreamdownErrorBoundary fallbackText={markdown}>
-            <Streamdown shikiTheme={['github-light', 'github-dark']}>
+            <Streamdown shikiTheme={['github-light', 'github-dark']} plugins={STREAMDOWN_PLUGINS}>
               {markdown}
             </Streamdown>
           </StreamdownErrorBoundary>
@@ -246,7 +247,7 @@ export function SkillDetailDrawer() {
           <div className="overflow-auto" data-testid="skill-detail-body">
             <Title level={5}>Skill content (SKILL.md)</Title>
             <StreamdownErrorBoundary fallbackText={body}>
-              <Streamdown shikiTheme={['github-light', 'github-dark']}>
+              <Streamdown shikiTheme={['github-light', 'github-dark']} plugins={STREAMDOWN_PLUGINS}>
                 {body}
               </Streamdown>
             </StreamdownErrorBoundary>

@@ -4,6 +4,9 @@
 /* Streamdown's streaming keyframes (sd-fadeIn / sd-blurIn / sd-slideUp), used
  * by <Streamdown isAnimating>. Ships as a ready-made stylesheet in v2. */
 @import "streamdown/styles.css";
+/* KaTeX styles for the @streamdown/math plugin (block/inline LaTeX). Without
+ * this the KaTeX markup renders but is completely unstyled. */
+@import "katex/dist/katex.min.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -22,6 +25,15 @@
  * an @source glob that matches nothing, so listing both is safe. */
 @source "../../../node_modules/streamdown/dist/*.js";
 @source "../node_modules/streamdown/dist/*.js";
+/* Streamdown v2 plugins (code/math/mermaid) bake their chrome — copy/download
+ * buttons, mermaid controls — into Tailwind utilities in their own dist too, so
+ * those dists must be scanned as well or the plugin UI comes out unstyled. */
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/math/dist/*.js";
+@source "../node_modules/@streamdown/math/dist/*.js";
+@source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+@source "../node_modules/@streamdown/mermaid/dist/*.js";
 
 /* Cap a long code block's scroll body so a huge one doesn't dominate the
  * message — scroll inside beyond ~60vh (ceiling 36rem). Streamdown puts no
