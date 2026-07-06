@@ -36,15 +36,15 @@ just no-ops.
 | File | Purpose |
 |------|---------|
 | `showcase.sql`      | The seed. Heavily commented, organized into sections (Markdown / Thinking / Tool calls / Files / Elicitation+streaming) each ending in an `-- add more here --` anchor. |
-| `generate_files.py` | Generates the binary + text assets (PNG, JPG, multi-sheet XLSX, PDF, CSV, .py, .md, large .txt) into `files/`. Deps: `Pillow`, `openpyxl`. |
+| `generate-files.mjs` | Generates the binary + text assets (PNG, JPG, multi-sheet XLSX, PDF, CSV, .py, .md, large .txt) into `files/`. Deterministic (no timestamps/randomness). Deps: `pngjs` + `exceljs` (ui-workspace devDeps, hoisted to the repo-root `node_modules`); the JPEG/PDF/CSV/text are written by hand with no extra deps. |
 | `load.sh`           | Resolves the target DB + owner user, generates assets if missing, copies bytes into the file store, and runs `showcase.sql`. |
-| `files/`            | The generated assets (safe to delete — `load.sh`/`generate_files.py` recreate them). |
+| `files/`            | The generated assets (safe to delete — `load.sh`/`generate-files.mjs` recreate them). |
 
 ## How to load
 
 Prereqs: the server has **booted at least once** against the target DB (so the
 built-in `mcp_servers` rows exist) and **first-run setup is complete** (so a
-root admin user exists). `psql` + `python3` + `curl` on PATH.
+root admin user exists). `psql` + `node` + `curl` on PATH.
 
 ```bash
 cd src-app/server/seeds/showcase
@@ -135,7 +135,7 @@ recorded calls, including the failed + cancelled ones.
    elicitation_request).
 2. **A tool call** also needs a row in the `SECTION C-rows` `mcp_tool_calls`
    INSERT (for the Calls tab).
-3. **A new file:** add a generator fn in `generate_files.py`, a `files` +
+3. **A new file:** add a generator fn in `generate-files.mjs`, a `files` +
    `file_versions` row in section 0 of `showcase.sql`, and an entry in
    `load.sh`'s `FILE_MAP`. Recompute its `sha256` for the `checksum`.
 
