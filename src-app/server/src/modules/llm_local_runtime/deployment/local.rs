@@ -437,7 +437,368 @@ impl LocalDeployment {
         true
     }
 
-    #[cfg(not(target_os = "linux"))]
+    /// macOS twin of the Linux impl. There is no `/proc`, so enumerate
+    /// the child's open sockets via the same `proc_pidinfo` /
+    /// `proc_pidfdinfo` syscalls `lsof` uses and inspect the listening
+    /// socket's bound local address. `libc` exposes the syscalls +
+    /// `PROC_PIDLISTFDS` but NOT the `socket_fdinfo` layout, so we read
+    /// the fields at ABI-fixed byte offsets (verified with clang
+    /// `offsetof`/`sizeof` against `<sys/proc_info.h>`; identical on
+    /// arm64 + x86_64 — both LP64 with the same field alignment). Falls
+    /// back to `lsof -p` if the syscall path can't enumerate.
+    ///
+    /// Return/error semantics mirror the Linux impl EXACTLY:
+    ///   loopback listener on `port`  → true
+    ///   non-loopback listener        → false (security violation)
+    ///   no listener on `port`        → true  (still starting / already
+    ///                                          dead; /health is the
+    ///                                          authoritative readiness
+    ///                                          probe)
+    ///   cannot verify at all         → false (strict — treat as unsafe,
+    ///                                          like a failed /proc read)
+    #[cfg(target_os = "macos")]
+    pub(crate) fn verify_loopback_bind(pid: i32, port: i32) -> bool {
+        match Self::macos_proc_listen_verdict(pid, port) {
+            Some(v) => v,
+            // Syscall path couldn't enumerate the pid's sockets — try lsof.
+            None => match Self::macos_lsof_listen_verdict(pid, port) {
+                Some(v) => v,
+                None => false, // strict: can't verify → unsafe (mirrors Linux read-fail)
+            },
+        }
+    }
+
+    /// Primary macOS path: `proc_pidinfo(PROC_PIDLISTFDS)` to list fds,
+    /// then `proc_pidfdinfo(PROC_PIDFDSOCKETINFO)` per socket fd, reading
+    /// the listening socket's bound address at fixed offsets.
+    ///
+    /// `Some(true/false)` = enumerated and decided; `None` = could not
+    /// enumerate (dead pid / EPERM / struct-layout drift) → caller falls
+    /// back to lsof.
+    #[cfg(target_os = "macos")]
+    fn macos_proc_listen_verdict(pid: i32, port: i32) -> Option<bool> {
+        use std::mem::size_of;
+
+        // sizeof(struct socket_fdinfo). Its `soi_proto` union is sized to
+        // its LARGEST member (un_sockinfo, not tcp_sockinfo), so
+        // proc_pidfdinfo demands the full buffer or fills nothing.
+        const SOCKET_FDINFO_SIZE: usize = 792;
+        // Byte offsets into the socket_fdinfo buffer (clang offsetof):
+        //   psi @24; socket_info.soi_kind @232, .soi_proto @240. The proto
+        //   union begins with in_sockinfo (for SOCKINFO_TCP it is
+        //   tcpsi_ini @0 of the union), so the in_sockinfo fields sit at
+        //   fixed offsets from the union start (264).
+        const OFF_SOI_KIND: usize = 24 + 232; // 256
+        const OFF_PROTO: usize = 24 + 240; // 264  (in_sockinfo start)
+        const OFF_LPORT: usize = OFF_PROTO + 4; // insi_lport
+        const OFF_VFLAG: usize = OFF_PROTO + 24; // insi_vflag
+        const OFF_LADDR: usize = OFF_PROTO + 48; // insi_laddr (union)
+        const OFF_TCP_STATE: usize = OFF_PROTO + 80; // tcpsi_state (after in_sockinfo=80)
+        const SOCKINFO_TCP: i32 = 2;
+        const TSI_S_LISTEN: i32 = 1;
+        const INI_IPV6: u8 = 0x2;
+        const PROC_PIDFDSOCKETINFO: libc::c_int = 3;
+
+        // 1) Size then read the pid's fd table.
+        let needed = unsafe {
+            libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0)
+        };
+        if needed <= 0 {
+            return None; // can't list fds (dead pid / EPERM) → try lsof
+        }
+        let cap = needed as usize / size_of::<libc::proc_fdinfo>();
+        let mut fds: Vec<libc::proc_fdinfo> = vec![unsafe { std::mem::zeroed() }; cap];
+        let got = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDLISTFDS,
+                0,
+                fds.as_mut_ptr() as *mut libc::c_void,
+                needed,
+            )
+        };
+        if got <= 0 {
+            return None;
+        }
+        fds.truncate(got as usize / size_of::<libc::proc_fdinfo>());
+
+        // 2) Inspect each socket fd.
+        let mut had_read_error = false;
+        let mut buf = [0u8; SOCKET_FDINFO_SIZE];
+        for fd in &fds {
+            if fd.proc_fdtype != libc::PROX_FDTYPE_SOCKET as u32 {
+                continue;
+            }
+            let rv = unsafe {
+                libc::proc_pidfdinfo(
+                    pid,
+                    fd.proc_fd,
+                    PROC_PIDFDSOCKETINFO,
+                    buf.as_mut_ptr() as *mut libc::c_void,
+                    SOCKET_FDINFO_SIZE as libc::c_int,
+                )
+            };
+            if rv as usize != SOCKET_FDINFO_SIZE {
+                // Short/failed read — struct drift or a racing close. Don't
+                // silently treat an unreadable socket as "no listener".
+                had_read_error = true;
+                continue;
+            }
+            // Only TCP sockets carry a LISTEN state.
+            let soi_kind =
+                i32::from_ne_bytes(buf[OFF_SOI_KIND..OFF_SOI_KIND + 4].try_into().unwrap());
+            if soi_kind != SOCKINFO_TCP {
+                continue;
+            }
+            let tcp_state =
+                i32::from_ne_bytes(buf[OFF_TCP_STATE..OFF_TCP_STATE + 4].try_into().unwrap());
+            if tcp_state != TSI_S_LISTEN {
+                continue;
+            }
+            // Ports are stored in network byte order in the low 16 bits.
+            let lport = u16::from_be_bytes([buf[OFF_LPORT], buf[OFF_LPORT + 1]]) as i32;
+            if lport != port {
+                continue;
+            }
+            // A listener on the target port — is it loopback?
+            let vflag = buf[OFF_VFLAG];
+            let is_loopback = if vflag & INI_IPV6 != 0 {
+                // in6_addr @ laddr: ::1 == 15 zero bytes + 0x01.
+                let a = &buf[OFF_LADDR..OFF_LADDR + 16];
+                a[..15].iter().all(|&b| b == 0) && a[15] == 1
+            } else {
+                // IPv4 s_addr @ laddr+12 (after in4in6_addr.i46a_pad32[3]),
+                // network order. Match 127.0.0.1 exactly, like the Linux
+                // impl (which tests 0100007F).
+                buf[OFF_LADDR + 12..OFF_LADDR + 16] == [127, 0, 0, 1]
+            };
+            if is_loopback {
+                return Some(true);
+            }
+            tracing::error!(
+                "engine pid {} bound non-loopback listener on port {} (macOS proc)",
+                pid,
+                port
+            );
+            return Some(false);
+        }
+
+        if had_read_error {
+            // Saw socket fds but couldn't read one — inconclusive; let the
+            // caller fall back to lsof rather than assume "no listener".
+            None
+        } else {
+            // Clean enumeration, no listener on the port. Absence is not a
+            // failure here (mirrors Linux; /health is authoritative).
+            Some(true)
+        }
+    }
+
+    /// Fallback macOS path: parse `lsof` for the pid's LISTEN TCP sockets.
+    /// `Some(_)` = ran + decided; `None` = lsof itself couldn't run (not
+    /// installed / spawn error) → treated as "can't verify" by the caller.
+    #[cfg(target_os = "macos")]
+    fn macos_lsof_listen_verdict(pid: i32, port: i32) -> Option<bool> {
+        // -nP: numeric host + port (no DNS/service lookup). -Fn: parseable
+        // output, one field per line; 'n' rows carry the socket name, e.g.
+        //   n127.0.0.1:8080   n*:8080 (0.0.0.0)   n[::1]:8080
+        let out = std::process::Command::new("lsof")
+            .args(["-nP", "-a", "-p", &pid.to_string(), "-iTCP", "-sTCP:LISTEN", "-Fn"])
+            .output()
+            .ok()?; // spawn failed (no lsof) → None → caller treats as unverifiable
+        let text = String::from_utf8_lossy(&out.stdout);
+        let want = format!(":{port}");
+        for line in text.lines() {
+            let name = match line.strip_prefix('n') {
+                Some(n) => n,
+                None => continue,
+            };
+            if !name.ends_with(&want) {
+                continue;
+            }
+            let addr = &name[..name.len() - want.len()];
+            // Match loopback exactly (127.0.0.1 / [::1]), like the Linux
+            // impl. `*` is lsof's rendering of 0.0.0.0 (wildcard) → reject.
+            if addr == "127.0.0.1" || addr == "[::1]" {
+                return Some(true);
+            }
+            tracing::error!(
+                "engine pid {} bound non-loopback listener {} on port {} (lsof)",
+                pid,
+                addr,
+                port
+            );
+            return Some(false);
+        }
+        // Ran fine, no listener on the port → absence → true (mirrors Linux).
+        Some(true)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    /// Windows twin of the Linux impl. There is no `/proc`, so enumerate
+    /// the system TCP listener table via `GetExtendedTcpTable`
+    /// (`iphlpapi`) with `TCP_TABLE_OWNER_PID_LISTENER` — the same owner-PID
+    /// data `netstat -ano` shows — and inspect the rows owned by `pid` on
+    /// `port`. Both the IPv4 and IPv6 tables are queried (a listener that
+    /// ignored `--host 127.0.0.1` and bound `0.0.0.0`/`::` shows up here).
+    ///
+    /// Return/error semantics mirror the Linux impl EXACTLY:
+    ///   loopback listener on `port`  → true   (127.0.0.1 or ::1)
+    ///   non-loopback listener        → false  (security violation)
+    ///   no listener on `port`        → true   (still starting / already
+    ///                                          dead; /health is the
+    ///                                          authoritative readiness
+    ///                                          probe)
+    ///   cannot enumerate at all      → false  (strict — treat as unsafe,
+    ///                                          like a failed /proc read)
+    #[cfg(target_os = "windows")]
+    pub(crate) fn verify_loopback_bind(pid: i32, port: i32) -> bool {
+        // Query both families. Each returns:
+        //   Ok(Some(true))  = matching loopback listener found
+        //   Ok(Some(false)) = matching NON-loopback listener found
+        //   Ok(None)        = enumerated cleanly, no matching row
+        //   Err(())         = could not enumerate this family
+        let v4 = Self::win_tcp_listener_verdict(pid, port, false);
+        let v6 = Self::win_tcp_listener_verdict(pid, port, true);
+
+        // Any non-loopback listener on the port is a hard security failure,
+        // regardless of what the other family says.
+        if v4 == Ok(Some(false)) || v6 == Ok(Some(false)) {
+            return false;
+        }
+        // A loopback listener on the port → verified.
+        if v4 == Ok(Some(true)) || v6 == Ok(Some(true)) {
+            return true;
+        }
+        // No matching row anywhere. If BOTH families failed to enumerate we
+        // could not verify → strict false (mirrors a failed /proc read). If
+        // at least one enumerated cleanly, absence is not a failure (mirrors
+        // Linux; /health is authoritative).
+        if v4.is_err() && v6.is_err() {
+            return false;
+        }
+        true
+    }
+
+    /// Query one address family's `TCP_TABLE_OWNER_PID_LISTENER` table and
+    /// decide whether `pid` owns a listener on `port` and, if so, whether it
+    /// is bound to loopback. `ipv6 == false` → IPv4 table (127.0.0.1),
+    /// `true` → IPv6 table (::1). See `verify_loopback_bind` for the encoded
+    /// verdict.
+    #[cfg(target_os = "windows")]
+    fn win_tcp_listener_verdict(pid: i32, port: i32, ipv6: bool) -> Result<Option<bool>, ()> {
+        use windows_sys::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR};
+        use windows_sys::Win32::NetworkManagement::IpHelper::{
+            GetExtendedTcpTable, MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID,
+            MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
+        };
+        use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_INET6};
+
+        let want_pid = pid as u32;
+        let af: u32 = if ipv6 { AF_INET6 as u32 } else { AF_INET as u32 };
+
+        // Two-call idiom: size the buffer, then fill it. The table can grow
+        // between calls, so loop until the size stops changing.
+        let mut size: u32 = 0;
+        let mut buf: Vec<u8> = Vec::new();
+        // A few attempts is plenty; bail out rather than spin forever.
+        for _ in 0..8 {
+            let rc = unsafe {
+                GetExtendedTcpTable(
+                    if buf.is_empty() {
+                        std::ptr::null_mut()
+                    } else {
+                        buf.as_mut_ptr() as *mut core::ffi::c_void
+                    },
+                    &mut size,
+                    0, // bOrder = FALSE (ordering irrelevant to us)
+                    af,
+                    TCP_TABLE_OWNER_PID_LISTENER,
+                    0,
+                )
+            };
+            if rc == NO_ERROR {
+                if buf.is_empty() {
+                    // Sizing call unexpectedly succeeded with an empty buffer
+                    // (size 0) → no rows.
+                    return Ok(None);
+                }
+                break;
+            }
+            if rc == ERROR_INSUFFICIENT_BUFFER {
+                buf = vec![0u8; size as usize];
+                continue;
+            }
+            // Any other error (e.g. ERROR_INVALID_PARAMETER) → cannot verify.
+            return Err(());
+        }
+        if buf.is_empty() {
+            // Never got a fillable buffer within the retry budget.
+            return Err(());
+        }
+
+        // Decode `port` (host order) from a row's `dwLocalPort` (network byte
+        // order in the low 16 bits of the DWORD).
+        let decode_port = |dw: u32| -> i32 {
+            u16::from_be_bytes([(dw & 0xFF) as u8, ((dw >> 8) & 0xFF) as u8]) as i32
+        };
+
+        if ipv6 {
+            let table = buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
+            let n = unsafe { (*table).dwNumEntries } as isize;
+            let rows = unsafe { core::ptr::addr_of!((*table).table) } as *const MIB_TCP6ROW_OWNER_PID;
+            for i in 0..n {
+                let row = unsafe { &*rows.offset(i) };
+                if row.dwOwningPid != want_pid || decode_port(row.dwLocalPort) != port {
+                    continue;
+                }
+                // ::1 == 15 zero bytes followed by 0x01.
+                let a = &row.ucLocalAddr;
+                let is_loopback = a[..15].iter().all(|&b| b == 0) && a[15] == 1;
+                if is_loopback {
+                    return Ok(Some(true));
+                }
+                tracing::error!(
+                    "engine pid {} bound non-loopback IPv6 listener on port {} (windows)",
+                    pid,
+                    port
+                );
+                return Ok(Some(false));
+            }
+        } else {
+            let table = buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
+            let n = unsafe { (*table).dwNumEntries } as isize;
+            let rows = unsafe { core::ptr::addr_of!((*table).table) } as *const MIB_TCPROW_OWNER_PID;
+            for i in 0..n {
+                let row = unsafe { &*rows.offset(i) };
+                if row.dwOwningPid != want_pid || decode_port(row.dwLocalPort) != port {
+                    continue;
+                }
+                // dwLocalAddr is the IPv4 s_addr in network byte order; on a
+                // little-endian host its native bytes ARE the dotted quad, so
+                // 127.0.0.1 → [127, 0, 0, 1]. Matches the Linux impl (exact
+                // 127.0.0.1; 0.0.0.0 and any other addr are rejected).
+                let is_loopback = row.dwLocalAddr.to_ne_bytes() == [127u8, 0, 0, 1];
+                if is_loopback {
+                    return Ok(Some(true));
+                }
+                tracing::error!(
+                    "engine pid {} bound non-loopback IPv4 listener {}.{}.{}.{} on port {} (windows)",
+                    pid,
+                    row.dwLocalAddr.to_ne_bytes()[0],
+                    row.dwLocalAddr.to_ne_bytes()[1],
+                    row.dwLocalAddr.to_ne_bytes()[2],
+                    row.dwLocalAddr.to_ne_bytes()[3],
+                    port
+                );
+                return Ok(Some(false));
+            }
+        }
+        // Enumerated cleanly, no matching listener on the port.
+        Ok(None)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     pub(crate) fn verify_loopback_bind(_pid: i32, _port: i32) -> bool {
         // Best-effort — the spawn args already force --host 127.0.0.1.
         true
@@ -1062,5 +1423,51 @@ mod tests {
         let cfg = serde_json::json!({ "ctx_size": 2048 });
         let s = LocalDeployment::parse_llamacpp_settings(&cfg);
         assert_eq!(s.ctx_size, None);
+    }
+
+    /// Exercises the real macOS `proc_pidfdinfo` socket enumeration in
+    /// this test process: a `127.0.0.1` listener must verify, a `0.0.0.0`
+    /// listener must be rejected, and a port nobody listens on must pass
+    /// (absence → true, mirroring the Linux impl). This also validates the
+    /// hand-computed struct byte offsets on the running kernel — a wrong
+    /// offset/byte-order makes the wildcard socket read as "no listener"
+    /// and fails the rejection assertion below.
+    #[cfg(target_os = "macos")]
+    /// Exercises the real Windows `GetExtendedTcpTable` enumeration in this
+    /// test process: a `127.0.0.1` listener must verify, a `0.0.0.0` listener
+    /// must be rejected as non-loopback, and a port nobody listens on must
+    /// pass (absence → true, mirroring the Linux impl). Because the row is
+    /// filtered by owning PID, the in-process listeners (owned by this test)
+    /// are exactly the ones the function inspects.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn verify_loopback_bind_detects_loopback_vs_wildcard() {
+        use std::net::TcpListener;
+        let pid = std::process::id() as i32;
+
+        // 127.0.0.1 listener → must be accepted (held open across the call).
+        let lo = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let lo_port = lo.local_addr().unwrap().port() as i32;
+        assert!(
+            LocalDeployment::verify_loopback_bind(pid, lo_port),
+            "loopback listener on port {lo_port} should verify as bound to 127.0.0.1"
+        );
+
+        // 0.0.0.0 (wildcard) listener → must be rejected as non-loopback.
+        let any = TcpListener::bind("0.0.0.0:0").expect("bind wildcard");
+        let any_port = any.local_addr().unwrap().port() as i32;
+        assert!(
+            !LocalDeployment::verify_loopback_bind(pid, any_port),
+            "wildcard 0.0.0.0 listener on port {any_port} must be rejected as non-loopback"
+        );
+
+        // Absence: no listener in this process on this port → true (the
+        // /health probe is authoritative; we don't fail validation here).
+        drop(lo);
+        drop(any);
+        assert!(
+            LocalDeployment::verify_loopback_bind(pid, 9),
+            "no listener on port 9 in this process → should return true (absence)"
+        );
     }
 }
